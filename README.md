@@ -1,7 +1,12 @@
 # EtherPK Client
 
+[![Build and release](https://github.com/appsoftwareltd/etherpk-client/actions/workflows/build.yaml/badge.svg?branch=main)](https://github.com/appsoftwareltd/etherpk-client/actions/workflows/build.yaml)
+[![Unit tests](https://github.com/appsoftwareltd/etherpk-client/actions/workflows/unit-tests.yaml/badge.svg?branch=main)](https://github.com/appsoftwareltd/etherpk-client/actions/workflows/unit-tests.yaml)
+
 The source of the [EtherPK](https://etherpk.com) Client and Headless Client, available under the
 [Elastic License 2.0](LICENSE).
+
+![The EtherPK Client: the graph sidebar with its journal calendar, a page in the editor, and the page's backlinks](.github/assets/etherpk-client.png)
 
 EtherPK is a personal knowledge base in plain Markdown. Journal entries hold daily thinking, pages
 hold what outlives a day, and `[[wikilinks]]` tie them into a knowledge graph. The **Client** is the
