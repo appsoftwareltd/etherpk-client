@@ -221,7 +221,6 @@ describe.each(backends)('%s backend', (_name, openGraph) => {
 
     it('photographs the preview when a browser is available, and says so when none is', async () => {
         const g = await blog('g-themes-shots')
-        const dir = await mkdtemp(join(tmpdir(), 'etherpk-mcp-theme-shots-'))
         const none = await previewTheme(g, { publication: 'blog', out_dir: 'none', screenshots: true }, { env: { ...process.env, ETHERPK_CHROMIUM: '/nonexistent/chromium' } })
         expect(none.screenshots).toBeNull()
         expect(none.note).toContain('diagrams setup')
@@ -238,6 +237,8 @@ describe.each(backends)('%s backend', (_name, openGraph) => {
             expect(png.subarray(1, 4).toString()).toBe('PNG')
         }
         expect(shot.screenshots!.map((s) => s.width)).toEqual([1280, 390, 1280, 390])
-        await rm(dir, { recursive: true, force: true })
-    }, 60_000)
+        // Whichever backend runs this first starts a cold browser. On a CI runner shared with the
+        // other packages' suites that has taken 13 to 50 seconds, and once more than 60; the
+        // second run takes under 7.
+    }, 120_000)
 })
