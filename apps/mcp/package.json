@@ -1,6 +1,6 @@
 {
     "name": "@appsoftwareltd/etherpk-mcp",
-    "version": "0.8.0",
+    "version": "0.8.1",
     "license": "Elastic-2.0",
     "description": "EtherPK Headless Client: an MCP server over a synced knowledge graph, run beside the agent on the user's own machine.",
     "type": "module",
