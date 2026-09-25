@@ -85,7 +85,7 @@ export function createMcpServer(graph: HeadlessGraph, info: McpServerInfo): McpS
                 'Start with graph_info to see what you are connected to. read_documents reads several documents in one call; tasks lists tasks and set_task changes one (status, priority, due and scheduled dates) by document and line.',
                 'Publishing: list_publications shows the publications this graph defines (a publication is a page whose frontmatter defines it; its outline is the site navigation) and the public documents none takes; a document is on a site when its frontmatter has public: true and names the publication in publications. create_publication and update_publication change the settings; publish writes the site into the publish folder the user set for it on this machine with the etherpk-mcp publish command (the tool cannot choose a folder) and returns the report. Diagrams need a browser the user installs once with "diagrams setup".',
                 "Themes: a publication's look is a theme - Mustache templates, a stylesheet, a script and a manifest. list_themes shows the bundled ones (read-only) and the graph's own; read_theme writes a theme's files to a folder on this machine to read and edit; customise_publication_theme copies a publication's bundled theme into the graph and points the publication at the copy (create_theme copies any theme); write_theme_file, delete_theme_file and import_theme_folder change a graph theme; preview_theme renders a theme to a folder (with screenshots when a browser is set up) to check before publish. For a snippet such as an analytics script, an include slot (update_publication includes, e.g. head) filled by a page may be lighter than a theme copy.",
-                'Images and files are assets: upload_asset adds a file from this machine and returns the markdown to paste into a document; read_asset writes an asset to a local file you can open; list_assets shows the assets documents reference. An asset is available only where a document you can read references it (or you uploaded it this session).',
+                'Images and files are assets: upload_asset adds a file from this machine and returns the markdown to paste into a document; read_asset writes an asset to a local file you can open; list_assets shows the assets documents reference. An asset is available only where a document you can read references it (or you uploaded it this session). read_asset, read_theme and preview_theme write under the graph\'s downloads directory and return the path; name a folder relative to it, never elsewhere.',
                 'The user documentation is at https://docs.etherpk.com.',
             ].join('\n'),
         },
@@ -289,9 +289,9 @@ export function createMcpServer(graph: HeadlessGraph, info: McpServerInfo): McpS
         'upload_asset',
         {
             title: 'Upload an asset',
-            description: 'Add a file on this machine (an image, a PDF, any file) to the graph as an asset. Returns the reference and the markdown to paste into a document (an image tag for an image, a link otherwise). Bytes the graph already holds are not stored twice: the result then says reused: true and points at the existing asset. The file is stored as it is, without image optimisation. Refused with error "asset_refused" when the server declines it on a quota.',
+            description: 'Add a file on this machine (an image, a PDF, any file) to the graph as an asset. Returns the reference and the markdown to paste into a document (an image tag for an image, a link otherwise). Bytes the graph already holds are not stored twice: the result then says reused: true and points at the existing asset. The file is stored as it is, without image optimisation. Refused with error "invalid_argument" for a folder, a file over 100 MiB, a hidden file or one in a hidden folder (.ssh, .env), and the Headless Client\'s own config and cache; with error "asset_refused" when the server declines it on a quota.',
             inputSchema: {
-                path: z.string().min(1).describe('Absolute path of the file on this machine.'),
+                path: z.string().min(1).describe('Absolute path of an ordinary file on this machine.'),
                 name: z.string().min(1).optional().describe('The name to store it under; the file\'s own name by default.'),
             },
         },
@@ -302,10 +302,10 @@ export function createMcpServer(graph: HeadlessGraph, info: McpServerInfo): McpS
         'read_asset',
         {
             title: 'Read an asset',
-            description: 'Write an asset\'s bytes to a file on this machine and return the path, so you can open or view it. Pass the reference as a document shows it ("../assets/<name>") or the name alone. Available only where a document you can read references the asset (or you uploaded it this session); otherwise error "asset_not_found".',
+            description: 'Write an asset\'s bytes to a file on this machine and return the path, so you can open or view it. Pass the reference as a document shows it ("../assets/<name>") or the name alone. Available only where a document you can read references the asset (or you uploaded it this session); otherwise error "asset_not_found". The file is written under the graph\'s downloads directory, named after the asset, and never over an existing file.',
             inputSchema: {
                 ref: z.string().min(1),
-                out_dir: z.string().min(1).optional().describe('Directory to write into; the graph\'s downloads directory by default.'),
+                out_dir: z.string().min(1).optional().describe('A folder under the graph\'s downloads directory, relative to it; the downloads directory itself by default. A folder outside it is refused.'),
             },
         },
         async (args) => run(() => readAsset(graph, args)),
@@ -401,7 +401,7 @@ export function createMcpServer(graph: HeadlessGraph, info: McpServerInfo): McpS
             description: "Write a theme's files (theme.json, layouts/, partials/, assets/) to a folder on this machine and return the path and file list, so you can read and edit them with your own tools. ref is a graph theme id, a bundled theme name or a url. Editing the folder changes nothing until write_theme_file or import_theme_folder brings it back; a bundled or url theme cannot be edited in place at all (create_theme copies it).",
             inputSchema: {
                 ref: z.string().min(1),
-                out_dir: z.string().min(1).optional().describe("Directory to write into; the graph's downloads directory by default."),
+                out_dir: z.string().min(1).optional().describe("A folder under the graph's downloads directory, relative to it; themes/<ref> there by default. A folder outside it is refused."),
             },
         },
         async (args) => run(() => readTheme(graph, args)),
@@ -469,7 +469,7 @@ export function createMcpServer(graph: HeadlessGraph, info: McpServerInfo): McpS
         'import_theme_folder',
         {
             title: 'Import a theme folder',
-            description: "Replace a graph theme's files with a folder's contents - the way back after editing what read_theme wrote. Files the folder no longer has are removed from the theme; the folder needs a theme.json at its top. Validated afterwards.",
+            description: "Replace a graph theme's files with a folder's contents - the way back after editing what read_theme wrote. Files the folder no longer has are removed from the theme; the folder needs a theme.json at its top. dir is the folder read_theme returned, or another under the graph's downloads directory; a folder outside it is refused, and symbolic links in it are skipped. Validated afterwards.",
             inputSchema: { id: z.string().min(1), dir: z.string().min(1) },
         },
         async (args) => run(() => importThemeFolder(graph, args)),
@@ -489,7 +489,7 @@ export function createMcpServer(graph: HeadlessGraph, info: McpServerInfo): McpS
         'preview_theme',
         {
             title: 'Preview a theme',
-            description: "Render a theme to a folder on this machine and return where: a publication's real pages when a publication is given (with its own theme, or the theme named), or a sample site covering every construct when only a theme is given. Open the HTML to check markup and styles. With screenshots: true and a browser set up (diagrams setup or ETHERPK_CHROMIUM), the front page and one content page are photographed at desktop and phone widths as PNGs you can view. A preview is scratch, not the publish folder.",
+            description: "Render a theme to a folder on this machine and return where: a publication's real pages when a publication is given (with its own theme, or the theme named), or a sample site covering every construct when only a theme is given. Open the HTML to check markup and styles. With screenshots: true and a browser set up (diagrams setup or ETHERPK_CHROMIUM), the front page and one content page are photographed at desktop and phone widths as PNGs you can view. A preview is scratch, not the publish folder. The page loads nothing from the network while it is photographed. out_dir is a folder under the graph's downloads directory (previews/<name> there by default); a folder outside it is refused.",
             inputSchema: {
                 theme: z.string().min(1).optional(),
                 publication: z.string().min(1).optional(),

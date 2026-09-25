@@ -187,12 +187,11 @@
                 { lead: "Every device, live", text: ": real-time co-editing with collaborators' cursors, and offline edits that merge when you are back, in the order you made them." },
                 { lead: "Sharing by invitation", text: " with fingerprint verification. Remove someone and the key rotates, so they see nothing new." },
                 { lead: "A Recovery Code", text: " per account, stored nowhere, plus device approval, so a new device is usually let in by an existing one with a short code." },
-                { lead: "A choice of server", text: ": EtherPK's managed service, or a Sync Server you run. The Client is the same either way." },
                 { lead: "Phones, tablets, Safari and Firefox", text: " all work with a synced graph." },
             ],
             docs: [
                 { title: "Synced Graphs", slug: "synced-graphs" },
-                { title: "Managed Sync or Your Own Server", slug: "managed-sync-or-your-own-server" },
+                { title: "Managed Sync", slug: "managed-sync" },
             ],
         },
         {
@@ -241,16 +240,14 @@
         {
             id: "running",
             label: "Running it",
-            heading: "Managed, self-hosted, or just your own machine",
+            heading: "Managed sync, or just your own machine",
             intro: "The same Client in each case. What changes is where the graph lives and who keeps it in sync.",
             items: [
                 { lead: "Managed Sync", text: " with an EtherPK Account: sign in once and every managed app follows, with passkeys, two-factor and social sign-in, and a plan page that shows exact limits and usage." },
-                { lead: "A self-hosted Sync Server", text: " as a Docker image: local accounts, optional GitHub and Google login, passkeys and two-factor, registration limited by email address or IP, and limits set by you or none at all." },
                 { lead: "The Client on your own machine", text: ", as a plain Node bundle or a Docker image, for a folder graph with no server and no account." },
             ],
             docs: [
-                { title: "Managed Sync or Your Own Server", slug: "managed-sync-or-your-own-server" },
-                { title: "Self Hosting the Sync Server", slug: "self-hosting-the-sync-server" },
+                { title: "Managed Sync", slug: "managed-sync" },
                 { title: "Running EtherPK on Your Own Computer", slug: "running-etherpk-on-your-own-computer" },
             ],
         },
@@ -342,16 +339,13 @@
         </div>
         <p class="mx-auto mt-4 max-w-2xl text-sm leading-6 text-gray-500 dark:text-gray-400">No account is needed for a folder on your computer{#if demoHref}, or for the demo, which runs in your browser on any device and is stored only there{/if}. {#if pricingHref}Sync+ is the one paid plan, with a free trial.{/if}</p>
 
-        <!-- The repository is not public yet, so the link 404s until it is; the help text says so
-             rather than leaving a visitor to find out. Drop the text, not the link, on publication. -->
         <p class="mt-6 flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-sm leading-6 text-gray-500 dark:text-gray-400">
             <a href={CLIENT_REPOSITORY_URL} class="inline-flex items-center gap-1.5 font-medium text-gray-700 underline decoration-gray-400 underline-offset-2 transition-colors hover:text-gray-950 dark:text-gray-300 dark:hover:text-white">
                 <svg class="size-4 shrink-0" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
                     <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8Z" />
                 </svg>
-                appsoftwareltd/etherpk-client
+                Source-available EtherPK Client on GitHub
             </a>
-            <span>(source-available Client, to be published soon)</span>
         </p>
     </div>
 
@@ -445,12 +439,12 @@
     <div class="grid gap-6 lg:grid-cols-2">
         <article class="flex flex-col rounded-3xl border border-gray-200/80 bg-white p-8 shadow-sm dark:border-white/10 dark:bg-zinc-900/85">
             <p class="text-sm font-semibold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">Free</p>
-            <h3 class="mt-3 text-xl font-semibold text-gray-950 dark:text-white">Your machine, or your server</h3>
-            <p class="mt-3 text-sm leading-6 text-gray-600 dark:text-gray-300">Point EtherPK at a folder and your graph is a directory of markdown files and images. Back it up, put it in git, open it elsewhere. Or run the Sync Server and Client yourself, on infrastructure you control, with no EtherPK account or service involved.</p>
+            <h3 class="mt-3 text-xl font-semibold text-gray-950 dark:text-white">Your files, your machine</h3>
+            <p class="mt-3 text-sm leading-6 text-gray-600 dark:text-gray-300">Point EtherPK at a folder and your graph is a directory of markdown files and images. Back it up, put it in git, open it elsewhere. Or run the source-available Client on your own computer, with no EtherPK account or service involved.</p>
             <ul class="mt-5 flex-1 space-y-2 text-sm leading-6 text-gray-700 dark:text-gray-200">
                 <li class="flex items-start gap-3"><span class="mt-2.5 h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" aria-hidden="true"></span>The whole editor, with no limit on what you write</li>
                 <li class="flex items-start gap-3"><span class="mt-2.5 h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" aria-hidden="true"></span>Folder graphs in a Chromium desktop browser, or the Client on your own machine</li>
-                <li class="flex items-start gap-3"><span class="mt-2.5 h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" aria-hidden="true"></span>Self-host the Sync Server and Client as Docker images</li>
+                <li class="flex items-start gap-3"><span class="mt-2.5 h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" aria-hidden="true"></span>Run the source-available Client yourself, as a Node bundle or a Docker image</li>
                 <li class="flex items-start gap-3"><span class="mt-2.5 h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" aria-hidden="true"></span>Join synced graphs shared with you by a Sync+ subscriber</li>
             </ul>
             <a href={appHref} class="mt-6 inline-flex h-11 items-center justify-center rounded-xl border border-gray-300 px-5 text-sm font-semibold text-gray-800 transition-colors hover:bg-gray-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-950 dark:border-white/15 dark:text-gray-100 dark:hover:bg-white/5 dark:focus-visible:outline-white">Open the app</a>
@@ -458,7 +452,7 @@
         <article class="flex flex-col rounded-3xl border border-gray-950 bg-gray-950 p-8 text-white shadow-xl dark:border-white/10">
             <p class="text-sm font-semibold uppercase tracking-[0.2em] text-indigo-300">Sync+</p>
             <h3 class="mt-3 text-xl font-semibold">Every device, end-to-end encrypted</h3>
-            <p class="mt-3 text-sm leading-6 text-gray-300">We run the sync service so you don't have to. Your graph is encrypted on your device with keys only you hold, then synced to your phone, tablet and laptop, and to the people you choose to share it with. A live markdown copy on your disk keeps the files yours.</p>
+            <p class="mt-3 text-sm leading-6 text-gray-300">We run the sync service for you. Your graph is encrypted on your device with keys only you hold, then synced to your phone, tablet and laptop, and to the people you choose to share it with. A live markdown copy on your disk keeps the files yours.</p>
             <ul class="mt-5 flex-1 space-y-2 text-sm leading-6 text-gray-100">
                 <li class="flex items-start gap-3"><span class="mt-2.5 h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400" aria-hidden="true"></span>Works on phones, Safari and Firefox too</li>
                 <li class="flex items-start gap-3"><span class="mt-2.5 h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400" aria-hidden="true"></span>Share a graph and edit it together, live</li>

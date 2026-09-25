@@ -3,6 +3,7 @@ import type { RequestHandler } from './$types'
 import { env } from '$env/dynamic/private'
 import { parseOptionalManagedClientAuthConfig } from '$lib/server/auth/config'
 import { revokeManagedClientGrant, takeManagedClientSession } from '$lib/server/auth/managed-logout'
+import { isSameOriginPost } from '$lib/server/auth/same-origin'
 import {
     buildManagedEndSessionUrl,
     discoverOAuthMetadata,
@@ -12,7 +13,8 @@ import {
 type CascadeSource = 'sync' | 'corporate'
 
 /** Start coordinated sign-out from the Client. */
-export const POST: RequestHandler = async ({ cookies, fetch }) => {
+export const POST: RequestHandler = async ({ cookies, fetch, request, url }) => {
+    if (!isSameOriginPost(request, url)) error(403, 'Cross-origin request refused')
     const config = configuredClient()
     const session = await takeManagedClientSession(cookies, config)
     if (session) {

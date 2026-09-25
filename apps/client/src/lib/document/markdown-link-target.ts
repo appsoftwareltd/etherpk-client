@@ -38,8 +38,13 @@ export function linkTargetPattern(excluded = ''): string {
 /** A markdown link destination: `../assets/report_(1).pdf` in full, not `../assets/report_(1`. */
 export const LINK_TARGET = linkTargetPattern()
 
-/** A link's label: everything up to its closing bracket. */
-export const LINK_LABEL = '[^\\]]*'
+/**
+ * A link's label: everything up to its closing bracket, which may hold one balanced `[…]` pair
+ * (`[a [b] c](url)`, as CommonMark allows). A bare `[` ends it: were `[` allowed, every `[` in a
+ * document with no `]` after it would scan to the end of the text, so a paste of brackets costs
+ * time in the square of its length on every edit. With it excluded the scan is linear.
+ */
+export const LINK_LABEL = '(?:[^\\[\\]]|\\[[^\\[\\]]*\\])*'
 
 /**
  * A whole markdown link or image, as regex source with named groups.

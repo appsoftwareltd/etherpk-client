@@ -64,4 +64,20 @@ describe('encrypted managed session cookie', () => {
         const downgraded = ['v1', ...encrypted.split('.').slice(1)].join('.')
         await expect(decryptSessionCookie(downgraded, secret, 'managed-session')).rejects.toThrow()
     })
+
+    it('refuses a shortened authentication tag', async () => {
+        // GCM verifies a truncated tag against the same prefix of the real one, so a 4-byte tag
+        // would take 2^32 guesses to forge rather than 2^128. Only the full 16 bytes are accepted.
+        const encrypted = await encryptSessionCookie({ a: 1 }, secret, 'managed-session')
+        const parts = encrypted.split('.')
+        parts[3] = Buffer.from(parts[3], 'base64url').subarray(0, 4).toString('base64url')
+        await expect(decryptSessionCookie(parts.join('.'), secret, 'managed-session')).rejects.toThrow()
+    })
+
+    it('refuses an envelope whose IV is not 12 bytes before decrypting it', async () => {
+        const encrypted = await encryptSessionCookie({ a: 1 }, secret, 'managed-session')
+        const parts = encrypted.split('.')
+        parts[1] = Buffer.alloc(16, 1).toString('base64url')
+        await expect(decryptSessionCookie(parts.join('.'), secret, 'managed-session')).rejects.toThrow('Invalid managed session cookie')
+    })
 })

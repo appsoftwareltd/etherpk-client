@@ -10,6 +10,7 @@
  */
 import type { QuotaErrorCode } from '@appsoftwareltd/etherpk-shared'
 import { EnvelopeError, RecoveryCodeError } from '$lib/crypto'
+import { InviteForHeldGraphError } from './invites'
 import { SyncProtocolMismatchError } from './messages'
 import { SyncApiError } from './sync-api'
 import { VaultLockedError } from './vault-session'
@@ -112,6 +113,10 @@ export function describeSyncFailure(error: unknown, action: string): string {
         return `${opening} The sync server said: ${error.message}. Try again, and check your connection if it persists.`
     }
 
+    if (error instanceof InviteForHeldGraphError) {
+        return `${opening} It is for a graph you already have, so it was refused and your key for that graph is unchanged. There is nothing to do.`
+    }
+
     // Which side is older decides who can fix it: an old server needs its operator, an old
     // Client needs a reload (or an upgrade by whoever runs it). Pending appends stay in the
     // cache, so saying the changes are kept is true in both cases.
@@ -147,7 +152,8 @@ export function isRetryableSyncFailure(error: unknown): boolean {
     if (error instanceof VaultLockedError || error instanceof EnvelopeError || error instanceof RecoveryCodeError) {
         return false // the keys will not change by trying again
     }
-    if (error instanceof SyncProtocolMismatchError) return false // one side has to be upgraded first
+    if (error instanceof SyncProtocolMismatchError) return false
+    if (error instanceof InviteForHeldGraphError) return false // the vault already holds the key // one side has to be upgraded first
     if (error instanceof Error && error.name === 'QuotaExceededError') return false
     if (!(error instanceof SyncApiError)) return true // network and storage-connection failures are worth retrying
     if (isQuotaCode(error.code)) return false // the allowance will not change by trying again

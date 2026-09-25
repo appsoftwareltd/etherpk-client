@@ -86,6 +86,16 @@ describe('safeHref', () => {
         expect(safeHref('vbscript:msgbox')).toBeNull()
     })
 
+    it('reads the scheme as the browser does, after the characters its URL parser strips', () => {
+        // The URL parser drops leading and trailing C0 controls and spaces, and tabs and newlines
+        // anywhere, before it reads the scheme; each of these opens as javascript: in a browser.
+        for (const target of ['\u0001javascript:alert(1)', '\u0000javascript:alert(1)', 'java\tscript:alert(1)', 'java\nscript:alert(1)', ' \u001fjavascript:alert(1)']) {
+            expect(safeHref(target)).toBeNull()
+        }
+        expect(safeHref('\u0001https://example.com')).toBe('https://example.com')
+        expect(safeHref('https://exa\tmple.com')).toBe('https://example.com')
+    })
+
     it('leaves an ordinary relative target alone', () => {
         expect(safeHref('notes/page.md')).toBe('notes/page.md')
         expect(safeHref('')).toBeNull()

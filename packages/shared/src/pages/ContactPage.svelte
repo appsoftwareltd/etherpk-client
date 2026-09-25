@@ -133,10 +133,10 @@
 
 <svelte:head>
     <title>Contact Us - EtherPK</title>
-    <meta name="description" content="Get in touch with the EtherPK team about the app, Sync+ or running your own Sync Server. We'll get back to you as soon as we can." />
+    <meta name="description" content="Get in touch with the EtherPK team about the app, Sync+ or your account. We'll get back to you as soon as we can." />
     <link rel="canonical" href="https://www.etherpk.com/contact" />
     <meta property="og:title" content="Contact Us - EtherPK" />
-    <meta property="og:description" content="Get in touch with the EtherPK team about the app, Sync+ or running your own Sync Server." />
+    <meta property="og:description" content="Get in touch with the EtherPK team about the app, Sync+ or your account." />
     <meta property="og:url" content="https://www.etherpk.com/contact" />
     <meta property="og:type" content="website" />
 </svelte:head>

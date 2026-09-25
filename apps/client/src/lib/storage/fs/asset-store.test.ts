@@ -64,6 +64,19 @@ describe('assetNameFromRef', () => {
         expect(assetNameFromRef('https://example.com/x.png')).toBeNull()
         expect(assetNameFromRef('../pages/Note.md')).toBeNull()
     })
+
+    it('returns null for a name that is not one file inside assets/, however it is encoded', () => {
+        // A document can carry any reference; the name it decodes to must not leave assets/.
+        expect(assetNameFromRef('../assets/..%2Fpages%2FSecret.md')).toBeNull()
+        expect(assetNameFromRef('assets/..%5C..%5Cx')).toBeNull()
+        expect(assetNameFromRef('../assets/%2e%2e')).toBeNull()
+        expect(assetNameFromRef('../assets/a%00b.png')).toBeNull()
+        expect(assetNameFromRef('../assets/sub/dir.png')).toBeNull()
+    })
+
+    it('returns null rather than throwing for malformed percent-encoding', () => {
+        expect(assetNameFromRef('../assets/broken%E0%A4%A.png')).toBeNull()
+    })
 })
 
 describe('buildAssetMarkdown', () => {

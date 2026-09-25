@@ -16,14 +16,12 @@ import type { GraphTheme } from '$lib/document/publish/theme/graph-theme'
 import { createThemeLoader } from '$lib/document/publish/theme/sources'
 
 import type { DiagramRenderer } from './diagrams'
+import { fetchPublicText } from './public-fetch'
 
 const require = createRequire(import.meta.url)
 
-async function fetchText(url: string): Promise<string> {
-    const response = await fetch(url)
-    if (!response.ok) throw new Error(`${response.status} ${response.statusText}`)
-    return response.text()
-}
+/** A url theme's files, from public https hosts only (see public-fetch.ts). */
+const fetchText = (url: string): Promise<string> => fetchPublicText(url)
 
 let katexAssetsPromise: Promise<Map<string, string | Uint8Array>> | null = null
 

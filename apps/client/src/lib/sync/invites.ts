@@ -88,6 +88,20 @@ export interface AcceptedInvite {
 }
 
 /**
+ * An invite for a graph whose keyring the vault already holds. An invite carries no proof of
+ * who sealed it, so a server could seal a keyring it knows for a graph the user already has;
+ * accepting would replace the real key with that one and encrypt every later edit to it. A
+ * member already holds the key to a graph they belong to, so no genuine invite needs this.
+ */
+export class InviteForHeldGraphError extends Error {
+    override readonly name = 'InviteForHeldGraphError'
+
+    constructor(readonly graphId: string) {
+        super(`An invite for graph ${graphId} was refused: this vault already holds its key.`)
+    }
+}
+
+/**
  * Accept an invite: unseal the keyring with the invitee's identity key, fold it into their
  * vault, and activate membership. Returns what the client needs to open the shared graph.
  */
@@ -109,9 +123,10 @@ export async function acceptInvite(
     if (!latest) throw new Error('no vault to add the keyring to')
     const latestEnvelope = fromBase64Url(latest.vault)
     const opened = await openVault(latestEnvelope, heldVaultKey)
+    if (opened.vault.keyrings.some((k) => k.graphId === invite.graphId)) throw new InviteForHeldGraphError(invite.graphId)
     const merged: KeyVault = {
         ...opened.vault,
-        keyrings: [...opened.vault.keyrings.filter((k) => k.graphId !== invite.graphId), keyring],
+        keyrings: [...opened.vault.keyrings, keyring],
     }
     const { envelope } = await reencryptVault(merged, latestEnvelope, opened)
     await api.putVault(toBase64Url(envelope), latest.version)

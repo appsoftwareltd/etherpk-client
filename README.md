@@ -26,8 +26,6 @@ source one.
 | `packages/shared` | Code the Client shares with the Sync Server: the sync protocol, UI components and auth pages |
 | `packages/themes` | The site themes the publisher bundles |
 
-The Sync Server has its own repository, `appsoftwareltd/etherpk-sync`.
-
 ## Run it
 
 ### Docker image
@@ -37,9 +35,9 @@ docker run --rm -p 3000:3000 ghcr.io/appsoftwareltd/etherpk-client:latest
 ```
 
 Open <http://localhost:3000>. With no settings the Client works with graph folders on your
-computer and offers a **Custom server** form for any Sync Server. The settings it reads are listed,
-with their defaults, in [`apps/client/.env.example`](apps/client/.env.example); pass them with
-`--env-file`.
+computer and offers a **Custom server** form for connecting to a Sync Server by its address. The
+settings it reads are listed, with their defaults, in
+[`apps/client/.env.example`](apps/client/.env.example); pass them with `--env-file`.
 
 ### Node bundle
 
@@ -86,9 +84,9 @@ Copy `apps/client/.env.example` to `apps/client/.env` to change the development 
 - A release is a `v<version>` tag. It publishes images tagged `<version>`, `<major>.<minor>` and
   `latest`, a GitHub Release with the Node bundle attached, and `@appsoftwareltd/etherpk-mcp` at
   the same version on npm.
-- The Client, the Sync Server and the Headless Client share one version number, and only matching
-  versions are tested together. Run a Client and a Sync Server of the same version. A pair on
-  different sync protocol versions refuses to sync and says which side needs upgrading.
+- The Client and the Headless Client share one version number with EtherPK's Sync Server, and
+  only matching versions are tested together. A Client and a Sync Server on different sync
+  protocol versions refuse to sync, and the Client says which side needs upgrading.
 
 ## How this repository is maintained
 

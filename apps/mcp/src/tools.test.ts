@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -558,13 +558,38 @@ describe('assets', () => {
         await rejectsWith(uploadAsset(g, { path: join(tmpdir(), 'no-such-file.png') }), 'invalid_argument')
     })
 
-    it('serves an asset only where a readable document references it, or this session uploaded it', async () => {
-        const g = await graph('g-assets-reach')
+    it('refuses to upload a hidden file, a folder, or a link to either', async () => {
+        const g = await graph('g-assets-refused')
+        const { dir } = await files()
+        await mkdir(join(dir, '.ssh'))
+        await writeFile(join(dir, '.ssh', 'id_ed25519'), 'key')
+        await symlink(join(dir, '.ssh', 'id_ed25519'), join(dir, 'key.png'))
+
+        expect((await rejectsWith(uploadAsset(g, { path: join(dir, '.ssh', 'id_ed25519') }), 'invalid_argument')).message).toContain('hidden')
+        await rejectsWith(uploadAsset(g, { path: join(dir, 'key.png') }), 'invalid_argument')
+        await rejectsWith(uploadAsset(g, { path: dir }), 'invalid_argument')
+    })
+
+    it('writes a read asset only under the downloads directory', async () => {
+        const g = await graph('g-assets-out-dir')
         const { dir, png } = await files()
         const image = await uploadAsset(g, { path: png })
 
+        await rejectsWith(readAsset(g, { ref: image.ref, out_dir: join(dir, 'elsewhere') }), 'invalid_argument')
+        await rejectsWith(readAsset(g, { ref: image.ref, out_dir: '../elsewhere' }), 'invalid_argument')
+        const read = await readAsset(g, { ref: image.ref, out_dir: 'nested/out' })
+        expect(read.path.startsWith(join(g.assets!.downloadsDir, 'nested', 'out'))).toBe(true)
+        // What was read back out can go back in: the downloads directory is the graph's own.
+        expect((await uploadAsset(g, { path: read.path })).reused).toBe(true)
+    })
+
+    it('serves an asset only where a readable document references it, or this session uploaded it', async () => {
+        const g = await graph('g-assets-reach')
+        const { png } = await files()
+        const image = await uploadAsset(g, { path: png })
+
         // Uploaded this session: readable back before any document names it.
-        const early = await readAsset(g, { ref: image.ref, out_dir: join(dir, 'out') })
+        const early = await readAsset(g, { ref: image.ref, out_dir: 'out' })
         expect(early.documents).toEqual([])
         expect(await readFile(early.path)).toEqual(PNG)
 
@@ -576,11 +601,11 @@ describe('assets', () => {
         // Size is reported where the backend can say cheaply (a folder's listing, the server's enumeration).
         if (listed.assets[0]!.bytes !== undefined) expect(listed.assets[0]!.bytes).toBe(PNG.byteLength)
         expect((await listAssets(g, { concept: 'Post' })).assets.map((a) => a.ref)).toEqual([image.ref])
-        const read = await readAsset(g, { ref: image.ref, out_dir: join(dir, 'out') })
+        const read = await readAsset(g, { ref: image.ref, out_dir: 'out' })
         expect(read.documents).toEqual([{ concept: 'Post', kind: 'page' }])
         expect(read.path).toBe(early.path) // same bytes, same file
         // The name alone is enough.
-        expect((await readAsset(g, { ref: image.ref.split('/').pop()!, out_dir: join(dir, 'out') })).path).toBe(early.path)
+        expect((await readAsset(g, { ref: image.ref.split('/').pop()!, out_dir: 'out' })).path).toBe(early.path)
     })
 
     it('does not serve or list an asset nothing readable references', async () => {

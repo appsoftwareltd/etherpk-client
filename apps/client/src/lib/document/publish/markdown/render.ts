@@ -11,6 +11,7 @@
 
 import MarkdownIt, { type Token } from 'markdown-it'
 
+import { isSafeAssetName } from '../../../storage/fs/asset-names'
 import { parseImageDisplaySizeHint } from '../../view/augmentations/image-display-size'
 import { publishSlug } from '../../wikilink/derive'
 import { markRule } from './mark-rule'
@@ -65,15 +66,22 @@ export interface DocumentRenderer {
 /** A document-relative asset reference: any number of `../`, `assets/`, the name. */
 const ASSET_REF = /^(?:\.\.\/)*assets\/(.+)$/
 
+/**
+ * The asset a reference names, decoded, or null when it names none. A name that decodes to
+ * anything but one file inside `assets/` is not an asset: it would become a bundle path, and a site
+ * folder, outside `assets/` (see `isSafeAssetName`). The link is then left as the author wrote it.
+ */
 function assetNameOf(ref: string): string | null {
     const match = ASSET_REF.exec(ref)
     if (!match) return null
     const raw = match[1].split(/[?#]/)[0]
+    let name: string
     try {
-        return decodeURIComponent(raw)
+        name = decodeURIComponent(raw)
     } catch {
-        return raw
+        name = raw
     }
+    return isSafeAssetName(name) ? name : null
 }
 
 function escapeHtml(text: string): string {

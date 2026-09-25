@@ -14,8 +14,9 @@
  * agent broke is reported on the write that broke it rather than on the next publish.
  */
 
-import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises'
-import { dirname, join, relative, resolve, sep } from 'node:path'
+import { lstat, readdir, readFile, rm } from 'node:fs/promises'
+import { join, relative, sep } from 'node:path'
+import { pathToFileURL } from 'node:url'
 
 import { bundledTheme, bundledThemeList } from '@appsoftwareltd/etherpk-themes'
 
@@ -30,7 +31,9 @@ import { copyThemeForGraph, freeThemeId, summarisePublishing, updatePublicationP
 
 import { chromiumStatus, launchChromium, openDiagramRenderer } from './diagrams'
 import type { HeadlessGraph } from './headless-graph'
-import { createNodePublishEnvironment, needsMermaid } from './publish-environment'
+import { FolderRefused, folderUnder, previewRequestAllowed } from './local-folders'
+import { createNodePublishEnvironment, needsMermaid, nodeSiteFolder } from './publish-environment'
+import { fetchPublicText } from './public-fetch'
 import type { PublishHost } from './publish-tools'
 import { ToolError } from './tools'
 
@@ -38,16 +41,28 @@ function hostOf(host: PublishHost | undefined): { env: NodeJS.ProcessEnv; cmd: s
     return { env: host?.env ?? process.env, cmd: host?.cmd ?? 'etherpk-mcp' }
 }
 
+/** The graph's downloads directory: every folder these tools write to, or read a theme back from, is under it. */
+function downloadsOf(graph: HeadlessGraph): string {
+    return graph.assets?.downloadsDir ?? join(process.cwd(), 'etherpk-downloads')
+}
+
+/** A folder under the downloads directory, or the tool's refusal. */
+async function toolFolder(graph: HeadlessGraph, requested: string | undefined, fallback: string): Promise<string> {
+    try {
+        return await folderUnder(downloadsOf(graph), requested, fallback)
+    } catch (error) {
+        if (error instanceof FolderRefused) throw new ToolError('invalid_argument', error.message)
+        throw error
+    }
+}
+
 async function settle(graph: HeadlessGraph): Promise<void> {
     const result = await graph.settle()
     if (!result.settled) throw new ToolError('not_settled', result.message)
 }
 
-async function fetchText(url: string): Promise<string> {
-    const response = await fetch(url)
-    if (!response.ok) throw new Error(`${response.status} ${response.statusText}`)
-    return response.text()
-}
+/** A url theme's files, from public https hosts only (see public-fetch.ts). */
+const fetchText = (url: string): Promise<string> => fetchPublicText(url)
 
 /** The publications whose saved mapping names a theme: what makes it undeletable. */
 async function publicationsUsing(graph: HeadlessGraph, themeId: string): Promise<Publication[]> {
@@ -116,7 +131,7 @@ async function filesOf(graph: HeadlessGraph, ref: string): Promise<{ source: 'gr
 export interface ReadThemeArgs {
     /** A graph theme id, a bundled theme name, or a url. */
     ref: string
-    /** Where to write the files; the graph's downloads directory by default. */
+    /** A folder under the graph's downloads directory to write the files to; `themes/<ref>` there by default. */
     out_dir?: string
 }
 
@@ -129,12 +144,11 @@ export async function readTheme(graph: HeadlessGraph, args: ReadThemeArgs) {
     await graph.store.refresh()
     const ref = args.ref.trim()
     const { source, files, theme } = await filesOf(graph, ref)
-    const folder = resolve(args.out_dir?.trim() || join(graph.assets?.downloadsDir ?? join(process.cwd(), 'etherpk-downloads'), 'themes', ref.replace(/[^A-Za-z0-9._-]/g, '_')))
+    const folder = await toolFolder(graph, args.out_dir, join('themes', ref.replace(/[^A-Za-z0-9._-]/g, '_')))
+    const site = nodeSiteFolder(folder)
     const written: Array<{ path: string; bytes: number }> = []
     for (const [path, text] of [...files.entries()].sort(([a], [b]) => a.localeCompare(b))) {
-        const full = join(folder, ...path.split('/'))
-        await mkdir(dirname(full), { recursive: true })
-        await writeFile(full, text)
+        await site.writeFile(path, text)
         written.push({ path, bytes: Buffer.byteLength(text) })
     }
     return {
@@ -287,26 +301,43 @@ export async function deleteThemeFile(graph: HeadlessGraph, args: DeleteThemeFil
 
 export interface ImportThemeFolderArgs {
     id: string
-    /** A directory holding `theme.json` and `layouts/`, `partials/`, `assets/` - as `read_theme` wrote it, edited. */
+    /** A folder under the graph's downloads directory holding `theme.json` and `layouts/`, `partials/`, `assets/` - as `read_theme` wrote it, edited. */
     dir: string
 }
 
-/** Every allowed file under a directory, as the theme's whole file set. */
-async function filesUnder(dir: string): Promise<Map<string, string>> {
-    const base = resolve(dir)
+/** Bounds on a theme folder: far beyond a real theme, and short of a whole disk. */
+const THEME_FOLDER_LIMITS = { files: 500, depth: 6, fileBytes: 1024 * 1024, totalBytes: 8 * 1024 * 1024 }
+
+/**
+ * Every allowed file under a directory, as the theme's whole file set. Symbolic links are not
+ * followed, so a folder cannot pull in a file from elsewhere on disk, and the walk stops at the
+ * limits above rather than reading whatever tree it was pointed at.
+ */
+async function filesUnder(base: string): Promise<Map<string, string>> {
     const files = new Map<string, string>()
-    const walk = async (at: string): Promise<void> => {
+    let seen = 0
+    let total = 0
+    const walk = async (at: string, depth: number): Promise<void> => {
+        if (depth > THEME_FOLDER_LIMITS.depth) return
         for (const entry of await readdir(at, { withFileTypes: true })) {
+            if (entry.isSymbolicLink()) continue
             const full = join(at, entry.name)
             if (entry.isDirectory()) {
-                if (entry.name !== '.git' && entry.name !== 'node_modules') await walk(full)
+                if (entry.name !== '.git' && entry.name !== 'node_modules') await walk(full, depth + 1)
                 continue
             }
+            if (!entry.isFile()) continue
+            if (++seen > THEME_FOLDER_LIMITS.files) throw new Error(`it holds more than ${THEME_FOLDER_LIMITS.files} files`)
             const path = relative(base, full).split(sep).join('/')
-            if (isThemeFilePath(path)) files.set(path, await readFile(full, 'utf8'))
+            if (!isThemeFilePath(path)) continue
+            const { size } = await lstat(full)
+            if (size > THEME_FOLDER_LIMITS.fileBytes) throw new Error(`${path} is larger than ${THEME_FOLDER_LIMITS.fileBytes} bytes`)
+            total += size
+            if (total > THEME_FOLDER_LIMITS.totalBytes) throw new Error(`its theme files come to more than ${THEME_FOLDER_LIMITS.totalBytes} bytes`)
+            files.set(path, await readFile(full, 'utf8'))
         }
     }
-    await walk(base)
+    await walk(base, 0)
     return files
 }
 
@@ -318,9 +349,11 @@ async function filesUnder(dir: string): Promise<Map<string, string>> {
 export async function importThemeFolder(graph: HeadlessGraph, args: ImportThemeFolderArgs) {
     await graph.store.refresh()
     const theme = await requireEditable(graph, args.id.trim())
+    if (!args.dir?.trim()) throw new ToolError('invalid_argument', 'dir must name the theme folder, as read_theme returned it.')
+    const dir = await toolFolder(graph, args.dir, '')
     let files: Map<string, string>
     try {
-        files = await filesUnder(args.dir)
+        files = await filesUnder(dir)
     } catch (error) {
         throw new ToolError('invalid_argument', `Cannot read "${args.dir}": ${error instanceof Error ? error.message : String(error)}`)
     }
@@ -360,6 +393,7 @@ export interface PreviewThemeArgs {
     theme?: string
     /** Render this publication's real pages; the sample site when absent. */
     publication?: string
+    /** A folder under the graph's downloads directory; `previews/<theme>` there by default, emptied first. */
     out_dir?: string
     /** Also photograph the front page and one content page with the browser, desktop and phone widths. */
     screenshots?: boolean
@@ -368,8 +402,8 @@ export interface PreviewThemeArgs {
 /**
  * Render a theme to a folder on this machine and say where: the publication's real site when
  * one is named, the sample site the Theme editor previews over otherwise. A preview is scratch,
- * not a [[Publish Folder]]: the default location is under the graph's downloads directory and is
- * emptied first; a named `out_dir` is written into as it is. With `screenshots`, the browser
+ * not a [[Publish Folder]]: it is always under the graph's downloads directory, the default folder
+ * there is emptied first, and a named `out_dir` (also under it) is written into as it is. With `screenshots`, the browser
  * photographs the front page and the first other page at desktop and phone widths, so the agent
  * can look at what it changed.
  */
@@ -398,7 +432,7 @@ export async function previewTheme(graph: HeadlessGraph, args: PreviewThemeArgs,
         const environment = createNodePublishEnvironment({ graphTheme: (id) => graph.publishing.graphTheme(id), renderer })
         const { bundle, report } = await publishPublication(source, publication, environment)
         const scratch = !args.out_dir?.trim()
-        const folder = resolve(args.out_dir?.trim() || join(graph.assets?.downloadsDir ?? join(process.cwd(), 'etherpk-downloads'), 'previews', themeRef.replace(/[^A-Za-z0-9._-]/g, '_')))
+        const folder = await toolFolder(graph, args.out_dir, join('previews', themeRef.replace(/[^A-Za-z0-9._-]/g, '_')))
         if (scratch) await rm(folder, { recursive: true, force: true })
         await writeBundle(folder, bundle)
         const pages = previewPages(bundle)
@@ -424,12 +458,10 @@ export async function previewTheme(graph: HeadlessGraph, args: PreviewThemeArgs,
     }
 }
 
+/** The rendered site into the folder, through the writer `publish` uses: no path may leave the folder. */
 async function writeBundle(folder: string, bundle: SiteBundle): Promise<void> {
-    for (const [path, content] of bundle) {
-        const full = join(folder, ...path.split('/'))
-        await mkdir(dirname(full), { recursive: true })
-        await writeFile(full, content)
-    }
+    const site = nodeSiteFolder(folder)
+    for (const [path, content] of bundle) await site.writeFile(path, content)
 }
 
 /** The front page and the first other page, desktop and phone, as PNGs beside the site. */
@@ -441,9 +473,11 @@ async function photograph(env: NodeJS.ProcessEnv, folder: string, pages: string[
         const targets = ['index.html', ...pages.filter((p) => p !== 'index.html' && p !== '404.html').slice(0, 1)]
         for (const page of targets) {
             for (const width of [1280, 390]) {
-                const context = await browser.newContext({ viewport: { width, height: width === 390 ? 844 : 800 } })
+                // Offline, and only the preview's own files: the theme's script runs here.
+                const context = await browser.newContext({ viewport: { width, height: width === 390 ? 844 : 800 }, offline: true })
+                await context.route('**/*', (route) => (previewRequestAllowed(route.request().url(), folder) ? route.continue() : route.abort()))
                 const tab = await context.newPage()
-                await tab.goto(`file://${join(folder, page)}`, { waitUntil: 'load' })
+                await tab.goto(pathToFileURL(join(folder, page)).href, { waitUntil: 'load' })
                 const out = join(folder, `preview-${page.replace(/\.html$/, '')}-${width}.png`)
                 await tab.screenshot({ path: out, fullPage: true })
                 await context.close()

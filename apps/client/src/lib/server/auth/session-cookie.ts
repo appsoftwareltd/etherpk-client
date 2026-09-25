@@ -81,9 +81,15 @@ export async function decryptSessionCookie<T = ManagedSession>(
     if (version !== ENVELOPE_VERSION || !encodedIv || !encodedCiphertext || !encodedTag || extra) {
         throw new Error('Invalid managed session cookie')
     }
-    const decipher = createDecipheriv('aes-256-gcm', cookieKey(secret, purpose), Buffer.from(encodedIv, 'base64url'))
+    // Exact lengths: GCM would otherwise verify a truncated tag against the same prefix of the
+    // real one, cutting the cost of a forgery from 2^128 guesses to as few as 2^32, and a
+    // non-96-bit IV takes a different, less-studied counter derivation.
+    const iv = Buffer.from(encodedIv, 'base64url')
+    const tag = Buffer.from(encodedTag, 'base64url')
+    if (iv.length !== 12 || tag.length !== 16) throw new Error('Invalid managed session cookie')
+    const decipher = createDecipheriv('aes-256-gcm', cookieKey(secret, purpose), iv, { authTagLength: 16 })
     decipher.setAAD(Buffer.from(purpose, 'utf8'))
-    decipher.setAuthTag(Buffer.from(encodedTag, 'base64url'))
+    decipher.setAuthTag(tag)
     const plaintext = Buffer.concat([
         decipher.update(Buffer.from(encodedCiphertext, 'base64url')),
         decipher.final(),

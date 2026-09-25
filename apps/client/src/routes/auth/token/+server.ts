@@ -3,6 +3,7 @@ import type { RequestHandler } from './$types'
 import { env } from '$env/dynamic/private'
 import { parseOptionalManagedClientAuthConfig } from '$lib/server/auth/config'
 import { clearManagedCookies, setManagedSession } from '$lib/server/auth/cookies'
+import { isSameOriginPost } from '$lib/server/auth/same-origin'
 import {
     discoverOAuthMetadata,
     isDefinitiveOAuthTokenFailure,
@@ -18,7 +19,8 @@ import {
 /** How soon the browser should try again after a transient failure, in seconds. */
 const RETRY_AFTER_SECONDS = 5
 
-export const POST: RequestHandler = async ({ cookies, fetch }) => {
+export const POST: RequestHandler = async ({ cookies, fetch, request, url }) => {
+    if (!isSameOriginPost(request, url)) error(403, 'Cross-origin request refused')
     const config = parseOptionalManagedClientAuthConfig(env)
         ?? error(404, 'Managed Sync is not configured for this Client')
     const encrypted = cookies.get(MANAGED_SESSION_COOKIE)

@@ -71,3 +71,19 @@ describe('linkTargetPattern', () => {
         expect(attribute.exec('<img src="../assets/report_(1).png">')?.[1]).toBe('../assets/report_(1).png')
     })
 })
+
+describe('link label scanning cost', () => {
+    it('scans a document of unclosed brackets in linear time', () => {
+        // A label that could run on to the next `]` made every `[` scan to the end of the text:
+        // 400k brackets took over a minute and froze every editor with the document open.
+        for (const text of ['['.repeat(400_000), `${'['.repeat(79)}\n`.repeat(5_000)]) {
+            const started = performance.now()
+            expect([...markdownLinks(text)]).toEqual([])
+            expect(performance.now() - started).toBeLessThan(500)
+        }
+    })
+
+    it('reads a label holding one balanced pair of brackets, as CommonMark does', () => {
+        expect([...markdownLinks('[a [b] c](https://example.com)')].map((l) => l.label)).toEqual(['a [b] c'])
+    })
+})

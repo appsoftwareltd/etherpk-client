@@ -4,6 +4,7 @@ import { discoverPublications } from './publication'
 import { type LoadedTheme, type PublishEnvironment, publishPublication } from './publish'
 import { parseThemeManifest } from './theme/manifest'
 import { CIPHER_TEXT, SECRET_BODY, documents, source } from './fixture-graph'
+import type { PublishDocument, PublishSource } from './types'
 
 const themeFiles = new Map<string, string>([
     ['layouts/page.html', '<!doctype html><title>{{page.title}} · {{site.title}}</title>{{> head}}<body class="{{page.kind}}">{{> header}}<nav>{{{fragments.nav}}}</nav><main><h1>{{{page.titleHtml}}}</h1>{{{fragments.toc}}}{{{page.content}}}</main>{{{fragments.backlinks}}}{{> footer}}</body>'],
@@ -349,5 +350,47 @@ describe('publishPublication', () => {
         const phases: string[] = []
         await publishPublication(source, docs, environment(), { onProgress: (p) => phases.push(p.phase) })
         expect([...new Set(phases)]).toEqual(['selecting', 'rendering', 'writing', 'assets'])
+    })
+})
+
+describe('asset references that would leave assets/', () => {
+    const site: PublishDocument[] = [
+        { concept: 'Site', kind: 'page', aliases: [], text: '---\npublication:\n  id: site\n  home: Home\n---\n- [[Home]]\n' },
+        {
+            concept: 'Home',
+            kind: 'page',
+            aliases: [],
+            text: [
+                '---',
+                'public: true',
+                'publications: [site]',
+                '---',
+                // Decodes to ../../escape.png: not an asset reference at all.
+                '![escape](../assets/..%2F..%2Fescape.png)',
+                // Decodes once to a literal name holding "%2F": safe, and must be asked for as
+                // exactly that name, not decoded a second time into a/../b.png.
+                '![literal](../assets/a%252F..%252Fb.png)',
+                '![plain](../assets/fine%20name.png)',
+                '',
+            ].join('\n'),
+        },
+    ]
+
+    it('bundles only single-file names, asking the source for each exactly as the store will decode it', async () => {
+        const asked: string[] = []
+        const recording: PublishSource = {
+            documents: site,
+            async readAsset(ref) {
+                asked.push(ref)
+                return { bytes: new Uint8Array([7]), name: 'x', type: 'image/png' }
+            },
+        }
+        const publication = discoverPublications(site).publications.find((p) => p.id === 'site')!
+        const { bundle } = await publishPublication(recording, publication, environment())
+
+        const assetKeys = [...bundle.keys()].filter((key) => key.startsWith('assets/'))
+        expect(assetKeys.sort()).toEqual(['assets/a%2F..%2Fb.png', 'assets/fine name.png'])
+        expect([...bundle.keys()].every((key) => !key.split('/').includes('..'))).toBe(true)
+        expect(asked.sort()).toEqual(['../assets/a%252F..%252Fb.png', '../assets/fine%20name.png'])
     })
 })

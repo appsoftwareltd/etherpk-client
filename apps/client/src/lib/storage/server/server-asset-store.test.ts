@@ -108,6 +108,31 @@ describe('ServerAssetStore', () => {
         vi.unstubAllGlobals()
     })
 
+    it('types a downloaded asset by its extension, never by the type its uploader declared', async () => {
+        // The declared type is whatever a collaborator's client sent. Typed text/html, a blob
+        // opened in its own tab would be a same-origin HTML document.
+        const { fetchImpl } = fakeBackend()
+        let id = 0
+        const store = createServerAssetStore({
+            graphId: 'g1',
+            keyring: createGraphKeyring('g1'),
+            baseUrl: 'https://sync.example',
+            syncToken: fixedSyncToken('sync-tok'),
+            fetch: fetchImpl,
+            newAssetId: () => `00000000-0000-4000-8000-00000000000${++id}`,
+        })
+        const bytes = new TextEncoder().encode('<script>alert(1)</script>') as Uint8Array<ArrayBuffer>
+        const page = await store.save({ name: 'page.html', bytes, type: 'text/html' })
+        const disguised = await store.save({ name: 'photo.png', bytes, type: 'text/html' })
+        const created: Blob[] = []
+        vi.stubGlobal('URL', { createObjectURL: (b: Blob) => { created.push(b); return 'blob:mem/1' }, revokeObjectURL: () => {} })
+        expect((await store.resolve(page.ref))?.type).toBe('application/octet-stream')
+        expect((await store.resolve(disguised.ref))?.type).toBe('image/png')
+        expect(created.map((b) => b.type)).toEqual(['application/octet-stream', 'image/png'])
+        expect((await store.readBytes(page.ref))?.type).toBe('application/octet-stream')
+        vi.unstubAllGlobals()
+    })
+
     it('names the bucket CORS policy when a presigned chunk PUT dies as a network error', async () => {
         // The browser reports a CORS-blocked presigned PUT as a bare TypeError('Failed to
         // fetch') - the single live failure mode that burned real debugging time. The store

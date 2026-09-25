@@ -23,6 +23,7 @@ import {
     utf8,
 } from '$lib/crypto'
 import { withRetry, type RetryOptions } from '$lib/retry'
+import { mimeTypeForExt } from '$lib/storage/fs/asset-store'
 import {
     ASSET_CHUNK_PLAINTEXT_BYTES,
     assetChunkCount,
@@ -144,6 +145,17 @@ function kebabStem(name: string): string {
     const stem = name.replace(/\.[^.]+$/, '')
     return stem.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'asset'
 }
+/**
+ * The MIME type a downloaded asset is given: its extension's, from the same short list the
+ * Filesystem Backend uses, or `application/octet-stream`. Never the type recorded in the asset's
+ * metadata, which is whatever the uploader's client sent: a collaborator could type an asset
+ * `text/html`, and a blob opened in its own tab would then be a same-origin HTML document. The
+ * extension is the reference's, the one the viewers are chosen by.
+ */
+function assetTypeFor(ref: string): string {
+    return mimeTypeForExt(extOf(ref)) || 'application/octet-stream'
+}
+
 function extOf(name: string): string {
     const m = /\.([^.]+)$/.exec(name)
     return m ? m[1].toLowerCase() : 'bin'
@@ -252,7 +264,7 @@ export function createServerAssetStore(deps: ServerAssetStoreDeps): AssetStore {
         // The metadata carries the name the uploader actually chose, casing and spaces intact
         // ("Q3 Report.pdf"), which the kebab-cased ref cannot. That is what a download is
         // called and what titles an asset tab.
-        return { bytes: joined, name: metadata.name, type: metadata.type }
+        return { bytes: joined, name: metadata.name, type: assetTypeFor(ref) }
     }
 
     return {

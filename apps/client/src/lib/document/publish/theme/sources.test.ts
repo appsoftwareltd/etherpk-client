@@ -48,6 +48,23 @@ describe('createThemeLoader', () => {
         await expect(fetchTheme('https://x.example/missing.json', fetchText)).rejects.toThrow('could not be fetched')
     })
 
+    it('fetches only theme files beside the manifest, never another host a manifest names', async () => {
+        const asked: string[] = []
+        const fetchText = async (url: string) => {
+            asked.push(url)
+            if (url === 'https://x.example/t/theme.json') return '{"name":"remote","contract":1,"files":["layouts/page.html","https://intranet.example/secret"]}'
+            return 'TEXT'
+        }
+        await expect(fetchTheme('https://x.example/t/theme.json', fetchText)).rejects.toThrow(/https:\/\/intranet\.example\/secret/)
+        expect(asked).not.toContain('https://intranet.example/secret')
+    })
+
+    it('refuses a manifest that lists more files than a theme has any use for', async () => {
+        const files = Array.from({ length: 501 }, (_, n) => `assets/f${n}.css`)
+        const fetchText = async () => JSON.stringify({ name: 'many', contract: 1, files })
+        await expect(fetchTheme('https://x.example/t/theme.json', fetchText)).rejects.toThrow(/501 files/)
+    })
+
     it('names the reason when nothing answers to the reference', async () => {
         await expect(createThemeLoader({})('nope')).rejects.toThrow('No theme is called "nope"')
         await expect(createThemeLoader({})('https://x.example/theme.json')).rejects.toThrow('cannot fetch')

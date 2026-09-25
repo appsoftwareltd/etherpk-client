@@ -7,7 +7,7 @@
 import { type BundledTheme, bundledTheme } from '@appsoftwareltd/etherpk-themes'
 
 import type { LoadedTheme } from '../publish'
-import { type GraphTheme, themeFilesOf } from './graph-theme'
+import { type GraphTheme, isThemeFilePath, themeFilesOf } from './graph-theme'
 import { type ThemeFiles, parseThemeManifest } from './manifest'
 
 export interface ThemeSourceDeps {
@@ -32,6 +32,9 @@ export function themeFilesOfBundled(theme: BundledTheme): ThemeFiles {
     return { manifest, files }
 }
 
+/** Far more files than any theme uses, and a bound on the fetches one publish can trigger. */
+const MAX_URL_THEME_FILES = 500
+
 /** Fetch a theme from its manifest URL; every file the manifest lists, relative to it. */
 export async function fetchTheme(url: string, fetchText: (url: string) => Promise<string>): Promise<ThemeFiles> {
     let json: string
@@ -43,10 +46,18 @@ export async function fetchTheme(url: string, fetchText: (url: string) => Promis
     const { manifest, errors } = parseThemeManifest(json)
     if (!manifest) throw new Error(`The theme at ${url} cannot be used: ${errors.join(' ')}`)
     if (manifest.files.length === 0) throw new Error(`The theme at ${url} lists no files in its manifest, so nothing can be fetched.`)
+    if (manifest.files.length > MAX_URL_THEME_FILES) {
+        throw new Error(`The theme at ${url} lists ${manifest.files.length} files; a theme may list at most ${MAX_URL_THEME_FILES}.`)
+    }
     const base = new URL(url)
     const files = new Map<string, string>()
     for (const path of manifest.files) {
+        // Only theme files beside the manifest: a listed full URL would make whoever opens the
+        // publication fetch from a host the theme author chose, an intranet address included.
         const fileUrl = new URL(path, base).toString()
+        if (!isThemeFilePath(path) || new URL(fileUrl).origin !== base.origin) {
+            throw new Error(`The theme at ${url} lists "${path}", which is not a theme file beside its manifest (layouts/, partials/ or assets/).`)
+        }
         try {
             files.set(path, await fetchText(fileUrl))
         } catch (error) {

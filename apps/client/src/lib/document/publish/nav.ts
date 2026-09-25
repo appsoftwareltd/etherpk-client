@@ -44,6 +44,22 @@ function contentOf(block: Block): string {
 
 const WHOLE_LINK = new RegExp(`^${MARKDOWN_LINK}$`)
 
+/** The schemes an outline link may carry onto a published page; a target with no scheme is a path on the site. */
+const NAV_LINK_SCHEMES = new Set(['http', 'https', 'mailto'])
+
+/**
+ * An outline link's target, or null when a published page must not carry it. Links in page bodies
+ * go through markdown-it's validateLink; the outline is parsed here, so it gets its own rule. The
+ * scheme is read after removing the control characters and spaces a browser would ignore, so
+ * '\u0001javascript:' is read as javascript.
+ */
+function navLinkTarget(target: string): string | null {
+    const visible = [...target].filter((c) => c.charCodeAt(0) > 0x20 && c.charCodeAt(0) !== 0x7f).join('')
+    const scheme = /^([a-z][a-z0-9+.-]*):/i.exec(visible)
+    if (!scheme) return target
+    return NAV_LINK_SCHEMES.has(scheme[1].toLowerCase()) ? target : null
+}
+
 export function buildNav(outline: string, resolver: PublicationResolver): NavResult {
     const issues: PublishIssue[] = []
 
@@ -80,7 +96,17 @@ export function buildNav(outline: string, resolver: PublicationResolver): NavRes
                 const link = WHOLE_LINK.exec(content)
                 if (link && !linkGroups(link).bang) {
                     const { label, target } = linkGroups(link)
-                    out.push({ label, labelHtml: escapeHtml(label), href: target, external: true, children })
+                    const href = navLinkTarget(target)
+                    if (href === null) {
+                        issues.push({
+                            level: 'warning',
+                            code: 'nav-link-unsafe',
+                            message: `The navigation links "${label}" to a target a published page does not carry (only http, https, mailto and site paths); the entry is shown without its link.`,
+                        })
+                        out.push({ label, labelHtml: escapeHtml(label), children })
+                        continue
+                    }
+                    out.push({ label, labelHtml: escapeHtml(label), href, external: true, children })
                     continue
                 }
             }

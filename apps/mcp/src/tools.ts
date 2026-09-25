@@ -41,6 +41,7 @@ import { buildAssetMarkdown, displayAssetName, mimeTypeForExt, splitNameExt } fr
 import { AssetRefusedError, assetIdFromRef } from '$lib/storage/server/server-asset-store'
 
 import { readLocalFile, writeDownload } from './headless-assets'
+import { FolderRefused, folderUnder } from './local-folders'
 import { parseTaskLine, serialiseTags, type TaskPriority } from '$lib/document/task-tags'
 
 import type { HeadlessDocument } from './headless-documents'
@@ -249,7 +250,10 @@ export interface SetAliasesArgs {
 }
 
 export interface UploadAssetArgs {
-    /** Path of a file on this machine. */
+    /**
+     * Path of an ordinary file on this machine, at most 100 MiB. Refused: a hidden file or one in a
+     * hidden folder (`.ssh`, `.env`), and the Headless Client's own config and cache.
+     */
     path: string
     /** The name to store it under; the file's own name by default. */
     name?: string
@@ -258,7 +262,7 @@ export interface UploadAssetArgs {
 export interface ReadAssetArgs {
     /** The reference as it appears in a document (`../assets/<name>`), or the name alone. */
     ref: string
-    /** Where to write the file; the graph's downloads directory by default. */
+    /** A folder under the graph's downloads directory to write the file to; the downloads directory itself by default. */
     out_dir?: string
 }
 
@@ -851,7 +855,7 @@ export async function uploadAsset(graph: HeadlessGraph, args: UploadAssetArgs) {
     if (!args.path || args.path.trim() === '') throw new ToolError('invalid_argument', 'path must name a file on this machine.')
     let file
     try {
-        file = await readLocalFile(args.path.trim())
+        file = await readLocalFile(args.path.trim(), { env: process.env, downloadsDir: assets.downloadsDir })
     } catch (error) {
         throw new ToolError('invalid_argument', `Cannot read "${args.path}": ${error instanceof Error ? error.message : String(error)}`)
     }
@@ -894,7 +898,15 @@ export async function readAsset(graph: HeadlessGraph, args: ReadAssetArgs) {
     if (!documents) throw new ToolError('asset_not_found', `No document you can read references "${displayNameOf(ref)}", so it is not available here.`)
     const asset = await assets.store.readBytes(ref)
     if (!asset) throw new ToolError('asset_not_found', `The graph does not hold "${displayNameOf(ref)}" (the reference may be broken).`)
-    const path = await writeDownload(args.out_dir?.trim() || assets.downloadsDir, asset.name || displayNameOf(ref), asset.bytes)
+    let directory
+    try {
+        directory = await folderUnder(assets.downloadsDir, args.out_dir, '.')
+    } catch (error) {
+        if (error instanceof FolderRefused) throw new ToolError('invalid_argument', error.message)
+        throw error
+    }
+    // The stored name is a collaborator's to set; writeDownload reduces it to one plain file name.
+    const path = await writeDownload(directory, asset.name || displayNameOf(ref), asset.bytes)
     return { path, name: asset.name || displayNameOf(ref), type: asset.type, bytes: asset.bytes.byteLength, ref, documents }
 }
 

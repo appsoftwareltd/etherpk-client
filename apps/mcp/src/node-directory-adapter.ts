@@ -14,6 +14,7 @@
 import { access, mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 
+import { isSingleFileName } from '$lib/storage/fs/asset-names'
 import { SUBDIRS, type DirectoryAdapter, type DirEntry, type Subdir } from '$lib/storage/fs/directory-adapter'
 
 function isMissing(error: unknown): boolean {
@@ -27,9 +28,19 @@ function standalone(bytes: Uint8Array): Uint8Array<ArrayBuffer> {
     return copy
 }
 
+/**
+ * `name` as one file of `folder`, or a refusal. The store passes names that came from documents
+ * (an asset reference decodes to one), and `join` would follow a `..` or a separator out of the
+ * graph; the browser's directory handles refuse such names, and this keeps the two adapters alike.
+ */
+function fileIn(folder: string, name: string): string {
+    if (!isSingleFileName(name)) throw new Error(`"${name}" is not a file name.`)
+    return join(folder, name)
+}
+
 export function createNodeDirectoryAdapter(root: string): DirectoryAdapter {
     const dir = resolve(root)
-    const path = (subdir: Subdir, name: string) => join(dir, subdir, name)
+    const path = (subdir: Subdir, name: string) => fileIn(join(dir, subdir), name)
 
     /**
      * The file's mtime as integer milliseconds, as the browser's `File.lastModified` is. Node's
@@ -105,7 +116,7 @@ export function createNodeDirectoryAdapter(root: string): DirectoryAdapter {
         },
 
         async readRootFile(name) {
-            const file = join(dir, name)
+            const file = fileIn(dir, name)
             let text: string
             try {
                 text = await readFile(file, 'utf8')
@@ -117,7 +128,7 @@ export function createNodeDirectoryAdapter(root: string): DirectoryAdapter {
         },
 
         async writeRootFile(name, text) {
-            const file = join(dir, name)
+            const file = fileIn(dir, name)
             await writeFile(file, text, 'utf8')
             return { text, ...(await stamped(file)) }
         },

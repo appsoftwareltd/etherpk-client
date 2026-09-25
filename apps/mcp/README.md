@@ -59,9 +59,15 @@ and every tool refuses a protected document.
 | Find and read | `graph_info`, `list_documents`, `read_document`, `read_documents`, `search`, `backlinks`, `tasks` | `list_documents` can narrow to a range of journal days. `read_document` returns the body as text and the frontmatter as data. |
 | Edit | `edit_document`, `append_document`, `create_page`, `set_task`, `set_frontmatter`, `set_aliases` | `edit_document` replaces one exact, unique piece of text; on a synced graph it merges with edits made elsewhere at the same time. `append_document` creates a day's journal entry when there is none. `set_frontmatter` sets any key except `title`, `aliases` and `publication`, which have tools of their own. |
 | Rename | `plan_rename`, `rename` | Links to the old name are rewritten by default and scoped concepts move with it. Renaming onto a name that is taken merges two documents and needs confirming. |
-| Images and files | `upload_asset`, `read_asset`, `list_assets` | `upload_asset` returns the markdown to paste into a document; `read_asset` writes an asset to a local file. |
+| Images and files | `upload_asset`, `read_asset`, `list_assets` | `upload_asset` returns the markdown to paste into a document. It refuses hidden files and folders (`.ssh`, `.env`), the Headless Client's own config and cache, and files over 100 MiB. `read_asset` writes an asset to a local file. |
 | Publishing | `list_publications`, `create_publication`, `update_publication`, `publish` | `publish` writes into the folder you set with the `publish` command; the agent can't choose one. |
 | Themes | `list_themes`, `read_theme`, `read_theme_file`, `create_theme`, `customise_publication_theme`, `write_theme_file`, `delete_theme_file`, `import_theme_folder`, `delete_theme`, `preview_theme` | Bundled themes are read-only; customising one copies it into the graph. `preview_theme` renders a site to inspect, with screenshots when a browser is set up. |
+
+`read_asset`, `read_theme` and `preview_theme` write only under the graph's **downloads directory**,
+`downloads` inside the graph's folder in the cache directory, and `import_theme_folder` reads only
+from there. An agent names a folder relative to it and gets the full path back; a folder outside it
+is refused, so a prompt hidden in a note cannot steer the agent into writing or reading elsewhere.
+Copy a file out with your own tools when you want it somewhere else.
 
 ## Search by meaning
 
@@ -107,8 +113,8 @@ directory, once per computer.
 - With no EtherPK to hand, press `r` while it waits, or pass `--recovery-code`, and type your
   Recovery Code instead. `ETHERPK_RECOVERY_CODE` supplies the code for a scripted setup.
 
-When it is done it lists the graphs the account can reach. A self-hosted Sync Server works the same
-way: give its address to `login`.
+When it is done it lists the graphs the account can reach. For a Sync Server other than EtherPK's,
+give its address to `login`.
 
 ### Choosing a graph
 
@@ -118,9 +124,9 @@ stored on the server is opened once to read its name; `(unnamed)` means it has n
 
 ### Several Sync Servers
 
-One computer can be signed in to several Sync Servers, your own beside EtherPK's, say. Run `login`
-once for each. `--sync-server` then says which server a command means. It can be left out while only
-one server is signed in, and the commands the Agents tab shows always include it.
+One computer can be signed in to several Sync Servers. Run `login` once for each. `--sync-server`
+then says which server a command means. It can be left out while only one server is signed in,
+and the commands the Agents tab shows always include it.
 
 ## Local folders in detail
 
@@ -239,8 +245,8 @@ pnpm --filter @appsoftwareltd/etherpk-mcp test    # unit tests, no server needed
 pnpm --filter @appsoftwareltd/etherpk-mcp build   # dist/main.js; run it with node dist/main.js
 ```
 
-Releases are published to npm by the repository's CI, at the version the Client and the Sync Server
-share. To check that a version is on the registry:
+Releases are published to npm by the repository's CI, at the same version as the Client. To check
+that a version is on the registry:
 
 ```sh
 npx -y @appsoftwareltd/etherpk-mcp@<version> --version

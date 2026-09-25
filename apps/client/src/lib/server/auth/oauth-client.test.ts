@@ -82,6 +82,19 @@ describe('managed OAuth client', () => {
             .toBe('/graphs?managed=connected')
     })
 
+    it('refuses a return path that dot segments collapse into another origin', () => {
+        // new URL() removes '.' and '..' segments, encoded or not, after the raw-string checks,
+        // so each of these would come out as //attacker.example: a protocol-relative redirect.
+        for (const path of ['/.//attacker.example', '/..//attacker.example', '/%2e//attacker.example', '/%2E%2E//attacker.example', '/./\\attacker.example']) {
+            expect(sanitiseClientReturnPath(path, 'silent')).toBe('/')
+            expect(sanitiseClientReturnPath(path, 'interactive')).toBe('/graphs?managed=connected')
+        }
+    })
+
+    it('keeps a same-origin path that dot segments tidy', () => {
+        expect(sanitiseClientReturnPath('/graphs/../settings?tab=sync', 'silent')).toBe('/settings?tab=sync')
+    })
+
     it('exchanges a code and rotates a refresh token using the public client id', async () => {
         const fetchMock = vi.fn<typeof fetch>(async (_input, init) => {
             const body = new URLSearchParams(String(init?.body))

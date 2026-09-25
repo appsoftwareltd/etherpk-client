@@ -161,7 +161,14 @@ export function sanitiseClientReturnPath(
         return fallback
     }
     const url = new URL(value, 'http://relative.invalid')
-    return url.pathname + url.search
+    const path = url.pathname + url.search
+    // Checked again after parsing: new URL() collapses '.', '..' and their encoded forms, so
+    // '/.//attacker.example' passes the raw checks above and comes out as '//attacker.example',
+    // which a browser follows to another origin.
+    if (url.origin !== 'http://relative.invalid' || path.startsWith('//') || path.startsWith('/\\')) {
+        return fallback
+    }
+    return path
 }
 
 export function exchangeAuthorizationCode(

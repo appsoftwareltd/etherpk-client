@@ -60,7 +60,11 @@ export function parseInlineLink(source: string): InlineLink | null {
  * markdown link still resolves against the app the way it always has.
  */
 export function safeHref(target: string): string | null {
-    const raw = target.trim()
+    // Read the target as the browser's URL parser will: it drops leading and trailing C0 controls
+    // and spaces, and tabs and newlines anywhere, before it reads the scheme. Checking the raw
+    // string instead lets `\u0001javascript:` or `java\tscript:` through as a "relative path".
+    // eslint-disable-next-line no-control-regex -- matching C0 controls is the point: the URL parser strips them
+    const raw = target.trim().replace(/^[\u0000- ]+|[\u0000- ]+$/g, '').replace(/[\t\n\r]/g, '')
     if (!raw) return null
     if (HAS_SCHEME.test(raw)) return OPENABLE_SCHEME.test(raw) ? raw : null
     if (BARE_HOST.test(raw)) return `https://${raw}`

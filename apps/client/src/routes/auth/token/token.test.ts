@@ -65,7 +65,7 @@ function corporate(
     })
 }
 
-async function refreshWith(fetch: typeof globalThis.fetch) {
+async function refreshWith(fetch: typeof globalThis.fetch, headers: Record<string, string> = { 'sec-fetch-site': 'same-origin' }) {
     const { cookies, values } = cookieJar()
     const session: ManagedSession = {
         refreshToken: 'refresh-1',
@@ -73,11 +73,20 @@ async function refreshWith(fetch: typeof globalThis.fetch) {
         expiresAt: Date.now() + 7 * 24 * 60 * 60 * 1000,
     }
     cookies.set(MANAGED_SESSION_COOKIE, await encryptSessionCookie(session, sessionSecret, 'managed-session'), { path: '/' })
-    const response = await POST({ cookies, fetch } as unknown as Parameters<typeof POST>[0])
+    const url = new URL('https://app.example.com/auth/token')
+    const request = new Request(url, { method: 'POST', headers })
+    const response = await POST({ cookies, fetch, request, url } as unknown as Parameters<typeof POST>[0])
     return { response, values }
 }
 
 describe('POST /auth/token', () => {
+    it('refuses a POST from another origin before touching the session', async () => {
+        const fetch = vi.fn()
+        await expect(refreshWith(fetch as unknown as typeof globalThis.fetch, { 'sec-fetch-site': 'same-site' }))
+            .rejects.toMatchObject({ status: 403 })
+        expect(fetch).not.toHaveBeenCalled()
+    })
+
     it('rotates the refresh grant and hands the browser a short-lived access token', async () => {
         const { response, values } = await refreshWith(corporate(async () => Response.json({
             access_token: 'access-2',

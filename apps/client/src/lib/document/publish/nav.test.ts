@@ -82,6 +82,27 @@ describe('buildNav', () => {
         expect(nav[0].children[0].href).toBe('installing.html')
     })
 
+    it('keeps a link out of the navigation unless its scheme is http, https or mailto, and says so', () => {
+        const outline = [
+            '- [Script](javascript:alert(1))',
+            '- [Hidden script](\u0001javascript:alert(1))',
+            '- [Data](data:text/html,x)',
+            '- [Site](https://example.com)',
+            '- [Mail](mailto:team@example.com)',
+            '- [Local](about.html)',
+        ].join('\n')
+        const { nav, issues } = buildNav(outline, resolver)
+        expect(nav.map((n) => [n.label, n.href])).toEqual([
+            ['Script', undefined],
+            ['Hidden script', undefined],
+            ['Data', undefined],
+            ['Site', 'https://example.com'],
+            ['Mail', 'mailto:team@example.com'],
+            ['Local', 'about.html'],
+        ])
+        expect(issues.map((i) => i.code)).toEqual(['nav-link-unsafe', 'nav-link-unsafe', 'nav-link-unsafe'])
+    })
+
     it('an empty outline is an empty nav', () => {
         expect(buildNav('', resolver)).toEqual({ nav: [], issues: [] })
     })

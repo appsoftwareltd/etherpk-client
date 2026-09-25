@@ -10,7 +10,7 @@ import {
     openVault,
     toBase64Url,
 } from '$lib/crypto'
-import { acceptInvite, prepareInvite, sendInvite } from './invites'
+import { InviteForHeldGraphError, acceptInvite, prepareInvite, sendInvite } from './invites'
 import type { SyncApi } from './sync-api'
 
 describe('invites', () => {
@@ -119,18 +119,61 @@ describe('invites', () => {
         // The name never appears in what the server stores (it is inside the sealed box).
         expect(Buffer.from(fromBase64Url(posted!)).toString('utf8')).not.toContain('Physics')
 
-        // Legacy: a pre-v2 payload (bare keyring array) still opens; no name.
+        // Legacy: a pre-v2 payload (bare keyring array) still opens; no name. A second graph,
+        // since an invite for a graph the vault already holds is refused.
+        const legacyKeyring = createGraphKeyring('g2')
         const legacySealed = toBase64Url(
-            await sealToPublicKey(invitee.publicKey, serializeKeyrings([graphKeyring]), contextAad('keyring-invite', 'graph:g1')),
+            await sealToPublicKey(invitee.publicKey, serializeKeyrings([legacyKeyring]), contextAad('keyring-invite', 'graph:g2')),
         )
         const legacy = await acceptInvite(
             api,
-            { id: 'inv-2', graphId: 'g1', rootDocId: 'r1', sealedKeyring: legacySealed },
+            { id: 'inv-2', graphId: 'g2', rootDocId: 'r2', sealedKeyring: legacySealed },
             invitee.privateKey,
             wrapKey,
             2,
         )
         expect(legacy.name).toBeUndefined()
-        expect(Buffer.from(legacy.keyring.epochs[0].key).equals(Buffer.from(graphKeyring.epochs[0].key))).toBe(true)
+        expect(Buffer.from(legacy.keyring.epochs[0].key).equals(Buffer.from(legacyKeyring.epochs[0].key))).toBe(true)
+    })
+
+    it('refuses an invite for a graph whose key the vault already holds, and keeps that key', async () => {
+        // An invite carries no proof of who sealed it, so a server could seal a keyring it knows
+        // for a graph the user already owns; accepting would replace the user's real key with it.
+        const invitee = generateIdentityKeyPair()
+        const heldKeyring = createGraphKeyring('g1')
+        const code = generateRecoveryCode()
+        const wrapKey = await deriveVaultWrapKey(code)
+        const vault = {
+            vault: toBase64Url((await encryptVault(
+                { identityPrivateKey: invitee.privateKey, identityPublicKey: invitee.publicKey, keyrings: [heldKeyring] },
+                wrapKey,
+            )).envelope),
+            version: 1,
+        }
+        let posted: { sealedKeyring: string } | null = null
+        const api = {
+            getIdentityByEmail: vi.fn(async () => ({ userId: 'invitee', publicKey: toBase64Url(invitee.publicKey) })),
+            createInvite: vi.fn(async (_g: string, _e: string, sealedKeyring: string) => {
+                posted = { sealedKeyring }
+                return { id: 'inv-1' }
+            }),
+            getVault: vi.fn(async () => vault),
+            putVault: vi.fn(),
+            acceptInvite: vi.fn(),
+        } as unknown as SyncApi
+        const prep = await prepareInvite(api, 'invitee@test')
+        await sendInvite(api, 'g1', 'invitee@test', prep!.inviteePublicKey, createGraphKeyring('g1'))
+
+        await expect(acceptInvite(
+            api,
+            { id: 'inv-1', graphId: 'g1', rootDocId: 'r1', sealedKeyring: posted!.sealedKeyring },
+            invitee.privateKey,
+            wrapKey,
+            1,
+        )).rejects.toBeInstanceOf(InviteForHeldGraphError)
+        expect(api.putVault).not.toHaveBeenCalled()
+        expect(api.acceptInvite).not.toHaveBeenCalled()
+        const opened = await openVault(fromBase64Url(vault.vault), wrapKey)
+        expect(Buffer.from(opened.vault.keyrings[0].epochs[0].key).equals(Buffer.from(heldKeyring.epochs[0].key))).toBe(true)
     })
 })

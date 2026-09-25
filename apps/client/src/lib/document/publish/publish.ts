@@ -496,7 +496,9 @@ export async function publishPublication(
     let assetsDone = 0
     for (const [name, from] of wanted) {
         progress('assets', assetsDone++, wanted.size)
-        const asset = await source.readAsset(`../assets/${name}`)
+        // Encoded again: the source decodes a reference once, and `name` is already decoded, so a
+        // literal "%2F" in a name must not become a separator on the way back.
+        const asset = await source.readAsset(`../assets/${encodeURIComponent(name)}`)
         if (!asset) {
             report.assets.missing.push({ name, from })
             warnings.push({ level: 'warning', code: 'asset-missing', message: `"${from}" references ${name}, which the graph does not hold; the link is left as it is.`, concept: from })

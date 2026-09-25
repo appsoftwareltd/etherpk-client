@@ -118,9 +118,9 @@ const USAGE = `etherpk-mcp - EtherPK Headless Client (an MCP server over one syn
   ${CMD} diagrams status
       Which browser a publish would use, if any.
 
-This machine can be signed in to several Sync Servers at once (a self-hosted one beside the
-managed service, say); --sync-server says which one a command means, and can be left out
-while only one is signed in. The config file is ${defaultConfigPath()} (override with
+This machine can be signed in to several Sync Servers at once; --sync-server says which one
+a command means, and can be left out while only one is signed in. The config file is
+${defaultConfigPath()} (override with
 ETHERPK_MCP_CONFIG); cached graphs live under ~/.cache/etherpk/mcp (override with
 ETHERPK_MCP_CACHE_DIR).
 Docs: https://docs.etherpk.com/using-ai-agents-with-your-notes

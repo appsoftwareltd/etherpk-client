@@ -1,6 +1,6 @@
 import { execSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, writeFile, symlink } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -123,23 +123,23 @@ describe.each(backends)('%s backend', (_name, openGraph) => {
         await customisePublicationTheme(g, { publication: 'blog' })
         const dir = await mkdtemp(join(tmpdir(), 'etherpk-mcp-theme-'))
 
-        const bundled = await readTheme(g, { ref: 'etherpk-blog', out_dir: join(dir, 'bundled') })
+        const bundled = await readTheme(g, { ref: 'etherpk-blog', out_dir: 'bundled' })
         expect(bundled).toMatchObject({ source: 'bundled', editable: false })
         expect(bundled.note).toContain('cannot be edited in place')
-        const own = await readTheme(g, { ref: 'blog-theme', out_dir: join(dir, 'own') })
+        const own = await readTheme(g, { ref: 'blog-theme', out_dir: 'own' })
         expect(own).toMatchObject({ source: 'graph', editable: true, id: 'blog-theme' })
         expect(own.files.map((f) => f.path)).toEqual(expect.arrayContaining(['theme.json', 'layouts/page.html', 'partials/head.html']))
-        expect(await readFile(join(dir, 'own', 'partials', 'head.html'), 'utf8')).toBe((await readThemeFile(g, { ref: 'blog-theme', path: 'partials/head.html' })).text)
+        expect(await readFile(join(own.folder, 'partials', 'head.html'), 'utf8')).toBe((await readThemeFile(g, { ref: 'blog-theme', path: 'partials/head.html' })).text)
 
         // The worked example: the tracking script in the head partial.
         const head = (await readThemeFile(g, { ref: 'blog-theme', path: 'partials/head.html' })).text
         expect(await writeThemeFile(g, { id: 'blog-theme', path: 'partials/head.html', text: `${head}\n${ANALYTICS}\n` })).toMatchObject({ id: 'blog-theme', path: 'partials/head.html', errors: [] })
         expect((await readThemeFile(g, { ref: 'blog-theme', path: 'partials/head.html' })).text).toContain('plausible.io')
 
-        const preview = await previewTheme(g, { publication: 'blog', out_dir: join(dir, 'preview') })
+        const preview = await previewTheme(g, { publication: 'blog', out_dir: 'preview' })
         expect(preview).toMatchObject({ theme: 'blog-theme', publication: 'blog', sample: false, ok: true })
         expect(preview.pages).toContain('first-post.html')
-        for (const page of ['index.html', 'first-post.html']) expect(await readFile(join(dir, 'preview', page), 'utf8')).toContain(ANALYTICS)
+        for (const page of ['index.html', 'first-post.html']) expect(await readFile(join(preview.folder, page), 'utf8')).toContain(ANALYTICS)
 
         // A bundled theme is never written; a path outside the theme's places is refused.
         await rejectsWith(writeThemeFile(g, { id: 'etherpk-blog', path: 'partials/head.html', text: 'x' }), 'theme_not_editable')
@@ -157,8 +157,7 @@ describe.each(backends)('%s backend', (_name, openGraph) => {
         expect((await writeThemeFile(g, { id: 'blog-theme', path: 'theme.json', text: '{not json' })).errors.length).toBeGreaterThan(0)
 
         // Repair from a folder: read the bundled original out, edit it there, import it whole.
-        const dir = await mkdtemp(join(tmpdir(), 'etherpk-mcp-theme-import-'))
-        await readTheme(g, { ref: 'etherpk-blog', out_dir: dir })
+        const { folder: dir } = await readTheme(g, { ref: 'etherpk-blog', out_dir: 'import-source' })
         await writeFile(join(dir, 'partials', 'head.html'), `${await readFile(join(dir, 'partials', 'head.html'), 'utf8')}\n${ANALYTICS}\n`)
         await writeFile(join(dir, 'notes.txt'), 'not a theme file, skipped')
         const imported = await importThemeFolder(g, { id: 'blog-theme', dir })
@@ -179,8 +178,8 @@ describe.each(backends)('%s backend', (_name, openGraph) => {
         await rejectsWith(createTheme(g, { from: 'no-such-theme' }), 'theme_not_found')
         await rejectsWith(createTheme(g, { from: 'etherpk-docs', id: 'Bad Id' }), 'invalid_argument')
 
-        const dir = await mkdtemp(join(tmpdir(), 'etherpk-mcp-theme-preview-'))
-        const sample = await previewTheme(g, { theme: 'my-docs', out_dir: dir })
+        const sample = await previewTheme(g, { theme: 'my-docs' })
+        const dir = sample.folder
         expect(sample).toMatchObject({ theme: 'my-docs', sample: true, ok: true })
         expect(sample.pages.length).toBeGreaterThan(3)
         expect(await readFile(join(dir, 'index.html'), 'utf8')).toContain('<html')
@@ -198,10 +197,32 @@ describe.each(backends)('%s backend', (_name, openGraph) => {
         await rm(dir, { recursive: true, force: true })
     })
 
+    it('writes and reads theme folders only under the downloads directory, and never through a link', async () => {
+        const g = await blog('g-themes-confined')
+        await customisePublicationTheme(g, { publication: 'blog' })
+        const outside = await mkdtemp(join(tmpdir(), 'etherpk-mcp-theme-outside-'))
+
+        await rejectsWith(readTheme(g, { ref: 'etherpk-blog', out_dir: outside }), 'invalid_argument')
+        await rejectsWith(readTheme(g, { ref: 'etherpk-blog', out_dir: '../escaped' }), 'invalid_argument')
+        await rejectsWith(previewTheme(g, { publication: 'blog', out_dir: outside }), 'invalid_argument')
+        // A folder outside is not read back into the graph, even one shaped like a theme.
+        await writeFile(join(outside, 'theme.json'), '{"name":"x","contract":1}')
+        await rejectsWith(importThemeFolder(g, { id: 'blog-theme', dir: outside }), 'invalid_argument')
+
+        // Inside, a symbolic link is skipped rather than followed to what it points at.
+        const { folder } = await readTheme(g, { ref: 'blog-theme', out_dir: 'linked' })
+        await writeFile(join(outside, 'secret.html'), 'SECRET')
+        await symlink(join(outside, 'secret.html'), join(folder, 'partials', 'linked.html'))
+        const imported = await importThemeFolder(g, { id: 'blog-theme', dir: folder })
+        expect(imported.files).not.toContain('partials/linked.html')
+        await rejectsWith(readThemeFile(g, { ref: 'blog-theme', path: 'partials/linked.html' }), 'not_found')
+        await rm(outside, { recursive: true, force: true })
+    })
+
     it('photographs the preview when a browser is available, and says so when none is', async () => {
         const g = await blog('g-themes-shots')
         const dir = await mkdtemp(join(tmpdir(), 'etherpk-mcp-theme-shots-'))
-        const none = await previewTheme(g, { publication: 'blog', out_dir: join(dir, 'none'), screenshots: true }, { env: { ...process.env, ETHERPK_CHROMIUM: '/nonexistent/chromium' } })
+        const none = await previewTheme(g, { publication: 'blog', out_dir: 'none', screenshots: true }, { env: { ...process.env, ETHERPK_CHROMIUM: '/nonexistent/chromium' } })
         expect(none.screenshots).toBeNull()
         expect(none.note).toContain('diagrams setup')
 
@@ -210,7 +231,7 @@ describe.each(backends)('%s backend', (_name, openGraph) => {
             console.warn('no Chromium on this machine: the screenshot half of this test did not run (set ETHERPK_CHROMIUM)')
             return
         }
-        const shot = await previewTheme(g, { publication: 'blog', out_dir: join(dir, 'shots'), screenshots: true }, { env: { ...process.env, ETHERPK_CHROMIUM: chromium } })
+        const shot = await previewTheme(g, { publication: 'blog', out_dir: 'shots', screenshots: true }, { env: { ...process.env, ETHERPK_CHROMIUM: chromium } })
         expect(shot.screenshots).toHaveLength(4)
         for (const s of shot.screenshots!) {
             const png = await readFile(s.path)

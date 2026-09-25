@@ -115,6 +115,29 @@ describe('createNodeDirectoryAdapter', () => {
     })
 })
 
+describe('createNodeDirectoryAdapter names', () => {
+    it('refuses a name that is not one file in its subdirectory, as the browser directory handles do', async () => {
+        const dir = await folder()
+        const adapter = createNodeDirectoryAdapter(dir)
+        await adapter.ensureSkeleton()
+        await writeFile(join(dir, 'pages', 'Secret.md'), '- private')
+        await writeFile(join(dir, 'outside.txt'), 'outside the graph')
+
+        for (const name of ['../pages/Secret.md', '..', '.', '', 'sub/x.png', '..\\outside.txt', 'a\u0000b']) {
+            await expect(adapter.readBinary('assets', name)).rejects.toThrow(/not a file name/)
+            await expect(adapter.read('assets', name)).rejects.toThrow(/not a file name/)
+            await expect(adapter.writeBinary('assets', name, new Uint8Array([1]))).rejects.toThrow(/not a file name/)
+            await expect(adapter.exists('assets', name)).rejects.toThrow(/not a file name/)
+            await expect(adapter.remove('assets', name)).rejects.toThrow(/not a file name/)
+        }
+        await expect(adapter.readRootFile('../outside.txt')).rejects.toThrow(/not a file name/)
+        await expect(adapter.writeRootFile('../escaped.md', 'x')).rejects.toThrow(/not a file name/)
+        // Nothing was written outside, and the refused reads returned nothing.
+        expect(await readdir(join(dir, '..'))).not.toContain('escaped.md')
+        expect(await readFile(join(dir, 'pages', 'Secret.md'), 'utf8')).toBe('- private')
+    })
+})
+
 describe('isGraphFolder', () => {
     it('recognises a folder by its pages and journals subdirectories, and refuses anything else', async () => {
         const dir = await folder()

@@ -19,7 +19,7 @@
 
 import { publishSlug } from '$lib/document/wikilink'
 
-import { assetHashFromName } from './asset-names'
+import { assetHashFromName, isSafeAssetName } from './asset-names'
 import type { DirectoryAdapter } from './directory-adapter'
 
 // Re-exported so callers keep one import for the store and its naming rules.
@@ -170,11 +170,22 @@ export function mimeTypeForExt(ext: string): string {
     return MIME_TYPES[ext.replace(/^\./, '').toLowerCase()] ?? ''
 }
 
-/** The on-disk name referenced by a doc-relative asset ref, or `null` if `ref` is not an asset reference. */
+/**
+ * The on-disk name referenced by a doc-relative asset ref, or `null` if `ref` is not an asset
+ * reference. A reference whose name decodes to anything but one file inside `assets/`, or does not
+ * decode at all, is not one: it can never name a file on disk (see `isSafeAssetName`).
+ */
 export function assetNameFromRef(ref: string): string | null {
     const clean = ref.split(/[?#]/)[0]
     const match = ASSET_REF.exec(clean)
-    return match ? decodeURIComponent(match[1]) : null
+    if (!match) return null
+    let name: string
+    try {
+        name = decodeURIComponent(match[1])
+    } catch {
+        return null
+    }
+    return isSafeAssetName(name) ? name : null
 }
 
 /**

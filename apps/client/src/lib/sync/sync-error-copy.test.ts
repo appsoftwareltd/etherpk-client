@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { EnvelopeError, RecoveryCodeError } from '$lib/crypto'
 import { SyncProtocolMismatchError } from './messages'
+import { InviteForHeldGraphError } from './invites'
 import { SyncApiError } from './sync-api'
 import { describeSyncFailure, isRetryableSyncFailure } from './sync-error-copy'
 import { VaultLockedError } from './vault-session'
@@ -12,6 +13,14 @@ const CLOSING_CONNECTION = new DOMException(
 )
 
 describe('describeSyncFailure', () => {
+    it('says an invite for a graph already held was refused and nothing changed', () => {
+        const message = describeSyncFailure(new InviteForHeldGraphError('g1'), 'accept the invite')
+        expect(message).toContain('Could not accept the invite.')
+        expect(message).toContain('already')
+        expect(message).toContain('refused')
+        expect(isRetryableSyncFailure(new InviteForHeldGraphError('g1'))).toBe(false)
+    })
+
     it('sends the operator of an older Sync Server to upgrade it, and says changes are kept', () => {
         const message = describeSyncFailure(new SyncProtocolMismatchError(1, 2), 'save your latest changes')
         expect(message).toContain('Could not save your latest changes.')

@@ -11,6 +11,10 @@ apps/mcp/dist/
 # No leading slash, so this matches at any depth: apps/sync/.env, apps/client/.env and
 # apps/corporate/.env are all covered by the one pattern.
 .env
+# Variants too (Vite reads .env.local, .env.production and the like); the two files meant to be
+# committed are let back in below: the documented example and the encrypted copy.
+.env.*
+!.env.example
 
 # Extension secrets -- never commit plain text
 .ext-secrets
@@ -18,6 +22,9 @@ apps/mcp/dist/
 # Commit (encrypted) secrets
 
 !.env.enc
+
+# Tarballs `pnpm pack` writes locally, the Headless Client's included.
+*.tgz
 
 # Drizzle generated files -- commit everything under drizzle/ including meta/_journal.json.
 # The journal is required by drizzle-orm/migrator at runtime; without it the container fails to start.
