@@ -1,0 +1,20 @@
+{{> shell-top}}
+        {{^page.isGeneratedIndex}}
+        <article class="post home-info">
+            <h1 class="post-title">{{{page.titleHtml}}}</h1>
+            <div class="post-content">
+{{{page.content}}}
+            </div>
+        </article>
+        {{/page.isGeneratedIndex}}
+        {{#page.isGeneratedIndex}}
+        <h1 class="post-title index-title">{{site.title}}</h1>
+        {{/page.isGeneratedIndex}}
+        <div class="posts">
+            {{#site.isBlog}}{{#site.recentPosts}}{{> post-entry}}{{/site.recentPosts}}{{^site.hasPosts}}<p class="post-list-empty">No dated documents are published yet. A journal entry is dated by its day; a page by a <code>date:</code> line in its frontmatter.</p>{{/site.hasPosts}}{{/site.isBlog}}
+            {{^site.isBlog}}{{#page.isGeneratedIndex}}<div class="post-content">{{{page.content}}}</div>{{/page.isGeneratedIndex}}{{/site.isBlog}}
+        </div>
+        {{#site.isBlog}}{{#site.hasPosts}}
+        <p class="all-posts"><a class="button inline" href="{{site.postsUrl}}">$ ls all {{site.postCount}} posts →</a></p>
+        {{/site.hasPosts}}{{/site.isBlog}}
+{{> shell-bottom}}

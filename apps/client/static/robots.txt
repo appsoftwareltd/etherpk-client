@@ -1,0 +1,8 @@
+# EtherPK Client. Public pages are /home, /privacy and /terms; the application itself is a
+# private, signed-in surface. The Client serves no sitemap, so this file advertises none.
+User-agent: *
+Allow: /
+Disallow: /graphs
+Disallow: /g/
+Disallow: /dev/
+Disallow: /auth/

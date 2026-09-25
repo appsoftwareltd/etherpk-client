@@ -1,0 +1,25 @@
+{
+    "name": "etherpk-papermod",
+    "title": "EtherPK PaperMod",
+    "version": "1.0.0",
+    "contract": 1,
+    "description": "In the mould of Hugo's PaperMod: a clean single column, post cards with reading time, a top menu, a light and dark toggle, previous and next between posts.",
+    "kinds": ["blog", "docs"],
+    "includes": [
+        { "name": "head", "description": "Extra markup inside <head>: analytics, fonts, meta tags. Raw HTML in the page body." },
+        { "name": "logo", "description": "The logo before the site title in the header: an image or inline SVG. Replaces the EtherPK icon." },
+        { "name": "header", "description": "The site header. Replaces the theme's title, menu, search box and theme toggle." },
+        { "name": "before-content", "description": "Rendered above every page's content: a banner, a notice." },
+        { "name": "after-content", "description": "Rendered below every page's content, above the linked references: an author bio, a comments widget." },
+        { "name": "footer", "description": "The site footer." },
+        { "name": "scripts", "description": "Scripts before </body>, added after the theme's own (search, the theme toggle): analytics, a widget. Raw HTML in the page body." },
+        { "name": "styles", "description": "CSS appended after the theme's stylesheet: the page's first css fence.", "kind": "css" }
+    ],
+    "files": [
+        "layouts/page.html", "layouts/home.html", "layouts/journal.html", "layouts/archive.html", "layouts/404.html",
+        "partials/shell-top.html", "partials/shell-bottom.html", "partials/head.html", "partials/logo.html", "partials/header.html",
+        "partials/nav-item.html", "partials/toc.html", "partials/backlinks.html", "partials/post-meta.html", "partials/post-entry.html",
+        "partials/before-content.html", "partials/after-content.html", "partials/footer.html", "partials/theme-scripts.html", "partials/scripts.html",
+        "assets/theme.css", "assets/search.js", "assets/theme.js"
+    ]
+}

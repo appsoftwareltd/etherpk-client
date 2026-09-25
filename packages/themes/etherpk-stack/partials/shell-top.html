@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="generator" content="EtherPK">
+    <title>{{page.title}}{{^page.isHome}} - {{site.title}}{{/page.isHome}}</title>
+    {{#page.excerpt}}<meta name="description" content="{{page.excerpt}}">{{/page.excerpt}}
+    <link rel="stylesheet" href="theme/theme.css">
+    {{#site.hasMath}}<link rel="stylesheet" href="theme/katex/katex.min.css">{{/site.hasMath}}
+    {{#site.hasCustomCss}}<link rel="stylesheet" href="theme/custom.css">{{/site.hasCustomCss}}
+    {{#site.hasFeed}}<link rel="alternate" type="application/rss+xml" title="{{site.title}}" href="feed.xml">{{/site.hasFeed}}
+    <script>try{var t=localStorage.getItem('etherpk-theme');if(t==='dark'||t==='light')document.documentElement.setAttribute('data-theme',t)}catch(e){}</script>
+    {{> head}}
+</head>
+<body class="layout-stack{{#page.isHome}} is-home{{/page.isHome}}{{#page.isJournal}} is-journal{{/page.isJournal}}">
+    <a class="skip-link" href="#content">Skip to content</a>
+    <div class="container">
+        <aside class="sidebar left-sidebar">
+            {{> header}}
+            <button class="nav-toggle menu-icon" type="button" aria-controls="site-nav" aria-expanded="false" aria-label="Menu"><span></span><span></span><span></span></button>
+            <div class="nav-backdrop" hidden></div>
+            <nav id="site-nav" class="menu site-nav" aria-label="Site">
+                <ul class="site-nav-list">
+{{#nav}}{{> nav-item}}{{/nav}}
+                </ul>
+                <button class="theme-toggle menu-item" type="button" aria-pressed="false"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg><span>Dark mode</span></button>
+            </nav>
+        </aside>
+        <main id="content" class="main">
+            {{> before-content}}

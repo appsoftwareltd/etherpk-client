@@ -1,0 +1,9 @@
+    <header class="site-header">
+        <a class="site-title" href="index.html">{{> logo}}<span class="site-title-text">{{site.title}}</span></a>
+        <form class="site-search" role="search" data-search-index="{{site.search.url}}" data-search-script="{{site.search.scriptUrl}}">
+            <label class="visually-hidden" for="site-search-input">Search</label>
+            <input id="site-search-input" type="search" name="q" placeholder="Search" autocomplete="off" aria-describedby="site-search-hint">
+            <span id="site-search-hint" class="visually-hidden">Type to search the published pages; results appear below the box.</span>
+            <div class="site-search-results" role="listbox" hidden></div>
+        </form>
+    </header>

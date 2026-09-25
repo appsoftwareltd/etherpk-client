@@ -1,0 +1,350 @@
+/*
+ * Compass theme for dockview.
+ *
+ * dockview ships CSS-variable themes; this layer maps the prominent surface,
+ * tab, border, and sash variables onto the app's Compass `--gk-*` tokens so
+ * panes, tab strips, and splitters match the rest of the app. The `--gk-*`
+ * tokens already flip between light and dark with `html.dark`, so this single
+ * mapping covers both modes. Apply alongside a base theme class
+ * (`dockview-theme-light` / `dockview-theme-dark`), which supplies defaults for
+ * any variable not overridden here.
+ *
+ * The variable block below repeats its class deliberately — see the comment on it.
+ *
+ * Strictly monochrome: the base theme's accent colours (dodgerblue active
+ * outline, the blue/purple/green tab-group palette) are all overridden to
+ * neutral `--gk-*` greys. Tabs are styled as rounded pills to match the mobile
+ * presenter.
+ */
+
+/*
+ * The `--dv-*` mapping. The class is repeated so the selector scores TWO classes:
+ * dockview's own `.dockview-theme-light` / `.dockview-theme-dark` define the very
+ * same variables on the very same element with a single class, so at equal
+ * specificity the winner is decided by stylesheet order — and that order is not
+ * ours to control. Vite serves `dockview.css` after this file in a production
+ * build (they are separate chunks, linked base-theme-last), which handed the
+ * literals `white` / `#ececec` back to every tab: the tabs then followed the base
+ * theme class, fixed when the renderer was built, and stopped following the app's
+ * light/dark toggle entirely. Outranking the base theme makes the mapping hold
+ * whichever way the chunks land.
+ */
+.dockview-theme-compass.dockview-theme-compass {
+    /* Panel + tab-strip surfaces */
+    --dv-group-view-background-color: var(--gk-surface-0);
+    --dv-tabs-and-actions-container-background-color: var(--gk-surface-1);
+    /* The visible (selected) tab always matches the panel background — in both
+       focused and unfocused groups — so it merges seamlessly with its pane.
+       Unselected ("hidden") tabs are surface-2 so they read as distinct tabs. */
+    --dv-activegroup-visiblepanel-tab-background-color: var(--gk-surface-0);
+    --dv-activegroup-hiddenpanel-tab-background-color: var(--gk-surface-2);
+    --dv-inactivegroup-visiblepanel-tab-background-color: var(--gk-surface-0);
+    --dv-inactivegroup-hiddenpanel-tab-background-color: var(--gk-surface-2);
+
+    /* Tab text */
+    /* Tab TEXT colour follows the tab's own state only — front (visible) or behind (hidden) —
+       never which group currently has focus, matching the backgrounds above. Dockview offers
+       four slots so a focused group's tabs can read brighter; here that made a Sidebar tab's
+       text change colour on every focus move — pressing the Tasks button, or clicking a
+       document tab — while its own state had not changed, which read as a glitch. */
+    --dv-activegroup-visiblepanel-tab-color: var(--gk-text-strong);
+    --dv-activegroup-hiddenpanel-tab-color: var(--gk-text-subtle);
+    --dv-inactivegroup-visiblepanel-tab-color: var(--gk-text-strong);
+    --dv-inactivegroup-hiddenpanel-tab-color: var(--gk-text-subtle);
+
+    /* One solid divider per split: the separator border is the line; the sash
+       itself is transparent (it is the wider drag hit-area over the line) and
+       only tints on hover/drag. Setting both would draw a doubled line. */
+    --dv-separator-border: var(--gk-border-soft);
+    --dv-tab-divider-color: transparent;
+    --dv-sash-color: transparent;
+    --dv-active-sash-color: var(--gk-border-strong);
+    --dv-paneview-header-border-color: var(--gk-border-soft);
+    --dv-paneview-active-outline-color: var(--gk-border-strong);
+    --dv-icon-hover-background-color: var(--gk-surface-2);
+    --dv-scrollbar-background-color: var(--gk-surface-2);
+    --dv-context-menu-background-color: var(--gk-surface-1);
+
+    /* Drag-to-dock overlay — a neutral grey wash, never a coloured accent. */
+    --dv-drag-over-background-color: color-mix(in srgb, var(--gk-text-default) 12%, transparent);
+    --dv-drag-over-border-color: var(--gk-border-strong);
+
+    /* Neutralise dockview's coloured tab-group palette so chips / the active-tab
+       underline are monochrome rather than blue / purple / green. */
+    --dv-tab-group-color-grey: var(--gk-text-muted);
+    --dv-tab-group-color-blue: var(--gk-text-muted);
+    --dv-tab-group-color-red: var(--gk-text-muted);
+    --dv-tab-group-color-yellow: var(--gk-text-muted);
+    --dv-tab-group-color-green: var(--gk-text-muted);
+    --dv-tab-group-color-pink: var(--gk-text-muted);
+    --dv-tab-group-color-purple: var(--gk-text-muted);
+    --dv-tab-group-color-cyan: var(--gk-text-muted);
+    --dv-tab-group-color-orange: var(--gk-text-muted);
+
+    /* Shape: rectangular tabs with a small top radius (set per-corner below). */
+    --dv-border-radius: 3px;
+    --dv-tab-border-radius: 3px;
+}
+
+/* Belt-and-braces: paint the key surfaces directly, not only via --dv vars, so
+   monochrome holds even if a dockview rule reads a variable we did not map. */
+.dockview-theme-compass .dv-groupview,
+.dockview-theme-compass .dv-content-container {
+    background-color: var(--gk-surface-0);
+    /* And `clip` rather than dockview's `hidden`, for the reason spelled out on
+       GraphWorkspace's `.layout`: a hidden box is still a scroll container, so anything that
+       scrolls a caret into view can displace it. That is every keystroke, not only a [[Search]]
+       or [[Task]] landing — CodeMirror asks for the caret to be revealed on user input too.
+       These two boxes are the pane and its content area, so displacing one slides a pane's own
+       tab strip out of the group. `clip` clips identically while leaving the box unscrollable.
+       See tests-client/workspace-shell-clip.test.ts. */
+    overflow: clip;
+}
+.dockview-theme-compass .dv-tabs-and-actions-container {
+    background-color: var(--gk-surface-1);
+    /* No bottom border: the only divider between the tab strip and the pane is
+       the subtle surface-1 → surface-0 colour change, and the active tab (which
+       is surface-0) flows straight into its pane with nothing dividing them. */
+    padding: 0 0.25rem;
+    align-items: flex-end;
+}
+
+/* Widen the splitter grab-area. dockview's sash is a 4px hit zone (hard to land
+   on); this transparent pseudo extends it ~3px on every side — for both vertical
+   and horizontal dividers — without moving the visible divider line. */
+.dockview-theme-compass .dv-sash::before {
+    content: "";
+    position: absolute;
+    inset: -3px;
+}
+
+/* ── Rectangular, connected tabs ────────────────────────────────────────────
+   Slightly-rounded top corners (3px); full-height tabs sit flush at the bottom
+   of the strip, so the active tab — painted in the panel background — meets its
+   pane with no dividing line. ONLY horizontal margins: a vertical tab margin
+   makes the tab exceed the tab-list height, which dockview's OverflowObserver
+   reads as overflow and (wrongly) shows the dropdown. */
+.dockview-theme-compass .dv-tab {
+    margin: 0 3px;
+    padding: 5px 8px 5px 10px;
+    border: 1px solid transparent;
+    border-bottom: none;
+    border-radius: 3px 3px 0 0;
+    /* Keep every tab the same size in both states — the active tab is shown by
+       background, not by a heavier font weight (which would change its width and
+       make tabs jump when one is selected from the overflow dropdown). */
+    font-weight: 500;
+}
+.dockview-theme-compass .dv-tab.dv-inactive-tab {
+    background-color: var(--gk-surface-2);
+    border-color: var(--gk-border-soft);
+}
+.dockview-theme-compass .dv-tab.dv-inactive-tab:hover {
+    background-color: var(--gk-surface-3);
+}
+.dockview-theme-compass .dv-tab.dv-active-tab {
+    background-color: var(--gk-surface-0); /* = panel background → merges, no divider */
+    border-color: var(--gk-border-soft);
+}
+/* The title is drawn about 30 characters wide, then ellipsised, so one long document name
+   cannot push every other tab off the strip. The tab renderer sets `--gk-tab-title-width` per
+   View kind (`tabTitleWidth` of the View registry's `tabTitleChars`: 30, plus the length of a
+   fixed prefix such as "Backlinks: "). Only the painting stops: the whole title stays the
+   element's text, and a clipped one shows in full on hover. */
+.dockview-theme-compass .dv-default-tab-content {
+    max-width: var(--gk-tab-title-width);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+/* The coloured active-tab underline is redundant with the connected style. */
+.dockview-theme-compass .dv-tab-group-underline {
+    display: none;
+}
+
+/* ── Tab-overflow dropdown ───────────────────────────────────────────────────
+   Kept — it is how overflowing tabs are reached. Themed monochrome; the popup
+   list and the tabs inside it are reset so the strip-tab styling above (margins,
+   radius, fills) does not distort the popup. */
+.dockview-theme-compass .dv-tabs-overflow-dropdown-default {
+    color: var(--gk-text-muted);
+}
+.dockview-theme-compass .dv-tabs-overflow-container {
+    background-color: var(--gk-surface-1);
+    border: 1px solid var(--gk-border-soft);
+    border-radius: 6px;
+    box-shadow: var(--gk-shadow, 0 8px 24px rgba(0, 0, 0, 0.25));
+    /* Positioned by the adapter (drops below the overflow control, right-aligned)
+       so it stays inside its own pane — see createDockviewRenderer. */
+}
+.dockview-theme-compass .dv-tabs-overflow-container .dv-tab {
+    margin: 0;
+    border: none;
+    border-radius: 0;
+    background-color: transparent;
+    font-weight: 400;
+}
+.dockview-theme-compass .dv-tabs-overflow-container .dv-tab:hover {
+    background-color: var(--gk-surface-2);
+}
+
+/* Hide dockview's own (hover-revealed) scrollbar — we provide our own tab-strip
+   scrollbar, and dockview's would show in addition to it and be drag-grabbable. */
+.dockview-theme-compass .dv-scrollbar {
+    display: none !important;
+}
+
+/* Match the gap between the last tab and the overflow control to the inter-tab
+   gap: tabs have a 3px side margin (6px between), so the control gets a 3px left
+   margin (+ the last tab's 3px right margin, visible when fully scrolled) = 6px. */
+.dockview-theme-compass .dv-tabs-overflow-dropdown-root {
+    margin-left: 3px;
+}
+
+/* Overflow dropdown items (the popover is rebuilt to list every tab). */
+.dockview-theme-compass .dv-compass-overflow-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+
+    padding: 5px 10px;
+    white-space: nowrap;
+    cursor: pointer;
+    color: var(--gk-text-default);
+}
+.dockview-theme-compass .dv-compass-overflow-item:hover {
+    background-color: var(--gk-surface-2);
+}
+.dockview-theme-compass .dv-compass-overflow-item.dv-compass-overflow-active {
+    font-weight: 600;
+    color: var(--gk-text-strong);
+}
+
+/* ── Custom tab-strip scrollbar ──────────────────────────────────────────────
+   Rendered by installTabStripScrollbar: a thin bar at the very top of an
+   overflowing tab strip, revealed on hover over the strip's top edge. It sits
+   above the tabs (never along the bottom), so it doesn't disturb the connected-
+   tabs look. The thumb is high-contrast and tall enough to grab. */
+.dv-compass-tabscroll {
+    position: absolute;
+    height: 8px;
+    z-index: 25;
+    background: transparent;
+}
+.dv-compass-tabscroll-thumb {
+    height: 6px;
+    margin-top: 1px;
+    border-radius: 3px;
+    background: var(--gk-text-muted);
+    cursor: grab;
+}
+.dv-compass-tabscroll-thumb:hover {
+    background: var(--gk-text-default);
+}
+.dv-compass-tabscroll-thumb:active {
+    cursor: grabbing;
+    background: var(--gk-text-strong);
+}
+
+/* The pin on a pinned tab's overflow row, leading the label as it leads the tab. */
+.dockview-theme-compass .dv-compass-overflow-pin {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    color: var(--gk-text-muted);
+    line-height: 0;
+}
+
+/* The overflow row's label takes the space; its close button sits hard right. Revealed on
+   hover or keyboard focus, so a long list of rows is not a wall of crosses. */
+.dockview-theme-compass .dv-compass-overflow-label {
+    flex: 1 1 auto;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.dockview-theme-compass .dv-compass-overflow-close {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 3px;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--gk-text-muted, currentColor);
+    cursor: pointer;
+    line-height: 0;
+    opacity: 0;
+}
+
+.dockview-theme-compass .dv-compass-overflow-item:hover .dv-compass-overflow-close,
+.dockview-theme-compass .dv-compass-overflow-close:focus-visible {
+    opacity: 1;
+}
+
+.dockview-theme-compass .dv-compass-overflow-close:hover {
+    background: var(--gk-surface-2);
+    color: var(--gk-text-default);
+}
+
+/*
+ * The pin on a pinned tab. Leads the tab, because pinned tabs lead the strip and the mark that
+ * says why belongs where the eye lands first. Muted like the padlock: a fact, not an alert.
+ */
+.dockview-theme-compass .gk-tab-pin {
+    display: inline-flex;
+    align-items: center;
+    margin: 0 0.3rem 0 0;
+    color: var(--gk-text-muted);
+    line-height: 0;
+}
+
+/* Empty on every unpinned tab, and an empty inline-flex still claims its margin. */
+.dockview-theme-compass .gk-tab-pin:empty {
+    display: none;
+}
+
+/*
+ * The View kind's icon, between the pin and the title (the graph glyph on the Graph Sidebar's
+ * tab). Muted like the indicators: it says what sort of tab this is, not that anything happened.
+ */
+.dockview-theme-compass .gk-tab-icon {
+    display: inline-flex;
+    align-items: center;
+    margin: 0 0.35rem 0 0;
+    color: var(--gk-text-muted);
+    line-height: 0;
+}
+
+/* Empty on every tab whose kind has no icon, and an empty inline-flex still claims its margin. */
+.dockview-theme-compass .gk-tab-icon:empty {
+    display: none;
+}
+
+/*
+ * The padlock on a [[Protected Document]]'s tab. Sits between the title and the close button, so
+ * the close affordance stays where muscle memory expects it — rightmost on the tab.
+ *
+ * Muted rather than accented: it is an indicator, and a row of hard-contrast padlocks would read
+ * as a warning rather than as a fact about the document.
+ */
+.dockview-theme-compass .gk-tab-mark {
+    display: inline-flex;
+    align-items: center;
+    margin: 0 0.15rem 0 0.35rem;
+    color: var(--gk-text-muted);
+    line-height: 0;
+}
+
+/* Empty for every unmarked tab, and an empty inline-flex still claims its margins. */
+.dockview-theme-compass .gk-tab-mark:empty {
+    display: none;
+}
+
+/* Unlocked is the state worth noticing at a glance — readable content is what you might leave
+   open — so it gets the accent as well as the open shackle; locked stays muted. */
+.dockview-theme-compass .gk-tab-mark[data-state='unlocked'] {
+    color: var(--gk-accent);
+}

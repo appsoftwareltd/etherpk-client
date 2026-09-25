@@ -1,0 +1,18 @@
+{{> shell-top}}
+        <article class="post archive">
+            <h1 class="post-title index-title">{{#page.isPostsArchive}}posts{{/page.isPostsArchive}}{{#page.isJournalArchive}}journal{{/page.isJournalArchive}}</h1>
+            {{#page.isPostsArchive}}
+            {{#site.postsByYear}}
+            <h2 class="archive-year" id="y{{year}}">{{year}}</h2>
+            <ul class="archive-list">
+                {{#posts}}<li><time datetime="{{date}}">{{date}}</time> <a href="{{url}}">{{title}}</a></li>{{/posts}}
+            </ul>
+            {{/site.postsByYear}}
+            {{/page.isPostsArchive}}
+            {{#page.isJournalArchive}}
+            <ul class="archive-list">
+                {{#site.journals}}<li><time datetime="{{date}}">{{date}}</time> <a href="{{url}}">{{title}}</a>{{#excerpt}} <span class="archive-excerpt">{{excerpt}}</span>{{/excerpt}}</li>{{/site.journals}}
+            </ul>
+            {{/page.isJournalArchive}}
+        </article>
+{{> shell-bottom}}

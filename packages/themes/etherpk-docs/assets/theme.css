@@ -1,0 +1,278 @@
+/* EtherPK docs theme. Tokens follow the app's own (agent blue, the gk surface scale); the font
+   is the system stack so the site loads nothing from anywhere. Dark mode follows the reader's
+   preference. Classes the publisher emits and this file styles: .wikilink, .wikilink-missing,
+   .task, .task-tag, .toc, .backlinks, .site-nav-list, .diagram, .math, .tok-* (code). */
+
+:root {
+    --font-sans: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --agent-500: #007acc;
+    --agent-600: #005f9e;
+    --agent-100: #c2e3ff;
+    --surface-0: #ffffff;
+    --surface-1: #f9fafb;
+    --surface-2: #e5e7eb;
+    --text-strong: #030712;
+    --text-default: #374151;
+    --text-muted: #6b7280;
+    --border-soft: rgba(3, 7, 18, 0.08);
+    --border-strong: rgba(3, 7, 18, 0.16);
+    --mark: #fff3a3;
+    --missing: #b45309;
+    --nav-width: 17rem;
+    /* The header is exactly this tall, so the sticky sidebar and the drawer toggle can be
+       measured against it rather than guessing at the search box's height. */
+    --header-height: 3.5rem;
+}
+
+@media (prefers-color-scheme: dark) {
+    :root {
+        --agent-500: #5ab3ff;
+        --agent-600: #94ccff;
+        --agent-100: #002e4f;
+        --surface-0: #18181b;
+        --surface-1: #1c1c20;
+        --surface-2: #2a2a30;
+        --text-strong: #fafafa;
+        --text-default: #d4d4d8;
+        --text-muted: #a1a1aa;
+        --border-soft: rgba(255, 255, 255, 0.08);
+        --border-strong: rgba(255, 255, 255, 0.16);
+        --mark: #6b5a00;
+        --missing: #f59e0b;
+    }
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html { font-family: var(--font-sans); -webkit-font-smoothing: antialiased; }
+body {
+    margin: 0;
+    color: var(--text-default);
+    background: var(--surface-0);
+    line-height: 1.6;
+    font-size: 16px;
+}
+a { color: var(--agent-500); }
+a:hover { color: var(--agent-600); }
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.skip-link { position: absolute; left: -999px; top: 0; background: var(--surface-1); padding: 0.5rem 1rem; z-index: 100; }
+.skip-link:focus { left: 1rem; top: 1rem; }
+
+/* -- Header ----------------------------------------------------------------------------- */
+.site-header {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    height: var(--header-height);
+    padding: 0 1.5rem;
+    border-bottom: 1px solid var(--border-soft);
+    background: var(--surface-1);
+    position: sticky;
+    top: 0;
+    z-index: 20;
+}
+.site-title { display: inline-flex; align-items: center; gap: 0.5rem; min-width: 0; font-weight: 600; color: var(--text-strong); text-decoration: none; font-size: 1.05rem; }
+.site-title:hover { color: var(--agent-500); }
+.site-logo { flex-shrink: 0; }
+.site-title-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.site-search { position: relative; margin-left: auto; flex: 0 1 22rem; }
+.site-search input {
+    width: 100%;
+    padding: 0.4rem 0.75rem;
+    line-height: 1.25;
+    border: 1px solid var(--border-strong);
+    border-radius: 0.5rem;
+    background: var(--surface-0);
+    color: var(--text-default);
+    font: inherit;
+}
+.site-search input:focus { outline: 2px solid var(--agent-500); outline-offset: 1px; }
+.site-search-results {
+    position: absolute;
+    top: calc(100% + 0.35rem);
+    left: 0;
+    right: 0;
+    max-height: 24rem;
+    overflow: auto;
+    background: var(--surface-0);
+    border: 1px solid var(--border-strong);
+    border-radius: 0.5rem;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.12);
+    z-index: 30;
+}
+.site-search-hit { display: block; padding: 0.55rem 0.75rem; text-decoration: none; color: var(--text-default); border-bottom: 1px solid var(--border-soft); }
+.site-search-hit:hover, .site-search-hit:focus { background: var(--surface-1); }
+.site-search-title { display: block; font-weight: 600; color: var(--text-strong); }
+.site-search-snippet { display: block; font-size: 0.9rem; color: var(--text-muted); }
+.site-search-empty { margin: 0; padding: 0.6rem 0.75rem; color: var(--text-muted); }
+
+/* -- Shell: sidebar + content ------------------------------------------------------------ */
+.shell { display: grid; grid-template-columns: var(--nav-width) minmax(0, 1fr); min-height: calc(100vh - var(--header-height)); }
+.site-nav {
+    border-right: 1px solid var(--border-soft);
+    background: var(--surface-1);
+    padding: 1.25rem 1rem;
+    overflow-y: auto;
+    position: sticky;
+    top: var(--header-height);
+    height: calc(100vh - var(--header-height));
+}
+.site-nav-list { list-style: none; margin: 0; padding: 0; }
+.site-nav-list .site-nav-list { padding-left: 0.85rem; border-left: 1px solid var(--border-soft); margin-left: 0.5rem; }
+.site-nav li { margin: 0.1rem 0; }
+.site-nav a, .site-nav .nav-group-label {
+    display: block;
+    padding: 0.3rem 0.6rem;
+    border-radius: 0.4rem;
+    color: var(--text-default);
+    text-decoration: none;
+    font-size: 0.95rem;
+    line-height: 1.4;
+}
+.site-nav a:hover { background: var(--surface-2); color: var(--text-strong); }
+.site-nav .nav-current > a { background: var(--agent-100); color: var(--text-strong); font-weight: 600; }
+.site-nav .nav-group-label { font-weight: 600; color: var(--text-strong); margin-top: 0.75rem; }
+.site-nav a .wikilink { color: inherit; text-decoration: none; }
+.nav-toggle { display: none; }
+.nav-backdrop { display: none; }
+
+.content { padding: 2rem 3rem 4rem; max-width: 52rem; width: 100%; }
+.page-header h1 { font-size: 2rem; line-height: 1.2; margin: 0 0 0.5rem; color: var(--text-strong); }
+.page-header h1 .wikilink { color: inherit; text-decoration: none; }
+.page-header h1 .wikilink:hover { text-decoration: underline; }
+.page-date { color: var(--text-muted); font-size: 0.95rem; }
+.page-body h2 { margin-top: 2rem; font-size: 1.4rem; color: var(--text-strong); }
+.page-body h3 { margin-top: 1.5rem; font-size: 1.15rem; color: var(--text-strong); }
+.page-body ul { padding-left: 1.4rem; }
+.page-body li { margin: 0.2rem 0; }
+.page-body img { max-width: 100%; height: auto; border-radius: 0.35rem; }
+.page-body table { border-collapse: collapse; margin: 1rem 0; width: 100%; }
+.page-body th, .page-body td { border: 1px solid var(--border-strong); padding: 0.4rem 0.6rem; text-align: left; }
+.page-body th { background: var(--surface-1); }
+.page-body blockquote { border-left: 3px solid var(--border-strong); margin: 1rem 0; padding: 0.25rem 1rem; color: var(--text-muted); }
+.page-body code { font-family: var(--font-mono); font-size: 0.9em; background: var(--surface-1); padding: 0.1em 0.35em; border-radius: 0.25rem; }
+.page-body pre { background: var(--surface-1); border: 1px solid var(--border-soft); border-radius: 0.5rem; padding: 0.9rem 1rem; overflow-x: auto; }
+.page-body pre code { background: none; padding: 0; font-size: 0.88rem; }
+mark { background: var(--mark); color: inherit; padding: 0 0.15em; border-radius: 0.2em; }
+
+/* Wikilinks, as the editor colours them. A missing target is visibly missing. */
+a.wikilink { text-decoration: none; border-bottom: 1px solid var(--agent-100); }
+a.wikilink:hover { border-bottom-color: var(--agent-500); }
+a.wikilink-missing { color: var(--missing); text-decoration: none; border-bottom: 1px dashed var(--missing); }
+
+/* Tasks and their badges. */
+li.task { list-style: none; margin-left: -1.4rem; padding-left: 0; }
+li.task input[type="checkbox"] { margin-right: 0.35rem; vertical-align: -0.1em; }
+li.task.done { color: var(--text-muted); }
+.task-tag { display: inline-block; font-size: 0.8rem; font-weight: 600; padding: 0.05em 0.5em; border-radius: 999px; background: var(--surface-2); color: var(--text-strong); margin-right: 0.25rem; vertical-align: 0.1em; }
+.task-tag.priority-1 { background: #fee2e2; color: #991b1b; }
+.task-tag.priority-2 { background: #ffedd5; color: #9a3412; }
+.task-tag.priority-3 { background: #fef9c3; color: #854d0e; }
+.task-tag.waiting, .task-tag.doing { background: var(--agent-100); color: var(--agent-600); }
+.task-tag.cancelled { text-decoration: line-through; }
+
+/* Table of contents, diagrams, maths. */
+.toc { margin: 0 0 1.5rem; font-size: 0.95rem; }
+.toc summary { cursor: pointer; font-weight: 600; color: var(--text-strong); }
+.toc ul { list-style: none; padding-left: 0; margin: 0.4rem 0 0; }
+.toc li.toc-level-3 { padding-left: 1rem; }
+.toc li.toc-level-4 { padding-left: 2rem; }
+.diagram { margin: 1rem 0; text-align: center; }
+.diagram svg { max-width: 100%; height: auto; }
+.math-block { overflow-x: auto; margin: 1rem 0; }
+
+/* Linked references, beneath the content. */
+.backlinks { margin-top: 3rem; padding-top: 1.5rem; border-top: 1px solid var(--border-soft); }
+.backlinks h2 { font-size: 1.1rem; color: var(--text-strong); margin: 0 0 0.75rem; }
+.backlink-list { list-style: none; padding: 0; margin: 0; }
+.backlink-source { margin: 0 0 0.9rem; }
+.backlink-source > a { font-weight: 600; }
+.backlink-source ul { list-style: none; padding-left: 1rem; margin: 0.25rem 0 0; border-left: 2px solid var(--border-soft); }
+.backlink-context { color: var(--text-muted); font-size: 0.95rem; margin: 0.15rem 0; }
+
+/* Archive and index lists. */
+.journal-archive, .page-index-list { list-style: none; padding: 0; }
+/* The contents page: the outline as a tree, then any page it leaves out. */
+.page-index-list .page-index-list { padding-left: 1.5rem; margin-top: 0.3rem; }
+.page-index-list li { margin: 0.4rem 0; }
+.page-index-group-label { color: var(--text-muted); font-weight: 600; }
+.page-index-other { margin: 1.5rem 0 0.5rem; font-size: 1.1rem; }
+.journal-archive li { margin: 0 0 1rem; }
+.journal-archive time { color: var(--text-muted); margin-right: 0.5rem; font-variant-numeric: tabular-nums; }
+.archive-excerpt { margin: 0.2rem 0 0; color: var(--text-muted); }
+.archive-year { margin: 1.5rem 0 0.5rem; font-size: 1.1rem; }
+
+.site-footer { border-top: 1px solid var(--border-soft); padding: 1rem 1.5rem; color: var(--text-muted); font-size: 0.9rem; text-align: center; }
+
+/* Code tokens (lezer classHighlighter names). */
+.tok-keyword { color: #0a7; }
+.tok-string, .tok-string2 { color: #690; }
+.tok-comment, .tok-lineComment, .tok-blockComment { color: #999; font-style: italic; }
+.tok-number, .tok-bool, .tok-null, .tok-atom { color: #905; }
+.tok-function, .tok-definition.tok-variableName { color: #c60; }
+.tok-typeName, .tok-className, .tok-namespace { color: #b58900; }
+.tok-operator, .tok-punctuation { color: #555; }
+.tok-propertyName, .tok-attributeName { color: #268bd2; }
+.tok-tagName { color: #22863a; }
+.tok-invalid { color: #d00; }
+@media (prefers-color-scheme: dark) {
+    .tok-keyword { color: #4ec9b0; }
+    .tok-string, .tok-string2 { color: #b5cea8; }
+    .tok-comment, .tok-lineComment, .tok-blockComment { color: #7f848e; }
+    .tok-number, .tok-bool, .tok-null, .tok-atom { color: #d19a66; }
+    .tok-function, .tok-definition.tok-variableName { color: #dcdcaa; }
+    .tok-typeName, .tok-className, .tok-namespace { color: #e5c07b; }
+    .tok-operator, .tok-punctuation { color: #abb2bf; }
+    .tok-propertyName, .tok-attributeName { color: #61afef; }
+    .tok-tagName { color: #98c379; }
+}
+
+/* -- Small screens: the sidebar becomes a drawer ---------------------------------------- */
+@media (max-width: 56rem) {
+    /* Content flows on its own; the drawer and its toggle are fixed, so the shell reserves no
+       row for either (a grid row here stretched the toggle to the full page height). */
+    .shell { display: block; min-height: 0; }
+    .site-header { padding-right: 4.25rem; }
+    .nav-toggle {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        position: fixed;
+        top: 0.5rem;
+        right: 1rem;
+        width: 2.5rem;
+        height: 2.5rem;
+        border: 1px solid var(--border-strong);
+        border-radius: 0.5rem;
+        background: var(--surface-1);
+        color: var(--text-strong);
+        cursor: pointer;
+        z-index: 45;
+    }
+    .nav-toggle:hover { background: var(--surface-2); }
+    .nav-toggle:focus-visible { outline: 2px solid var(--agent-500); outline-offset: 1px; }
+    .site-nav {
+        position: fixed;
+        top: 0;
+        left: 0;
+        bottom: 0;
+        height: auto;
+        width: min(20rem, 85vw);
+        border-right: 1px solid var(--border-strong);
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+        transform: translateX(-100%);
+        /* Hidden while closed, so its links are not tab stops behind the page; the visibility
+           change waits for the slide out. */
+        visibility: hidden;
+        transition: transform 160ms ease-out, visibility 0s linear 160ms;
+        z-index: 40;
+    }
+    body.nav-open .site-nav { transform: translateX(0); visibility: visible; transition: transform 160ms ease-out; }
+    body.nav-open .nav-backdrop { display: block; position: fixed; inset: 0; background: rgba(0, 0, 0, 0.35); z-index: 35; }
+    .content { padding: 1rem 1.25rem 3rem; }
+    .site-search { flex-basis: 12rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .site-nav { transition: none; }
+    body.nav-open .site-nav { transition: none; }
+}

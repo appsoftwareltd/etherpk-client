@@ -1,0 +1,18 @@
+{{> shell-top}}
+            <article class="page home">
+                {{^page.isGeneratedIndex}}
+                <header class="page-header">
+                    <h1>{{{page.titleHtml}}}</h1>
+                </header>
+{{> toc}}
+                {{/page.isGeneratedIndex}}
+                {{#page.isGeneratedIndex}}
+                <header class="page-header">
+                    <h1>{{site.title}}</h1>
+                </header>
+                {{/page.isGeneratedIndex}}
+                <div class="page-body">
+{{{page.content}}}
+                </div>
+            </article>
+{{> shell-bottom}}

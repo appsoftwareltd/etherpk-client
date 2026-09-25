@@ -1,0 +1,15 @@
+    <header class="site-header">
+        <div class="site-header-row">
+            <a class="site-title" href="index.html">{{> logo}}<span class="site-title-text">{{site.title}}</span></a>
+            <form class="site-search" role="search" data-search-index="{{site.search.url}}" data-search-script="{{site.search.scriptUrl}}">
+                <label class="visually-hidden" for="site-search-input">Search</label>
+                <input id="site-search-input" type="search" name="q" placeholder="Search" autocomplete="off">
+                <div class="site-search-results" role="listbox" hidden></div>
+            </form>
+        </div>
+        <nav class="site-nav" aria-label="Site">
+            <ul class="site-nav-list">
+{{#nav}}{{> nav-item}}{{/nav}}
+            </ul>
+        </nav>
+    </header>

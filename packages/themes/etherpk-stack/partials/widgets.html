@@ -1,0 +1,47 @@
+            <section class="widget search-widget" aria-label="Search">
+                <form class="site-search" role="search" data-search-index="{{site.search.url}}" data-search-script="{{site.search.scriptUrl}}">
+                    <label class="visually-hidden" for="site-search-input">Search</label>
+                    <input id="site-search-input" type="search" name="q" placeholder="Search" autocomplete="off">
+                    <div class="site-search-results" role="listbox" hidden></div>
+                </form>
+            </section>
+            {{#page.hasToc}}
+            <section class="widget toc-widget">
+                <h2 class="widget-title">Table of contents</h2>
+{{> toc}}
+            </section>
+            {{/page.hasToc}}
+            {{#site.hasPostsArchive}}
+            <!-- Years with counts, as Stack's archives widget does: a list of every post would grow
+                 with the blog; the archive page carries them. -->
+            <section class="widget archives">
+                <h2 class="widget-title">Archives</h2>
+                <ul class="widget-list">
+                    {{#site.postsByYear}}<li><a href="{{site.postsUrl}}#y{{year}}"><span>{{year}}</span><span class="widget-count">{{count}}</span></a></li>{{/site.postsByYear}}
+                </ul>
+                <p class="widget-more"><a href="{{site.postsUrl}}">All posts</a></p>
+            </section>
+            {{/site.hasPostsArchive}}
+            {{#site.hasJournals}}
+            <section class="widget journal">
+                <h2 class="widget-title">Journal</h2>
+                <p class="widget-more"><a href="journal.html">Every entry, by day</a></p>
+            </section>
+            {{/site.hasJournals}}
+            <!-- A blog's posts are in the archive above; only its other pages belong here. -->
+            {{#site.isBlog}}{{#site.hasUndatedPages}}
+            <section class="widget pages">
+                <h2 class="widget-title">Pages</h2>
+                <ul class="widget-list">
+                    {{#site.undatedPages}}<li><a href="{{url}}"><span>{{title}}</span></a></li>{{/site.undatedPages}}
+                </ul>
+            </section>
+            {{/site.hasUndatedPages}}{{/site.isBlog}}
+            {{^site.isBlog}}
+            <section class="widget pages">
+                <h2 class="widget-title">Pages</h2>
+                <ul class="widget-list">
+                    {{#site.pages}}<li><a href="{{url}}"><span>{{title}}</span></a></li>{{/site.pages}}
+                </ul>
+            </section>
+            {{/site.isBlog}}

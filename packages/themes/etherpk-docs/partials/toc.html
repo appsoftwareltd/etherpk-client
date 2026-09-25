@@ -1,0 +1,10 @@
+            {{#page.hasToc}}
+            <nav class="toc" aria-label="On this page">
+                <details open>
+                    <summary>On this page</summary>
+                    <ul>
+                        {{#page.toc}}<li class="toc-level-{{level}}"><a href="#{{id}}">{{text}}</a></li>{{/page.toc}}
+                    </ul>
+                </details>
+            </nav>
+            {{/page.hasToc}}

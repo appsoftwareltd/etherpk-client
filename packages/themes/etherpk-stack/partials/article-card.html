@@ -1,0 +1,8 @@
+            <article class="article-card">
+                <div class="article-details">
+                    <span class="article-category">{{kind}}</span>
+                    <h2 class="article-title"><a href="{{url}}">{{title}}</a></h2>
+                    {{#excerpt}}<p class="article-subtitle">{{excerpt}}</p>{{/excerpt}}
+                    <footer class="article-time">{{#date}}<time datetime="{{date}}">{{date}}</time>{{/date}}</footer>
+                </div>
+            </article>

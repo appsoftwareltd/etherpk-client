@@ -1,0 +1,48 @@
+# Dependencies (reinstalled via pnpm install)
+node_modules/
+**/node_modules/
+
+# Build output (rebuilt in Docker)
+**/build/
+**/.svelte-kit/
+
+# Environment secrets -- never bake into image
+**/.env
+**/.env.*
+
+# Dev tools
+.vscode/
+.idea/
+*.log
+
+# Git
+.git/
+.gitignore
+
+# Agent kanban (not needed in image)
+.agentkanban/
+
+# Resources/design files
+resources/
+
+# Spell check dictionary builds (served from R2, never part of an image)
+.dictionaries/
+
+# Test files
+**/*.test.ts
+**/vitest.config.ts
+tests/
+test-results/
+playwright-report/
+playwright.config.ts
+
+# Extensions (not needed for web image)
+extensions/
+
+# Docs
+docs-src/
+kanban/
+
+# Agent test data
+
+agenttest.md

@@ -1,0 +1,5 @@
+                <li class="{{#current}}nav-current {{/current}}{{#open}}nav-open {{/open}}{{^href}}nav-group{{/href}}">
+                    {{#href}}<a href="{{href}}"{{#current}} aria-current="page"{{/current}}{{#external}} rel="noopener"{{/external}}>{{label}}</a>{{/href}}
+                    {{^href}}<span class="nav-group-label" tabindex="0">{{{labelHtml}}}</span>{{/href}}
+                    {{#hasChildren}}<ul class="site-nav-list">{{#children}}{{> nav-item}}{{/children}}</ul>{{/hasChildren}}
+                </li>

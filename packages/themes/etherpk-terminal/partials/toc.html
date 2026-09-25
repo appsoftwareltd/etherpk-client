@@ -1,0 +1,8 @@
+        {{#page.hasToc}}
+        <nav class="toc framed" aria-label="Table of contents">
+            <p class="toc__title">:: Table of contents</p>
+            <ul>
+                {{#page.toc}}<li class="toc-level-{{level}}"><a href="#{{id}}">{{text}}</a></li>{{/page.toc}}
+            </ul>
+        </nav>
+        {{/page.hasToc}}

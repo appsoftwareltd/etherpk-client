@@ -1,0 +1,21 @@
+{
+    "name": "@appsoftwareltd/etherpk-themes",
+    "version": "0.1.0",
+    "license": "Elastic-2.0",
+    "private": true,
+    "type": "module",
+    "description": "The first-party themes a Published Site can use: data only (Mustache templates, a stylesheet, a search script and a manifest), bundled into the Client and the Headless Client and mirrored publicly so anyone can fork one.",
+    "exports": {
+        ".": {
+            "types": "./src/index.ts",
+            "default": "./src/index.ts"
+        }
+    },
+    "scripts": {
+        "check": "tsc --noEmit -p tsconfig.json"
+    },
+    "devDependencies": {
+        "typescript": "^6.0.2",
+        "vite": "^8.0.8"
+    }
+}

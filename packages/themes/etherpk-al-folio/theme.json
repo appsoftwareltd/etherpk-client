@@ -1,0 +1,25 @@
+{
+    "name": "etherpk-al-folio",
+    "title": "EtherPK al-folio",
+    "version": "1.0.0",
+    "contract": 1,
+    "description": "In the mould of Jekyll's al-folio: an academic personal site with a slim top navbar, an about page as the front page, a news list from the journal, a plain post list and a light and dark toggle.",
+    "kinds": ["docs", "blog"],
+    "includes": [
+        { "name": "head", "description": "Extra markup inside <head>: analytics, fonts, meta tags. Raw HTML in the page body." },
+        { "name": "logo", "description": "The mark before the site title in the navbar: an image or inline SVG. Replaces the EtherPK icon." },
+        { "name": "header", "description": "The navbar. Replaces the theme's brand, menu, search box and theme toggle." },
+        { "name": "before-content", "description": "Rendered above every page's content: a banner, a notice." },
+        { "name": "after-content", "description": "Rendered below every page's content, above the linked references: an author bio, a comments widget." },
+        { "name": "footer", "description": "The site footer." },
+        { "name": "scripts", "description": "Scripts before </body>, added after the theme's own (search, the theme toggle): analytics, a widget. Raw HTML in the page body." },
+        { "name": "styles", "description": "CSS appended after the theme's stylesheet: the page's first css fence.", "kind": "css" }
+    ],
+    "files": [
+        "layouts/page.html", "layouts/home.html", "layouts/journal.html", "layouts/archive.html", "layouts/404.html",
+        "partials/shell-top.html", "partials/shell-bottom.html", "partials/head.html", "partials/logo.html", "partials/header.html",
+        "partials/nav-item.html", "partials/toc.html", "partials/backlinks.html",
+        "partials/before-content.html", "partials/after-content.html", "partials/footer.html", "partials/theme-scripts.html", "partials/scripts.html",
+        "assets/theme.css", "assets/search.js", "assets/theme.js"
+    ]
+}

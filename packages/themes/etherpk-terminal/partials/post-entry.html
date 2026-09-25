@@ -1,0 +1,6 @@
+        <article class="post on-list">
+            <h1 class="post-title"><a href="{{url}}">{{title}}</a></h1>
+            <div class="post-meta">{{#date}}<time class="post-date" datetime="{{date}}">{{date}}</time>{{/date}}{{^date}}<span>{{kind}}</span>{{/date}}</div>
+            {{#excerpt}}<div class="post-content"><p>{{excerpt}}</p></div>{{/excerpt}}
+            <div><a class="read-more button inline" href="{{url}}">Read more →</a></div>
+        </article>

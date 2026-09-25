@@ -1,0 +1,165 @@
+{
+    "name": "@appsoftwareltd/etherpk-shared",
+    "version": "0.1.0",
+    "license": "Elastic-2.0",
+    "private": true,
+    "type": "module",
+    "exports": {
+        ".": {
+            "types": "./src/index.ts",
+            "default": "./src/index.ts"
+        },
+        "./application-header": {
+            "svelte": "./src/navigation/ApplicationHeader.svelte",
+            "default": "./src/navigation/ApplicationHeader.svelte"
+        },
+        "./hydration": {
+            "svelte": "./src/forms/hydration.svelte.ts",
+            "types": "./src/forms/hydration.svelte.ts",
+            "default": "./src/forms/hydration.svelte.ts"
+        },
+        "./ui": {
+            "svelte": "./src/ui/index.svelte.ts",
+            "types": "./src/ui/index.svelte.ts",
+            "default": "./src/ui/index.svelte.ts"
+        },
+        "./delayed": {
+            "svelte": "./src/ui/delayed.svelte.ts",
+            "types": "./src/ui/delayed.svelte.ts",
+            "default": "./src/ui/delayed.svelte.ts"
+        },
+        "./field-errors": {
+            "types": "./src/forms/field-errors.ts",
+            "default": "./src/forms/field-errors.ts"
+        },
+        "./theme": {
+            "types": "./src/theme.ts",
+            "default": "./src/theme.ts"
+        },
+        "./build-stamp": {
+            "types": "./src/build-stamp/build-stamp.ts",
+            "default": "./src/build-stamp/build-stamp.ts"
+        },
+        "./server/shutdown": {
+            "types": "./src/server/shutdown.ts",
+            "default": "./src/server/shutdown.ts"
+        },
+        "./dialog": {
+            "svelte": "./src/components/Dialog.svelte",
+            "types": "./src/components/Dialog.svelte",
+            "default": "./src/components/Dialog.svelte"
+        },
+        "./confirm-dialog": {
+            "svelte": "./src/components/ConfirmDialog.svelte",
+            "types": "./src/components/ConfirmDialog.svelte",
+            "default": "./src/components/ConfirmDialog.svelte"
+        },
+        "./alert-banner": {
+            "svelte": "./src/components/AlertBanner.svelte",
+            "types": "./src/components/AlertBanner.svelte",
+            "default": "./src/components/AlertBanner.svelte"
+        },
+        "./error-card": {
+            "svelte": "./src/components/ErrorCard.svelte",
+            "types": "./src/components/ErrorCard.svelte",
+            "default": "./src/components/ErrorCard.svelte"
+        },
+        "./theme-toggle": {
+            "svelte": "./src/components/ThemeToggle.svelte",
+            "types": "./src/components/ThemeToggle.svelte",
+            "default": "./src/components/ThemeToggle.svelte"
+        },
+        "./page-clients": {
+            "types": "./src/auth/page-clients.ts",
+            "default": "./src/auth/page-clients.ts"
+        },
+        "./contact-page": {
+            "svelte": "./src/pages/ContactPage.svelte",
+            "types": "./src/pages/ContactPage.svelte",
+            "default": "./src/pages/ContactPage.svelte"
+        },
+        "./marketing-home-page": {
+            "svelte": "./src/pages/MarketingHomePage.svelte",
+            "types": "./src/pages/MarketingHomePage.svelte",
+            "default": "./src/pages/MarketingHomePage.svelte"
+        },
+        "./forgot-password-page": {
+            "svelte": "./src/pages/ForgotPasswordPage.svelte",
+            "types": "./src/pages/ForgotPasswordPage.svelte",
+            "default": "./src/pages/ForgotPasswordPage.svelte"
+        },
+        "./reset-password-page": {
+            "svelte": "./src/pages/ResetPasswordPage.svelte",
+            "types": "./src/pages/ResetPasswordPage.svelte",
+            "default": "./src/pages/ResetPasswordPage.svelte"
+        },
+        "./account-page": {
+            "svelte": "./src/pages/AccountPage.svelte",
+            "types": "./src/pages/AccountPage.svelte",
+            "default": "./src/pages/AccountPage.svelte"
+        },
+        "./admin-users-page": {
+            "svelte": "./src/pages/AdminUsersPage.svelte",
+            "types": "./src/pages/AdminUsersPage.svelte",
+            "default": "./src/pages/AdminUsersPage.svelte"
+        },
+        "./section-navigation": {
+            "svelte": "./src/components/SectionNavigation.svelte",
+            "types": "./src/components/SectionNavigation.svelte",
+            "default": "./src/components/SectionNavigation.svelte"
+        },
+        "./dialog-buttons": {
+            "types": "./src/ui/dialog-buttons.ts",
+            "default": "./src/ui/dialog-buttons.ts"
+        },
+        "./error-page": {
+            "svelte": "./src/pages/ErrorPage.svelte",
+            "types": "./src/pages/ErrorPage.svelte",
+            "default": "./src/pages/ErrorPage.svelte"
+        },
+        "./auth-error-page": {
+            "svelte": "./src/pages/AuthErrorPage.svelte",
+            "types": "./src/pages/AuthErrorPage.svelte",
+            "default": "./src/pages/AuthErrorPage.svelte"
+        },
+        "./auth-layout": {
+            "svelte": "./src/pages/AuthLayout.svelte",
+            "types": "./src/pages/AuthLayout.svelte",
+            "default": "./src/pages/AuthLayout.svelte"
+        },
+        "./registration-policy": {
+            "types": "./src/registration/policy.ts",
+            "default": "./src/registration/policy.ts"
+        },
+        "./registration-messages": {
+            "types": "./src/registration/messages.ts",
+            "default": "./src/registration/messages.ts"
+        },
+        "./env-example": {
+            "types": "./src/testing/env-example.ts",
+            "default": "./src/testing/env-example.ts"
+        }
+    },
+    "scripts": {
+        "check": "tsc --noEmit",
+        "test": "vitest run",
+        "test:watch": "vitest",
+        "test:coverage": "vitest run --coverage"
+    },
+    "dependencies": {
+        "zod": "^4.3.6",
+        "qrcode": "^1.5.4",
+        "uuidv7": "^1.2.1"
+    },
+    "peerDependencies": {
+        "@sveltejs/kit": "^2.57.1",
+        "svelte": "^5.55.2"
+    },
+    "devDependencies": {
+        "typescript": "^6.0.2",
+        "vitest": "^4.1.4",
+        "@types/qrcode": "^1.5.6",
+        "@types/node": "^25.6.0",
+        "@vitest/coverage-v8": "^4.1.4"
+    }
+}

@@ -1,0 +1,303 @@
+/* EtherPK's Terminal: after Hugo's Terminal (panr, MIT), written afresh for EtherPK's view - one
+   monospace face, a dark ground, no colour at all - the accent is a brighter shade of the text,
+   so everything is drawn in tones of one ink - the block logo with its blinking cursor,
+   underlined titles, framed boxes and bordered buttons. Uses Fira Code
+   or the system monospace, so the site loads nothing from anywhere. Classes the publisher emits
+   and this file styles: .wikilink, .wikilink-missing, .task, .task-tag, .toc, .backlinks,
+   .site-nav-list, .diagram, .math, .tok-* (code). */
+
+:root {
+    --accent: #f2f2f2;
+    --background: #1d1e28;
+    --color: #cfcfd6;
+    --color-muted: #8f8f9a;
+    --border-color: rgba(255, 255, 255, 0.1);
+    --code-bg: rgba(255, 255, 255, 0.06);
+    --font: "Fira Code", ui-monospace, Monaco, Consolas, "Ubuntu Mono", monospace;
+    --container-width: 1080px;
+    --mark: rgba(255, 255, 255, 0.22);
+    --missing: var(--color-muted);
+}
+/* Terminal is dark by nature; a light system preference is respected, the ink inverted. */
+@media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+        --accent: #111111;
+        --background: #f7f4ef;
+        --color: #2b2b2b;
+        --color-muted: #6a6a6a;
+        --mark: rgba(0, 0, 0, 0.14);
+        --border-color: rgba(0, 0, 0, 0.12);
+        --code-bg: rgba(0, 0, 0, 0.05);
+    }
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html { color-scheme: dark light; }
+body {
+    margin: 0;
+    font-family: var(--font);
+    font-size: 0.9375rem;
+    line-height: 1.6;
+    background: var(--background);
+    color: var(--color);
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    font-feature-settings: "liga", "tnum", "zero", "ss01", "locl";
+}
+a { color: var(--accent); }
+a:hover { text-decoration: none; }
+img { max-width: 100%; height: auto; display: block; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.skip-link { position: absolute; left: -999px; top: 0; background: var(--accent); color: var(--background); padding: 8px 16px; z-index: 100; }
+.skip-link:focus { left: 16px; top: 16px; }
+
+.container { max-width: var(--container-width); margin: 0 auto; padding: 40px; }
+
+/* -- Header: the prompt-style logo ------------------------------------------------------ */
+.header { margin-bottom: 40px; }
+.header__inner { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+/* The block logo: the mark, the title and a blinking cursor on one line, the mark's box sized
+   to the text's cap height so the two read as one glyph run. */
+.logo {
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 16px;
+    background: var(--accent);
+    color: var(--background);
+    font-size: 1.375rem;
+    line-height: 1;
+    font-weight: bold;
+    text-decoration: none;
+}
+.logo:hover { text-decoration: none; }
+.logo__mark { display: inline-flex; align-items: center; line-height: 0; }
+.logo__mark .site-logo { display: block; width: 1.3em; height: 1.125em; }
+.logo__cursor {
+    display: inline-block;
+    width: 0.5em;
+    height: 1em;
+    background: var(--background);
+    animation: cursor 1s infinite;
+}
+@keyframes cursor { 0% { opacity: 0; } 50% { opacity: 1; } 100% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .logo__cursor { animation: none; } }
+.menu { margin-top: 20px; display: flex; flex-wrap: wrap; align-items: center; gap: 12px 30px; }
+.menu__inner { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 30px; }
+.menu__inner li a, .menu__inner .nav-group-label { color: var(--color); text-decoration: none; }
+.menu__inner li a:hover { color: var(--accent); }
+.menu__inner .nav-current > a { color: var(--accent); }
+.menu__inner .nav-current > a::after { content: " *"; }
+.menu__inner .nav-group-label { color: var(--color-muted); }
+.menu__inner .nav-group-label::after { content: ":"; }
+/* A nested outline level follows its parent on the same line, the way a path reads. */
+.menu__inner li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 12px; }
+.menu__inner .site-nav-list { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 0 12px; }
+.menu__inner .site-nav-list li::before { content: "/"; color: var(--color-muted); margin-right: 12px; }
+.nav-toggle { display: none; }
+.nav-backdrop { display: none; }
+.site-search { position: relative; margin-left: auto; flex: 0 1 16rem; }
+.site-search input {
+    width: 100%;
+    padding: 5px 10px;
+    border: 1px solid var(--accent);
+    background: transparent;
+    color: var(--color);
+    font: inherit;
+}
+.site-search input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.site-search input::placeholder { color: var(--color-muted); }
+.site-search-results {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 6px);
+    width: min(26rem, 90vw);
+    max-height: 24rem;
+    overflow: auto;
+    background: var(--background);
+    border: 1px solid var(--accent);
+    z-index: 30;
+}
+.site-search-hit { display: block; padding: 8px 12px; color: var(--color); text-decoration: none; border-bottom: 1px solid var(--border-color); }
+.site-search-hit:hover, .site-search-hit:focus { background: var(--code-bg); }
+.site-search-title { display: block; color: var(--accent); }
+.site-search-snippet { display: block; color: var(--color-muted); font-size: 0.9rem; }
+.site-search-empty { margin: 0; padding: 8px 12px; color: var(--color-muted); }
+
+/* -- Posts ------------------------------------------------------------------------------ */
+.posts { width: 100%; }
+.post { width: 100%; }
+.post.on-list { margin-bottom: 40px; padding-bottom: 40px; border-bottom: 1px dotted var(--accent); }
+.post.on-list:last-child { border-bottom: 0; }
+.post-title {
+    position: relative;
+    margin: 0 0 15px;
+    font-size: 1.6rem;
+    line-height: 1.3;
+    color: var(--accent);
+    text-decoration: underline;
+    text-decoration-color: var(--accent);
+    text-decoration-thickness: 2px;
+    text-underline-offset: 6px;
+}
+.post-title a { color: inherit; text-decoration: none; }
+.post-title .wikilink { color: inherit; text-decoration: none; }
+.index-title { text-decoration: none; }
+.index-title::before { content: "# "; }
+.post-meta { margin: 0 0 20px; font-size: 0.9rem; color: var(--color-muted); }
+.post-content { margin-top: 20px; }
+.post-content h1, .post-content h2, .post-content h3, .post-content h4 { font-weight: bold; line-height: 1.3; margin: 40px 0 20px; }
+.post-content h2 { font-size: 1.3rem; }
+.post-content h3 { font-size: 1.2rem; }
+.post-content h2::before { content: "## "; color: var(--accent); }
+.post-content h3::before { content: "### "; color: var(--accent); }
+.post-content p { margin: 0 0 20px; }
+.post-content ul, .post-content ol { margin: 0 0 20px; padding-left: 24px; }
+.post-content li { margin: 4px 0; }
+.post-content ul li::marker { color: var(--accent); }
+.post-content img { margin: 20px 0; border: 1px solid var(--border-color); }
+.post-content .diagram { margin: 20px 0; text-align: center; }
+.post-content .diagram svg { max-width: 100%; height: auto; }
+.post-content blockquote {
+    position: relative;
+    margin: 40px 0;
+    padding: 25px;
+    border-top: 1px solid var(--accent);
+    border-bottom: 1px solid var(--accent);
+    font-style: italic;
+}
+.post-content blockquote::before { content: "”"; position: absolute; top: -40px; left: 10px; font-size: 3.875rem; font-style: normal; color: var(--accent); }
+.post-content blockquote p:last-child { margin-bottom: 0; }
+.post-content hr { border: 0; border-top: 1px dashed var(--accent); margin: 40px 0; }
+.post-content table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+.post-content th, .post-content td { padding: 8px 12px; border: 1px dashed var(--accent); text-align: left; }
+.post-content th { color: var(--accent); }
+.post-content code { padding: 1px 6px; background: var(--code-bg); font-family: inherit; font-size: 0.95em; }
+.post-content pre {
+    margin: 20px 0;
+    padding: 20px;
+    background: var(--code-bg);
+    border-left: 3px solid var(--accent);
+    overflow-x: auto;
+    font-family: inherit;
+    font-size: 0.95rem;
+    line-height: 1.5;
+}
+.post-content pre code { padding: 0; background: none; font-size: inherit; }
+.math-block { overflow-x: auto; margin: 20px 0; }
+mark { background: var(--mark); color: inherit; padding: 0 0.15em; }
+
+/* Wikilinks and tasks. */
+a.wikilink { color: var(--accent); }
+a.wikilink-missing { color: var(--missing); text-decoration-style: dotted; }
+li.task { list-style: none; margin-left: -24px; }
+li.task input[type="checkbox"] { accent-color: var(--accent); margin-right: 6px; vertical-align: -0.1em; }
+li.task.done { color: var(--color-muted); text-decoration: line-through; }
+.task-tag { display: inline-block; padding: 0 6px; margin-right: 4px; border: 1px solid var(--accent); color: var(--accent); font-size: 0.8rem; }
+.task-tag.cancelled { text-decoration: line-through; }
+
+/* Buttons, frames, the table of contents and pagination. */
+.button {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 18px;
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    font: inherit;
+    text-decoration: none;
+    background: transparent;
+    cursor: pointer;
+}
+.button:hover { background: var(--accent); color: var(--background); }
+.button.inline { display: inline-flex; }
+.read-more { margin-top: 10px; }
+.all-posts { margin: 30px 0 0; }
+/* The contents page of a docs site: the outline as a tree, then any page it leaves out. */
+.page-index-list { list-style: none; margin: 0; padding: 0; }
+.page-index-list .page-index-list { padding-left: 24px; }
+.page-index-list li { margin: 6px 0; }
+.page-index-list li::before { content: "- "; color: var(--accent); }
+.page-index-list a { color: var(--color); }
+.page-index-list a:hover { color: var(--accent); }
+.page-index-group-label { color: var(--color-muted); }
+.page-index-group-label::after { content: ":"; }
+.page-index-other { margin: 30px 0 10px; font-size: 1.1rem; }
+.page-index-other::before { content: "## "; color: var(--accent); }
+/* The archives: a year as a prompt-style heading, then one line per post. */
+.archive-year { margin: 30px 0 10px; font-size: 1.1rem; }
+.archive-year::before { content: "## "; color: var(--accent); }
+.archive-list { list-style: none; margin: 0; padding: 0; }
+.archive-list li { margin: 6px 0; }
+.archive-list time { color: var(--color-muted); margin-right: 12px; font-variant-numeric: tabular-nums; }
+.archive-list a { color: var(--color); }
+.archive-list a:hover { color: var(--accent); }
+.archive-excerpt { color: var(--color-muted); }
+.framed { border: 1px solid var(--accent); padding: 20px; }
+.toc { margin: 20px 0 40px; }
+.toc__title { margin: 0 0 10px; color: var(--accent); }
+.toc ul { list-style: none; margin: 0; padding: 0; }
+.toc li { margin: 4px 0; }
+.toc li::before { content: "- "; color: var(--accent); }
+.toc li.toc-level-3 { padding-left: 1.5rem; }
+.toc li.toc-level-4 { padding-left: 3rem; }
+.toc a { color: var(--color); text-decoration: none; }
+.toc a:hover { color: var(--accent); }
+.pagination { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px; margin-top: 50px; }
+.pagination__next { margin-left: auto; }
+.button__text { max-width: 20rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Linked references, framed like everything else worth a box. */
+.backlinks { margin-top: 40px; border: 1px solid var(--accent); padding: 20px; }
+.backlinks h2 { margin: 0 0 12px; font-size: 1rem; color: var(--accent); }
+.backlinks h2::before { content: ":: "; }
+.backlink-list { list-style: none; margin: 0; padding: 0; }
+.backlink-source { margin: 0 0 12px; }
+.backlink-source > a { color: var(--color); }
+.backlink-source ul { list-style: none; margin: 4px 0 0; padding: 0 0 0 16px; border-left: 1px dashed var(--accent); }
+.backlink-context { color: var(--color-muted); font-size: 0.9rem; margin: 2px 0; }
+
+/* -- Footer ----------------------------------------------------------------------------- */
+.footer { margin-top: 60px; padding-top: 20px; border-top: 1px dotted var(--accent); font-size: 0.9rem; color: var(--color-muted); }
+.footer__inner { display: flex; flex-wrap: wrap; gap: 10px; }
+.copyright { display: flex; flex-wrap: wrap; gap: 0 8px; }
+.footer__separator { color: var(--accent); }
+
+/* Code tokens (lezer classHighlighter names). */
+/* Code tokens (lezer classHighlighter names), in tones of the one ink: weight and italics carry
+   the distinction the usual colours would. */
+.tok-keyword { color: var(--accent); font-weight: bold; }
+.tok-string, .tok-string2 { color: var(--color); font-style: italic; }
+.tok-comment, .tok-lineComment, .tok-blockComment { color: var(--color-muted); font-style: italic; }
+.tok-number, .tok-bool, .tok-null, .tok-atom { color: var(--accent); }
+.tok-function, .tok-definition.tok-variableName { color: var(--accent); }
+.tok-typeName, .tok-className, .tok-namespace { color: var(--accent); font-weight: bold; }
+.tok-operator, .tok-punctuation { color: var(--color-muted); }
+.tok-propertyName, .tok-attributeName { color: var(--color); }
+.tok-tagName { color: var(--accent); }
+.tok-invalid { color: var(--missing); text-decoration: underline wavy; }
+
+/* -- Small screens: the menu behind a Terminal-style button ----------------------------- */
+@media (max-width: 684px) {
+    .container { padding: 20px; }
+    .nav-toggle {
+        display: inline-block;
+        padding: 5px 10px;
+        border: 1px solid var(--accent);
+        background: transparent;
+        color: var(--accent);
+        font: inherit;
+        cursor: pointer;
+    }
+    .nav-toggle::before { content: "$ "; }
+    .menu { display: none; flex-direction: column; align-items: stretch; gap: 12px; margin-top: 20px; padding: 20px; border: 1px solid var(--accent); }
+    body.nav-open .menu { display: flex; }
+    .menu__inner { flex-direction: column; gap: 8px; }
+    .menu__inner li { flex-direction: column; align-items: flex-start; }
+    .menu__inner .site-nav-list { flex-direction: column; padding-left: 12px; }
+    .menu__inner .site-nav-list li::before { margin-right: 6px; }
+    .site-search { margin-left: 0; flex-basis: auto; }
+    .post-title { font-size: 1.3rem; }
+    .pagination__prev, .pagination__next { flex-basis: 100%; }
+    .pagination__next { justify-content: flex-end; }
+}

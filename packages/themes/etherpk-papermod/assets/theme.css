@@ -1,0 +1,356 @@
+/* EtherPK's PaperMod: after Hugo's PaperMod (adityatelange, MIT), written afresh for EtherPK's
+   view - the same quiet single column, entry cards, top menu, sun / moon toggle and post
+   pagination. System fonts, so the site loads nothing from anywhere. Classes the publisher
+   emits and this file styles: .wikilink, .wikilink-missing, .task, .task-tag, .toc, .backlinks,
+   .site-nav-list, .diagram, .math, .tok-* (code). */
+
+:root {
+    --gap: 24px;
+    --content-gap: 20px;
+    --nav-width: 1024px;
+    --main-width: 720px;
+    --header-height: 60px;
+    --footer-height: 60px;
+    --radius: 8px;
+    --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
+    --font-mono: ui-monospace, "Cascadia Code", "Fira Code", Menlo, Consolas, monospace;
+    --theme: rgb(255, 255, 255);
+    --entry: rgb(255, 255, 255);
+    --primary: rgb(30, 30, 30);
+    --secondary: rgb(108, 108, 108);
+    --tertiary: rgb(214, 214, 214);
+    --content: rgb(31, 31, 31);
+    --code-block-bg: rgb(28, 29, 33);
+    --code-bg: rgb(245, 245, 245);
+    --border: rgb(238, 238, 238);
+    --mark: #fff3a3;
+    --missing: #b45309;
+}
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+        --theme: rgb(29, 30, 32);
+        --entry: rgb(46, 46, 51);
+        --primary: rgb(218, 218, 219);
+        --secondary: rgb(155, 156, 157);
+        --tertiary: rgb(65, 66, 68);
+        --content: rgb(196, 196, 197);
+        --code-block-bg: rgb(46, 46, 51);
+        --code-bg: rgb(55, 56, 62);
+        --border: rgb(51, 51, 51);
+        --mark: #6b5a00;
+        --missing: #f59e0b;
+    }
+}
+:root[data-theme="dark"] {
+    --theme: rgb(29, 30, 32);
+    --entry: rgb(46, 46, 51);
+    --primary: rgb(218, 218, 219);
+    --secondary: rgb(155, 156, 157);
+    --tertiary: rgb(65, 66, 68);
+    --content: rgb(196, 196, 197);
+    --code-block-bg: rgb(46, 46, 51);
+    --code-bg: rgb(55, 56, 62);
+    --border: rgb(51, 51, 51);
+    --mark: #6b5a00;
+    --missing: #f59e0b;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-tap-highlight-color: transparent; scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+body {
+    margin: 0;
+    font-family: var(--font);
+    font-size: 18px;
+    line-height: 1.6;
+    word-break: break-word;
+    background: var(--theme);
+    color: var(--content);
+    -webkit-font-smoothing: antialiased;
+}
+a { color: inherit; text-decoration: none; }
+img { max-width: 100%; height: auto; display: block; border-radius: 4px; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.skip-link { position: absolute; left: -999px; top: 0; background: var(--entry); color: var(--primary); padding: 8px 16px; z-index: 100; }
+.skip-link:focus { left: 16px; top: 16px; }
+
+/* -- Header ----------------------------------------------------------------------------- */
+.nav {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: center;
+    max-width: calc(var(--nav-width) + var(--gap) * 2);
+    margin-inline: auto;
+    height: var(--header-height);
+    line-height: var(--header-height);
+    padding: 0 var(--gap);
+}
+.logo { display: flex; align-items: center; gap: 10px; }
+.site-title { display: inline-flex; align-items: center; gap: 8px; font-size: 24px; font-weight: 700; color: var(--primary); }
+.site-logo { flex-shrink: 0; }
+.theme-toggle {
+    display: inline-flex;
+    align-items: center;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--primary);
+    cursor: pointer;
+}
+.theme-toggle .sun { display: none; }
+:root[data-theme="dark"] .theme-toggle .sun { display: block; }
+:root[data-theme="dark"] .theme-toggle .moon { display: none; }
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .theme-toggle .sun { display: block; }
+    :root:not([data-theme="light"]) .theme-toggle .moon { display: none; }
+}
+#menu { list-style: none; display: flex; flex-wrap: wrap; align-items: center; gap: 0 20px; margin: 0; padding: 0; }
+#menu li { position: relative; }
+#menu li > a, #menu .nav-group-label { display: block; font-size: 16px; color: var(--primary); white-space: nowrap; }
+#menu li > a:hover { opacity: 0.8; }
+#menu .nav-current > a { border-bottom: 2px solid currentColor; line-height: calc(var(--header-height) - 2px); }
+#menu .nav-group-label { color: var(--secondary); cursor: default; }
+#menu .nav-open > a, #menu .nav-open > .nav-group-label { color: var(--primary); }
+/* A nested outline level is a drop-down under its parent, opened by hover or keyboard focus
+   (the group label is focusable for that; a parent that is a page is a link as well). */
+#menu .site-nav-list {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    flex-direction: column;
+    min-width: 12rem;
+    margin: 0;
+    padding: 6px 0;
+    list-style: none;
+    background: var(--entry);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+    line-height: 1.6;
+    z-index: 25;
+}
+#menu li:hover > .site-nav-list, #menu li:focus-within > .site-nav-list { display: flex; }
+#menu .site-nav-list li > a, #menu .site-nav-list .nav-group-label { padding: 6px 14px; font-size: 15px; line-height: 1.6; border: 0; }
+#menu .site-nav-list .nav-current > a { font-weight: 600; }
+.menu-search { margin-left: auto; }
+.site-search { position: relative; line-height: normal; }
+.site-search input {
+    width: 12rem;
+    padding: 6px 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--entry);
+    color: var(--primary);
+    font: inherit;
+    font-size: 15px;
+}
+.site-search input:focus { outline: 2px solid var(--secondary); outline-offset: 1px; }
+.site-search-results {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 6px);
+    width: min(26rem, 90vw);
+    max-height: 24rem;
+    overflow: auto;
+    background: var(--entry);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+    z-index: 30;
+}
+.site-search-hit { display: block; padding: 10px 14px; color: var(--primary); border-bottom: 1px solid var(--border); font-size: 15px; line-height: 1.4; }
+.site-search-hit:hover, .site-search-hit:focus { background: var(--code-bg); }
+.site-search-title { display: block; font-weight: 600; }
+.site-search-snippet { display: block; color: var(--secondary); font-size: 14px; }
+.site-search-empty { margin: 0; padding: 10px 14px; color: var(--secondary); font-size: 15px; }
+
+/* -- Main column ------------------------------------------------------------------------ */
+.main {
+    position: relative;
+    min-height: calc(100vh - var(--header-height) - var(--footer-height));
+    max-width: calc(var(--main-width) + var(--gap) * 2);
+    margin: auto;
+    padding: var(--gap);
+}
+.page-header h1 { font-size: 40px; margin: 0 0 var(--gap); color: var(--primary); }
+
+/* Entries: the card list PaperMod is known for. The whole card is the link. */
+.post-entry {
+    position: relative;
+    margin-bottom: var(--gap);
+    padding: var(--gap);
+    background: var(--entry);
+    border-radius: var(--radius);
+    transition: transform 0.1s;
+    border: 1px solid var(--border);
+}
+.post-entry:active { transform: scale(0.96); }
+.entry-header h2 { margin: 0; font-size: 24px; line-height: 1.3; color: var(--primary); }
+.entry-content { margin: 8px 0; color: var(--secondary); font-size: 14px; line-height: 1.6; }
+.entry-content p { margin: 0; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
+.entry-footer { color: var(--secondary); font-size: 13px; }
+.entry-link { position: absolute; inset: 0; }
+.post-list-empty { color: var(--secondary); }
+
+/* A single post. */
+.post-single .post-header { margin-bottom: var(--content-gap); }
+.post-title { margin: 0 0 8px; font-size: 40px; line-height: 1.2; color: var(--primary); }
+.post-title .wikilink { color: inherit; border: 0; }
+.post-meta { color: var(--secondary); font-size: 14px; display: flex; flex-wrap: wrap; gap: 6px; }
+.home-info { margin-bottom: var(--gap); }
+.post-content { color: var(--content); }
+.post-content h1, .post-content h2, .post-content h3, .post-content h4 { margin: 24px 0 16px; color: var(--primary); }
+.post-content h2 { font-size: 32px; }
+.post-content h3 { font-size: 24px; }
+.post-content h4 { font-size: 16px; }
+.post-content a:not(.wikilink):not(.wikilink-missing) { box-shadow: 0 1px 0 var(--primary); }
+.post-content a:not(.wikilink):not(.wikilink-missing):hover { box-shadow: 0 2px 0 var(--primary); }
+.post-content p { margin: 16px 0; }
+.post-content ul, .post-content ol { padding-left: 20px; }
+.post-content li { margin-top: 5px; }
+.post-content img { margin: 1rem 0; }
+.post-content figure, .post-content .diagram { margin: 1rem auto; text-align: center; }
+.post-content .diagram svg { max-width: 100%; height: auto; }
+.post-content blockquote { margin: 20px 0; padding: 0 14px; border-left: 3px solid var(--primary); color: var(--secondary); }
+.post-content hr { margin: 30px 0; height: 2px; background: var(--tertiary); border: 0; }
+.post-content table { margin: 20px 0; width: 100%; border-collapse: collapse; font-size: 16px; }
+.post-content th, .post-content td { padding: 6px 12px; border: 1px solid var(--border); text-align: left; }
+.post-content th { background: var(--code-bg); color: var(--primary); }
+.post-content code { padding: 2px 6px; background: var(--code-bg); border-radius: 2px; font-family: var(--font-mono); font-size: 0.78em; line-height: 1.5; }
+.post-content pre {
+    position: relative;
+    margin: 20px 0;
+    padding: 12px 14px;
+    background: var(--code-block-bg);
+    color: rgb(213, 213, 214);
+    border-radius: var(--radius);
+    overflow-x: auto;
+    font-family: var(--font-mono);
+    font-size: 0.78em;
+    line-height: 1.6;
+}
+.post-content pre code { padding: 0; background: none; color: inherit; font-size: inherit; }
+.math-block { overflow-x: auto; margin: 1rem 0; }
+mark { background: var(--mark); color: inherit; padding: 0 0.15em; border-radius: 2px; }
+
+/* Wikilinks and tasks, as the editor shows them. */
+a.wikilink { color: var(--primary); box-shadow: 0 1px 0 var(--tertiary); }
+a.wikilink:hover { box-shadow: 0 1px 0 var(--primary); }
+a.wikilink-missing { color: var(--missing); box-shadow: 0 1px 0 var(--missing); }
+li.task { list-style: none; margin-left: -20px; }
+li.task input[type="checkbox"] { margin-right: 6px; vertical-align: -0.1em; }
+li.task.done { color: var(--secondary); }
+.task-tag { display: inline-block; font-size: 0.75em; font-weight: 600; padding: 0 8px; border-radius: 999px; background: var(--code-bg); color: var(--primary); margin-right: 4px; vertical-align: 0.1em; }
+.task-tag.priority-1 { background: #fee2e2; color: #991b1b; }
+.task-tag.priority-2 { background: #ffedd5; color: #9a3412; }
+.task-tag.priority-3 { background: #fef9c3; color: #854d0e; }
+.task-tag.cancelled { text-decoration: line-through; }
+
+/* Table of contents, the PaperMod box. */
+.toc { margin: 0 0 40px; padding: 0 2px; border: 1px solid var(--border); background: var(--code-bg); border-radius: var(--radius); }
+.toc details summary { cursor: pointer; margin-inline-start: 20px; padding: 12px 0; font-weight: 500; color: var(--primary); }
+.toc .inner { margin: 0 0 12px 20px; padding: 0 15px; font-size: 16px; }
+.toc ul { list-style: none; margin: 0; padding: 0; }
+.toc li { margin: 4px 0; }
+.toc li.toc-level-3 { padding-left: 1rem; }
+.toc li.toc-level-4 { padding-left: 2rem; }
+.toc a { color: var(--content); }
+.toc a:hover { color: var(--primary); }
+
+/* Previous / next, PaperMod's paginav. */
+.post-footer { margin-top: 56px; }
+.paginav { display: flex; gap: 8px; margin: 10px 0; border: 1px solid var(--border); background: var(--code-bg); border-radius: var(--radius); line-height: 30px; }
+.paginav a { flex: 1; padding: 14px 16px; color: var(--primary); }
+.paginav .title { font-size: 13px; letter-spacing: 1px; text-transform: uppercase; color: var(--secondary); }
+.paginav .next { text-align: right; margin-left: auto; }
+
+/* Linked references, beneath the content. */
+.backlinks { max-width: var(--main-width); margin: 40px auto 0; padding-top: 20px; border-top: 1px solid var(--border); }
+.backlinks h2 { font-size: 20px; color: var(--primary); margin: 0 0 12px; }
+.backlink-list { list-style: none; padding: 0; margin: 0; }
+.backlink-source { margin: 0 0 14px; }
+.backlink-source > a { font-weight: 600; color: var(--primary); }
+.backlink-source ul { list-style: none; padding-left: 14px; margin: 4px 0 0; border-left: 2px solid var(--border); }
+.backlink-context { color: var(--secondary); font-size: 15px; margin: 2px 0; }
+
+/* Archive. */
+.archive-entry { position: relative; margin-bottom: 16px; padding: 24px; background: var(--entry); border: 1px solid var(--border); border-radius: var(--radius); }
+.archive-entry-title { margin: 0 0 6px; font-size: 20px; }
+.archive-entry-title a { color: var(--primary); }
+.archive-entry-content { color: var(--secondary); font-size: 14px; }
+/* The contents page of a docs site: the outline as a tree, then any page it leaves out. */
+.page-contents { padding: 24px; background: var(--entry); border: 1px solid var(--border); border-radius: var(--radius); }
+.page-index-list { list-style: none; margin: 0; padding: 0; }
+.page-index-list .page-index-list { padding-left: 20px; margin-top: 6px; }
+.page-index-list li { margin: 6px 0; }
+.page-index-list a { color: var(--primary); }
+.page-index-group-label { color: var(--secondary); font-weight: 600; }
+.page-index-other { margin: 24px 0 8px; font-size: 18px; }
+.archive-year-header { margin: 24px 0 12px; font-size: 32px; color: var(--secondary); }
+.all-posts { margin: 8px 0 0; }
+.all-posts a { color: var(--primary); }
+.not-found { text-align: center; margin: 80px 0; }
+.not-found h1 { font-size: 160px; font-weight: 700; line-height: 1; color: var(--primary); }
+
+/* Footer and the top link. */
+.footer {
+    max-width: calc(var(--main-width) + var(--gap) * 2);
+    margin: auto;
+    padding: calc((var(--footer-height) - 36px) / 2) var(--gap);
+    color: var(--secondary);
+    font-size: 12px;
+    text-align: center;
+    line-height: 36px;
+}
+.footer span { margin-inline-start: 1px; }
+.footer a { color: inherit; border-bottom: 1px solid var(--secondary); }
+.top-link {
+    position: fixed;
+    bottom: 60px;
+    right: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: var(--tertiary);
+    color: var(--secondary);
+    font-size: 22px;
+    line-height: 1;
+    transition: opacity 0.2s;
+}
+.top-link:hover { color: var(--primary); }
+
+/* Code tokens (lezer classHighlighter names) on the dark code block. */
+.tok-keyword { color: #4ec9b0; }
+.tok-string, .tok-string2 { color: #b5cea8; }
+.tok-comment, .tok-lineComment, .tok-blockComment { color: #7f848e; font-style: italic; }
+.tok-number, .tok-bool, .tok-null, .tok-atom { color: #d19a66; }
+.tok-function, .tok-definition.tok-variableName { color: #dcdcaa; }
+.tok-typeName, .tok-className, .tok-namespace { color: #e5c07b; }
+.tok-operator, .tok-punctuation { color: #abb2bf; }
+.tok-propertyName, .tok-attributeName { color: #61afef; }
+.tok-tagName { color: #98c379; }
+.tok-invalid { color: #f87171; }
+
+/* -- Small screens ---------------------------------------------------------------------- */
+@media (max-width: 768px) {
+    :root { --gap: 14px; }
+    .nav { padding: 0 var(--gap); }
+    #menu { width: 100%; height: 44px; line-height: 44px; }
+    .menu-search { margin-left: auto; }
+    .site-search input { width: 9rem; }
+    .post-title, .page-header h1 { font-size: 30px; }
+    .post-content h2 { font-size: 26px; }
+    .not-found h1 { font-size: 100px; }
+    .top-link { right: 16px; bottom: 30px; }
+}
+@media (max-width: 500px) {
+    .nav { height: auto; padding-bottom: 8px; }
+    .menu-search { flex-basis: 100%; }
+    .site-search input { width: 100%; }
+}
+.nav-toggle, .nav-backdrop { display: none; }

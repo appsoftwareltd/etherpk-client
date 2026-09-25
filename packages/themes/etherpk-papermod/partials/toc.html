@@ -1,0 +1,10 @@
+            {{#page.hasToc}}
+            <div class="toc">
+                <details>
+                    <summary accesskey="c">Table of contents</summary>
+                    <div class="inner"><ul>
+                        {{#page.toc}}<li class="toc-level-{{level}}"><a href="#{{id}}">{{text}}</a></li>{{/page.toc}}
+                    </ul></div>
+                </details>
+            </div>
+            {{/page.hasToc}}

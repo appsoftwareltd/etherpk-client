@@ -1,0 +1,406 @@
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+/* Broadened when components and pages moved into the package: Tailwind v4 does not scan
+   node_modules by default, and the workspace package is injected there. */
+@source "../../../packages/shared/src";
+
+/* Use class-based dark mode (.dark on <html>) instead of @media (prefers-color-scheme) */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ── Compass-inspired design tokens ─────────────────────────────────────────── */
+@theme {
+    --font-sans: "Inter", system-ui, -apple-system, sans-serif;
+
+    /* Tighter type scale (matches Compass) */
+    --text-3xl: 2rem;
+    --text-4xl: 2.5rem;
+    --text-5xl: 3rem;
+    --text-6xl: 3.75rem;
+    --text-7xl: 4.5rem;
+
+    /* ── Agent Blue ─────────────────────────────────────────────────────────
+       VS Code blue (#007ACC) as the primary, with a full scale for
+       light/dark backgrounds, text, hover and inactive states.
+    ─────────────────────────────────────────────────────────────────────── */
+    --color-agent-50: #E3F2FF;
+    --color-agent-100: #C2E3FF;
+    --color-agent-200: #94CCFF;
+    --color-agent-300: #5AB3FF;
+    --color-agent-400: #1E98F5;
+    --color-agent-500: #007ACC;
+    /* VS Code blue — primary */
+    --color-agent-600: #005F9E;
+    /* hover / pressed */
+    --color-agent-700: #00467A;
+    /* emphasis / strong */
+    --color-agent-800: #002E4F;
+    --color-agent-900: #001A2E;
+    /* dark-mode avatar background */
+    --color-agent-950: #000D17;
+}
+
+html {
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    scroll-padding-top: 4rem;
+    color-scheme: light;
+    background: #ffffff;
+    color: #374151;
+}
+
+html.dark {
+    color-scheme: dark;
+    background: #111114;
+    color: #d4d4d8;
+}
+
+body {
+    min-height: 100vh;
+    background: transparent;
+    color: inherit;
+}
+
+button:not(:disabled),
+[role="button"]:not(:disabled) {
+    cursor: pointer;
+}
+
+/* A native <select>'s option list takes its colours from the select's own background and
+   text colour, not from the page's color-scheme. The app's fields use a translucent white
+   background in dark mode (dark:bg-white/10), which composites to near-white in that list and
+   left dark-mode options as dark text on a light strip, with the highlighted one unreadable
+   (2026-09-19). A solid dark background on the select alone fixes the list; unlayered so it
+   ranks above the utility, and dark mode only. */
+html.dark select {
+    background-color: #1c1c20;
+}
+
+/* Site-wide link colour (light blue, both modes). Placed in the `base` layer so
+   it ranks BELOW Tailwind's `utilities` layer — any explicit text-colour utility
+   (text-white, text-gray-600, …) wins in every state, including :hover. This keeps
+   chrome links (header logo/nav, footer) and button-styled anchors on their own
+   theme colours; only plain, unstyled content links pick up the accent.
+   NB: an unlayered rule here would override ALL utilities regardless of specificity,
+   since unlayered styles beat any cascade layer. */
+@layer base {
+    a {
+        color: var(--gk-accent);
+    }
+    a:hover {
+        color: var(--gk-accent-hover);
+    }
+}
+
+:root {
+    /* Site fonts, exposed as tokens so the editor (CodeMirror) can match the rest of the app. */
+    --gk-sans: var(--font-sans);
+    --gk-mono: ui-monospace, "SFMono-Regular", "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+
+    --gk-surface-0: #ffffff;
+    --gk-surface-1: #f9fafb;
+    --gk-surface-2: #e5e7eb;
+    /* A ==highlight== wash: marker-pen amber, translucent so selection and links show through. */
+    --gk-highlight-bg: rgba(250, 204, 21, 0.5);
+    --gk-surface-3: #111827;
+    --gk-surface-4: #1f2937;
+    /* Light-blue link colour (matches asmusictheory.com), used site-wide. */
+    --gk-accent: #1f9cf0;
+    --gk-accent-hover: #0f8be0;
+    /* Editor text selection: a pale tint of the accent. Opaque on purpose: the selection is drawn as
+       overlapping per-line rectangles plus a padding shadow, and a translucent colour compounds
+       where they overlap into darker seams. Light: the accent at 20% over the surface. */
+    --gk-selection: #d2ebfc;
+    --gk-text-strong: #030712;
+    --gk-text-default: #374151;
+    --gk-text-muted: #6b7280;
+    --gk-text-subtle: #9ca3af;
+    --gk-border-soft: rgba(3, 7, 18, 0.08);
+    --gk-border-strong: rgba(3, 7, 18, 0.16);
+    --gk-shadow: 0 18px 45px rgba(3, 7, 18, 0.12);
+    --gk-danger-surface: rgba(239, 68, 68, 0.12);
+    --gk-success-surface: rgba(34, 197, 94, 0.14);
+    --gk-info-surface: rgba(59, 130, 246, 0.14);
+    --gk-warning-surface: rgba(245, 158, 11, 0.15);
+}
+
+html.dark {
+    --gk-surface-0: #18181b;
+    --gk-surface-1: #1c1c20;
+    --gk-surface-2: #27272a;
+    /* A ==highlight== wash: amber kept translucent so the text under it stays its own colour. */
+    --gk-highlight-bg: rgba(250, 204, 21, 0.3);
+    --gk-surface-3: #18181b;
+    --gk-surface-4: #27272a;
+    --gk-accent: #5ab3ff;
+    --gk-accent-hover: #7cc3ff;
+    /* The accent at 30% over the dark surface, flattened to an opaque tint (see the light value). */
+    --gk-selection: #2c465f;
+    --gk-text-strong: #fafafa;
+    --gk-text-default: #d4d4d8;
+    --gk-text-muted: #a1a1aa;
+    --gk-text-subtle: #71717a;
+    --gk-border-soft: rgba(161, 161, 170, 0.16);
+    --gk-border-strong: rgba(161, 161, 170, 0.28);
+    --gk-shadow: 0 18px 45px rgba(0, 0, 0, 0.45);
+}
+
+html.dark [class~="bg-white"]:not([class*="dark:bg-"]) {
+    background-color: var(--gk-surface-0) !important;
+}
+
+html.dark [class~="bg-gray-50"]:not([class*="dark:bg-"]) {
+    background-color: var(--gk-surface-1) !important;
+}
+
+html.dark [class~="bg-gray-100"]:not([class*="dark:bg-"]) {
+    background-color: var(--gk-surface-2) !important;
+}
+
+html.dark [class~="bg-gray-200/70"]:not([class*="dark:bg-"]) {
+    background-color: rgba(39, 39, 42, 0.78) !important;
+}
+
+html.dark [class~="bg-gray-950"]:not([class*="dark:bg-"]) {
+    background-color: var(--gk-surface-3) !important;
+}
+
+html.dark [class~="bg-gray-800"]:not([class*="dark:bg-"]) {
+    background-color: var(--gk-surface-4) !important;
+}
+
+html.dark [class~="bg-red-50"] {
+    background-color: var(--gk-danger-surface) !important;
+}
+
+html.dark [class~="bg-red-100"] {
+    background-color: rgba(239, 68, 68, 0.18) !important;
+}
+
+html.dark [class~="bg-green-50"] {
+    background-color: var(--gk-success-surface) !important;
+}
+
+html.dark [class~="bg-blue-50"] {
+    background-color: var(--gk-info-surface) !important;
+}
+
+html.dark [class~="bg-blue-100"] {
+    background-color: rgba(59, 130, 246, 0.2) !important;
+}
+
+html.dark [class~="bg-purple-50"] {
+    background-color: rgba(168, 85, 247, 0.18) !important;
+}
+
+html.dark [class~="bg-amber-50"] {
+    background-color: var(--gk-warning-surface) !important;
+}
+
+html.dark [class~="bg-yellow-100"] {
+    background-color: rgba(245, 158, 11, 0.18) !important;
+}
+
+html.dark [class~="bg-orange-100"] {
+    background-color: rgba(249, 115, 22, 0.18) !important;
+}
+
+html.dark [class~="text-gray-950"]:not([class*="dark:text-"]) {
+    color: var(--gk-text-strong) !important;
+}
+
+html.dark [class~="text-gray-900"]:not([class*="dark:text-"]) {
+    color: var(--gk-text-default) !important;
+}
+
+html.dark [class~="text-gray-700"]:not([class*="dark:text-"]),
+html.dark [class~="text-gray-600"]:not([class*="dark:text-"]) {
+    color: var(--gk-text-muted) !important;
+}
+
+html.dark [class~="text-gray-500"]:not([class*="dark:text-"]),
+html.dark [class~="text-gray-400"]:not([class*="dark:text-"]) {
+    color: var(--gk-text-subtle) !important;
+}
+
+html.dark [class~="text-red-700"],
+html.dark [class~="text-red-600"] {
+    color: #fca5a5 !important;
+}
+
+html.dark [class~="text-green-700"] {
+    color: #86efac !important;
+}
+
+html.dark [class~="text-blue-700"],
+html.dark [class~="text-blue-600"] {
+    color: #93c5fd !important;
+}
+
+html.dark [class~="text-purple-700"] {
+    color: #d8b4fe !important;
+}
+
+html.dark [class~="text-yellow-700"],
+html.dark [class~="text-orange-700"],
+html.dark [class~="text-amber-700"] {
+    color: #fcd34d !important;
+}
+
+html.dark [class~="border-gray-100"],
+html.dark [class~="border-gray-200"],
+html.dark [class~="border-gray-950/5"],
+html.dark [class~="border-gray-950/8"] {
+    border-color: var(--gk-border-soft) !important;
+}
+
+html.dark [class~="border-gray-300"],
+html.dark [class~="border-gray-950/15"] {
+    border-color: var(--gk-border-strong) !important;
+}
+
+html.dark [class~="border-red-200"] {
+    border-color: rgba(248, 113, 113, 0.35) !important;
+}
+
+html.dark [class~="border-red-300"] {
+    border-color: rgba(248, 113, 113, 0.45) !important;
+}
+
+html.dark [class~="border-green-200"] {
+    border-color: rgba(74, 222, 128, 0.35) !important;
+}
+
+html.dark [class~="border-green-300"] {
+    border-color: rgba(74, 222, 128, 0.45) !important;
+}
+
+html.dark [class~="shadow-sm"],
+html.dark [class~="shadow-lg"],
+html.dark [class~="shadow-xl"],
+html.dark [class~="shadow-2xl"] {
+    box-shadow: var(--gk-shadow) !important;
+}
+
+html.dark [class~="hover:bg-gray-50"]:hover:not([class*="dark:hover:bg-"]) {
+    background-color: var(--gk-surface-1) !important;
+}
+
+html.dark [class~="hover:bg-gray-100"]:hover:not([class*="dark:hover:bg-"]) {
+    background-color: var(--gk-surface-2) !important;
+}
+
+html.dark [class~="hover:bg-gray-700"]:hover:not([class*="dark:hover:bg-"]) {
+    background-color: #334155 !important;
+}
+
+html.dark [class~="hover:bg-gray-800"]:hover:not([class*="dark:hover:bg-"]) {
+    background-color: #243244 !important;
+}
+
+html.dark [class~="hover:text-gray-950"]:hover:not([class*="dark:hover:text-"]),
+html.dark [class~="hover:text-gray-700"]:hover:not([class*="dark:hover:text-"]) {
+    color: var(--gk-text-strong) !important;
+}
+
+html.dark [class~="hover:text-red-600"]:hover {
+    color: #fca5a5 !important;
+}
+
+html.dark [class~="hover:bg-red-50"]:hover {
+    background-color: rgba(239, 68, 68, 0.14) !important;
+}
+
+html.dark [class~="divide-gray-100"]> :not([hidden])~ :not([hidden]),
+html.dark [class~="divide-gray-950/5"]> :not([hidden])~ :not([hidden]) {
+    border-color: var(--gk-border-soft) !important;
+}
+
+html.dark [class~="ring-gray-950/5"],
+html.dark [class~="ring-gray-950/10"],
+html.dark [class~="ring-gray-950/15"] {
+    --tw-ring-color: var(--gk-border-strong) !important;
+}
+
+html.dark [class~="focus:border-gray-950"]:focus,
+html.dark [class~="focus:ring-gray-950"]:focus {
+    border-color: rgba(96, 165, 250, 0.85) !important;
+    --tw-ring-color: rgba(96, 165, 250, 0.85) !important;
+}
+
+html.dark [class~="disabled:bg-gray-50"]:disabled {
+    background-color: var(--gk-surface-1) !important;
+}
+
+html.dark [class~="placeholder:text-gray-400"]::placeholder {
+    color: var(--gk-text-subtle) !important;
+}
+
+/* ── Board page: make mobile header fully opaque ────────────────────────────
+   The board page sets data-board-page on the mobile header so CSS can override
+   the translucent bg-white/90 / dark:bg-[#18181b]/90.  Using CSS (not JS)
+   ensures the correct colour applies instantly when the user toggles theme.
+─────────────────────────────────────────────────────────────────────────── */
+[data-testid="app-mobile-header"][data-board-page] {
+    background-color: #ffffff !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+}
+
+html.dark [data-testid="app-mobile-header"][data-board-page] {
+    background-color: #18181b !important;
+}
+
+html.dark [class~="from-gray-50/80"] {
+    --tw-gradient-from: rgba(24, 24, 27, 0.75) var(--tw-gradient-from-position) !important;
+    --tw-gradient-to: rgba(24, 24, 27, 0) var(--tw-gradient-to-position) !important;
+}
+
+html.dark [class~="to-white"] {
+    --tw-gradient-to: rgba(17, 17, 20, 1) var(--tw-gradient-to-position) !important;
+}
+
+/* ── Prose (typography) dark‑mode overrides ─────────────────────────────────
+   Tailwind's default gray palette is blue-tinted.  Override code/pre/blockquote
+   backgrounds inside .prose to use the neutral zinc-based design tokens.
+─────────────────────────────────────────────────────────────────────────── */
+html.dark .prose code {
+    background-color: rgba(255, 255, 255, 0.1) !important;
+    color: var(--gk-text-default) !important;
+}
+
+html.dark .prose pre {
+    background-color: rgba(255, 255, 255, 0.05) !important;
+    color: var(--gk-text-default) !important;
+}
+
+html.dark .prose pre code {
+    background-color: transparent !important;
+}
+
+html.dark .prose blockquote {
+    border-color: var(--gk-border-strong) !important;
+}
+
+/* ── ProseMirror collaborative editor ──────────────────────────────────────
+   Override default prose styles that leak through in the TipTap editor.
+   Base text color matches other dark-mode inputs (gray-100 / #f3f4f6).
+─────────────────────────────────────────────────────────────────────────── */
+html.dark .ProseMirror {
+    color: #f3f4f6 !important;
+    /* gray-100 — same as title input */
+}
+
+html.dark .ProseMirror code {
+    background-color: rgba(255, 255, 255, 0.1) !important;
+    color: var(--gk-text-default) !important;
+}
+
+html.dark .ProseMirror pre {
+    background-color: rgba(255, 255, 255, 0.05) !important;
+    color: var(--gk-text-default) !important;
+}
+
+html.dark .ProseMirror pre code {
+    background-color: transparent !important;
+}

@@ -1,0 +1,26 @@
+{
+    // Type-checks the headless client together with the client library it bundles. `$lib` is
+    // the same alias the client uses, pointed at the client's source; the two therefore agree
+    // on every type without a package boundary between them (ADR 0072 → packaging).
+    "compilerOptions": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "bundler",
+        "lib": ["ES2023", "DOM", "DOM.Iterable", "WebWorker"],
+        "types": ["node"],
+        "strict": true,
+        "noEmit": true,
+        "esModuleInterop": true,
+        "forceConsistentCasingInFileNames": true,
+        "resolveJsonModule": true,
+        "skipLibCheck": true,
+        "verbatimModuleSyntax": true,
+        "allowImportingTsExtensions": true,
+        "paths": {
+            "$lib/*": ["./../client/src/lib/*"],
+            "$lib": ["./../client/src/lib"]
+        }
+    },
+    "include": ["src/**/*.ts", "src/**/*.d.ts", "vite.config.ts", "vitest.config.ts"],
+    "exclude": ["node_modules", "dist"]
+}

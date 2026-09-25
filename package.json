@@ -1,0 +1,37 @@
+{
+    "name": "etherpk-client",
+    "private": true,
+    "license": "Elastic-2.0",
+    "type": "module",
+    "packageManager": "pnpm@11.5.3",
+    "scripts": {
+        "dev": "pnpm --filter @appsoftwareltd/etherpk-client dev",
+        "build": "pnpm --filter @appsoftwareltd/etherpk-client --filter @appsoftwareltd/etherpk-mcp build",
+        "build:client": "pnpm --filter @appsoftwareltd/etherpk-client build",
+        "build:mcp": "pnpm --filter @appsoftwareltd/etherpk-mcp build",
+        "check": "pnpm -r check",
+        "lint": "eslint .",
+        "test": "pnpm -r test"
+    },
+    "devDependencies": {
+        "@eslint/js": "^9.39.5",
+        "@modelcontextprotocol/sdk": "^1.30.0",
+        "@playwright/test": "^1.59.1",
+        "@types/node": "^25.6.0",
+        "@types/ws": "^8.18.1",
+        "dotenv": "^17.4.1",
+        "eslint": "^9.39.5",
+        "eslint-plugin-svelte": "^3.23.0",
+        "fake-indexeddb": "^6.2.5",
+        "fflate": "0.8.3",
+        "globals": "^15.15.0",
+        "otpauth": "^9.5.0",
+        "postgres": "^3.4.9",
+        "svelte-eslint-parser": "^1.8.1",
+        "typescript": "^6.0.2",
+        "typescript-eslint": "^8.68.0",
+        "uuidv7": "^1.2.1",
+        "ws": "^8.21.0",
+        "yjs": "^13.6.31"
+    }
+}

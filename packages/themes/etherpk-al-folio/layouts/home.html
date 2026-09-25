@@ -1,0 +1,48 @@
+{{> shell-top}}
+        <article class="post about">
+            <header class="post-header">
+                <h1 class="post-title">{{^page.isGeneratedIndex}}{{{page.titleHtml}}}{{/page.isGeneratedIndex}}{{#page.isGeneratedIndex}}{{site.title}}{{/page.isGeneratedIndex}}</h1>
+            </header>
+            {{^page.isGeneratedIndex}}
+            <div class="post-content">
+{{{page.content}}}
+            </div>
+            {{/page.isGeneratedIndex}}
+            {{#page.isGeneratedIndex}}{{^site.isBlog}}
+            <div class="post-content page-contents">
+{{{page.content}}}
+            </div>
+            {{/site.isBlog}}{{/page.isGeneratedIndex}}
+            {{#site.hasJournals}}
+            <section class="news">
+                <h2><a href="journal.html">news</a></h2>
+                <table class="news-table">
+                    {{#site.journals}}
+                    <tr>
+                        <th scope="row"><time datetime="{{date}}">{{date}}</time></th>
+                        <td><a href="{{url}}">{{title}}</a>{{#excerpt}} <span class="news-excerpt">{{excerpt}}</span>{{/excerpt}}</td>
+                    </tr>
+                    {{/site.journals}}
+                </table>
+            </section>
+            {{/site.hasJournals}}
+            {{#site.isBlog}}
+            <section class="posts">
+                <h2>posts</h2>
+                {{#site.hasPosts}}
+                <ul class="post-list">
+                    {{#site.recentPosts}}
+                    <li>
+                        <h3><a href="{{url}}">{{title}}</a></h3>
+                        {{#excerpt}}<p>{{excerpt}}</p>{{/excerpt}}
+                        <p class="post-meta"><time datetime="{{date}}">{{date}}</time></p>
+                    </li>
+                    {{/site.recentPosts}}
+                </ul>
+                <p class="all-posts"><a href="{{site.postsUrl}}">all {{site.postCount}} posts →</a></p>
+                {{/site.hasPosts}}
+                {{^site.hasPosts}}<p class="post-list-empty">No dated documents are published yet. A journal entry is dated by its day; a page by a <code>date:</code> line in its frontmatter.</p>{{/site.hasPosts}}
+            </section>
+            {{/site.isBlog}}
+        </article>
+{{> shell-bottom}}

@@ -1,0 +1,6 @@
+            <article class="post-entry">
+                <header class="entry-header"><h2>{{title}}</h2></header>
+                {{#excerpt}}<div class="entry-content"><p>{{excerpt}}</p></div>{{/excerpt}}
+                <footer class="entry-footer">{{#date}}<time datetime="{{date}}">{{date}}</time>{{/date}}{{^date}}<span>{{kind}}</span>{{/date}}</footer>
+                <a class="entry-link" href="{{url}}" aria-label="{{title}}"></a>
+            </article>

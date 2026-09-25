@@ -1,0 +1,15 @@
+            {{#page.hasBacklinks}}
+            <section class="backlinks" aria-labelledby="backlinks-heading">
+                <h2 id="backlinks-heading">Linked references</h2>
+                <ul class="backlink-list">
+                    {{#page.backlinks}}
+                    <li class="backlink-source">
+                        <a href="{{url}}">{{title}}</a>
+                        <ul>
+                            {{#refs}}<li class="backlink-context">{{{contextHtml}}}</li>{{/refs}}
+                        </ul>
+                    </li>
+                    {{/page.backlinks}}
+                </ul>
+            </section>
+            {{/page.hasBacklinks}}

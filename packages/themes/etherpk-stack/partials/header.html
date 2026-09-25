@@ -1,0 +1,7 @@
+            <header class="site-info">
+                <a class="site-title" href="index.html">
+                    <span class="site-avatar">{{> logo}}</span>
+                    <span class="site-name">{{site.title}}</span>
+                </a>
+                {{#page.isHome}}{{#page.excerpt}}<p class="site-description">{{page.excerpt}}</p>{{/page.excerpt}}{{/page.isHome}}
+            </header>

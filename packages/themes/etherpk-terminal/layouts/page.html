@@ -1,0 +1,14 @@
+{{> shell-top}}
+        <article class="post">
+            <h1 class="post-title">{{{page.titleHtml}}}</h1>
+{{> post-meta}}
+{{> toc}}
+            <div class="post-content">
+{{{page.content}}}
+            </div>
+            <nav class="pagination" aria-label="Neighbouring posts">
+                {{#page.older}}<a class="button pagination__prev" href="{{url}}"><span class="button__icon">←</span><span class="button__text">{{title}}</span></a>{{/page.older}}
+                {{#page.newer}}<a class="button pagination__next" href="{{url}}"><span class="button__text">{{title}}</span><span class="button__icon">→</span></a>{{/page.newer}}
+            </nav>
+        </article>
+{{> shell-bottom}}

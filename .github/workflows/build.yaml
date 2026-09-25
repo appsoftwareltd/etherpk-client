@@ -1,0 +1,270 @@
+name: Build and release
+
+# Every push to main publishes `edge` images. A push whose apps/client/package.json version has no
+# `v<version>` tag yet is a release: versioned images, the Headless Client on npm, then the tag and
+# a GitHub Release with the Node bundle. Each publishing step can run twice without harm, and the
+# tag is created last, so a release that fails part-way completes on a re-run or the next push.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.ref }}
+  # A release run publishes to three places; cancelling one half-way helps nobody.
+  cancel-in-progress: false
+
+env:
+  IMAGE: ghcr.io/appsoftwareltd/etherpk-client
+
+jobs:
+  verify:
+    name: Type check, lint, unit tests and build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Type check
+        run: pnpm check
+      - name: Lint
+        run: pnpm lint
+      - name: Unit tests
+        run: pnpm test
+      - name: Build the Client and the Headless Client
+        run: pnpm build
+
+  version:
+    name: Decide whether this commit is a release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.decide.outputs.version }}
+      release: ${{ steps.decide.outputs.release }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: decide
+        env:
+          IS_MAIN_PUSH: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        run: |
+          set -euo pipefail
+          version=$(node -p "require('./apps/client/package.json').version")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if [ "$IS_MAIN_PUSH" = true ] && [ -z "$(git ls-remote --tags origin "refs/tags/v$version")" ]; then
+            echo "release=true" >> "$GITHUB_OUTPUT"
+            echo "v$version has no tag: this push releases it"
+          else
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  image:
+    name: Docker image
+    needs: [verify, version]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    env:
+      PUSH: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+      VERSION: ${{ needs.version.outputs.version }}
+      RELEASE: ${{ needs.version.outputs.release }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        if: env.PUSH == 'true'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Choose the tags
+        id: tags
+        run: |
+          set -euo pipefail
+          tags="${IMAGE}:edge,${IMAGE}:sha-${GITHUB_SHA:0:7}"
+          if [ "$RELEASE" = true ]; then
+            tags="${tags},${IMAGE}:${VERSION},${IMAGE}:${VERSION%.*},${IMAGE}:latest"
+          fi
+          echo "tags=$tags" >> "$GITHUB_OUTPUT"
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/client/Dockerfile
+          # The build context excludes .git, so the commit the image stamps into its page source
+          # arrives as a build argument.
+          build-args: |
+            GIT_COMMIT=${{ github.sha }}
+          push: ${{ env.PUSH == 'true' }}
+          tags: ${{ steps.tags.outputs.tags }}
+          # The source label links the GHCR package to this repository.
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ env.VERSION }}
+            org.opencontainers.image.licenses=Elastic-2.0
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  npm:
+    name: Publish the Headless Client to npm
+    needs: [verify, version]
+    if: needs.version.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # npm trusted publishing: npm exchanges this job's OIDC token for a publish credential, so no
+      # npm token is stored anywhere. npmjs.com must name this repository and this workflow file.
+      id-token: write
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+      - run: pnpm install --frozen-lockfile
+      # Trusted publishing needs npm 11.5.1 or later; Node 22 ships npm 10.
+      - run: npm install -g npm@^11.5.1
+      - name: Publish unless this version is already on npm
+        run: |
+          set -euo pipefail
+          if npm view "@appsoftwareltd/etherpk-mcp@${VERSION}" version >/dev/null 2>&1; then
+            echo "@appsoftwareltd/etherpk-mcp@${VERSION} is already on npm"
+            exit 0
+          fi
+          cd apps/mcp
+          # pnpm packs (running prepack, which builds, and rewriting workspace: ranges); npm
+          # publishes, because npm performs the OIDC exchange.
+          pnpm pack --pack-destination "$RUNNER_TEMP"
+          npm publish "$RUNNER_TEMP/appsoftwareltd-etherpk-mcp-${VERSION}.tgz" --access public
+
+  release:
+    name: Tag and GitHub Release with the Node bundle
+    needs: [version, image, npm]
+    if: needs.version.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      BUNDLE_STEM: etherpk-client-${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build the Client
+        env:
+          GIT_COMMIT: ${{ github.sha }}
+        run: pnpm build:client
+
+      # Hoisted, unlike the image, because this bundle is unpacked on other people's machines:
+      # pnpm's virtual store puts peer hashes in directory names and pushes the deepest path past
+      # what Windows' 260-character limit leaves room for.
+      - name: Resolve production dependencies
+        run: pnpm --filter @appsoftwareltd/etherpk-client deploy --prod --config.node-linker=hoisted deploy-out
+
+      # pnpm deploy copies the whole package directory, so the bundle names what goes in rather
+      # than deleting what must not. This mirrors the runtime stage of apps/client/Dockerfile.
+      - name: Assemble the bundle
+        run: |
+          set -euo pipefail
+          stage=stage/etherpk-client
+          mkdir -p "$stage"
+          cp -r deploy-out/build "$stage/build"
+          cp -r deploy-out/node_modules "$stage/node_modules"
+          cp deploy-out/package.json "$stage/package.json"
+          node scripts/prune-build-tooling.mjs "$stage"
+          # Every symlink is a CLI shim under .bin that the serving path never runs, and Windows
+          # extraction warns about or refuses them.
+          find "$stage" -name .bin -type d -prune -exec rm -rf {} +
+          du -sh "$stage"
+
+      - name: Smoke test the bundle
+        run: |
+          set -euo pipefail
+          cd stage/etherpk-client
+          HOST=127.0.0.1 PORT=3000 node build &
+          server_pid=$!
+          trap 'kill $server_pid 2>/dev/null || true' EXIT
+          for _ in $(seq 1 30); do
+            if curl -fsS -o /dev/null http://127.0.0.1:3000/graphs; then
+              echo "Bundle serves /graphs"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Bundle failed to serve /graphs within 30s" >&2
+          exit 1
+
+      # Model the whole path a Windows user ends up with: an ordinary destination such as
+      # 'C:\Users\<a long username>\Downloads\', then the etherpk-client folder the tarball
+      # expands into, then the deepest file.
+      - name: Guard the Windows path budget
+        run: |
+          set -euo pipefail
+          destination=40
+          deepest=$(cd stage && find etherpk-client -printf '%p\n' | awk '{ if (length > m) m = length } END { print m + 0 }')
+          total=$(( destination + deepest ))
+          echo "destination ${destination} + deepest ${deepest} = ${total} of Windows' 260"
+          if [ "$total" -gt 240 ]; then
+            echo "Refusing to publish: ${total} characters leaves too little of Windows' 260-character limit." >&2
+            ( cd stage && find etherpk-client -printf '%p\n' | awk -v k=$(( 240 - destination )) '{ if (length > k) print length, $0 }' | sort -rn ) >&2
+            exit 1
+          fi
+
+      - name: Guard against symlinks and secrets
+        run: |
+          set -euo pipefail
+          links=$(find stage/etherpk-client -type l)
+          secrets=$(find stage/etherpk-client -name '.env*' -o -name '*.sops.yaml')
+          if [ -n "$links$secrets" ]; then
+            echo "Refusing to publish: the bundle contains symlinks or environment files" >&2
+            echo "$links $secrets" >&2
+            exit 1
+          fi
+
+      - name: Pack
+        run: tar czf "${BUNDLE_STEM}.tar.gz" -C stage etherpk-client
+
+      # The notes are the change lists of the exports since the previous release, without the
+      # trailers that tie each export to its private commit.
+      - name: Write the release notes
+        run: |
+          set -euo pipefail
+          previous=$(git describe --tags --abbrev=0 --match 'v*' HEAD 2>/dev/null || true)
+          range=${previous:+${previous}..}HEAD
+          {
+            echo "The Client and the Headless Client (\`@appsoftwareltd/etherpk-mcp@${VERSION}\`) at ${VERSION}."
+            echo
+            echo "Run it with \`docker run -p 3000:3000 ${IMAGE}:${VERSION}\`, or unpack \`${BUNDLE_STEM}.tar.gz\` and run \`node build\` inside it (Node.js 22 or later)."
+            echo
+            git log --format='%b' "$range" | grep -vE '^(GitOrigin-RevId|Co-authored-by):|^Changes from the private repository:|^$' || true
+          } > notes.md
+          cat notes.md
+
+      - name: Create the tag and the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release create "v${VERSION}" "${BUNDLE_STEM}.tar.gz" \
+            --target "$GITHUB_SHA" --title "v${VERSION}" --notes-file notes.md

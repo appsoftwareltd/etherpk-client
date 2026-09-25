@@ -1,0 +1,18 @@
+{{> shell-top}}
+        <article class="post-single">
+            <header class="post-header">
+                <h1 class="post-title">{{{page.titleHtml}}}</h1>
+{{> post-meta}}
+            </header>
+{{> toc}}
+            <div class="post-content">
+{{{page.content}}}
+            </div>
+            <footer class="post-footer">
+                <nav class="paginav" aria-label="Neighbouring posts">
+                    {{#page.older}}<a class="prev" href="{{url}}"><span class="title">« Prev</span><br><span>{{title}}</span></a>{{/page.older}}
+                    {{#page.newer}}<a class="next" href="{{url}}"><span class="title">Next »</span><br><span>{{title}}</span></a>{{/page.newer}}
+                </nav>
+            </footer>
+        </article>
+{{> shell-bottom}}

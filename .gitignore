@@ -1,0 +1,69 @@
+# Dependencies
+node_modules/
+
+# Build output
+**/build/
+# The Headless Client's Vite bundle (apps/mcp), built by CI and by the e2e spec that drives it.
+apps/mcp/dist/
+**/.svelte-kit/
+
+# Environment variables -- never commit secrets.
+# No leading slash, so this matches at any depth: apps/sync/.env, apps/client/.env and
+# apps/corporate/.env are all covered by the one pattern.
+.env
+
+# Extension secrets -- never commit plain text
+.ext-secrets
+
+# Commit (encrypted) secrets
+
+!.env.enc
+
+# Drizzle generated files -- commit everything under drizzle/ including meta/_journal.json.
+# The journal is required by drizzle-orm/migrator at runtime; without it the container fails to start.
+
+# Editor
+.vscode/*.log
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Docker volumes
+pgdata/
+
+# Playwright
+
+.playwright-mcp
+
+# Agent test data
+
+.agenttest
+
+# EtherPK extension local state (managed by extension, always ignored)
+
+.etherpk/
+
+# Agent Kanban state
+.agentkanban/
+
+# Playwright reports / results
+
+playwright-report*/
+test-results/
+tests*/.auth/
+
+# Generated test reports and coverage
+
+reports/
+**/coverage/
+
+# Spell check dictionary sets built by `pnpm dictionaries:build`: about 300 MB of third-party
+# files, published to R2 rather than committed.
+
+.dictionaries/

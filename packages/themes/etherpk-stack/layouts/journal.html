@@ -1,0 +1,18 @@
+{{> shell-top}}
+            <article class="article-page">
+                <header class="article-header">
+                    <span class="article-category">{{page.kind}}</span>
+                    <h1 class="article-title">{{{page.titleHtml}}}</h1>
+                    <div class="article-details">{{#page.hasDate}}<time datetime="{{page.date}}">{{page.date}}</time> · {{/page.hasDate}}<span>{{page.readingMinutes}} minute read</span></div>
+                </header>
+                <div class="article-content">
+{{{page.content}}}
+                </div>
+                <footer class="article-footer">
+                    <nav class="article-pagination" aria-label="Neighbouring posts">
+                        {{#page.older}}<a class="article-card pagination-card" href="{{url}}"><span class="pagination-label">Previous</span><span class="pagination-title">{{title}}</span></a>{{/page.older}}
+                        {{#page.newer}}<a class="article-card pagination-card next" href="{{url}}"><span class="pagination-label">Next</span><span class="pagination-title">{{title}}</span></a>{{/page.newer}}
+                    </nav>
+                </footer>
+            </article>
+{{> shell-bottom}}

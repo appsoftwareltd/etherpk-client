@@ -1,0 +1,24 @@
+{{> shell-top}}
+        {{^page.isGeneratedIndex}}
+        <section class="home-intro">
+            <div class="post-body">
+{{{page.content}}}
+            </div>
+        </section>
+        {{/page.isGeneratedIndex}}
+        <section class="post-list" aria-label="Posts">
+            {{#site.hasPosts}}
+            {{#site.recentPosts}}
+            <article class="post-summary">
+                <h2><a href="{{url}}">{{title}}</a></h2>
+                <time datetime="{{date}}">{{date}}</time>
+                {{#excerpt}}<p>{{excerpt}}</p>{{/excerpt}}
+            </article>
+            {{/site.recentPosts}}
+            <p class="all-posts"><a href="{{site.postsUrl}}">All {{site.postCount}} posts →</a></p>
+            {{/site.hasPosts}}
+            {{^site.hasPosts}}
+            <p class="post-list-empty">No dated documents are published yet. A journal entry is dated by its day; a page by a <code>date:</code> line in its frontmatter.</p>
+            {{/site.hasPosts}}
+        </section>
+{{> shell-bottom}}

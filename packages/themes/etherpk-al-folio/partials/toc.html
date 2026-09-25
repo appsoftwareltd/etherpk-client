@@ -1,0 +1,10 @@
+        {{#page.hasToc}}
+        <nav class="toc" aria-label="Table of contents">
+            <details>
+                <summary>Contents</summary>
+                <ul>
+                    {{#page.toc}}<li class="toc-level-{{level}}"><a href="#{{id}}">{{text}}</a></li>{{/page.toc}}
+                </ul>
+            </details>
+        </nav>
+        {{/page.hasToc}}

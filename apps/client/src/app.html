@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+
+    <head>
+        <meta charset="utf-8" />
+        <link rel="icon" href="%sveltekit.assets%/favicon.svg" type="image/svg+xml" />
+        <link rel="manifest" href="/site.webmanifest" />
+        <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+        <meta name="theme-color" content="#0f0f0f" media="(prefers-color-scheme: dark)" />
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
+        <link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,300..700;1,14..32,300..700&display=swap" rel="stylesheet" />
+        <script>
+            (() => {
+                const cookieName = 'etherpk-theme';
+                const supportedPreferences = new Set(['light', 'dark', 'system']);
+                const cookieValue = document.cookie
+                    .split(';')
+                    .map((entry) => entry.trim())
+                    .find((entry) => entry.startsWith(`${cookieName}=`))
+                    ?.slice(cookieName.length + 1);
+                const preference = supportedPreferences.has(cookieValue) ? cookieValue : 'system';
+                const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+                const resolvedTheme = preference === 'system' ? (systemPrefersDark ? 'dark' : 'light') : preference;
+                const root = document.documentElement;
+
+                root.dataset.themePreference = preference;
+                root.dataset.theme = resolvedTheme;
+                root.classList.toggle('dark', resolvedTheme === 'dark');
+                root.style.colorScheme = resolvedTheme;
+            })();
+        </script>
+        %sveltekit.head%
+    </head>
+
+    <body data-sveltekit-preload-data="hover">
+        <div style="display: contents">%sveltekit.body%</div>
+    </body>
+
+</html>

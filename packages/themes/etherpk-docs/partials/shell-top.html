@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="generator" content="EtherPK">
+    <title>{{page.title}}{{^page.isHome}} · {{site.title}}{{/page.isHome}}</title>
+    {{#page.excerpt}}<meta name="description" content="{{page.excerpt}}">{{/page.excerpt}}
+    <link rel="stylesheet" href="theme/theme.css">
+    {{#site.hasMath}}<link rel="stylesheet" href="theme/katex/katex.min.css">{{/site.hasMath}}
+    {{#site.hasCustomCss}}<link rel="stylesheet" href="theme/custom.css">{{/site.hasCustomCss}}
+    {{#site.hasFeed}}<link rel="alternate" type="application/rss+xml" title="{{site.title}}" href="feed.xml">{{/site.hasFeed}}
+    {{> head}}
+</head>
+<body class="layout-docs{{#page.isHome}} is-home{{/page.isHome}}{{#page.isJournal}} is-journal{{/page.isJournal}}">
+    <a class="skip-link" href="#content">Skip to content</a>
+    {{> header}}
+    <!-- The drawer toggle lives outside the header include, so a replaced header keeps the navigation reachable on a phone. The stylesheet pins it top right on small screens and hides it otherwise. Icon: Lucide "menu" (https://lucide.dev/icons/menu), ISC licence. -->
+    <button class="nav-toggle" type="button" aria-controls="site-nav" aria-expanded="false" aria-label="Menu"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h16"/></svg></button>
+    <div class="nav-backdrop" hidden></div>
+    <div class="shell">
+        {{> nav}}
+        <main id="content" class="content">
+            {{> before-content}}

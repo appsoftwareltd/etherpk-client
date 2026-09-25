@@ -1,0 +1,21 @@
+    <header class="header">
+        <div class="header__inner">
+            <a class="site-title logo" href="index.html">
+                <span class="logo__mark">{{> logo}}</span>
+                <span class="logo__text">{{site.title}}</span>
+                <span class="logo__cursor" aria-hidden="true"></span>
+            </a>
+            <button class="nav-toggle menu-trigger" type="button" aria-controls="site-nav" aria-expanded="false" aria-label="Menu">Menu</button>
+        </div>
+        <div class="nav-backdrop" hidden></div>
+        <nav id="site-nav" class="menu site-nav" aria-label="Site">
+            <ul class="menu__inner site-nav-list">
+{{#nav}}{{> nav-item}}{{/nav}}
+            </ul>
+            <form class="site-search" role="search" data-search-index="{{site.search.url}}" data-search-script="{{site.search.scriptUrl}}">
+                <label class="visually-hidden" for="site-search-input">Search</label>
+                <input id="site-search-input" type="search" name="q" placeholder="$ search" autocomplete="off">
+                <div class="site-search-results" role="listbox" hidden></div>
+            </form>
+        </nav>
+    </header>
