@@ -1,7 +1,21 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { deriveVaultWrapKey, generateRecoveryCode, toBase64Url } from '$lib/crypto'
+import { deriveVaultWrapKey, encryptVault, generateIdentityKeyPair, generateRecoveryCode, RecoveryCodeError, toBase64Url } from '$lib/crypto'
 import { clearActiveSyncAccount, setActiveSyncAccount } from './account-scope'
+import { NoVaultError } from './recovery-unlock'
+import type { SyncApi } from './sync-api'
 import { getVaultWrapKey, isVaultUnlocked, lockVault, setVaultWrapKey, unlockWithRecoveryCode } from './vault-session'
+
+/** An account whose vault is wrapped by a fresh Recovery Code, behind a fake Sync API. */
+async function account() {
+    const code = generateRecoveryCode()
+    const identity = generateIdentityKeyPair()
+    const encrypted = await encryptVault(
+        { identityPrivateKey: identity.privateKey, identityPublicKey: identity.publicKey, keyrings: [] },
+        await deriveVaultWrapKey(code),
+    )
+    const api = { getVault: async () => ({ vault: toBase64Url(encrypted.envelope), version: 1 }) } as unknown as Pick<SyncApi, 'getVault'>
+    return { code, vaultKey: encrypted.vaultKey, api }
+}
 
 const accountA = { serverOrigin: 'https://sync.example.com', principalId: 'principal-a' }
 const accountB = { serverOrigin: 'https://sync.example.com', principalId: 'principal-b' }
@@ -25,16 +39,37 @@ beforeEach(() => {
 })
 
 describe('vault-session', () => {
-    it('starts locked, unlocks from a Recovery Code, and persists under the active account', async () => {
+    it('starts locked, unlocks from a Recovery Code that opens the vault, and caches the vault key under the active account', async () => {
         setActiveSyncAccount(accountA)
         expect(isVaultUnlocked()).toBe(false)
-        const code = generateRecoveryCode()
-        const wrapKey = await unlockWithRecoveryCode(code)
+        const { code, vaultKey, api } = await account()
+        const unlocked = await unlockWithRecoveryCode(api, code)
         expect(isVaultUnlocked()).toBe(true)
-        expect(Buffer.from(getVaultWrapKey()!).equals(Buffer.from(await deriveVaultWrapKey(code)))).toBe(true)
-        expect(Buffer.from(getVaultWrapKey()!).equals(Buffer.from(wrapKey))).toBe(true)
+        // The vault key, as Device Approval caches: it survives a Recovery Code regeneration.
+        expect(Buffer.from(getVaultWrapKey()!).equals(Buffer.from(vaultKey))).toBe(true)
+        expect(Buffer.from(unlocked).equals(Buffer.from(vaultKey))).toBe(true)
         expect([...Array(localStorage.length)].map((_, index) => localStorage.key(index)))
             .toContain('etherpk:vault-wrap-key:https%3A%2F%2Fsync.example.com:principal-a')
+    })
+
+    it('refuses a wrong or retired Recovery Code as wrong, and caches nothing', async () => {
+        // Any well-formed code derives a key, so only opening the vault tells a right code from
+        // a wrong one.
+        setActiveSyncAccount(accountA)
+        const { api } = await account()
+        await expect(unlockWithRecoveryCode(api, generateRecoveryCode())).rejects.toBeInstanceOf(RecoveryCodeError)
+        await expect(unlockWithRecoveryCode(api, 'EPK1-AAAAA-BBBBB-CCCCC-DDDDD-EEEEEE')).rejects.toBeInstanceOf(RecoveryCodeError)
+        expect(isVaultUnlocked()).toBe(false)
+    })
+
+    it('caches nothing when the vault cannot be read to check the code against', async () => {
+        setActiveSyncAccount(accountA)
+        const { code } = await account()
+        const offline = { getVault: async () => { throw new TypeError('Failed to fetch') } } as unknown as Pick<SyncApi, 'getVault'>
+        await expect(unlockWithRecoveryCode(offline, code)).rejects.toThrow('Failed to fetch')
+        const empty = { getVault: async () => null } as unknown as Pick<SyncApi, 'getVault'>
+        await expect(unlockWithRecoveryCode(empty, code)).rejects.toBeInstanceOf(NoVaultError)
+        expect(isVaultUnlocked()).toBe(false)
     })
 
     it('does not expose one account vault key after switching accounts', async () => {

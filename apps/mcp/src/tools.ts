@@ -29,6 +29,7 @@ import { todayISO } from '$lib/document/calendar/month-grid-core'
 import { normaliseIndentUnit } from '$lib/document/indent-unit'
 import { isJournalConcept } from '$lib/document/journal-concept'
 import { documentProtection } from '$lib/document/protection/cipher-fence'
+import { withAliasesInAddedBlock } from '$lib/document/frontmatter/identity'
 import { withFrontmatterPatch } from '$lib/document/frontmatter/patch'
 import { withPublishing } from '$lib/document/frontmatter/publishing'
 import { isPublicationId } from '$lib/document/publish/publication'
@@ -93,6 +94,15 @@ export type ToolErrorCode =
     | 'theme_not_editable'
     /** A publication's saved settings name the theme, so it cannot be deleted. */
     | 'theme_in_use'
+    /** The Sync Server ended this account's access to the graph: it left, was removed, or the graph was deleted. */
+    | 'access_removed'
+    /** The Sync Server no longer accepts this computer's access token: revoked, expired, or the account was signed out. */
+    | 'token_revoked'
+    /**
+     * The Sync Server refused the write on a quota (a lapsed or unconfirmed plan, a used-up storage
+     * allowance). The edit is held and sent again automatically; the agent need not retry it.
+     */
+    | 'write_refused'
 
 /** A refusal the agent can act on: a stable code first, a sentence second. */
 export class ToolError extends Error {
@@ -390,7 +400,7 @@ function bounded(value: number | undefined, fallback: number, max: number): numb
  */
 async function settle(graph: HeadlessGraph): Promise<void> {
     const result = await graph.settle()
-    if (!result.settled) throw new ToolError('not_settled', result.message)
+    if (!result.settled) throw new ToolError(result.code ?? 'not_settled', result.message)
 }
 
 export async function listDocuments(graph: HeadlessGraph, args: ListDocumentsArgs = {}) {
@@ -664,7 +674,9 @@ export async function setFrontmatter(graph: HeadlessGraph, args: SetFrontmatterA
     const body = await liveText(graph, identity)
     refuseIfProtected(identity.concept, body)
     const raw = graph.store.openRaw(identity.concept).getText()
-    const next = patchedText(raw, args.patch)
+    // A block added here carries the page's aliases: on a synced graph they live in the registry,
+    // and a block without an `aliases:` line would claim none (ADR 0061).
+    const next = withAliasesInAddedBlock(raw, patchedText(raw, args.patch), identity.aliases)
     applyBlock(graph, identity.concept, raw, next)
     await settle(graph)
     return { concept: identity.concept, frontmatter: agentFrontmatter(next) }

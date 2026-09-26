@@ -33,6 +33,14 @@ describe('the mirror folder store', () => {
         expect(await readMirrorFolder('g1')).toBeUndefined()
     })
 
+    it('lists every graph’s folder, so a folder already in use can be recognised', async () => {
+        const { listMirrorFolders, writeMirrorFolder } = await api()
+        expect(await listMirrorFolders()).toEqual([])
+        await writeMirrorFolder({ graphId: 'g1', handle: { name: 'a' }, folder: 'a' })
+        await writeMirrorFolder({ graphId: 'g2', handle: { name: 'b' }, folder: 'b' })
+        expect((await listMirrorFolders()).map((record) => record.graphId).sort()).toEqual(['g1', 'g2'])
+    })
+
     it('never touches the graph registry database', async () => {
         const { writeMirrorFolder } = await api()
         await writeMirrorFolder({ graphId: 'g1', handle: null, folder: 'notes' })

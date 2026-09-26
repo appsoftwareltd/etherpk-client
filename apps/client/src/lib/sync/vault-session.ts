@@ -3,8 +3,10 @@
  * The scope prevents one signed-in account from reusing or observing another account's key.
  * It is a local privacy boundary only; the Server still authorises every remote operation.
  */
-import { deriveVaultWrapKey, fromBase64Url, toBase64Url } from '$lib/crypto'
+import { fromBase64Url, toBase64Url } from '$lib/crypto'
 import { readActiveSyncAccount } from './account-scope'
+import { openVaultWithRecoveryCode } from './recovery-unlock'
+import type { SyncApi } from './sync-api'
 
 const LEGACY_KEY = 'etherpk:vault-wrap-key'
 
@@ -49,10 +51,14 @@ export function setVaultWrapKey(wrapKey: Uint8Array): void {
     if (typeof localStorage !== 'undefined') localStorage.setItem(key, toBase64Url(wrapKey))
 }
 
-export async function unlockWithRecoveryCode(code: string): Promise<Uint8Array> {
-    const wrapKey = await deriveVaultWrapKey(code)
-    setVaultWrapKey(wrapKey)
-    return wrapKey
+/**
+ * Unlock with a Recovery Code, caching the vault key only once the code has opened the account's
+ * vault (recovery-unlock.ts). A wrong code throws `RecoveryCodeError` and caches nothing.
+ */
+export async function unlockWithRecoveryCode(api: Pick<SyncApi, 'getVault'>, code: string): Promise<Uint8Array> {
+    const vaultKey = await openVaultWithRecoveryCode(api, code)
+    setVaultWrapKey(vaultKey)
+    return vaultKey
 }
 
 /** Lock the active account without destroying keys cached for a different account. */

@@ -12,7 +12,7 @@
  * Pure over an injected clock and output so the flow is testable without a terminal.
  */
 
-import { deriveVaultWrapKey, fromBase64Url, normalizeRecoveryCode, openVault } from '$lib/crypto'
+import { openVaultWithRecoveryCode } from '$lib/sync/recovery-unlock'
 import { beginDeviceApproval, pollDeviceApproval } from '$lib/sync/device-approval'
 import type { SyncApi } from '$lib/sync/sync-api'
 
@@ -69,10 +69,10 @@ export async function unlockByDeviceApproval(api: SyncApi, io: LoginIo): Promise
     throw new Error('The approval was not confirmed in time. Run login again.')
 }
 
-/** Recovery Code → wrap key → open the vault; what comes back is the vault key to cache. */
+/**
+ * Recovery Code → wrap key → open the vault; what comes back is the vault key to cache. The same
+ * check the browser makes (recovery-unlock.ts): a wrong code is refused as wrong and nothing is cached.
+ */
 export async function unlockByRecoveryCode(api: SyncApi, code: string): Promise<Uint8Array> {
-    const wrapKey = await deriveVaultWrapKey(normalizeRecoveryCode(code))
-    const stored = await api.getVault()
-    if (!stored) throw new Error('This account has no encryption keys yet; there is nothing for a Recovery Code to open.')
-    return (await openVault(fromBase64Url(stored.vault), wrapKey)).vaultKey
+    return openVaultWithRecoveryCode(api, code)
 }

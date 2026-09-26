@@ -1,13 +1,14 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
+    OAUTH_METADATA_TTL_MS,
     OAuthTokenError,
     beginAuthorization,
-    buildManagedEndSessionUrl,
     discoverOAuthMetadata,
     exchangeAuthorizationCode,
     isDefinitiveOAuthTokenFailure,
     isSilentClientAuthorizationMiss,
     refreshAccessToken,
+    resetOAuthMetadataCache,
     revokeManagedRefreshToken,
     sanitiseClientReturnPath,
     verifyIdTokenNonce,
@@ -31,11 +32,36 @@ const metadata = {
     token_endpoint: `${config.issuer}/api/auth/oauth2/token`,
     jwks_uri: `${config.issuer}/api/auth/jwks`,
     revocation_endpoint: `${config.issuer}/api/auth/oauth2/revoke`,
-    end_session_endpoint: `${config.issuer}/api/auth/oauth2/end-session`,
     code_challenge_methods_supported: ['S256'],
 }
 
 describe('managed OAuth client', () => {
+    beforeEach(() => {
+        resetOAuthMetadataCache()
+    })
+
+    afterEach(() => {
+        vi.useRealTimers()
+    })
+
+    it('reuses validated discovery metadata until it goes stale, and never caches a failure', async () => {
+        vi.useFakeTimers()
+        let available = false
+        const fetchMock = vi.fn<typeof fetch>(async () => available
+            ? Response.json(metadata)
+            : new Response(null, { status: 503 }))
+
+        await expect(discoverOAuthMetadata(config, fetchMock)).rejects.toThrow('HTTP 503')
+        available = true
+        await expect(discoverOAuthMetadata(config, fetchMock)).resolves.toMatchObject({ issuer: config.issuer })
+        await discoverOAuthMetadata(config, fetchMock)
+        expect(fetchMock).toHaveBeenCalledTimes(2)
+
+        vi.advanceTimersByTime(OAUTH_METADATA_TTL_MS + 1)
+        await discoverOAuthMetadata(config, fetchMock)
+        expect(fetchMock).toHaveBeenCalledTimes(3)
+    })
+
     it('starts Authorization Code with state, nonce, and PKCE S256', async () => {
         const flow = await beginAuthorization(config, metadata)
         const url = new URL(flow.authorizationUrl)
@@ -69,6 +95,8 @@ describe('managed OAuth client', () => {
 
         expect(isSilentClientAuthorizationMiss(silent, 'login_required')).toBe(true)
         expect(isSilentClientAuthorizationMiss(silent, 'interaction_required')).toBe(true)
+        // Corporate's answer to a rate-limited prompt=none authorize.
+        expect(isSilentClientAuthorizationMiss(silent, 'temporarily_unavailable')).toBe(true)
         expect(isSilentClientAuthorizationMiss(silent, 'access_denied')).toBe(false)
         expect(isSilentClientAuthorizationMiss(interactive, 'login_required')).toBe(false)
     })
@@ -79,6 +107,11 @@ describe('managed OAuth client', () => {
         expect(sanitiseClientReturnPath(null, 'interactive')).toBe('/graphs?managed=connected')
         expect(sanitiseClientReturnPath('//attacker.example/path', 'silent')).toBe('/')
         expect(sanitiseClientReturnPath('https://attacker.example/path', 'interactive'))
+            .toBe('/graphs?managed=connected')
+        // Parsing collapses a dot segment and can leave "//attacker.example/path", which a
+        // Location header would send to another host.
+        expect(sanitiseClientReturnPath('/..//attacker.example/path', 'silent')).toBe('/')
+        expect(sanitiseClientReturnPath('/\t/attacker.example/path', 'interactive'))
             .toBe('/graphs?managed=connected')
     })
 
@@ -146,22 +179,13 @@ describe('managed OAuth client', () => {
         expect(body.get('token_type_hint')).toBe('refresh_token')
         expect(body.get('client_id')).toBe(config.clientId)
         expect(body.get('client_secret')).toBeNull()
-
-        const endSession = new URL(buildManagedEndSessionUrl('id-token-1', config, metadata))
-        expect(endSession.origin + endSession.pathname).toBe(metadata.end_session_endpoint)
-        expect(endSession.searchParams.get('id_token_hint')).toBe('id-token-1')
-        expect(endSession.searchParams.get('post_logout_redirect_uri')).toBe(config.postLogoutUrl)
     })
 
-    it('rejects logout endpoints outside the configured issuer', async () => {
+    it('rejects a revocation endpoint outside the configured issuer', async () => {
         await expect(revokeManagedRefreshToken('refresh-1', config, {
             ...metadata,
             revocation_endpoint: 'https://attacker.example/revoke',
         })).rejects.toThrow('Invalid OAuth revocation_endpoint')
-        expect(() => buildManagedEndSessionUrl('id-token-1', config, {
-            ...metadata,
-            end_session_endpoint: 'https://attacker.example/logout',
-        })).toThrow('Invalid OAuth end_session_endpoint')
     })
 
     it('requires the callback ID token to carry the original nonce', async () => {

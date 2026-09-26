@@ -4,42 +4,42 @@ import { env } from '$env/dynamic/private'
 import { parseOptionalManagedClientAuthConfig } from '$lib/server/auth/config'
 import { revokeManagedClientGrant, takeManagedClientSession } from '$lib/server/auth/managed-logout'
 import { isSameOriginPost } from '$lib/server/auth/same-origin'
-import {
-    buildManagedEndSessionUrl,
-    discoverOAuthMetadata,
-    revokeManagedRefreshToken,
-} from '$lib/server/auth/oauth-client'
 
-type CascadeSource = 'sync' | 'corporate'
+/** Which app started the sign-out, and so where the cascade finishes. */
+type CascadeSource = 'sync' | 'corporate' | 'client'
 
-/** Start coordinated sign-out from the Client. */
+/**
+ * Start coordinated sign-out from the Client: revoke this Client's refresh grant, then hand the
+ * browser to Corporate's first-party sign-out, which ends the Corporate session the browser's own
+ * cookie names and continues through the Client (GET below, `finish=client`) and the Sync portal,
+ * which brings the browser back to the Client's Graphs page.
+ *
+ * Not OIDC end-session: end-session finds the Corporate session through the ID token's `sid`,
+ * which names the session the Client signed in under. Signing in again at Corporate, a password
+ * reset, or turning 2FA on or off replaces that session, the next refresh mints an ID token with no
+ * `sid`, and end-session then fails with Corporate and Sync still signed in. Even with a `sid`, it
+ * deletes only that row, never the session the browser holds.
+ */
 export const POST: RequestHandler = async ({ cookies, fetch, request, url }) => {
     if (!isSameOriginPost(request, url)) error(403, 'Cross-origin request refused')
     const config = configuredClient()
     const session = await takeManagedClientSession(cookies, config)
-    if (session) {
-        try {
-            const metadata = await discoverOAuthMetadata(config, fetch)
-            // Corporate's end-session endpoint does not revoke an offline refresh grant.
-            // Attempt revocation separately, but continue the browser logout if it is unavailable.
-            await revokeManagedRefreshToken(session.refreshToken, config, metadata, fetch).catch(() => undefined)
-            return redirectResponse(buildManagedEndSessionUrl(session.idToken, config, metadata))
-        } catch {
-            // Corporate's first-party route can still clear its cookie when discovery fails.
-        }
-    }
-    return redirectResponse(`${config.issuer}/auth/logout/managed`)
+    // Best effort: sign-out continues if Corporate cannot be reached to revoke.
+    await revokeManagedClientGrant(session, config, fetch)
+    return redirectResponse(`${config.issuer}/auth/logout/managed?return=client`)
 }
 
-/** Continue a fixed first-party cascade started by Server or Corporate. */
+/** Continue a fixed first-party cascade started by the Server, Corporate or this Client. */
 export const GET: RequestHandler = async ({ url, cookies, fetch }) => {
     const config = configuredClient()
     const source = parseCascadeSource(url.searchParams.get('finish'))
     const session = await takeManagedClientSession(cookies, config)
     await revokeManagedClientGrant(session, config, fetch)
+    // Started at Sync: its session is already gone, so finish there. Otherwise the Sync portal
+    // still has to sign out, and its continuation finishes where the cascade started.
     return source === 'sync'
         ? redirectResponse(`${config.managedSyncUrl}/?managed=signed-out`)
-        : redirectResponse(`${config.managedSyncUrl}/auth/portal/logout/managed?finish=corporate`)
+        : redirectResponse(`${config.managedSyncUrl}/auth/portal/logout/managed?finish=${source}`)
 }
 
 function configuredClient() {
@@ -48,7 +48,7 @@ function configuredClient() {
 }
 
 function parseCascadeSource(value: string | null): CascadeSource {
-    if (value === 'sync' || value === 'corporate') return value
+    if (value === 'sync' || value === 'corporate' || value === 'client') return value
     error(400, 'Invalid managed logout continuation')
 }
 

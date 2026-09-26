@@ -1,10 +1,16 @@
 /**
  * Local Mirror (ADR 0008): a continuously-maintained, faithful plain-markdown reflection of a
  * Server-backed graph on the user's disk, for Data Ownership. The server is always master - the
- * mirror is written, never read back - and any file that is not part of the server graph is
- * deleted, no exceptions. It writes settled document content and the [[Asset]] bytes those
- * documents reference, so the folder is a complete [[Export]] the user can back up with their own
+ * mirror is written, never read back - and any Markdown file under journals/ and pages/ that is
+ * not part of the server graph is deleted. In assets/ only files named the way the mirror names
+ * them (`<stem>.<uuid>.<ext>`) are ever deleted; anything else there cannot be a copy the mirror
+ * made, and is left alone. It writes settled document content and the [[Asset]] bytes the graph
+ * holds, so the folder is a complete [[Export]] the user can back up with their own
  * sync service or version control, and can import to recreate the graph.
+ *
+ * A browser tab hears live updates only for the documents it shows, so the mirror also asks the
+ * server which documents changed elsewhere: on every full pass (Mirror now included) and on a
+ * timer while it runs.
  *
  * Three rules keep it honest, and each is here because its absence lost data (see
  * [[2026-09-09 Local Mirror Robustness And Assets]]):
@@ -83,6 +89,15 @@ export interface MirrorSource {
      * "deleted from the graph".
      */
     confirmRegistry(): Promise<boolean>
+    /**
+     * Which of these documents have changes on the server that `readTexts` has not seen: edits
+     * made on another device, by a collaborator or by the Headless Client to documents this tab
+     * is not showing. A browser tab hears live updates only for the documents it shows, so
+     * without asking, a document written once would never be written again however often it
+     * changed elsewhere. Null when the server cannot be asked right now, which is "unknown",
+     * never "none". Absent on a source that is always current.
+     */
+    docsBehind?(docIds: readonly string[]): Promise<readonly string[] | null>
     /** [[Graph Settings]] and the [[Graph Name]] - graph content, so they travel with the folder. */
     metadata?(): MirrorMetadata | undefined
     /**
@@ -170,6 +185,12 @@ export interface MirrorStatus {
     missingAssets: string[]
     /** Document links to attachments this graph does not hold. Never retried. */
     danglingLinks: MirrorDanglingLink[]
+    /**
+     * Set when the last check could not ask the server which documents changed elsewhere
+     * (offline, or no answer), so edits made on other devices may be missing from the folder. A
+     * host must not call the folder complete, or say it matches the graph, while this is set.
+     */
+    changesElsewhereUnchecked: boolean
 }
 
 export interface LocalMirror {
@@ -195,6 +216,10 @@ export interface LocalMirrorOptions {
     assetConcurrency?: number
     /** Backoff before retrying a failure that is neither permission nor a missing folder. */
     retryDelaysMs?: readonly number[]
+    /** How often a running mirror asks the server which documents changed elsewhere. */
+    catchUpIntervalMs?: number
+    /** How soon it asks again after a check the server could not answer. */
+    catchUpRetryMs?: number
     /** Injectable for tests. */
     now?: () => number
 }
@@ -228,9 +253,89 @@ interface WrittenDocument {
 const DEFAULT_DEBOUNCE_MS = 5000
 const DEFAULT_ASSET_CONCURRENCY = 4
 const DEFAULT_RETRY_DELAYS_MS = [2000, 8000, 30000]
+/**
+ * A check costs one metadata request per 512 documents and writes nothing when nothing moved, so
+ * every two minutes keeps "last checked" honest on a tab left open for days without costing a
+ * large graph anything it would notice.
+ */
+const DEFAULT_CATCH_UP_INTERVAL_MS = 2 * 60_000
+const DEFAULT_CATCH_UP_RETRY_MS = 30_000
 /** Status announcements per phase are throttled to one in this many items (see `progress`). */
 const PROGRESS_ANNOUNCE_EVERY = 25
 const MIRRORED_SUBDIRS: readonly Subdir[] = ['journals', 'pages']
+
+/**
+ * The only shape of name the mirror writes into `assets/`: `<stem>.<uuid>` with an optional
+ * extension, as an upload mints it and as {@link MirrorSource.fetchAsset} names an unreferenced
+ * one. The stem is required, so a bare `<uuid>.png` does not match either.
+ */
+const MIRROR_ASSET_FILE_NAME = /^.+\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?:\.[^.]+)?$/
+
+/**
+ * Whether a file in `assets/` could be one the mirror wrote. Only such a file is ever deleted
+ * from there: any other name is the user's - a website's images, a vault's attachments -
+ * and the folder may have been chosen by mistake.
+ */
+export function isMirrorAssetFileName(name: string): boolean {
+    return MIRROR_ASSET_FILE_NAME.test(name)
+}
+
+/**
+ * What the asset pass does with one file in `assets/`:
+ *
+ * - `foreign`: not a name the mirror writes (see {@link isMirrorAssetFileName}), so never touched.
+ *   A folder with a website's `assets/photo.jpg` in it may have been chosen by mistake, and its
+ *   images are not the mirror's to delete.
+ * - `not-held`: the mirror's name for an asset the graph no longer holds. Removed.
+ * - `stale-name`: a second copy of a held asset under a name no document uses, while a file under
+ *   the name the documents use is present. Removed; the bytes stay under that name.
+ * - `held`: an asset the graph holds, kept.
+ *
+ * Faithful, and never at the cost of the last copy. `wantedById` is the names the documents use
+ * for each asset; null when they are not known (the takeover dialog, which has not read the
+ * documents), and then no file is judged stale.
+ */
+export type AssetFileFate = 'foreign' | 'not-held' | 'stale-name' | 'held'
+
+export function assetFileFates(
+    names: readonly string[],
+    assetIdOf: (name: string) => string | null,
+    graphAssets: ReadonlySet<string>,
+    wantedById: ReadonlyMap<string, ReadonlySet<string>> | null,
+): Map<string, AssetFileFate> {
+    const namesOf = new Map<string, string[]>()
+    for (const name of names) {
+        const assetId = assetIdOf(name)
+        if (assetId) namesOf.set(assetId, [...(namesOf.get(assetId) ?? []), name])
+    }
+    const fates = new Map<string, AssetFileFate>()
+    for (const name of names) {
+        const assetId = assetIdOf(name)
+        if (!assetId || !isMirrorAssetFileName(name)) fates.set(name, 'foreign')
+        else if (!graphAssets.has(assetId)) fates.set(name, 'not-held')
+        else {
+            const wanted = wantedById?.get(assetId)
+            const stale =
+                wanted !== undefined &&
+                !wanted.has(name) &&
+                namesOf.get(assetId)!.some((other) => wanted.has(other))
+            fates.set(name, stale ? 'stale-name' : 'held')
+        }
+    }
+    return fates
+}
+
+/** Whether a file in `etherpk/` is one {@link MirrorSource.metadata} writes or removes. */
+export function isMirrorMetadataFileName(name: string): boolean {
+    return (
+        name === 'settings.json' ||
+        name === 'graph.json' ||
+        name === QUICK_NOTES_FILE ||
+        name === DICTIONARY_FILE ||
+        name === PROTECTION_FILE ||
+        themeIdOfFileName(name) !== null
+    )
+}
 
 /** SHA-256 of a string, hex. Change detection only - never identity. */
 async function hashText(text: string): Promise<string> {
@@ -296,6 +401,8 @@ export function createLocalMirror(
     const debounceMs = options.debounceMs ?? DEFAULT_DEBOUNCE_MS
     const assetConcurrency = options.assetConcurrency ?? DEFAULT_ASSET_CONCURRENCY
     const retryDelays = options.retryDelaysMs ?? DEFAULT_RETRY_DELAYS_MS
+    const catchUpIntervalMs = options.catchUpIntervalMs ?? DEFAULT_CATCH_UP_INTERVAL_MS
+    const catchUpRetryMs = options.catchUpRetryMs ?? DEFAULT_CATCH_UP_RETRY_MS
     const now = options.now ?? (() => Date.now())
 
     /** The folder as the mirror believes it to be, after one read pass. */
@@ -314,12 +421,23 @@ export function createLocalMirror(
     let assetCount = 0
 
     let timer: ReturnType<typeof setTimeout> | undefined
+    /** The next timed check for edits made elsewhere; armed only while mirroring continuously. */
+    let catchUpTimer: ReturnType<typeof setTimeout> | undefined
     let detach: (() => void) | undefined
     let disposed = false
     let running = false
+    /**
+     * Mirroring for as long as the graph is open (`start`, `resume`), rather than one pass on
+     * request: an export's single `sync()` must not leave a timer behind.
+     */
+    let continuous = false
     let syncing = false
     /** Whether the next pass also sweeps strays, assets and metadata. */
     let sweepPending = true
+    /** Whether the next pass asks the server which documents changed elsewhere. A sweep always does. */
+    let checkPending = false
+    /** The last such question went unanswered, so the folder may be missing edits made elsewhere. */
+    let changesElsewhereUnchecked = false
     let queued = false
     let retries = 0
     let lastSyncAt: number | undefined
@@ -341,6 +459,7 @@ export function createLocalMirror(
             collisions: [...collisions],
             missingAssets: [...missingAssets],
             danglingLinks: [...danglingLinks],
+            changesElsewhereUnchecked,
         }
     }
 
@@ -445,8 +564,53 @@ export function createLocalMirror(
         return !current || current.hash !== previous.hash
     }
 
-    /** One pass. Resolves true when it ran to the end, false when it was halted part way. */
-    async function runSync(sweep: boolean): Promise<boolean> {
+    /**
+     * Ask the server which documents changed elsewhere, and mark them dirty so this pass - or
+     * the one it starts - writes them. `needsWrite` skips a written, unchanged document, and a
+     * tab hears no change for a document it is not showing, so without this question an edit
+     * made on another device would never reach the folder while the tab stayed open.
+     *
+     * Every document is asked about, not only those already written: the answer is also how the
+     * mirror knows whether it could ask at all, which the status reports. Only runs under
+     * `syncing`, so a pass writing a document cannot clear a mark this sets while it reads.
+     */
+    async function markChangedElsewhere(docs: readonly MirrorDocument[]): Promise<void> {
+        if (!source.docsBehind) return
+        let behind: readonly string[] | null
+        try {
+            behind = await source.docsBehind(docs.map((doc) => doc.docId))
+        } catch {
+            behind = null
+        }
+        changesElsewhereUnchecked = behind === null
+        for (const docId of behind ?? []) dirty.add(docId)
+    }
+
+    /**
+     * Arm the next timed check. Only a continuous mirror has one, and only after a pass that
+     * asked: a keystroke's targeted pass does not ask, and must not keep pushing the check back.
+     */
+    function armCatchUp(delay: number): void {
+        if (catchUpTimer) clearTimeout(catchUpTimer)
+        catchUpTimer = undefined
+        if (disposed || !running || !continuous || paused || !source.docsBehind) return
+        catchUpTimer = setTimeout(() => {
+            catchUpTimer = undefined
+            checkPending = true
+            void pump()
+        }, delay)
+    }
+
+    function disarmCatchUp(): void {
+        if (catchUpTimer) clearTimeout(catchUpTimer)
+        catchUpTimer = undefined
+    }
+
+    /**
+     * One pass. Resolves true when it ran to the end, false when it was halted part way.
+     * `check` asks the server which documents changed elsewhere before choosing what to write.
+     */
+    async function runSync(sweep: boolean, check: boolean): Promise<boolean> {
         await adapter.ensureSkeleton()
         // A targeted pass writes one document's own change, so the folder cannot have moved
         // under it in a way that pass would act on; a full one always looks first.
@@ -454,6 +618,11 @@ export function createLocalMirror(
         const docs = source.listDocuments()
         const plan = planMirrorNames(docs, existingFiles())
         collisions = plan.collisions
+
+        if (check) {
+            await markChangedElsewhere(docs)
+            if (halted()) return false
+        }
 
         if (dirtyConcepts.size > 0) {
             for (const doc of docs) {
@@ -636,7 +805,7 @@ export function createLocalMirror(
         const filesById = new Map<string, string[]>()
         for (const entry of onDisk) {
             const assetId = assetIdOf(entry.name)
-            if (!assetId) continue // not an asset of this graph; the stray pass below takes it
+            if (!assetId) continue // not an asset of this graph, and not the mirror's to touch
             filesById.set(assetId, [...(filesById.get(assetId) ?? []), entry.name])
         }
 
@@ -679,36 +848,27 @@ export function createLocalMirror(
             progress('assets', ++done, work.length)
         })
 
-        // Faithful, and never at the cost of the last copy: a file goes when the graph no longer
-        // holds its asset, or when it is a stale name for an asset another file already carries
-        // under the name the documents use. Judged on the folder as it is NOW, after the writes
-        // above: a name that has just been replaced is only stale once its replacement exists.
-        const settled = new Map<string, string[]>()
-        const strays: string[] = []
-        for (const entry of await adapter.list('assets')) {
-            const assetId = assetIdOf(entry.name)
-            if (!assetId) {
-                strays.push(entry.name)
-                continue
-            }
-            settled.set(assetId, [...(settled.get(assetId) ?? []), entry.name])
-        }
-        for (const [assetId, names] of settled) {
-            if (!graphAssets.has(assetId)) {
-                strays.push(...names)
-                continue
-            }
-            const wanted = namesById.get(assetId)
-            if (!wanted || wanted.size === 0) continue
-            if (!names.some((name) => wanted.has(name))) continue
-            strays.push(...names.filter((name) => !wanted.has(name)))
-        }
+        // Judged on the folder as it is NOW, after the writes above: a name that has just been
+        // replaced is only stale once its replacement exists. The rule is `assetFileFates`, which
+        // the takeover dialog runs too, so what it promises and what this does cannot drift.
+        const fates = assetFileFates(
+            (await adapter.list('assets')).map((entry) => entry.name),
+            assetIdOf,
+            graphAssets,
+            namesById,
+        )
         if (halted()) return false
-        for (const name of strays) await adapter.remove('assets', name)
+        for (const [name, fate] of fates) {
+            if (fate === 'not-held' || fate === 'stale-name') await adapter.remove('assets', name)
+        }
 
         missingAssets = failed
         danglingLinks = dangling
-        assetCount = (await adapter.list('assets')).length
+        // The graph's attachments, not every file that happens to sit in the folder beside them.
+        assetCount = (await adapter.list('assets')).filter((entry) => {
+            const assetId = assetIdOf(entry.name)
+            return assetId !== null && graphAssets.has(assetId)
+        }).length
         return true
     }
 
@@ -812,19 +972,44 @@ export function createLocalMirror(
 
     async function runPass(): Promise<void> {
         const sweep = sweepPending
+        const check = sweep || checkPending
         sweepPending = false
+        checkPending = false
         queued = false
         syncing = true
-        pass = { kind: sweep ? 'full' : 'targeted', progress: { phase: 'scanning', done: 0, total: 0 } }
-        announce()
         let failure: MirrorPause | undefined
+        /** Whether the pass ran to the end; a completed pass that asked re-arms the timed check. */
+        let completed = false
         try {
-            if (await runSync(sweep)) {
-                lastSyncAt = now()
-                retries = 0
-            } else {
-                // Halted part way: what it did not get to is still to do.
-                sweepPending = sweepPending || sweep
+            let needsPass = true
+            let checkInPass = check
+            if (!sweep && check && dirty.size === 0 && dirtyConcepts.size === 0) {
+                // A timed check with nothing else to do asks its one question before announcing
+                // anything. When nothing changed elsewhere it ends there: announcing a pass would
+                // turn the toolbar dot amber every couple of minutes for a write that never happens.
+                await markChangedElsewhere(source.listDocuments())
+                checkInPass = false
+                if (dirty.size === 0) {
+                    needsPass = false
+                    if (!halted()) {
+                        // Answered with nothing behind: the folder matched the graph just now.
+                        if (!changesElsewhereUnchecked) lastSyncAt = now()
+                        completed = true
+                    }
+                }
+            }
+            if (needsPass) {
+                pass = { kind: sweep ? 'full' : 'targeted', progress: { phase: 'scanning', done: 0, total: 0 } }
+                announce()
+                if (await runSync(sweep, checkInPass)) {
+                    lastSyncAt = now()
+                    retries = 0
+                    completed = true
+                } else {
+                    // Halted part way: what it did not get to is still to do.
+                    sweepPending = sweepPending || sweep
+                    checkPending = checkPending || checkInPass
+                }
             }
         } catch (error) {
             failure = classifyMirrorFailure(error)
@@ -838,13 +1023,20 @@ export function createLocalMirror(
         if (failure) {
             if (failure.kind === 'error' && retries < retryDelays.length) {
                 const delay = retryDelays[retries++]
+                // The retry is a full pass, which asks and re-arms the timed check itself; a check
+                // armed before the failure would only start a pass in the middle of the backoff.
+                disarmCatchUp()
                 announce()
                 schedule(delay)
                 return
             }
             paused = failure
             running = false
+            disarmCatchUp()
         }
+        // Asked and done: the next question is due after the interval, or sooner when this one
+        // went unanswered, so a device coming back online is not left unchecked for minutes.
+        if (completed && check) armCatchUp(changesElsewhereUnchecked ? catchUpRetryMs : catchUpIntervalMs)
         announce()
         if (queued && !paused) schedule(debounceMs)
     }
@@ -855,6 +1047,7 @@ export function createLocalMirror(
             // because a pause is a fact about the folder that starting again would not change.
             if (disposed || running || paused) return
             running = true
+            continuous = true
             sweepPending = true
             listen()
             announce()
@@ -887,6 +1080,8 @@ export function createLocalMirror(
         },
         stop() {
             running = false
+            continuous = false
+            disarmCatchUp()
             if (timer) clearTimeout(timer)
             timer = undefined
             detach?.()
@@ -896,6 +1091,8 @@ export function createLocalMirror(
         dispose() {
             disposed = true
             running = false
+            continuous = false
+            disarmCatchUp()
             if (timer) clearTimeout(timer)
             timer = undefined
             detach?.()
@@ -913,6 +1110,7 @@ export function createLocalMirror(
             retries = 0
             disk = undefined
             running = true
+            continuous = true
             sweepPending = true
             listen()
             announce()

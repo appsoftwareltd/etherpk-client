@@ -95,3 +95,11 @@ export function forgetMirrorFolder(graphId: string): Promise<void> {
         await database.delete(STORE, graphId)
     })
 }
+
+/**
+ * Every graph's mirror folder on this device, so choosing a folder can recognise one that is
+ * already another graph's mirror: two graphs in one folder delete each other's files.
+ */
+export function listMirrorFolders(): Promise<MirrorFolderRecord[]> {
+    return withStore(async (database) => (await database.getAll(STORE)) as MirrorFolderRecord[])
+}

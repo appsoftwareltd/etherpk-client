@@ -4,6 +4,19 @@
     import { touchAll, visibleErrors } from "../forms/field-errors";
     import AlertBanner from "../components/AlertBanner.svelte";
 
+    /**
+     * canonicalUrl: this page's canonical address; null on a self-hosted Server, whose contact
+     * page is its operator's own and must not claim to be EtherPK's.
+     * support: the address and reply time printed beside the form on the managed service.
+     */
+    let {
+        canonicalUrl = null,
+        support = null,
+    }: {
+        canonicalUrl?: string | null;
+        support?: { email: string; responseTime: string } | null;
+    } = $props();
+
     let name = $state("");
     let email = $state("");
     let message = $state("");
@@ -134,17 +147,25 @@
 <svelte:head>
     <title>Contact Us - EtherPK</title>
     <meta name="description" content="Get in touch with the EtherPK team about the app, Sync+ or your account. We'll get back to you as soon as we can." />
-    <link rel="canonical" href="https://www.etherpk.com/contact" />
+    {#if canonicalUrl}
+        <link rel="canonical" href={canonicalUrl} />
+        <meta property="og:url" content={canonicalUrl} />
+    {/if}
     <meta property="og:title" content="Contact Us - EtherPK" />
     <meta property="og:description" content="Get in touch with the EtherPK team about the app, Sync+ or your account." />
-    <meta property="og:url" content="https://www.etherpk.com/contact" />
     <meta property="og:type" content="website" />
 </svelte:head>
 
 <div class="mx-auto max-w-xl px-4 sm:px-6 py-16 sm:py-24">
     <div class="text-center mb-8">
         <h1 class="text-3xl sm:text-4xl font-semibold tracking-tight text-gray-950">Contact us</h1>
-        <p class="mt-3 text-gray-600">Send us a message and we'll get back to you ASAP.</p>
+        {#if support}
+            <p class="mt-3 text-gray-600" data-testid="contact-support">
+                Send a message below, or email <a href="mailto:{support.email}" class="font-medium text-gray-950 underline underline-offset-2 hover:text-gray-700 dark:text-white dark:hover:text-gray-300">{support.email}</a>. {support.responseTime}
+            </p>
+        {:else}
+            <p class="mt-3 text-gray-600">Send a message and we'll get back to you as soon as we can.</p>
+        {/if}
     </div>
 
     {#if success}

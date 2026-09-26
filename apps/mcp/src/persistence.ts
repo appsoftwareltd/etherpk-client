@@ -36,6 +36,7 @@
  */
 
 import { createHash } from 'node:crypto'
+import type { Dirent } from 'node:fs'
 import { deserialize, serialize } from 'node:v8'
 import { mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
@@ -477,6 +478,64 @@ export function describeGraphStore(store: GraphStoreStatus, now = Date.now()): s
 /** Remove every persisted graph under the cache root (logout of the last server). */
 export async function removeCacheRoot(env: NodeJS.ProcessEnv): Promise<void> {
     await rm(cacheRoot(env), { recursive: true, force: true })
+}
+
+const GRAPH_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/**
+ * The account a synced graph's cache was written for. Cache directories are keyed by server host
+ * and graph id, not by account, and two agents with their own `ETHERPK_MCP_CONFIG` can sign in as
+ * different accounts on one server and share the cache root. The stamp is what lets one of them
+ * tidy only its own caches.
+ */
+const OWNER_FILE = 'owner.json'
+
+/** Record which account's graph this cache holds. Written when a synced graph is opened. */
+export async function stampGraphCacheOwner(dir: string, principalId: string): Promise<void> {
+    await mkdir(dir, { recursive: true, mode: 0o700 })
+    await writeFile(join(dir, OWNER_FILE), `${JSON.stringify({ principalId })}\n`, { mode: 0o600 })
+}
+
+/** The account a cache directory was stamped for, or null (none, or unreadable). */
+async function graphCacheOwner(dir: string): Promise<string | null> {
+    try {
+        const { principalId } = JSON.parse(await readFile(join(dir, OWNER_FILE), 'utf8')) as { principalId?: unknown }
+        return typeof principalId === 'string' ? principalId : null
+    } catch {
+        return null
+    }
+}
+
+/**
+ * Remove this account's cached graphs of one server that the server no longer lists for it: a
+ * graph deleted, left or taken away since this machine last served it. Its cache is the graph's
+ * plaintext, and without this it would stay on disk until `logout`. `listed` must be the
+ * server's own answer: a failed listing must not reach here, or every cached graph would go.
+ *
+ * Only directories named as a graph id and stamped for `principalId` are touched. Another
+ * account's cache under the same root (its unacknowledged edits included) is not this account's
+ * to drop, and a cache written before the stamp existed is left for `logout`. Returns the ids
+ * removed.
+ */
+export async function removeUnlistedGraphCaches(env: NodeJS.ProcessEnv, serverBaseUrl: string, principalId: string, listed: Iterable<string>): Promise<string[]> {
+    const keep = new Set([...listed].map((id) => id.toLowerCase()))
+    const hostDir = dirname(graphCacheDir(env, serverBaseUrl, 'x'))
+    let entries: Dirent[]
+    try {
+        entries = await readdir(hostDir, { withFileTypes: true })
+    } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') return []
+        throw error
+    }
+    const removed: string[] = []
+    for (const entry of entries) {
+        if (!entry.isDirectory() || !GRAPH_ID.test(entry.name) || keep.has(entry.name.toLowerCase())) continue
+        const dir = join(hostDir, entry.name)
+        if ((await graphCacheOwner(dir)) !== principalId) continue
+        await rm(dir, { recursive: true, force: true })
+        removed.push(entry.name)
+    }
+    return removed
 }
 
 /** Remove one server's persisted graphs (logout of that server while others stay). */

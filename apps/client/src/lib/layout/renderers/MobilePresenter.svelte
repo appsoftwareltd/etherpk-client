@@ -6,7 +6,7 @@
      * mobile renderer's revision bumps) and drives the controller back through the
      * identical API — `focusView` to switch tabs, `toggleSidebar` to close a drawer.
      */
-    import { untrack } from 'svelte'
+    import { untrack, type Snippet } from 'svelte'
 
     import type { LayoutController, LayoutModel, Region, ViewInstance } from '$lib/layout'
     import { attachContextMenu, type ContextMenuTarget, tryGetActiveCommandRegistry } from '$lib/surface'
@@ -23,6 +23,7 @@
         controller,
         renderer,
         markFor = () => null,
+        status,
     }: {
         controller: LayoutController
         renderer: MobileRenderer
@@ -32,6 +33,11 @@
          * and whether a [[Protected Document]] is readable right now is invisible from its title.
          */
         markFor?: (panelId: string) => TabMark | null
+        /**
+         * A status control for the top bar, before Tasks: the synced workspace's sync chip. A
+         * snippet, so this presenter learns nothing about sync.
+         */
+        status?: Snippet
     } = $props()
 
     // Re-derive the model whenever the renderer signals a mutation.
@@ -369,6 +375,9 @@
                     <path d="M5 8l5 5 5-5" />
                 </svg>
             </button>
+        {/if}
+        {#if status}
+            <div class="status" data-testid="mobile-status">{@render status()}</div>
         {/if}
         {#if hasTasksCommand}
             <!-- Sits just before the right toggle, as on desktop: it opens a View INTO that
@@ -771,6 +780,11 @@
         padding: 0 0.6rem;
     }
     /* Toggles never shrink, so they stay visible and clickable as tabs accumulate. */
+    /* The status control never shrinks: it keeps its place however the tab strip grows. */
+    .status {
+        display: flex;
+        flex: none;
+    }
     .topbar .toggle {
         flex: none;
         justify-content: center;

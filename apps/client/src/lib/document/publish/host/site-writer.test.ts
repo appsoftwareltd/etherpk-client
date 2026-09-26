@@ -124,6 +124,16 @@ describe('writeSiteToDirectory', () => {
         expect(fileText(root, 'AGENTS.md')).toBe('# Mine\n<!-- s -->new<!-- e -->\nkeep')
     })
 
+    it('deletes the publish report an older build left in the folder', async () => {
+        // Older builds wrote etherpk-publish.json into every site. The name stays an owned path
+        // so that the first publish after the upgrade removes the copy.
+        const root: MemDir = { kind: 'directory', entries: new Map() }
+        root.entries.set('etherpk-publish.json', { kind: 'file', bytes: new TextEncoder().encode('{"excluded":[{"concept":"Secret Plans"}]}'), writes: 0 })
+        const result = await writeSiteToDirectory(dirHandle(root), new Map([['index.html', 'x']]), { seeded: new Map(), agentsMd })
+        expect(result.deleted).toEqual(['etherpk-publish.json'])
+        expect(root.entries.has('etherpk-publish.json')).toBe(false)
+    })
+
     it('never touches .git', async () => {
         const root: MemDir = { kind: 'directory', entries: new Map() }
         root.entries.set('.git', { kind: 'directory', entries: new Map([['HEAD', { kind: 'file', bytes: new TextEncoder().encode('ref'), writes: 0 }]]) })

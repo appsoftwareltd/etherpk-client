@@ -9,7 +9,9 @@
  * Pure, so the mapping is unit tested rather than inferred from a screenshot.
  */
 import type { QuotaErrorCode } from '@appsoftwareltd/etherpk-shared'
+import { ManagedTokenError } from '$lib/auth/managed-token'
 import { EnvelopeError, RecoveryCodeError } from '$lib/crypto'
+import { NoVaultError } from './recovery-unlock'
 import { InviteForHeldGraphError } from './invites'
 import { SyncProtocolMismatchError } from './messages'
 import { SyncApiError } from './sync-api'
@@ -113,6 +115,16 @@ export function describeSyncFailure(error: unknown, action: string): string {
         return `${opening} The sync server said: ${error.message}. Try again, and check your connection if it persists.`
     }
 
+    // The Client's own /auth/token, not the sync server. A 503 there means Corporate was briefly
+    // busy and the session is intact; blaming the connection would send people to check their
+    // network. The browser has already waited and asked again before this shows.
+    if (error instanceof ManagedTokenError) {
+        if (error.status === 401) return `${opening} Your EtherPK sign-in has ended. Sign in again, then retry.`
+        if (error.status === 503 || error.status === 429) {
+            return `${opening} EtherPK sign-in is busy at the moment. You are still signed in; try again in a minute.`
+        }
+    }
+
     if (error instanceof InviteForHeldGraphError) {
         return `${opening} It is for a graph you already have, so it was refused and your key for that graph is unchanged. There is nothing to do.`
     }
@@ -132,7 +144,13 @@ export function describeSyncFailure(error: unknown, action: string): string {
         return `${opening} Your encryption keys are locked on this device. Unlock them with your Recovery Code, or by approving from another device that is unlocked, then try again.`
     }
     if (error instanceof EnvelopeError) {
-        return `${opening} The keys held on this device could not open this data. In Sync settings, lock your keys and then unlock again with your current Recovery Code.`
+        // A wrong Recovery Code is refused at the unlock (recovery-unlock.ts), so keys that open
+        // nothing were unlocked correctly and have since gone stale: the account's keys were reset
+        // on another device. Saying so stops a person retyping the same code.
+        return `${opening} The keys unlocked on this device no longer open your account’s data, usually because your keys were reset on another device. In Sync settings, lock your keys, then unlock them again by approving from another device or with your current Recovery Code.`
+    }
+    if (error instanceof NoVaultError) {
+        return `${opening} This account has no encryption keys yet: they are created with your first synced graph.`
     }
     if (error instanceof RecoveryCodeError) {
         // Never echo the offending character: it is one keystroke away from the real code.
@@ -149,7 +167,7 @@ export function describeSyncFailure(error: unknown, action: string): string {
 
 /** True when retrying the same request could plausibly succeed. */
 export function isRetryableSyncFailure(error: unknown): boolean {
-    if (error instanceof VaultLockedError || error instanceof EnvelopeError || error instanceof RecoveryCodeError) {
+    if (error instanceof VaultLockedError || error instanceof EnvelopeError || error instanceof RecoveryCodeError || error instanceof NoVaultError) {
         return false // the keys will not change by trying again
     }
     if (error instanceof SyncProtocolMismatchError) return false

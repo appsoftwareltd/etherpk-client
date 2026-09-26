@@ -9,7 +9,9 @@
 
 /* ── Compass-inspired design tokens ─────────────────────────────────────────── */
 @theme {
-    --font-sans: "Inter", system-ui, -apple-system, sans-serif;
+    /* Inter Variable is bundled (@fontsource-variable/inter, imported in routes/+layout.svelte),
+       so no page asks Google Fonts or any other host for it. */
+    --font-sans: "Inter Variable", system-ui, -apple-system, sans-serif;
 
     /* Tighter type scale (matches Compass) */
     --text-3xl: 2rem;

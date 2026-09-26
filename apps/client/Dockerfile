@@ -58,6 +58,8 @@ WORKDIR /app
 COPY --chown=node:node --from=builder /app/apps/client/build ./build
 COPY --chown=node:node --from=builder /app/deploy/node_modules ./node_modules
 COPY --chown=node:node --from=builder /app/deploy/package.json ./package.json
+# The Elastic License 2.0 travels with the image, so whoever pulls it has the terms it is under.
+COPY --chown=node:node LICENSE ./LICENSE
 
 ENV NODE_ENV=production
 ENV PORT=3000

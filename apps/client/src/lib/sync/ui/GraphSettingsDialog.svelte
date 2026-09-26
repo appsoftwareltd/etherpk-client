@@ -565,10 +565,30 @@
                                 {mirror.status.assets}
                                 {mirror.status.assets === 1
                                     ? "attachment"
-                                    : "attachments"} are in the folder. Last checked
-                                complete {agoText(mirror.status.lastSyncAt)}.
+                                    : "attachments"} are in the folder.
+                                <!-- "Complete" only when it is: nothing waiting, and the server
+                                     answered the question of what changed on other devices. -->
+                                {#if mirror.status.skipped.length === 0 && mirror.status.missingAssets.length === 0 && !mirror.status.changesElsewhereUnchecked}
+                                    Last checked complete {agoText(
+                                        mirror.status.lastSyncAt,
+                                    )}.
+                                {:else}
+                                    Last checked {agoText(
+                                        mirror.status.lastSyncAt,
+                                    )}.
+                                {/if}
                             {/if}
                         </p>
+                        {#if mirror.status.changesElsewhereUnchecked && !mirror.status.paused}
+                            <p
+                                class="text-sm text-amber-700 dark:text-amber-400"
+                                data-testid="mirror-unchecked"
+                            >
+                                Could not ask the server for edits made on other
+                                devices, so some may not be in the folder yet. It
+                                asks again shortly; Mirror now asks at once.
+                            </p>
+                        {/if}
                         <!-- Each of these can name thousands of files on a real graph, so the count
                          is the message and the names are folded away behind it. A wall of text is
                          not a report: it buries the sentence that says what to do. -->

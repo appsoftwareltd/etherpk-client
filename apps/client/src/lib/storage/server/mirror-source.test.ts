@@ -53,6 +53,23 @@ describe('createMirrorSource', () => {
         expect(progress).toHaveBeenCalledWith(1, 1)
     })
 
+    it('asks the store which documents changed elsewhere, passing "unknown" through as null', async () => {
+        let answer: string[] | null = ['d1']
+        const asked: string[][] = []
+        const src = createMirrorSource({
+            store: fakeStore({
+                docsBehind: async (docIds) => {
+                    asked.push([...docIds])
+                    return answer
+                },
+            }),
+        })
+        expect(await src.docsBehind!(['d1', 'd2'])).toEqual(['d1'])
+        expect(asked).toEqual([['d1', 'd2']])
+        answer = null
+        expect(await src.docsBehind!(['d1'])).toBeNull()
+    })
+
     it('offers no asset surface without both an asset store and a listing', () => {
         expect(createMirrorSource({ store: fakeStore() }).listGraphAssets).toBeUndefined()
         expect(createMirrorSource({ store: fakeStore(), assets: fakeAssets({}) }).listGraphAssets).toBeUndefined()

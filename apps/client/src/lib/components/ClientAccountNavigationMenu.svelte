@@ -22,6 +22,7 @@
         type ResolvedSyncConnection,
         type SyncConfig,
     } from "$lib/sync";
+    import { announceAccountSignal, onAccountSignal } from "$lib/sync/account-signal";
     import { truncateNavigationEmail, type SyncAccountSummary } from "@appsoftwareltd/etherpk-shared";
 
     type AccountState = "checking" | "authenticated" | "signed-out" | "unavailable" | "disconnected";
@@ -66,8 +67,14 @@
               : "Custom server account",
     );
 
-    async function refreshAccount(): Promise<void> {
+    /**
+     * `announce`: tell the other tabs when this check finds a signed-in account signed out. Off
+     * when the check was itself prompted by another tab's announcement, so two tabs never keep
+     * answering each other.
+     */
+    async function refreshAccount(options: { announce?: boolean } = {}): Promise<void> {
         const generation = ++refreshGeneration;
+        const wasAuthenticated = accountState === "authenticated";
         const config = readSyncConfig();
         let connection: ResolvedSyncConnection | null;
 
@@ -113,6 +120,14 @@
                 && error.status === 401) {
                 accountState = "signed-out";
                 clearActiveSyncAccount();
+                // Signed out somewhere this tab could not see (on the account site, or a revoked
+                // token): open graphs in every tab stop syncing and say so.
+                if (wasAuthenticated && options.announce !== false) {
+                    announceAccountSignal({
+                        type: "ended",
+                        reason: connectionMode === "managed" ? "signed-out" : "refused",
+                    });
+                }
             } else {
                 // A failed reachability check is not evidence that the credential is invalid.
                 // Keep the last account partition for offline work, but do not present it as
@@ -133,6 +148,8 @@
         clearManagedAccessToken();
         lockVault();
         clearActiveSyncAccount();
+        // Every other tab's open graph stops syncing now, not at its next reconnect.
+        announceAccountSignal({ type: "ended", reason: "disconnected" });
 
         if (connectionMode === "managed") {
             // End only the Client-origin refresh session. Corporate and Server portal sessions
@@ -160,6 +177,7 @@
         clearManagedAccessToken();
         lockVault();
         clearActiveSyncAccount();
+        announceAccountSignal({ type: "ended", reason: "signed-out" });
     }
 
     function refreshFromStorage(event: StorageEvent): void {
@@ -174,6 +192,10 @@
         const refresh = () => void refreshAccount();
 
         window.addEventListener(SYNC_CONFIG_CHANGED_EVENT, refresh);
+        // Another tab ended the account, or something saw a refusal and asks for a re-check.
+        const stopAccountSignals = onAccountSignal((signal) =>
+            void refreshAccount({ announce: signal.type === "check" }),
+        );
         // The HTTP-only Client session is authoritative for managed mode. Restore the browser's
         // non-secret connection choice after silent SSO or when local storage has been cleared.
         if (managedSessionAvailable && managedSyncAvailable && readSyncConfig() === null) {
@@ -184,6 +206,7 @@
         return () => {
             ++refreshGeneration;
             window.removeEventListener(SYNC_CONFIG_CHANGED_EVENT, refresh);
+            stopAccountSignals();
         };
     });
 </script>

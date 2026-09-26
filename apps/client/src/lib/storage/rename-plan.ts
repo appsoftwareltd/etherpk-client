@@ -6,6 +6,7 @@
  * the work that actually happens come from one source.
  */
 
+import { frontmatterIdentity } from '$lib/document/frontmatter/identity'
 import { cascadeFor } from '$lib/document/wikilink/rename'
 import { conceptKey } from './fs/identity'
 import { type RenamePlan, type RenameStep, renameRefusal, renameSteps } from './rename'
@@ -89,6 +90,37 @@ export async function refuseProtectedMerges(
         }
     }
     return plan
+}
+
+/**
+ * Refuse a plan whose steps would rewrite a [[Frontmatter]] block that does not parse. A
+ * Filesystem Backend rebuilds each renamed document's block, and a merge survivor's, from its
+ * parsed data, which is empty for such a block, so every key it holds would be lost from the file:
+ * the only copy. `textOf` gives a document's current text (an open buffer, else its file), or
+ * null for a name with no document behind it.
+ */
+export async function refuseUnreadableBlocks(
+    plan: RenamePlan,
+    textOf: (concept: string) => Promise<string | null>,
+): Promise<RenamePlan> {
+    if (plan.refusal) return plan
+    for (const step of renameSteps(plan)) {
+        for (const concept of step.merges ? [step.from, step.into] : [step.from]) {
+            const text = await textOf(concept)
+            if (text === null || frontmatterIdentity(text).readable) continue
+            return { ...plan, refusal: unreadableBlockRefusal(plan.direct.from, concept) }
+        }
+    }
+    return plan
+}
+
+/** Why `renamed` cannot be renamed: the block of `unreadable` (itself, or a page the rename rewrites) does not parse. */
+export function unreadableBlockRefusal(renamed: string, unreadable: string): string {
+    const fix = 'Fix the block (a property written twice, or a line left half typed) and rename again.'
+    if (conceptKey(renamed) === conceptKey(unreadable)) {
+        return `“${renamed}” cannot be renamed while its frontmatter is not valid YAML: renaming rewrites the block, and what it holds would be lost. ${fix}`
+    }
+    return `“${renamed}” cannot be renamed while the frontmatter of “${unreadable}”, which the rename rewrites, is not valid YAML: what it holds would be lost. ${fix}`
 }
 
 /**

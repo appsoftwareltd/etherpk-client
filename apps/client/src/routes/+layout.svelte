@@ -1,4 +1,6 @@
 <script lang="ts">
+    import "@fontsource-variable/inter/opsz.css";
+    import "@fontsource-variable/inter/opsz-italic.css";
     import "../app.css";
     import { onMount } from "svelte";
     import { beforeNavigate } from "$app/navigation";

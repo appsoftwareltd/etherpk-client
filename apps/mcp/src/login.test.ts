@@ -33,7 +33,7 @@ describe('unlockByRecoveryCode', () => {
     it('rejects a wrong code and an account with no vault', async () => {
         const a = await account()
         const api = { getVault: async () => ({ vault: a.envelope, version: 1 }) } as unknown as SyncApi
-        await expect(unlockByRecoveryCode(api, generateRecoveryCode())).rejects.toThrow()
+        await expect(unlockByRecoveryCode(api, generateRecoveryCode())).rejects.toThrow('does not open this account')
         const empty = { getVault: async () => null } as unknown as SyncApi
         await expect(unlockByRecoveryCode(empty, a.code)).rejects.toThrow('no encryption keys')
     })

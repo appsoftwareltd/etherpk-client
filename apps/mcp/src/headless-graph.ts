@@ -40,10 +40,11 @@ import { listServerAssets } from '$lib/storage/server/asset-orphans'
 import type { AssetStore } from '$lib/storage/fs/asset-store'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { createGraphSync, type TransportSocket } from '$lib/sync/graph-sync'
+import { createGraphSync, type SyncAccessLoss, type TransportSocket } from '$lib/sync/graph-sync'
 import { openGraphCache } from '$lib/sync/local-cache'
 import { PRESENCE_PALETTE } from '$lib/sync/presence-identity'
 import type { SyncTokenSource } from '$lib/sync/sync-token'
+import { writeRefusalForAgent } from '$lib/sync/write-refusal'
 import { documentProtection } from '$lib/document/protection/cipher-fence'
 
 import { readPublishSource } from '$lib/document/publish/source'
@@ -82,6 +83,12 @@ export interface HeadlessGraphDeps {
     /** After every stored batch of embeddings, with the store's state - for a progress line. */
     onSemanticProgress?: (status: SemanticStatus) => void
     onError?: (error: Error) => void
+    /**
+     * Called once when the Sync Server ends this account's access to the graph for good: the
+     * membership ended, or the token was revoked. The session has stopped syncing; every tool
+     * refuses from then on with `access_removed` or `token_revoked`.
+     */
+    onAccessLost?: (loss: SyncAccessLoss) => void
     /** Feeds the Sync Server's name envelope; see `GraphSyncDeps.publishName`. */
     publishName?: (name: string) => void
     /**
@@ -175,6 +182,8 @@ export interface HeadlessGraph {
     readonly themes: HeadlessThemes
     /** Make every pending write durable - acknowledged by the relay, or on disk - and say if it is not. */
     settle(): Promise<SettleResult>
+    /** Why the Sync Server ended access for good, or null while it has not; always null for a folder. */
+    accessLoss(): SyncAccessLoss | null
     /** Write the cache and the index to `persistDir` now; a no-op without one. */
     persist(): Promise<void>
     /**
@@ -220,6 +229,8 @@ export interface HeadlessThemes {
 export interface HeadlessGraphParts {
     graphId: string
     name: string
+    /** A synced graph's session reports why access ended; a folder has no such thing. */
+    accessLoss?: () => SyncAccessLoss | null
     store: HeadlessDocuments
     index: RemoteGraphIndex
     assets?: HeadlessAssets
@@ -316,6 +327,7 @@ export function assembleHeadlessGraph(parts: HeadlessGraphParts): HeadlessGraph 
         publishing: parts.publishing,
         themes: parts.themes,
         settle: () => parts.settle(schedulePersist),
+        accessLoss: () => parts.accessLoss?.() ?? null,
         persist,
         semantic,
         semanticOpened: () => (semanticOpening ? semanticOpening.catch(() => undefined) : Promise.resolve(undefined)),
@@ -357,6 +369,7 @@ export async function openHeadlessGraph(deps: HeadlessGraphDeps): Promise<Headle
         // the name is what members read.
         presence: { name: deps.presenceName, ...PRESENCE_PALETTE[0] },
         onError: deps.onError,
+        onAccessLost: deps.onAccessLost,
         publishName: deps.publishName,
     })
     const store = createServerDocumentStore(sync, { readyTimeoutMs: deps.readyTimeoutMs })
@@ -442,6 +455,7 @@ export async function openHeadlessGraph(deps: HeadlessGraphDeps): Promise<Headle
         return assembleHeadlessGraph({
             graphId: deps.graphId,
             name: sync.getMeta().name ?? deps.graphId,
+            accessLoss: () => sync.accessLoss(),
             store: documents,
             index,
             assets,
@@ -477,6 +491,17 @@ export async function openHeadlessGraph(deps: HeadlessGraphDeps): Promise<Headle
                 const result = await sync.awaitAcked({ stallMs: 10_000 })
                 schedulePersist()
                 if (result.settled) return { settled: true }
+                // Refused is not "unreachable": the server answered no. Saying the edit will be
+                // delivered when the connection recovers would send an agent to check a working
+                // network, so the result names the refusal instead.
+                if (result.refused) {
+                    return {
+                        settled: false,
+                        outstanding: result.outstanding,
+                        code: 'write_refused',
+                        message: writeRefusalForAgent(result.refused, result.outstanding),
+                    }
+                }
                 return {
                     settled: false,
                     outstanding: result.outstanding,

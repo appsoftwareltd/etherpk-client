@@ -129,3 +129,60 @@ describe('the MCP server', () => {
         expect(result.isError).toBe(true)
     })
 })
+
+/**
+ * A Headless Client whose membership or token is revoked stops syncing, and every tool says why
+ * rather than answering from its cache.
+ */
+describe('the MCP server after access ends', () => {
+    async function withRelayControl() {
+        const relay = createLoopbackRelay()
+        let closeWith: ((code: number) => void) | undefined
+        const losses: unknown[] = []
+        const connect = (url: string) => {
+            const inner = relay.connect(url)
+            return {
+                send: (data: string) => inner.send(data),
+                close: () => inner.close(),
+                onOpen: (cb: () => void) => inner.onOpen(cb),
+                onMessage: (cb: (data: string) => void) => inner.onMessage(cb),
+                onClose: (cb: (event?: { code: number; reason: string }) => void) => {
+                    closeWith = (code) => cb({ code, reason: '' })
+                    inner.onClose(() => cb())
+                },
+            }
+        }
+        const graph = await openHeadlessGraph({
+            graphId: `g-mcp-lost-${Math.floor(performance.now() * 1000)}`,
+            rootDocId: ROOT,
+            keyring: createGraphKeyring('g-mcp-lost'),
+            relayUrl: 'ws://loopback/sync',
+            token: fixedSyncToken('t'),
+            presenceName: 'Agent on test',
+            connect,
+            onAccessLost: (loss) => losses.push(loss),
+        })
+        const server = createMcpServer(graph, { graphName: 'Notes', version: '0.0.0-test' })
+        const [clientSide, serverSide] = InMemoryTransport.createLinkedPair()
+        await server.connect(serverSide)
+        const client = new Client({ name: 'test-agent', version: '0.0.0' })
+        await client.connect(clientSide)
+        cleanup.push(async () => {
+            await client.close()
+            await server.close()
+            await graph.dispose()
+        })
+        return { client, losses, close: (code: number) => closeWith!(code) }
+    }
+
+    it('refuses every tool with access_removed once the relay says the membership ended', async () => {
+        const { client, losses, close } = await withRelayControl()
+        close(4403)
+
+        const result = await client.callTool({ name: 'list_documents', arguments: {} })
+        expect(result.isError).toBe(true)
+        expect(text(result)).toMatchObject({ error: 'access_removed' })
+        expect(losses).toEqual([{ kind: 'membership' }])
+    })
+})
+

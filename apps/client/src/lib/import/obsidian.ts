@@ -12,7 +12,7 @@
 import { portableFileStem } from '$lib/document/wikilink'
 import { MARKDOWN_LINK } from '$lib/document/markdown-link-target'
 import { parseFrontmatter } from '$lib/storage/fs/frontmatter'
-import { aliasesOf } from '$lib/storage/fs/identity'
+import { normaliseAliases } from '$lib/document/frontmatter/identity'
 
 import { type PlannedAsset, normaliseRef, planAssets } from './assets'
 import { buildFrontmatter, createFenceTracker, dedupeConcept, outsideInlineCode, scopedConceptName } from './convert-shared'
@@ -100,7 +100,7 @@ export async function convertObsidian(files: SourceFile[], control?: ImportContr
         const stem = baseName(file.path).replace(/\.md$/i, '')
         const dir = dirName(file.path)
         const fm = parseFrontmatter(await readText(file))
-        const aliases = aliasesOf(fm)
+        const aliases = obsidianAliases(fm.data)
         const pathKey = file.path.replace(/\.md$/i, '').toLowerCase()
 
         const iso = dailyNotes
@@ -335,7 +335,7 @@ export async function convertObsidian(files: SourceFile[], control?: ImportContr
         await breathe(control)
         onProgress?.({ label: 'Converting documents', done: ++converted, total: notes.length })
         const body = convertBody(note)
-        const { title, ...rest } = note.frontmatter
+        const { title, ...rest } = withAliasesList(note.frontmatter, note.aliases)
         if (typeof title === 'string' && title.trim() !== '' && title !== note.concept) {
             report.push({
                 category: 'degradation',
@@ -361,4 +361,43 @@ export async function convertObsidian(files: SourceFile[], control?: ImportContr
     }
 
     return { documents, assets: assetPlan.assets, report }
+}
+
+/**
+ * A note's aliases in every form Obsidian has read. Obsidian's guidance is an `aliases:` list
+ * (https://obsidian.md/help/aliases), but before 1.4 it also read the singular `alias` key and
+ * split a text value at its commas, even a quoted one, which Obsidian staff called a divergence
+ * from YAML (https://forum.obsidian.md/t/an-alias-wrongly-treated-as-a-list-of-aliases-by-obsidian-if-they-contain-comma-in-them/29734).
+ * 1.4 deprecated `alias` and began rewriting both forms to lists, and 1.9 stopped reading them
+ * (https://obsidian.md/help/properties, "Deprecated properties"). A vault last saved by an older
+ * Obsidian still holds them, so all of them are read here: `aliases` first, then `alias`.
+ */
+function obsidianAliases(data: Record<string, unknown>): string[] {
+    return normaliseAliases([...aliasValues(data.aliases), ...aliasValues(data.alias)])
+}
+
+/** One alias property's names: a list's strings, or a text value split at its commas. */
+function aliasValues(value: unknown): string[] {
+    const items: unknown[] = typeof value === 'string' ? value.split(',') : Array.isArray(value) ? value : []
+    return items.filter((item): item is string => typeof item === 'string')
+}
+
+/**
+ * The note's block with its aliases as the `aliases:` list EtherPK reads (`aliasesOf`), in the
+ * place the first alias property held. A block that already has only an `aliases:` list is
+ * returned as it is, so an import never rewrites more of the vault's YAML than it must.
+ */
+function withAliasesList(data: Record<string, unknown>, aliases: string[]): Record<string, unknown> {
+    if (!('alias' in data) && typeof data.aliases !== 'string') return data
+    const out: Record<string, unknown> = {}
+    let placed = false
+    for (const [key, value] of Object.entries(data)) {
+        if (key !== 'alias' && key !== 'aliases') {
+            out[key] = value
+            continue
+        }
+        if (!placed && aliases.length > 0) out.aliases = aliases
+        placed = true
+    }
+    return out
 }

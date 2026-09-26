@@ -15,6 +15,7 @@ import { discardIndexPool, type DiscardIndexPoolResult } from '$lib/document/ind
 import { indexOwnerLockName } from '$lib/document/index-pool-names'
 import type { DirectoryAdapter } from '$lib/storage/fs/directory-adapter'
 import type { GraphRegistry } from '$lib/storage/graph-registry'
+import { opfsGraphFolderName } from '$lib/storage/fs/opfs-graph-folder'
 
 import type { DemoBundleManifest } from './bundle-manifest'
 import { type DemoFile, type SeedProgress, materializeDemoGraph } from './seed'
@@ -22,7 +23,7 @@ import { type DemoFile, type SeedProgress, materializeDemoGraph } from './seed'
 export const DEMO_GRAPH_ID = 'demo-graph'
 
 /** The OPFS folder the demo's files live in; the workspace's dev OPFS convention, reused. */
-export const DEMO_GRAPH_FOLDER = `graph-${DEMO_GRAPH_ID}`
+export const DEMO_GRAPH_FOLDER = opfsGraphFolderName(DEMO_GRAPH_ID)
 
 export function isDemoGraph(graphId: string | null | undefined): boolean {
     return graphId === DEMO_GRAPH_ID

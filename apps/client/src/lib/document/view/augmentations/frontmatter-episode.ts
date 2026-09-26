@@ -17,12 +17,30 @@ export interface EpisodeUpdate {
     focused: boolean
 }
 
+/** What the View reports when an episode ends, for the proposal to weigh. */
+export interface EpisodeEnd {
+    /**
+     * The block did not exist when the episode began: the person typed or pasted it in this
+     * episode. Such a block claims nothing about aliases until it has an `aliases` key.
+     */
+    blockIsNew: boolean
+}
+
 export class FrontmatterEpisode {
     #touched = false
+    #blockIsNew = false
 
     /** Whether the block has been touched and the episode has not yet ended. */
     get open(): boolean {
         return this.#touched
+    }
+
+    /**
+     * Whether the block the current or last episode touched was absent when that episode began.
+     * Read it when `update` or `close` reports the end.
+     */
+    get blockIsNew(): boolean {
+        return this.#blockIsNew
     }
 
     /** Feed one editor update. Returns true when the episode ended and should be reported. */
@@ -32,6 +50,9 @@ export class FrontmatterEpisode {
                 (change) => change.from <= input.blockEndBefore || change.from <= input.blockEndAfter,
             )
         ) {
+            // Judged once, at the first edit that touches the block, so later updates in the same
+            // episode (where the block now exists) do not change the answer.
+            if (!this.#touched) this.#blockIsNew = input.blockEndBefore < 0
             this.#touched = true
         }
         if (!this.#touched) return false

@@ -6,7 +6,7 @@
      * - Enter the Recovery Code: the recovery route, and the only one on a first device.
      * Used before any action that needs decrypted keys (opening a synced graph, invites…).
      */
-    import { onDestroy } from "svelte";
+    import { onDestroy, tick } from "svelte";
     import {
         beginDeviceApproval,
         createConfiguredSyncApi,
@@ -31,6 +31,7 @@
     let code = $state("");
     let error = $state<string | null>(null);
     let busy = $state(false);
+    let codeInput = $state<HTMLInputElement>();
     const errorId = $props.id();
 
     // Approve-from-another-device mode. Only offered when the device has a sync config.
@@ -109,13 +110,24 @@
             error = "Enter your Recovery Code.";
             return;
         }
+        // The code is checked against this account's vault before anything is cached, so the
+        // device must be able to reach its Sync Server to fetch it.
+        if (!api) {
+            error = "This device is not connected to a sync server, so the code cannot be checked. Connect in Sync settings, then try again.";
+            return;
+        }
         busy = true;
         try {
-            await unlockWithRecoveryCode(code.trim());
+            await unlockWithRecoveryCode(api, code.trim());
             open = false;
             onunlocked();
         } catch (e) {
-            error = `Could not unlock: ${(e as Error).message}. Check your Recovery Code and try again.`;
+            // A wrong code says it is wrong; a server that could not be reached says that instead.
+            // What was typed stays in the field, so one wrong character is one fix away.
+            error = describeSyncFailure(e, "unlock your keys");
+            busy = false;
+            await tick();
+            codeInput?.focus();
         } finally {
             busy = false;
         }
@@ -142,6 +154,7 @@
                 <label for="unlock-code" class="mb-1.5 block text-sm font-medium text-gray-500 dark:text-gray-400">Recovery Code</label>
                 <input
                     id="unlock-code"
+                    bind:this={codeInput}
                     bind:value={code}
                     data-testid="unlock-input"
                     autocomplete="off"

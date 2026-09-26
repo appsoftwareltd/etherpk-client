@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
+import { parseFrontmatter } from '$lib/storage/fs/frontmatter'
+import { aliasesOf } from '$lib/storage/fs/identity'
+
 import { convertObsidian } from './obsidian'
 import type { ConvertedGraph, SourceFile } from './types'
 
@@ -41,6 +44,32 @@ describe('convertObsidian', () => {
         expect(text).toContain('b [[quantum mechanics]] c')
         expect(text).toContain('c the theory ([[Quantum Mechanics]])')
         expect(graph.report.some((r) => r.category === 'degradation' && r.detail.includes('the theory'))).toBe(true)
+    })
+
+    // Obsidian read `alias` as well as `aliases` and split a text value at its commas until 1.4
+    // began rewriting both to a list; 1.9 stopped reading them. A vault last saved by an older
+    // Obsidian still holds them, and EtherPK reads aliases only from an `aliases:` list.
+    it('reads the older alias forms and writes each as an aliases list', async () => {
+        const graph = await convertObsidian([
+            src('One.md', '---\naliases: Uno\n---\nx'),
+            src('Two.md', '---\naliases: Dos, Deux\ntags: [n]\n---\nx'),
+            src('Three.md', '---\nalias: Tres\n---\nx'),
+            src('Four.md', '---\nalias: [Cuatro, Quatre]\n---\nx'),
+            src('Five.md', '---\nalias: Cinq, Fünf\naliases: [Cinco]\n---\nx'),
+            src('user.md', '[[One|Uno]] [[Two|Deux]] [[Three|Tres]] [[Four|Quatre]] [[Five|Fünf]]'),
+        ])
+        const aliases = (concept: string) => aliasesOf(parseFrontmatter(doc(graph, concept).text))
+        expect(aliases('One')).toEqual(['Uno'])
+        expect(aliases('Two')).toEqual(['Dos', 'Deux'])
+        expect(aliases('Three')).toEqual(['Tres'])
+        expect(aliases('Four')).toEqual(['Cuatro', 'Quatre'])
+        expect(aliases('Five')).toEqual(['Cinco', 'Cinq', 'Fünf'])
+        for (const concept of ['One', 'Two', 'Three', 'Four', 'Five']) {
+            expect(doc(graph, concept).text).not.toMatch(/^alias:/m)
+        }
+        expect(doc(graph, 'Two').text).toContain('tags:\n  - n\n')
+        // The piped links see the same aliases the pages now carry.
+        expect(doc(graph, 'user').text).toContain('[[Uno]] [[Deux]] [[Tres]] [[Quatre]] [[Fünf]]')
     })
 
     it('degrades note embeds and fragment links, and strips block anchors', async () => {

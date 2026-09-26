@@ -31,6 +31,8 @@
         banned: boolean | null;
         banReason: string | null;
         banExpires: number | null;
+        /** Better Auth's twoFactor plugin field; absent on a user that never turned it on. */
+        twoFactorEnabled?: boolean | null;
         createdAt: Date;
     }
 
@@ -74,6 +76,10 @@
     let resetPasswordUser = $state<AdminUser | null>(null);
     let newPassword = $state("");
     let resettingPassword = $state(false);
+
+    // ── Modal state: Reset two-factor ─────────────────────────────
+    let resetTwoFactorUser = $state<AdminUser | null>(null);
+    let resettingTwoFactor = $state(false);
 
     // ── Modal state: Delete ───────────────────────────────────────
     let deleteModalUser = $state<AdminUser | null>(null);
@@ -260,6 +266,31 @@
             actionError = err instanceof Error ? err.message : "Failed to reset password";
         } finally {
             resettingPassword = false;
+        }
+    }
+
+    // ── Reset two-factor ──────────────────────────────────────────
+    // Better Auth's admin plugin has no call for this, so each app serves the same path. It is
+    // the way back in for a user with no authenticator and no backup codes.
+    async function confirmResetTwoFactor() {
+        const user = resetTwoFactorUser;
+        if (!user || resettingTwoFactor) return;
+        resettingTwoFactor = true;
+        clearFeedback();
+        try {
+            const res = await fetch(`/admin/users/${encodeURIComponent(user.id)}/two-factor`, { method: "DELETE" });
+            if (!res.ok) {
+                const body = (await res.json().catch(() => null)) as { message?: string } | null;
+                throw new Error(body?.message || `The server refused the reset (HTTP ${res.status}). Try again, or reload the page.`);
+            }
+            users = users.map((u) => (u.id === user.id ? { ...u, twoFactorEnabled: false } : u));
+            showSuccess(`Two-factor authentication is off for ${user.name || user.email}. They can sign in with their password.`);
+            resetTwoFactorUser = null;
+        } catch (err) {
+            // The dialog stays open, as the other admin dialogs do, so a retry is one click away.
+            actionError = err instanceof Error ? err.message : "Failed to reset two-factor authentication";
+        } finally {
+            resettingTwoFactor = false;
         }
     }
 
@@ -450,7 +481,7 @@
             <button onclick={() => setRoleFilter("user")} class="rounded-full px-3 py-1 text-sm font-medium transition-colors {roleFilter === 'user' ? 'bg-gray-950 dark:bg-white/15 text-white' : 'bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-white/15'}">User</button>
         </div>
         <div class="flex items-center gap-3">
-            <input type="search" value={searchValue} oninput={handleSearchInput} placeholder="Search by email\u2026" class="w-56 rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-700 placeholder-gray-400 focus:border-gray-950 focus:outline-none focus:ring-1 focus:ring-gray-950" />
+            <input type="search" aria-label="Search users by email" value={searchValue} oninput={handleSearchInput} placeholder="Search by email\u2026" class="w-56 rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-700 placeholder-gray-400 focus:border-gray-950 focus:outline-none focus:ring-1 focus:ring-gray-950" />
             <span class="text-sm text-gray-400">{total} user{total !== 1 ? "s" : ""}</span>
         </div>
     </div>
@@ -502,6 +533,9 @@
                                 {#if user.banned}
                                     <span class="inline-flex items-center rounded-full bg-red-50 px-2 py-0.5 text-sm font-medium text-red-700 ring-1 ring-red-600/20">Banned</span>
                                 {/if}
+                                {#if user.twoFactorEnabled}
+                                    <span class="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-sm font-medium text-emerald-700 ring-1 ring-emerald-600/20">2FA</span>
+                                {/if}
                                 {#if isSelf(user.id)}
                                     <span class="inline-flex items-center rounded-full bg-blue-50 px-2 py-0.5 text-sm font-medium text-blue-700 ring-1 ring-blue-600/20">You</span>
                                 {/if}
@@ -536,6 +570,11 @@
 
                         <!-- Reset password -->
                         <button onclick={() => openResetPasswordModal(user)} class="rounded-md px-2 py-1 text-sm font-medium text-gray-600 hover:bg-gray-100 transition-colors"> Reset password </button>
+
+                        <!-- Reset two-factor: an administrator turns their own off from the Account page. -->
+                        {#if user.twoFactorEnabled && !isSelf(user.id)}
+                            <button onclick={() => (resetTwoFactorUser = user)} class="rounded-md px-2 py-1 text-sm font-medium text-gray-600 hover:bg-gray-100 transition-colors"> Reset two-factor </button>
+                        {/if}
 
                         <!-- Impersonate -->
                         {#if !isSelf(user.id) && user.role !== "admin"}
@@ -674,7 +713,9 @@
     >
         {#snippet body()}
             <p class="text-sm text-gray-600 dark:text-gray-400">
-                Ban <strong>{banModalUser.name || banModalUser.email}</strong> from accessing their account.
+                Ban <strong>{banModalUser.name || banModalUser.email}</strong> from their account. They are signed
+                out everywhere, and every device and access token they use for Sync stops syncing until the ban
+                ends or you lift it.
             </p>
             <div>
                 <label for="ban-reason" class="mb-1.5 block text-sm font-medium text-gray-500 dark:text-gray-400">Reason (optional)</label>
@@ -732,6 +773,32 @@
     </Dialog>
 {/if}
 
+{#if resetTwoFactorUser}
+    <Dialog
+        open={true}
+        title="Reset two-factor authentication"
+        busy={resettingTwoFactor}
+        busyReason="Resetting…"
+        onclose={() => (resetTwoFactorUser = null)}
+        onsubmit={() => void confirmResetTwoFactor()}
+    >
+        {#snippet body()}
+            <p class="text-sm text-gray-600 dark:text-gray-400">
+                This turns off two-factor authentication for <strong>{resetTwoFactorUser.name || resetTwoFactorUser.email}</strong>.
+                Their authenticator app and backup codes stop working, and they sign in with their password alone
+                until they turn it on again from their Account page. Do this only once you are sure the request comes
+                from them.
+            </p>
+        {/snippet}
+        {#snippet footer()}
+            <button type="button" onclick={() => (resetTwoFactorUser = null)} class="rounded-lg px-3 py-1.5 text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300">Cancel</button>
+            <button type="submit" disabled={resettingTwoFactor} data-testid="admin-reset-two-factor-confirm" class="min-w-36 rounded-lg bg-gray-950 px-4 py-1.5 text-center text-sm font-medium text-white hover:bg-gray-700 dark:bg-white/20 dark:hover:bg-white/25 disabled:opacity-50">
+                {resettingTwoFactor ? "Resetting\u2026" : "Turn off two-factor"}
+            </button>
+        {/snippet}
+    </Dialog>
+{/if}
+
 {#if deleteModalUser}
     <Dialog
         open={true}
@@ -743,8 +810,10 @@
     >
         {#snippet body()}
             <p class="text-sm text-gray-600 dark:text-gray-400">
-                This will permanently delete <strong>{deleteModalUser.name || deleteModalUser.email}</strong> and all
-                their data. This action cannot be undone.
+                This permanently deletes the account of <strong>{deleteModalUser.name || deleteModalUser.email}</strong>.
+                They are signed out everywhere, and every device and access token they use for Sync stops syncing
+                at once. Graphs they own stay on the Sync Server until an administrator deletes them. This cannot be
+                undone.
             </p>
             <div>
                 <label for="delete-confirm" class="mb-1.5 block text-sm font-medium text-gray-500 dark:text-gray-400">

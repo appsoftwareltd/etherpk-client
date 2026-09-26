@@ -57,12 +57,24 @@ function failed(error: unknown): ToolResult {
     return { content: [{ type: 'text', text: JSON.stringify(body) }], isError: true }
 }
 
-async function run(work: () => Promise<unknown> | unknown): Promise<ToolResult> {
+async function runTool(work: () => Promise<unknown> | unknown): Promise<ToolResult> {
     try {
         return ok(await work())
     } catch (error) {
         return failed(error)
     }
+}
+
+/**
+ * The refusal every tool gives once the Sync Server has ended access, instead of answering from
+ * a cache that can no longer be trusted or saved.
+ */
+export function accessEndedError(graph: Pick<HeadlessGraph, 'accessLoss'>, cmd: string): ToolError | null {
+    const loss = graph.accessLoss()
+    if (!loss) return null
+    return loss.kind === 'membership'
+        ? new ToolError('access_removed', `This account no longer has access to the graph: it left, was removed by the owner, or the graph was deleted. Run ${cmd} graphs to see the graphs it can reach.`)
+        : new ToolError('token_revoked', `The Sync Server no longer accepts this computer's access token: it was revoked or has expired, or the account's password was reset. Run ${cmd} login again.`)
 }
 
 const concept = z.string().min(1).describe('A page title, one of its aliases, a journal day as YYYY-MM-DD, or "today".')
@@ -71,6 +83,13 @@ const offset = z.number().int().nonnegative().optional().describe('Skip this man
 const frontmatterValue = z.union([z.string(), z.number(), z.boolean(), z.null(), z.array(z.unknown()), z.record(z.string(), z.unknown())])
 
 export function createMcpServer(graph: HeadlessGraph, info: McpServerInfo): McpServer {
+    // Every tool goes through this: once access has ended, it refuses before touching the graph.
+    const run = (work: () => Promise<unknown> | unknown): Promise<ToolResult> =>
+        runTool(() => {
+            const ended = accessEndedError(graph, info.cmd ?? 'etherpk-mcp')
+            if (ended) throw ended
+            return work()
+        })
     const server = new McpServer(
         { name: 'etherpk', version: info.version },
         {
@@ -378,7 +397,7 @@ export function createMcpServer(graph: HeadlessGraph, info: McpServerInfo): McpS
         'publish',
         {
             title: 'Publish',
-            description: 'Render a publication to its publish folder on this machine and return the report: what was included and why documents were left out, missing links, assets, warnings. The folder is the one the user set with "etherpk-mcp publish --publication <id> --out <dir>" (error "no_publish_folder" until then; the tool never chooses a folder). Pages with Mermaid diagrams need the browser from "diagrams setup" (error "chromium_unavailable"). The full report is written to the folder as etherpk-publish.json. Publishing writes files; it does not deploy them.',
+            description: 'Render a publication to its publish folder on this machine and return the report: what was included and why documents were left out, missing links, assets, warnings. The folder is the one the user set with "etherpk-mcp publish --publication <id> --out <dir>" (error "no_publish_folder" until then; the tool never chooses a folder). Pages with Mermaid diagrams need the browser from "diagrams setup" (error "chromium_unavailable"). The report is this result, trimmed to counts and first entries; nothing of it is written into the folder, so the site never names the documents it leaves out. Publishing writes files; it does not deploy them.',
             inputSchema: { id: z.string().min(1) },
         },
         async (args) => run(() => publish(graph, args, host)),

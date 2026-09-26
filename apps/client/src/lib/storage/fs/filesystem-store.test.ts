@@ -520,6 +520,23 @@ describe('FilesystemDocumentStore — flushDocument', () => {
         await expect(store.flushDocument('A')).resolves.toBeUndefined()
         await expect(store.flushDocument('Nope')).resolves.toBeUndefined()
     })
+
+    // A check that reads the folder (the orphan scan) must see an edit still in its debounce.
+    it('flushAll writes every pending autosave now', async () => {
+        const fs = createMemoryDirectoryAdapter({ now: clock(), seed: { pages: { 'A.md': 'a', 'B.md': 'b' } } })
+        const store = createFilesystemDocumentStore(fs, { autosaveMs: 400 })
+        await store.scan()
+        const a = store.open('A')
+        const b = store.open('B')
+        await flushMicrotasks()
+        a.applyChange({ from: 1, to: 1, insert: 'X' })
+        b.applyChange({ from: 1, to: 1, insert: 'Y' })
+
+        await store.flushAll()
+
+        expect((await fs.read('pages', 'A.md')).text).toBe('aX')
+        expect((await fs.read('pages', 'B.md')).text).toBe('bY')
+    })
 })
 
 // ── Frontmatter identity is a proposal (ADR 0061) ──────────────────────────────────────────────
@@ -842,6 +859,24 @@ describe('FilesystemDocumentStore - a write that fails', () => {
         } finally {
             process.off('unhandledRejection', unhandled)
         }
+    })
+
+    // A check that reads the folder (the orphan scan, the delete's protected read) must not
+    // believe a folder whose latest edits could not be written: flushAll says so.
+    it('flushAll rejects while a buffer could not be written, naming it, and resolves once it can', async () => {
+        const fs = createMemoryDirectoryAdapter({ now: clock(), seed: { pages: { 'A.md': 'a', 'B.md': 'b' } } })
+        const failing = { now: true }
+        const store = createFilesystemDocumentStore(flakyWrites(fs, failing), { autosaveMs: 400, onSaveError: () => {} })
+        await store.scan()
+        const doc = store.open('A')
+        store.open('B')
+        await flushMicrotasks()
+        doc.applyChange({ from: 1, to: 1, insert: 'X' })
+
+        await expect(store.flushAll()).rejects.toThrow('A')
+        failing.now = false
+        await expect(store.flushAll()).resolves.toBeUndefined()
+        expect((await fs.read('pages', 'A.md')).text).toBe('aX')
     })
 
     it('the next keystroke re-arms the autosave, which retries the whole buffer', async () => {

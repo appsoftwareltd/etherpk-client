@@ -85,7 +85,7 @@ export function withPublishing(text: string, patch: PublishingPatch, options: { 
     }
     if (!changed) return text
     const yaml = Object.keys(next).length === 0 ? '' : stringifyYaml(next)
-    // A block emptied of every key is removed with it, the way `withoutIdentityKeys` does.
+    // A block emptied of every key is removed with it, the way `syncedImportText` does.
     if (yaml === '') return text.slice(span.end)
     return `---\n${yaml}---\n${text.slice(span.end)}`
 }

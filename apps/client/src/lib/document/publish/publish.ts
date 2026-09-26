@@ -28,6 +28,7 @@ import {
     navHtml,
     tocHtml,
 } from './fragments'
+import { withDiagramId } from './diagram-id'
 import { highlightCode as defaultHighlight } from './highlight'
 import { type DocumentRenderer, type RenderedDocument, type TocItem, createDocumentRenderer } from './markdown/render'
 import { type NavNode, buildNav } from './nav'
@@ -292,10 +293,23 @@ export async function publishPublication(
             }
         }
     }
+    // Each drawn diagram gets an id of its own where it is placed (diagram-id.ts):
+    // `mermaid_<page slug>_<n>` in a page's body and `mermaid__<slot>_<n>` in an include. A slug
+    // is never empty and never holds `_`, so the two forms cannot meet on one page, and neither
+    // can a heading's id (`publishSlug`, no `_`). Counted per render, in document order, so the
+    // ids do not depend on the host's render counter and an unchanged page publishes the same
+    // bytes. `diagramScope` is set before each render below.
+    let diagramScope = { prefix: 'mermaid', n: 0 }
+    const scopeDiagrams = (prefix: string) => {
+        diagramScope = { prefix: prefix.replace(/[^A-Za-z0-9_-]/g, '-'), n: 0 }
+    }
     const renderer: DocumentRenderer = createDocumentRenderer({
         resolve: resolver.resolve,
         assetHref: assetHrefOf,
-        mermaidSvg: (src) => mermaidSvg.get(src),
+        mermaidSvg: (src) => {
+            const svg = mermaidSvg.get(src)
+            return svg === undefined ? undefined : withDiagramId(svg, `${diagramScope.prefix}_${++diagramScope.n}`)
+        },
         highlighted: (lang, code) => highlighted.get(`${lang}\n${code}`),
     })
 
@@ -304,8 +318,9 @@ export async function publishPublication(
     let done = 0
     for (const doc of included) {
         progress('rendering', done++, included.length)
-        const rendered = renderer.render(bodyOf(doc))
         const slug = slugs.get(conceptKey(doc.concept)) as string
+        scopeDiagrams(`mermaid_${slug}`)
+        const rendered = renderer.render(bodyOf(doc))
         const isHome = doc === homeDoc
         const page: RenderedPage = {
             doc,
@@ -366,6 +381,7 @@ export async function publishPublication(
             }
             customCss += (customCss ? '\n' : '') + fence.code
         } else {
+            scopeDiagrams(`mermaid__${slot}`)
             includes.set(slot, renderer.render(body).html)
         }
         report.includes.push({ name: slot, source: 'page', concept: doc.concept })

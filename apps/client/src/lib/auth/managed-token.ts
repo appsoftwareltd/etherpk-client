@@ -14,6 +14,17 @@ export class ManagedTokenError extends Error {
     }
 }
 
+/**
+ * How the browser rides out a busy sign-in service. `/auth/token` answers 503 with Retry-After
+ * when Corporate could not be asked (it keeps the session), and that is almost always over in
+ * seconds. So the browser waits and asks again before anything reaches the screen. Each wait is
+ * capped: a server asking for a minute should not freeze a graph open for a minute before the
+ * user hears anything.
+ */
+const BUSY_RETRIES = 2
+const DEFAULT_RETRY_AFTER_MS = 5_000
+const MAX_RETRY_AFTER_MS = 10_000
+
 let cached: BrowserToken | null = null
 let refreshInFlight: Promise<BrowserToken> | null = null
 
@@ -47,6 +58,36 @@ export function clearManagedAccessToken(): void {
 }
 
 async function requestToken(fetcher: typeof fetch): Promise<BrowserToken> {
+    for (let retry = 0; ; retry += 1) {
+        try {
+            return await requestTokenOnce(fetcher)
+        } catch (failure) {
+            if (!(failure instanceof BusyTokenService) || retry >= BUSY_RETRIES) {
+                throw failure instanceof BusyTokenService ? failure.error : failure
+            }
+            await new Promise((resolve) => setTimeout(resolve, failure.retryAfterMs))
+        }
+    }
+}
+
+/** A 503 from `/auth/token`: the sign-in service is busy, not the user signed out. */
+class BusyTokenService extends Error {
+    constructor(
+        readonly error: ManagedTokenError,
+        readonly retryAfterMs: number,
+    ) {
+        super(error.message)
+    }
+}
+
+/** Retry-After in delta-seconds, bounded; anything unreadable gets the default. */
+function retryAfterMs(response: Response): number {
+    const seconds = Number(response.headers.get('Retry-After'))
+    if (!Number.isFinite(seconds) || seconds <= 0) return DEFAULT_RETRY_AFTER_MS
+    return Math.min(seconds * 1000, MAX_RETRY_AFTER_MS)
+}
+
+async function requestTokenOnce(fetcher: typeof fetch): Promise<BrowserToken> {
     const response = await fetcher('/auth/token', {
         method: 'POST',
         credentials: 'same-origin',
@@ -54,10 +95,12 @@ async function requestToken(fetcher: typeof fetch): Promise<BrowserToken> {
     })
     const body = await response.json().catch(() => null) as Partial<BrowserToken> & { error?: string } | null
     if (!response.ok) {
-        throw new ManagedTokenError(
+        const error = new ManagedTokenError(
             body?.error ?? `Managed Sync token request failed with HTTP ${response.status}`,
             response.status,
         )
+        if (response.status === 503) throw new BusyTokenService(error, retryAfterMs(response))
+        throw error
     }
     if (typeof body?.accessToken !== 'string' || typeof body.expiresAt !== 'number') {
         throw new Error('Managed Sync token response was invalid')

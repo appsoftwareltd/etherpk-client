@@ -8,8 +8,7 @@ export const NAV_EMAIL_MAX_CHARACTERS = 28
 export const PUBLIC_DOCS_URL = 'https://docs.etherpk.com'
 
 /**
- * Where the Client's source will be published. Linked from the landing page ahead of the
- * repository going public, so the link is dead until then and the page says so beside it.
+ * Where the Client's source is published: its source-available Public Repository (ADR 0096).
  */
 export const CLIENT_REPOSITORY_URL = 'https://github.com/appsoftwareltd/etherpk-client'
 

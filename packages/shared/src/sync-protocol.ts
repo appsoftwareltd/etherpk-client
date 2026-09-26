@@ -296,6 +296,12 @@ function serverMessageSchema(limits: SyncProtocolLimits) {
                 code: z.enum(SYNC_ERROR_CODES),
                 message: z.string().min(1).max(256),
                 docId: uuid.optional(),
+                /**
+                 * The outbox operation a `quota_denied` refused (append, delete or resurrect), so
+                 * the client retries that operation rather than waiting for an ack that never comes.
+                 * Absent for a refused snapshot, which is not an outbox operation.
+                 */
+                outboxId: uuid.optional(),
                 currentGeneration: generation.optional(),
                 quotaCode: quotaErrorCodeSchema.optional(),
                 retryable: z.boolean().optional(),

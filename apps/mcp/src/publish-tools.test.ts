@@ -7,6 +7,8 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import { createGraphKeyring } from '$lib/crypto'
+import { frontmatterIdentity } from '$lib/document/frontmatter/identity'
+import { proposeFrontmatter } from '$lib/document/frontmatter/proposal'
 import { createLoopbackRelay } from '$lib/sync/loopback-relay'
 import { fixedSyncToken } from '$lib/sync/sync-token'
 import { assetNameFromRef, createAssetStore } from '$lib/storage/fs/asset-store'
@@ -15,8 +17,8 @@ import { createMemoryDirectoryAdapter } from '$lib/storage/fs/memory-adapter'
 import { openHeadlessFolder } from './headless-folder'
 import { openHeadlessGraph, type HeadlessGraph } from './headless-graph'
 import { publishGraphKey, withPublishFolder, writePublishFolders } from './publish-folders'
-import { createPublication, listPublications, publish, publishingInfo, updatePublication } from './publish-tools'
-import { ToolError, readDocument, setFrontmatter } from './tools'
+import { cliPublishOutput, createPublication, findPublication, listPublications, publish, publishingInfo, updatePublication } from './publish-tools'
+import { ToolError, readDocument, setAliases, setFrontmatter } from './tools'
 
 /**
  * The publishing tools over both backends (ADR 0082, 0084, 0086). A publication page an agent
@@ -120,6 +122,22 @@ describe.each(backends)('%s backend', (_name, openGraph) => {
         expect(refused.message).toContain('No theme is called')
     })
 
+    // On a synced graph a page's aliases live in the registry, and a block with no `aliases:` line
+    // claims none (ADR 0061): a block set_frontmatter adds without them would clear every alias at
+    // the next edit to it in the Client.
+    it('keeps a page’s aliases in the block set_frontmatter adds', async () => {
+        const g = await graph('g-pub-aliases')
+        await g.store.createPage('Guide', '- body')
+        await g.settle()
+        await setAliases(g, { concept: 'Guide', aliases: ['Handbook'] })
+        await setFrontmatter(g, { concept: 'Guide', patch: { public: true, publications: ['docs'] } })
+
+        const text = g.store.openRaw('Guide').getText()
+        expect(frontmatterIdentity(text).aliases).toEqual(['Handbook'])
+        expect(text).toContain('public: true')
+        expect(proposeFrontmatter({ text, registry: { kind: 'page', concept: 'Guide', aliases: ['Handbook'] }, backend: 'server' })).toEqual([])
+    })
+
     it('updates settings on the page, and lists the public documents no publication takes', async () => {
         const g = await graph('g-pub-update')
         const { host } = await hostFor()
@@ -156,7 +174,12 @@ describe.each(backends)('%s backend', (_name, openGraph) => {
         const refused = await rejectsWith(publish(g, { id: 'docs' }, host), 'no_publish_folder')
         expect(refused.message).toContain('etherpk-mcp publish')
         expect(refused.message).toContain('--publication docs --out <dir>')
-        await rejectsWith(publish(g, { id: 'nope' }, host), 'publication_not_found')
+        const unknown = await rejectsWith(publish(g, { id: 'nope' }, host), 'publication_not_found')
+        expect(unknown.message).toBe('No publication has the id "nope". Its publications: docs. list_publications shows them.')
+        // A person at the command line has no agent tool to run.
+        const atTheCli = await rejectsWith(findPublication(g, 'nope', { ...host, via: 'cli' }), 'publication_not_found')
+        expect(atTheCli.message).toBe('No publication has the id "nope". Its publications: docs. Settings → Publish in EtherPK lists them.')
+        expect((await findPublication(g, 'docs', host)).name).toBe('Docs')
 
         const site = join(dir, 'site')
         await writePublishFolders(env.ETHERPK_MCP_PUBLISH_CONFIG!, withPublishFolder({ folders: {} }, publishGraphKey(g.backend, g.graphId), 'docs', site))
@@ -169,13 +192,34 @@ describe.each(backends)('%s backend', (_name, openGraph) => {
         expect(first.excluded.byReason).toMatchObject({ 'not-public': 1, 'publication-page': 1 })
         expect(first.written!.written).toBeGreaterThan(2)
         const files = await readdir(site)
-        expect(files).toEqual(expect.arrayContaining(['index.html', 'guide.html', 'etherpk-publish.json', 'AGENTS.md']))
+        expect(files).toEqual(expect.arrayContaining(['index.html', 'guide.html', 'AGENTS.md']))
+        // The report comes back as the result and never goes into the site: it names the
+        // documents left out, and a static host serves whatever the folder holds.
+        expect(files).not.toContain('etherpk-publish.json')
+        expect(first).not.toHaveProperty('report')
+        for (const name of files.filter((f) => /\.(html|json|xml|js|md)$/.test(f))) {
+            expect(await readFile(join(site, name), 'utf8'), name).not.toContain('Private')
+        }
         expect(await readFile(join(site, 'index.html'), 'utf8')).toContain('hello from the site')
         expect(await readFile(join(site, 'index.html'), 'utf8')).not.toContain('not public')
 
-        // Again: nothing changed, so nothing is rewritten but the report, which carries its time.
+        // What the command line prints names no document the site leaves out: a scheduled
+        // publish's log can be as public as the site. Links to the private page are counted by
+        // status, and warnings keep their codes but not their sentences.
+        await g.store.createPage('Linker', '- see [[Private]] and [[Nowhere]]')
+        await g.settle()
+        await setFrontmatter(g, { concept: 'Linker', patch: { public: true, publications: ['docs'] } })
+        const linked = await publish(g, { id: 'docs' }, host)
+        expect(linked.missingLinks.first.map((l) => l.concept)).toContain('Private')
+        const printed = JSON.stringify(cliPublishOutput(linked))
+        expect(printed).not.toContain('Private')
+        expect(printed).not.toContain('Nowhere')
+        expect(cliPublishOutput(linked).missingLinks).toEqual({ total: 2, byStatus: { private: 1, missing: 1 } })
+        expect(cliPublishOutput(linked).included.first).toContain('Linker')
+
+        // Again: nothing changed, so nothing is rewritten.
         const second = await publish(g, { id: 'docs' }, host)
-        expect(second.written).toMatchObject({ written: 1, deleted: { total: 0 } })
+        expect(second.written).toMatchObject({ written: 0, deleted: { total: 0 } })
         expect(second.written!.unchanged).toBeGreaterThan(0)
     })
 
@@ -206,5 +250,14 @@ describe.each(backends)('%s backend', (_name, openGraph) => {
         const html = await readFile(join(drawn.dir, 'site', 'index.html'), 'utf8')
         expect(html).toContain('<svg')
         expect(html).toContain('role="img"')
+        // Mermaid scopes every rule of its inline <style> to the svg's id; without the id the
+        // node rects fall back to SVG's default black fill.
+        const svg = /<figure class="diagram diagram-mermaid">(<svg\b[^>]*>)/.exec(html)![1]
+        const id = /\sid="([^"]+)"/.exec(svg)?.[1]
+        expect(id).toBe('mermaid_index_1')
+        const style = /<figure class="diagram diagram-mermaid"><svg\b[^>]*>[\s\S]*?<style\b[^>]*>([\s\S]*?)<\/style>/.exec(html)![1]
+        // Selectors only: a colour such as #ECECFF is followed by ; or }, a selector by { or a space.
+        const scopes = new Set([...style.matchAll(/#([A-Za-z][\w-]*)(?=[\s{.,>])/g)].map((m) => m[1]))
+        expect([...scopes]).toEqual([id])
     }, 60_000)
 })

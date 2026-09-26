@@ -14,8 +14,12 @@
         getVaultWrapKey,
         rejectDeviceApproval,
         setVaultWrapKey,
+        SyncApiError,
+        SYNC_CONFIG_CHANGED_EVENT,
+        SYNC_CONFIG_STORAGE_KEY,
         type PendingDeviceApproval,
     } from "$lib/sync";
+    import { announceAccountSignal } from "$lib/sync/account-signal";
     import { describeSyncFailure } from "$lib/sync/sync-error-copy";
     import Modal from "@appsoftwareltd/etherpk-shared/dialog";
 
@@ -25,6 +29,20 @@
     let error = $state<string | null>(null);
     // Requests the user closed without deciding - do not nag about them again this session.
     const dismissed = new Set<string>();
+    /**
+     * The Sync Server refused this device's credential (401). Polling stops until the connection
+     * changes, rather than asking every ten seconds for an answer that cannot change; the account
+     * menu is asked to re-check, and says the device is signed out.
+     */
+    let refused = false;
+
+    function connectionChanged(): void {
+        refused = false;
+    }
+
+    function storageChanged(event: StorageEvent): void {
+        if (event.key === SYNC_CONFIG_STORAGE_KEY || event.key === null) connectionChanged();
+    }
 
     function api() {
         return createConfiguredSyncApi();
@@ -34,7 +52,7 @@
         if (current) return; // one prompt at a time
         if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
         const a = api();
-        if (!a || !getVaultWrapKey()) return; // locked devices can approve nothing
+        if (!a || !getVaultWrapKey() || refused) return; // locked devices can approve nothing
         try {
             const pending = (await a.listDeviceApprovals()).find((p) => !dismissed.has(p.id));
             if (pending) {
@@ -42,15 +60,24 @@
                 error = null;
                 open = true;
             }
-        } catch {
-            // Server unreachable - stay quiet; the next tick retries.
+        } catch (e) {
+            if (e instanceof SyncApiError && e.status === 401) {
+                refused = true;
+                announceAccountSignal({ type: "check" });
+            }
+            // Otherwise the server is unreachable: stay quiet; the next tick retries.
         }
     }
 
     $effect(() => {
         void check();
         const timer = setInterval(() => void check(), 10_000);
-        return () => clearInterval(timer);
+        // Same-tab connection changes (the Graphs page saving a new token) end a refusal too.
+        window.addEventListener(SYNC_CONFIG_CHANGED_EVENT, connectionChanged);
+        return () => {
+            clearInterval(timer);
+            window.removeEventListener(SYNC_CONFIG_CHANGED_EVENT, connectionChanged);
+        };
     });
 
     async function approve() {
@@ -90,6 +117,8 @@
         current = null;
     }
 </script>
+
+<svelte:window onstorage={storageChanged} />
 
 {#if current}
     <Modal {open} title="Approve a new device?" busy={busy} onclose={dismiss}>

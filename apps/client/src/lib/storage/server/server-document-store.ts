@@ -29,7 +29,7 @@ import type {
 } from '$lib/document/backlinks/live-index'
 import { createBreather } from '$lib/activity/breathe'
 import type { GraphSync, RegistryEntry } from '$lib/sync/graph-sync'
-import { REMOTE, SUPPRESSED, type SyncHealth } from '$lib/sync/doc-sync'
+import { REMOTE, SUPPRESSED, contentBlocked } from '$lib/sync/doc-sync'
 import { type TextSplice, countWikilinkTargets, wikilinkScopeSplices } from '$lib/document/wikilink/rename'
 import { documentProtection } from '$lib/document/protection/cipher-fence'
 import { mergeDocuments } from '../merge'
@@ -105,6 +105,14 @@ export interface ServerDocumentStore {
         docIds: readonly string[],
         options?: { timeoutMs?: number; onProgress?: (done: number, total: number) => void },
     ): Promise<Map<string, DocumentText>>
+    /**
+     * Which of these documents the relay holds changes for that this device's Local Cache does
+     * not: edits made elsewhere (another device, a collaborator, the Headless Client) to
+     * documents this tab is not showing, and so not subscribed to. One bounded metadata request
+     * per 512 documents, and no engine is created. Null when the relay cannot be asked right
+     * now - offline, or no answer in `timeoutMs` - which means "unknown", never "none".
+     */
+    docsBehind(docIds: readonly string[], timeoutMs?: number): Promise<string[] | null>
     /**
      * Resolves true once the encrypted registry has been confirmed against the server this
      * session. Anything that deletes on the strength of "not in the registry" has to wait for
@@ -187,11 +195,6 @@ async function reachedWithin(promise: Promise<unknown>, timeoutMs: number): Prom
     }
 }
 
-/** Health that says the bytes are not this document's, so neither text nor emptiness is real. */
-function contentBlocked(health: SyncHealth): boolean {
-    return health === 'key-unavailable' || health === 'ciphertext-corrupt'
-}
-
 export function createServerDocumentStore(
     graph: GraphSync,
     options: ServerDocumentStoreOptions,
@@ -226,10 +229,16 @@ export function createServerDocumentStore(
      */
     async function materialise(docIds: readonly string[], timeoutMs: number): Promise<{ unconfirmed: string[]; release(): void }> {
         const unique = [...new Set(docIds)]
-        const release = () => graph.retireDocs(unique)
+        // Each readyDocs takes one hold per document the moment it is called, whether or not its
+        // reads succeed (graph-sync.ts), so release exactly the batches asked for: one never asked
+        // for would free an engine that another walk still holds.
+        const held: string[] = []
+        const release = () => graph.retireDocs(held)
         try {
             for (let start = 0; start < unique.length; start += ENGINE_BATCH) {
-                await graph.readyDocs(unique.slice(start, start + ENGINE_BATCH))
+                const batch = unique.slice(start, start + ENGINE_BATCH)
+                held.push(...batch)
+                await graph.readyDocs(batch)
             }
             const connected = graph.isConnected()
             const behind = new Set(connected ? await graph.docsNeedingCatchup(unique) : [])
@@ -723,6 +732,24 @@ export function createServerDocumentStore(
                 await breathe()
             }
             return out
+        },
+        async docsBehind(docIds, timeoutMs = COLD_CONTENT_TIMEOUT_MS): Promise<string[] | null> {
+            if (disposed || !graph.isConnected()) return null
+            if (docIds.length === 0) return []
+            // `docsNeedingCatchup` waits out a dropped socket for the reconnect, which is right
+            // for a reader that must have an answer and wrong for a status check: a mirror pass
+            // that hung on it would say "writing" for as long as the device stayed offline.
+            let timer: ReturnType<typeof setTimeout> | undefined
+            try {
+                return await Promise.race([
+                    graph.docsNeedingCatchup(docIds).catch(() => null),
+                    new Promise<null>((resolve) => {
+                        timer = setTimeout(() => resolve(null), timeoutMs)
+                    }),
+                ])
+            } finally {
+                if (timer) clearTimeout(timer)
+            }
         },
         async confirmRegistry(timeoutMs = 5000): Promise<boolean> {
             if (registryConfirmed) return true

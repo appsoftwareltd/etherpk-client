@@ -124,6 +124,11 @@ export interface DocSyncDeps {
     /** Lets the graph release an unretained engine once its durable work has settled. */
     onIdle?: () => void
     /**
+     * Called whenever the durable outbox queue gains or loses an operation, so the graph can say
+     * how many documents hold changes the server has not acknowledged.
+     */
+    onQueueChange?: () => void
+    /**
      * When true of the document, its cache row is rewritten as a garbage-collected state
      * after the next persist, once per stretch of being true. For a [[Protected Document]]:
      * the row otherwise keeps the pre-protection body merged in for ever, on every device that
@@ -172,10 +177,23 @@ export interface DocSync {
     advertisePresence(): Promise<void>
     /** True only when destroying the engine cannot strand a locally queued operation. */
     isIdle(): boolean
+    /** Operations in the durable outbox the relay has not acknowledged yet. */
+    unsentOperations(): number
+    /**
+     * Send the operation at the head of the outbox again, or drain when there is none. For a
+     * write the relay refused on a quota: it stays at the head, unacked, and nothing else sends
+     * it until the socket reconnects. The relay applies an outbox id once.
+     */
+    retryUnsent(): void
     destroy(): void
 }
 
 export type SyncHealth = 'healthy' | 'key-unavailable' | 'ciphertext-corrupt' | 'generation-stale' | 'sequence-gap'
+
+/** Health that says the bytes are not this document's, so neither text nor emptiness is real. */
+export function contentBlocked(health: SyncHealth): boolean {
+    return health === 'key-unavailable' || health === 'ciphertext-corrupt'
+}
 
 interface SyncCompletion {
     readonly promise: Promise<void>
@@ -279,6 +297,11 @@ export function createDocSync(deps: DocSyncDeps): DocSync {
     let pendingSnapshot: { generation: number; throughSeq: number; state: Y.Snapshot } | undefined
     /** A read-back failed: the next idle uploads a fresh snapshot whatever the tail size. */
     let snapshotRetryWanted = false
+
+    /** Tell the graph the queue changed; see `DocSyncDeps.onQueueChange`. */
+    function queueChanged(): void {
+        if (!destroyed) deps.onQueueChange?.()
+    }
 
     function requestCatchup(afterSeq: number): void {
         if (!catchupActive) {
@@ -466,6 +489,7 @@ export function createDocSync(deps: DocSyncDeps): DocSync {
             lastAttemptAt: null,
         }
         durableQueue.push(durable)
+        queueChanged()
         if (operation.kind === 'resurrect') lifecycleState = 'resurrecting'
         await transmit(durable)
     }
@@ -779,6 +803,7 @@ export function createDocSync(deps: DocSyncDeps): DocSync {
                 lastSyncedSnapshot = Y.snapshot(doc)
             }
             if (lifecycleState === 'seeding') lifecycleState = 'active'
+            queueChanged()
         },
         async receive(message) {
             switch (message.type) {
@@ -841,6 +866,7 @@ export function createDocSync(deps: DocSyncDeps): DocSync {
                         scheduleAutomaticCompaction()
                     }
                     durableQueue.shift()
+                    queueChanged()
                     send({ type: 'ack_confirm', outboxId: message.outboxId })
                     if (durableQueue[0]) await transmit(durableQueue[0])
                     else if (operation.kind !== 'delete') await requestDrain()
@@ -880,6 +906,7 @@ export function createDocSync(deps: DocSyncDeps): DocSync {
                             }
                             await persist.purge()
                             durableQueue = []
+                            queueChanged()
                             boundarySnapshots.clear()
                             recoveredDirtyTokens.clear()
                             activeDirtyToken = undefined
@@ -962,6 +989,7 @@ export function createDocSync(deps: DocSyncDeps): DocSync {
                 seeding = false
             }
             for (const operation of durableQueue.splice(0)) await persist.discard(operation.outboxId)
+            queueChanged()
             boundarySnapshots.clear()
             // The cleared document is the baseline while the delete settles; only a real
             // edit (resurrection) should ever drain from here.
@@ -991,6 +1019,7 @@ export function createDocSync(deps: DocSyncDeps): DocSync {
                 attemptCount: 0,
                 lastAttemptAt: null,
             })
+            queueChanged()
             await transmit(durableQueue[0])
         },
         lifecycle: () => lifecycleState,
@@ -998,6 +1027,7 @@ export function createDocSync(deps: DocSyncDeps): DocSync {
         async staleGeneration(currentGeneration) {
             syncHealth = 'generation-stale'
             for (const operation of durableQueue.splice(0)) await persist.discard(operation.outboxId)
+            queueChanged()
             boundarySnapshots.clear()
             documentGeneration = currentGeneration
             lastSeq = 0
@@ -1018,6 +1048,12 @@ export function createDocSync(deps: DocSyncDeps): DocSync {
             await sendAwareness([doc.clientID])
         },
         isIdle: () => durableQueue.length === 0 && !debounceTimer && !drainPromise,
+        unsentOperations: () => durableQueue.length,
+        retryUnsent() {
+            if (destroyed) return
+            if (durableQueue[0]) detached(transmit(durableQueue[0]))
+            else detached(requestDrain())
+        },
         destroy() {
             destroyed = true
             boundarySnapshots.clear()

@@ -71,9 +71,10 @@ export function createBrowserPublishEnvironment(deps: BrowserEnvironmentDeps): P
             const element = await mermaidRenderer.render(source, { dark: false })
             const svg = element.querySelector('svg')
             if (!svg) throw new Error('Mermaid produced no diagram.')
-            // The site has no Mermaid runtime, so the element must stand on its own: drop the
-            // id the renderer minted (it collides across pages) and size to the container.
-            svg.removeAttribute('id')
+            // The site has no Mermaid runtime, so the element must stand on its own. It keeps the
+            // id the renderer minted: every rule of its inline <style> is scoped to that id, and
+            // without it the node rects fall back to SVG's default black fill. The publisher
+            // renames it to one unique on the page (publish/diagram-id.ts).
             svg.setAttribute('role', 'img')
             return svg.outerHTML
         },

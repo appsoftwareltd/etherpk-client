@@ -1,6 +1,21 @@
 <script lang="ts">
-    /** The shell every sign-in, register and password page renders inside. */
-    let { children }: { children: import('svelte').Snippet } = $props();
+    import type { LegalLinks } from "../legal/legal-links";
+
+    /**
+     * The shell every sign-in, register and password page renders inside. Its footer carries the
+     * deployment's Terms, Privacy and Contact links, so none of those pages is a dead end for
+     * someone deciding whether to sign up. A link the deployment does not have is left out, and
+     * with none there is no footer.
+     */
+    let { children, legalLinks = null }: { children: import('svelte').Snippet; legalLinks?: LegalLinks | null } = $props();
+
+    const footerLinks = $derived(
+        [
+            { label: "Terms", href: legalLinks?.termsUrl },
+            { label: "Privacy", href: legalLinks?.privacyUrl },
+            { label: "Contact", href: legalLinks?.contactUrl },
+        ].filter((link): link is { label: string; href: string } => Boolean(link.href)),
+    );
 </script>
 
 <svelte:head>
@@ -23,5 +38,13 @@
         <div class="rounded-2xl bg-white dark:bg-[var(--gk-surface-0)] shadow-sm dark:shadow-gray-950/40 ring-1 ring-gray-950/5 dark:ring-white/10 px-6 py-8">
             {@render children()}
         </div>
+
+        {#if footerLinks.length > 0}
+            <nav aria-label="Legal" class="mt-6 flex justify-center gap-5 text-sm text-gray-500 dark:text-gray-400" data-testid="auth-footer">
+                {#each footerLinks as link (link.label)}
+                    <a href={link.href} class="rounded transition-colors hover:text-gray-700 dark:hover:text-white">{link.label}</a>
+                {/each}
+            </nav>
+        {/if}
     </div>
 </div>

@@ -10,8 +10,8 @@ import {
     openVault,
     toBase64Url,
 } from '$lib/crypto'
-import { InviteForHeldGraphError, acceptInvite, prepareInvite, sendInvite } from './invites'
-import type { SyncApi } from './sync-api'
+import { InviteForHeldGraphError, InviteeNotFoundError, acceptInvite, prepareInvite, sendInvite } from './invites'
+import { SyncApiError, type SyncApi } from './sync-api'
 
 describe('invites', () => {
     it('owner seals the keyring to the invitee; the invitee unseals and joins', async () => {
@@ -49,7 +49,9 @@ describe('invites', () => {
         } as unknown as SyncApi
 
         // Owner: prepare (shows fingerprint) then seal + send.
-        const prep = await prepareInvite(api, 'invitee@test')
+        const prep = await prepareInvite(api, 'g1', 'invitee@test')
+        // The lookup names the graph: the server answers only the owner of the graph being shared.
+        expect(api.getIdentityByEmail).toHaveBeenCalledWith('g1', 'invitee@test')
         expect(prep?.fingerprint).toBe(await fingerprint(invitee.publicKey))
         await sendInvite(api, 'g1', 'invitee@test', prep!.inviteePublicKey, graphKeyring)
         expect(posted).not.toBeNull()
@@ -70,9 +72,24 @@ describe('invites', () => {
         expect(opened.vault.keyrings.map((k) => k.graphId)).toContain('g1')
     })
 
+    it('sendInvite reports an invitee who can no longer be found as such, not as a missing resource', async () => {
+        // The server answers 404 identity_not_found when nobody with the address can be invited,
+        // for example when the account went away between the lookup and the send.
+        const api = {
+            createInvite: vi.fn(async () => {
+                throw new SyncApiError('No account with that address can be invited yet', 404)
+            }),
+        } as unknown as SyncApi
+        const { generateIdentityKeyPair } = await import('$lib/crypto')
+        const keyring = { graphId: 'g1', epochs: [{ epochId: 1, key: new Uint8Array(32) }] }
+
+        await expect(sendInvite(api, 'g1', 'gone@test', generateIdentityKeyPair().publicKey, keyring as never))
+            .rejects.toBeInstanceOf(InviteeNotFoundError)
+    })
+
     it('prepareInvite returns null for an unknown invitee', async () => {
         const api = { getIdentityByEmail: vi.fn(async () => null) } as unknown as SyncApi
-        expect(await prepareInvite(api, 'nobody@test')).toBeNull()
+        expect(await prepareInvite(api, 'g1', 'nobody@test')).toBeNull()
     })
 
     it('carries the graph name inside the sealed payload; legacy payloads still open', async () => {
@@ -161,7 +178,7 @@ describe('invites', () => {
             putVault: vi.fn(),
             acceptInvite: vi.fn(),
         } as unknown as SyncApi
-        const prep = await prepareInvite(api, 'invitee@test')
+        const prep = await prepareInvite(api, 'g1', 'invitee@test')
         await sendInvite(api, 'g1', 'invitee@test', prep!.inviteePublicKey, createGraphKeyring('g1'))
 
         await expect(acceptInvite(

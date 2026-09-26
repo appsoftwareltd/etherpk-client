@@ -3,9 +3,10 @@
  * open {@link GraphSync} session (the wizard owns creation, keys, and the session's
  * lifecycle - this writes and flushes).
  *
- * Destination-specific shape: a server document's identity lives ONLY in the encrypted
- * root registry (ADR 0024), so frontmatter is stripped from content - the title goes to
- * the registry, and aliases/custom keys are dropped WITH a report entry. Assets upload
+ * Destination-specific shape: a server document's identity lives in the encrypted root
+ * registry (ADR 0024), and its Frontmatter is a proposal about it (ADR 0061). The title and
+ * aliases go to the registry; the block keeps its other keys and, when those keep it, its
+ * aliases, so block and registry agree from the start. Assets upload
  * through the server Asset store, which mints its own `stem.<uuid>.ext` refs (ADR 0027);
  * document references rewrite from the converter's content-hash refs to the minted ones.
  * The [[Graph Name]] and Graph Settings land in the root `meta` map (ADR 0031) - safe to
@@ -20,9 +21,7 @@
 
 import { mapWithPool } from '$lib/concurrency'
 import type { AssetStore } from '$lib/storage/fs/asset-store'
-import { withoutIdentityKeys } from '$lib/document/frontmatter/identity'
-import { parseFrontmatter } from '$lib/storage/fs/frontmatter'
-import { aliasesOf } from '$lib/storage/fs/identity'
+import { frontmatterIdentity, syncedImportText } from '$lib/document/frontmatter/identity'
 import { sanitizeGraphSettings } from '$lib/storage/fs/graph-settings'
 import type { GraphSync, RegistryEntry } from '$lib/sync/graph-sync'
 import type { ProtectionRecordStore } from '$lib/document/protection/protection-store'
@@ -217,15 +216,17 @@ export async function materializeToServer(
         const docId = newDocId()
         // Identity goes into the encrypted registry - the title already did, the aliases now do
         // too - and the rest of the block stays with the document (ADR 0061): a synced graph's
-        // Frontmatter means the same as a local one's, and publishing will read it there.
-        const aliases = aliasesOf(parseFrontmatter(doc.text))
+        // Frontmatter means the same as a local one's, and publishing will read it there. The
+        // aliases also stay in a block that other keys keep, so the block agrees with the
+        // registry and a later edit to it clears nothing.
+        const aliases = frontmatterIdentity(doc.text).aliases
         const named = aliases.length > 0 ? { aliases } : {}
         const entry: RegistryEntry =
             doc.kind === 'journal'
                 ? { kind: 'journal', date: doc.concept, ...named }
                 : { kind: 'page', title: doc.concept, ...named }
         registry.set(docId, entry)
-        let text = withoutIdentityKeys(doc.text)
+        let text = syncedImportText(doc.text)
         for (const [from, to] of refMap) text = text.split(from).join(to)
         deps.graph.docSync(docId).doc.getText('content').insert(0, text)
     }

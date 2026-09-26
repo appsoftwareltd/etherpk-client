@@ -233,6 +233,50 @@ describe('publishPublication', () => {
         expect(report.warnings).toContainEqual(expect.objectContaining({ code: 'mermaid-not-prerendered' }))
     })
 
+    it('gives every drawn diagram an id of its own, the one its styles are scoped to, and the same one on every publish', async () => {
+        // Mermaid scopes every rule of a diagram's inline <style> to the id of its root <svg>,
+        // and without that id every node rect falls back to SVG's default black fill. The hosts
+        // keep it; the publisher renames it to one that is unique on the page and does not depend
+        // on the host's render counter.
+        const mermaidLike = (id: string, label: string) =>
+            `<svg id="${id}" width="100%" class="flowchart"><style>#${id}{font-family:x}#${id} .node rect{fill:#ECECFF}</style><defs><marker id="${id}_flowchart-pointEnd"></marker></defs><g class="node"><rect></rect><path marker-end="url(#${id}_flowchart-pointEnd)"></path><text>${label}</text></g></svg>`
+        const hostWithCounter = (start: number) => {
+            let n = start
+            return environment({ renderMermaid: async (src) => mermaidLike(`gk-mermaid-${++n}`, src.trim()) })
+        }
+        const withDiagrams = documents.map((d) => {
+            // The same diagram twice on one page, and another in the footer every page carries.
+            if (d.concept === 'Guide') return { ...d, text: `${d.text}\n\`\`\`mermaid\ngraph TD; A-->B;\n\`\`\`\n\n\`\`\`mermaid\ngraph LR; C-->D;\n\`\`\`\n` }
+            if (d.concept === 'Site Footer') return { ...d, text: `${d.text}\n\`\`\`mermaid\ngraph LR; E-->F;\n\`\`\`\n` }
+            return d
+        })
+        const withDiagramsSource = { ...source, documents: withDiagrams }
+        const publication = discoverPublications(withDiagrams).publications.find((p) => p.id === 'docs')!
+
+        const first = await publishPublication(withDiagramsSource, publication, hostWithCounter(0))
+        const guide = first.bundle.get('guide.html') as string
+        const svgs = [...guide.matchAll(/<svg\b[^>]*\bid="([^"]+)"[^>]*>([\s\S]*?)<\/svg>/g)]
+        // Three in the body (one diagram twice) and one from the footer include.
+        expect(svgs).toHaveLength(4)
+        const ids = svgs.map((m) => m[1])
+        expect(new Set(ids).size).toBe(4)
+        for (const [, id, inner] of svgs) {
+            // A CSS id selector cannot start with a digit, and journal slugs do.
+            expect(id).toMatch(/^[A-Za-z]/)
+            const scopes = [...inner.matchAll(/#([A-Za-z][\w-]*)[\s{.]/g)].map((m) => m[1])
+            expect(scopes.length).toBeGreaterThan(0)
+            for (const scope of scopes) expect(scope).toBe(id)
+            expect(inner).toContain(`marker id="${id}_flowchart-pointEnd"`)
+            expect(inner).toContain(`url(#${id}_flowchart-pointEnd)`)
+            expect(inner).not.toContain('gk-mermaid')
+        }
+
+        // A host whose counter has moved on (the editor drew diagrams in between) publishes the
+        // same bytes, so an unchanged page is not rewritten.
+        const second = await publishPublication(withDiagramsSource, publication, hostWithCounter(40))
+        expect(second.bundle.get('guide.html')).toBe(guide)
+    })
+
     it('without a home concept the front page is a generated index shaped like the outline', async () => {
         // The outline is the site's structure, so the index mirrors it - groups and their pages,
         // outside links too - and lists any published page the outline leaves out beneath, so

@@ -5,9 +5,10 @@ import {
     frontmatterIdentity,
     normaliseAliases,
     sameAliases,
+    syncedImportText,
     withFrontmatterIdentity,
-    withoutIdentityKeys,
 } from './identity'
+import { proposeFrontmatter } from './proposal'
 
 const DOC = '---\ntitle: Kanban\naliases:\n  - Board\ncolour: blue\n---\n\n- body\n'
 
@@ -20,23 +21,42 @@ describe('the property table', () => {
 
 describe('frontmatterIdentity', () => {
     it('reads the title and aliases, and says a block is present', () => {
-        expect(frontmatterIdentity(DOC)).toEqual({ title: 'Kanban', aliases: ['Board'], hasBlock: true })
+        expect(frontmatterIdentity(DOC)).toEqual({ title: 'Kanban', aliases: ['Board'], hasAliasesKey: true, hasBlock: true, readable: true })
     })
 
     it('reads a document with no block as having no claim', () => {
-        expect(frontmatterIdentity('- body\n')).toEqual({ title: null, aliases: [], hasBlock: false })
+        expect(frontmatterIdentity('- body\n')).toEqual({ title: null, aliases: [], hasAliasesKey: false, hasBlock: false, readable: true })
     })
 
     it('reads a block without a title or aliases as an empty claim', () => {
-        expect(frontmatterIdentity('---\ncolour: blue\n---\nx')).toEqual({ title: null, aliases: [], hasBlock: true })
+        expect(frontmatterIdentity('---\ncolour: blue\n---\nx')).toEqual({ title: null, aliases: [], hasAliasesKey: false, hasBlock: true, readable: true })
     })
 
     it('ignores a blank title and non-string aliases', () => {
         expect(frontmatterIdentity('---\ntitle: "  "\naliases: [1, Real]\n---\n')).toEqual({
             title: null,
             aliases: ['Real'],
+            hasAliasesKey: true,
             hasBlock: true,
+            readable: true,
         })
+    })
+
+    it('reads a block whose YAML does not parse to a mapping as unreadable: identity unknown, not empty', () => {
+        expect(frontmatterIdentity('---\ntags: [a]\naliases: [Board]\ntags: [b]\n---\n')).toEqual({
+            title: null,
+            aliases: [],
+            hasAliasesKey: false,
+            hasBlock: true,
+            readable: false,
+        })
+        expect(frontmatterIdentity('---\nali\n---\n').readable).toBe(false)
+        expect(frontmatterIdentity('---\n---\n').readable).toBe(true)
+    })
+
+    it('tells an empty aliases list from no aliases key', () => {
+        expect(frontmatterIdentity('---\naliases: []\n---\n').hasAliasesKey).toBe(true)
+        expect(frontmatterIdentity('---\ntags: [x]\n---\n').hasAliasesKey).toBe(false)
     })
 
     it('treats an unterminated block as no block', () => {
@@ -92,16 +112,38 @@ describe('withFrontmatterIdentity', () => {
     })
 })
 
-describe('withoutIdentityKeys', () => {
-    it('strips title and aliases and keeps the rest of the block', () => {
-        expect(withoutIdentityKeys(DOC)).toBe('---\ncolour: blue\n---\n\n- body\n')
+describe('syncedImportText', () => {
+    it('strips title and keeps aliases in a block that other keys keep', () => {
+        expect(syncedImportText(DOC)).toBe('---\naliases:\n  - Board\ncolour: blue\n---\n\n- body\n')
     })
 
-    it('drops the block entirely when nothing else is in it', () => {
-        expect(withoutIdentityKeys('---\ntitle: Kanban\n---\n\n- body\n')).toBe('\n- body\n')
+    it('drops a block that holds nothing but identity keys', () => {
+        expect(syncedImportText('---\ntitle: Kanban\n---\n\n- body\n')).toBe('\n- body\n')
+        expect(syncedImportText('---\ntitle: Kanban\naliases:\n  - Board\n---\n\n- body\n')).toBe('\n- body\n')
+        expect(syncedImportText('---\naliases:\n  - Board\n---\n\n- body\n')).toBe('\n- body\n')
     })
 
-    it('leaves a document without a block untouched', () => {
-        expect(withoutIdentityKeys('- body\n')).toBe('- body\n')
+    it('leaves a document without a block, or a block without a title, untouched', () => {
+        expect(syncedImportText('- body\n')).toBe('- body\n')
+        expect(syncedImportText('---\n---\n- body\n')).toBe('---\n---\n- body\n')
+        const untitled = '---\ncolour:   blue\naliases: [Board]\n---\n- body\n'
+        expect(syncedImportText(untitled)).toBe(untitled)
+    })
+
+    it('leaves a block whose YAML does not parse alone', () => {
+        const broken = '---\ntitle: [Kanban\ncolour: blue\n---\n- body\n'
+        expect(syncedImportText(broken)).toBe(broken)
+    })
+
+    // The import writes the block's aliases to the registry. Had it stripped them from a block
+    // that other keys keep, the block would read as "no aliases" and the first edit to it would
+    // clear every imported alias without a word.
+    it('keeps a block that agrees with the registry the import writes, through a later edit', () => {
+        const registry = { kind: 'page' as const, concept: 'Kanban', aliases: frontmatterIdentity(DOC).aliases }
+        const stored = syncedImportText(DOC)
+        expect(proposeFrontmatter({ text: stored, registry, backend: 'server' })).toEqual([])
+
+        const tagged = stored.replace('colour: blue\n', 'colour: blue\ntags: [work]\n')
+        expect(proposeFrontmatter({ text: tagged, registry, backend: 'server' })).toEqual([])
     })
 })

@@ -9,7 +9,7 @@
 import * as Y from 'yjs'
 import type { GraphKeyring } from '$lib/crypto'
 import { performanceRecorder } from '$lib/diagnostics/performance'
-import { SYNC_PROTOCOL_LIMITS } from '@appsoftwareltd/etherpk-shared'
+import { SYNC_PROTOCOL_LIMITS, type QuotaErrorCode } from '@appsoftwareltd/etherpk-shared'
 import { CACHE_SEED, createDocSync, type DocSync } from './doc-sync'
 import type { GraphCache } from './local-cache'
 import {
@@ -20,16 +20,60 @@ import {
 } from './messages'
 import { createPresenceSession, type PresenceSession } from './presence-session'
 import type { SyncTokenSource } from './sync-token'
+import { reconnectDelayMs, refusalRetryDelayMs, STABLE_CONNECTION_MS } from './reconnect-backoff'
 import { type QuickNote, sanitizeQuickNotes } from '$lib/document/quick-notes'
 import { sanitizeDictionaryWords } from '$lib/document/spelling/graph-dictionary'
 import { type GraphTheme, isThemeFilePath, sanitizeGraphTheme } from '$lib/document/publish/theme/graph-theme'
+
+/** Why a socket closed: the WebSocket close code and reason, when the transport knows them. */
+export interface TransportCloseEvent {
+    code: number
+    reason: string
+}
 
 export interface TransportSocket {
     send(data: string): void
     close(): void
     onOpen(cb: () => void): void
     onMessage(cb: (data: string) => void): void
-    onClose(cb: () => void): void
+    /** The event is optional so a test transport can simply say "it closed". */
+    onClose(cb: (event?: TransportCloseEvent) => void): void
+}
+
+/**
+ * Why this session stopped syncing for good.
+ *
+ * - `membership`: the account may no longer reach this graph. The relay closed with 4403 or sent
+ *   `membership_revoked`, or the Sync Server refused a sync token with 403: the member left in
+ *   another tab, the owner removed them, or the owner deleted the graph.
+ * - `credentials`: this device's sign-in is no longer accepted. The Sync Server refused a token
+ *   mint with 401 (the account was signed out, its access token revoked, its password reset, or
+ *   the account suspended or deleted), or the workspace ended the session itself because another
+ *   tab signed out or disconnected. `cause` is the refusal, for the caller to word.
+ */
+export type SyncAccessLoss = { kind: 'membership' } | { kind: 'credentials'; cause?: unknown }
+
+/**
+ * The Sync Server refused this graph's writes on a quota: the owner's plan has ended or cannot
+ * be confirmed, or an allowance such as storage is used up. The refused operations stay in the
+ * durable outbox and are sent again until the server accepts one.
+ */
+export interface WriteRefusal {
+    /** The allowance the write would have passed; absent when the server did not say. */
+    quotaCode?: QuotaErrorCode
+}
+
+/** What a synced workspace shows about its sync; see {@link GraphSync.activity}. */
+export interface SyncActivity {
+    /**
+     * `connecting` until the first socket opens, `open` while one is, `reconnecting` after it
+     * closed while the next attempt waits, and `ended` once access has ended for good.
+     */
+    connection: 'connecting' | 'open' | 'reconnecting' | 'ended'
+    /** Documents this session holds with outbox operations the relay has not acknowledged. */
+    unsentDocuments: number
+    /** The server's current refusal of this graph's writes, from the refusal until a write is accepted. */
+    refusal: WriteRefusal | null
 }
 
 export interface GraphSyncDeps {
@@ -68,6 +112,16 @@ export interface GraphSyncDeps {
     presence?: { name: string; color: string; colorLight?: string }
     /** Surfaces cache quota and transport failures to the owning workspace. */
     onError?: (error: Error) => void
+    /**
+     * Called once when access ends for good (see {@link SyncAccessLoss}). The session has already
+     * closed its socket and will not reconnect; unacknowledged local changes stay in the durable
+     * outbox. The owner decides what the person is told and whether anything is kept.
+     */
+    onAccessLost?: (loss: SyncAccessLoss) => void
+    /** The wait before reconnect attempt `attempt`; a test swaps it. See reconnect-backoff.ts. */
+    retryDelayMs?: (attempt: number) => number
+    /** The wait before retry round `round` of a refused write; a test swaps it. See reconnect-backoff.ts. */
+    refusalRetryDelayMs?: (round: number) => number
     /**
      * Where the canonical [[Graph Name]] goes so devices that never opened this graph can
      * label it: the Sync Server's name envelope (ADR 0031, amended 2026-09-17;
@@ -185,11 +239,21 @@ export interface GraphSync {
     /**
      * Hydrate a cold-index batch from the Local Cache without starting relay catch-up.
      * The caller must later promote stale documents through normal synchronized readiness.
+     * Holds each engine until the caller's matching {@link retireDocs}, which the caller makes
+     * whether or not this resolves.
      */
     seedDocsFromCache(docIds: readonly string[]): Promise<readonly Y.Doc[]>
-    /** Seed only this batch, without re-awaiting every engine created earlier. */
+    /**
+     * Seed only this batch, without re-awaiting every engine created earlier. Holds each engine
+     * until the caller's matching {@link retireDocs}, which the caller makes whether or not this
+     * resolves.
+     */
     readyDocs(docIds: readonly string[]): Promise<void>
-    /** Release background-only engines once their batch consumer has read them. */
+    /**
+     * Release background-only engines once their batch consumer has read them. Each call
+     * releases one hold from {@link seedDocsFromCache} or {@link readyDocs}; an engine is retired
+     * only once no batch walk holds it and nothing retains it.
+     */
     retireDocs(docIds: readonly string[]): void
     /** Resolves after ONE doc's first relay page is applied, for presentation readiness. */
     firstCatchupPageDoc(docId: string): Promise<void>
@@ -208,6 +272,15 @@ export interface GraphSync {
     pendingIndexChanges(): Promise<GraphIndexCheckpoint>
     /** Whether the relay socket is open right now — gate anything that waits on the server. */
     isConnected(): boolean
+    /** The connection, the unacknowledged documents and any refusal, as of now. */
+    activity(): SyncActivity
+    /** Fires, coalesced, whenever {@link activity} may have changed. Returns an unsubscribe. */
+    onActivity(listener: (activity: SyncActivity) => void): () => void
+    /**
+     * Send every write the server refused again now, rather than at the next retry round: the
+     * person came back to the tab, or said to try again, after restarting a plan.
+     */
+    retryRefused(): void
     /**
      * Encrypt and send every pending update. On a large [[Import]] this is where the minutes
      * go, so it reports as each document's engine finishes - without it the Activity sat at
@@ -227,6 +300,13 @@ export interface GraphSync {
      */
     awaitAcked(options?: AwaitAckedOptions): Promise<AckResult>
     diagnostics(): { activeEngines: number; retainedDocuments: number }
+    /**
+     * Stop syncing for good because access ended, as if the relay had said so: for what the
+     * relay cannot see, such as another tab of this browser signing out. Idempotent.
+     */
+    endAccess(loss: SyncAccessLoss): void
+    /** Why access ended, or null while the session may still sync. */
+    accessLoss(): SyncAccessLoss | null
     dispose(): void
 }
 
@@ -251,16 +331,22 @@ export interface AwaitAckedOptions {
 }
 
 export interface AckResult {
-    /** True when everything was acked; false when the wait gave up on a stall. */
+    /** True when everything was acked; false when the wait gave up on a stall or a refusal. */
     settled: boolean
     /** Appends still unacked (0 when `settled`). */
     outstanding: number
+    /** Set when the server is refusing this graph's writes: why the outstanding ones were not acked. */
+    refused?: WriteRefusal
 }
 
-/** Reconnect after a dropped socket (simple; backoff tuned later). */
-const RECONNECT_MS = 50
-/** Retry after a token mint failed - a server round trip, so slower than a reconnect. */
-const TOKEN_RETRY_MS = 2_000
+/** The HTTP status a token source's refusal carries (SyncApiError, ManagedTokenError), if any. */
+function refusalStatus(error: unknown): number | undefined {
+    const status = typeof error === 'object' && error !== null ? (error as { status?: unknown }).status : undefined
+    return typeof status === 'number' ? status : undefined
+}
+
+/** How long activity changes are gathered before listeners hear them: an import acks thousands. */
+const ACTIVITY_COALESCE_MS = 50
 
 /** Internal signal: a watermark request is safe to repeat on the next socket generation. */
 class WatermarkConnectionInterruptedError extends Error {}
@@ -269,6 +355,47 @@ export function createGraphSync(deps: GraphSyncDeps): GraphSync {
     const engines = new Map<string, DocSync>()
     const retained = new Map<string, number>([[deps.rootDocId, 1]])
     const retiring = new Set<string>()
+    /**
+     * Batch walks holding an engine: one count per `seedDocsFromCache` or `readyDocs` not yet
+     * matched by a `retireDocs`. Walks overlap - a publish's read, the Local Mirror's pass and
+     * the index's catch-up can all be over the same document - so a count decides retirement.
+     * With a plain flag, the first walk to finish would retire the engine while another still
+     * waited on its catch-up; the catch-up's completion would destroy it, the waiter's
+     * `caughtUpDoc` would resolve, and the waiter would read the empty engine created in its
+     * place (a cold `etherpk-mcp publish` would read every page as empty and "settled").
+     */
+    const batchHolds = new Map<string, number>()
+    function holdForBatch(docIds: readonly string[]): void {
+        for (const docId of docIds) {
+            if (docId === deps.rootDocId) continue
+            batchHolds.set(docId, (batchHolds.get(docId) ?? 0) + 1)
+        }
+    }
+    /**
+     * Wait for a held batch's cache reads. The holds stay taken whether or not they succeed: the
+     * caller releases the batch it asked for, once, in its own `finally`. Releasing here as well
+     * would release a failed batch twice, and the second release would take the hold of another
+     * walk over the same document.
+     */
+    async function awaitHeld(docIds: readonly string[]): Promise<void> {
+        await Promise.all(docIds.map((docId) => readied.get(docId) ?? Promise.resolve()))
+    }
+    /** One hold per document back; an engine no walk holds or retains is retired once idle. */
+    function releaseBatch(docIds: readonly string[]): void {
+        for (const docId of docIds) {
+            if (docId === deps.rootDocId) continue
+            const holds = (batchHolds.get(docId) ?? 0) - 1
+            if (holds > 0) {
+                // Another walk still holds it: that walk's retirement is the one that counts.
+                batchHolds.set(docId, holds)
+                continue
+            }
+            batchHolds.delete(docId)
+            if (retained.has(docId)) continue
+            retiring.add(docId)
+            retireEngineIfIdle(docId)
+        }
+    }
     const presenceSession: PresenceSession | undefined = deps.presence
         ? createPresenceSession({
               name: deps.presence.name,
@@ -284,6 +411,38 @@ export function createGraphSync(deps: GraphSyncDeps): GraphSync {
     let socket: TransportSocket | undefined
     let open = false
     let disposed = false
+    /** Set once access has ended for good; nothing reconnects after it. */
+    let lost: SyncAccessLoss | null = null
+    /** See `SyncActivity.connection`. */
+    let connection: SyncActivity['connection'] = 'connecting'
+    /** Documents whose engines hold unacknowledged outbox operations, kept by `onQueueChange`. */
+    const unsentDocs = new Set<string>()
+    /**
+     * Write refusals. The relay answers a refused append, delete or resurrect with `quota_denied`
+     * naming the document and operation, and acknowledges nothing: the operation stays at the
+     * head of that document's outbox, and without a retry the document would stay stalled until
+     * a reload even after the allowance came back. `refusedDocs` are the documents to send
+     * again; empty when a server too old to name them refused.
+     */
+    let refusal: WriteRefusal | null = null
+    const refusedDocs = new Set<string>()
+    /** Bumped by every refusal, so `awaitAcked` can tell one of its own writes from an older one. */
+    let refusalCount = 0
+    let refusalRounds = 0
+    let refusalTimer: ReturnType<typeof setTimeout> | undefined
+    const refusalDelay = deps.refusalRetryDelayMs ?? ((round: number) => refusalRetryDelayMs(round))
+    const activityListeners = new Set<(activity: SyncActivity) => void>()
+    let activityTimer: ReturnType<typeof setTimeout> | undefined
+    const snapshotActivity = (): SyncActivity => ({ connection, unsentDocuments: unsentDocs.size, refusal })
+    function activityChanged(): void {
+        if (disposed || activityTimer || activityListeners.size === 0) return
+        activityTimer = setTimeout(() => {
+            activityTimer = undefined
+            if (disposed) return
+            const current = snapshotActivity()
+            for (const listener of activityListeners) listener(current)
+        }, ACTIVITY_COALESCE_MS)
+    }
     /**
      * Set when the Sync Server turned out to speak another protocol version. The session then
      * stops for good: every reconnect would meet the same server, and nothing either side
@@ -329,6 +488,7 @@ export function createGraphSync(deps: GraphSyncDeps): GraphSync {
     function waitForCurrentConnection(): Promise<void> {
         if (open && socket) return Promise.resolve()
         if (disposed) return Promise.reject(new Error('the graph sync session was disposed'))
+        if (lost) return Promise.reject(new Error('access to this graph has ended'))
         if (protocolMismatch) return Promise.reject(protocolMismatch)
         return new Promise<void>((resolve, reject) => {
             connectionWaiters.add({ resolve, reject })
@@ -361,7 +521,7 @@ export function createGraphSync(deps: GraphSyncDeps): GraphSync {
             } catch (error) {
                 // The request is read-only and idempotent. A socket generation ending while
                 // it is in flight means "try on the reconnect", not a failed reconciliation.
-                if (error instanceof WatermarkConnectionInterruptedError && !disposed) continue
+                if (error instanceof WatermarkConnectionInterruptedError && !disposed && !lost) continue
                 throw error
             }
         }
@@ -490,7 +650,7 @@ export function createGraphSync(deps: GraphSyncDeps): GraphSync {
     }
 
     function retireEngineIfIdle(docId: string): void {
-        if (docId === deps.rootDocId || retained.has(docId) || !retiring.has(docId)) return
+        if (docId === deps.rootDocId || retained.has(docId) || batchHolds.has(docId) || !retiring.has(docId)) return
         if (
             catchupInFlight?.docId === docId ||
             foregroundCatchups.some((request) => request.docId === docId) ||
@@ -504,12 +664,85 @@ export function createGraphSync(deps: GraphSyncDeps): GraphSync {
         detachPresence(docId)
         candidate.destroy()
         engines.delete(docId)
+        unsentDocs.delete(docId)
         readied.delete(docId)
         syncEnabled.delete(docId)
         performanceRecorder.mark('sync.engine.count', {
             active: engines.size,
             subscriptions: retained.size,
         })
+    }
+
+    function noteQueue(docId: string): void {
+        const e = engines.get(docId)
+        if (e && e.unsentOperations() > 0) unsentDocs.add(docId)
+        else unsentDocs.delete(docId)
+        activityChanged()
+    }
+
+    /**
+     * The relay refused a write on a quota. A refused snapshot is not a stalled write - the relay
+     * still holds the document's log, and the engine uploads another at a later idle - so only a
+     * refused outbox operation (named by its outbox id), or a refusal a server too old to name
+     * anything sent, counts.
+     */
+    function noteRefusal(message: { docId?: string; outboxId?: string; quotaCode?: QuotaErrorCode }): void {
+        if (message.docId && !message.outboxId) return
+        if (message.docId) refusedDocs.add(message.docId)
+        refusal = message.quotaCode ? { quotaCode: message.quotaCode } : {}
+        refusalCount += 1
+        scheduleRefusalRetry()
+        activityChanged()
+    }
+
+    function scheduleRefusalRetry(): void {
+        if (refusalTimer || disposed || lost) return
+        refusalTimer = setTimeout(() => {
+            refusalTimer = undefined
+            refusalRounds += 1
+            resendRefused()
+        }, refusalDelay(refusalRounds + 1))
+    }
+
+    /** Send each refused document's head operation again; the relay applies an outbox id once. */
+    function resendRefused(): void {
+        // Closed, the reconnect re-sends every document's head operation itself.
+        if (disposed || lost || !open) return
+        const docIds = refusedDocs.size > 0 ? [...refusedDocs] : [...unsentDocs]
+        for (const docId of docIds) {
+            const e = engines.get(docId)
+            // Nothing left to send (a newer generation discarded it): nothing is refused there.
+            if (!e || e.unsentOperations() === 0) {
+                refusedDocs.delete(docId)
+                continue
+            }
+            e.retryUnsent()
+        }
+        if (refusedDocs.size === 0 && unsentDocs.size === 0) clearRefusal()
+    }
+
+    /** Whether every document with unsent operations is one the server refused. */
+    function everyUnsentRefused(): boolean {
+        if (unsentDocs.size === 0) return false
+        if (refusedDocs.size === 0) return true // a server too old to name the document refused
+        for (const docId of unsentDocs) if (!refusedDocs.has(docId)) return false
+        return true
+    }
+
+    /** An ack: the server accepted a write, so that document is refused no longer. */
+    function writeAccepted(docId: string): void {
+        if (!refusal) return
+        refusedDocs.delete(docId)
+        if (refusedDocs.size === 0) clearRefusal()
+    }
+
+    function clearRefusal(): void {
+        refusal = null
+        refusedDocs.clear()
+        refusalRounds = 0
+        clearTimeout(refusalTimer)
+        refusalTimer = undefined
+        activityChanged()
     }
 
     function engine(docId: string, synchronize = true): DocSync {
@@ -539,6 +772,7 @@ export function createGraphSync(deps: GraphSyncDeps): GraphSync {
                 // rejection after dispose must not reach the next workspace's notice.
                 onError: reportError,
                 onIdle: () => queueMicrotask(() => retireEngineIfIdle(docId)),
+                onQueueChange: () => noteQueue(docId),
                 catchupPriority: () => {
                     return retained.has(docId) ? 'foreground' : 'background'
                 },
@@ -665,6 +899,11 @@ export function createGraphSync(deps: GraphSyncDeps): GraphSync {
     function stopForProtocolMismatch(serverVersion: number): void {
         if (protocolMismatch) return
         protocolMismatch = new SyncProtocolMismatchError(serverVersion)
+        connection = 'ended'
+        clearTimeout(reconnectTimer)
+        clearTimeout(refusalTimer)
+        refusalTimer = undefined
+        activityChanged()
         reportError(protocolMismatch)
         for (const waiter of connectionWaiters) waiter.reject(protocolMismatch)
         connectionWaiters.clear()
@@ -687,6 +926,14 @@ export function createGraphSync(deps: GraphSyncDeps): GraphSync {
             })
         }
         if (message.type === 'error') {
+            if (message.code === 'membership_revoked') {
+                endAccess({ kind: 'membership' })
+                return
+            }
+            if (message.code === 'quota_denied') {
+                noteRefusal(message)
+                return
+            }
             if (
                 message.code === 'stale_generation' &&
                 message.docId &&
@@ -719,7 +966,10 @@ export function createGraphSync(deps: GraphSyncDeps): GraphSync {
             if (docId) {
                 void engine(docId)
                     .receive(message)
-                    .then(() => ackRoute.delete(message.outboxId))
+                    .then(() => {
+                        ackRoute.delete(message.outboxId)
+                        writeAccepted(docId)
+                    })
                     .catch(report)
             }
             return
@@ -735,21 +985,85 @@ export function createGraphSync(deps: GraphSyncDeps): GraphSync {
     }
 
     /**
+     * Forget everything that belonged to one socket generation. Durable IndexedDB rows, not these
+     * entries, determine outstanding work and replay on the next open, which resubscribes every
+     * retained document.
+     */
+    function forgetSocketGeneration(): void {
+        subscribed.clear()
+        ackRoute.clear()
+        catchupInFlight = undefined
+        foregroundCatchups.length = 0
+        backgroundCatchups.length = 0
+        for (const pending of watermarkRequests.values()) {
+            clearTimeout(pending.timer)
+            pending.reject(new WatermarkConnectionInterruptedError())
+        }
+        watermarkRequests.clear()
+    }
+
+    // Reconnection state. `attempts` counts consecutive failures and sets the
+    // backoff; a connection that stayed up resets it. `forceToken` asks the source for a new
+    // token rather than the one it holds, after the relay refused it (4401).
+    let attempts = 0
+    let openedAt = 0
+    let forceToken = false
+    let credentialRefusals = 0
+    let reconnectTimer: ReturnType<typeof setTimeout> | undefined
+    const retryDelay = deps.retryDelayMs ?? ((attempt: number) => reconnectDelayMs(attempt))
+
+    function scheduleConnect(delayMs: number): void {
+        if (disposed || lost || protocolMismatch) return
+        clearTimeout(reconnectTimer)
+        reconnectTimer = setTimeout(connect, delayMs)
+    }
+
+    function backOff(): void {
+        attempts += 1
+        scheduleConnect(retryDelay(attempts))
+    }
+
+    /** Stop for good: close the socket, never reconnect, and tell the owner once. */
+    function endAccess(loss: SyncAccessLoss): void {
+        if (lost || disposed) return
+        lost = loss
+        connection = 'ended'
+        clearTimeout(reconnectTimer)
+        clearTimeout(refusalTimer)
+        refusalTimer = undefined
+        activityChanged()
+        const current = socket
+        socket = undefined
+        open = false
+        forgetSocketGeneration()
+        current?.close()
+        for (const waiter of connectionWaiters) waiter.reject(new Error('access to this graph has ended'))
+        connectionWaiters.clear()
+        deps.onAccessLost?.(loss)
+    }
+
+    /**
      * A token is fetched for EVERY connect, never captured: the source re-mints when the
-     * held token nears expiry, so a socket that drops an hour in still reconnects. Sends
+     * held token nears expiry, so a socket that drops an hour in still reconnects.
      * Encrypted appends issued while the token is in flight remain in IndexedDB and replay
      * on open. Only rebuildable snapshot uploads use a volatile queue.
      */
     function connect(): void {
-        if (disposed || protocolMismatch) return
-        void deps.token().then(
+        if (disposed || lost || protocolMismatch) return
+        const force = forceToken
+        forceToken = false
+        void deps.token(force ? { force: true } : undefined).then(
             (token) => {
-                if (disposed) return
+                if (disposed || lost) return
                 const s = deps.connect(`${deps.relayUrl}?token=${encodeURIComponent(token)}`)
                 socket = s
                 s.onOpen(() => {
-                    if (disposed || socket !== s) return
+                    if (disposed || lost || socket !== s) return
                     open = true
+                    connection = 'open'
+                    activityChanged()
+                    openedAt = Date.now()
+                    credentialRefusals = 0
                     resolveFirstOpen?.()
                     for (const waiter of connectionWaiters) waiter.resolve()
                     connectionWaiters.clear()
@@ -775,30 +1089,49 @@ export function createGraphSync(deps: GraphSyncDeps): GraphSync {
                     }
                 })
                 s.onMessage(handleMessage)
-                s.onClose(() => {
+                s.onClose((event) => {
                     if (socket !== s) return
+                    const upFor = open ? Date.now() - openedAt : 0
                     open = false
                     socket = undefined
-                    // Routes and subscriptions belong to one socket generation. Durable
-                    // IndexedDB rows, not these entries, determine outstanding work and are
-                    // replayed below; the next open resubscribes every retained document.
-                    subscribed.clear()
-                    ackRoute.clear()
-                    catchupInFlight = undefined
-                    foregroundCatchups.length = 0
-                    backgroundCatchups.length = 0
-                    for (const pending of watermarkRequests.values()) {
-                        clearTimeout(pending.timer)
-                        pending.reject(new WatermarkConnectionInterruptedError())
+                    forgetSocketGeneration()
+                    if (disposed || lost || protocolMismatch) return
+                    connection = 'reconnecting'
+                    activityChanged()
+                    // 4403: the membership ended. Retrying cannot help and only costs the server.
+                    if (event?.code === 4403) {
+                        endAccess({ kind: 'membership' })
+                        return
                     }
-                    watermarkRequests.clear()
-                    if (!disposed && !protocolMismatch) setTimeout(connect, RECONNECT_MS)
+                    if (upFor >= STABLE_CONNECTION_MS) attempts = 0
+                    // 4401: the relay refused the token or the credential behind it. Ask for a
+                    // new one straight away, once; if the credential itself was revoked the
+                    // Sync Server refuses that mint with 401 and access ends below.
+                    if (event?.code === 4401) {
+                        forceToken = true
+                        credentialRefusals += 1
+                        if (credentialRefusals === 1) {
+                            scheduleConnect(0)
+                            return
+                        }
+                    }
+                    backOff()
                 })
             },
-            // No token, no socket - normally offline, or a server that is down. Back off
-            // further than a dropped socket does: minting is a server round trip.
-            () => {
-                if (!disposed) setTimeout(connect, TOKEN_RETRY_MS)
+            (error: unknown) => {
+                if (disposed || lost) return
+                // A refusal is an answer, not an outage: 401 is this device's sign-in, 403 is
+                // this graph. Anything else (offline, a server that is down) is retried.
+                const status = refusalStatus(error)
+                if (status === 401) {
+                    endAccess({ kind: 'credentials', cause: error })
+                    return
+                }
+                if (status === 403) {
+                    endAccess({ kind: 'membership' })
+                    return
+                }
+                backOff()
             },
         )
     }
@@ -988,25 +1321,17 @@ export function createGraphSync(deps: GraphSyncDeps): GraphSync {
             await readied.get(docId)
         },
         async seedDocsFromCache(docIds) {
+            holdForBatch(docIds)
             const batch = docIds.map((docId) => engine(docId, false))
-            await Promise.all(
-                docIds.map((docId) => readied.get(docId) ?? Promise.resolve()),
-            )
+            await awaitHeld(docIds)
             return batch.map((entry) => entry.doc)
         },
         async readyDocs(docIds) {
+            holdForBatch(docIds)
             for (const docId of docIds) engine(docId)
-            await Promise.all(
-                docIds.map((docId) => readied.get(docId) ?? Promise.resolve()),
-            )
+            await awaitHeld(docIds)
         },
-        retireDocs(docIds) {
-            for (const docId of docIds) {
-                if (docId === deps.rootDocId || retained.has(docId)) continue
-                retiring.add(docId)
-                retireEngineIfIdle(docId)
-            }
-        },
+        retireDocs: releaseBatch,
         firstCatchupPageDoc: (docId) => engine(docId).firstCatchupPage(),
         caughtUpDoc: (docId) => engine(docId).caughtUp(),
         async docsNeedingCatchup(docIds) {
@@ -1055,12 +1380,25 @@ export function createGraphSync(deps: GraphSyncDeps): GraphSync {
             }
         },
         isConnected: () => open,
+        activity: snapshotActivity,
+        onActivity(listener) {
+            activityListeners.add(listener)
+            return () => activityListeners.delete(listener)
+        },
+        retryRefused() {
+            if (!refusal) return
+            clearTimeout(refusalTimer)
+            refusalTimer = undefined
+            resendRefused()
+        },
         async flushAll({ onProgress } = {}) {
             const all = [...engines.values()]
             let flushed = 0
             await Promise.all(all.map((e) => e.flush().then(() => onProgress?.(++flushed, all.length))))
         },
         async awaitAcked({ onProgress, signal, stallMs = 30_000 } = {}) {
+            // A refusal from before this wait may concern another write; one during it is an answer.
+            const refusalsBefore = refusalCount
             const initial = await deps.cache.countPending()
             if (initial === 0) return { settled: true, outstanding: 0 }
             onProgress?.(initial)
@@ -1083,9 +1421,16 @@ export function createGraphSync(deps: GraphSyncDeps): GraphSync {
                             onProgress?.(current)
                         }
                         if (current === 0) return finish({ settled: true, outstanding: 0 })
+                        // The server said no: waiting out the stall would only delay saying so. A
+                        // refusal counts when it arrived during this wait, or when every document
+                        // still waiting is one the server refused (it may have answered while the
+                        // caller was flushing, before this wait began).
+                        if (refusal && (refusalCount > refusalsBefore || everyUnsentRefused())) {
+                            return finish({ settled: false, outstanding: current, refused: refusal })
+                        }
                         if (signal?.aborted) return finish({ settled: false, outstanding: current })
                         if (Date.now() - lastProgressAt >= stallMs) {
-                            return finish({ settled: false, outstanding: current })
+                            return finish({ settled: false, outstanding: current, ...(refusal ? { refused: refusal } : {}) })
                         }
                         timer = setTimeout(poll, POLL_MS)
                     } catch (error) {
@@ -1100,14 +1445,21 @@ export function createGraphSync(deps: GraphSyncDeps): GraphSync {
             activeEngines: engines.size,
             retainedDocuments: retained.size,
         }),
+        endAccess,
+        accessLoss: () => lost,
         dispose() {
             disposed = true
+            clearTimeout(reconnectTimer)
+            clearTimeout(refusalTimer)
+            clearTimeout(activityTimer)
+            activityListeners.clear()
             socket?.close()
             for (const detach of presenceDetach.values()) detach()
             presenceDetach.clear()
             for (const e of engines.values()) e.destroy()
             engines.clear()
             retiring.clear()
+            batchHolds.clear()
             syncEnabled.clear()
             foregroundCatchups.length = 0
             backgroundCatchups.length = 0
@@ -1133,6 +1485,7 @@ export function browserTransport(url: string): TransportSocket {
         close: () => ws.close(),
         onOpen: (cb) => ws.addEventListener('open', () => cb()),
         onMessage: (cb) => ws.addEventListener('message', (e) => cb(String((e as MessageEvent).data))),
-        onClose: (cb) => ws.addEventListener('close', () => cb()),
+        // The close code is what tells access ending (4401, 4403) from a dropped connection.
+        onClose: (cb) => ws.addEventListener('close', (event) => cb({ code: event.code, reason: event.reason })),
     }
 }

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { discardIndexPool } from './index-pool-discard'
+import { discardIndexPool, discardUnlistedIndexPools } from './index-pool-discard'
 import { indexPoolDirectoryName } from './index-pool-names'
 
 /** A minimal OPFS root: `removeEntry` scripted per call, everything else unused. */
@@ -97,5 +97,46 @@ describe('discardIndexPool', () => {
         const { root, calls } = fakeRoot([null])
         await expect(discardIndexPool('g1', { root: async () => root })).resolves.toEqual({ kind: 'discarded' })
         expect(calls).toHaveLength(1)
+    })
+})
+
+// Deleting, leaving or forgetting a graph discards its search index, which holds note text. A
+// graph whose pool could not be discarded then (a tab still held it) is caught by this sweep the
+// next time the graph list loads.
+describe('discardUnlistedIndexPools', () => {
+    const originalNavigator = globalThis.navigator
+
+    afterEach(() => {
+        Object.defineProperty(globalThis, 'navigator', { value: originalNavigator, configurable: true })
+    })
+
+    /** An OPFS root listing the given entries; `removeEntry` succeeds and is recorded. */
+    function listingRoot(entries: Array<[string, 'directory' | 'file']>) {
+        const removed: string[] = []
+        const root = {
+            async *entries() {
+                for (const [name, kind] of entries) yield [name, { kind, name }]
+            },
+            removeEntry: vi.fn(async (name: string) => {
+                removed.push(name)
+            }),
+        } as unknown as FileSystemDirectoryHandle
+        return { root, removed }
+    }
+
+    it('discards the pools of graphs this device no longer lists, and nothing else', async () => {
+        Object.defineProperty(globalThis, 'navigator', { value: {}, configurable: true })
+        const { root, removed } = listingRoot([
+            [indexPoolDirectoryName('kept'), 'directory'],
+            [indexPoolDirectoryName('deleted-graph'), 'directory'],
+            // A graph whose files live in OPFS (the dev folder path) is its own record.
+            [indexPoolDirectoryName('opfs-graph'), 'directory'],
+            ['graph-opfs-graph', 'directory'],
+            ['etherpk-export-scratch', 'directory'],
+            ['.etherpk-index-notes.txt', 'file'],
+        ])
+        const discarded = await discardUnlistedIndexPools(['kept'], { root: async () => root })
+        expect(discarded).toEqual(['deleted-graph'])
+        expect(removed).toEqual([indexPoolDirectoryName('deleted-graph')])
     })
 })

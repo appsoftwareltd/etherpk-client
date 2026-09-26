@@ -32,6 +32,48 @@ describe('proposeFrontmatter', () => {
         ])
     })
 
+    // A block whose YAML does not parse says nothing yet - most often a line is still being typed
+    // when the caret leaves the block. Its identity is unknown rather than empty, so leaving it
+    // mid-edit can neither clear the aliases nor propose a rename.
+    it('proposes nothing while the block does not parse', () => {
+        const unreadable = {
+            'a duplicate key': '---\ntags: [a]\naliases: [Board]\ntags: [b]\n---\n',
+            'a half-typed line': '---\naliases: [Board]\nsta\n---\n',
+            'an unclosed list': '---\naliases: [Board, Bo\n---\n',
+            'a half-typed first line': '---\nali\n---\n',
+        }
+        for (const [what, text] of Object.entries(unreadable)) {
+            expect(proposeFrontmatter({ text, registry: page('Kanban', ['Board', 'Old']), backend: 'server' }), what).toEqual([])
+            expect(
+                proposeFrontmatter({ text, registry: page('Kanban', ['Board']), backend: 'filesystem', fileStem: 'kanban-file' }),
+                what,
+            ).toEqual([])
+        }
+    })
+
+    // A block the person typed in this episode, onto a document that had none, has made no claim
+    // about aliases unless it names them: a synced page whose old name was kept as an alias has
+    // them in the registry only, and typing `tags:` above its body must not clear them.
+    it('a block typed in this episode claims no aliases until it has an aliases key', () => {
+        const typed = '---\ntags: [x]\n---\n- body'
+        expect(proposeFrontmatter({ text: typed, registry: page('Kanban', ['Old']), backend: 'server', blockIsNew: true })).toEqual([])
+        // Without the episode's word that the block is new, the missing key still clears them.
+        expect(proposeFrontmatter({ text: typed, registry: page('Kanban', ['Old']), backend: 'server' })).toEqual([
+            { property: 'aliases', policy: 'silent', from: ['Old'], to: [] },
+        ])
+        // A new block that does name aliases proposes them, on either backend.
+        const named = '---\ntags: [x]\naliases: [Board]\n---\n- body'
+        expect(proposeFrontmatter({ text: named, registry: page('Kanban', ['Old']), backend: 'server', blockIsNew: true })).toEqual([
+            { property: 'aliases', policy: 'silent', from: ['Old'], to: ['Board'] },
+        ])
+        expect(proposeFrontmatter({ text: named, registry: page('Kanban'), backend: 'filesystem', fileStem: 'Kanban', blockIsNew: true })).toEqual([
+            { property: 'aliases', policy: 'silent', from: [], to: ['Board'] },
+        ])
+        // On a local graph a document without a block has no aliases, so a new block without the
+        // key changes nothing there either; its missing title still names the file, as before.
+        expect(proposeFrontmatter({ text: typed, registry: page('Kanban'), backend: 'filesystem', fileStem: 'Kanban', blockIsNew: true })).toEqual([])
+    })
+
     it('a block that drops its aliases key clears the aliases', () => {
         const text = '---\ntitle: Kanban\n---\n'
         expect(proposeFrontmatter({ text, registry: page('Kanban', ['Old']), backend: 'server' })).toEqual([

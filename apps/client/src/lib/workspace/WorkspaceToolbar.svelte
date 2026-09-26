@@ -13,10 +13,16 @@
      * that says anything, a stopped backup looked exactly like a working one. The dot answers
      * "is my copy current?" without opening anything, and opens the tab when there is something
      * to do about it.
+     *
+     * A synced graph also shows its sync chip beside the document tree toggle: whether edits have
+     * reached the Sync Server. On the left, before the spacer, so a label that changes length
+     * moves nothing else in the bar.
      */
     import { PUBLIC_DOCS_URL } from '@appsoftwareltd/etherpk-shared'
 
     import SidebarToggleIcon from '$lib/layout/renderers/SidebarToggleIcon.svelte'
+    import type { SyncChipAction, SyncIndicator } from '$lib/sync/sync-indicator'
+    import SyncStateChip from '$lib/sync/ui/SyncStateChip.svelte'
 
     import type { MirrorIndicator } from './mirror-indicator'
 
@@ -28,6 +34,7 @@
         ontasks,
         onreset,
         mirror = { state: 'hidden' },
+        sync = null,
     }: {
         ontoggleleft: () => void
         ontoggleright: () => void
@@ -37,6 +44,8 @@
         /** Reset workspace: opens the confirmation, never resets on its own. */
         onreset: () => void
         mirror?: MirrorIndicator
+        /** A synced graph's sync state; null for a folder graph, which has no server to reach. */
+        sync?: { indicator: SyncIndicator | null; actions: SyncChipAction[] } | null
     } = $props()
 </script>
 
@@ -50,6 +59,9 @@
     >
         <SidebarToggleIcon side="left" />
     </button>
+    {#if sync}
+        <SyncStateChip indicator={sync.indicator} actions={sync.actions} />
+    {/if}
     <span class="spacer"></span>
     {#if mirror.state !== 'hidden'}
         <button

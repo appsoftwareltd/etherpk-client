@@ -25,6 +25,18 @@ node_modules/
 # Resources/design files
 resources/
 
+# Never copied into an image: the explainer video project (its Git LFS files alone are hundreds of
+# megabytes), the documentation and blog, the browser suites, the Public Repository overlays, the
+# staging stack, and local test reports and handoff notes.
+video/
+docs/
+blog/
+tests-*/
+public-repos/
+docker/
+reports/
+handoff/
+
 # Spell check dictionary builds (served from R2, never part of an image)
 .dictionaries/
 

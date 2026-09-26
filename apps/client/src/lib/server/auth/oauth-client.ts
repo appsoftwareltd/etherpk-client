@@ -5,7 +5,7 @@ import type {
     AuthorizationTransaction,
     ClientAuthorizationInteraction,
 } from './session-cookie'
-import { MANAGED_SYNC_AUDIENCE } from '@appsoftwareltd/etherpk-shared'
+import { MANAGED_SYNC_AUDIENCE, safeReturnPath } from '@appsoftwareltd/etherpk-shared'
 
 export interface OAuthMetadata {
     issuer: string
@@ -13,7 +13,6 @@ export interface OAuthMetadata {
     token_endpoint: string
     jwks_uri: string
     revocation_endpoint?: string
-    end_session_endpoint?: string
     code_challenge_methods_supported: string[]
 }
 
@@ -34,6 +33,38 @@ export type IdTokenVerifier = typeof jwtVerify
  */
 const DISCOVERY_BUDGET_MS = 5_000
 const TOKEN_BUDGET_MS = 10_000
+
+/**
+ * Discovery metadata is static for a deployment, so one validated copy per process serves for a
+ * while, as the Sync portal does (PORTAL_OAUTH_METADATA_TTL_MS), and /auth/token, /auth/login and
+ * /auth/callback do not each fetch it from Corporate first. The TTL bounds how long a changed
+ * endpoint list outlives an issuer change without a restart. Failures are never cached.
+ */
+export const OAUTH_METADATA_TTL_MS = 10 * 60 * 1000
+
+const metadataCache = new Map<string, { metadata: OAuthMetadata; expiresAt: number }>()
+
+/**
+ * One remote key set per JWKS URL. jose's set caches the keys it fetched and refetches on an
+ * unknown `kid`, so key rotation still works; building a new set per sign-in would throw that
+ * cache away and fetch the JWKS from Corporate on every callback.
+ */
+const remoteKeySets = new Map<string, ReturnType<typeof createRemoteJWKSet>>()
+
+/** For tests, which share one process across configurations and clocks. */
+export function resetOAuthMetadataCache(): void {
+    metadataCache.clear()
+    remoteKeySets.clear()
+}
+
+function remoteKeySet(jwksUri: string): ReturnType<typeof createRemoteJWKSet> {
+    let keySet = remoteKeySets.get(jwksUri)
+    if (!keySet) {
+        keySet = createRemoteJWKSet(new URL(jwksUri))
+        remoteKeySets.set(jwksUri, keySet)
+    }
+    return keySet
+}
 
 /** RFC 6749 section 5.2: the token endpoint errors that mean the grant itself is gone. */
 const DEFINITIVE_TOKEN_ERROR_CODES = new Set(['invalid_grant', 'invalid_client', 'unauthorized_client'])
@@ -68,6 +99,19 @@ export function isDefinitiveOAuthTokenFailure(error: unknown): boolean {
     return error instanceof OAuthTokenError && error.definitive
 }
 
+/**
+ * What the issuer answered, for a log line: the status and the OAuth error code, or the failure
+ * class when it did not answer (a network error, a deadline). Never a token or a code.
+ */
+export function describeOAuthFailure(failure: unknown): Record<string, unknown> {
+    if (failure instanceof OAuthTokenError) {
+        return failure.code
+            ? { upstreamStatus: failure.status, upstreamError: failure.code }
+            : { upstreamStatus: failure.status }
+    }
+    return { error: failure instanceof Error ? `${failure.name}: ${failure.message}` : String(failure) }
+}
+
 export async function verifyIdTokenNonce(
     idToken: string,
     expectedNonce: string,
@@ -78,7 +122,7 @@ export async function verifyIdTokenNonce(
     const metadata = validateMetadata(rawMetadata, config)
     const verify = verifier ?? ((token, _key, options) => jwtVerify(
         token,
-        createRemoteJWKSet(new URL(metadata.jwks_uri)),
+        remoteKeySet(metadata.jwks_uri),
         options,
     ))
     const result = await verify(idToken, new Uint8Array(), {
@@ -93,12 +137,17 @@ export async function discoverOAuthMetadata(
     config: ManagedClientAuthConfig,
     fetcher: typeof fetch = fetch,
 ): Promise<OAuthMetadata> {
+    const cached = metadataCache.get(config.issuer)
+    if (cached && cached.expiresAt > Date.now()) return cached.metadata
+
     const response = await fetcher(`${config.issuer}/.well-known/openid-configuration`, {
         headers: { Accept: 'application/json' },
         signal: AbortSignal.timeout(DISCOVERY_BUDGET_MS),
     })
     if (!response.ok) throw new Error(`OIDC discovery failed with HTTP ${response.status}`)
-    return validateMetadata(await response.json(), config)
+    const metadata = validateMetadata(await response.json(), config)
+    metadataCache.set(config.issuer, { metadata, expiresAt: Date.now() + OAUTH_METADATA_TTL_MS })
+    return metadata
 }
 
 export async function beginAuthorization(
@@ -149,6 +198,9 @@ export function isSilentClientAuthorizationMiss(
             'interaction_required',
             'account_selection_required',
             'consent_required',
+            // Corporate answers a rate-limited prompt=none authorize with this instead of a JSON
+            // 429 page. For a silent check it means "not now": render signed out.
+            'temporarily_unavailable',
         ].includes(providerError)
 }
 
@@ -156,19 +208,7 @@ export function sanitiseClientReturnPath(
     value: string | null,
     interaction: ClientAuthorizationInteraction,
 ): string {
-    const fallback = interaction === 'silent' ? '/' : '/graphs?managed=connected'
-    if (!value || !value.startsWith('/') || value.startsWith('//') || value.includes('\\')) {
-        return fallback
-    }
-    const url = new URL(value, 'http://relative.invalid')
-    const path = url.pathname + url.search
-    // Checked again after parsing: new URL() collapses '.', '..' and their encoded forms, so
-    // '/.//attacker.example' passes the raw checks above and comes out as '//attacker.example',
-    // which a browser follows to another origin.
-    if (url.origin !== 'http://relative.invalid' || path.startsWith('//') || path.startsWith('/\\')) {
-        return fallback
-    }
-    return path
+    return safeReturnPath(value, interaction === 'silent' ? '/' : '/graphs?managed=connected')
 }
 
 export function exchangeAuthorizationCode(
@@ -234,22 +274,6 @@ export async function revokeManagedRefreshToken(
     if (!response.ok) throw new Error(`OAuth token revocation failed with HTTP ${response.status}`)
 }
 
-/** Build an exact RP-Initiated Logout request. The destination is deployment configuration. */
-export function buildManagedEndSessionUrl(
-    idToken: string,
-    config: ManagedClientAuthConfig,
-    rawMetadata: OAuthMetadata,
-): string {
-    const metadata = validateMetadata(rawMetadata, config)
-    const endpoint = validateOptionalEndpoint(metadata.end_session_endpoint, 'end_session_endpoint', config)
-    const url = new URL(endpoint)
-    url.search = new URLSearchParams({
-        id_token_hint: idToken,
-        post_logout_redirect_uri: config.postLogoutUrl,
-    }).toString()
-    return url.href
-}
-
 function validateMetadata(value: unknown, config: ManagedClientAuthConfig): OAuthMetadata {
     if (!value || typeof value !== 'object') throw new Error('Invalid OAuth metadata')
     const metadata = value as Partial<OAuthMetadata>
@@ -268,7 +292,7 @@ function validateMetadata(value: unknown, config: ManagedClientAuthConfig): OAut
 
 function validateOptionalEndpoint(
     endpoint: string | undefined,
-    name: 'revocation_endpoint' | 'end_session_endpoint',
+    name: 'revocation_endpoint',
     config: ManagedClientAuthConfig,
 ): string {
     if (typeof endpoint !== 'string') throw new Error(`OAuth metadata is missing ${name}`)

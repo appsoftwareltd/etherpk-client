@@ -4,6 +4,7 @@
     import { focusFirstInvalid } from "../ui/index.svelte";
     import AlertBanner from "../components/AlertBanner.svelte";
     import type { AccountAuthClient } from "../auth/page-clients";
+    import { verificationResendWaitSeconds } from "../auth/verification-resend";
 
     /**
      * The Server and Corporate account pages were byte-identical, so every fix landed twice.
@@ -473,8 +474,15 @@
     let lastSentAt = $state<Date | null>(data.emailVerificationLastSentAt ? new Date(data.emailVerificationLastSentAt) : null);
     let nowMs = $state(Date.now());
 
+    // The server sends at most one resend a minute and quietly skips any other, so the button
+    // waits out the same minute rather than offering a click that does nothing. The clock
+    // ticks every second only while that wait is running.
+    const resendWaitSeconds = $derived(verificationResendWaitSeconds(lastSentAt, nowMs));
+    const resendCoolingDown = $derived(resendWaitSeconds > 0);
+    const resendHintId = $props.id();
+
     $effect(() => {
-        const id = setInterval(() => (nowMs = Date.now()), 30_000);
+        const id = setInterval(() => (nowMs = Date.now()), resendCoolingDown ? 1_000 : 30_000);
         return () => clearInterval(id);
     });
 
@@ -493,6 +501,7 @@
     });
 
     async function resendVerification() {
+        if (verificationLoading || resendCoolingDown) return;
         verificationLoading = true;
         verificationError = null;
         verificationSuccess = null;
@@ -554,7 +563,11 @@
             <div class="px-6 py-5 space-y-3">
                 <div>
                     <p class="text-sm font-medium text-gray-950">Verify your email address</p>
-                    <p class="mt-0.5 text-sm text-gray-500">We sent a verification link when you signed up. Didn't receive it? Resend below.</p>
+                    <!-- The send time is recorded only when an email went, so without one nothing has
+                         been sent, and the page must not say otherwise. -->
+                    <p class="mt-0.5 text-sm text-gray-500">
+                        {lastSentAt ? "We sent you a verification link. Didn't receive it? Resend below." : "No verification email has been sent to this address yet. Send one below."}
+                    </p>
                 </div>
 
                 {#if verificationSuccess}
@@ -566,11 +579,15 @@
                 {/if}
 
                 <div class="flex flex-wrap items-center gap-3">
-                    <button type="button" onclick={resendVerification} disabled={verificationLoading} class="rounded-lg bg-gray-950 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-700 dark:bg-white/20 dark:hover:bg-white/25 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                    <button type="button" onclick={resendVerification} disabled={verificationLoading || resendCoolingDown} aria-describedby={resendCoolingDown || lastSentLabel ? resendHintId : undefined} class="rounded-lg bg-gray-950 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-700 dark:bg-white/20 dark:hover:bg-white/25 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                         {verificationLoading ? "Sending…" : "Resend verification email"}
                     </button>
-                    {#if lastSentLabel}
-                        <span class="text-sm text-gray-500">{lastSentLabel}</span>
+                    {#if resendCoolingDown}
+                        <span id={resendHintId} class="text-sm text-gray-500" data-testid="verification-resend-wait">
+                            {lastSentLabel ?? "Sent just now"}. You can send another in {resendWaitSeconds} s.
+                        </span>
+                    {:else if lastSentLabel}
+                        <span id={resendHintId} class="text-sm text-gray-500">{lastSentLabel}</span>
                     {/if}
                 </div>
             </div>
@@ -761,8 +778,8 @@
                                     {/if}
                                 </button>
                             </div>
-                            <p class="text-sm text-amber-700">Store these somewhere safe. Each code can only be used once if you lose access to your authenticator app.</p>
-                            <div class="grid grid-cols-2 gap-1 mt-2">
+                            <p class="text-sm text-amber-700">Store these somewhere safe. If you lose your authenticator app, choose Use a backup code when you sign in and enter one of these. Each code works once.</p>
+                            <div class="grid grid-cols-2 gap-1 mt-2" data-testid="mfa-backup-codes">
                                 {#each mfaBackupCodes as code (code)}
                                     <code class="rounded bg-white border border-amber-200 px-2 py-1 text-sm font-mono text-gray-950 select-all">{code}</code>
                                 {/each}

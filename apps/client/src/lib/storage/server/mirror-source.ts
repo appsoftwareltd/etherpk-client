@@ -58,6 +58,7 @@ export function createMirrorSource({
         listDocuments: () => store.listIdentities(),
         readTexts: (docIds, onProgress) => store.readTexts(docIds, { onProgress }),
         confirmRegistry: () => store.confirmRegistry(),
+        docsBehind: (docIds) => store.docsBehind(docIds),
         metadata,
         ...(assets && listAssetIds
             ? {

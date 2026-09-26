@@ -116,6 +116,19 @@ describe('sync-api', () => {
         await expect(player.deleteGraph('g1')).rejects.toThrow('Only the owner')
     })
 
+    it('looks an invitee up by POST, keeping the address out of the URL', async () => {
+        const fetchMock = vi.fn<typeof fetch>(async () => jsonResponse(404, { error: { code: 'identity_not_found' } }))
+        const api = createSyncApi({ baseUrl: 'https://sync.example.com', token: 't', fetch: fetchMock })
+
+        await expect(api.getIdentityByEmail('graph-1', 'invitee@example.com')).resolves.toBeNull()
+
+        const [url, init] = fetchMock.mock.calls[0]
+        expect(url).toBe('https://sync.example.com/api/v1/sync/identity/lookup')
+        expect(String(url)).not.toContain('invitee')
+        expect(init?.method).toBe('POST')
+        expect(JSON.parse(String(init?.body))).toEqual({ graphId: 'graph-1', email: 'invitee@example.com' })
+    })
+
     it('maps a 404 vault to null and other errors to SyncApiError', async () => {
         const notFound = createSyncApi({ baseUrl: 'https://s', token: 't', fetch: async () => jsonResponse(404, { error: { message: 'No vault' } }) })
         expect(await notFound.getVault()).toBeNull()

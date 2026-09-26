@@ -36,6 +36,15 @@
             "types": "./src/theme.ts",
             "default": "./src/theme.ts"
         },
+        "./legal": {
+            "types": "./src/legal/index.ts",
+            "default": "./src/legal/index.ts"
+        },
+        "./registration-consent": {
+            "svelte": "./src/legal/RegistrationConsent.svelte",
+            "types": "./src/legal/RegistrationConsent.svelte",
+            "default": "./src/legal/RegistrationConsent.svelte"
+        },
         "./build-stamp": {
             "types": "./src/build-stamp/build-stamp.ts",
             "default": "./src/build-stamp/build-stamp.ts"
@@ -43,6 +52,34 @@
         "./server/shutdown": {
             "types": "./src/server/shutdown.ts",
             "default": "./src/server/shutdown.ts"
+        },
+        "./server/logger": {
+            "types": "./src/logging/logger.ts",
+            "default": "./src/logging/logger.ts"
+        },
+        "./server/request-log": {
+            "types": "./src/logging/request-log.ts",
+            "default": "./src/logging/request-log.ts"
+        },
+        "./server/better-auth-logger": {
+            "types": "./src/logging/better-auth-logger.ts",
+            "default": "./src/logging/better-auth-logger.ts"
+        },
+        "./server/client-address": {
+            "types": "./src/server/client-address.ts",
+            "default": "./src/server/client-address.ts"
+        },
+        "./server/retired-cookies": {
+            "types": "./src/server/retired-cookies.ts",
+            "default": "./src/server/retired-cookies.ts"
+        },
+        "./two-factor-reset": {
+            "types": "./src/auth/two-factor-reset.ts",
+            "default": "./src/auth/two-factor-reset.ts"
+        },
+        "./verification-resend": {
+            "types": "./src/auth/verification-resend.ts",
+            "default": "./src/auth/verification-resend.ts"
         },
         "./dialog": {
             "svelte": "./src/components/Dialog.svelte",
@@ -53,6 +90,11 @@
             "svelte": "./src/components/ConfirmDialog.svelte",
             "types": "./src/components/ConfirmDialog.svelte",
             "default": "./src/components/ConfirmDialog.svelte"
+        },
+        "./two-factor-step": {
+            "svelte": "./src/auth/TwoFactorStep.svelte",
+            "types": "./src/auth/TwoFactorStep.svelte",
+            "default": "./src/auth/TwoFactorStep.svelte"
         },
         "./alert-banner": {
             "svelte": "./src/components/AlertBanner.svelte",

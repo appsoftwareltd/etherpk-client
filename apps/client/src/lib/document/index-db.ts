@@ -115,8 +115,12 @@ export interface SqlDb {
  * pattern, ADR 0041 §5). A persisted index built by an older parser is not merely old, it is
  * WRONG - it holds the output of derivation logic that no longer exists - so a mismatch means
  * discard and rebuild. Changing `index-derive.ts` without bumping this is the trap.
+ *
+ * A bump can also rebuild files whose content is still right: 13 (ADR 0097) changed neither
+ * schema nor derivation, and rebuilds every index so that each one has been through
+ * `purgeDeletedText`.
  */
-export const INDEX_SCHEMA_VERSION = 12
+export const INDEX_SCHEMA_VERSION = 13
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS index_metadata (
@@ -317,8 +321,12 @@ function isTextSearchable(block: BlockRow): boolean {
     return !containsCipherFence(block.text)
 }
 
-/** Write one document's derived rows under an already-established page id. */
-function insertDerived(db: SqlDb, pageId: number, doc: IndexDoc): void {
+/**
+ * Write one document's derived rows under an already-established page id. Returns the text of
+ * every row it put into the text index, which `ingestOne` compares with what it replaced.
+ */
+function insertDerived(db: SqlDb, pageId: number, doc: IndexDoc): string[] {
+    const searchable: string[] = []
     for (const alias of doc.aliases) {
         db.run('INSERT INTO aliases (page_id, alias_key, display) VALUES (?,?,?)', [pageId, conceptKey(alias), alias])
     }
@@ -350,6 +358,7 @@ function insertDerived(db: SqlDb, pageId: number, doc: IndexDoc): void {
                 pageId * BLOCK_FTS_STRIDE + b.localId,
                 b.text,
             ])
+            searchable.push(b.text)
         }
     }
     for (const l of links) {
@@ -386,6 +395,7 @@ function insertDerived(db: SqlDb, pageId: number, doc: IndexDoc): void {
             [pageId, passage.ord, passage.startLine, passage.endLine, passage.firstBlockLocalId, hashText(passage.text), passage.text],
         )
     }
+    return searchable
 }
 
 /**
@@ -465,6 +475,40 @@ CREATE INDEX IF NOT EXISTS tasks_page ON tasks(page_id);
 CREATE INDEX IF NOT EXISTS task_concepts_page ON task_concepts(page_id);
 CREATE INDEX IF NOT EXISTS passages_page ON passages(page_id);`
 
+/**
+ * Merge the text index into one segment, which is what removes the words of deleted rows from
+ * the database file (ADR 0097).
+ *
+ * FTS5 deletes by writing a tombstone: the deleted row's terms stay in the segment that holds
+ * them until a merge folds segment and tombstone together, and in a graph nobody is editing that
+ * can be never. `PRAGMA secure_delete` (index-db-sqlite.ts) zeroes the pages a merge frees, but a
+ * segment still in use is not freed. Without a merge, a document protected with content would
+ * leave its words readable with `strings` in the browser's OPFS pool and the Headless Client's
+ * index file, which is the disk-level reader protection exists to stop.
+ *
+ * FTS5's own `secure-delete` option would remove the terms on every delete instead. Measured on a
+ * 2,400-document index it made an edit's re-index 3.5x slower and a generation swap 12.5 s rather
+ * than 0.6 s, for every graph. `optimize` costs about 70 ms there and runs only when protected
+ * text may have been left behind: see {@link ingestOne} and {@link purgeIfProtected}.
+ *
+ * "Protected" here is the index's own flag, `containsCipherFence` anywhere in the text, so it
+ * also covers a page holding a fence beside plaintext (text typed after a protected fence, or a
+ * quoted example), whose plaintext is indexed until the page is protected whole.
+ */
+function purgeDeletedText(db: SqlDb): void {
+    db.run("INSERT INTO block_fts(block_fts) VALUES('optimize')")
+}
+
+/**
+ * After a rebuild: purge when the index now holds any protected document. A rebuild replaces
+ * every row, so the old segments may hold the plaintext of a document that was protected since
+ * the last build, on this device or another. A graph with no protected document pays nothing.
+ */
+function purgeIfProtected(db: SqlDb, generation: number): void {
+    const any = db.all<{ n: number }>('SELECT 1 AS n FROM pages WHERE generation = ? AND protected = 1 LIMIT 1', [generation])
+    if (any.length > 0) purgeDeletedText(db)
+}
+
 function clearForRebuild(db: SqlDb): void {
     db.exec(
         'DELETE FROM pages; DELETE FROM aliases; DELETE FROM publication_includes; DELETE FROM blocks; DELETE FROM links; DELETE FROM tasks; DELETE FROM task_concepts; DELETE FROM passages; DELETE FROM block_fts;',
@@ -493,6 +537,7 @@ export function ingest(db: SqlDb, docs: Iterable<IndexDoc>): void {
         let pageId = 0
         for (const doc of docs) insertPage(db, ++pageId, generation, doc)
         db.exec(CREATE_MAINTENANCE_INDEXES)
+        purgeIfProtected(db, generation)
     })
 }
 
@@ -529,7 +574,10 @@ export async function ingestProgressively(
         options.onProgress?.(Math.min(start + REBUILD_BATCH, docs.length), docs.length)
         await options.breathe?.()
     }
-    inTransaction(db, () => db.exec(CREATE_MAINTENANCE_INDEXES))
+    inTransaction(db, () => {
+        db.exec(CREATE_MAINTENANCE_INDEXES)
+        purgeIfProtected(db, generation)
+    })
 }
 
 function deleteGeneration(db: SqlDb, generation: number): void {
@@ -601,6 +649,7 @@ export function commitIndexRebuild(db: SqlDb, generation: number): number {
             )
             .map((row) => row.generation)
         for (const oldGeneration of obsolete) deleteGeneration(db, oldGeneration)
+        purgeIfProtected(db, generation)
         return revision
     })
 }
@@ -642,6 +691,15 @@ export function ingestOne(db: SqlDb, doc: IndexDoc): void {
             [generation, key],
         )
         let pageId: number
+        // For a document that holds protected content, the text its rows carried until now: if
+        // any of it is not written back below, its words have just left the index, and FTS5
+        // keeps them in the file until a merge (see purgeDeletedText). That is the protect itself,
+        // and a page with plaintext beside a fence being protected whole. A protected document's
+        // ordinary save writes the same searchable text back (its frontmatter), and merges nothing.
+        const leaving =
+            found.length > 0 && protectedFlag(doc) === 1
+                ? db.all<{ text: string }>('SELECT text FROM block_fts WHERE rowid >= ? AND rowid < ?', blockFtsRange(found[0].id)).map((row) => row.text)
+                : []
         if (found.length > 0) {
             pageId = found[0].id
             db.run('DELETE FROM aliases WHERE page_id = ?', [pageId])
@@ -670,7 +728,8 @@ export function ingestOne(db: SqlDb, doc: IndexDoc): void {
                 [pageId, doc.concept, key, doc.kind, indexDocHash(doc), generation, protectedFlag(doc)],
             )
         }
-        insertDerived(db, pageId, doc)
+        const written = new Set(insertDerived(db, pageId, doc))
+        if (leaving.some((text) => !written.has(text))) purgeDeletedText(db)
     })
 }
 

@@ -35,6 +35,8 @@ export default tseslint.config(
             'reports/**',
             '**/coverage/**',
             'resources/**',
+            // The explainer video is its own pnpm root with its own checks (ADR 0105).
+            'video/**',
         ],
     },
     js.configs.recommended,
@@ -103,7 +105,7 @@ export default tseslint.config(
             'deeprename.mjs',
             'apps/*/src/server.ts',
             'apps/*/src/migrate.ts',
-            'apps/*/src/lib/server/logger.ts',
+            'packages/shared/src/logging/logger.ts',
             // The Headless Client's command line: stdout is the user's, stderr the operator's.
             'apps/mcp/src/main.ts',
             '*.config.ts',

@@ -1,5 +1,5 @@
 import 'fake-indexeddb/auto'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { createGraphKeyring } from '$lib/crypto'
 import { createGraphSync } from '$lib/sync/graph-sync'
@@ -138,6 +138,63 @@ describe('the mirror over a real sync engine', () => {
         expect(mirror.status().skipped).toEqual(['Alpha'])
         mirror.dispose()
         await session.close()
+    })
+
+    it('writes an edit made on another device to a document this tab has no live engine for', async () => {
+        const relay = createLoopbackRelay()
+        const keyring = createGraphKeyring('g1')
+        const cacheA = `mirror-elsewhere-a-${++sequence}`
+        await seedGraph(relay, cacheA, keyring, 'first line')
+
+        // Device A mirrors. `Alpha` is never opened here, so this tab never subscribes to it.
+        const a = await openStore(relay, cacheA, keyring)
+        const adapter = createMemoryDirectoryAdapter({ now: () => ++sequence })
+        const mirror = createLocalMirror(createMirrorSource({ store: a.store }), adapter)
+        await mirror.sync()
+        expect((await adapter.read('pages', 'Alpha.md')).text).toContain('first line')
+        const alpha = a.store.listIdentities().find((doc) => doc.concept === 'Alpha')!.docId
+
+        // Device B edits it, and the relay has the edit.
+        const b = await openStore(relay, `mirror-elsewhere-b-${++sequence}`, keyring)
+        await b.store.readTexts([alpha])
+        const handle = b.store.open('Alpha')
+        await vi.waitFor(() => expect(handle.getText()).toContain('first line'))
+        const end = handle.getText().length
+        handle.applyChange({ from: end, to: end, insert: '\nedited on B' })
+        await b.graph.flushAll()
+        await b.graph.awaitAcked({ stallMs: 1000 })
+        await vi.waitFor(async () => expect(await a.store.docsBehind([alpha])).toEqual([alpha]))
+
+        // Mirror now on A asks the relay what moved, and brings the file up to date.
+        await mirror.sync()
+        expect((await adapter.read('pages', 'Alpha.md')).text).toContain('edited on B')
+        // Reading it caught A's cache up, so the next check does not flag it again.
+        expect(await a.store.docsBehind([alpha])).toEqual([])
+        expect(mirror.status().changesElsewhereUnchecked).toBe(false)
+
+        mirror.dispose()
+        await b.close()
+        await a.close()
+    })
+
+    it('answers "unknown", never "nothing changed", while the relay cannot be asked', async () => {
+        const cache = await openGraphCache(`mirror-offline-${++sequence}`)
+        // A socket that never opens: the device is offline.
+        const graph = createGraphSync({
+            graphId: 'g1',
+            rootDocId: ROOT,
+            keyring: createGraphKeyring('g1'),
+            relayUrl: 'ws://loopback/sync',
+            token: fixedSyncToken('t'),
+            cache,
+            connect: () => ({ send() {}, close() {}, onOpen() {}, onMessage() {}, onClose() {} }),
+            debounceMs: 5,
+        })
+        const store = createServerDocumentStore(graph, { readyTimeoutMs: 50 })
+        expect(await store.docsBehind(['d1'])).toBeNull()
+        expect(await store.docsBehind([])).toBeNull()
+        await store.dispose()
+        cache.dispose()
     })
 
     it('confirms the registry against the server before anything is deleted', async () => {

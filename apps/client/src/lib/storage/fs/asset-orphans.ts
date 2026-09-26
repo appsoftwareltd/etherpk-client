@@ -5,10 +5,19 @@
  * (fences and plain prose included, percent-encoded or not) - deletion must never break
  * a reference, so we over-count references rather than over-delete.
  *
- * Pure over the {@link DirectoryAdapter} seam, Node-testable over the in-memory fake.
+ * A [[Protected Document]]'s text is ciphertext, so the same search cannot see a reference inside
+ * one. Such a document is read through a {@link ProtectedTextReader} when the graph is unlocked;
+ * when any one of them cannot be read, no asset is offered at all ({@link orphanScanOf}), because
+ * deleting an asset is permanent.
+ *
+ * Pure over the {@link DirectoryAdapter} seam, Node-testable over the in-memory fake. The
+ * reference test and the protected-document rule are shared with the synced graph's scanner
+ * (storage/server/asset-orphans.ts), so the two backends cannot disagree about either.
  */
 
 import type { AssetByteReadiness } from '$lib/document/asset-delete'
+import { containsCipherFence } from '$lib/document/protection/fence-info'
+import type { ProtectedTextReader } from '$lib/document/protection/protected-text-reader'
 
 import { assetNameFromRef } from './asset-store'
 import type { DirectoryAdapter, Subdir } from './directory-adapter'
@@ -30,6 +39,75 @@ export interface OrphanScan {
      * Absent on a filesystem graph. Delete with `storage/server/asset-dedup-backfill.ts`.
      */
     dedupBackfill?: { tokened: number; failed: number }
+    /**
+     * Present when some document could not be read. `assets` is how many looked unused to what the
+     * scan could read; none of them is in `orphans`, because any of them may be used inside the
+     * unread documents.
+     */
+    withheld?: {
+        assets: number
+        /** [[Protected Document]]s the scan could not read: locked, or protected by another member. */
+        protectedDocuments: number
+        /** Other documents whose text could not be read at all: its key is unavailable, or it will not decrypt. */
+        unreadableDocuments: number
+        /**
+         * Whether the scan had the graph's protection session to read with, so that unlocking and
+         * scanning again can help. False where none is open, such as the Graphs page's settings.
+         */
+        unlockable: boolean
+    }
+}
+
+/**
+ * What a reference test searches: every document's stored text, plus the plaintext of each
+ * [[Protected Document]] this device can read now. Any cipher fence counts, not only a whole-body
+ * one: a fence left beside other text after a merge still holds ciphertext that may name an
+ * asset. `unreadableProtected` counts the documents holding a fence that could not be read.
+ */
+export async function referenceTexts(
+    stored: readonly string[],
+    readProtected?: ProtectedTextReader,
+): Promise<{ texts: string[]; unreadableProtected: number }> {
+    const texts: string[] = []
+    let unreadableProtected = 0
+    for (const text of stored) {
+        // The stored text always goes in: a protected document's frontmatter is in the clear.
+        texts.push(text)
+        if (!containsCipherFence(text)) continue
+        const plaintext = readProtected ? await readProtected(text).catch(() => null) : null
+        if (plaintext === null) unreadableProtected += 1
+        else texts.push(plaintext)
+    }
+    return { texts, unreadableProtected }
+}
+
+/**
+ * An asset counts as referenced if any of its identity's forms appears anywhere in any text:
+ * as written, or percent-encoded (the editor encodes spaces in a reference).
+ */
+export function isReferenced(texts: readonly string[], identity: string): boolean {
+    const encoded = encodeURIComponent(identity)
+    return texts.some((t) => t.includes(identity) || (encoded !== identity && t.includes(encoded)))
+}
+
+/**
+ * The scan's answer from what looked unused. While a protected document went unread nothing is
+ * offered: a scan cannot prove an asset unused from text it could not see, and deletion is
+ * permanent.
+ */
+export function orphanScanOf(
+    candidates: OrphanedAsset[],
+    counts: { totalAssets: number; scannedDocuments: number; unreadableProtected: number; unreadableOther?: number; unlockable: boolean },
+): OrphanScan {
+    const { totalAssets, scannedDocuments, unreadableProtected, unlockable } = counts
+    const unreadableOther = counts.unreadableOther ?? 0
+    if (unreadableProtected === 0 && unreadableOther === 0) return { orphans: candidates, totalAssets, scannedDocuments }
+    return {
+        orphans: [],
+        totalAssets,
+        scannedDocuments,
+        withheld: { assets: candidates.length, protectedDocuments: unreadableProtected, unreadableDocuments: unreadableOther, unlockable },
+    }
 }
 
 /**
@@ -58,27 +136,38 @@ export interface GraphAssetTools {
 
 const DOCUMENT_SUBDIRS: Subdir[] = ['journals', 'pages']
 
-export async function scanOrphanedAssets(adapter: DirectoryAdapter): Promise<OrphanScan> {
+export interface FilesystemAssetToolOptions {
+    /** Reads a Protected Document's plaintext while the graph is unlocked; absent, none is read. */
+    readProtected?: ProtectedTextReader
+    /**
+     * Brings pending edits to the folder before the scan reads it: a protected document's
+     * projection encrypts on a debounce, and every buffer autosaves on one, so a reference added
+     * moments ago is otherwise not in any file yet.
+     */
+    settle?: () => Promise<void>
+}
+
+export async function scanOrphanedAssets(adapter: DirectoryAdapter, options: FilesystemAssetToolOptions = {}): Promise<OrphanScan> {
     const assets = await adapter.list('assets')
     if (assets.length === 0) return { orphans: [], totalAssets: 0, scannedDocuments: 0 }
 
-    const texts: string[] = []
+    await options.settle?.()
+    const stored: string[] = []
     for (const subdir of DOCUMENT_SUBDIRS) {
         for (const { name } of await adapter.list(subdir)) {
             if (!/\.md$/i.test(name)) continue
-            texts.push((await adapter.read(subdir, name)).text)
+            stored.push((await adapter.read(subdir, name)).text)
         }
     }
 
-    const referenced = (name: string) =>
-        texts.some((t) => t.includes(name) || t.includes(encodeURIComponent(name)))
-    return {
-        orphans: assets
-            .filter(({ name }) => !referenced(name))
-            .map(({ name }) => ({ id: name, label: name })),
+    const { texts, unreadableProtected } = await referenceTexts(stored, options.readProtected)
+    const candidates = assets.filter(({ name }) => !isReferenced(texts, name)).map(({ name }) => ({ id: name, label: name }))
+    return orphanScanOf(candidates, {
         totalAssets: assets.length,
-        scannedDocuments: texts.length,
-    }
+        scannedDocuments: stored.length,
+        unreadableProtected,
+        unlockable: options.readProtected !== undefined,
+    })
 }
 
 /**
@@ -87,9 +176,9 @@ export async function scanOrphanedAssets(adapter: DirectoryAdapter): Promise<Orp
  * reference typed into it by another editor is invisible until `reconcile()` runs — the same
  * exposure the [[Orphaned Asset]] scan has always carried, and not one a check here could close.
  */
-export function filesystemAssetTools(adapter: DirectoryAdapter): GraphAssetTools {
+export function filesystemAssetTools(adapter: DirectoryAdapter, options: FilesystemAssetToolOptions = {}): GraphAssetTools {
     return {
-        scan: () => scanOrphanedAssets(adapter),
+        scan: () => scanOrphanedAssets(adapter, options),
         remove: (ids) => deleteOrphanedAssets(adapter, ids),
         identify: (ref) => assetNameFromRef(ref),
         readyToDeleteBytes: async () => ({ ready: true }),

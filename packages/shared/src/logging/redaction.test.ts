@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
+    redactPath,
     redactQueryString,
+    redactUrl,
     redactUrlQuery,
     shouldCaptureErrorResponseBody,
 } from './redaction'
@@ -45,6 +47,22 @@ describe('redactQueryString', () => {
         )
     })
 
+    it('redacts an email address, which is personal data rather than a diagnostic', () => {
+        // The invite lookup and the verification landing page (/login?email=) both carried one.
+        expect(redactQueryString('?email=person%40example.com&callbackURL=/account')).toBe(
+            '?email=[redacted]&callbackURL=/account',
+        )
+        expect(redactQueryString('?inviteeEmail=a%40b.test')).toBe('?inviteeEmail=[redacted]')
+    })
+
+    it('redacts a document name carried in a return path', () => {
+        // The Client's silent sign-in sends /auth/login?redirect=<the page being opened>.
+        expect(redactQueryString('?redirect=%2Fg%2Fabc%2Fd%2FPrivate%20Diary&prompt=none')).toBe(
+            '?redirect=/g/abc/d/[redacted]&prompt=none',
+        )
+        expect(redactQueryString('?redirect=%2Fgraphs%3Fmanaged%3Dconnected')).toBe('?redirect=%2Fgraphs%3Fmanaged%3Dconnected')
+    })
+
     it('leaves diagnostic parameters intact', () => {
         expect(redactQueryString('?page=2&sort=name&graphId=abc-123')).toBe(
             '?page=2&sort=name&graphId=abc-123',
@@ -79,6 +97,51 @@ describe('redactUrlQuery', () => {
     it('passes through null and undefined', () => {
         expect(redactUrlQuery(null)).toBeNull()
         expect(redactUrlQuery(undefined)).toBeUndefined()
+    })
+})
+
+describe('redactPath', () => {
+    it('redacts the password-reset token Better Auth carries in the path', () => {
+        // better-auth 1.6.15 mails `${baseURL}/reset-password/${token}?callbackURL=...`; the GET
+        // does not consume the token, so a logged path is a password reset for anyone who reads it.
+        expect(redactPath('/api/auth/reset-password/Xk2pQ9vLmN4rT7wYz8aB')).toBe(
+            '/api/auth/reset-password/[redacted]',
+        )
+    })
+
+    it('matches the route whatever its case and keeps a trailing segment out of the log too', () => {
+        expect(redactPath('/API/Auth/Reset-Password/abc/extra')).toBe('/API/Auth/Reset-Password/[redacted]')
+    })
+
+    it('redacts the document name in a Client document address', () => {
+        // Document names are the user's content; the Client server never needs them in a log.
+        expect(redactPath('/g/0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b/d/Journal/2026-09-24')).toBe(
+            '/g/0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b/d/[redacted]',
+        )
+    })
+
+    it('leaves every other path byte-for-byte intact', () => {
+        expect(redactPath('/api/auth/reset-password')).toBe('/api/auth/reset-password')
+        expect(redactPath('/api/v1/sync/graphs/0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b')).toBe(
+            '/api/v1/sync/graphs/0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b',
+        )
+        expect(redactPath('/g/abc/t/theme-1')).toBe('/g/abc/t/theme-1')
+    })
+})
+
+describe('redactUrl', () => {
+    it('redacts both the path and the query of a redirect target', () => {
+        expect(redactUrl('https://app.test/g/abc/d/Private%20Diary?code=1&x=2')).toBe(
+            'https://app.test/g/abc/d/[redacted]?code=[redacted]&x=2',
+        )
+        expect(redactUrl('/api/auth/reset-password/tok?callbackURL=/x')).toBe(
+            '/api/auth/reset-password/[redacted]?callbackURL=/x',
+        )
+    })
+
+    it('leaves an ordinary target alone and passes through null', () => {
+        expect(redactUrl('https://www.example.test/account#top')).toBe('https://www.example.test/account#top')
+        expect(redactUrl(null)).toBeNull()
     })
 })
 

@@ -5,8 +5,10 @@
  * worker that has the pool installed. This is the other case: nothing should be holding the
  * pool at all, and the whole pool directory goes. The [[Demo Graph]] reset needs it (ADR 0069):
  * the graph id is fixed, so a re-seed under the same id would otherwise open against an
- * index describing documents that no longer exist. Forgetting an ordinary graph could use it
- * too; today that leaves the pool behind.
+ * index describing documents that no longer exist. Deleting, leaving and forgetting a graph use
+ * it too: the pool holds the graph's note text, and those actions promise the browser's copy
+ * goes with the graph. {@link discardUnlistedIndexPools} catches a pool that could not be
+ * discarded at the time.
  *
  * The pool's access handles are exclusive, and a worker that has just been torn down (the
  * workspace unmounting on the way to the reset) releases them a beat after navigation. So
@@ -14,6 +16,8 @@
  * retrying a contention error until the deadline. It never steals the lock: a live worker in
  * another tab keeps its index, and the caller decides what to tell the user.
  */
+import { graphIdOfOpfsFolder } from '$lib/storage/fs/opfs-graph-folder'
+
 import { indexPoolDirectoryName, indexPoolLifetimeLockName } from './index-pool-names'
 
 const RETRY_STEP_MS = 250
@@ -113,4 +117,51 @@ export async function discardIndexPool(
         }
     })
     return acquired ? outcome : { kind: 'held' }
+}
+
+export interface DiscardUnlistedOptions {
+    /** How long to wait for each pool's worker; a held pool is left for the next sweep. */
+    timeoutMs?: number
+    root?: () => Promise<FileSystemDirectoryHandle>
+}
+
+/**
+ * Discard every persisted index pool whose graph this device holds no record of, such as the
+ * pool left by a delete, leave or forget that ran while a workspace tab still held it. Returns
+ * the graph ids whose pools went.
+ *
+ * `listed` is every graph id the device's registry holds (`GraphRegistry.listAllGraphIds`),
+ * from a read that succeeded. Not the visible list: a signed-out or expired account hides its
+ * synced graphs without them being gone. And not an unreadable registry read as empty, or the
+ * sweep would discard every graph's index. A pool whose graph keeps its files in OPFS
+ * (`opfsGraphFolderName`: the dev folder path, the demo) is kept too. A pool still held by a
+ * live worker is left alone (`discardIndexPool` never steals the lock), so an open graph is
+ * never touched; the cost of a wrong discard is only a rebuild, because the index is derived.
+ */
+export async function discardUnlistedIndexPools(
+    listed: Iterable<string>,
+    options: DiscardUnlistedOptions = {},
+): Promise<string[]> {
+    const known = new Set(listed)
+    const getRoot = options.root ?? (() => navigator.storage.getDirectory())
+    const root = await getRoot()
+    const prefix = indexPoolDirectoryName('')
+    const pools: string[] = []
+    const graphFolders = new Set<string>()
+    for await (const [name, handle] of (root as unknown as { entries(): AsyncIterable<[string, FileSystemHandle]> }).entries()) {
+        if (handle.kind !== 'directory') continue
+        if (name.startsWith(prefix) && name.length > prefix.length) {
+            pools.push(name.slice(prefix.length))
+            continue
+        }
+        const folderOf = graphIdOfOpfsFolder(name)
+        if (folderOf) graphFolders.add(folderOf)
+    }
+    const discarded: string[] = []
+    for (const graphId of pools) {
+        if (known.has(graphId) || graphFolders.has(graphId)) continue
+        const result = await discardIndexPool(graphId, { timeoutMs: options.timeoutMs ?? 2_000, root: async () => root })
+        if (result.kind === 'discarded') discarded.push(graphId)
+    }
+    return discarded
 }

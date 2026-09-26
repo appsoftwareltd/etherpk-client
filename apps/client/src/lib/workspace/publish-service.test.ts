@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest'
 
 import { createInMemoryDocumentStore } from '$lib/document/in-memory-store'
+import { proposeFrontmatter } from '$lib/document/frontmatter/proposal'
 import { discoverPublications } from '$lib/document/publish/publication'
 import { buildNav } from '$lib/document/publish/nav'
 import { SAMPLE_SOURCE } from '$lib/document/publish/sample-graph'
+import { documents as fixtureDocuments, source as fixtureSource } from '$lib/document/publish/fixture-graph'
+import { createThemeLoader } from '$lib/document/publish/theme/sources'
 import { createFilesystemDocumentStore } from '$lib/storage/fs/filesystem-store'
 import { createMemoryDirectoryAdapter } from '$lib/storage/fs/memory-adapter'
 
@@ -11,6 +14,7 @@ import {
     copyThemeForGraph,
     createPublicationPage,
     freeThemeId,
+    runPublish,
     setDocumentPublishing,
     setPublicationInclude,
     suggestPublicationId,
@@ -26,6 +30,52 @@ describe('setDocumentPublishing', () => {
         expect(await setDocumentPublishing(store, 'Guide', { public: true, publications: ['docs'] })).toBe(false)
         expect(await setDocumentPublishing(store, 'Guide', { public: null, publications: null })).toBe(true)
         expect(store.open('Guide').getText()).toBe('- body [[X]]\n')
+    })
+
+    // A local graph reads aliases from the file, and its listing catches up only when the autosave
+    // writes. A block deleted in the editor moments before Publish must stay deleted, aliases and all.
+    it('on a local graph, does not bring back the aliases of a block deleted before the autosave', async () => {
+        const adapter = createMemoryDirectoryAdapter({ now: () => 0 })
+        await adapter.write('pages', 'Guide.md', '---\naliases: [Old]\n---\n- body\n')
+        const store = createFilesystemDocumentStore(adapter)
+        await store.scan()
+        await store.whenReady('Guide')
+        const handle = store.open('Guide')
+        handle.applyChange({ from: 0, to: handle.getText().indexOf('- body'), insert: '' })
+
+        await setDocumentPublishing(store, 'Guide', { public: true, publications: ['docs'] })
+        expect(store.open('Guide').getText()).toBe('---\npublic: true\npublications:\n  - docs\n---\n- body\n')
+    })
+
+    // On a synced graph a document's aliases live in the registry, and a block with no `aliases:`
+    // line claims none (ADR 0061). A block added here without them would clear every alias at
+    // the next edit to it, or at the mismatch mark's Apply aliases.
+    describe('on a document whose registry holds aliases', () => {
+        const registry = { kind: 'page' as const, concept: 'Guide', aliases: ['Handbook', 'Manual'] }
+        function storeWith(text: string) {
+            return {
+                ...createInMemoryDocumentStore({ Guide: text }),
+                listDocuments: () => [{ key: 'guide', aliases: registry.aliases }],
+            }
+        }
+
+        it('carries the aliases into the block it adds, so the block agrees with the registry', async () => {
+            const store = storeWith('- body\n')
+            await setDocumentPublishing(store, 'Guide', { public: true, publications: ['docs'] })
+            const text = store.open('Guide').getText()
+            expect(text).toBe('---\npublic: true\npublications:\n  - docs\naliases:\n  - Handbook\n  - Manual\n---\n- body\n')
+            expect(proposeFrontmatter({ text, registry, backend: 'server' })).toEqual([])
+
+            // Unpublishing leaves a block that still agrees, rather than one that clears them.
+            await setDocumentPublishing(store, 'Guide', { public: null, publications: null })
+            expect(store.open('Guide').getText()).toBe('---\naliases:\n  - Handbook\n  - Manual\n---\n- body\n')
+        })
+
+        it('rewrites only the publishing keys of a block the document already has', async () => {
+            const store = storeWith('---\nstatus: draft\n---\n- body\n')
+            await setDocumentPublishing(store, 'Guide', { public: true, publications: ['docs'] })
+            expect(store.open('Guide').getText()).toBe('---\nstatus: draft\npublic: true\npublications:\n  - docs\n---\n- body\n')
+        })
     })
 })
 
@@ -115,12 +165,14 @@ describe('updatePublicationPage and setPublicationInclude', () => {
         const store = {
             open: (target: string) => inner.open(target),
             flushDocument: async (target: string) => {
-                flushed.push(target)
+                flushed.push(`${target}: ${inner.open(target).getText().includes('home: Welcome') ? 'after the write' : 'before it'}`)
             },
         }
         const current = discoverPublications([{ concept: 'Docs Site', kind: 'page', text, aliases: [] }]).publications[0]
         await updatePublicationPage(store, 'Docs Site', current, { home: 'Welcome' })
-        expect(flushed).toEqual(['Docs Site'])
+        // Once before reading, so pending edits are in the text it rewrites, and once after, so the
+        // write has landed when the call returns.
+        expect(flushed).toEqual(['Docs Site: before it', 'Docs Site: after the write'])
         expect(inner.open('Docs Site').getText()).toContain('home: Welcome')
     })
 
@@ -152,6 +204,37 @@ describe('summarisePublishing', () => {
         expect(byName.get('Site Footer')).toMatchObject({ aliases: ['Footer'], isPublic: false })
         expect(byName.get('Locked')).toMatchObject({ isPublic: true, isProtected: true })
         expect(byName.get('Blog Home')).toMatchObject({ isPublicationPage: true })
+    })
+})
+
+describe('runPublish', () => {
+    // What every host writes: the browser's folder and zip, and the Headless Client's folder.
+    // The publish report names every document left off the site - protected ones included - and
+    // says which linked names are real private pages, so it is shown in the app and returned to
+    // the agent, never put in the bundle a static host serves.
+    it('keeps the report out of the site: no file names a document the site leaves out', async () => {
+        const docs = discoverPublications(fixtureDocuments).publications.find((p) => p.id === 'docs')!
+        const run = await runPublish(docs, {
+            source: fixtureSource,
+            environment: {
+                loadTheme: createThemeLoader({ graphTheme: async () => null }),
+                renderMermaid: async () => '<svg id="gk-mermaid-1"><style>#gk-mermaid-1{fill:#333}</style></svg>',
+                katexAssets: async () => new Map([['katex.min.css', '.katex{}']]),
+            },
+        })
+        expect(run.report.ok).toBe(true)
+        // The report itself still says what was left out and why.
+        expect(run.report.excluded.map((e) => e.concept)).toEqual(expect.arrayContaining(['Protected Doc', 'Private Head', 'Secret']))
+        expect(run.bundle.has('etherpk-publish.json')).toBe(false)
+        for (const [path, content] of run.bundle) {
+            const text = typeof content === 'string' ? content : new TextDecoder().decode(content)
+            // Neither title is linked from a public page, so neither has any business on the site.
+            expect(text, path).not.toContain('Protected Doc')
+            expect(text, path).not.toContain('Private Head')
+            expect(text, path).not.toContain('"excluded"')
+        }
+        for (const [path, text] of run.seeded) expect(text, path).not.toContain('Protected Doc')
+        expect(run.agentsMd(null)).not.toContain('Protected Doc')
     })
 })
 

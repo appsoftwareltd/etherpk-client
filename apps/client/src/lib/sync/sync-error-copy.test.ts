@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
+import { ManagedTokenError } from '$lib/auth/managed-token'
 import { EnvelopeError, RecoveryCodeError } from '$lib/crypto'
+import { NoVaultError } from './recovery-unlock'
 import { SyncProtocolMismatchError } from './messages'
 import { InviteForHeldGraphError } from './invites'
 import { SyncApiError } from './sync-api'
@@ -80,6 +82,19 @@ describe('describeSyncFailure', () => {
         expect(message).toContain('Try again')
     })
 
+    it('says a busy sign-in service is busy, and does not blame the connection', () => {
+        // /auth/token answers 503 when Corporate is briefly unavailable. The connection is fine,
+        // so the copy must not send the person to check it.
+        const message = describeSyncFailure(new ManagedTokenError('Managed Sync sign-in is temporarily unavailable', 503), 'open the graph')
+        expect(message).toBe('Could not open the graph. EtherPK sign-in is busy at the moment. You are still signed in; try again in a minute.')
+        expect(message).not.toMatch(/connection/i)
+    })
+
+    it('explains a signed-out token answer as an ended sign-in', () => {
+        expect(describeSyncFailure(new ManagedTokenError('Managed Sync sign-in is required', 401), 'open the graph'))
+            .toBe('Could not open the graph. Your EtherPK sign-in has ended. Sign in again, then retry.')
+    })
+
     it('reads a non-SyncApiError as a connection failure', () => {
         const message = describeSyncFailure(new TypeError('Failed to fetch'), 'reach the server')
         expect(message).toContain('could not be reached')
@@ -115,11 +130,19 @@ describe('describeSyncFailure', () => {
         expect(message).not.toContain('Vault is locked')
     })
 
-    it('reads a failed envelope as stale keys on this device and points at lock-then-unlock', () => {
+    it('reads a failed envelope as keys gone stale since they were unlocked, and points at lock-then-unlock', () => {
+        // A wrong Recovery Code is refused at the unlock and never gets this far, so the copy
+        // names the cause that remains instead of sending someone to retype the same code.
         const message = describeSyncFailure(new EnvelopeError('sealed envelope authentication failed'), 'open the graph')
-        expect(message).toContain('lock your keys')
-        expect(message).toContain('unlock again')
+        expect(message).toContain('reset on another device')
+        expect(message).toContain('lock your keys, then unlock them again')
         expect(message).not.toContain('envelope')
+    })
+
+    it('says an account with no keys has nothing to unlock yet', () => {
+        expect(describeSyncFailure(new NoVaultError(), 'unlock your keys')).toBe(
+            'Could not unlock your keys. This account has no encryption keys yet: they are created with your first synced graph.',
+        )
     })
 
     it('never echoes a Recovery Code character back to the screen', () => {

@@ -14,6 +14,8 @@ export function nodeTransport(url: string): TransportSocket {
         close: () => ws.close(),
         onOpen: (cb) => ws.addEventListener('open', () => cb()),
         onMessage: (cb) => ws.addEventListener('message', (e) => cb(String((e as MessageEvent).data))),
-        onClose: (cb) => ws.addEventListener('close', () => cb()),
+        // The close code tells access ending (4401, 4403) from a dropped connection; without it
+        // the Headless Client would reconnect in a loop after its membership or token is revoked.
+        onClose: (cb) => ws.addEventListener('close', (event) => cb({ code: event.code, reason: event.reason })),
     }
 }

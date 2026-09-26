@@ -20,7 +20,7 @@ import {
     toBase64Url,
     utf8,
 } from '$lib/crypto'
-import type { SyncApi } from './sync-api'
+import { SyncApiError, type SyncApi } from './sync-api'
 
 const inviteAad = (graphId: string) => contextAad('keyring-invite', `graph:${graphId}`)
 
@@ -58,11 +58,27 @@ export interface InvitePreparation {
 }
 
 /** Step 1: look up the invitee and get their fingerprint to confirm before sealing. */
-export async function prepareInvite(api: SyncApi, inviteeEmail: string): Promise<InvitePreparation | null> {
-    const identity = await api.getIdentityByEmail(inviteeEmail)
+export async function prepareInvite(
+    api: SyncApi,
+    graphId: string,
+    inviteeEmail: string,
+): Promise<InvitePreparation | null> {
+    const identity = await api.getIdentityByEmail(graphId, inviteeEmail)
     if (!identity) return null
     const inviteePublicKey = fromBase64Url(identity.publicKey)
     return { inviteePublicKey, fingerprint: await fingerprint(inviteePublicKey) }
+}
+
+/**
+ * Nobody with the address can be invited: no account has it, or the account has not set up a
+ * device (published an identity key) yet. The server gives one answer for both (`404
+ * identity_not_found`), on the lookup and again on the invite itself.
+ */
+export class InviteeNotFoundError extends Error {
+    constructor() {
+        super('No account with that address can be invited yet')
+        this.name = 'InviteeNotFoundError'
+    }
 }
 
 /** Step 2: seal this graph's keyring (+ its name, if known) to the verified invitee. */
@@ -75,8 +91,15 @@ export async function sendInvite(
     graphName?: string,
 ): Promise<string> {
     const sealed = await sealToPublicKey(inviteePublicKey, serializeInvitePayload(keyring, graphName), inviteAad(graphId))
-    const { id } = await api.createInvite(graphId, inviteeEmail, toBase64Url(sealed))
-    return id
+    try {
+        const { id } = await api.createInvite(graphId, inviteeEmail, toBase64Url(sealed))
+        return id
+    } catch (error) {
+        // The invite route answers 404 only for an invitee nobody can be invited under; the
+        // generic "the server no longer has it" reading of a 404 would send the owner to refresh.
+        if (error instanceof SyncApiError && error.status === 404) throw new InviteeNotFoundError()
+        throw error
+    }
 }
 
 export interface AcceptedInvite {

@@ -1,6 +1,8 @@
 <script lang="ts">
     import LoadingSweep from '$lib/components/LoadingSweep.svelte'
 
+    import type { AccessLossNotice } from '$lib/sync/access-loss'
+
     import type { MissingGraphDiagnosis } from './graph-availability'
 
     let {
@@ -13,12 +15,16 @@
         setupError = null,
         shareWaiting = false,
         shareLanded = false,
+        accessLost = null,
+        downloading = false,
+        downloadError = null,
         ongrant,
         onback,
         onretry,
         onsetup,
+        ondownload,
     }: {
-        phase: 'loading' | 'needs-permission' | 'needs-unlock' | 'ready' | 'missing' | 'error'
+        phase: 'loading' | 'needs-permission' | 'needs-unlock' | 'ready' | 'missing' | 'error' | 'access-lost'
         loadingStep: 'opening' | 'loading' | 'indexing'
         indexed: { done: number; total: number } | null
         message: string
@@ -35,13 +41,33 @@
         shareWaiting?: boolean
         /** The waiting share has been added to Quick notes while the rest of the open carries on. */
         shareLanded?: boolean
+        /**
+         * Why the graph stopped syncing for good: what happened, and the way back in. Shown in
+         * the `access-lost` phase.
+         */
+        accessLost?: AccessLossNotice | null
+        /** The unsent changes' download is being built. */
+        downloading?: boolean
+        /** Why the download failed, in user copy. */
+        downloadError?: string | null
         ongrant: () => void
         onback: () => void
         /** Retry the open that failed. Absent means only "back" is offered. */
         onretry?: () => void
         /** Register the graph on this device and open it (`missing.kind === 'available'`). */
         onsetup?: () => void
+        /** Download the documents whose changes will not be sent. */
+        ondownload?: () => void
     } = $props()
+
+    /**
+     * The notice replaces an editor the person may have been typing in, so focus moves to its
+     * heading: a keyboard or screen reader user hears what happened instead of being left on a
+     * hidden element.
+     */
+    function focusOnShow(node: HTMLElement) {
+        node.focus()
+    }
 </script>
 
 <!-- The shared text is in sessionStorage, not on this page, so the notice has to say it is safe
@@ -159,6 +185,28 @@
         <p>Enter your Recovery Code to unlock the encryption keys on this device.</p>
         {@render shareWaits()}
     </div>
+{:else if phase === 'access-lost' && accessLost}
+    <div class="notice" data-testid="graph-access-lost" role="alert">
+        <h2 tabindex="-1" {@attach focusOnShow}>{accessLost.title}</h2>
+        <p>{accessLost.body}</p>
+        {#if downloadError}
+            <p role="alert" class="notice__error">{downloadError}</p>
+        {/if}
+        <div class="notice__actions">
+            {#if accessLost.primary}
+                <!-- A full load: /auth/login is a server route, and the connect form reads the URL on load. -->
+                <a class="notice__primary" data-testid="graph-access-lost-primary" href={accessLost.primary.href} data-sveltekit-reload>
+                    {accessLost.primary.label}
+                </a>
+            {/if}
+            {#if accessLost.canDownload && ondownload}
+                <button data-testid="graph-access-lost-download" onclick={ondownload} disabled={downloading} aria-busy={downloading}>
+                    {downloading ? 'Preparing the download…' : 'Download unsent changes'}
+                </button>
+            {/if}
+            <button data-testid="graph-access-lost-back" onclick={onback}>Back to graphs</button>
+        </div>
+    </div>
 {:else if phase === 'error'}
     <div class="notice" data-testid="graph-error" role="alert">
         <!-- `message` is already a full sentence from sync-error-copy.ts: what happened,
@@ -228,6 +276,25 @@
         background: var(--gk-surface-1);
         color: inherit;
         cursor: pointer;
+    }
+    .notice h2:focus {
+        outline: none;
+    }
+    /* The way back in: the same shape as the buttons, marked out by weight and an accent edge
+       rather than a filled background, which would not hold contrast on the accent blue. */
+    .notice__primary {
+        border: 1px solid var(--gk-accent);
+        border-radius: 6px;
+        padding: 0.35rem 0.75rem;
+        background: var(--gk-surface-1);
+        color: inherit;
+        font-weight: 600;
+        text-decoration: none;
+    }
+    .notice__primary:focus-visible,
+    .notice button:focus-visible {
+        outline: 2px solid var(--gk-accent);
+        outline-offset: 2px;
     }
     .notice button:disabled {
         opacity: 0.6;

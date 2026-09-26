@@ -825,3 +825,28 @@ describe('deleted and rewritten notes', () => {
     })
 })
 })
+
+// On a folder graph a rename rebuilds the block of every page it rewrites from its parsed YAML.
+// A block that does not parse would lose every key from the file, the only copy, so the plan is
+// refused and the agent gets a correctable error rather than an internal one.
+describe('rename on a folder graph with a block that does not parse', () => {
+    it('refuses with invalid_argument, naming the page, and writes nothing', async () => {
+        const adapter = createMemoryDirectoryAdapter({ now: () => (clock += 1000) })
+        await adapter.ensureSkeleton()
+        const broken = '---\ntags: [a]\nstatus: draft\ntags: [b]\n---\n- body\n'
+        await adapter.write('pages', 'Draft.md', broken)
+        const g = await openHeadlessFolder({ adapter, name: 'g-rename-unreadable', graphId: `g-rename-unreadable-${Math.floor(performance.now() * 1000)}` })
+        open.push(g)
+        await g.settle()
+
+        const refused = await rename(g, { from: 'Draft', to: 'Final' }).then(
+            () => null,
+            (error: unknown) => error,
+        )
+        expect(refused).toBeInstanceOf(ToolError)
+        expect((refused as ToolError).code).toBe('invalid_argument')
+        expect((refused as ToolError).message).toContain('“Draft” cannot be renamed while its frontmatter is not valid YAML')
+        expect((await adapter.read('pages', 'Draft.md')).text).toBe(broken)
+        expect(await adapter.exists('pages', 'Final.md')).toBe(false)
+    })
+})

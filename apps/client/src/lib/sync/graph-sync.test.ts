@@ -6,7 +6,7 @@ import { createGraphKeyring, fromBase64Url } from '$lib/crypto'
 import { createGraphSync, type GraphSyncDeps, type TransportSocket } from './graph-sync'
 import { createLoopbackRelay } from './loopback-relay'
 import { fixedSyncToken } from './sync-token'
-import { openGraphCache } from './local-cache'
+import { openGraphCache, type GraphCache } from './local-cache'
 import { SyncProtocolMismatchError } from './messages'
 
 const ROOT = '018f47a0-7b5d-7cc5-b5c1-f0fbcde10000'
@@ -434,6 +434,107 @@ describe('graph-sync', () => {
         graph.dispose()
     })
 
+    // The caller owns the release: a walk whose batch failed releases it in its own `finally`, as
+    // every walk in server-document-store.ts does. If readyDocs also gave the holds back, the
+    // batch would be released twice, and the second release would take the hold of another walk
+    // over the same document and retire its engine underneath it.
+    it('releases a failed batch once, so another walk over the same document keeps its engine', async () => {
+        const BROKEN = '018f47a0-7b5d-7cc5-b5c1-f0fbcde10009'
+        const cache = await openGraphCache(`failed-batch-${Math.floor(performance.now() * 1000)}`)
+        // A document whose cached row will not load: its engine's ready() rejects for good.
+        const failing: GraphCache = {
+            ...cache,
+            docCache: (docId, role) => {
+                const row = cache.docCache(docId, role)
+                return docId === BROKEN ? { ...row, load: () => Promise.reject(new Error('the cached row will not load')) } : row
+            },
+        }
+        const socket: TransportSocket = { send: () => {}, close: () => {}, onOpen: () => {}, onMessage: () => {}, onClose: () => {} }
+        const graph = createGraphSync({
+            graphId: 'g-failed-batch',
+            rootDocId: ROOT,
+            keyring: createGraphKeyring('g-failed-batch'),
+            relayUrl: 'ws://relay',
+            token: fixedSyncToken('t'),
+            cache: failing,
+            connect: () => socket,
+        })
+
+        await graph.readyDocs([DOC_1]) // walk A holds DOC_1
+        const walkB = [DOC_1, BROKEN]
+        try {
+            await expect(graph.readyDocs(walkB)).rejects.toThrow('will not load')
+        } finally {
+            graph.retireDocs(walkB) // walk B releases what it asked for, once
+        }
+        await new Promise((resolve) => setTimeout(resolve, 20))
+        // Walk A still holds DOC_1: root, DOC_1 and the broken engine's replacement at most.
+        expect(graph.diagnostics().activeEngines).toBeGreaterThanOrEqual(2)
+        const before = graph.docSync(DOC_1)
+        await new Promise((resolve) => setTimeout(resolve, 20))
+        expect(graph.docSync(DOC_1)).toBe(before)
+
+        graph.retireDocs([DOC_1]) // walk A is done
+        await vi.waitFor(() => expect(graph.diagnostics().activeEngines).toBe(1))
+        graph.dispose()
+        cache.dispose()
+    })
+
+    // Two batch walks over the same document - a publish's read and the index's catch-up - share
+    // one engine, and the first to retire it does so while the other still waits on its catch-up.
+    // If the catch-up's completion then destroyed the engine, the waiter's `caughtUpDoc` would
+    // resolve and read an empty engine created in its place: every page of a cold
+    // `etherpk-mcp publish` would come back empty and "settled".
+    it('keeps an engine live for a batch walk while another walk over the same document retires it', async () => {
+        const keyring = createGraphKeyring('g-held')
+        const relay = createLoopbackRelay()
+        const writer = await client(relay, keyring, 'g-held')
+        writer.docSync(DOC_1).doc.getText('content').insert(0, 'written on another device')
+        await writer.flushAll()
+        await writer.awaitAcked({ stallMs: 2_000 })
+
+        // The reader's catch-up pages for DOC_1 are held back until released, so the retirement
+        // below lands while the catch-up is still in flight, as it does over a real network.
+        const held: Array<() => void> = []
+        let holding = true
+        const gated = (url: string): TransportSocket => {
+            const socket = relay.connect(url)
+            return {
+                send: (data) => socket.send(data),
+                close: () => socket.close(),
+                onOpen: (callback) => socket.onOpen(callback),
+                onClose: (callback) => socket.onClose(callback),
+                onMessage: (callback) =>
+                    socket.onMessage((data) => {
+                        const message = JSON.parse(data) as { type?: string; docId?: string }
+                        if (holding && message.type === 'catchup_batch' && message.docId === DOC_1) held.push(() => callback(data))
+                        else callback(data)
+                    }),
+            }
+        }
+        const reader = await client({ connect: gated }, keyring, 'g-held')
+        await reader.rootCaughtUp()
+        await reader.readyDocs([DOC_1]) // walk A
+        await reader.readyDocs([DOC_1]) // walk B, same document
+        await vi.waitFor(() => expect(held.length).toBeGreaterThan(0))
+        reader.retireDocs([DOC_1]) // walk A is done with it; the catch-up is still in flight
+        const caughtUp = reader.caughtUpDoc(DOC_1) // walk B waits for it
+        holding = false
+        for (const release of held.splice(0)) release()
+        await caughtUp
+        // Once the engine has settled it is still walk B's: nothing retires it underneath.
+        await new Promise((resolve) => setTimeout(resolve, 50))
+        expect(reader.diagnostics().activeEngines).toBe(2)
+        expect(reader.docSync(DOC_1).doc.getText('content').toString()).toBe('written on another device')
+
+        // Walk B's own retirement still retires it: the walks stay bounded.
+        reader.retireDocs([DOC_1])
+        await vi.waitFor(() => expect(reader.diagnostics().activeEngines).toBe(1))
+
+        writer.dispose()
+        reader.dispose()
+    })
+
     it('replicates the registry between two clients through the relay', async () => {
         const keyring = createGraphKeyring('g1')
         const relay = createLoopbackRelay()
@@ -685,6 +786,9 @@ describe('graph-sync', () => {
             token: async () => `tok-${++minted}`,
             cache: await openGraphCache(`g-reconnect-${Math.floor(performance.now() * 1000)}`),
             connect,
+            // Reconnect at once. The default backoff draws a random wait of up to a second by the
+            // second attempt, longer than vi.waitFor gives it.
+            retryDelayMs: () => 0,
         })
         await gs.connected()
         expect(urls).toEqual(['ws://loopback/sync?token=tok-1'])
@@ -731,6 +835,9 @@ describe('graph-sync', () => {
             token: fixedSyncToken('t'),
             cache,
             connect,
+            // Reconnect at once. The default backoff draws a random wait of up to a second by the
+            // second attempt, longer than vi.waitFor gives it.
+            retryDelayMs: () => 0,
         })
         try {
             await vi.waitFor(() => expect(sockets).toHaveLength(1))
@@ -866,6 +973,9 @@ describe('graph-sync', () => {
             token: fixedSyncToken('t'),
             cache,
             connect,
+            // Reconnect at once. The default backoff draws a random wait of up to a second by the
+            // second attempt, longer than vi.waitFor gives it.
+            retryDelayMs: () => 0,
         })
 
         try {
@@ -1359,6 +1469,398 @@ describe('graph-sync awaitAcked', () => {
     })
 })
 
+/**
+ * Losing access. A relay retried every 50 ms whatever it said would have a removed member's tab
+ * open sixteen to twenty sockets a second, forever, and a revoked device would never learn why it
+ * had stopped syncing.
+ */
+describe('graph-sync access loss and backoff', () => {
+    interface ScriptedSocket {
+        sent: Array<Record<string, unknown>>
+        open(): void
+        close(code?: number): void
+        message(data: Record<string, unknown>): void
+    }
+
+    async function scripted(options: {
+        token?: GraphSyncDeps['token']
+        delays?: number[]
+        /** Wait for the first socket before returning; false when the mint itself is refused. */
+        awaitSocket?: boolean
+    } = {}) {
+        const sockets: ScriptedSocket[] = []
+        const urls: string[] = []
+        const connect = (url: string): TransportSocket => {
+            urls.push(url)
+            let onOpen = () => {}
+            let onClose: (event?: { code: number; reason: string }) => void = () => {}
+            let onMessage: (data: string) => void = () => {}
+            const sent: Array<Record<string, unknown>> = []
+            sockets.push({
+                sent,
+                open: () => onOpen(),
+                close: (code = 1006) => onClose({ code, reason: '' }),
+                message: (data) => onMessage(JSON.stringify(data)),
+            })
+            return {
+                send: (data) => sent.push(JSON.parse(data) as Record<string, unknown>),
+                close: () => {},
+                onOpen: (cb) => { onOpen = cb },
+                onMessage: (cb) => { onMessage = cb },
+                onClose: (cb) => { onClose = cb },
+            }
+        }
+        const losses: unknown[] = []
+        const delays = options.delays ?? []
+        const graphId = `g-access-${Math.floor(performance.now() * 1000)}`
+        const gs = createGraphSync({
+            graphId,
+            rootDocId: ROOT,
+            keyring: createGraphKeyring(graphId),
+            relayUrl: 'ws://relay/sync',
+            token: options.token ?? fixedSyncToken('t'),
+            cache: await openGraphCache(graphId),
+            connect,
+            onAccessLost: (loss) => losses.push(loss),
+            // Record each backoff and answer with no wait, so the test sees the schedule, not the clock.
+            retryDelayMs: (attempt) => {
+                delays.push(attempt)
+                return 0
+            },
+        })
+        if (options.awaitSocket !== false) await vi.waitFor(() => expect(sockets).toHaveLength(1))
+        return { gs, sockets, urls, losses, delays }
+    }
+
+    const settle = () => new Promise((resolve) => setTimeout(resolve, 30))
+
+    it('stops for good when the relay closes with 4403: one connect, and the loss is reported once', async () => {
+        const { gs, sockets, losses } = await scripted()
+        sockets[0].open()
+        sockets[0].close(4403)
+        await settle()
+
+        expect(sockets).toHaveLength(1)
+        expect(losses).toEqual([{ kind: 'membership' }])
+        expect(gs.accessLoss()).toEqual({ kind: 'membership' })
+        gs.dispose()
+    })
+
+    it('treats a membership_revoked error as the same end, before the close arrives', async () => {
+        const { gs, sockets, losses } = await scripted()
+        sockets[0].open()
+        sockets[0].message({ v: 2, type: 'error', code: 'membership_revoked', message: 'Graph membership has been revoked' })
+        sockets[0].close(4403)
+        await settle()
+
+        expect(sockets).toHaveLength(1)
+        expect(losses).toEqual([{ kind: 'membership' }])
+        gs.dispose()
+    })
+
+    it('on 4401 asks for a fresh token at once, and ends as a credentials loss when the mint is refused with 401', async () => {
+        const refused = Object.assign(new Error('Unauthorized'), { status: 401 })
+        const calls: Array<{ force?: boolean } | undefined> = []
+        let revoked = false
+        const { gs, sockets, losses, delays } = await scripted({
+            token: async (opts) => {
+                calls.push(opts)
+                if (revoked) throw refused
+                return 't'
+            },
+        })
+        sockets[0].open()
+        revoked = true
+        sockets[0].close(4401)
+        await settle()
+
+        expect(calls.at(-1)).toEqual({ force: true })
+        expect(delays).toEqual([]) // the re-mint is immediate, not backed off
+        expect(sockets).toHaveLength(1)
+        expect(losses).toEqual([{ kind: 'credentials', cause: refused }])
+        gs.dispose()
+    })
+
+    it('ends as a membership loss when the mint is refused with 403', async () => {
+        const { gs, losses, sockets, delays } = await scripted({
+            awaitSocket: false,
+            token: async () => {
+                throw Object.assign(new Error('Forbidden'), { status: 403 })
+            },
+        })
+        await settle()
+
+        expect(sockets).toHaveLength(0)
+        expect(delays).toEqual([]) // no retry at all
+        expect(losses).toEqual([{ kind: 'membership' }])
+        gs.dispose()
+    })
+
+    it('backs off for any other close, and resets only after a connection stayed up', async () => {
+        const { gs, sockets, delays } = await scripted()
+        sockets[0].close(1006)
+        await vi.waitFor(() => expect(sockets).toHaveLength(2))
+        sockets[1].close(1011)
+        await vi.waitFor(() => expect(sockets).toHaveLength(3))
+        sockets[2].close(4429)
+        await vi.waitFor(() => expect(sockets).toHaveLength(4))
+
+        expect(delays).toEqual([1, 2, 3])
+        gs.dispose()
+    })
+
+    it('stops syncing when the owner of the session ends access from outside (sign-out in another tab)', async () => {
+        const { gs, sockets, losses } = await scripted()
+        sockets[0].open()
+        gs.endAccess({ kind: 'credentials' })
+        sockets[0].close(1000)
+        await settle()
+
+        expect(sockets).toHaveLength(1)
+        expect(losses).toEqual([{ kind: 'credentials' }])
+        expect(gs.isConnected()).toBe(false)
+        gs.dispose()
+    })
+})
+
+
+describe('graph-sync write refusals and activity', () => {
+    interface RelaySide {
+        sent: Array<Record<string, unknown>>
+        open(): void
+        close(code?: number): void
+        message(data: Record<string, unknown>): void
+    }
+
+    /** A graph on a scripted socket; the test plays the relay. Waits are injected, never real. */
+    async function refusing(extra: Partial<GraphSyncDeps> = {}) {
+        const sockets: RelaySide[] = []
+        const connect = (): TransportSocket => {
+            let onOpen = () => {}
+            let onClose: (event?: { code: number; reason: string }) => void = () => {}
+            let onMessage: (data: string) => void = () => {}
+            const sent: Array<Record<string, unknown>> = []
+            sockets.push({
+                sent,
+                open: () => onOpen(),
+                close: (code = 1006) => onClose({ code, reason: '' }),
+                message: (data) => onMessage(JSON.stringify({ v: 2, ...data })),
+            })
+            return {
+                send: (data) => sent.push(JSON.parse(data) as Record<string, unknown>),
+                close: () => {},
+                onOpen: (cb) => { onOpen = cb },
+                onMessage: (cb) => { onMessage = cb },
+                onClose: (cb) => { onClose = cb },
+            }
+        }
+        const graphId = `g-refusal-${Math.floor(performance.now() * 1000)}`
+        const cache = await openGraphCache(graphId)
+        const gs = createGraphSync({
+            graphId,
+            rootDocId: ROOT,
+            keyring: createGraphKeyring(graphId),
+            relayUrl: 'ws://relay/sync',
+            token: fixedSyncToken('t'),
+            cache,
+            connect,
+            debounceMs: 1,
+            retryDelayMs: () => 0,
+            ...extra,
+        })
+        await vi.waitFor(() => expect(sockets).toHaveLength(1))
+        const appendsFor = (socket: RelaySide, docId: string) =>
+            socket.sent.filter((entry) => entry.type === 'append' && entry.docId === docId) as Array<{ outboxId: string }>
+        return { gs, cache, sockets, appendsFor }
+    }
+
+    const refusal = (docId: string, outboxId: string) => ({
+        type: 'error',
+        code: 'quota_denied',
+        message: 'Managed Sync write allowance reached',
+        quotaCode: 'entitlement_inactive',
+        retryable: true,
+        docId,
+        outboxId,
+    })
+    const ack = (outboxId: string, seq: number) => ({ type: 'ack', outboxId, generation: 1, state: 'active', seq })
+
+    it('keeps a refused edit in the outbox, says so, and sends it again once the allowance returns', async () => {
+        let delays = 0
+        const { gs, cache, sockets, appendsFor } = await refusing({
+            refusalRetryDelayMs: () => {
+                delays += 1
+                return 5
+            },
+        })
+        const socket = sockets[0]
+        socket.open()
+        const seen: Array<ReturnType<typeof gs.activity>> = []
+        gs.onActivity((activity) => seen.push(activity))
+        const release = gs.retainDoc(DOC_1)
+        await gs.whenReady(DOC_1)
+
+        gs.docSync(DOC_1).doc.getText('content').insert(0, 'typed after the plan lapsed')
+        await vi.waitFor(() => expect(appendsFor(socket, DOC_1)).toHaveLength(1))
+        const refused = appendsFor(socket, DOC_1)[0].outboxId
+        socket.message(refusal(DOC_1, refused))
+
+        // Said, and kept: the operation is still in the durable outbox, nothing was dropped.
+        await vi.waitFor(() => expect(gs.activity().refusal).toEqual({ quotaCode: 'entitlement_inactive' }))
+        await vi.waitFor(() => expect(seen.at(-1)?.refusal).toEqual({ quotaCode: 'entitlement_inactive' }))
+        expect(gs.activity().unsentDocuments).toBe(1)
+        expect(await cache.countPending()).toBe(1)
+
+        // Retried on the refusal schedule with the SAME operation: the relay applies it once.
+        await vi.waitFor(() => expect(appendsFor(socket, DOC_1).length).toBeGreaterThanOrEqual(2))
+        expect(delays).toBeGreaterThanOrEqual(1)
+        expect(new Set(appendsFor(socket, DOC_1).map((entry) => entry.outboxId))).toEqual(new Set([refused]))
+
+        // The allowance is back: the retry is accepted, the refusal clears and nothing is left.
+        socket.message(ack(refused, 1))
+        await vi.waitFor(() => expect(gs.activity().refusal).toBeNull())
+        await vi.waitFor(async () => expect(await cache.countPending()).toBe(0))
+        await vi.waitFor(() => expect(gs.activity().unsentDocuments).toBe(0))
+
+        // And the document is not stalled: the next edit goes out as a new operation.
+        gs.docSync(DOC_1).doc.getText('content').insert(0, 'and after it returned ')
+        await vi.waitFor(() =>
+            expect(appendsFor(socket, DOC_1).some((entry) => entry.outboxId !== refused)).toBe(true),
+        )
+        release()
+        gs.dispose()
+        cache.dispose()
+    })
+
+    it('retries refused work at once when asked (the owner restarted the plan), without waiting out the backoff', async () => {
+        const { gs, cache, sockets, appendsFor } = await refusing({ refusalRetryDelayMs: () => 60_000 })
+        const socket = sockets[0]
+        socket.open()
+        gs.retainDoc(DOC_1)
+        await gs.whenReady(DOC_1)
+        gs.docSync(DOC_1).doc.getText('content').insert(0, 'x')
+        await vi.waitFor(() => expect(appendsFor(socket, DOC_1)).toHaveLength(1))
+        socket.message(refusal(DOC_1, appendsFor(socket, DOC_1)[0].outboxId))
+        await vi.waitFor(() => expect(gs.activity().refusal).not.toBeNull())
+
+        gs.retryRefused()
+        await vi.waitFor(() => expect(appendsFor(socket, DOC_1)).toHaveLength(2))
+        gs.dispose()
+        cache.dispose()
+    })
+
+    it('ignores a refused snapshot: the log still holds the document, so nothing is stalled', async () => {
+        const { gs, cache, sockets } = await refusing()
+        const socket = sockets[0]
+        socket.open()
+        await gs.ready()
+        socket.message({ ...refusal(DOC_1, 'unused'), outboxId: undefined, quotaCode: 'owned_storage_limit' })
+        await new Promise((resolve) => setTimeout(resolve, 30))
+        expect(gs.activity().refusal).toBeNull()
+        gs.dispose()
+        cache.dispose()
+    })
+
+    it('stops waiting for acks when the server refuses the write, and says why', async () => {
+        const { gs, cache, sockets, appendsFor } = await refusing({ refusalRetryDelayMs: () => 60_000 })
+        const socket = sockets[0]
+        socket.open()
+        gs.retainDoc(DOC_1)
+        await gs.whenReady(DOC_1)
+        gs.docSync(DOC_1).doc.getText('content').insert(0, 'an agent wrote this')
+        await gs.flushAll()
+        await vi.waitFor(() => expect(appendsFor(socket, DOC_1)).toHaveLength(1))
+        const waiting = gs.awaitAcked({ stallMs: 60_000 })
+        socket.message(refusal(DOC_1, appendsFor(socket, DOC_1)[0].outboxId))
+
+        await expect(waiting).resolves.toEqual({
+            settled: false,
+            outstanding: 1,
+            refused: { quotaCode: 'entitlement_inactive' },
+        })
+        gs.dispose()
+        cache.dispose()
+    })
+
+    it('treats a refusal from a server too old to name the document as refusing every unsent document', async () => {
+        // A relay too old to name the document and operation sends quota_denied with neither. The
+        // session cannot tell which write was refused, so it retries every document it holds
+        // unsent work for, and the first accepted write ends the refusal.
+        const { gs, cache, sockets, appendsFor } = await refusing({ refusalRetryDelayMs: () => 60_000 })
+        const socket = sockets[0]
+        socket.open()
+        gs.retainDoc(DOC_1)
+        await gs.whenReady(DOC_1)
+        gs.docSync(DOC_1).doc.getText('content').insert(0, 'from an old server')
+        await vi.waitFor(() => expect(appendsFor(socket, DOC_1)).toHaveLength(1))
+        const legacy: Record<string, unknown> = { ...refusal(DOC_1, appendsFor(socket, DOC_1)[0].outboxId) }
+        delete legacy.docId
+        delete legacy.outboxId
+        socket.message(legacy)
+
+        await vi.waitFor(() => expect(gs.activity().refusal).toEqual({ quotaCode: 'entitlement_inactive' }))
+        // Every waiting document counts as refused, so a waiter is answered at once.
+        await expect(gs.awaitAcked({ stallMs: 60_000 })).resolves.toMatchObject({ settled: false, refused: { quotaCode: 'entitlement_inactive' } })
+
+        gs.retryRefused()
+        await vi.waitFor(() => expect(appendsFor(socket, DOC_1)).toHaveLength(2))
+        socket.message(ack(appendsFor(socket, DOC_1)[0].outboxId, 1))
+        await vi.waitFor(() => expect(gs.activity().refusal).toBeNull())
+        gs.dispose()
+        cache.dispose()
+    })
+
+    it('keeps each refused document to itself: another document sends while one is refused, and each clears on its own ack', async () => {
+        const { gs, cache, sockets, appendsFor } = await refusing({ refusalRetryDelayMs: () => 60_000 })
+        const socket = sockets[0]
+        socket.open()
+        gs.retainDoc(DOC_1)
+        gs.retainDoc(DOC_BACKGROUND_2)
+        await gs.whenReady(DOC_1)
+        await gs.whenReady(DOC_BACKGROUND_2)
+
+        gs.docSync(DOC_1).doc.getText('content').insert(0, 'refused here')
+        await vi.waitFor(() => expect(appendsFor(socket, DOC_1)).toHaveLength(1))
+        const first = appendsFor(socket, DOC_1)[0].outboxId
+        socket.message(refusal(DOC_1, first))
+        await vi.waitFor(() => expect(gs.activity().refusal).not.toBeNull())
+
+        // The other document is not held back by the first one's refusal.
+        gs.docSync(DOC_BACKGROUND_2).doc.getText('content').insert(0, 'accepted there')
+        await vi.waitFor(() => expect(appendsFor(socket, DOC_BACKGROUND_2)).toHaveLength(1))
+        socket.message(ack(appendsFor(socket, DOC_BACKGROUND_2)[0].outboxId, 1))
+        await vi.waitFor(async () => expect(await cache.pendingDocIds()).toEqual([DOC_1]))
+        // Its ack does not end a refusal it was never part of.
+        expect(gs.activity().refusal).toEqual({ quotaCode: 'entitlement_inactive' })
+        gs.docSync(DOC_BACKGROUND_2).doc.getText('content').insert(0, 'and again ')
+        await vi.waitFor(() => expect(appendsFor(socket, DOC_BACKGROUND_2)).toHaveLength(2))
+
+        // Now the first is allowed: its retry is accepted and the refusal ends.
+        gs.retryRefused()
+        await vi.waitFor(() => expect(appendsFor(socket, DOC_1)).toHaveLength(2))
+        socket.message(ack(first, 1))
+        await vi.waitFor(() => expect(gs.activity().refusal).toBeNull())
+        gs.dispose()
+        cache.dispose()
+    })
+
+    it('reports the connection as connecting, open, reconnecting, then ended', async () => {
+        const { gs, cache, sockets } = await refusing()
+        expect(gs.activity().connection).toBe('connecting')
+        sockets[0].open()
+        expect(gs.activity().connection).toBe('open')
+        sockets[0].close(1006)
+        expect(gs.activity().connection).toBe('reconnecting')
+        await vi.waitFor(() => expect(sockets).toHaveLength(2))
+        sockets[1].open()
+        expect(gs.activity().connection).toBe('open')
+        sockets[1].close(4403)
+        expect(gs.activity().connection).toBe('ended')
+        gs.dispose()
+        cache.dispose()
+    })
+})
+
 describe('graph-sync protocol mismatch', () => {
     /**
      * A socket to a Sync Server on another protocol version: it opens, and answers whatever
@@ -1423,7 +1925,7 @@ describe('graph-sync protocol mismatch', () => {
 
             // Several replies arrive in the server's version and the socket closes; a
             // reconnect would meet the same server, so none is attempted and nothing more
-            // is reported. RECONNECT_MS is 50.
+            // is reported.
             await new Promise((resolve) => setTimeout(resolve, 200))
             expect(server.connects()).toBe(1)
             expect(errors).toHaveLength(1)

@@ -5,7 +5,7 @@
      * Replaces the browser prompt/confirm flow.
      */
     import type { GraphKeyring } from "$lib/crypto";
-    import { prepareInvite, sendInvite, type SyncApi } from "$lib/sync";
+    import { InviteeNotFoundError, prepareInvite, sendInvite, type SyncApi } from "$lib/sync";
     import { describeSyncFailure } from "$lib/sync/sync-error-copy";
     import Modal from "@appsoftwareltd/etherpk-shared/dialog";
 
@@ -32,6 +32,8 @@
     let prep = $state<{ inviteePublicKey: Uint8Array; fingerprint: string } | null>(null);
     const errorId = $props.id();
 
+    const INVITEE_NOT_FOUND = "No EtherPK user found for that email, or they have not set up a device yet.";
+
     /** The step's primary action, so Enter in the field does what the button does. */
     function submitStep() {
         if (step === "email") void lookUp();
@@ -48,9 +50,9 @@
         }
         busy = true;
         try {
-            const found = await prepareInvite(api, email.trim());
+            const found = await prepareInvite(api, graphId, email.trim());
             if (!found) {
-                error = "No EtherPK user found for that email, or they have not set up a device yet.";
+                error = INVITEE_NOT_FOUND;
                 return;
             }
             prep = found;
@@ -70,7 +72,9 @@
             await sendInvite(api, graphId, email.trim(), prep.inviteePublicKey, keyring, graphName);
             step = "done";
         } catch (e) {
-            error = `${describeSyncFailure(e, "send the invite")} Nothing was shared.`;
+            error = e instanceof InviteeNotFoundError
+                ? `${INVITEE_NOT_FOUND} Nothing was shared.`
+                : `${describeSyncFailure(e, "send the invite")} Nothing was shared.`;
         } finally {
             busy = false;
         }

@@ -45,6 +45,12 @@
                 return "You are offline, so another device may have added a reference we have not seen. You can remove it from here now, and delete it once you are back online.";
             case "behind":
                 return "This graph is still catching up with the server, so another member may have added a reference we have not seen. You can remove it from here now, and delete it once it has caught up.";
+            case "protected-unread": {
+                // A protected document is ciphertext to everything but the unlocked session, so a
+                // reference inside one cannot be ruled out until it is read.
+                const n = plan.unreadProtected ?? 1;
+                return `${n === 1 ? "A protected document" : `${n} protected documents`} could not be read, so we cannot tell whether ${n === 1 ? "it uses" : "one of them uses"} this file. You can remove it from here now. If protected documents are locked, unlock them and try again; a document another member protected cannot be read on this device.`;
+            }
             default:
                 return "This file cannot be deleted right now. You can remove it from here instead.";
         }

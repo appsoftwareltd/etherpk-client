@@ -1,4 +1,4 @@
-import { mkdtemp, readdir, rm, utimes, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, rm, utimes, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -10,7 +10,7 @@ import { fixedSyncToken } from '$lib/sync/sync-token'
 import { fakeEmbeddingModel } from '$lib/document/semantic/embedding-model'
 
 import { openHeadlessGraph, type HeadlessGraph, type HeadlessGraphDeps } from './headless-graph'
-import { cacheFile, folderCacheDir, folderKey, graphCacheDir, indexFile, listGraphStores, nodeIndexHost, removeCacheRoot, vectorsFile } from './persistence'
+import { cacheFile, folderCacheDir, folderKey, graphCacheDir, indexFile, listGraphStores, nodeIndexHost, removeCacheRoot, removeUnlistedGraphCaches, stampGraphCacheOwner, vectorsFile } from './persistence'
 import { createPage, listDocuments, readDocument, search } from './tools'
 
 /**
@@ -75,6 +75,46 @@ describe('cache directories', () => {
         expect(folderKey('/home/me/' + 'x'.repeat(200))).toMatch(/^x{40}-[0-9a-f]{12}$/)
         // A relative path is the same folder as its absolute spelling.
         expect(folderKey('Notes')).toBe(folderKey(`${process.cwd()}/Notes`))
+    })
+})
+
+// Serving drops the caches of the server's graphs it no longer lists (deleted, left or taken
+// away), so they do not stay readable in the agent's cache until `logout`.
+describe('removeUnlistedGraphCaches', () => {
+    const KEPT = '11111111-1111-4111-8111-111111111111'
+    const GONE = '22222222-2222-4222-8222-222222222222'
+    const OTHERS = '33333333-3333-4333-8333-333333333333'
+    const UNSTAMPED = '44444444-4444-4444-8444-444444444444'
+
+    it("removes this account's cache of every graph the server no longer lists it in, and nothing else", async () => {
+        const root = await mkdtemp(join(tmpdir(), 'etherpk-mcp-sweep-'))
+        const env = { ETHERPK_MCP_CACHE_DIR: root } as NodeJS.ProcessEnv
+        const server = 'https://sync.example.test'
+        for (const id of [KEPT, GONE]) await stampGraphCacheOwner(graphCacheDir(env, server, id), 'principal-a')
+        // Another account on the same server, sharing the cache root through its own
+        // ETHERPK_MCP_CONFIG: its cache (unacknowledged edits included) is not this account's to drop.
+        await stampGraphCacheOwner(graphCacheDir(env, server, OTHERS), 'principal-b')
+        // Written before caches carried an owner: left for logout.
+        await mkdir(graphCacheDir(env, server, UNSTAMPED), { recursive: true })
+        for (const id of [KEPT, GONE, OTHERS, UNSTAMPED]) await writeFile(cacheFile(graphCacheDir(env, server, id)), 'plaintext notes')
+        // Another server's graph, a local folder's cache, and a name that is not a graph id.
+        await stampGraphCacheOwner(graphCacheDir(env, 'https://other.example.test', GONE), 'principal-a')
+        await mkdir(folderCacheDir(env, '/home/me/Notes'), { recursive: true })
+        await mkdir(join(root, 'sync.example.test', 'not-a-graph'), { recursive: true })
+
+        const removed = await removeUnlistedGraphCaches(env, server, 'principal-a', [KEPT])
+
+        expect(removed).toEqual([GONE])
+        expect((await readdir(join(root, 'sync.example.test'))).sort()).toEqual([KEPT, OTHERS, UNSTAMPED, 'not-a-graph'].sort())
+        expect(await readdir(join(root, 'other.example.test'))).toEqual([GONE])
+        expect((await readdir(root)).sort()).toEqual(['local', 'other.example.test', 'sync.example.test'])
+        await rm(root, { recursive: true, force: true })
+    })
+
+    it('does nothing for a server with no cache yet', async () => {
+        const root = await mkdtemp(join(tmpdir(), 'etherpk-mcp-sweep-'))
+        expect(await removeUnlistedGraphCaches({ ETHERPK_MCP_CACHE_DIR: root } as NodeJS.ProcessEnv, 'https://new.example.test', 'principal-a', [])).toEqual([])
+        await rm(root, { recursive: true, force: true })
     })
 })
 

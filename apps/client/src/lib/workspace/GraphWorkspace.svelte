@@ -241,6 +241,13 @@
         type AssetDeletePrompt,
         registerAssetCommands,
     } from "$lib/document/commands/asset-commands";
+    import type { ProtectedAssetUsage } from "$lib/document/asset-delete";
+    import {
+        filesystemStoredTexts,
+        protectedUsageReader,
+        serverStoredTexts,
+    } from "$lib/workspace/protected-asset-usage";
+    import { protectedTextReader } from "$lib/document/protection/protected-text-reader";
     import { registerAssetViewers } from "$lib/document/view/viewers/register";
     import { canCopyImageAsset, canOpenAsset } from "$lib/document/asset-affordances";
     import { copyImageToClipboard } from "$lib/document/view/clipboard-image";
@@ -306,6 +313,7 @@
         filesystemAssetTools,
     } from "$lib/storage/fs/asset-orphans";
     import { displayAssetName } from "$lib/storage/fs/asset-store";
+    import { opfsGraphFolderName } from "$lib/storage/fs/opfs-graph-folder";
     import {
         listCompleteServerAssetIds,
         listServerAssets,
@@ -328,6 +336,14 @@
         createMirrorSource,
         type MirrorSourceDeps,
     } from "$lib/storage/server/mirror-source";
+    import {
+        checkMirrorTakeover,
+        type MirrorTakeover,
+    } from "$lib/storage/server/mirror-takeover";
+    import {
+        readKnownGraphFolders,
+        readOnlyFolder,
+    } from "$lib/storage/folder-ownership";
     import {
         runGraphExport,
         type ExportReport,
@@ -428,8 +444,35 @@
         VaultLockedError,
         fixedSyncToken,
         presenceIdentity,
+        SYNC_CONFIG_STORAGE_KEY,
+        type GraphCache,
+        type GraphSync,
+        type SyncAccessLoss,
+        type SyncActivity,
+        type SyncApi,
         type SyncTokenSource,
+        type WriteRefusal,
     } from "$lib/sync";
+    import {
+        AccountEnded,
+        onAccountSignal,
+        type AccountEndReason,
+    } from "$lib/sync/account-signal";
+    import {
+        describeAccessLoss,
+        workspaceAccessLoss,
+        type WorkspaceAccessLoss,
+    } from "$lib/sync/access-loss";
+    import { readUnsentChanges, saveUnsentChangesFile } from "$lib/sync/unsent-changes";
+    import {
+        createIndicatorSettle,
+        describeSyncActivity,
+        type SyncChipAction,
+        type SyncIndicator,
+    } from "$lib/sync/sync-indicator";
+    import { describeWriteRefusal, type WriteRefusalCopy } from "$lib/sync/write-refusal";
+    import { syncPlanNotice, type SyncPlanNotice } from "$lib/sync/sync-plan-notice";
+    import SyncStateChip from "$lib/sync/ui/SyncStateChip.svelte";
     import {
         createGraphKeyring,
         fromBase64Url,
@@ -492,8 +535,19 @@
         | "needs-unlock"
         | "ready"
         | "missing"
-        | "error";
+        | "error"
+        | "access-lost";
     let phase = $state<Phase>("loading");
+    /**
+     * Why this synced graph stopped syncing for good, once it has: the membership ended, the
+     * account signed out or disconnected (here or in another tab), or the Sync Server refused this
+     * device's credential. The workspace is replaced by a notice saying so; nothing more can be
+     * typed into a graph that can no longer be saved.
+     */
+    let accessLoss = $state<WorkspaceAccessLoss | null>(null);
+    const accessLostNotice = $derived(accessLoss ? describeAccessLoss(accessLoss) : null);
+    let downloadingUnsent = $state(false);
+    let unsentDownloadError = $state<string | null>(null);
     /**
      * A [[Share Target]] share is waiting for THIS graph (ADR 0087): read as the open starts,
      * so an open that stalls or fails can say the text is safe and where to take it. Cleared
@@ -627,6 +681,105 @@
         retractNotice(STATUS_NOTICE, text);
     }
 
+    /** Recompute the chip from the session's activity; passing states wait (sync-indicator.ts). */
+    function refreshSyncIndicator(): void {
+        if (!syncActivity) {
+            syncIndicator = null;
+            return;
+        }
+        syncIndicatorSettle ??= createIndicatorSettle((indicator) => (syncIndicator = indicator));
+        syncIndicatorSettle.update(describeSyncActivity(syncActivity, browserOnline, refusalCopy?.reason));
+    }
+
+    /** Follow a new graph session's activity: the chip, and the refusal card when writes are refused. */
+    function watchSyncActivity(sg: GraphSync): void {
+        syncActivity = sg.activity();
+        refusalCopy = null;
+        refusalNoticeDismissed = false;
+        refreshSyncIndicator();
+        sg.onActivity((activity) => {
+            if (sg !== serverGraph) return;
+            const before = syncActivity?.refusal ?? null;
+            syncActivity = activity;
+            if (activity.refusal && (!before || before.quotaCode !== activity.refusal.quotaCode)) {
+                void explainRefusal(sg, activity.refusal);
+            } else if (!activity.refusal && before) {
+                writesAcceptedAgain();
+            }
+            refreshSyncIndicator();
+        });
+    }
+
+    /**
+     * Word a write refusal for this person. Said at once with what is known (a managed or a
+     * self-hosted server), then refined once the account says whether this person owns the graph
+     * and what their plan is: an owner can restart Sync+ or fix a payment, a Player can only wait
+     * for the owner.
+     */
+    async function explainRefusal(sg: GraphSync, refusal: WriteRefusal): Promise<void> {
+        const managed = serverAtOpen?.managed ?? false;
+        refusalNoticeDismissed = false;
+        refusalCopy = describeWriteRefusal({ refusal, owner: null, plan: null, managed });
+        const api = serverApi;
+        if (!api) return;
+        const [account, graphs] = await Promise.all([
+            api.me().catch(() => null),
+            api.listGraphs().catch(() => null),
+        ]);
+        if (sg !== serverGraph || syncActivity?.refusal?.quotaCode !== refusal.quotaCode) return;
+        const plan: SyncPlanNotice = account ? syncPlanNotice(account) : null;
+        const record = graphs?.find((graph) => graph.id === graphId);
+        refusalCopy = describeWriteRefusal({
+            refusal,
+            owner: record ? record.role === "owner" : null,
+            plan,
+            managed,
+        });
+        refreshSyncIndicator();
+    }
+
+    /** The server accepted a write after refusing: say so once, and take the refusal card down. */
+    function writesAcceptedAgain(): void {
+        refusalCopy = null;
+        refusalNoticeDismissed = false;
+        showNotice({
+            id: WRITES_RESUMED_NOTICE,
+            tone: "info",
+            text: "The sync server is accepting changes again. What was kept on this device is syncing now.",
+        });
+    }
+
+    /** The Billing page on EtherPK, when this Client is configured for Managed Sync. */
+    const billingUrl = $derived((page.data.corporateBillingUrl as string | null | undefined) ?? null);
+
+    /** What the chip's panel and the refusal card offer; the same list in both places. */
+    const syncChipActions = $derived.by((): SyncChipAction[] => {
+        const actions: SyncChipAction[] = [];
+        if (!syncActivity) return actions;
+        if (syncActivity.refusal && refusalCopy?.billing && billingUrl) {
+            actions.push({ id: "sync-state-billing", label: refusalCopy.billing.label, href: billingUrl });
+        }
+        if (syncActivity.refusal) {
+            actions.push({ id: "sync-state-retry", label: "Try again now", run: () => serverGraph?.retryRefused() });
+        }
+        const unsent = syncIndicator?.unsent ?? 0;
+        if (unsent > 0 && syncIndicator?.state !== "sending" && syncIndicator?.state !== "synced") {
+            actions.push({
+                id: "sync-state-download",
+                label: downloadingUnsent ? "Preparing download…" : "Download unsent changes",
+                disabled: downloadingUnsent,
+                run: () => void downloadUnsentFromChip(),
+            });
+        }
+        return actions;
+    });
+
+    /** The access-lost download, from the chip: a failure is reported in the rail, not in a notice the workspace hides. */
+    async function downloadUnsentFromChip(): Promise<void> {
+        await downloadUnsentChanges();
+        if (unsentDownloadError) notify(`Could not download the unsent changes. ${unsentDownloadError}`);
+    }
+
     /**
      * The workspace's three STANDING notices - a save that failed, the search index held or
      * unstorable, records restored from the safety copy - live in the same rail as the status
@@ -637,6 +790,32 @@
      * acknowledgement, and the effect only re-posts once the state behind it changes again.
      */
     const SAVE_FAILURE_NOTICE = "workspace-save-failure";
+    /** Writes refused by the Sync Server on a quota, and their end. */
+    const WRITE_REFUSED_NOTICE = "workspace-write-refused";
+    const WRITES_RESUMED_NOTICE = "workspace-writes-resumed";
+    $effect(() => {
+        if (phase !== "ready" || !refusalCopy || refusalNoticeDismissed) {
+            dismissNotice(WRITE_REFUSED_NOTICE);
+            return;
+        }
+        showNotice({
+            id: WRITE_REFUSED_NOTICE,
+            tone: "error",
+            title: "Changes are not reaching the sync server",
+            text: `${refusalCopy.reason} ${refusalCopy.next}`,
+            actions: syncChipActions.map((action) => ({
+                id: `${action.id}-notice`,
+                label: action.label,
+                primary: action.href !== undefined,
+                disabled: action.disabled,
+                run: () => {
+                    if (action.href) window.open(action.href, "_blank", "noopener");
+                    else action.run?.();
+                },
+            })),
+            ondismiss: () => (refusalNoticeDismissed = true),
+        });
+    });
     const INDEX_NOTICE = "index-not-persisted";
     const STORAGE_RECOVERY_NOTICE = "workspace-storage-recovered";
     $effect(() => {
@@ -721,10 +900,19 @@
     }
     // Recovery Code shown once when a fresh account's vault is created; mirror takeover confirm.
     let pendingRecoveryCode = $state<string | null>(null);
-    let mirrorTakeover = $state<{
-        handle: FileSystemDirectoryHandle;
-        folder: string;
-    } | null>(null);
+    /**
+     * The answer to a folder chosen for the mirror that needs the user first: what mirroring
+     * there would delete and replace, or why it is refused. `handle` is carried for a
+     * confirmation, so confirming starts the mirror on exactly the folder that was checked.
+     */
+    let mirrorTakeover = $state<
+        | ((MirrorTakeover & { kind: "confirm" }) & {
+              handle: FileSystemDirectoryHandle;
+              folder: string;
+          })
+        | (MirrorTakeover & { kind: "refuse" })
+        | null
+    >(null);
 
     let container = $state<HTMLDivElement>();
     let controller = $state<LayoutController>();
@@ -766,6 +954,30 @@
     let protectingPublic = $state<{ concept: string; isPublic: boolean; uses: string[] } | null>(null);
     let protectionPasskeyBound = $state(false);
     let serverGraph: ReturnType<typeof createGraphSync> | undefined;
+    /** The synced graph's Local Cache and root document, for the unsent-changes count and download. */
+    let serverCache: GraphCache | undefined;
+    let serverRootDocId: string | undefined;
+    /**
+     * The device's Sync connection when this graph opened from the registry, as stored. Another
+     * tab clearing or replacing it means this tab's connection is gone; null on the dev
+     * gate's graphs, which have no device connection to lose.
+     */
+    let syncConfigAtOpen: string | null = null;
+    let serverAtOpen: { managed: boolean; server: string } | null = null;
+    /** The account API behind a registry graph, to word a write refusal; null under the dev gate. */
+    let serverApi: SyncApi | null = null;
+    /**
+     * The synced graph's sync state for the chip: the session's activity, the browser's online
+     * flag, and why the server refuses writes, worded for this person. `syncActivity` is null for
+     * a folder graph, which shows no chip.
+     */
+    let syncActivity = $state.raw<SyncActivity | null>(null);
+    let browserOnline = $state(true);
+    let refusalCopy = $state.raw<WriteRefusalCopy | null>(null);
+    /** The person closed the refusal card; the chip still says it, and a new refusal re-posts it. */
+    let refusalNoticeDismissed = $state(false);
+    let syncIndicator = $state.raw<SyncIndicator | null>(null);
+    let syncIndicatorSettle: ReturnType<typeof createIndicatorSettle> | null = null;
     let isServerStore = $state(false);
     // Orphaned-asset scan/cleanup for the Graph Settings dialog, built per backend at open.
     let assetTools = $state<GraphAssetTools | null>(null);
@@ -1034,6 +1246,54 @@
             (target) => protectionKindOf(target) === "document",
         );
         for (const id of ids) controller.closePanel(id);
+    }
+
+    /**
+     * A Protected Document's plaintext for the asset safety checks: the orphan scan and the
+     * in-document delete search document text for an asset, and a protected document's text is
+     * ciphertext. Read through the session at call time, so a scan run after unlocking reads
+     * what one run before could not; null while locked or when the key is another member's.
+     */
+    async function readProtectedText(text: string): Promise<string | null> {
+        const session = protection;
+        return session ? protectedTextReader(session.service)(text) : null;
+    }
+
+    /**
+     * Bring every pending edit to stored text before a check that reads it: an open protected
+     * document's projection encrypts on a debounce (up to a minute while typing), and a
+     * Filesystem Backend writes each buffer on an autosave debounce, so an image pasted moments
+     * ago is otherwise in no stored text and would read as unused.
+     */
+    async function settlePendingWrites(): Promise<void> {
+        await protectedStore?.commitAll();
+        await (
+            store as { flushAll?: () => Promise<void> } | undefined
+        )?.flushAll?.();
+    }
+
+    /**
+     * References to an asset inside this graph's Protected Documents, which the Derived Index
+     * never holds (protected-asset-usage.ts). Stored text is read without opening anything: the
+     * relay-checked batch read on a synced graph, the files on a folder graph.
+     */
+    async function protectedUsageOf(needles: readonly string[]): Promise<ProtectedAssetUsage> {
+        const current = store;
+        const readStored =
+            current && isServerStore
+                ? serverStoredTexts(current as ServerDocumentStore)
+                : current && fsAdapter
+                  ? filesystemStoredTexts(current, fsAdapter)
+                  : null;
+        // No store to read from: every flagged document is unread, so the bytes stay.
+        const unreadable = async (concepts: readonly string[]) =>
+            new Map<string, string | null>(concepts.map((c) => [c, null]));
+        return protectedUsageReader({
+            concepts: () => graphIndex?.allConcepts() ?? [],
+            readStored: readStored ?? unreadable,
+            readProtected: readProtectedText,
+            settle: settlePendingWrites,
+        })(needles);
     }
 
     /**
@@ -1941,7 +2201,7 @@
         if (dev && opfs) {
             const opfsRoot = await attempt.wait(getOpfsRoot());
             return attempt.wait(
-                opfsRoot.getDirectoryHandle(`graph-${graphId}`, {
+                opfsRoot.getDirectoryHandle(opfsGraphFolderName(graphId), {
                     create: true,
                 }),
             );
@@ -2047,7 +2307,14 @@
             throw new Error(
                 "This device is not configured for sync. Connect Managed Sync or add a custom server in Sync settings.",
             );
+        const config = readSyncConfig();
+        syncConfigAtOpen = JSON.stringify(config);
+        serverAtOpen = {
+            managed: config?.mode === "managed",
+            server: connection.serverBaseUrl,
+        };
         const { api, token } = connection;
+        serverApi = api;
         const result = await attempt.wait(
             ensureGraphKeys(api, graphId, async () => {
                 const cached = getVaultWrapKey();
@@ -2190,6 +2457,8 @@
     ): Promise<ServerDocumentStore> {
         const cache = await attempt.wait(openGraphCache(graphId));
         attempt.own(() => cache.dispose());
+        serverCache = cache;
+        serverRootDocId = params.root;
         serverGraph = createGraphSync({
             graphId,
             rootDocId: params.root,
@@ -2220,7 +2489,9 @@
             },
             // Colour + name for this device's caret in every collaborator's editor.
             presence: presenceIdentity(),
+            onAccessLost: (loss) => void accessEnded(loss),
         });
+        watchSyncActivity(serverGraph);
         return createServerDocumentStore(serverGraph, {
             onResurrected: noteResurrection,
         });
@@ -2480,7 +2751,10 @@
             // graphs that are not open and so cannot read their settings.json.
             const recoloured = fsRecord && withCachedToolbarColor(fsRecord, currentFsSettings.toolbarColor);
             if (recoloured) void fsRegistry.insertGraph(recoloured);
-            assetTools = filesystemAssetTools(adapter);
+            assetTools = filesystemAssetTools(adapter, {
+                readProtected: readProtectedText,
+                settle: settlePendingWrites,
+            });
         } else {
             const s = await buildServerStore(useServer, attempt);
             attempt.own(() => s.dispose());
@@ -2541,8 +2815,11 @@
                     graphId,
                     baseUrl: useServer.httpBaseUrl,
                     syncToken: useServer.token,
-                    // TEMPORARY (ADR 0053): lets the scan token legacy assets for reuse.
+                    // Names each orphan from its encrypted metadata, and (TEMPORARY, ADR 0053)
+                    // lets the scan token legacy assets for reuse.
                     keyring: useServer.keyring,
+                    readProtected: readProtectedText,
+                    settle: settlePendingWrites,
                 };
                 assetTools = serverAssetTools(orphanDeps);
                 listMirrorAssetIds = () =>
@@ -2935,6 +3212,7 @@
                 store: () => assetStore ?? null,
                 tools: () => assetTools,
                 index: () => graphIndex ?? null,
+                protectedUsage: protectedUsageOf,
                 download: downloadResolvedAsset,
                 copyImage: copyImageToClipboard,
                 openAsset: (assetId) =>
@@ -3191,8 +3469,8 @@
                         fileStem: registry.fileStem,
                     });
                 },
-                episodeEnded: (target) =>
-                    void frontmatterController.episodeEnded(target),
+                episodeEnded: (target, end) =>
+                    void frontmatterController.episodeEnded(target, end),
                 restore: (target) => frontmatterController.restore(target),
             },
             wikilinkRename: {
@@ -3430,7 +3708,9 @@
                 return;
             }
             useMobile = prefersMobileLayout();
-            phase = "ready";
+            // Access can end while the graph is still opening (a deleted graph's cached copy
+            // refused a token): the notice stands, the workspace behind it stays hidden.
+            if (!accessLoss) phase = "ready";
             await attempt.wait(tick());
             await session.transitionPresenter(() => mountPresenter(attempt));
             // Svelte has now mounted the requested DocumentView. Keep the temporary claim
@@ -3495,6 +3775,11 @@
             await build();
         } catch (err) {
             if (err instanceof GraphSessionCancelledError) return;
+            // An open that failed because access ended says why access ended, not that it failed.
+            if (accessLoss) {
+                phase = "access-lost";
+                return;
+            }
             if (err instanceof VaultLockedError) {
                 phase = "needs-unlock";
             } else {
@@ -3592,6 +3877,72 @@
     async function grantAccess() {
         phase = "loading";
         await runBuild();
+    }
+
+    /**
+     * The sync session ended for good. It has already closed its socket and will not reconnect;
+     * this says why, in place of the workspace. Unsent changes stay in the Local Cache: after a
+     * sign-out or a refused token they sync once the person is back in, and after a lost
+     * membership they are counted, offered as a download, and never sent (accepting a later
+     * invite clears them; see the Graphs page).
+     */
+    async function accessEnded(loss: SyncAccessLoss): Promise<void> {
+        if (accessLoss) return;
+        let unsentDocuments = 0;
+        if (loss.kind === "membership" && serverCache) {
+            // One item per pending document, the root counted as "quick notes and graph
+            // settings": the same list the download and the Graphs page's invite check read.
+            unsentDocuments = (
+                await serverCache.pendingDocIds().catch(() => [] as string[])
+            ).length;
+        }
+        accessLoss = workspaceAccessLoss(loss, {
+            managed: serverAtOpen?.managed ?? false,
+            server: serverAtOpen?.server ?? null,
+            unsentDocuments,
+        });
+        phase = "access-lost";
+    }
+
+    /** Another tab (or this tab's account menu) ended the device's Sync account. */
+    function endSyncFromElsewhere(reason: AccountEndReason): void {
+        if (syncConfigAtOpen === null || !serverGraph) return;
+        serverGraph.endAccess({ kind: "credentials", cause: new AccountEnded(reason) });
+    }
+
+    /**
+     * A standalone Disconnect in another tab clears the stored connection; replacing it with
+     * another server or token ends this one too. The `storage` event is the backstop for a
+     * browser without BroadcastChannel.
+     */
+    function watchSyncConfig(event: StorageEvent): void {
+        if (event.key !== SYNC_CONFIG_STORAGE_KEY && event.key !== null) return;
+        if (syncConfigAtOpen === null) return;
+        if (JSON.stringify(readSyncConfig()) !== syncConfigAtOpen) endSyncFromElsewhere("disconnected");
+    }
+
+    /**
+     * Download the documents whose changes will never be sent, as one Markdown file, read from
+     * this device's Local Cache: the relay is no longer there to ask.
+     */
+    async function downloadUnsentChanges(): Promise<void> {
+        const sg = serverGraph;
+        const cache = serverCache;
+        if (!sg || !cache || !serverRootDocId || downloadingUnsent) return;
+        downloadingUnsent = true;
+        unsentDownloadError = null;
+        try {
+            // The live engines are read over their cache rows: they can be a debounce ahead.
+            const unsent = await readUnsentChanges(cache, serverRootDocId, (docId) =>
+                docId === serverRootDocId ? sg.rootDoc : sg.docSync(docId).doc,
+            );
+            saveUnsentChangesFile(unsent, exportStem());
+        } catch (err) {
+            console.warn("[workspace] could not prepare the unsent changes", err);
+            unsentDownloadError = `Could not prepare the download: ${(err as Error).message}. Try again.`;
+        } finally {
+            downloadingUnsent = false;
+        }
     }
 
     /** Retry a failed open. The notice covers the workspace, so it needs a way forward. */
@@ -4084,23 +4435,42 @@
     /**
      * Enable a Local Mirror (ADR 0008): pick a directory and continuously write the graph's
      * materialized markdown and assets to it, for Data Ownership. Server-master, faithful
-     * (deletes strays). A non-empty directory requires an explicit takeover confirmation.
+     * (deletes strays), so the folder is checked before anything is written: a local graph's
+     * folder or another graph's mirror is refused by name, and a folder holding anything in
+     * journals/, pages/, assets/ or etherpk/ gets a confirmation that counts what goes.
      */
     async function enableMirror() {
-        if (!store || !isServerStore) return;
+        const s = store as ServerDocumentStore | undefined;
+        if (!s || !isServerStore) return;
+        let checking: ReturnType<typeof setTimeout> | undefined;
         try {
             const handle = await pickGraphDirectory();
-            mirror?.dispose();
-            mirror = undefined;
-            const adapter = createWebFsDirectoryAdapter(handle);
-            const journals = await adapter.list("journals").catch(() => []);
-            const pages = await adapter.list("pages").catch(() => []);
-            if (journals.length + pages.length > 0) {
-                mirrorTakeover = { handle, folder: handle.name }; // ask before touching a non-empty folder
+            // Reading a large folder takes a moment, and nothing else is on screen meanwhile.
+            // Delayed so the common case, an empty folder, never flashes it.
+            checking = setTimeout(
+                () => notify(`Checking “${handle.name}” before mirroring to it…`),
+                400,
+            );
+            const decision = await checkMirrorTakeover({
+                handle,
+                folder: handle.name,
+                known: await readKnownGraphFolders(graphId),
+                reader: readOnlyFolder(handle),
+                docs: s.listIdentities(),
+                heldAssetIds: async () =>
+                    listMirrorAssetIds ? await listMirrorAssetIds() : null,
+            });
+            clearTimeout(checking);
+            if (decision.kind === "start") {
+                await startMirror(handle, handle.name, { announce: true });
                 return;
             }
-            await startMirror(handle, handle.name, { announce: true });
+            mirrorTakeover =
+                decision.kind === "confirm"
+                    ? { ...decision, handle, folder: handle.name }
+                    : decision;
         } catch (err) {
+            clearTimeout(checking);
             // Closing the picker without choosing is a decision, not a failure to report.
             if ((err as Error).name === "AbortError") return;
             notify(`Could not enable mirroring: ${(err as Error).message}`);
@@ -4667,6 +5037,7 @@
             collisions: [],
             missingAssets: [],
             danglingLinks: [],
+            changesElsewhereUnchecked: false,
         };
     }
 
@@ -4726,7 +5097,9 @@
             state: "current",
             title: waiting
                 ? `Mirroring to “${status.folder}”. ${waiting} ${waiting === 1 ? "item is" : "items are"} still to be written.`
-                : `“${status.folder}” matches this graph.`,
+                : status.changesElsewhereUnchecked
+                  ? `Mirroring to “${status.folder}”. Could not check the server for edits made on other devices, so some may not be in the folder yet.`
+                  : `“${status.folder}” matches this graph.`,
             onclick: () => openGraphSettings("mirror"),
         };
     }
@@ -4880,6 +5253,37 @@
             setActiveSpellService(null);
         });
         const stopRecoveries = subscribeStorageRecoveries((all) => (storageRecovery = all));
+        // Sign-out and Disconnect in any tab of this Client end this graph's sync too.
+        const stopAccountSignals = onAccountSignal((signal) => {
+            if (signal.type === "ended") endSyncFromElsewhere(signal.reason);
+        });
+        window.addEventListener("storage", watchSyncConfig);
+        session.own(() => {
+            stopAccountSignals();
+            window.removeEventListener("storage", watchSyncConfig);
+        });
+        // The sync chip reads the browser's online flag; a refused write is tried again when the
+        // connection returns and when the person comes back to the tab, which is when a plan
+        // restarted in another tab usually shows.
+        browserOnline = navigator.onLine;
+        const followOnline = () => {
+            browserOnline = navigator.onLine;
+            refreshSyncIndicator();
+            if (browserOnline) serverGraph?.retryRefused();
+        };
+        const retryWhenVisible = () => {
+            if (document.visibilityState === "visible") serverGraph?.retryRefused();
+        };
+        window.addEventListener("online", followOnline);
+        window.addEventListener("offline", followOnline);
+        document.addEventListener("visibilitychange", retryWhenVisible);
+        session.own(() => {
+            window.removeEventListener("online", followOnline);
+            window.removeEventListener("offline", followOnline);
+            document.removeEventListener("visibilitychange", retryWhenVisible);
+            syncIndicatorSettle?.dispose();
+            syncIndicatorSettle = null;
+        });
         (async () => {
             await tick();
             await runBuild();
@@ -4903,6 +5307,10 @@
     {setupError}
     {shareWaiting}
     {shareLanded}
+    accessLost={accessLostNotice}
+    downloading={downloadingUnsent}
+    downloadError={unsentDownloadError}
+    ondownload={() => void downloadUnsentChanges()}
     ongrant={() => void grantAccess()}
     onback={() => void goto("/graphs")}
     onretry={() => void retryOpen()}
@@ -5205,21 +5613,40 @@
     />
 {/if}
 
-{#if mirrorTakeover}
+{#if mirrorTakeover?.kind === "confirm"}
+    {@const takeover = mirrorTakeover}
     <ConfirmDialog
         open={true}
-        title="Mirror to this folder?"
-        message="This folder already has content. Mirroring makes it exactly match the graph and deletes anything that is not part of it. This cannot be undone."
-        confirmLabel="Mirror and replace contents"
-        destructive={true}
+        title={takeover.title}
+        message={takeover.message}
+        confirmLabel={takeover.confirmLabel}
+        destructive={takeover.destructive}
         onconfirm={() =>
-            mirrorTakeover &&
-            void startMirror(mirrorTakeover.handle, mirrorTakeover.folder, {
+            void startMirror(takeover.handle, takeover.folder, {
                 announce: true,
             })}
         oncancel={() => (mirrorTakeover = null)}
     />
+{:else if mirrorTakeover?.kind === "refuse"}
+    <!-- A folder that already belongs to a local graph or another graph's mirror is never taken
+         over: confirming would delete that graph's files. The way forward is another folder. -->
+    <ConfirmDialog
+        open={true}
+        title={mirrorTakeover.title}
+        message={mirrorTakeover.message}
+        confirmLabel="Choose another folder"
+        onconfirm={() => {
+            mirrorTakeover = null;
+            void enableMirror();
+        }}
+        oncancel={() => (mirrorTakeover = null)}
+    />
 {/if}
+
+<!-- The phone's sync chip, in the top bar the mobile presenter draws. -->
+{#snippet syncStatus()}
+    <SyncStateChip compact indicator={syncIndicator} actions={syncChipActions} />
+{/snippet}
 
 <!-- The presenter is chosen by viewport. Desktop: a toolbar + the dockview host
      (which must exist whenever ready & desktop). Mobile: the self-contained
@@ -5236,6 +5663,7 @@
             ontasks={() => void commandRegistry?.execute("tasks.open")}
             onreset={() => void commandRegistry?.execute("workspace.reset")}
             mirror={mirrorIndicator()}
+            sync={syncActivity ? { indicator: syncIndicator, actions: syncChipActions } : null}
         />
         <div
             bind:this={container}
@@ -5249,6 +5677,7 @@
                     {controller}
                     renderer={mobileRenderer}
                     markFor={tabMarkFor}
+                    status={syncActivity ? syncStatus : undefined}
                 />
             {/if}
         </div>

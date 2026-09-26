@@ -19,7 +19,7 @@
 import { stringify as stringifyYaml } from 'yaml'
 
 import type { StoreChange, StoreChangeListener } from '$lib/document/backlinks/live-index'
-import { normaliseAliases, sameAliases, withFrontmatterIdentity } from '$lib/document/frontmatter/identity'
+import { frontmatterIdentity, normaliseAliases, sameAliases, withFrontmatterIdentity } from '$lib/document/frontmatter/identity'
 import type { IndexIncludeFact } from '$lib/document/index-db'
 import { includeFactsOf } from '$lib/document/publish/publication'
 import { dayIsNotAPageName, isJournalConcept } from '$lib/document/journal-concept'
@@ -34,7 +34,7 @@ import {
 import { documentProtection } from '$lib/document/protection/cipher-fence'
 import { portableFileName, suffixedFileName } from '../file-names'
 import { mergeDocuments } from '../merge'
-import { planRename, refuseProtectedMerges } from '../rename-plan'
+import { planRename, refuseProtectedMerges, refuseUnreadableBlocks, unreadableBlockRefusal } from '../rename-plan'
 import {
     type RenameLinkStrategy,
     type RenameOptions,
@@ -129,6 +129,14 @@ export interface FilesystemDocumentStore extends DocumentStore {
      * A no-op for a document that is not open or has nothing to write.
      */
     flushDocument(target: string): Promise<void>
+    /**
+     * `flushDocument` for every open document: every dirty buffer written now. For a check that
+     * reads the folder rather than the buffers - the [[Orphaned Asset]] scan - which must not
+     * miss a reference still inside the autosave debounce. Rejects, naming them, when a buffer is
+     * still dirty afterwards (its write failed), so such a check fails rather than believe the
+     * folder.
+     */
+    flushAll(): Promise<void>
     /** Build the registry from disk at graph open: every file is read and its identity learnt. */
     scan(): Promise<void>
     /** Current registry snapshot (journals date-desc, then pages alpha). */
@@ -438,6 +446,8 @@ export function createFilesystemDocumentStore(
         }
 
         const { text } = await adapter.read(entry.subdir, entry.fileName)
+        // planRename refused this before any step ran; the file may have changed since.
+        if (!frontmatterIdentity(text).readable) throw new Error(unreadableBlockRefusal(step.from, entry.concept))
         const fm = parseFrontmatter(text)
         let aliases = aliasesOf(fm)
         let body = fm.body
@@ -456,6 +466,7 @@ export function createFilesystemDocumentStore(
         const survivor = targetEntry && targetEntry.key !== entry.key ? targetEntry : undefined
         if (survivor) {
             const existing = await adapter.read(survivor.subdir, survivor.fileName)
+            if (!frontmatterIdentity(existing.text).readable) throw new Error(unreadableBlockRefusal(step.from, survivor.concept))
             const existingFm = parseFrontmatter(existing.text)
             const merged = mergeDocuments(
                 { body: existingFm.body, aliases: aliasesOf(existingFm) },
@@ -972,11 +983,21 @@ export function createFilesystemDocumentStore(
             // A Protected Document never merges (ADR 0062). An open document's buffer is ahead
             // of its file by one autosave - a protection just removed is not on disk yet - so
             // the buffer answers where there is one.
-            return refuseProtectedMerges(plan, async (concept) => {
+            const checked = await refuseProtectedMerges(plan, async (concept) => {
                 const other = registry.get(conceptKey(concept))
                 if (!other) return false
                 const text = open.get(other.key)?.buffer ?? (await adapter.read(other.subdir, other.fileName)).text
                 return documentProtection(text).kind === 'document'
+            })
+            // A block that does not parse would be rebuilt from nothing and lose its keys. Judged on
+            // the file, which is what applyStep rewrites, once any save in flight has landed: an
+            // open buffer fixed but not yet saved is still broken on disk.
+            return refuseUnreadableBlocks(checked, async (concept) => {
+                const other = registry.get(conceptKey(concept))
+                if (!other) return null
+                const openDoc = open.get(other.key)
+                if (openDoc) await settled(openDoc)
+                return (await adapter.read(other.subdir, other.fileName)).text
             })
         },
 
@@ -1057,6 +1078,16 @@ export function createFilesystemDocumentStore(
             const doc = open.get(conceptKey(target))
             if (!doc) return
             await saveNow(doc)
+        },
+
+        async flushAll() {
+            await Promise.all([...open.values()].map(saveNow))
+            // A write that failed leaves its buffer dirty and resolves (onSaveError reports it). A
+            // caller reading the folder must not believe it, so this one says so.
+            const unwritten = [...open.values()].filter((doc) => doc.dirty).map((doc) => doc.target)
+            if (unwritten.length > 0) {
+                throw new Error(`Edits to ${unwritten.join(', ')} could not be written to the folder yet, so it does not hold them. Try again once they are saved.`)
+            }
         },
 
         async dispose() {

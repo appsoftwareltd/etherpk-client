@@ -12,6 +12,7 @@ import {
     type MirrorSource,
     type MirrorStatus,
     type MirrorText,
+    assetFileFates,
     createLocalMirror,
 } from './local-mirror'
 
@@ -411,6 +412,7 @@ describe('local mirror', () => {
 
     describe('assets', () => {
         const ID = '11111111-1111-4111-8111-111111111111'
+        const OTHER = '99999999-9999-4999-8999-999999999999'
         const NAME = `diagram.${ID}.png`
         const REF = `../assets/${NAME}`
         const BYTES = new Uint8Array([1, 2, 3])
@@ -541,9 +543,55 @@ describe('local mirror', () => {
             cleaned.dispose()
         })
 
-        it('removes a file that was never an asset of this graph', async () => {
+        it('leaves alone a file whose name is not one the mirror writes', async () => {
+            // A folder picked by mistake - a website project, a Markdown vault - keeps its images
+            // in assets/ too. The mirror only ever writes `<stem>.<uuid>.<ext>`, so a name without
+            // that shape cannot be a copy it made, and deleting it would destroy the user's own
+            // files.
             const adapter = tickingAdapter()
-            await adapter.writeBinary('assets', 'dropped-in-by-hand.png', BYTES)
+            await adapter.writeBinary('assets', 'photo.jpg', BYTES)
+            await adapter.writeBinary('assets', 'logo.svg', BYTES)
+            // A bare id carries no stem, so the mirror never wrote it either.
+            await adapter.writeBinary('assets', `${OTHER}.png`, BYTES)
+            const mirror = createLocalMirror(
+                source([{ docId: 'p1', kind: 'page', concept: 'Doc', text: 'body\n' }], assetsOf([])),
+                adapter,
+            )
+            await mirror.sync()
+            expect(await namesIn(adapter, 'assets')).toEqual([`${OTHER}.png`, 'logo.svg', 'photo.jpg'])
+            // And they are not counted as the graph's attachments.
+            expect(mirror.status().assets).toBe(0)
+            mirror.dispose()
+        })
+
+        it('decides every file in assets/ with one rule, which the takeover dialog shares', () => {
+            const idOf = (name: string) => assetIdFromRef(`../assets/${name}`)
+            const names = [
+                'photo.jpg',
+                `${OTHER}.png`,
+                `old.${OTHER}.png`,
+                `diagram.${ID}.png`,
+                `sketch.${ID}.png`,
+            ]
+            const wanted = new Map([[ID, new Set([`sketch.${ID}.png`])]])
+            expect(Object.fromEntries(assetFileFates(names, idOf, new Set([ID]), wanted))).toEqual({
+                // Not a name the mirror writes: never touched.
+                'photo.jpg': 'foreign',
+                [`${OTHER}.png`]: 'foreign',
+                // The mirror's shape, for an asset the graph does not hold.
+                [`old.${OTHER}.png`]: 'not-held',
+                // A second copy of a held asset under a name no document uses, now that the
+                // name the documents use is present.
+                [`diagram.${ID}.png`]: 'stale-name',
+                [`sketch.${ID}.png`]: 'held',
+            })
+            // Without the documents' references (the takeover dialog), a held file is only "held".
+            expect(assetFileFates([`diagram.${ID}.png`], idOf, new Set([ID]), null).get(`diagram.${ID}.png`)).toBe('held')
+        })
+
+        it('still removes a file in its own name shape whose asset the graph does not hold', async () => {
+            const adapter = tickingAdapter()
+            await adapter.writeBinary('assets', `left-over.${OTHER}.png`, BYTES)
             const mirror = createLocalMirror(
                 source([{ docId: 'p1', kind: 'page', concept: 'Doc', text: 'body\n' }], assetsOf([])),
                 adapter,
@@ -968,6 +1016,192 @@ describe('local mirror', () => {
         })
     })
 
+
+    describe('edits made elsewhere', () => {
+        /**
+         * A graph edited on another device. A browser tab hears live updates only for the
+         * documents it shows, so an edit elsewhere to any other document fires no change here;
+         * the only way to learn of it is to ask the server, which `docsBehind` stands in for.
+         * Reading a document catches it up, as the store's `readTexts` does.
+         */
+        function editedElsewhere(docs: FakeDocument[]) {
+            const behind = new Set<string>()
+            const asked: string[][] = []
+            let reachable = true
+            const base = source(docs)
+            const src: FakeSource = {
+                ...base,
+                async readTexts(docIds, onProgress) {
+                    const out = await base.readTexts(docIds, onProgress)
+                    for (const docId of docIds) behind.delete(docId)
+                    return out
+                },
+                async docsBehind(docIds) {
+                    asked.push([...docIds])
+                    return reachable ? docIds.filter((docId) => behind.has(docId)) : null
+                },
+            }
+            return {
+                src,
+                asked,
+                edit(docId: string, text: string) {
+                    docs.find((doc) => doc.docId === docId)!.text = text
+                    behind.add(docId)
+                },
+                setReachable(value: boolean) {
+                    reachable = value
+                },
+            }
+        }
+
+        it('Mirror now writes a document edited on another device that this tab never opened', async () => {
+            const adapter = tickingAdapter()
+            const graph = editedElsewhere([
+                { docId: 'p1', kind: 'page', concept: 'Guest Notes', text: 'first\n' },
+                { docId: 'p2', kind: 'page', concept: 'Other', text: 'other\n' },
+            ])
+            const mirror = createLocalMirror(graph.src, adapter)
+            await mirror.sync()
+            expect(await textOf(adapter, 'pages', 'Guest Notes.md')).toContain('first')
+
+            // No change event: this tab is not subscribed to a document it is not showing.
+            graph.edit('p1', 'first\nremote edit\n')
+            await mirror.sync()
+
+            expect(await textOf(adapter, 'pages', 'Guest Notes.md')).toContain('remote edit')
+            // A full pass asks about every document, not only the ones it is about to write.
+            expect(graph.asked.at(-1)?.sort()).toEqual(['p1', 'p2'])
+            expect(mirror.status().changesElsewhereUnchecked).toBe(false)
+            mirror.dispose()
+        })
+
+        it('asks on a timer while it runs, so the folder catches up without Mirror now', async () => {
+            const adapter = tickingAdapter()
+            const graph = editedElsewhere([{ docId: 'p1', kind: 'page', concept: 'Doc', text: 'first\n' }])
+            const mirror = createLocalMirror(graph.src, adapter, { debounceMs: 0, catchUpIntervalMs: 20 })
+            mirror.start()
+            await vi.waitFor(async () => expect(await textOf(adapter, 'pages', 'Doc.md')).toContain('first'))
+
+            graph.edit('p1', 'second\n')
+            await vi.waitFor(async () => expect(await textOf(adapter, 'pages', 'Doc.md')).toContain('second'), {
+                timeout: 2000,
+            })
+            mirror.dispose()
+        })
+
+        it('does not announce a write for a timed check that finds nothing', async () => {
+            // The toolbar dot turns amber for every pass it hears about. A check every couple of
+            // minutes that changes nothing must not blink it.
+            const adapter = tickingAdapter()
+            const graph = editedElsewhere([{ docId: 'p1', kind: 'page', concept: 'Doc', text: 'first\n' }])
+            let now = 1
+            const mirror = createLocalMirror(graph.src, adapter, {
+                debounceMs: 0,
+                catchUpIntervalMs: 10,
+                now: () => now,
+            })
+            mirror.start()
+            await vi.waitFor(() => expect(mirror.status().lastSyncAt).toBe(1))
+            const syncing: boolean[] = []
+            mirror.onStatus((status) => syncing.push(status.syncing))
+            now = 2
+            const checks = graph.asked.length
+            await vi.waitFor(() => expect(graph.asked.length).toBeGreaterThan(checks + 1))
+            // A check that answered moves "last checked" on, and never says it is writing.
+            await vi.waitFor(() => expect(mirror.status().lastSyncAt).toBe(2))
+            expect(syncing).not.toContain(true)
+            mirror.dispose()
+        })
+
+        it('does not call the folder checked while the server cannot be asked', async () => {
+            const adapter = tickingAdapter()
+            const graph = editedElsewhere([{ docId: 'p1', kind: 'page', concept: 'Doc', text: 'first\n' }])
+            graph.setReachable(false)
+            const mirror = createLocalMirror(graph.src, adapter)
+            await mirror.sync()
+            // Offline, a document edited elsewhere may be missing, so the status must not say
+            // the folder matches the graph.
+            expect(mirror.status().changesElsewhereUnchecked).toBe(true)
+
+            graph.setReachable(true)
+            await mirror.sync()
+            expect(mirror.status().changesElsewhereUnchecked).toBe(false)
+            mirror.dispose()
+        })
+
+        it('asks again sooner after a check the server could not answer', async () => {
+            const adapter = tickingAdapter()
+            const graph = editedElsewhere([{ docId: 'p1', kind: 'page', concept: 'Doc', text: 'first\n' }])
+            graph.setReachable(false)
+            const mirror = createLocalMirror(graph.src, adapter, {
+                debounceMs: 0,
+                catchUpIntervalMs: 60_000,
+                catchUpRetryMs: 10,
+            })
+            mirror.start()
+            await vi.waitFor(() => expect(mirror.status().changesElsewhereUnchecked).toBe(true))
+            graph.setReachable(true)
+            await vi.waitFor(() => expect(mirror.status().changesElsewhereUnchecked).toBe(false), { timeout: 2000 })
+            mirror.dispose()
+        })
+
+        it('does not run its timed check in the middle of a retry backoff', async () => {
+            // A failed pass waits out a backoff before its retry. A timed check armed before the
+            // failure must not start a pass inside that wait.
+            const adapter = tickingAdapter()
+            let failNext = false
+            let failed = false
+            const failing: DirectoryAdapter = {
+                ...adapter,
+                async write(subdir, name, text) {
+                    if (failNext) {
+                        failNext = false
+                        failed = true
+                        throw new Error('disk hiccup')
+                    }
+                    return adapter.write(subdir, name, text)
+                },
+            }
+            const docs: FakeDocument[] = [{ docId: 'p1', kind: 'page', concept: 'Doc', text: 'first\n' }]
+            const graph = editedElsewhere(docs)
+            const mirror = createLocalMirror(graph.src, failing, {
+                debounceMs: 0,
+                catchUpIntervalMs: 150,
+                retryDelaysMs: [700],
+            })
+            mirror.start()
+            await vi.waitFor(() => expect(mirror.status().lastSyncAt).toBeDefined(), { interval: 5 })
+
+            // A keystroke's targeted pass, while the timed check is armed, fails to write.
+            docs[0].text = 'second\n'
+            failNext = true
+            graph.src.fire('Doc')
+            await vi.waitFor(() => expect(failed).toBe(true), { interval: 5 })
+            await vi.waitFor(() => expect(mirror.status().syncing).toBe(false), { interval: 5 })
+            const asked = graph.asked.length
+            await new Promise((resolve) => setTimeout(resolve, 350))
+            expect(graph.asked.length).toBe(asked)
+
+            // The retry itself still runs, and writes the change.
+            await vi.waitFor(async () => expect(await textOf(adapter, 'pages', 'Doc.md')).toContain('second'), {
+                timeout: 2000,
+            })
+            mirror.dispose()
+        })
+
+        it('stops asking once stopped', async () => {
+            const adapter = tickingAdapter()
+            const graph = editedElsewhere([{ docId: 'p1', kind: 'page', concept: 'Doc', text: 'first\n' }])
+            const mirror = createLocalMirror(graph.src, adapter, { debounceMs: 0, catchUpIntervalMs: 10 })
+            mirror.start()
+            await vi.waitFor(() => expect(graph.asked.length).toBeGreaterThan(1))
+            mirror.stop()
+            const asked = graph.asked.length
+            await new Promise((resolve) => setTimeout(resolve, 60))
+            expect(graph.asked.length).toBe(asked)
+            mirror.dispose()
+        })
+    })
 
     it('reports what it holds, for the Mirror tab to show', async () => {
         const adapter = tickingAdapter()

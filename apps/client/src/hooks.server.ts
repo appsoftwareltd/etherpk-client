@@ -1,14 +1,19 @@
-import type { Handle } from '@sveltejs/kit'
+import type { Handle, RequestEvent } from '@sveltejs/kit'
+import { hostname } from 'node:os'
+import { building } from '$app/environment'
 import { applySecurityHeaders } from '@appsoftwareltd/etherpk-shared'
+import { createHandleError, logRequest } from '@appsoftwareltd/etherpk-shared/server/request-log'
 import { env } from '$env/dynamic/private'
+import { initLoggerFromEnv, logger, shutdownLogger } from '$lib/server/logger'
 import { parseOptionalManagedClientAuthConfig } from '$lib/server/auth/config'
 import {
     clearManagedCookies,
+    isClientSsoChecked,
     isClientSsoSuppressed,
     takeClientSsoAttempted,
 } from '$lib/server/auth/cookies'
 import {
-    buildManagedClientSsoCheckUrl,
+    managedClientSsoCheckResponse,
     shouldAttemptManagedClientSso,
 } from '$lib/server/auth/managed-routing'
 import {
@@ -29,7 +34,42 @@ import { buildStampComment, decorateHtmlWithBuildStamp } from '@appsoftwareltd/e
 // answers it against `git log` without a shell on the box (see build-stamp.ts).
 const buildStamp = buildStampComment('etherpk-client', __BUILD_INFO__)
 
+const appHostname = hostname()
+
+// The same structured logger Corporate and the Sync Server use. With OPENOBSERVE_URL unset, as
+// on a standalone deployment, it writes JSON lines to stdout only.
+initLoggerFromEnv({
+    logLevel: env.LOG_LEVEL,
+    openObserveUrl: env.OPENOBSERVE_URL,
+    openObserveAuth: env.OPENOBSERVE_AUTH,
+})
+
+// adapter-node closes the server on SIGTERM or SIGINT and then emits 'sveltekit:shutdown'. The
+// process exits once nothing is pending, so the last OpenObserve batch ships first. Registered
+// once per process: a module re-evaluated by Vite's HMR must not add a second listener.
+const LOGGER_SHUTDOWN_HOOKED = Symbol.for('etherpk.client.logger-shutdown')
+const processGlobals = globalThis as unknown as Record<symbol, boolean | undefined>
+if (!building && !processGlobals[LOGGER_SHUTDOWN_HOOKED]) {
+    processGlobals[LOGGER_SHUTDOWN_HOOKED] = true
+    process.once('sveltekit:shutdown', () => void shutdownLogger())
+}
+
+/**
+ * Unexpected errors and missing routes. Only a 5xx is logged, at error with its stack; the rest
+ * are on the request line. Replaces SvelteKit's default, which prints ANSI-coloured text such
+ * as '[404] GET /favicon.ico' into an otherwise JSON log.
+ */
+export const handleError = createHandleError({ logger, hostname: appHostname })
+
+/** One JSON request line per request that reaches the server (static assets never do). */
 export const handle: Handle = async ({ event, resolve }) => {
+    const start = performance.now()
+    const response = await respond(event, resolve)
+    await logRequest({ logger, hostname: appHostname }, event, response, { durationMs: performance.now() - start })
+    return response
+}
+
+async function respond(event: RequestEvent, resolve: Parameters<Handle>[0]['resolve']): Promise<Response> {
     const themePreference = normalizeThemePreference(event.cookies.get(THEME_COOKIE_NAME))
     const systemPrefersDark = event.request.headers.get('sec-ch-prefers-color-scheme') === 'dark'
     const resolvedTheme = resolveTheme(themePreference, systemPrefersDark)
@@ -69,11 +109,10 @@ export const handle: Handle = async ({ event, resolve }) => {
         sessionAvailable: managedSessionAvailable,
         suppressed: isClientSsoSuppressed(event.cookies),
         attempted,
+        checked: isClientSsoChecked(event.cookies),
+        arrivedFromAnotherOrigin: ['same-site', 'cross-site'].includes(event.request.headers.get('sec-fetch-site') ?? ''),
     })) {
-        return new Response(null, {
-            status: 303,
-            headers: { Location: buildManagedClientSsoCheckUrl(event.url) },
-        })
+        return managedClientSsoCheckResponse(event.url)
     }
 
     const response = await resolve(event, {

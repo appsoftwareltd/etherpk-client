@@ -91,6 +91,7 @@ export {
 } from './graph-registry-idb'
 export {
     forgetMirrorFolder,
+    listMirrorFolders,
     readMirrorFolder,
     writeMirrorFolder,
     type MirrorFolderRecord,

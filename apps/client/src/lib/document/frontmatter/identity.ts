@@ -14,7 +14,6 @@
  */
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
 
-import { parseFrontmatter } from '$lib/storage/fs/frontmatter'
 import { frontmatterSpan } from '$lib/storage/fs/frontmatter-span'
 import { aliasesOf, conceptKey } from '$lib/storage/fs/identity'
 
@@ -80,15 +79,29 @@ export interface FrontmatterIdentity {
     /** The `title` value, or null when the block has none (or only a blank one). */
     title: string | null
     aliases: string[]
+    /**
+     * Whether the block names `aliases` at all. `aliases: []` and no key both read as no
+     * aliases; the difference matters for a block typed during the current episode, which claims
+     * nothing about aliases until it has the key (`proposeFrontmatter`).
+     */
+    hasAliasesKey: boolean
     /** Whether the document carries a balanced block at all. No block is no claim. */
     hasBlock: boolean
+    /**
+     * False when the block's YAML does not parse to a mapping: a duplicate key, or a line still
+     * being typed. Such a block says nothing about identity yet, so `title` and `aliases` are
+     * empty because they are unknown, not because the block claims none. True otherwise,
+     * including when there is no block.
+     */
+    readable: boolean
 }
 
 /** What the block claims. An unterminated block is not a block, as everywhere else. */
 export function frontmatterIdentity(text: string): FrontmatterIdentity {
-    const hasBlock = frontmatterSpan(text) !== null
-    const fm = parseFrontmatter(text)
-    return { title: titleOf(fm.data), aliases: aliasesOf(fm), hasBlock }
+    const span = frontmatterSpan(text)
+    const data = span ? parseBlock(span.body) : {}
+    if (data === null) return { title: null, aliases: [], hasAliasesKey: false, hasBlock: true, readable: false }
+    return { title: titleOf(data), aliases: aliasesOf({ data }), hasAliasesKey: 'aliases' in data, hasBlock: span !== null, readable: true }
 }
 
 function titleOf(data: Record<string, unknown>): string | null {
@@ -181,11 +194,28 @@ export function withFrontmatterIdentity(text: string, patch: IdentityPatch, opti
 }
 
 /**
- * The text with `title` and `aliases` removed from its block, and the block itself removed if
- * nothing else was in it. For an [[Import]] into a synced graph, where identity goes into the
- * registry and the rest of the block stays with the document.
+ * `after` - a writer's rewrite of `before` - with the document's aliases carried into the block
+ * the rewrite added. A writer that gives a document its first block, as Publish does when it adds
+ * `public:`, must not make the document claim fewer aliases than it has: a block with no
+ * `aliases:` line claims none, and the next edit to it would clear them (ADR 0061). Only a Server
+ * Backend has aliases without a block; on a Filesystem Backend they are read from the saved file,
+ * so `aliases` is empty there provided the caller wrote pending edits before reading them
+ * (`rewriteFrontmatter` flushes first). A block `before` already had is left as the writer left it.
  */
-export function withoutIdentityKeys(text: string): string {
+export function withAliasesInAddedBlock(before: string, after: string, aliases: readonly string[]): string {
+    if (aliases.length === 0 || frontmatterSpan(before) !== null || frontmatterSpan(after) === null) return after
+    return withFrontmatterIdentity(after, { aliases })
+}
+
+/**
+ * The text an [[Import]] into a synced graph stores for a document whose identity it has written to
+ * the registry (ADR 0061). `title` is removed: the registry names the document, and on a Server
+ * Backend a block without a title claims none. `aliases` stays in a block that other keys keep, so
+ * the block and the registry agree. A block with no `aliases` key reads as the claim "no aliases",
+ * so stripping them there would make the first edit to the block clear every imported alias. A
+ * block holding nothing but identity keys is removed whole: no block is no claim.
+ */
+export function syncedImportText(text: string): string {
     const span = frontmatterSpan(text)
     if (!span) return text
     const data = parseBlock(span.body)
@@ -193,9 +223,11 @@ export function withoutIdentityKeys(text: string): string {
     if (!('title' in data) && !('aliases' in data)) return text
     const rest: Record<string, unknown> = {}
     for (const [key, value] of Object.entries(data)) {
-        if (key !== 'title' && key !== 'aliases') rest[key] = value
+        if (key !== 'title') rest[key] = value
     }
-    if (Object.keys(rest).length === 0) return text.slice(span.end)
+    if (Object.keys(rest).every((key) => key === 'aliases')) return text.slice(span.end)
+    // Nothing to strip: keep the block as written rather than reformatting it.
+    if (!('title' in data)) return text
     return `---\n${serialise(rest)}---\n${text.slice(span.end)}`
 }
 

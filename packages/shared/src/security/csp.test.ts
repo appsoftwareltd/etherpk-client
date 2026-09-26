@@ -49,12 +49,19 @@ describe('cspDirectives', () => {
         expect(scriptSrc).not.toContain("'unsafe-eval'")
     })
 
-    it('admits the analytics host for its script and beacons only where an app asks for it', () => {
-        // Only Corporate carries the telemetry tag (2026-09-19); the Client and the Sync Server
-        // load no third-party script at all, and their policies say so.
-        const directives = cspDirectives({ appHtmlPath: path, analytics: true })
-        expect(directives['script-src']).toContain('https://analytics.appsoftware.com')
-        expect(directives['connect-src']).toContain('https://analytics.appsoftware.com')
+    it('names no analytics host: Corporate adds one per response, and only when analytics is configured', () => {
+        // The policy is baked into the image, and whether analytics runs is a deployment
+        // setting (ANALYTICS_WEBSITE_ID), so the build names no third-party host.
+        const directives = cspDirectives({ appHtmlPath: path })
+        expect(directives['connect-src']).not.toContain('https://analytics.appsoftware.com')
+    })
+
+    it('loads styles and fonts from the app itself, never from Google Fonts', () => {
+        // Inter is bundled with each app, so a page load tells no third party the visitor's
+        // address.
+        const directives = cspDirectives({ appHtmlPath: path })
+        expect(directives['style-src']).toEqual(["'self'", "'unsafe-inline'"])
+        expect(directives['font-src']).toEqual(["'self'", 'data:'])
     })
 
     it('allows WebAssembly compilation, which the SQLite document index needs', () => {

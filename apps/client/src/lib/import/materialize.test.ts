@@ -4,12 +4,15 @@ import { describe, expect, it } from 'vitest'
 import { createGraphKeyring } from '$lib/crypto'
 import { createMemoryDirectoryAdapter } from '$lib/storage/fs/memory-adapter'
 import type { AssetStore, SavedAsset } from '$lib/storage/fs/asset-store'
-import { createGraphSync } from '$lib/sync/graph-sync'
+import { type GraphSync, createGraphSync } from '$lib/sync/graph-sync'
 import { createLoopbackRelay } from '$lib/sync/loopback-relay'
 import { fixedSyncToken } from '$lib/sync/sync-token'
 import { openGraphCache } from '$lib/sync/local-cache'
 import type { ProtectionRecord } from '$lib/crypto'
 import { filesystemProtectionStore, inMemoryProtectionStore } from '$lib/document/protection/protection-store'
+
+import { proposeFrontmatter } from '$lib/document/frontmatter/proposal'
+import { mirrorFileText } from '$lib/storage/server/local-mirror'
 
 import { convertSource } from './convert'
 import { materializeToFilesystem } from './materialize-filesystem'
@@ -235,11 +238,11 @@ describe('materializeToServer', () => {
         })
         expect([...byConcept.keys()].sort()).toEqual(['2026-07-16', 'Foo', 'Import Report 2026-07-16'])
 
-        // Identity goes into the registry; the rest of the block stays with the document (ADR 0061).
+        // The title goes into the registry only; the aliases go there too and stay in a block that
+        // other keys keep, so the block agrees with the registry (ADR 0061).
         const fooText = graph.docSync(byConcept.get('Foo')!).doc.getText('content').toString()
-        expect(fooText.startsWith('---\npublic: true\n---\n')).toBe(true)
+        expect(fooText.startsWith('---\naliases:\n  - F\npublic: true\n---\n')).toBe(true)
         expect(fooText).not.toContain('title:')
-        expect(fooText).not.toContain('aliases:')
         expect(fooText).toContain('![pic](../assets/pic.11111111-2222-3333-4444-555555555555.png)')
         expect(registry.get(byConcept.get('Foo')!)?.aliases).toEqual(['F'])
 
@@ -300,5 +303,115 @@ describe('materializeToServer', () => {
         ])
         graph.dispose()
         cache.dispose()
+    })
+})
+
+/**
+ * A synced import keeps the aliases in a block that other keys keep. Stripped from it, the block
+ * would disagree with the page's registry entry and the first edit to it would clear the aliases.
+ * Each route in here imports a real converter's output into a real GraphSync, then edits the block
+ * the way a person adding a property would and asks what the block now proposes.
+ */
+describe('materializeToServer keeps imported aliases in a kept block', () => {
+    async function importSynced(files: SourceFile[], format: 'obsidian' | 'logseq' | 'etherpk') {
+        const converted = await convertSource(files, format)
+        const relay = createLoopbackRelay()
+        const cache = await openGraphCache(`import-aliases-${Math.floor(performance.now() * 1000)}`)
+        const graph = createGraphSync({
+            graphId: 'g-aliases',
+            rootDocId: '018f47a0-7b5d-7cc5-b5c1-f0fbcde23002',
+            keyring: createGraphKeyring('g-aliases'),
+            relayUrl: 'ws://loopback/sync',
+            token: fixedSyncToken('t'),
+            cache,
+            connect: relay.connect,
+            debounceMs: 5,
+        })
+        await graph.ready()
+        await materializeToServer(converted, { graph, assetStore: null, name: 'G' }, { format, reportDate: '2026-09-24' })
+        return { graph, dispose: () => (graph.dispose(), cache.dispose()) }
+    }
+
+    /** The page's stored text and what its block proposes against the registry, before and after an edit to it. */
+    function afterBlockEdit(graph: GraphSync, concept: string) {
+        let docId: string | null = null
+        graph.registry().forEach((entry, id) => {
+            if (entry.kind === 'page' && entry.title === concept) docId = id
+        })
+        if (docId === null) throw new Error(`no page ${concept}`)
+        const entry = graph.registry().get(docId)!
+        const registry = { kind: 'page' as const, concept, aliases: entry.aliases ?? [] }
+        const content = graph.docSync(docId).doc.getText('content')
+        const imported = content.toString()
+        const proposedOnImport = proposeFrontmatter({ text: imported, registry, backend: 'server' })
+        content.insert('---\n'.length, 'reviewed: true\n')
+        const edited = content.toString()
+        return {
+            registryAliases: registry.aliases,
+            imported,
+            proposedOnImport,
+            proposedAfterEdit: proposeFrontmatter({ text: edited, registry, backend: 'server' }),
+        }
+    }
+
+    it('from an Obsidian vault: a note with tags and aliases', async () => {
+        const { graph, dispose } = await importSynced(
+            [src('Home.md', '---\ntags: [dashboard]\naliases: [Start, Index]\n---\n# Home\n')],
+            'obsidian',
+        )
+        const home = afterBlockEdit(graph, 'Home')
+        expect(home.registryAliases).toEqual(['Start', 'Index'])
+        expect(home.imported).toContain('aliases:\n  - Start\n  - Index\n')
+        expect(home.imported).toContain('tags:\n  - dashboard\n')
+        expect(home.imported).not.toContain('title:')
+        expect(home.proposedOnImport).toEqual([])
+        expect(home.proposedAfterEdit).toEqual([])
+        dispose()
+    })
+
+    it('from an Obsidian vault written before 1.4: `alias:` as comma-separated text', async () => {
+        const { graph, dispose } = await importSynced(
+            [src('Home.md', '---\ntags: [dashboard]\nalias: Start, Index\n---\n# Home\n')],
+            'obsidian',
+        )
+        const home = afterBlockEdit(graph, 'Home')
+        expect(home.registryAliases).toEqual(['Start', 'Index'])
+        expect(home.imported).toContain('aliases:\n  - Start\n  - Index\n')
+        expect(home.imported).not.toMatch(/^alias:/m)
+        expect(home.proposedOnImport).toEqual([])
+        expect(home.proposedAfterEdit).toEqual([])
+        dispose()
+    })
+
+    it('from a Logseq graph: a page with alias:: and another property', async () => {
+        const { graph, dispose } = await importSynced(
+            [src('pages/Home.md', 'alias:: Start, Index\nstatus:: draft\n- body\n')],
+            'logseq',
+        )
+        const home = afterBlockEdit(graph, 'Home')
+        expect(home.registryAliases).toEqual(['Start', 'Index'])
+        expect(home.imported).toContain('aliases:\n  - Start\n  - Index\n')
+        expect(home.imported).toContain('status: draft\n')
+        expect(home.proposedOnImport).toEqual([])
+        expect(home.proposedAfterEdit).toEqual([])
+        dispose()
+    })
+
+    it('from a Local Mirror folder rebuilt as a new synced graph', async () => {
+        // The mirror writes the registry's identity into the block beside the document's own keys;
+        // importing that folder back must not lose the aliases the block carries.
+        const mirrored = mirrorFileText(
+            { docId: 'd1', kind: 'page', concept: 'Project Phoenix', aliases: ['Phoenix', 'PX'] },
+            'Project Phoenix.md',
+            '---\nowner: Ann\npublic: true\npublications:\n  - docs\n---\n- body\n',
+        )
+        const { graph, dispose } = await importSynced([src('pages/Project Phoenix.md', mirrored)], 'etherpk')
+        const phoenix = afterBlockEdit(graph, 'Project Phoenix')
+        expect(phoenix.registryAliases).toEqual(['Phoenix', 'PX'])
+        expect(phoenix.imported).toContain('aliases:\n  - Phoenix\n  - PX\n')
+        expect(phoenix.imported).toContain('owner: Ann\n')
+        expect(phoenix.proposedOnImport).toEqual([])
+        expect(phoenix.proposedAfterEdit).toEqual([])
+        dispose()
     })
 })

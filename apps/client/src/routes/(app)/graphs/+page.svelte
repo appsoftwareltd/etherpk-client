@@ -41,6 +41,15 @@
         type GraphAssetTools,
         filesystemAssetTools,
     } from "$lib/storage/fs/asset-orphans";
+    import { readKnownGraphFolders } from "$lib/storage/folder-ownership";
+    import {
+        findFolderOwner,
+        openAsLocalGraphRefusal,
+    } from "$lib/storage/server/mirror-takeover";
+    import {
+        discardIndexPool,
+        discardUnlistedIndexPools,
+    } from "$lib/document/index-pool-discard";
     import {
         accountIdentityFingerprint,
         createAccountKeys,
@@ -73,11 +82,13 @@
         readActiveSyncAccount,
         setActiveSyncAccount,
         SyncApiError,
+        VaultLockedError,
     } from "$lib/sync";
     import type { SyncAccountSummary } from "@appsoftwareltd/etherpk-shared";
-    import { fromBase64Url, openVault, type GraphKeyring } from "$lib/crypto";
+    import { EnvelopeError, fromBase64Url, openVault, type GraphKeyring } from "$lib/crypto";
     import { promptRecoveryCode } from "$lib/sync/recovery-code-prompt";
     import { describeSyncFailure } from "$lib/sync/sync-error-copy";
+    import { ownerCanWrite, syncPlanNotice } from "$lib/sync/sync-plan-notice";
     import InviteDialog from "$lib/sync/ui/InviteDialog.svelte";
     import UnlockDialog from "$lib/sync/ui/UnlockDialog.svelte";
     import ResetDialog from "$lib/sync/ui/ResetDialog.svelte";
@@ -85,6 +96,13 @@
     import RenameGraphDialog from "$lib/sync/ui/RenameGraphDialog.svelte";
     import GraphSettingsDialog from "$lib/sync/ui/GraphSettingsDialog.svelte";
     import Modal from "@appsoftwareltd/etherpk-shared/dialog";
+    import {
+        acceptUnlessUnsent,
+        discardUnlessUnsent,
+        saveUnsentChangesFile,
+        staleCopyUnsentChanges,
+        type UnsentDocument,
+    } from "$lib/sync/unsent-changes";
     import ImportGraphDialog from "$lib/import/ui/ImportGraphDialog.svelte";
     import { formatBytes } from "$lib/format-bytes";
     import {
@@ -185,6 +203,25 @@
     const corporateBillingUrl = $derived(
         (page.data.corporateBillingUrl as string | null | undefined) ?? null,
     );
+    /** The notice beside the plan line: a failed payment, a lapse, or the Sync+ offer. */
+    const planNotice = $derived(
+        syncAuthState === "authenticated" && syncAccount
+            ? syncPlanNotice(syncAccount)
+            : null,
+    );
+    /**
+     * Why a synced graph cannot be created or imported here. It names no trial: Checkout gives
+     * one only to an account that never subscribed, and a lapsed owner is the common case.
+     */
+    const syncPlusRequiredMessage = $derived(
+        planNotice === "ended"
+            ? "Synced graphs need Sync+. Restart it from Billing to create one."
+            : planNotice === "unconfirmed"
+              ? "Your plan cannot be confirmed right now, so no synced graph can be created. Try again in a few minutes."
+              : "Synced graphs need Sync+. Start it from Billing to create one.",
+    );
+    /** Owned graphs refuse writes and new Players while the owner's plan is not active. */
+    const ownedGraphsWritable = $derived(ownerCanWrite(syncAccount));
     // Does this account have a vault at all? false right after a reset / on a brand-new
     // account - states where an unlock prompt would ask for a Recovery Code that does not
     // exist. null = unknown (no config, or the check failed) - behave as before.
@@ -210,6 +247,21 @@
         candidates: SyncedMember[];
     } | null>(null);
     let leaveConfirm = $state<SyncedGraphView | null>(null);
+    /**
+     * An invite to a graph this browser still holds a copy of with changes the server never
+     * received. Accepting discards the copy, so the person sees what would be lost, can download
+     * it, and confirms or cancels.
+     */
+    let staleCopy = $state<{
+        invite: (typeof invites)[number];
+        unsent: UnsentDocument[];
+        graphName: string;
+        downloaded: boolean;
+        /** More became unsent after the dialog opened, so the count was taken again. */
+        grew?: boolean;
+    } | null>(null);
+    /** The invite whose local copy is being checked, so a second press does not start another. */
+    let checkingInvite = $state<string | null>(null);
     let leaveBusy = $state(false);
     let deleteConfirm = $state<SyncedGraphView | null>(null);
     let deleteText = $state("");
@@ -218,6 +270,23 @@
     let deleteError = $state<string | null>(null);
     let renameDialog = $state<GraphRecord | null>(null);
     let forgetConfirm = $state<GraphRecord | null>(null);
+    let forgetBusy = $state(false);
+    /** Reported inside the Forget dialog, which stays open so the person can retry or cancel. */
+    let forgetError = $state<string | null>(null);
+    /**
+     * What Forget or Leave would delete that the server never received: this browser's unsent
+     * changes to the graph, read before the dialog opens and again at the moment of deleting,
+     * because another tab may still be typing into it.
+     */
+    let discardUnsent = $state<{
+        graphId: string;
+        unsent: UnsentDocument[];
+        downloaded: boolean;
+        /** More became unsent after the dialog opened, so the count was taken again. */
+        grew?: boolean;
+    } | null>(null);
+    /** The graph whose copy is being checked, so a second press does not start another check. */
+    let discardChecking = $state<string | null>(null);
     // Shared Graph Settings for a synced graph, edited over a short-lived meta session.
     let syncedSettings = $state<{
         record: GraphRecord;
@@ -325,6 +394,40 @@
     function refreshAccount(): Promise<void> {
         accountCheck = loadAccount();
         return accountCheck;
+    }
+
+    /**
+     * Re-read the plan when the tab comes back into view. The page stays open for days, and a
+     * card fixed or a plan lapsed in another tab would otherwise show the old state until a reload.
+     * Quiet on purpose: it never shows "Checking…" (the card would flicker on every tab switch)
+     * and replaces the answer only with a fresh one for the same account. Signing out, failures
+     * and account changes stay with the full refresh.
+     */
+    let planRecheck: Promise<void> | null = null;
+    function recheckPlanQuietly() {
+        if (
+            document.visibilityState !== "visible" ||
+            syncAuthState !== "authenticated" ||
+            planRecheck
+        )
+            return;
+        const api = syncApi();
+        const principalId = syncAccount?.principal.id;
+        if (!api || !principalId) return;
+        planRecheck = api
+            .me()
+            .then((account) => {
+                if (
+                    syncAuthState === "authenticated" &&
+                    account.principal.id === principalId
+                )
+                    syncAccount = account;
+            })
+            // Keeping the last answer is the right outcome for a failed background read.
+            .catch(() => undefined)
+            .finally(() => {
+                planRecheck = null;
+            });
     }
 
     async function loadAccount() {
@@ -680,10 +783,7 @@
      */
     async function ensureVaultReadyForSyncedImport(): Promise<void> {
         await accountCheck;
-        if (syncPlusRequired)
-            throw new Error(
-                "Synced graphs need Sync+. Start your trial from Billing first.",
-            );
+        if (syncPlusRequired) throw new Error(syncPlusRequiredMessage);
         await ensureAccountKeysReady();
     }
 
@@ -759,6 +859,22 @@
     async function openFolder() {
         try {
             const handle = await pickGraphDirectory();
+            // Checked before anything is written into the folder. A synced graph's mirror is put
+            // back to match that graph on its next pass, so work done in it (or in a folder
+            // overlapping it) as a local graph would be lost or mixed with the mirror's; a folder
+            // already open as a local graph is opened as that graph, not registered twice.
+            const owner = await findFolderOwner(
+                handle,
+                await readKnownGraphFolders(),
+            );
+            if (owner?.kind === "mirror") {
+                setStatus(openAsLocalGraphRefusal(handle.name, owner), "error");
+                return;
+            }
+            if (owner?.kind === "local-graph" && owner.relation === "same") {
+                await goto(`/g/${owner.graphId}`);
+                return;
+            }
             const adapter = createWebFsDirectoryAdapter(handle);
             await adapter.ensureSkeleton();
             const id = crypto.randomUUID();
@@ -796,10 +912,7 @@
                 // proceeds or is refused, exactly as a later click would be).
                 await accountCheck;
                 if (syncPlusRequired) {
-                    setStatus(
-                        "Synced graphs need Sync+. Start your trial from Billing to create one.",
-                        "error",
-                    );
+                    setStatus(syncPlusRequiredMessage, "error");
                     return;
                 }
                 // Settle the keys next. Naming a graph this device cannot key, then creating
@@ -987,15 +1100,119 @@
         await goto(`/g/${graph.id}`);
     }
 
-    /** Forget (confirmed via dialog): local record only — a synced graph also drops its cache. */
+    /**
+     * The graph's search index goes from this browser with the graph: it holds the graph's note
+     * text, block by block. Not awaited: the discard waits for a worker that is still letting go
+     * of the pool, and a tab that still has the graph open keeps it, in which case the sweep the
+     * next time this page loads discards it ({@link sweepIndexPools}).
+     */
+    function discardGraphIndex(graphId: string): void {
+        void discardIndexPool(graphId).catch((error) =>
+            console.warn("[index] could not discard the search index of", graphId, error),
+        );
+    }
+
+    /**
+     * Discard the search index of every graph this browser holds no record of: one a tab held
+     * when it was deleted, left or forgotten, or one an older build left behind. Against every
+     * record on the device, not the list this page shows: a signed-out, expired or other account
+     * hides its synced graphs without them being gone, and sweeping against the visible list
+     * would discard their indexes after every session expiry. A registry read of its own, so an
+     * unreadable registry sweeps nothing rather than everything.
+     */
+    async function sweepIndexPools(): Promise<void> {
+        try {
+            await discardUnlistedIndexPools(await registry.listAllGraphIds());
+        } catch (error) {
+            console.warn("[index] could not sweep unlisted search indexes", error);
+        }
+    }
+
+    /** A synced registry record's root document id, which lives on its handle. */
+    function rootDocIdOf(graph: GraphRecord): string {
+        return (graph.handle as { rootDocId: string }).rootDocId;
+    }
+
+    /** The unsent documents the open dialog listed for `graphId`: what the person agreed to lose. */
+    function agreedUnsent(graphId: string): string[] {
+        return discardUnsent?.graphId === graphId ? discardUnsent.unsent.map((document) => document.docId) : [];
+    }
+
+    /**
+     * Read what this browser holds for a synced graph that the server never received, before a
+     * dialog offers to delete it. A failed read opens nothing: deleting what could not be checked
+     * is exactly the loss this guards against.
+     */
+    async function checkUnsentBeforeDiscard(graphId: string, rootDocId: string, name: string): Promise<boolean> {
+        discardChecking = graphId;
+        try {
+            discardUnsent = { graphId, unsent: await staleCopyUnsentChanges(graphId, rootDocId), downloaded: false };
+            return true;
+        } catch (err) {
+            setStatus(
+                `Could not check this browser's copy of "${name}" for changes the server has not received, so nothing was changed: ${(err as Error).message}. Try again.`,
+                "error",
+            );
+            return false;
+        } finally {
+            discardChecking = null;
+        }
+    }
+
+    async function askForget(graph: GraphRecord) {
+        if (discardChecking) return;
+        discardUnsent = null;
+        forgetError = null;
+        if (graph.backend === "server" && !(await checkUnsentBeforeDiscard(graph.id, rootDocIdOf(graph), graph.name))) return;
+        forgetConfirm = graph;
+    }
+
+    async function askLeave(graph: SyncedGraphView) {
+        if (discardChecking) return;
+        discardUnsent = null;
+        if (!(await checkUnsentBeforeDiscard(graph.id, graph.rootDocId, graph.name))) return;
+        leaveConfirm = graph;
+    }
+
+    function downloadDiscardUnsent(name: string) {
+        if (!discardUnsent) return;
+        saveUnsentChangesFile(discardUnsent.unsent, name);
+        discardUnsent = { ...discardUnsent, downloaded: true };
+    }
+
+    /**
+     * Forget (confirmed via dialog): local record only; a synced graph also drops its cache. The
+     * cache holds the outbox, so its unsent changes go too: deleted only when there are none, or
+     * when the person saw them counted and chose to discard them.
+     */
     async function executeForget() {
         const graph = forgetConfirm;
-        forgetConfirm = null;
-        if (!graph) return;
-        if (graph.backend === "server") await deleteGraphCache(graph.id);
-        await registry.removeGraph(graph.id);
-        if (getLastGraphId() === graph.id) clearLastGraphId();
-        await refresh();
+        if (!graph || forgetBusy) return;
+        forgetBusy = true;
+        forgetError = null;
+        try {
+            if (graph.backend === "server") {
+                const outcome = await discardUnlessUnsent(
+                    { graphId: graph.id, rootDocId: rootDocIdOf(graph) },
+                    { inspect: staleCopyUnsentChanges, discard: () => deleteGraphCache(graph.id), agreed: agreedUnsent(graph.id) },
+                );
+                if (outcome.kind === "confirm") {
+                    // More became unsent since the dialog opened: count it again and ask again.
+                    discardUnsent = { graphId: graph.id, unsent: outcome.unsent, downloaded: false, grew: true };
+                    return;
+                }
+            }
+            discardGraphIndex(graph.id);
+            await registry.removeGraph(graph.id);
+            if (getLastGraphId() === graph.id) clearLastGraphId();
+            forgetConfirm = null;
+            discardUnsent = null;
+            await refresh();
+        } catch (err) {
+            forgetError = describeSyncFailure(err, "forget the graph");
+        } finally {
+            forgetBusy = false;
+        }
     }
 
     /** Open the rename dialog — a synced rename needs the vault (it writes the meta map). */
@@ -1266,7 +1483,14 @@
                         session.close();
                     }
                 } catch (err) {
-                    // Offline or key unavailable: keep the default; the first open heals the name.
+                    // Keys that cannot open this graph are not "offline": adding it under a
+                    // placeholder name would report success and hide the fault until the first
+                    // open. Say so, and add nothing.
+                    if (err instanceof EnvelopeError || err instanceof VaultLockedError) {
+                        setRowStatus(graph.id, describeSyncFailure(err, "add the graph to this device"), "error");
+                        return;
+                    }
+                    // Offline: keep the default; the first open heals the name.
                     console.warn(
                         "[graphs] could not read the graph name before adding it; the first open heals it",
                         err,
@@ -1294,7 +1518,20 @@
         });
     }
 
-    /** Permanently delete an owned graph (confirmed by typing DELETE). Every member loses it. */
+    async function askDelete(graph: SyncedGraphView) {
+        if (discardChecking) return;
+        discardUnsent = null;
+        deleteText = "";
+        deleteError = null;
+        if (!(await checkUnsentBeforeDiscard(graph.id, graph.rootDocId, graph.name))) return;
+        deleteConfirm = graph;
+    }
+
+    /**
+     * Permanently delete an owned graph (confirmed by typing DELETE). Every member loses it, and
+     * this browser's copy goes with its outbox, so the same unsent guard as Forget and Leave: the
+     * count is taken again here, and a read that fails deletes nothing.
+     */
     async function executeDelete() {
         const graph = deleteConfirm;
         const api = syncApi();
@@ -1302,8 +1539,24 @@
         deleteBusy = true;
         deleteError = null;
         try {
-            await api.deleteGraph(graph.id);
-            await deleteGraphCache(graph.id);
+            const outcome = await discardUnlessUnsent(
+                { graphId: graph.id, rootDocId: graph.rootDocId },
+                {
+                    inspect: staleCopyUnsentChanges,
+                    discard: async () => {
+                        await api.deleteGraph(graph.id);
+                        await deleteGraphCache(graph.id);
+                    },
+                    agreed: agreedUnsent(graph.id),
+                },
+            );
+            if (outcome.kind === "confirm") {
+                // Nothing deleted; the typed DELETE stays for the second confirmation.
+                discardUnsent = { graphId: graph.id, unsent: outcome.unsent, downloaded: false, grew: true };
+                return;
+            }
+            discardUnsent = null;
+            discardGraphIndex(graph.id);
             if (graph.onDevice) {
                 await registry.removeGraph(graph.id);
                 if (getLastGraphId() === graph.id) clearLastGraphId();
@@ -1331,8 +1584,25 @@
         if (!graph || !api) return;
         leaveBusy = true;
         try {
-            await api.leaveGraph(graph.id);
-            await deleteGraphCache(graph.id);
+            // Leaving deletes this browser's copy with its outbox, so the same guard as Forget:
+            // nothing unsent is lost without the person having seen it counted.
+            const outcome = await discardUnlessUnsent(
+                { graphId: graph.id, rootDocId: graph.rootDocId },
+                {
+                    inspect: staleCopyUnsentChanges,
+                    discard: async () => {
+                        await api.leaveGraph(graph.id);
+                        await deleteGraphCache(graph.id);
+                    },
+                    agreed: agreedUnsent(graph.id),
+                },
+            );
+            if (outcome.kind === "confirm") {
+                discardUnsent = { graphId: graph.id, unsent: outcome.unsent, downloaded: false, grew: true };
+                return;
+            }
+            discardUnsent = null;
+            discardGraphIndex(graph.id);
             if (graph.onDevice) {
                 await registry.removeGraph(graph.id);
                 if (getLastGraphId() === graph.id) clearLastGraphId();
@@ -1349,15 +1619,80 @@
                 "error",
             );
             leaveConfirm = null;
+            discardUnsent = null;
         } finally {
             leaveBusy = false;
         }
     }
 
-    function acceptInvite(invite: (typeof invites)[number]) {
+    /**
+     * Accept an invite. When this browser already holds a copy of the graph with changes the
+     * server never received, nothing is accepted yet: the dialog below names what would be lost.
+     * A failure to read the copy accepts nothing and deletes nothing.
+     */
+    async function acceptInvite(invite: (typeof invites)[number]) {
+        if (checkingInvite) return;
+        checkingInvite = invite.id;
+        try {
+            const outcome = await acceptUnlessUnsent(invite, {
+                inspect: staleCopyUnsentChanges,
+                accept: () => acceptInviteDiscardingCopy(invite),
+            });
+            if (outcome.kind === "confirm") {
+                const record = await registry.getGraph(invite.graphId).catch(() => null);
+                staleCopy = {
+                    invite,
+                    unsent: outcome.unsent,
+                    graphName: record?.name ?? "Shared graph",
+                    downloaded: false,
+                };
+            }
+        } catch (err) {
+            setStatus(
+                `Could not check this browser's copy of the graph, so nothing was accepted or deleted: ${(err as Error).message}. Try again.`,
+                "error",
+            );
+        } finally {
+            checkingInvite = null;
+        }
+    }
+
+    /** The person saw what would be lost and chose to accept anyway. */
+    async function confirmStaleCopyDiscard() {
+        const pending = staleCopy;
+        if (!pending) return;
+        // Closed first: accepting may need the unlock dialog, which must not stack on this one.
+        staleCopy = null;
+        await acceptInviteDiscardingCopy(
+            pending.invite,
+            pending.unsent.map((document) => document.docId),
+            pending.graphName,
+        );
+    }
+
+    function downloadStaleCopy() {
+        if (!staleCopy) return;
+        saveUnsentChangesFile(staleCopy.unsent, staleCopy.graphName);
+        staleCopy = { ...staleCopy, downloaded: true };
+    }
+
+    /**
+     * Accept, then replace any copy of the graph this browser holds with the server's: a copy
+     * from an earlier membership (a tab that kept typing after the member was removed, or an
+     * owner who deleted and re-shared) replayed now would land in the shared graph as if typed
+     * today. Reached only when that copy has nothing unsent, or the person has confirmed
+     * discarding the documents in `agreed`. The copy is checked again after any unlock prompt
+     * and before the invite is accepted: another tab can have added unsent work in the meantime,
+     * and then nothing is accepted and the dialog asks again with the new count.
+     */
+    function acceptInviteDiscardingCopy(
+        invite: (typeof invites)[number],
+        agreed: readonly string[] = [],
+        graphName?: string,
+    ): Promise<void> {
         const api = syncApi();
-        if (!api) return;
-        void requireUnlockedVault(async () => {
+        if (!api) return Promise.resolve();
+        return requireUnlockedVault(async () => {
             const heldKey = getCachedWrapKey()!;
             try {
                 const existing = await api.getVault();
@@ -1367,13 +1702,35 @@
                     heldKey,
                 );
                 setVaultWrapKey(opened.vaultKey); // self-heal: the vault key survives re-keys
-                const accepted = await acceptInviteFlow(
-                    api,
-                    invite,
-                    opened.vault.identityPrivateKey,
-                    opened.vaultKey,
-                    existing.version,
-                );
+                let accepted: Awaited<ReturnType<typeof acceptInviteFlow>> | undefined;
+                const outcome = await discardUnlessUnsent(invite, {
+                    inspect: staleCopyUnsentChanges,
+                    agreed,
+                    discard: async () => {
+                        accepted = await acceptInviteFlow(
+                            api,
+                            invite,
+                            opened.vault.identityPrivateKey,
+                            opened.vaultKey,
+                            existing.version,
+                        );
+                        await deleteGraphCache(accepted.graphId);
+                    },
+                });
+                if (outcome.kind === "confirm" || !accepted) {
+                    if (outcome.kind === "confirm") {
+                        const record = await registry.getGraph(invite.graphId).catch(() => null);
+                        staleCopy = {
+                            invite,
+                            unsent: outcome.unsent,
+                            graphName: graphName ?? record?.name ?? "Shared graph",
+                            downloaded: false,
+                            grew: agreed.length > 0,
+                        };
+                    }
+                    return;
+                }
+                discardGraphIndex(accepted.graphId);
                 await registry.insertGraph({
                     id: accepted.graphId,
                     // The name travels inside the sealed invite (ADR 0031); older invites lack it.
@@ -1624,12 +1981,13 @@
             (navigator as Navigator & { standalone?: boolean }).standalone ===
                 true;
         void describeDeviceStorage().then((report) => (deviceStorage = report));
-        void refresh();
+        void refresh().then(sweepIndexPools);
         return stopRecoveries;
     });
 </script>
 
 <svelte:head><title>Knowledge graphs · EtherPK</title></svelte:head>
+<svelte:document onvisibilitychange={recheckPlanQuietly} />
 
 <div class="mx-auto max-w-3xl px-4 py-8 space-y-6">
     <header class="flex flex-wrap items-center justify-between gap-3">
@@ -1748,7 +2106,7 @@
                         >Authenticated</span
                     >
                 </div>
-                {#if syncPlusRequired}
+                {#if planNotice === "upsell"}
                     <div
                         class="mt-3 rounded-lg border border-indigo-200 bg-indigo-50/70 p-3 dark:border-indigo-400/20 dark:bg-indigo-950/20"
                         data-testid="sync-plus-required"
@@ -1763,16 +2121,15 @@
                         >
                             Local folder graphs are free and unlimited. Sync+
                             adds end-to-end encrypted sync across your devices,
-                            multiplayer and managed storage, and starts with a
-                            14-day trial. Graphs shared with you still work
-                            here.
+                            multiplayer and managed storage. Graphs shared with
+                            you still work here.
                         </p>
                         {#if corporateBillingUrl}
                             <a
                                 href={corporateBillingUrl}
                                 data-sveltekit-reload
                                 class="mt-2 inline-flex rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-indigo-500"
-                                >Start your Sync+ trial</a
+                                >See Sync+</a
                             >
                         {/if}
                     </div>
@@ -1788,20 +2145,58 @@
                             syncAccount.entitlement.limits.ownedStorageBytes,
                         )} owned storage
                     </p>
-                    {#if syncAccount.entitlement.status === "read_only" && syncAccount.authentication.mode === "managed"}
-                        <p
-                            class="mt-2 text-sm leading-5 text-amber-800 dark:text-amber-200"
-                            data-testid="sync-read-only-notice"
+                    {#if planNotice === "payment_failed" || planNotice === "payment_overdue"}
+                        <div
+                            role="status"
+                            data-testid="sync-payment-notice"
+                            data-kind={planNotice}
+                            class="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm leading-5 text-amber-900 dark:border-amber-400/20 dark:bg-amber-400/10 dark:text-amber-100"
                         >
-                            Your Sync+ subscription has ended, so graphs you own
-                            are read-only. You can still open, export and delete
-                            them. Owned graphs are deleted from the managed
-                            service after a retention period, so export anything
-                            you want to keep{#if corporateBillingUrl}, or <a
+                            <p>
+                                {planNotice === "payment_failed"
+                                    ? "Your last Sync+ payment failed. Fix it from Billing to keep syncing: if it is not paid, the graphs you own become read-only."
+                                    : "A Sync+ payment is overdue, so the graphs you own are read-only. You can still open, export and delete them. Fix the payment from Billing to make them writable again."}
+                            </p>
+                            {#if corporateBillingUrl}
+                                <a
                                     href={corporateBillingUrl}
                                     data-sveltekit-reload
-                                    class="underline">restart Sync+</a
-                                >{/if}.
+                                    class="mt-2 inline-flex rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-indigo-500"
+                                    >Fix payment</a
+                                >
+                            {/if}
+                        </div>
+                    {:else if planNotice === "ended"}
+                        <div
+                            role="status"
+                            data-testid="sync-read-only-notice"
+                            class="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm leading-5 text-amber-900 dark:border-amber-400/20 dark:bg-amber-400/10 dark:text-amber-100"
+                        >
+                            <p>
+                                Your Sync+ subscription has ended, so the graphs
+                                you own are read-only. You can still open, export
+                                and delete them. Owned graphs are deleted from the
+                                managed service after a retention period, so export
+                                anything you want to keep.
+                            </p>
+                            {#if corporateBillingUrl}
+                                <a
+                                    href={corporateBillingUrl}
+                                    data-sveltekit-reload
+                                    class="mt-2 inline-flex rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-indigo-500"
+                                    >Restart Sync+</a
+                                >
+                            {/if}
+                        </div>
+                    {:else if planNotice === "unconfirmed"}
+                        <p
+                            role="status"
+                            data-testid="sync-plan-unconfirmed"
+                            class="mt-2 text-sm leading-5 text-amber-800 dark:text-amber-200"
+                        >
+                            Your plan cannot be confirmed right now, so the
+                            graphs you own are read-only for the moment. Nothing
+                            is lost. Reload this page in a few minutes.
                         </p>
                     {/if}
                 {/if}
@@ -2246,9 +2641,10 @@
                         >
                         <button
                             data-testid="invite-accept"
-                            onclick={() => acceptInvite(invite)}
+                            onclick={() => void acceptInvite(invite)}
+                            aria-busy={checkingInvite === invite.id}
                             class="shrink-0 rounded-lg bg-gray-900 dark:bg-gray-100 px-3 py-1.5 text-sm font-medium text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-200"
-                            >Accept</button
+                            >{checkingInvite === invite.id ? "Checking…" : "Accept"}</button
                         >
                     </li>
                 {/each}
@@ -2311,7 +2707,7 @@
                     graph.backend === "server"
                         ? openSyncedSettings(graph)
                         : void openLocalSettings(graph)}
-                onforget={() => (forgetConfirm = graph)}
+                onforget={() => void askForget(graph)}
                 onreset={() => void goto("/demo?reset=1")}
             />
         {/snippet}
@@ -2460,6 +2856,13 @@
                                         ? "Owner"
                                         : "Player"}</span
                                 >
+                                {#if g.role === "owner" && !ownedGraphsWritable}
+                                    <span
+                                        data-testid="synced-read-only"
+                                        class="rounded-full bg-amber-50 px-2 py-0.5 text-sm text-amber-800 dark:bg-amber-400/10 dark:text-amber-200"
+                                        >Read-only</span
+                                    >
+                                {/if}
                                 {#if !g.onDevice}
                                     <span
                                         class="text-sm text-gray-400 dark:text-gray-500"
@@ -2572,16 +2975,23 @@
                                     >
                                 {/if}
                                 {#if g.role === "owner"}
-                                    <button
-                                        data-testid="graphs-invite"
-                                        onclick={() =>
-                                            inviteToGraph(
-                                                g.id,
-                                                g.onDevice ? g.name : undefined,
-                                            )}
-                                        class="shrink-0 rounded-lg border border-gray-300 dark:border-gray-700 px-3 py-1.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5"
-                                        >Invite</button
-                                    >
+                                    <!-- The Server refuses new Players on a read-only
+                                         owner's graph (quota policy), so Invite is not
+                                         offered; the plan notice above says why. Transfer
+                                         stays: it checks the recipient's allowance, and is
+                                         one way to keep the graph writable. -->
+                                    {#if ownedGraphsWritable}
+                                        <button
+                                            data-testid="graphs-invite"
+                                            onclick={() =>
+                                                inviteToGraph(
+                                                    g.id,
+                                                    g.onDevice ? g.name : undefined,
+                                                )}
+                                            class="shrink-0 rounded-lg border border-gray-300 dark:border-gray-700 px-3 py-1.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5"
+                                            >Invite</button
+                                        >
+                                    {/if}
                                     <button
                                         data-testid="graphs-transfer"
                                         onclick={() => startTransfer(g)}
@@ -2590,19 +3000,16 @@
                                     >
                                     <button
                                         data-testid="graphs-delete"
-                                        onclick={() => {
-                                            deleteText = "";
-                                            deleteConfirm = g;
-                                            deleteError = null;
-                                            deleteText = "";
-                                        }}
+                                        disabled={discardChecking === g.id}
+                                        onclick={() => void askDelete(g)}
                                         class="shrink-0 rounded-lg border border-red-300 dark:border-red-500/40 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30"
                                         >Delete</button
                                     >
                                 {:else}
                                     <button
                                         data-testid="graphs-leave"
-                                        onclick={() => (leaveConfirm = g)}
+                                        disabled={discardChecking === g.id}
+                                        onclick={() => void askLeave(g)}
                                         class="shrink-0 rounded-lg border border-red-300 dark:border-red-500/40 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30"
                                         >Leave</button
                                     >
@@ -2621,7 +3028,7 @@
         {registry}
         syncTarget={syncPlusRequired ? null : importSyncTarget()}
         syncUnavailableReason={syncPlusRequired
-            ? "Synced graphs need Sync+. Start your trial from Billing first."
+            ? syncPlusRequiredMessage
             : undefined}
         getWrapKey={importWrapKey}
         ensureVaultReady={ensureVaultReadyForSyncedImport}
@@ -2684,10 +3091,14 @@
         title="Delete graph"
         busy={deleteBusy}
         busyReason="Deleting…"
-        onclose={() => (deleteConfirm = null)}
+        onclose={() => {
+            deleteConfirm = null;
+            discardUnsent = null;
+        }}
         onsubmit={executeDelete}
     >
         {#snippet body()}
+            {@render unsentWarning("Deleting the graph", deleteConfirm!.name, false)}
             <p class="text-sm text-gray-600 dark:text-gray-400">
                 Permanently delete <span
                     class="font-medium text-gray-900 dark:text-gray-200"
@@ -2712,8 +3123,9 @@
                     class="text-sm text-gray-600 dark:text-gray-400"
                     data-testid="delete-local-note"
                 >
-                    The synced copy in the local browser cache is deleted with
-                    it. Files you mirrored to a local folder are not deleted.
+                    The synced copy in this browser, and its search index, are
+                    deleted with it. Files you mirrored to a local folder are
+                    not deleted.
                 </p>
             {:else}
                 <p
@@ -2724,6 +3136,13 @@
                     the sync server, and on every member's next sync.
                 </p>
             {/if}
+            <p
+                class="text-sm text-gray-600 dark:text-gray-400"
+                data-testid="delete-agent-note"
+            >
+                Computers running the Headless Client for this graph drop
+                their copy the next time it starts.
+            </p>
             <div>
                 <label
                     for="delete-confirm"
@@ -2762,10 +3181,22 @@
         {#snippet footer()}
             <button
                 type="button"
-                onclick={() => (deleteConfirm = null)}
+                onclick={() => {
+                    deleteConfirm = null;
+                    discardUnsent = null;
+                }}
                 class="rounded-lg px-3 py-1.5 text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
                 >Cancel</button
             >
+            {#if discardUnsent?.graphId === deleteConfirm!.id && discardUnsent.unsent.length > 0}
+                <button
+                    type="button"
+                    data-testid="discard-unsent-download"
+                    onclick={() => downloadDiscardUnsent(deleteConfirm!.name)}
+                    class="rounded-lg border border-gray-300 dark:border-white/15 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5"
+                    >Download unsent changes</button
+                >
+            {/if}
             <button
                 type="submit"
                 disabled={deleteBusy || deleteText !== "DELETE"}
@@ -2869,81 +3300,228 @@
     />
 {/if}
 
+<!-- What Forget or Leave would delete that the server never received. -->
+{#snippet unsentWarning(action: string, graphName: string, canSync = true)}
+    {#if discardUnsent && discardUnsent.unsent.length > 0}
+        {@const count = discardUnsent.unsent.length}
+        <div
+            data-testid="discard-unsent-changes"
+            class="space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm leading-5 text-amber-900 dark:border-amber-400/20 dark:bg-amber-400/10 dark:text-amber-100"
+        >
+            <p>
+                Changes to {count === 1 ? "1 document" : `${count.toLocaleString()} documents`} in this browser have not
+                reached the sync server yet. {action} deletes them.
+            </p>
+            <p>
+                {canSync
+                    ? "To keep them, open the graph while online and wait until it shows Synced, or download them first."
+                    : "To keep a copy, download them first: the graph and everything the server holds for it go too."}
+            </p>
+            {#if discardUnsent.grew}
+                <p role="status" data-testid="discard-unsent-grew">More changes arrived since this opened; the count is current.</p>
+            {/if}
+            {#if discardUnsent.downloaded}
+                <p role="status">Downloaded as “{graphName} unsent changes.md”.</p>
+            {/if}
+        </div>
+    {/if}
+{/snippet}
+
 {#if forgetConfirm}
+    {@const unsentCount = discardUnsent?.graphId === forgetConfirm.id ? discardUnsent.unsent.length : 0}
     <Modal
         open={true}
         title="Forget graph"
-        onclose={() => (forgetConfirm = null)}
+        busy={forgetBusy}
+        busyReason="Forgetting…"
+        onclose={() => {
+            forgetConfirm = null;
+            discardUnsent = null;
+            forgetError = null;
+        }}
         onsubmit={executeForget}
     >
         {#snippet body()}
             {#if forgetConfirm!.backend === "server"}
-                <p class="text-sm text-gray-600 dark:text-gray-400">
-                    Forget <span
-                        class="font-medium text-gray-900 dark:text-gray-200"
-                        >{forgetConfirm!.name}</span
-                    >? This deletes the graph's local copy from this browser's
-                    cache. The graph remains on the sync server - add it back
-                    any time. Deleting the graph for all members (owner only) is
-                    done from the Synced graphs panel.
-                </p>
+                <div class="space-y-3">
+                    {@render unsentWarning("Forgetting", forgetConfirm!.name)}
+                    <p class="text-sm text-gray-600 dark:text-gray-400">
+                        Forget <span
+                            class="font-medium text-gray-900 dark:text-gray-200"
+                            >{forgetConfirm!.name}</span
+                        >? This deletes the graph's local copy and its search index
+                        from this browser.
+                        {unsentCount > 0
+                            ? "The graph stays on the sync server without the changes above."
+                            : "The graph remains on the sync server - add it back any time."}
+                        Deleting the graph for all members (owner only) is
+                        done from the Synced graphs panel.
+                    </p>
+                </div>
             {:else}
                 <p class="text-sm text-gray-600 dark:text-gray-400">
                     Forget <span
                         class="font-medium text-gray-900 dark:text-gray-200"
                         >{forgetConfirm!.name}</span
-                    >? Forgetting will remove the graph from this list. Delete
-                    the files on disk manually if you require full deletion.
+                    >? Forgetting removes the graph from this list and its search
+                    index from this browser. Delete the files on disk manually if you
+                    require full deletion.
                 </p>
+            {/if}
+            {#if forgetError}
+                <p role="alert" data-testid="graphs-forget-error" class="mt-3 text-sm text-red-600">{forgetError}</p>
             {/if}
         {/snippet}
         {#snippet footer()}
             <button
                 type="button"
-                onclick={() => (forgetConfirm = null)}
+                data-autofocus={unsentCount > 0 ? "" : undefined}
+                onclick={() => {
+                    forgetConfirm = null;
+                    discardUnsent = null;
+                    forgetError = null;
+                }}
                 class="rounded-lg px-3 py-1.5 text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
                 >Cancel</button
             >
-            <button
-                type="submit"
-                data-testid="graphs-forget-confirm"
-                class="rounded-lg bg-gray-900 dark:bg-gray-100 px-4 py-1.5 text-sm font-medium text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-200"
-                >Forget</button
-            >
+            {#if unsentCount > 0}
+                <button
+                    type="button"
+                    data-testid="discard-unsent-download"
+                    onclick={() => downloadDiscardUnsent(forgetConfirm!.name)}
+                    class="rounded-lg border border-gray-300 dark:border-white/15 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5"
+                    >Download unsent changes</button
+                >
+                <button
+                    type="submit"
+                    disabled={forgetBusy}
+                    data-testid="graphs-forget-confirm"
+                    class="rounded-lg bg-red-600 px-4 py-1.5 text-center text-sm font-medium text-white hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                    >Discard changes and forget</button
+                >
+            {:else}
+                <button
+                    type="submit"
+                    disabled={forgetBusy}
+                    data-testid="graphs-forget-confirm"
+                    class="rounded-lg bg-gray-900 dark:bg-gray-100 px-4 py-1.5 text-sm font-medium text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed"
+                    >Forget</button
+                >
+            {/if}
         {/snippet}
     </Modal>
 {/if}
 
 {#if leaveConfirm}
+    {@const unsentCount = discardUnsent?.graphId === leaveConfirm.id ? discardUnsent.unsent.length : 0}
     <Modal
         open={true}
         title="Leave graph"
         busy={leaveBusy}
         busyReason="Leaving…"
-        onclose={() => (leaveConfirm = null)}
+        onclose={() => {
+            leaveConfirm = null;
+            discardUnsent = null;
+        }}
         onsubmit={executeLeave}
     >
         {#snippet body()}
-            <p class="text-sm text-gray-600 dark:text-gray-400">
-                Leave <span class="font-medium text-gray-900 dark:text-gray-200"
-                    >{leaveConfirm!.name}</span
-                >? You lose access until the owner invites you again. The graph
-                itself, and the other members, are untouched.
-            </p>
+            <div class="space-y-3">
+                {@render unsentWarning("Leaving", leaveConfirm!.name)}
+                <p class="text-sm text-gray-600 dark:text-gray-400">
+                    Leave <span class="font-medium text-gray-900 dark:text-gray-200"
+                        >{leaveConfirm!.name}</span
+                    >? You lose access until the owner invites you again. The graph
+                    itself, and the other members, are untouched. The copy in this
+                    browser, and its search index, are deleted. Computers running the
+                    Headless Client for this graph drop their copy the next time it
+                    starts.
+                </p>
+            </div>
         {/snippet}
         {#snippet footer()}
             <button
                 type="button"
-                onclick={() => (leaveConfirm = null)}
+                data-autofocus={unsentCount > 0 ? "" : undefined}
+                onclick={() => {
+                    leaveConfirm = null;
+                    discardUnsent = null;
+                }}
                 class="rounded-lg px-3 py-1.5 text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
                 >Cancel</button
             >
+            {#if unsentCount > 0}
+                <button
+                    type="button"
+                    data-testid="discard-unsent-download"
+                    onclick={() => downloadDiscardUnsent(leaveConfirm!.name)}
+                    class="rounded-lg border border-gray-300 dark:border-white/15 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5"
+                    >Download unsent changes</button
+                >
+            {/if}
             <button
                 type="submit"
                 disabled={leaveBusy}
                 data-testid="graphs-leave-confirm"
                 class="min-w-32 rounded-lg bg-red-600 px-4 py-1.5 text-center text-sm font-medium text-white hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed"
-                >{leaveBusy ? "Leaving…" : "Leave graph"}</button
+                >{leaveBusy ? "Leaving…" : unsentCount > 0 ? "Discard changes and leave" : "Leave graph"}</button
+            >
+        {/snippet}
+    </Modal>
+{/if}
+
+{#if staleCopy}
+    {@const count = staleCopy.unsent.length}
+    {@const documents = count === 1 ? "1 document" : `${count.toLocaleString()} documents`}
+    <Modal
+        open={true}
+        title="Unsent changes in this browser"
+        onclose={() => (staleCopy = null)}
+        onsubmit={() => void confirmStaleCopyDiscard()}
+    >
+        {#snippet body()}
+            <div data-testid="invite-unsent-changes" class="space-y-3">
+                <p class="text-sm text-gray-600 dark:text-gray-400">
+                    This browser still holds a copy of <span class="font-medium text-gray-900 dark:text-gray-200"
+                        >{staleCopy!.graphName}</span
+                    > with changes to {documents} that the server never received. Accepting the invite
+                    replaces the copy with the server's version, and those changes are lost.
+                </p>
+                <p class="text-sm text-gray-600 dark:text-gray-400">
+                    Download them first to keep them. Cancel keeps everything and leaves the invite waiting.
+                </p>
+                {#if staleCopy!.grew}
+                    <p role="status" data-testid="invite-unsent-grew" class="text-sm text-gray-600 dark:text-gray-400">
+                        More changes arrived since this opened; the count is current.
+                    </p>
+                {/if}
+                {#if staleCopy!.downloaded}
+                    <p role="status" class="text-sm text-gray-600 dark:text-gray-400">
+                        Downloaded as “{staleCopy!.graphName} unsent changes.md”.
+                    </p>
+                {/if}
+            </div>
+        {/snippet}
+        {#snippet footer()}
+            <button
+                type="button"
+                onclick={() => (staleCopy = null)}
+                data-testid="invite-unsent-cancel"
+                class="rounded-lg px-3 py-1.5 text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
+                >Cancel</button
+            >
+            <button
+                type="button"
+                onclick={downloadStaleCopy}
+                data-testid="invite-unsent-download"
+                class="rounded-lg border border-gray-300 dark:border-white/15 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5"
+                >Download unsent changes</button
+            >
+            <button
+                type="submit"
+                data-testid="invite-unsent-discard"
+                class="rounded-lg bg-red-600 px-4 py-1.5 text-center text-sm font-medium text-white hover:bg-red-700"
+                >Discard changes to {documents} and accept</button
             >
         {/snippet}
     </Modal>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { decryptSessionCookie, encryptSessionCookie, isManagedSession } from './session-cookie'
+import { decryptSessionCookie, encryptSessionCookie, heldAccessToken, isManagedSession } from './session-cookie'
 
 const secret = 'a-client-session-secret-with-32-bytes'
 
@@ -23,6 +23,20 @@ describe('encrypted managed session cookie', () => {
         expect(isManagedSession({ refreshToken: 'refresh', expiresAt: Date.now() + 60_000 })).toBe(false)
         expect(isManagedSession({ refreshToken: 'refresh', idToken: 'id', expiresAt: Date.now() + 60_000 })).toBe(true)
         expect(isManagedSession({ refreshToken: 'refresh', idToken: 'id', expiresAt: 'later' })).toBe(false)
+    })
+
+    it('hands out a held access token only while it has more than two minutes left', () => {
+        const now = Date.now()
+        const session = { refreshToken: 'refresh', idToken: 'id', expiresAt: now + 60_000_000 }
+
+        expect(heldAccessToken({ ...session, accessToken: 'access', accessExpiresAt: now + 5 * 60_000 }, now))
+            .toEqual({ accessToken: 'access', expiresAt: now + 5 * 60_000 })
+        expect(heldAccessToken({ ...session, accessToken: 'access', accessExpiresAt: now + 120_000 }, now)).toBeNull()
+        expect(heldAccessToken(session, now)).toBeNull()
+        // A malformed cache is ignored rather than trusted, and the session itself still stands.
+        const malformed = { ...session, accessToken: 42, accessExpiresAt: 'later' }
+        expect(isManagedSession(malformed)).toBe(true)
+        expect(heldAccessToken(malformed as never, now)).toBeNull()
     })
 
     it('fails closed when ciphertext is modified or the key changes', async () => {

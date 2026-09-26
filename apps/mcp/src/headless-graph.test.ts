@@ -83,3 +83,21 @@ describe('a running Headless Client follows the graph', () => {
         await until('the late page\'s text is searchable', async () => (await search(agent, { query: 'gave up waiting' })).results.map((r) => r.concept).join() === 'Later')
     }, 30_000)
 })
+
+describe('a write the Sync Server refuses', () => {
+    it('fails the tool with write_refused and says why, instead of promising delivery when the connection recovers', async () => {
+        const { relay, member } = pair('g-refused')
+        const agent = await member('Agent')
+        await agent.store.createPage('Plan', '- first')
+        expect(await agent.settle()).toEqual({ settled: true })
+
+        relay.refuseWrites('entitlement_inactive')
+        const started = Date.now()
+        await expect(editDocument(agent, { concept: 'Plan', old: '- first', new: '- second' })).rejects.toMatchObject({
+            code: 'write_refused',
+            message: expect.stringContaining("The Sync Server refused the edit: the graph owner's plan does not allow changes"),
+        })
+        // Refused is an answer: the tool does not sit out the ten-second stall first.
+        expect(Date.now() - started).toBeLessThan(5_000)
+    }, 20_000)
+})

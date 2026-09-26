@@ -13,6 +13,7 @@ import type { LockStatus } from '$lib/document/protection/lock-machine'
 import type { LayoutController } from '$lib/layout/types'
 import type { RemoteGraphIndex } from '$lib/document/index-worker/client'
 import type { DocumentStore } from '$lib/document/types'
+import type { EpisodeEnd } from '$lib/document/view/augmentations/frontmatter-episode'
 import type { AssetStore } from '$lib/storage/fs/asset-store'
 import type { GraphSettings } from '$lib/storage/fs/graph-settings'
 import type { CommandRegistry } from '$lib/surface/command-registry'
@@ -100,7 +101,8 @@ export interface FrontmatterService {
     identityOf(target: string): DocumentIdentity | null
     /** What `blockText` (the block alone) proposes for `target`; empty when it agrees or has none. */
     proposalFor(target: string, blockText: string): ProposalStep[]
-    episodeEnded(target: string): void
+    /** `end`: what the editor knows of the episode, such as whether it created the block. */
+    episodeEnded(target: string, end?: EpisodeEnd): void
     restore(target: string): void
 }
 

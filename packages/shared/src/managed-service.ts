@@ -65,6 +65,15 @@ export const entitlementLimitsSchema = z.strictObject({
 
 export type EntitlementLimits = z.infer<typeof entitlementLimitsSchema>
 
+/**
+ * Set, and only ever `true`, while the Billing Account's subscription has a payment outstanding
+ * (Stripe `past_due` or `unpaid`). It explains a `grace` or `read_only` status as a failed
+ * payment rather than an ended plan, so the Client can say "fix your payment" instead of "your
+ * subscription has ended". Issuers omit it otherwise, which keeps every other statement readable
+ * by a Sync Server whose strict schema predates the field.
+ */
+const paymentOverdueSchema = z.literal(true).optional()
+
 export const serviceEntitlementSchema = z.strictObject({
     eventId: z.uuid(),
     issuer: httpsUrl,
@@ -75,6 +84,7 @@ export const serviceEntitlementSchema = z.strictObject({
     status: z.enum(['active', 'grace', 'read_only', 'suspended', 'identity_disabled']),
     plan: z.string().min(1).max(64),
     limits: entitlementLimitsSchema,
+    paymentOverdue: paymentOverdueSchema,
     effectiveAt: z.iso.datetime({ offset: true }),
     expiresAt: z.iso.datetime({ offset: true }),
 }).refine(
@@ -129,6 +139,7 @@ export const syncAccountSummarySchema = z.strictObject({
         plan: z.string().min(1).max(64),
         status: serviceEntitlementSchema.shape.status,
         limits: entitlementLimitsSchema,
+        paymentOverdue: paymentOverdueSchema,
         usage: z.strictObject({
             ownedGraphs: z.int().nonnegative(),
             ownedStorageBytes: z.int().nonnegative(),
@@ -158,3 +169,32 @@ export const quotaErrorResponseSchema = z.strictObject({
 })
 
 export type QuotaErrorResponse = z.infer<typeof quotaErrorResponseSchema>
+
+export const IDENTITY_STATEMENT_AUDIENCE = 'urn:etherpk:sync-identity'
+
+/**
+ * Corporate's statement of one managed identity's standing, pushed to the Sync Server (ADR 0101).
+ *
+ * The whole state every time, never a delta, and numbered per subject, like an Entitlement: the
+ * Sync Server applies the highest revision it has seen and ignores the rest, so a push that is
+ * retried late cannot re-ban an account that has since been unbanned. `subject` is the Corporate
+ * user id, the same `sub` the Sync Server binds its Principal to.
+ *
+ * - `disabled`: an administrator banned the account. Sync suspends the Principal.
+ * - `deleted`: the account was deleted. Sync retires the Principal and revokes its tokens.
+ * - `credentialsRevokedAt`: the last password reset (or the deletion). Sync refuses every
+ *   credential issued before it and revokes the access tokens created before it.
+ */
+export const identityStatementSchema = z.strictObject({
+    eventId: z.uuid(),
+    issuer: httpsUrl,
+    audience: z.literal(IDENTITY_STATEMENT_AUDIENCE),
+    subject: z.string().min(1).max(256),
+    revision: z.int().positive(),
+    disabled: z.boolean(),
+    deleted: z.boolean(),
+    credentialsRevokedAt: z.iso.datetime({ offset: true }).nullable(),
+    issuedAt: z.iso.datetime({ offset: true }),
+})
+
+export type IdentityStatement = z.infer<typeof identityStatementSchema>

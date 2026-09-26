@@ -143,7 +143,8 @@ export async function openDiagramRenderer(env: NodeJS.ProcessEnv): Promise<Diagr
                         const doc = new DOMParser().parseFromString(svg, 'text/html')
                         const el = doc.querySelector('svg')
                         if (!el) throw new Error('Mermaid produced no diagram.')
-                        el.removeAttribute('id')
+                        // The id stays: Mermaid scopes its inline <style> to it, and the
+                        // publisher renames it per page (diagram-id.ts).
                         el.setAttribute('role', 'img')
                         return el.outerHTML
                     } finally {

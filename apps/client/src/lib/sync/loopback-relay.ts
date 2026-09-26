@@ -5,6 +5,7 @@
  * NOT production code; test-only, but not a *.test.ts so multiple suites can import it.
  */
 import {
+    type QuotaErrorCode,
     SYNC_PROTOCOL_VERSION,
     decodedBase64UrlBytes,
     parseClientMessage,
@@ -61,6 +62,8 @@ export function createLoopbackRelay(options: LoopbackRelayOptions = {}) {
         { generation: number; throughSeq: number; epochId: number; envelope: string; verified: boolean }
     >() // docId → newest snapshot
     const sockets = new Set<LoopSocket>()
+    /** Set by `refuseWrites`: every append, delete and resurrect is refused on this quota. */
+    let refusing: QuotaErrorCode | null = null
     let catchupRequests = 0
     let watermarkRequests = 0
     const key = (docId: string) => docId
@@ -131,6 +134,24 @@ export function createLoopbackRelay(options: LoopbackRelayOptions = {}) {
                         }),
                     }),
                 )
+            }
+            if (
+                refusing &&
+                (message.type === 'append' || message.type === 'delete' || message.type === 'resurrect')
+            ) {
+                // The shape the real relay sends (ws-handler sendOperationError): nothing stored or acked.
+                this.deliver(
+                    serverMessage({
+                        type: 'error',
+                        code: 'quota_denied',
+                        message: 'Managed Sync write allowance reached',
+                        quotaCode: refusing,
+                        retryable: true,
+                        docId: message.docId,
+                        outboxId: message.outboxId,
+                    }),
+                )
+                return
             }
             if (message.type === 'append') {
                 const receipt = receipts.get(message.outboxId)
@@ -454,6 +475,10 @@ export function createLoopbackRelay(options: LoopbackRelayOptions = {}) {
 
     return {
         connect: (_url: string): TransportSocket => new LoopSocket(),
+        /** Refuse every write on `quotaCode` from now on, as a lapsed plan does; null accepts them again. */
+        refuseWrites: (quotaCode: QuotaErrorCode | null) => {
+            refusing = quotaCode
+        },
         /** All stored envelopes across docs — for the E2EE "server is blind" assertion. */
         allEnvelopes: () => [...log.values()].flat().map((u) => u.envelope),
         requestCounts: () => ({ catchup: catchupRequests, watermarks: watermarkRequests }),

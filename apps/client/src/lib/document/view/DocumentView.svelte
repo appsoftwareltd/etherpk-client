@@ -611,7 +611,7 @@
                     proposal: (blockText) =>
                         currentWorkspaceServices()?.frontmatter?.proposalFor(view.target, blockText) ?? [],
                     documentName: () => currentWorkspaceServices()?.frontmatter?.identityOf(view.target)?.concept ?? null,
-                    onEpisodeEnd: () => currentWorkspaceServices()?.frontmatter?.episodeEnded(view.target),
+                    onEpisodeEnd: (end) => currentWorkspaceServices()?.frontmatter?.episodeEnded(view.target, end),
                     onRestore: () => currentWorkspaceServices()?.frontmatter?.restore(view.target),
                 },
                 // Each editor asks its OWN document, and asks live: protection is added and

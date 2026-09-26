@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
     ENTITLEMENT_AUDIENCE,
+    IDENTITY_STATEMENT_AUDIENCE,
+    identityStatementSchema,
     isEntitlementSubject,
     MANAGED_SYNC_AUDIENCE,
     MANAGED_SYNC_SCOPE,
@@ -71,6 +73,12 @@ describe('managed service contracts', () => {
             ...valid,
             limits: { ...valid.limits, ownedStorageBytes: -1 },
         })).toThrow()
+
+        // A failed card is carried as a flag, so a read-only statement can say why.
+        // It is optional: statements without it are every statement issued before it existed.
+        const overdue = { ...valid, status: 'grace', paymentOverdue: true }
+        expect(serviceEntitlementSchema.parse(overdue)).toEqual(overdue)
+        expect(() => serviceEntitlementSchema.parse({ ...valid, paymentOverdue: 'yes' })).toThrow()
     })
 
     it('accepts only aggregate, content-free managed usage', () => {
@@ -121,6 +129,9 @@ describe('managed service contracts', () => {
             ...summary,
             providerSubject: 'corporate-user-1',
         })).toThrow()
+
+        const overdue = { ...summary, entitlement: { ...summary.entitlement, status: 'read_only', paymentOverdue: true } }
+        expect(syncAccountSummarySchema.parse(overdue)).toEqual(overdue)
     })
 
     it('supports every browser authentication route while keeping mode and method distinct', () => {
@@ -180,5 +191,30 @@ describe('entitlement subject pattern', () => {
         expect(isEntitlementSubject('billing-account:------------------------------------')).toBe(false)
         expect(isEntitlementSubject(undefined)).toBe(false)
         expect(isEntitlementSubject(42)).toBe(false)
+    })
+})
+
+describe('identity statement (ADR 0101)', () => {
+    const statement = {
+        eventId: '00000000-0000-4000-8000-000000000001',
+        issuer: 'https://www.etherpk.com',
+        audience: IDENTITY_STATEMENT_AUDIENCE,
+        subject: '0192f8a4-0000-7000-8000-000000000001',
+        revision: 3,
+        disabled: false,
+        deleted: false,
+        credentialsRevokedAt: '2026-09-24T10:00:00.000Z',
+        issuedAt: '2026-09-24T10:00:00.000Z',
+    }
+
+    it('accepts a whole-state statement with or without a credential cut-off', () => {
+        expect(identityStatementSchema.parse(statement)).toEqual(statement)
+        expect(identityStatementSchema.parse({ ...statement, credentialsRevokedAt: null }).credentialsRevokedAt).toBeNull()
+    })
+
+    it('refuses an Entitlement audience, a zero revision and unknown fields', () => {
+        expect(identityStatementSchema.safeParse({ ...statement, audience: ENTITLEMENT_AUDIENCE }).success).toBe(false)
+        expect(identityStatementSchema.safeParse({ ...statement, revision: 0 }).success).toBe(false)
+        expect(identityStatementSchema.safeParse({ ...statement, banned: true }).success).toBe(false)
     })
 })

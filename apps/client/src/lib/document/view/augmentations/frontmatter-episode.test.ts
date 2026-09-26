@@ -75,6 +75,27 @@ describe('FrontmatterEpisode', () => {
         expect(episode.open).toBe(false)
     })
 
+    // A block the person typed in this episode has made no claim about aliases yet: without an
+    // `aliases:` line it must not clear the ones the registry holds (ADR 0061).
+    it('says whether the block it touched was created during the episode', () => {
+        const typed = new FrontmatterEpisode()
+        // The closing delimiter typed: the block appears, with the caret still inside it.
+        expect(typed.update({ blockEndBefore: -1, blockEndAfter: END, changes: [{ from: 18, to: 18 }], caret: 19, focused: true })).toBe(false)
+        typed.update(typing(12))
+        expect(typed.update(move(END + 5))).toBe(true)
+        expect(typed.blockIsNew).toBe(true)
+
+        const edited = new FrontmatterEpisode()
+        edited.update(typing(12))
+        expect(edited.update(move(END + 5))).toBe(true)
+        expect(edited.blockIsNew).toBe(false)
+
+        // Each episode is judged on its own start: the next one finds the block already there.
+        typed.update(typing(12))
+        expect(typed.update(move(END + 5))).toBe(true)
+        expect(typed.blockIsNew).toBe(false)
+    })
+
     it('reports a touched block when the editor closes', () => {
         const episode = new FrontmatterEpisode()
         episode.update(typing(12))

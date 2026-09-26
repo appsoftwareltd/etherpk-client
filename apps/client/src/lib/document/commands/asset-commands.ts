@@ -29,7 +29,7 @@ import {
 import type { AssetStore, ResolvedAsset } from '$lib/storage/fs/asset-store'
 import type { GraphAssetTools } from '$lib/storage/fs/asset-orphans'
 
-import { type AssetDeletePlan, assetUsageNeedles, planAssetDelete } from '../asset-delete'
+import { type AssetDeletePlan, type ProtectedAssetUsage, assetUsageNeedles, planAssetDelete } from '../asset-delete'
 import { removeAssetReference } from '../view/asset-remove'
 import type { RemoteGraphIndex } from '../index-worker/client'
 
@@ -55,6 +55,12 @@ export interface AssetCommandDeps {
     tools: () => GraphAssetTools | null
     /** The derived index, which answers the usage count. */
     index: () => RemoteGraphIndex | null
+    /**
+     * References inside the graph's [[Protected Document]]s, which the index never holds, read
+     * through the protection session (asset-delete.ts `protectedAssetUsage`). The workspace
+     * always supplies it; absent, protected documents are not consulted.
+     */
+    protectedUsage?: (needles: readonly string[]) => Promise<ProtectedAssetUsage>
     /** Hand a resolved asset to the browser as a download. */
     download: (url: string, fileName: string) => void
     /**
@@ -168,10 +174,13 @@ export function registerAssetCommands(
         if (!tools || !assetId) return
 
         const index = deps.index()
+        const needles = assetUsageNeedles(assetId)
+        const protectedUsage = deps.protectedUsage
         const plan = await planAssetDelete({
             // A building index has no answer, and silence must not read as "nothing references
             // it" — `planAssetDelete` treats null as a refusal to destroy bytes.
-            usage: async () => (!index || index.isBuilding() ? null : index.assetUsage(assetUsageNeedles(assetId))),
+            usage: async () => (!index || index.isBuilding() ? null : index.assetUsage(needles)),
+            ...(protectedUsage ? { protectedUsage: () => protectedUsage(needles) } : {}),
             readiness: () => tools.readyToDeleteBytes(),
         })
 

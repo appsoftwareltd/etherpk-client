@@ -5,6 +5,8 @@
     import type { PasswordResetAuthClient } from "../auth/page-clients";
     import AlertBanner from "../components/AlertBanner.svelte";
     import { page } from "$app/state";
+    import { replaceState } from "$app/navigation";
+    import { onMount } from "svelte";
 
     let { authClient }: { authClient: PasswordResetAuthClient } = $props();
 
@@ -18,7 +20,22 @@
     // handler exists - a click landing then submits natively and silently reloads the page.
     const hydrated = useHydrated();
 
-    const token = $derived(page.url.searchParams.get("token") ?? "");
+    // Read once: the token is taken out of the address bar as soon as the page has it, so it
+    // is not left in history, in a Referer, or for any script that reads location. A reload
+    // after that shows the invalid-link state; the emailed link works again until it is used or
+    // expires.
+    const token = page.url.searchParams.get("token") ?? "";
+
+    onMount(() => {
+        if (!page.url.searchParams.has("token")) return;
+        const withoutToken = new URL(page.url);
+        withoutToken.searchParams.delete("token");
+        // On a first page load this runs while SvelteKit is still starting its router, and
+        // replaceState throws until it has. The router finishes in the same task, so the next
+        // task is soon enough.
+        const timer = setTimeout(() => replaceState(withoutToken, page.state), 0);
+        return () => clearTimeout(timer);
+    });
 
     const inputBase = "block w-full rounded-lg border bg-white px-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 transition-colors";
     const inputNormal = "border-gray-300 text-gray-950 focus:border-gray-950 focus:ring-gray-950/10";
@@ -109,7 +126,7 @@
     {:else if !token}
         <div class="text-center">
             <h1 class="text-lg font-semibold text-gray-950">Invalid reset link</h1>
-            <p class="mt-2 text-sm text-gray-500">This password reset link is invalid or has expired.</p>
+            <p class="mt-2 text-sm text-gray-500">This password reset link is invalid or has expired. If you reloaded this page, open the link in your email again.</p>
             <p class="mt-4 text-sm text-gray-500">
                 <a href="/forgot-password" class="font-medium text-gray-950 hover:underline">Request a new reset link</a>
             </p>

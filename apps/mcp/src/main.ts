@@ -54,10 +54,10 @@ import { ApprovalAbandoned, unlockByDeviceApproval, unlockByRecoveryCode } from 
 import { createMcpServer } from './mcp-server'
 import { chromiumStatus, setupDiagrams } from './diagrams'
 import { defaultPublishFoldersPath, publishFolderOf, publishGraphKey, readPublishFolders, withPublishFolder, writePublishFolders } from './publish-folders'
-import { publish as publishTool } from './publish-tools'
+import { cliPublishOutput, findPublication, publish as publishTool } from './publish-tools'
 import { ToolError } from './tools'
 import { createNodeDirectoryAdapter, isGraphFolder } from './node-directory-adapter'
-import { describeGraphStore, folderCacheDir, folderKey, graphCacheDir, listGraphStores, removeCacheRoot, removeServerCache } from './persistence'
+import { describeGraphStore, folderCacheDir, folderKey, graphCacheDir, listGraphStores, removeCacheRoot, removeServerCache, removeUnlistedGraphCaches, stampGraphCacheOwner } from './persistence'
 import { bindServeLifetime } from './serve-lifetime'
 
 const VERSION: string = pkg.version
@@ -382,7 +382,10 @@ async function publishCommand(args: ServeArgs & { publication?: string; out?: st
     if (!publication) fail('publish needs --publication <id>. The agent\'s list_publications tool, or Settings → Publish in EtherPK, shows the ids.')
     const quiet = { ...args, 'no-semantic': true }
     const { graph, graphName } = folder ? await openFolderForServe(folder, quiet) : await openSyncedForServe(wanted!, quiet)
+    const host = { env: process.env, cmd: CMD, via: 'cli' as const }
     try {
+        // The publication first: a mistyped id must not be remembered as a publish folder.
+        await findPublication(graph, publication, host)
         const configPath = defaultPublishFoldersPath(process.env)
         const key = publishGraphKey(graph.backend, graph.graphId)
         if (args.out?.trim()) {
@@ -392,8 +395,9 @@ async function publishCommand(args: ServeArgs & { publication?: string; out?: st
         } else if (!publishFolderOf(await readPublishFolders(configPath), key, publication)) {
             fail(`No publish folder is set for "${publication}" of "${graphName}" on this machine. Pass --out <dir> once; it is remembered.`)
         }
-        const result = await publishTool(graph, { id: publication }, { env: process.env, cmd: CMD })
-        console.log(JSON.stringify(result, null, 2))
+        const result = await publishTool(graph, { id: publication }, host)
+        // Names nothing the site leaves out: this output often lands in a scheduled job's log.
+        console.log(JSON.stringify(cliPublishOutput(result), null, 2))
         if (!result.ok) process.exitCode = 1
     } catch (error) {
         if (error instanceof ToolError) fail(`etherpk-mcp: ${error.message}`)
@@ -490,6 +494,17 @@ async function openSyncedForServe(wanted: string, args: ServeArgs): Promise<{ gr
     const account = await connectAccount(login)
     const vault = await openAccountVault(account.api, fromBase64Url(login.vaultKey))
     const graphs = await account.api.listGraphs()
+    // A graph the server no longer lists for this login (deleted, left, taken away) leaves this
+    // machine now rather than at logout: its cache is the graph in plaintext. Against the
+    // listing that just succeeded (a failed one threw above and removes nothing), and only
+    // caches stamped for this account (another account may share the cache root).
+    const swept = await removeUnlistedGraphCaches(process.env, account.serverBaseUrl, account.principal.id, graphs.map((graph) => graph.id)).catch((error: unknown) => {
+        console.error(`etherpk-mcp: could not tidy the cache of graphs this server no longer lists: ${error instanceof Error ? error.message : String(error)}`)
+        return [] as string[]
+    })
+    if (swept.length > 0) {
+        console.error(`etherpk-mcp: removed this computer's copy of ${swept.length === 1 ? 'a graph' : `${swept.length} graphs`} ${account.serverBaseUrl} no longer lists for you: ${swept.join(', ')}.`)
+    }
 
     // By id first; else by name - the server's name envelope, or one read of the root
     // document for a graph without one (graph-labels.ts).
@@ -504,6 +519,8 @@ async function openSyncedForServe(wanted: string, args: ServeArgs): Promise<{ gr
     }
     if (!graphId) fail(`No synced graph on ${login.syncServer} is named or identified by "${wanted}". Run: ${CMD} graphs`)
     const { record, keyring } = resolveGraphById(graphs, vault, graphId)
+    const persistDir = graphCacheDir(process.env, account.serverBaseUrl, graphId)
+    await stampGraphCacheOwner(persistDir, account.principal.id)
 
     console.error(`etherpk-mcp: opening graph ${graphId} on ${account.serverBaseUrl}…`)
     const graph = await openHeadlessGraph({
@@ -516,12 +533,20 @@ async function openSyncedForServe(wanted: string, args: ServeArgs): Promise<{ gr
         readyTimeoutMs: 20_000,
         // The cache and index survive between launches, so a restart catches up rather than
         // rebuilding (persistence.ts); logout removes them with the keys.
-        persistDir: graphCacheDir(process.env, account.serverBaseUrl, graphId),
+        persistDir,
         // The encrypted asset store over the same server, for upload_asset / read_asset (ADR 0085).
         assets: { baseUrl: account.serverBaseUrl },
         embeddingModel: embeddingModelFor(args),
         onSemanticProgress: reportSemanticProgress,
         onError: (error) => console.error(`etherpk-mcp: ${error.message}`),
+        // One line, once, and the sync loop stops rather than retrying in silence. The tools
+        // refuse with a typed error from here on.
+        onAccessLost: (loss) =>
+            console.error(
+                loss.kind === 'membership'
+                    ? `etherpk-mcp: ${account.serverBaseUrl} ended this account's access to graph ${graphId}: it left, was removed, or the graph was deleted. Stopped syncing. Run: ${CMD} graphs`
+                    : `etherpk-mcp: the token for ${account.serverBaseUrl} was revoked or is no longer valid. Stopped syncing. Run: ${CMD} login --sync-server ${login.syncServer}`,
+            ),
         // Serving a graph republishes its name, so a graph only an agent ever opens still
         // labels itself on every device (ADR 0031, amended).
         publishName: createGraphNamePublisher({ api: account.api, keyring, graphId }).publish,

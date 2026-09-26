@@ -17,11 +17,6 @@
 import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 
-/** The analytics script and the beacons it sends back. */
-const ANALYTICS_ORIGIN = 'https://analytics.appsoftware.com'
-const GOOGLE_FONTS_STYLESHEET_ORIGIN = 'https://fonts.googleapis.com'
-const GOOGLE_FONTS_FILE_ORIGIN = 'https://fonts.gstatic.com'
-
 /** Inline `<script>` blocks, ignoring those with a `src` (which `script-src 'self'` covers). */
 const INLINE_SCRIPT = /<script(?![^>]*\ssrc=)[^>]*>([\s\S]*?)<\/script>/g
 
@@ -67,12 +62,6 @@ export interface CspOptions {
      * image never sets it. Development implies it.
      */
     plaintext?: boolean
-    /**
-     * Admit the analytics host for its script and the beacons it sends. Only Corporate carries
-     * the telemetry tag; the Client and the Sync Server load no third-party script, so their
-     * policies never name the host (2026-09-19).
-     */
-    analytics?: boolean
 }
 
 export function cspDirectives(options: CspOptions): Record<string, string[]> {
@@ -84,7 +73,6 @@ export function cspDirectives(options: CspOptions): Record<string, string[]> {
     // parsed. It is NOT a relaxation of the framing rule in ADR 0055 - frame-src and object-src
     // are untouched, and nothing is framed.
     const connectSrc = ["'self'", 'blob:']
-    if (options.analytics) connectSrc.push(ANALYTICS_ORIGIN)
     if (options.allowArbitrarySyncOrigins) connectSrc.push('https:', 'wss:')
     if (options.dev || options.plaintext) connectSrc.push('ws:', 'http:')
 
@@ -108,15 +96,16 @@ export function cspDirectives(options: CspOptions): Record<string, string[]> {
         'script-src': [
             "'self'",
             "'wasm-unsafe-eval'",
-            ...(options.analytics ? [ANALYTICS_ORIGIN] : []),
             ...inlineScriptHashes(options.appHtmlPath),
         ],
         // 'unsafe-inline' for styles is deliberate and much weaker than the script equivalent:
         // Mermaid and KaTeX inject stylesheets at runtime, Svelte emits inline style
         // attributes, and app.html's own body wrapper carries one. Script injection is what
         // this policy exists to stop.
-        'style-src': ["'self'", "'unsafe-inline'", GOOGLE_FONTS_STYLESHEET_ORIGIN],
-        'font-src': ["'self'", GOOGLE_FONTS_FILE_ORIGIN, 'data:'],
+        'style-src': ["'self'", "'unsafe-inline'"],
+        // Inter is bundled with each app (@fontsource-variable/inter), so no page asks Google
+        // Fonts or any other host for a font. data: covers inline fonts.
+        'font-src': ["'self'", 'data:'],
         'img-src': imgSrc,
         'media-src': ["'self'", 'blob:'],
         'connect-src': connectSrc,
@@ -129,8 +118,8 @@ export function cspDirectives(options: CspOptions): Record<string, string[]> {
         // No form-action, deliberately.
         //
         // Chrome enforces it across a form submission's whole redirect chain, and managed sign
-        // out is a same-origin form POST whose response redirects to Corporate's end-session
-        // endpoint on another origin. 'self' therefore breaks global sign out in all three apps,
+        // out is a same-origin form POST whose response redirects to Corporate's first-party
+        // sign-out route on another origin. 'self' therefore breaks global sign out in all three apps,
         // which the three-origin e2e suite demonstrated.
         //
         // It cannot be expressed correctly either: the federation partner's origin is runtime

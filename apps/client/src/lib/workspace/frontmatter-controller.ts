@@ -12,8 +12,9 @@
  *
  * Pure apart from its collaborators, so the sequencing is unit-tested without a workspace.
  */
-import { type IdentityPatch } from '$lib/document/frontmatter/identity'
+import { type IdentityPatch, frontmatterIdentity } from '$lib/document/frontmatter/identity'
 import { type Backend, type ProposalStep, type RegistryIdentity, proposeFrontmatter } from '$lib/document/frontmatter/proposal'
+import type { EpisodeEnd } from '$lib/document/view/augmentations/frontmatter-episode'
 
 /** A document's identity as the registry has it, plus what the proposal needs to read it. */
 export interface DocumentIdentity extends RegistryIdentity {
@@ -37,8 +38,11 @@ export interface FrontmatterControllerDeps {
 }
 
 export interface FrontmatterController {
-    /** An editing episode in the block ended: compute the proposal and run it. */
-    episodeEnded(target: string): Promise<void>
+    /**
+     * An editing episode in the block ended: compute the proposal and run it. `end` says what
+     * the editor knows of the episode; the mismatch mark's own Apply passes none.
+     */
+    episodeEnded(target: string, end?: EpisodeEnd): Promise<void>
     /** Put the registry's identity back into the block - the mismatch indicator's "Restore". */
     restore(target: string): void
     /** What the block proposes right now, for the indicator. Empty when it agrees or has no block. */
@@ -47,17 +51,54 @@ export interface FrontmatterController {
 
 export function createFrontmatterController(deps: FrontmatterControllerDeps): FrontmatterController {
     const running = new Map<string, Promise<void>>()
+    /**
+     * Documents whose block an episode created while it was still unreadable. Nothing was decided
+     * then, and the next episode finds the block already there; it is still new until an episode
+     * ends with it readable, or it is gone.
+     */
+    const createdUnread = new Set<string>()
 
-    function proposal(target: string): ProposalStep[] {
+    function proposal(target: string, end?: EpisodeEnd): ProposalStep[] {
         const text = deps.textOf(target)
         const registry = deps.identityOf(target)
         if (text === null || !registry) return []
-        return proposeFrontmatter({ text, registry, backend: deps.backend(), fileStem: registry.fileStem })
+        return proposeFrontmatter({ text, registry, backend: deps.backend(), fileStem: registry.fileStem, blockIsNew: end?.blockIsNew })
     }
 
-    async function run(target: string): Promise<void> {
+    /**
+     * A block the episode created without an `aliases` line made no claim about them, so the
+     * proposal left the registry's alone. Written into the block now, as part of this person's
+     * action on this device (ADR 0061), so the block agrees with the registry: otherwise the
+     * mismatch mark would offer to clear them, and the next episode would.
+     */
+    function carryAliasesIntoNewBlock(target: string): void {
+        // Only a Server Backend holds aliases outside any block. A local graph's listing reads them
+        // from the last saved file, so it can still name ones the person just cut: the file decides.
+        if (deps.backend() !== 'server') return
+        const text = deps.textOf(target)
+        const registry = deps.identityOf(target)
+        if (text === null || !registry || registry.aliases.length === 0) return
+        const claim = frontmatterIdentity(text)
+        if (claim.hasBlock && claim.readable && !claim.hasAliasesKey) deps.writeBack(target, { aliases: registry.aliases })
+    }
+
+    /**
+     * The episode's end, with a block created earlier but not yet read still counted as new. No
+     * `end` is the mark's Apply, which asks for what the block says: never new.
+     */
+    function settleNewBlock(target: string, end?: EpisodeEnd): EpisodeEnd | undefined {
+        const isNew = end !== undefined && (end.blockIsNew || createdUnread.has(target))
+        const text = deps.textOf(target)
+        const claim = text === null ? null : frontmatterIdentity(text)
+        if (isNew && claim?.hasBlock && !claim.readable) createdUnread.add(target)
+        else createdUnread.delete(target)
+        return isNew ? { blockIsNew: true } : end
+    }
+
+    async function run(target: string, given?: EpisodeEnd): Promise<void> {
+        const end = settleNewBlock(target, given)
         let current = target
-        for (const step of proposal(target)) {
+        for (const step of proposal(target, end)) {
             if (step.property === 'aliases') {
                 await deps.applyAliases(current, step.to)
                 continue
@@ -66,11 +107,12 @@ export function createFrontmatterController(deps: FrontmatterControllerDeps): Fr
             if (renamed === null) deps.writeBack(current, { title: step.from })
             else current = renamed
         }
+        if (end?.blockIsNew) carryAliasesIntoNewBlock(current)
     }
 
     return {
-        episodeEnded(target) {
-            const queued = (running.get(target) ?? Promise.resolve()).then(() => run(target))
+        episodeEnded(target, end) {
+            const queued = (running.get(target) ?? Promise.resolve()).then(() => run(target, end))
             running.set(target, queued)
             return queued.finally(() => {
                 if (running.get(target) === queued) running.delete(target)

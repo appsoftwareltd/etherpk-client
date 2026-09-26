@@ -38,7 +38,7 @@ import type { ProposalStep } from '$lib/document/frontmatter/proposal'
 import { analysisFor } from '../analysis/editor-analysis'
 import { EXTERNAL } from '../cm-document'
 import { isOwnEditing } from '../own-editing'
-import { FrontmatterEpisode } from './frontmatter-episode'
+import { type EpisodeEnd, FrontmatterEpisode } from './frontmatter-episode'
 import { FRONTMATTER_MARK, FRONTMATTER_NODE } from './frontmatter-parse'
 
 export interface FrontmatterOptions {
@@ -49,8 +49,12 @@ export interface FrontmatterOptions {
     proposal: (blockText: string) => ProposalStep[]
     /** The name the document answers to, for the mark's wording; null outside a graph. */
     documentName: () => string | null
-    /** An editing episode in the block ended. Reported once per episode, after the update. */
-    onEpisodeEnd: () => void
+    /**
+     * An editing episode in the block ended. Reported once per episode, after the update, with
+     * whether the episode created the block. The mark's Apply reports no `end`: it is not an
+     * episode, and asks for what the block says.
+     */
+    onEpisodeEnd: (end?: EpisodeEnd) => void
     /** The mark's "Restore": put the registry's identity back into the block. */
     onRestore: () => void
 }
@@ -136,12 +140,15 @@ function episodePlugin(options: FrontmatterOptions, session: EditingSession): Ex
                 session.editing = this.episode.open
                 // After the update cycle, so the View's own listener has already forwarded the
                 // text to the store the workspace will read.
-                if (ended) queueMicrotask(() => options.onEpisodeEnd())
+                if (ended) {
+                    const end = { blockIsNew: this.episode.blockIsNew }
+                    queueMicrotask(() => options.onEpisodeEnd(end))
+                }
             }
 
             destroy(): void {
                 session.editing = false
-                if (this.episode.close()) options.onEpisodeEnd()
+                if (this.episode.close()) options.onEpisodeEnd({ blockIsNew: this.episode.blockIsNew })
             }
         },
     )

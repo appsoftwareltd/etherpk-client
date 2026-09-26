@@ -66,7 +66,15 @@ export function newGraphId(newId: () => string): string {
 }
 
 export interface GraphRegistry {
+    /** The graphs to show: filesystem graphs, and synced ones of the active account it still belongs to. */
     listGraphs(): Promise<GraphRecord[]>
+    /**
+     * The id of every record this device holds, whatever account scope or membership hides it
+     * from {@link listGraphs}. For housekeeping that must not treat a signed-out or expired
+     * session as the graphs being gone: a search-index sweep against the visible list would
+     * discard every synced graph's index after a session expiry.
+     */
+    listAllGraphIds(): Promise<string[]>
     getGraph(id: string): Promise<GraphRecord | undefined>
     /** Insert or replace (idempotent on `id`). */
     insertGraph(record: GraphRecord): Promise<void>
@@ -100,6 +108,9 @@ export function createGraphRegistry(
         async listGraphs() {
             const all = await port.getAll()
             return all.filter(visible).sort((a, b) => a.createdAt - b.createdAt)
+        },
+        async listAllGraphIds() {
+            return (await port.getAll()).map((graph) => graph.id)
         },
         async getGraph(id) {
             return (await port.getAll()).find((graph) => graph.id === id && visible(graph))

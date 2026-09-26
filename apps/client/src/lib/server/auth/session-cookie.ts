@@ -32,7 +32,34 @@ function cookieKey(secret: string, purpose: CookiePurpose): Buffer {
 export interface ManagedSession {
     refreshToken: string
     idToken: string
+    /** When the refresh grant ends: the session's own lifetime. */
     expiresAt: number
+    /**
+     * The access token the last refresh or code exchange produced, and when it expires. A cache:
+     * `/auth/token` hands it out while it is fresh instead of refreshing against Corporate on every
+     * page load. Absent from older cookies and from a session whose cookie could not fit it;
+     * either way the next `/auth/token` simply refreshes.
+     */
+    accessToken?: string
+    accessExpiresAt?: number
+}
+
+/**
+ * How much life a held access token must have left to be handed out. The browser keeps what it
+ * is given until a minute before expiry, so this leaves it at least a minute of use.
+ */
+export const HELD_ACCESS_TOKEN_MIN_REMAINING_MS = 2 * 60 * 1000
+
+/** The held access token, when it is well formed and has more than two minutes left. */
+export function heldAccessToken(
+    session: ManagedSession,
+    now: number = Date.now(),
+): { accessToken: string; expiresAt: number } | null {
+    const { accessToken, accessExpiresAt } = session
+    if (typeof accessToken !== 'string' || accessToken.length === 0) return null
+    if (typeof accessExpiresAt !== 'number' || !Number.isFinite(accessExpiresAt)) return null
+    if (accessExpiresAt - now <= HELD_ACCESS_TOKEN_MIN_REMAINING_MS) return null
+    return { accessToken, expiresAt: accessExpiresAt }
 }
 
 export interface AuthorizationTransaction {

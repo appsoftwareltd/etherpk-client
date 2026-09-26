@@ -10,8 +10,15 @@ import {
 
 const sessionMaxAgeSeconds = 30 * 24 * 60 * 60
 
+/** Browsers cap a cookie near 4 KiB including its name and attributes; this leaves headroom. */
+const MAX_SESSION_COOKIE_LENGTH = 3800
+
 export const CLIENT_SSO_ATTEMPT_COOKIE = '__Host-etherpk-client-sso-attempted'
 export const CLIENT_SSO_SUPPRESSION_COOKIE = '__Host-etherpk-client-sso-suppressed'
+export const CLIENT_SSO_CHECKED_COOKIE = '__Host-etherpk-client-sso-checked'
+
+/** How long a silent miss stands before an ordinary page load asks Corporate again. */
+const CLIENT_SSO_CHECKED_SECONDS = 30 * 60
 
 const controlCookieBase = {
     path: '/',
@@ -36,8 +43,14 @@ export async function setManagedSession(
     session: ManagedSession,
     config: ManagedClientAuthConfig,
 ): Promise<void> {
-    const encrypted = await encryptSessionCookie(session, config.sessionSecret, 'managed-session')
-    if (encrypted.length > 3800) throw new Error('Managed session exceeds the safe cookie size')
+    let encrypted = await encryptSessionCookie(session, config.sessionSecret, 'managed-session')
+    if (encrypted.length > MAX_SESSION_COOKIE_LENGTH && session.accessToken !== undefined) {
+        // The held access token is only a cache. Long profile claims can push two JWTs past the
+        // cap; drop the cache rather than the session, and the next /auth/token refreshes.
+        const { accessToken: _dropped, accessExpiresAt: _droppedExpiry, ...grant } = session
+        encrypted = await encryptSessionCookie(grant, config.sessionSecret, 'managed-session')
+    }
+    if (encrypted.length > MAX_SESSION_COOKIE_LENGTH) throw new Error('Managed session exceeds the safe cookie size')
     cookies.set(MANAGED_SESSION_COOKIE, encrypted, {
         ...cookieBase(config),
         maxAge: Math.min(sessionMaxAgeSeconds, Math.max(0, Math.floor((session.expiresAt - Date.now()) / 1000))),
@@ -59,6 +72,24 @@ export function takeClientSsoAttempted(cookies: Cookies): boolean {
     const attempted = cookies.get(CLIENT_SSO_ATTEMPT_COOKIE) === '1'
     if (attempted) cookies.delete(CLIENT_SSO_ATTEMPT_COOKIE, controlCookieBase)
     return attempted
+}
+
+/**
+ * Remember that Corporate had no session for this browser, so ordinary page loads stop asking
+ * for a while. Without the marker every signed-out load would run the check, four redirects
+ * through Corporate each, and use up Corporate's per-address authorize limit. Arriving from
+ * another origin still checks (managed-routing.ts); an explicit sign-in clears the marker.
+ */
+export function markClientSsoChecked(cookies: Cookies): void {
+    cookies.set(CLIENT_SSO_CHECKED_COOKIE, '1', { ...controlCookieBase, maxAge: CLIENT_SSO_CHECKED_SECONDS })
+}
+
+export function isClientSsoChecked(cookies: Cookies): boolean {
+    return cookies.get(CLIENT_SSO_CHECKED_COOKIE) === '1'
+}
+
+export function clearClientSsoChecked(cookies: Cookies): void {
+    cookies.delete(CLIENT_SSO_CHECKED_COOKIE, controlCookieBase)
 }
 
 /** Keep an explicit Client-only disconnect stable while Corporate remains signed in. */

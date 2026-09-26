@@ -1,12 +1,14 @@
 <script lang="ts">
     import { page } from "$app/state";
+    import type { Snippet } from "svelte";
     import { CLIENT_REPOSITORY_URL } from "../deployment-navigation";
 
     /**
      * The public landing page, served by Corporate (www) and by the Client (app) so the two
      * never drift. Only the destinations differ, which is why they are props: a standalone
      * Client has no Corporate, so pricing is simply absent there, and the button row shrinks
-     * to what is offered rather than leaving a gap.
+     * to what is offered rather than leaving a gap. `belowHero` is the one place an app adds
+     * content of its own.
      *
      * `canonicalUrl` is Corporate's copy of this page: Corporate names its own, a managed
      * Client names Corporate's so search engines index one copy, and a standalone Client has
@@ -24,12 +26,15 @@
         pricingHref = "/pricing",
         docsHref = "https://docs.etherpk.com",
         canonicalUrl = null,
+        belowHero,
     }: {
         appHref?: string;
         demoHref?: string | null;
         pricingHref?: string | null;
         docsHref?: string;
         canonicalUrl?: string | null;
+        /** A section of the app's own, shown between the hero and the three steps. */
+        belowHero?: Snippet;
     } = $props();
 
     const socialImageUrl = $derived(new URL("/marketing/social-card.png", page.url.origin).href);
@@ -365,6 +370,9 @@
         <figcaption class="mx-auto mt-4 max-w-3xl text-center text-sm leading-6 text-gray-500 dark:text-gray-400">The demo graph, in the dark theme. A page and its frontmatter in the middle, everything that links to it on the right, and the calendar, favourites and recents in the sidebar. What is on screen is the markdown itself, styled in place.</figcaption>
     </figure>
 </section>
+
+<!-- ── The app's own section, if it passes one ───────────────────── -->
+{@render belowHero?.()}
 
 <!-- ── Three steps ───────────────────────────────────────────────── -->
 <section class="mx-auto max-w-7xl px-4 pt-20 sm:px-6 sm:pt-28" aria-labelledby="steps-heading">

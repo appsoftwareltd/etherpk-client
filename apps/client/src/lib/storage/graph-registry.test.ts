@@ -89,6 +89,22 @@ describe('createGraphRegistry', () => {
         expect((await reg.listGraphs()).map((graph) => graph.id)).toEqual(['local', 'a'])
     })
 
+    // The index-pool sweep keeps the search index of every graph this DEVICE holds. A signed-out,
+    // expired or other account hides synced records from listGraphs; sweeping against that list
+    // would re-index every synced graph after each session expiry.
+    it('lists every record the device holds, whatever account scope or membership hides it', async () => {
+        let active: typeof accountA | null = accountA
+        const reg = createGraphRegistry(memoryPort(), { activeServerScope: () => active })
+        await reg.insertGraph(record('local', 1))
+        await reg.insertGraph(serverRecord('a'))
+        await reg.insertGraph(serverRecord('b', accountB))
+        await reg.insertGraph({ ...serverRecord('left'), membershipActive: false })
+        active = null
+
+        expect((await reg.listGraphs()).map((graph) => graph.id)).toEqual(['local'])
+        expect((await reg.listAllGraphIds()).sort()).toEqual(['a', 'b', 'left', 'local'])
+    })
+
     it('requires every new Server graph to carry an account scope', async () => {
         const reg = createGraphRegistry(memoryPort(), { activeServerScope: () => accountA })
 

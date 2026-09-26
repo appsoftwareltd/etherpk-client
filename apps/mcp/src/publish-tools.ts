@@ -35,10 +35,38 @@ import { ToolError } from './tools'
 export interface PublishHost {
     env?: NodeJS.ProcessEnv
     cmd?: string
+    /**
+     * Who reads the refusals: an agent over MCP (the default), or a person at the command line,
+     * who has no `list_publications` tool to run.
+     */
+    via?: 'agent' | 'cli'
 }
 
-function hostOf(host: PublishHost | undefined): { env: NodeJS.ProcessEnv; cmd: string } {
-    return { env: host?.env ?? process.env, cmd: host?.cmd ?? 'etherpk-mcp' }
+function hostOf(host: PublishHost | undefined): { env: NodeJS.ProcessEnv; cmd: string; via: 'agent' | 'cli' } {
+    return { env: host?.env ?? process.env, cmd: host?.cmd ?? 'etherpk-mcp', via: host?.via ?? 'agent' }
+}
+
+/**
+ * The refusal for an id no publication has, naming the ids there are. An agent is pointed at
+ * its tool; a person at the command line, who has no agent tool to run, at the Publish tab.
+ */
+function publicationNotFound(id: string, publications: readonly Publication[], via: 'agent' | 'cli'): ToolError {
+    const where = via === 'cli' ? 'Settings → Publish in EtherPK lists them.' : 'list_publications shows them.'
+    const known = publications.length === 0 ? 'This graph defines no publication yet.' : `Its publications: ${publications.map((p) => p.id).join(', ')}.`
+    return new ToolError('publication_not_found', `No publication has the id "${id}". ${known} ${where}`)
+}
+
+/**
+ * The publication with this id, or the refusal a publish would give. The command line asks
+ * before it remembers a publish folder, so a mistyped id is not written down.
+ */
+export async function findPublication(graph: HeadlessGraph, id: string, host?: PublishHost): Promise<Publication> {
+    const { via } = hostOf(host)
+    await graph.store.refresh()
+    const { publications } = summarisePublishing((await graph.publishing.readSource()).source)
+    const found = publications.find((p) => p.id === id.trim())
+    if (!found) throw publicationNotFound(id, publications, via)
+    return found
 }
 
 /** The publication page's mapping and body, through the raw handles: what `publish-service` writes to. */
@@ -156,8 +184,9 @@ export interface UpdatePublicationArgs {
 export async function updatePublication(graph: HeadlessGraph, args: UpdatePublicationArgs, host?: PublishHost) {
     const { env } = hostOf(host)
     await graph.store.refresh()
-    const current = summarisePublishing((await graph.publishing.readSource()).source).publications.find((p) => p.id === args.id.trim())
-    if (!current) throw new ToolError('publication_not_found', `No publication has the id "${args.id}"; list_publications shows them.`)
+    const all = summarisePublishing((await graph.publishing.readSource()).source).publications
+    const current = all.find((p) => p.id === args.id.trim())
+    if (!current) throw publicationNotFound(args.id, all, hostOf(host).via)
     const changes = args.changes ?? {}
     if (changes.kind !== undefined && changes.kind !== null && changes.kind !== 'docs' && changes.kind !== 'blog') throw new ToolError('invalid_argument', 'kind must be "docs" or "blog".')
     if (changes.selection !== undefined && changes.selection !== null && changes.selection !== 'named' && changes.selection !== 'all-public') throw new ToolError('invalid_argument', 'selection must be "named" or "all-public".')
@@ -179,6 +208,13 @@ export interface PublishArgs {
     id: string
 }
 
+/** How many items fall under each key. */
+function countBy<T>(items: readonly T[], keyOf: (item: T) => string): Record<string, number> {
+    const counts: Record<string, number> = {}
+    for (const item of items) counts[keyOf(item)] = (counts[keyOf(item)] ?? 0) + 1
+    return counts
+}
+
 /** The first entries of a long list, and how many there were. */
 function head<T>(items: readonly T[], n = 20): { total: number; first: T[] } {
     return { total: items.length, first: items.slice(0, n) }
@@ -187,15 +223,22 @@ function head<T>(items: readonly T[], n = 20): { total: number; first: T[] } {
 /**
  * Publish one publication into its Publish Folder and report. The folder is the one a person
  * set for this graph and publication on this machine (ADR 0086); a publish with Mermaid needs
- * the browser (ADR 0084). The full report is in the folder as `etherpk-publish.json`.
+ * the browser (ADR 0084).
+ *
+ * The result IS the report, trimmed to counts and first entries: nothing of it is written into
+ * the folder, because a static host serves whatever the folder holds and the report names every
+ * document the site leaves out, protected ones included. The documents left out are counted by
+ * reason rather than listed: that is every document outside the publication, most of a large
+ * graph. The command line prints {@link cliPublishOutput} instead, which names nothing the site
+ * leaves out.
  */
 export async function publish(graph: HeadlessGraph, args: PublishArgs, host?: PublishHost) {
-    const { env, cmd } = hostOf(host)
+    const { env, cmd, via } = hostOf(host)
     await graph.store.refresh()
     const { source, unsettled } = await graph.publishing.readSource()
     const summary = summarisePublishing(source)
     const publication = summary.publications.find((p) => p.id === args.id.trim())
-    if (!publication) throw new ToolError('publication_not_found', `No publication has the id "${args.id}"; list_publications shows them.`)
+    if (!publication) throw publicationNotFound(args.id, summary.publications, via)
     const folder = (await foldersFor(graph, env))(publication.id)
     if (!folder) {
         const where = graph.backend.kind === 'folder' ? `--folder "${graph.backend.path}"` : `--graph "${graph.name}"`
@@ -233,15 +276,34 @@ export async function publish(graph: HeadlessGraph, args: PublishArgs, host?: Pu
             excluded: { total: run.report.excluded.length, byReason: excludedByReason },
             errors: run.report.errors,
             warnings: run.report.warnings,
-            missingLinks: head(run.report.missingLinks),
+            missingLinks: { ...head(run.report.missingLinks), byStatus: countBy(run.report.missingLinks, (link) => link.status) },
             assets: { copied: run.report.assets.copied.length, missing: run.report.assets.missing },
             collisions: run.report.collisions,
             publicInNoPublication: run.report.publicInNoPublication,
             ...(unsettled.length > 0 ? { unsettled } : {}),
-            report: run.report.ok ? `${folder}/etherpk-publish.json` : null,
         }
     } finally {
         await renderer?.dispose()
+    }
+}
+
+/**
+ * What `etherpk-mcp publish` prints: the tool's result with every name the site leaves out
+ * reduced to a count. A scheduled publish's log can be as public as the site (a public CI run),
+ * so links are counted by status (a "private" status says a hidden page exists), documents not
+ * yet synced and public documents in no publication are counted, and warnings keep their codes
+ * without the sentences that name pages. What was published, and the errors that stopped a
+ * publish, are printed as they are: the site shows the one, and the other is what to fix.
+ */
+export function cliPublishOutput(result: Awaited<ReturnType<typeof publish>>) {
+    const { unsettled, ...rest } = result
+    return {
+        ...rest,
+        missingLinks: { total: result.missingLinks.total, byStatus: result.missingLinks.byStatus },
+        warnings: { total: result.warnings.length, byCode: countBy(result.warnings, (warning) => warning.code) },
+        publicInNoPublication: result.publicInNoPublication.length,
+        ...(unsettled ? { unsettled: unsettled.length } : {}),
+        note: 'Documents the site leaves out are counted here, not named. Settings → Publish in EtherPK shows the full report.',
     }
 }
 

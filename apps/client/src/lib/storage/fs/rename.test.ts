@@ -3,6 +3,7 @@
  * they touch, and the refusals are the part that must not regress.
  */
 import { describe, expect, it } from 'vitest'
+import { stringify as stringifyYaml } from 'yaml'
 
 import { createFilesystemDocumentStore } from './filesystem-store'
 import { createMemoryDirectoryAdapter } from './memory-adapter'
@@ -17,10 +18,12 @@ async function graph(files: { subdir: 'pages' | 'journals'; name: string; text: 
     return { adapter, store }
 }
 
+// The block EtherPK itself writes: a scoped title such as `[[Physics]] Quantum` is quoted, since
+// an unquoted `[[` starts a YAML list and the block would not parse.
 const page = (title: string, body = '') => ({
     subdir: 'pages' as const,
     name: `${title}.md`,
-    text: `---\ntitle: ${title}\n---\n${body}`,
+    text: `---\n${stringifyYaml({ title })}---\n${body}`,
 })
 
 describe('renamePage — alias strategy', () => {
@@ -171,6 +174,66 @@ describe('renamePage — refusals', () => {
     it('does not refuse an unknown concept - it is pageless, and renames by rewriting (ADR 0064)', async () => {
         const { store } = await graph([page('Physics')])
         await expect(store.renamePage('Nope', 'X', { strategy: 'alias' })).resolves.toMatchObject({ concept: 'X' })
+    })
+})
+
+/**
+ * A rename rewrites each document's block from its parsed YAML. A block that does not parse reads
+ * as empty, so the rewrite would replace it with a bare title and drop every key it held - from
+ * the file, which on a local graph is the only copy. The rename is refused instead, before any
+ * step writes, and every file stays exactly as it was.
+ */
+describe('renamePage — a block whose YAML does not parse', () => {
+    const broken = '---\ntags: [a]\nstatus: draft\ntags: [b]\n---\n- body\n'
+    const refusal = /frontmatter is not valid YAML/
+
+    async function files(adapter: DirectoryAdapter): Promise<Record<string, string>> {
+        const out: Record<string, string> = {}
+        for (const entry of await adapter.list('pages')) out[entry.name] = (await adapter.read('pages', entry.name)).text
+        return out
+    }
+
+    it('refuses to rename the page, under either link strategy, and writes nothing', async () => {
+        const { adapter, store } = await graph([{ subdir: 'pages', name: 'Draft.md', text: broken }])
+        const before = await files(adapter)
+        // The dialog's preview says so before Confirm, and the Headless Client refuses on it.
+        expect((await store.planRename('Draft', 'Final')).refusal).toMatch(/^“Draft” cannot be renamed while its frontmatter is not valid YAML/)
+        for (const strategy of ['alias', 'rewrite'] as const) {
+            await expect(store.renamePage('Draft', 'Final', { strategy })).rejects.toThrow(refusal)
+        }
+        expect(await files(adapter)).toEqual(before)
+    })
+
+    it('refuses a cascade when a cascaded page’s block does not parse, before the first step writes', async () => {
+        const { adapter, store } = await graph([
+            page('Physics', '- p'),
+            { subdir: 'pages', name: '[[Physics]] Quantum.md', text: broken },
+        ])
+        const before = await files(adapter)
+        await expect(store.renamePage('Physics', 'Physical Science', { strategy: 'alias' })).rejects.toThrow(
+            '“Physics” cannot be renamed while the frontmatter of “[[Physics]] Quantum”, which the rename rewrites, is not valid YAML',
+        )
+        expect(await files(adapter)).toEqual(before)
+    })
+
+    // The check reads what the rename rewrites: the file, not an open buffer still inside its
+    // autosave. A block fixed in the editor but not yet saved is still broken on disk.
+    it('judges the file the rename rewrites, not an open buffer that has not been saved', async () => {
+        const { store } = await graph([{ subdir: 'pages', name: 'Draft.md', text: broken }])
+        await store.whenReady('Draft')
+        const handle = store.open('Draft')
+        const fixed = '---\ntags: [a, b]\nstatus: draft\n---\n'
+        handle.applyChange({ from: 0, to: handle.getText().indexOf('- body'), insert: fixed })
+        expect((await store.planRename('Draft', 'Final')).refusal).toMatch(refusal)
+        await store.flushDocument('Draft')
+        expect((await store.planRename('Draft', 'Final')).refusal).toBeNull()
+    })
+
+    it('refuses to merge into a page whose block does not parse', async () => {
+        const { adapter, store } = await graph([page('Physics', '- p'), { subdir: 'pages', name: 'Recipes.md', text: broken }])
+        const before = await files(adapter)
+        await expect(store.renamePage('Physics', 'Recipes', { strategy: 'alias' })).rejects.toThrow('the frontmatter of “Recipes”, which the rename rewrites')
+        expect(await files(adapter)).toEqual(before)
     })
 })
 

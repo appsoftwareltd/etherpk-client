@@ -385,6 +385,8 @@ describe('server rename — the rewrite merges with concurrent typing', () => {
         throw new Error(`never reached ${JSON.stringify(expected)}`)
     }
     /** Poll until `read()` satisfies `ok`, generous because the whole suite may be running. */
+    // Both helpers poll for up to 10 s, so the tests below set a 15 s timeout: vitest's 5 s
+    // default cut them off under full-suite load before a slow convergence could land.
     async function poll(read: () => string, ok: (text: string) => boolean) {
         for (let i = 0; i < 200; i++) {
             try { if (ok(read())) return } catch { /* not yet */ }
@@ -392,7 +394,7 @@ describe('server rename — the rewrite merges with concurrent typing', () => {
         }
     }
 
-    it('a keystroke typed elsewhere while the rewrite lands stays where it was typed', async () => {
+    it('a keystroke typed elsewhere while the rewrite lands stays where it was typed', { timeout: 15_000 }, async () => {
         const { a, b } = await pairOn('g-rewrite-concurrent')
         await a.store.createPage('Notes')
         a.store.open('Notes').applyChange({ from: 0, to: 0, insert: '- see [[Old]] here\n- second line' })
@@ -408,7 +410,7 @@ describe('server rename — the rewrite merges with concurrent typing', () => {
         b.dispose()
     })
 
-    it('a keystroke typed inside the link while the rewrite lands is not thrown to the start', async () => {
+    it('a keystroke typed inside the link while the rewrite lands is not thrown to the start', { timeout: 15_000 }, async () => {
         const { a, b } = await pairOn('g-rewrite-concurrent-inside')
         await a.store.createPage('Notes')
         a.store.open('Notes').applyChange({ from: 0, to: 0, insert: 'x [[Old]] y' })
@@ -578,5 +580,47 @@ describe('server rename — the rewrite over documents that are not live', () =>
         // Nothing moved: not the page, not the links.
         expect(b.store.listDocuments().map((d) => d.concept)).toContain('Physics')
         await b.close()
+    })
+})
+
+describe('server rename - engine holds', () => {
+    // graph-sync counts one hold per document per readyDocs, taken when it is called and released
+    // by the caller's retireDocs whether or not the batch's reads succeed. A rename whose
+    // materialise failed part way must release exactly what it asked for, once each: a batch
+    // released twice, or one never asked for, frees an engine another walk still holds.
+    it('releases each batch it asked for exactly once when a batch fails', async () => {
+        const g = await graph('g-holds')
+        await page(g.store, 'Physics', '- p')
+        for (let i = 0; i < 120; i++) {
+            g.sync.registry().set(`00000000-0000-4000-8000-${i.toString(16).padStart(12, '0')}`, { kind: 'page', title: `Filler ${i}` })
+        }
+        const asked: string[] = []
+        const retired: string[] = []
+        let batches = 0
+        const failing = {
+            ...g.sync,
+            async readyDocs(ids: readonly string[]) {
+                batches += 1
+                asked.push(...ids)
+                // The real call takes the holds; its reads then fail, as a cached row that will
+                // not load does.
+                await g.sync.readyDocs(ids)
+                if (batches === 2) throw new Error('the second batch failed')
+            },
+            retireDocs(ids: readonly string[]) {
+                retired.push(...ids)
+                g.sync.retireDocs(ids)
+            },
+        }
+        const store = createServerDocumentStore(failing, {})
+        await store.scan()
+        batches = 0
+
+        await expect(store.renamePage('Physics', 'Physical Science', { strategy: 'rewrite' })).rejects.toThrow('the second batch failed')
+
+        expect(batches).toBe(2)
+        expect([...retired].sort()).toEqual([...asked].sort())
+        expect(new Set(retired).size).toBe(retired.length)
+        g.dispose()
     })
 })

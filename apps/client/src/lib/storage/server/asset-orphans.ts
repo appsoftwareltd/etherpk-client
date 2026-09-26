@@ -9,13 +9,29 @@
  * orphans. Any doc that cannot catch up within the timeout ABORTS the scan.
  *
  * Reference test is conservative, like the filesystem scanner: an asset counts as
- * referenced if its (random, unguessable) asset id appears anywhere in any document.
+ * referenced if its (random, unguessable) asset id appears anywhere in any document. A
+ * [[Protected Document]] is read through the protection session while it is unlocked, and while
+ * any cannot be read nothing is offered: the rule and the reference test are the filesystem
+ * scanner's own (`referenceTexts`, `orphanScanOf`), so the two backends cannot disagree.
+ *
+ * Each candidate is labelled with the file name the uploader chose, read from the asset's
+ * encrypted metadata: an eight-character id prefix would tell nobody which file they were deleting.
  */
 
-import type { GraphKeyring } from '$lib/crypto'
+import { type GraphKeyring, contextAad, fromBase64Url, keyForEpoch, openSymmetric } from '$lib/crypto'
+import { mapWithPool } from '$lib/concurrency'
+import type { ProtectedTextReader } from '$lib/document/protection/protected-text-reader'
+import { contentBlocked } from '$lib/sync/doc-sync'
 import type { GraphSync } from '$lib/sync/graph-sync'
 import type { SyncTokenSource } from '$lib/sync/sync-token'
-import type { GraphAssetTools, OrphanScan, OrphanedAsset } from '$lib/storage/fs/asset-orphans'
+import {
+    type GraphAssetTools,
+    type OrphanScan,
+    type OrphanedAsset,
+    isReferenced,
+    orphanScanOf,
+    referenceTexts,
+} from '$lib/storage/fs/asset-orphans'
 
 import { serverAssetByteReadiness } from './asset-byte-readiness'
 import { backfillAssetDedupTokens } from './asset-dedup-backfill'
@@ -31,10 +47,18 @@ export interface ServerAssetOrphanDeps {
     /** Per-document catchup bound; scan aborts (never guesses) on timeout. */
     timeoutMs?: number
     /**
-     * TEMPORARY (ADR 0053): when present, the scan also backfills dedup tokens onto assets
-     * uploaded before tokens existed (`asset-dedup-backfill.ts`). Delete with that module.
+     * The graph's keys. The scan reads each candidate's file name from its encrypted metadata
+     * with them, and (TEMPORARY, ADR 0053) backfills dedup tokens onto assets uploaded before
+     * tokens existed (`asset-dedup-backfill.ts`). Without it candidates wear their id.
      */
     keyring?: GraphKeyring
+    /** Reads a Protected Document's plaintext while the graph is unlocked; absent, none is read. */
+    readProtected?: ProtectedTextReader
+    /**
+     * Commits pending edits before the scan reads: a protected document's projection encrypts
+     * on a debounce, so a reference pasted moments ago is otherwise not in its stored text yet.
+     */
+    settle?: () => Promise<void>
 }
 
 export interface ListedAsset {
@@ -90,9 +114,13 @@ export async function scanOrphanedServerAssets(deps: ServerAssetOrphanDeps): Pro
         : undefined
 
     // Collect every document's text, gated on its first catchup (see module doc).
+    await deps.settle?.()
     const docIds: string[] = []
     deps.graph.registry().forEach((_entry, docId) => docIds.push(docId))
-    const texts: string[] = []
+    const stored: string[] = []
+    // A document whose key is unavailable, or whose history will not decrypt, reads as empty:
+    // its references are as invisible as a locked protected document's, so it is unread too.
+    let unreadableOther = 0
     for (const docId of docIds) {
         const engine = deps.graph.docSync(docId)
         const caught = await Promise.race([
@@ -100,14 +128,64 @@ export async function scanOrphanedServerAssets(deps: ServerAssetOrphanDeps): Pro
             new Promise<boolean>((resolve) => setTimeout(() => resolve(false), deps.timeoutMs ?? 8000)),
         ])
         if (!caught) throw new Error('A document has not finished syncing; try again once the graph is fully synced')
-        texts.push(engine.doc.getText('content').toString())
+        if (contentBlocked(engine.health())) {
+            unreadableOther += 1
+            continue
+        }
+        stored.push(engine.doc.getText('content').toString())
     }
 
-    const referenced = (assetId: string) => texts.some((t) => t.includes(assetId))
-    const orphans: OrphanedAsset[] = assets
-        .filter((a) => !referenced(a.assetId))
-        .map((a) => ({ id: a.assetId, label: `${a.assetId.slice(0, 8)}… (${formatSize(a.size)})`, size: a.size }))
-    return { orphans, totalAssets: assets.length, scannedDocuments: texts.length, ...(dedupBackfill ? { dedupBackfill } : {}) }
+    const { texts, unreadableProtected } = await referenceTexts(stored, deps.readProtected)
+    const unused = assets.filter((a) => !isReferenced(texts, a.assetId))
+    // Names only for what will be shown: a withheld candidate is not listed.
+    const names = unreadableProtected === 0 && unreadableOther === 0 ? await assetNames(deps, unused.map((a) => a.assetId)) : new Map<string, string>()
+    const candidates: OrphanedAsset[] = unused.map((a) => ({ id: a.assetId, label: orphanLabel(a, names.get(a.assetId)), size: a.size }))
+    const scan = orphanScanOf(candidates, {
+        totalAssets: assets.length,
+        scannedDocuments: docIds.length,
+        unreadableProtected,
+        unreadableOther,
+        unlockable: deps.readProtected !== undefined,
+    })
+    return { ...scan, ...(dedupBackfill ? { dedupBackfill } : {}) }
+}
+
+/** The file name the uploader chose, then the size; the id prefix only when no name could be read. */
+function orphanLabel(asset: ListedAsset, name: string | undefined): string {
+    return name ? `${name} (${formatSize(asset.size)})` : `${asset.assetId.slice(0, 8)}… (${formatSize(asset.size)})`
+}
+
+/**
+ * Each asset's file name from its encrypted metadata, the decrypt `readAssetBytes` performs
+ * without the chunks. Best effort: a name that cannot be read leaves that asset labelled by id.
+ */
+async function assetNames(deps: ServerAssetOrphanDeps, assetIds: readonly string[]): Promise<Map<string, string>> {
+    const names = new Map<string, string>()
+    const keyring = deps.keyring
+    if (!keyring || assetIds.length === 0) return names
+    const { f, base, headers } = api(deps)
+    await mapWithPool(
+        assetIds,
+        async (assetId) => {
+            try {
+                const res = await f(`${base}/api/v1/sync/assets/${deps.graphId}/${assetId}`, { headers: await headers() })
+                if (!res.ok) return
+                const { encryptedMetadata } = (await res.json()) as { encryptedMetadata?: string }
+                if (!encryptedMetadata) return
+                const { plaintext } = await openSymmetric({
+                    keyForEpoch: (id) => keyForEpoch(keyring, id),
+                    envelope: fromBase64Url(encryptedMetadata),
+                    aad: contextAad('asset-meta', `graph:${deps.graphId}`, `id:${assetId}`),
+                })
+                const { name } = JSON.parse(new TextDecoder().decode(plaintext)) as { name?: unknown }
+                if (typeof name === 'string' && name.trim() !== '') names.set(assetId, name)
+            } catch {
+                // Labelled by id instead.
+            }
+        },
+        { limit: 4 },
+    )
+    return names
 }
 
 /**

@@ -87,7 +87,10 @@ export interface HeadlessDocuments {
  * because what "not settled" means differs: the relay has not acknowledged, or the file could
  * not be written.
  */
-export type SettleResult = { settled: true } | { settled: false; outstanding: number; message: string }
+export type SettleResult =
+    | { settled: true }
+    /** `code` is the tool error to raise: `write_refused` when the server said no, else `not_settled`. */
+    | { settled: false; outstanding: number; message: string; code?: 'write_refused' }
 
 /** The document's text after its frontmatter block, and where that block ends. */
 export function bodyOf(text: string): { head: number; body: string } {

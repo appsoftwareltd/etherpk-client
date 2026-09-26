@@ -120,13 +120,19 @@ export function createSyncApi(deps: SyncApiDeps) {
                 method: 'PUT',
                 body: JSON.stringify({ publicKey }),
             }),
-        getIdentityByEmail: (email: string) =>
-            call<{ userId: string; publicKey: string }>(`/api/v1/sync/identity?email=${encodeURIComponent(email)}`).catch(
-                (e: unknown) => {
-                    if (e instanceof SyncApiError && (e.status === 404 || e.status === 409)) return null
-                    throw e
-                },
-            ),
+        /**
+         * An invitee's identity key, for the owner of `graphId`. The address travels in the body
+         * so it stays out of request and proxy logs; the server answers only a graph's owner and
+         * rate-limits the lookup. `null` when nobody with that address can be invited yet.
+         */
+        getIdentityByEmail: (graphId: string, email: string) =>
+            call<{ userId: string; publicKey: string }>('/api/v1/sync/identity/lookup', {
+                method: 'POST',
+                body: JSON.stringify({ graphId, email }),
+            }).catch((e: unknown) => {
+                if (e instanceof SyncApiError && e.status === 404) return null
+                throw e
+            }),
         createInvite: (graphId: string, inviteeEmail: string, sealedKeyring: string) =>
             call<{ id: string }>('/api/v1/sync/invites', {
                 method: 'POST',

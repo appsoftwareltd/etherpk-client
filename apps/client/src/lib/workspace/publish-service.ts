@@ -11,6 +11,7 @@
 
 import { bundledTheme } from '@appsoftwareltd/etherpk-themes'
 
+import { withAliasesInAddedBlock } from '$lib/document/frontmatter/identity'
 import { withFrontmatterPatch } from '$lib/document/frontmatter/patch'
 import { type PublishingPatch, withPublishing } from '$lib/document/frontmatter/publishing'
 import { agentsMdWithManagedSection, seededFiles } from '$lib/document/publish/seeded'
@@ -23,6 +24,7 @@ import { type GraphTheme, graphThemeFromFiles, isGraphThemeId } from '$lib/docum
 import { fetchTheme, isThemeUrl } from '$lib/document/publish/theme/sources'
 import type { DocumentStore } from '$lib/document/types'
 import { frontmatterSpan } from '$lib/storage/fs/frontmatter-span'
+import { conceptKey } from '$lib/storage/fs/identity'
 import { publishSlug } from '$lib/document/wikilink/derive'
 
 /**
@@ -32,20 +34,35 @@ import { publishSlug } from '$lib/document/wikilink/derive'
  */
 export interface FrontmatterStore extends DocumentStore {
     flushDocument?(target: string): Promise<void>
+    /**
+     * Every document's identity key and aliases, as the registry holds them. A writer that adds a
+     * block to a document carries its aliases in from here (`withAliasesInAddedBlock`). Both real
+     * stores have it; a store without it is treated as holding no aliases outside any block.
+     */
+    listDocuments?(): readonly { key: string; aliases: readonly string[] }[]
 }
 
 /** Replace a document's frontmatter block with the one `rewrite` produces, through its live handle. */
 export async function rewriteFrontmatter(store: FrontmatterStore, concept: string, rewrite: (text: string) => string): Promise<boolean> {
     await store.whenReady?.(concept)
+    // Edits still inside a Filesystem store's autosave are written first, so its listing - which
+    // a local graph reads from the file - agrees with the text before any aliases are carried.
+    await store.flushDocument?.(concept)
     const handle = store.open(concept)
     const text = handle.getText()
-    const next = rewrite(text)
+    const next = withAliasesInAddedBlock(text, rewrite(text), registryAliases(store, concept))
     if (next === text) return false
     const before = frontmatterSpan(text)?.end ?? 0
     const after = frontmatterSpan(next)?.end ?? 0
     handle.applyChange({ from: 0, to: before, insert: next.slice(0, after) }, 'external')
     await store.flushDocument?.(concept)
     return true
+}
+
+/** The document's aliases as its store's registry holds them, found by its identity key. */
+function registryAliases(store: FrontmatterStore, concept: string): readonly string[] {
+    const key = conceptKey(concept)
+    return store.listDocuments?.().find((entry) => entry.key === key)?.aliases ?? []
 }
 
 /** Set a document's `public` and `publications` (adding a block if it has none). */
@@ -247,7 +264,11 @@ export async function runPublish(publication: Publication, deps: PublishRunDeps)
             message: `${deps.unsettled.length} document${deps.unsettled.length === 1 ? ' has' : 's have'} not finished syncing to this device and ${deps.unsettled.length === 1 ? 'was' : 'were'} left out: ${deps.unsettled.slice(0, 5).join(', ')}${deps.unsettled.length > 5 ? '…' : ''}. Publish again once sync has caught up.`,
         })
     }
-    if (report.ok) bundle.set('etherpk-publish.json', `${JSON.stringify(report, null, 2)}\n`)
+    // The report stays OUT of the bundle. It names every document the site leaves out, protected
+    // ones included, and says which linked names are real private pages; a static host serves
+    // whatever the folder holds, so a copy there would publish exactly what the site withholds.
+    // The Publish tab shows it and the Headless Client returns it instead. The name is an owned
+    // path (site-writer.ts), so a publish deletes any copy left in the folder.
     return {
         report,
         bundle,
