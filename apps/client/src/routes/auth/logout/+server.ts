@@ -15,5 +15,6 @@ export const POST: RequestHandler = async ({ cookies, fetch, request, url }) => 
     // This is deliberately narrower than coordinated EtherPK sign-out. Keep the choice stable
     // even when the Corporate browser session could immediately establish Client SSO again.
     suppressClientSso(cookies)
-    redirect(303, '/graphs?managed=signed-out')
+    // "disconnected", not "signed-out": the Graphs page says the account itself stays signed in.
+    redirect(303, '/graphs?managed=disconnected')
 }

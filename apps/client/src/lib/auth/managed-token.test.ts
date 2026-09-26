@@ -57,6 +57,17 @@ describe('managed bearer tokens', () => {
         expect(fetcher).toHaveBeenCalledTimes(1)
     })
 
+    // No session at all is the ordinary signed-out state. The endpoint says so with a 204, which
+    // leaves no failed request in the console, and it reads the same as a 401 here.
+    it('reads an answer with no session as signed out', async () => {
+        const fetcher = vi.fn<typeof fetch>(async () => new Response(null, { status: 204 }))
+
+        await expect(managedBearerToken(fetcher)).rejects.toEqual(
+            new ManagedTokenError('Managed Sync sign-in is required', 401),
+        )
+        expect(fetcher).toHaveBeenCalledTimes(1)
+    })
+
     it('preserves an unauthorised token response as an authentication failure', async () => {
         const fetcher = vi.fn(async () => new Response(
             JSON.stringify({ error: 'Managed Sync sign-in is required' }),

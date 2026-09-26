@@ -21,6 +21,8 @@ export interface RetryOptions {
     attempts?: number
     /** The first backoff; each subsequent wait doubles it. Default 500ms. */
     baseDelayMs?: number
+    /** The longest a wait grows to, however many attempts have failed. Default: no limit. */
+    maxDelayMs?: number
     /** Whether an error is worth another attempt. Default: retry everything. */
     shouldRetry?: (error: unknown) => boolean
     /** Observation only (logging, telemetry) - never control flow. */
@@ -74,7 +76,7 @@ export async function withRetry<T>(task: (attempt: number) => Promise<T>, option
             // Cancellation reads as cancellation, never as the failure it interrupted.
             if (options.signal?.aborted) throw options.signal.reason
             if (attempt >= attempts || !shouldRetry(error)) throw error
-            const full = base * 2 ** (attempt - 1)
+            const full = Math.min(base * 2 ** (attempt - 1), options.maxDelayMs ?? Number.POSITIVE_INFINITY)
             const wait = Math.round(full / 2 + random() * (full / 2))
             options.onRetry?.(error, attempt, wait)
             await sleep(wait, options.signal)

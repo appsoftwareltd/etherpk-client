@@ -40,6 +40,7 @@ describe('POST /auth/logout/managed', () => {
         }, 'a-client-session-secret-with-32-bytes', 'managed-session'))
         const cookies = {
             get: (name: string) => values.get(name),
+            getAll: () => [...values].map(([name, value]) => ({ name, value })),
             set: (name: string, value: string) => void values.set(name, value),
             delete: (name: string) => void values.delete(name),
         } as unknown as Cookies
@@ -80,7 +81,7 @@ describe('POST /auth/logout/managed', () => {
 
 describe('GET /auth/logout/managed', () => {
     it("continues a cascade the Client started through the Sync portal and back to the Client", async () => {
-        const cookies = { get: () => undefined, delete: () => undefined } as unknown as Cookies
+        const cookies = { get: () => undefined, getAll: () => [], delete: () => undefined } as unknown as Cookies
 
         const response = await GET({
             url: new URL('https://app.example.com/auth/logout/managed?finish=client'),

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { createGraphKeyring } from '$lib/crypto'
+import { AssetUnavailableError } from '$lib/storage/fs/asset-store'
 import { fixedSyncToken } from '$lib/sync/sync-token'
 import { assetIdFromRef, createServerAssetStore } from './server-asset-store'
 
@@ -490,6 +491,49 @@ describe('ServerAssetStore.resolve', () => {
         })
 
         expect(await store.resolve('not-an-asset')).toBeNull()
+    })
+
+    // An image asks again when its resolve rejects with AssetUnavailableError, and shows the file as
+    // missing when it answers null. A server failing for a moment says nothing about the file.
+    describe('a read the server or the connection cannot answer just now', () => {
+        const ref = '../assets/photo.00000000-0000-4000-8000-000000000001.png'
+        const storeFetching = (fetchImpl: typeof fetch, syncToken = fixedSyncToken('sync-tok')) => createServerAssetStore({
+            graphId: 'g1',
+            keyring: createGraphKeyring('g1'),
+            baseUrl: 'https://sync.example',
+            syncToken,
+            fetch: fetchImpl,
+        })
+        const answering = (status: number) => storeFetching(async () => new Response('{}', { status }))
+
+        it('rejects as unavailable on a status that means try again, and answers null when the asset is gone', async () => {
+            await expect(answering(503).resolve(ref)).rejects.toBeInstanceOf(AssetUnavailableError)
+            await expect(answering(429).resolve(ref)).rejects.toMatchObject({ status: 429 })
+            expect(await answering(404).resolve(ref)).toBeNull()
+            expect(await answering(403).resolve(ref)).toBeNull()
+        })
+
+        it('rejects as unavailable when the connection fails', async () => {
+            const offline = storeFetching(async () => {
+                throw new TypeError('Failed to fetch')
+            })
+            await expect(offline.resolve(ref)).rejects.toMatchObject({ name: 'AssetUnavailableError', status: undefined })
+        })
+
+        it('asks once more with a fresh token after a 401, and says unavailable if that is refused too', async () => {
+            const tokens: Array<boolean | undefined> = []
+            const store = storeFetching(async () => new Response('{}', { status: 401 }), async (options) => {
+                tokens.push(options?.force)
+                return 'sync-tok'
+            })
+            await expect(store.resolve(ref)).rejects.toMatchObject({ status: 401 })
+            expect(tokens).toEqual([undefined, true])
+        })
+
+        // The mirror and the publisher report an asset they got no bytes for, and keep doing so.
+        it('keeps readBytes answering null for a server that said try again', async () => {
+            expect(await answering(503).readBytes(ref)).toBeNull()
+        })
     })
 })
 

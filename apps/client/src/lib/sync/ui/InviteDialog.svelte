@@ -5,8 +5,8 @@
      * Replaces the browser prompt/confirm flow.
      */
     import type { GraphKeyring } from "$lib/crypto";
-    import { InviteeNotFoundError, prepareInvite, sendInvite, type SyncApi } from "$lib/sync";
-    import { describeSyncFailure } from "$lib/sync/sync-error-copy";
+    import { InviteeNotFoundError, isOwnAddress, prepareInvite, sendInvite, type SyncApi } from "$lib/sync";
+    import { INVITE_SELF_COPY, describeSyncFailure } from "$lib/sync/sync-error-copy";
     import Modal from "@appsoftwareltd/etherpk-shared/dialog";
 
     let {
@@ -14,6 +14,7 @@
         graphId,
         graphName,
         keyring,
+        ownEmail = null,
         onclose,
     }: {
         api: SyncApi;
@@ -21,6 +22,8 @@
         /** Sealed into the invite so the invitee's client can label the graph (ADR 0031). */
         graphName?: string;
         keyring: GraphKeyring;
+        /** The signed-in account's address, so inviting it is refused before the lookup. */
+        ownEmail?: string | null;
         onclose: (result?: { sentTo: string }) => void;
     } = $props();
 
@@ -46,6 +49,10 @@
         error = null;
         if (!email.trim()) {
             error = "Enter the person's email address.";
+            return;
+        }
+        if (isOwnAddress(email, ownEmail)) {
+            error = INVITE_SELF_COPY;
             return;
         }
         busy = true;

@@ -57,6 +57,15 @@ export interface InvitePreparation {
     fingerprint: string
 }
 
+/**
+ * Is the typed address the signed-in account's own? Inviting yourself is refused by the server,
+ * but only after the lookup step has shown the owner their own key's fingerprint to check, so the
+ * dialog asks this first. Addresses compare without case or surrounding space.
+ */
+export function isOwnAddress(typed: string, own: string | null | undefined): boolean {
+    return own != null && typed.trim().toLowerCase() === own.trim().toLowerCase()
+}
+
 /** Step 1: look up the invitee and get their fingerprint to confirm before sealing. */
 export async function prepareInvite(
     api: SyncApi,

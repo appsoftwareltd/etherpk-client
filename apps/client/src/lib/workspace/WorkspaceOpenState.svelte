@@ -1,5 +1,6 @@
 <script lang="ts">
     import LoadingSweep from '$lib/components/LoadingSweep.svelte'
+    import { managedSignInHref, syncConnectHref } from '$lib/auth/sign-in-links'
 
     import type { AccessLossNotice } from '$lib/sync/access-loss'
 
@@ -18,11 +19,19 @@
         accessLost = null,
         downloading = false,
         downloadError = null,
+        returnPath,
+        heldCopyUnsent = null,
+        heldCopyDownloaded = false,
+        removingHeldCopy = false,
+        removeHeldCopyError = null,
         ongrant,
         onback,
         onretry,
         onsetup,
         ondownload,
+        onremoveheldcopy,
+        ondownloadheldcopy,
+        onkeepheldcopy,
     }: {
         phase: 'loading' | 'needs-permission' | 'needs-unlock' | 'ready' | 'missing' | 'error' | 'access-lost'
         loadingStep: 'opening' | 'loading' | 'indexing'
@@ -50,6 +59,19 @@
         downloading?: boolean
         /** Why the download failed, in user copy. */
         downloadError?: string | null
+        /** The page to come back to after signing in or connecting: this one. */
+        returnPath: string
+        /**
+         * Documents with changes the server never received in the copy a lost membership left
+         * (`missing.kind === 'no-longer-member'`), once removing the copy found some. Null until then.
+         */
+        heldCopyUnsent?: number | null
+        /** Those changes have been downloaded. */
+        heldCopyDownloaded?: boolean
+        /** The copy is being checked or removed. */
+        removingHeldCopy?: boolean
+        /** Why removing the copy failed, in user copy. */
+        removeHeldCopyError?: string | null
         ongrant: () => void
         onback: () => void
         /** Retry the open that failed. Absent means only "back" is offered. */
@@ -58,7 +80,22 @@
         onsetup?: () => void
         /** Download the documents whose changes will not be sent. */
         ondownload?: () => void
+        /** Remove the copy a lost membership left on this device, unsent changes counted first. */
+        onremoveheldcopy?: () => void
+        /** Download the unsent changes in that copy. */
+        ondownloadheldcopy?: () => void
+        /** Keep the copy after seeing its unsent changes. */
+        onkeepheldcopy?: () => void
     } = $props()
+
+    /** Where the graph's server is, for copy that names it. */
+    function hostOf(origin: string): string {
+        try {
+            return new URL(origin).host
+        } catch {
+            return origin
+        }
+    }
 
     /**
      * The notice replaces an editor the person may have been typing in, so focus moves to its
@@ -137,11 +174,80 @@
                 </button>
                 <button onclick={onback}>Back to graphs</button>
             </div>
+        {:else if missing?.kind === 'signed-out'}
+            <h2>Sign in to open this graph</h2>
+            <p>
+                You are signed out of EtherPK in this browser. Synced graphs open once you sign in,
+                and you come back to this page.
+            </p>
+            <div class="notice__actions">
+                <!-- A full load: /auth/login is a server route that hands over to the account site. -->
+                <a class="notice__primary" data-testid="graph-missing-sign-in" href={managedSignInHref(returnPath)} data-sveltekit-reload>
+                    Sign in
+                </a>
+                <button onclick={onback}>Back to graphs</button>
+            </div>
+        {:else if missing?.kind === 'token-rejected'}
+            <h2>{hostOf(missing.serverOrigin)} did not accept this device's access token</h2>
+            <p>
+                It may have been revoked or have expired. Create a new token under Access tokens on
+                the server, then add it in Sync settings, and this graph opens again.
+            </p>
+            <div class="notice__actions">
+                <a class="notice__primary" data-testid="graph-missing-connect" href={syncConnectHref(returnPath)} data-sveltekit-reload>
+                    Sync settings
+                </a>
+                <a class="notice__link" href={`${missing.serverOrigin}/account/tokens`} rel="noopener">Access tokens</a>
+                <button onclick={onback}>Back to graphs</button>
+            </div>
+        {:else if missing?.kind === 'not-connected'}
+            <h2>This device is not connected to {hostOf(missing.serverOrigin)}</h2>
+            <p>
+                This graph syncs through {hostOf(missing.serverOrigin)}. Connect this device to it in
+                Sync settings, and the graph opens again with everything this browser holds.
+            </p>
+            <div class="notice__actions">
+                <a class="notice__primary" data-testid="graph-missing-connect" href={syncConnectHref(returnPath)} data-sveltekit-reload>
+                    Connect
+                </a>
+                <button onclick={onback}>Back to graphs</button>
+            </div>
+        {:else if missing?.kind === 'no-longer-member'}
+            <h2>You no longer have access to this graph</h2>
+            <p>
+                Its owner deleted it, or you left it or were removed. This browser still holds a
+                copy; remove it to free the space. If you are invited again, accept the invite on
+                the Graphs page.
+            </p>
+            {#if heldCopyUnsent}
+                <p role="alert" class="notice__error" data-testid="graph-missing-unsent">
+                    Changes to {heldCopyUnsent === 1 ? '1 document' : `${heldCopyUnsent.toLocaleString()} documents`}
+                    in this copy never reached the server and are lost if you remove it.
+                    {heldCopyDownloaded ? 'You have downloaded them.' : 'Download them first to keep them.'}
+                </p>
+            {/if}
+            {#if removeHeldCopyError}
+                <p role="alert" class="notice__error">{removeHeldCopyError}</p>
+            {/if}
+            <div class="notice__actions">
+                {#if heldCopyUnsent}
+                    <button data-testid="graph-missing-download" onclick={ondownloadheldcopy}>Download unsent changes</button>
+                    <button data-testid="graph-missing-remove" onclick={onremoveheldcopy} disabled={removingHeldCopy} aria-busy={removingHeldCopy}>
+                        {removingHeldCopy ? 'Removing…' : 'Remove anyway'}
+                    </button>
+                    <button onclick={onkeepheldcopy}>Keep it</button>
+                {:else}
+                    <button data-testid="graph-missing-remove" onclick={onremoveheldcopy} disabled={removingHeldCopy} aria-busy={removingHeldCopy}>
+                        {removingHeldCopy ? 'Removing…' : 'Remove from this device'}
+                    </button>
+                    <button onclick={onback}>Back to graphs</button>
+                {/if}
+            </div>
         {:else if missing?.kind === 'other-account'}
             <h2>This graph was set up here under a different sync account.</h2>
             <p>
-                The account connected now is not a member of it. Connect the other account in Sync
-                settings on the Graphs page, or ask the graph's owner to invite this one.
+                The account signed in now is not a member of it. Sign in as the account that set
+                it up, or ask the graph's owner to invite this one.
             </p>
             <button onclick={onback}>Back to graphs</button>
         {:else if missing?.kind === 'not-a-member'}
@@ -163,13 +269,26 @@
                 {/if}
                 <button onclick={onback}>Back to graphs</button>
             </div>
+        {:else if missing?.kind === 'ready'}
+            <!-- The open makes a ready record visible and carries on, so this shows only if the
+                 registry could not be updated. -->
+            <h2>This graph is ready to open.</h2>
+            <div class="notice__actions">
+                {#if onretry}
+                    <button data-testid="graph-missing-retry" onclick={onretry}>Open it</button>
+                {/if}
+                <button onclick={onback}>Back to graphs</button>
+            </div>
         {:else}
             <h2>That graph is not in this browser.</h2>
             <p>
                 If it is a synced graph, connect your sync server in Sync settings on the Graphs
                 page and add it to this device from there.
             </p>
-            <button onclick={onback}>Back to graphs</button>
+            <div class="notice__actions">
+                <a class="notice__primary" href={syncConnectHref(returnPath)} data-sveltekit-reload>Sync settings</a>
+                <button onclick={onback}>Back to graphs</button>
+            </div>
         {/if}
         {@render shareStranded()}
     </div>
@@ -291,7 +410,13 @@
         font-weight: 600;
         text-decoration: none;
     }
+    .notice__link {
+        align-self: center;
+        color: inherit;
+        text-decoration: underline;
+    }
     .notice__primary:focus-visible,
+    .notice__link:focus-visible,
     .notice button:focus-visible {
         outline: 2px solid var(--gk-accent);
         outline-offset: 2px;

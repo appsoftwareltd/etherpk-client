@@ -2,9 +2,9 @@ import type { Cookies } from '@sveltejs/kit'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
     MANAGED_SESSION_COOKIE,
-    OAUTH_TRANSACTION_COOKIE,
     decryptSessionCookie,
     encryptSessionCookie,
+    transactionCookieName,
     type AuthorizationTransaction,
 } from '$lib/server/auth/session-cookie'
 import { resetOAuthMetadataCache } from '$lib/server/auth/oauth-client'
@@ -52,6 +52,7 @@ function cookieJar() {
     const values = new Map<string, string>()
     const cookies = {
         get: (name: string) => values.get(name),
+        getAll: () => [...values].map(([name, value]) => ({ name, value })),
         set: (name: string, value: string) => void values.set(name, value),
         delete: (name: string) => void values.delete(name),
     } as unknown as Cookies
@@ -78,10 +79,17 @@ const transaction: AuthorizationTransaction = {
 
 async function callback(
     fetch: typeof globalThis.fetch,
-    { query = '?code=code-1&state=state-1', stored = transaction as AuthorizationTransaction | null } = {},
+    {
+        query = '?code=code-1&state=state-1',
+        stored = transaction as AuthorizationTransaction | null,
+        also = [] as AuthorizationTransaction[],
+    } = {},
 ) {
     const { cookies, values } = cookieJar()
-    if (stored) values.set(OAUTH_TRANSACTION_COOKIE, await encryptSessionCookie(stored, sessionSecret, 'oauth-transaction'))
+    // Each attempt's transaction lives in a cookie named for its state.
+    for (const each of stored ? [stored, ...also] : also) {
+        values.set(transactionCookieName(each.state), await encryptSessionCookie(each, sessionSecret, 'oauth-transaction'))
+    }
     const setHeaders = vi.fn()
     // SvelteKit's redirect() and error() throw; either is the route's answer.
     const outcome = await Promise.resolve()
@@ -137,12 +145,11 @@ describe('GET /auth/callback', () => {
         })
 
         expect(missing.outcome).toMatchObject({ status: 303, location: '/auth/sign-in-failed?reason=stale' })
-        for (const { outcome } of [forged, expired]) {
-            expect(outcome).toMatchObject({
-                status: 303,
-                location: '/auth/sign-in-failed?reason=stale&redirect=%2Fgraphs%3Fmanaged%3Dconnected',
-            })
-        }
+        expect(forged.outcome).toMatchObject({ status: 303, location: '/auth/sign-in-failed?reason=stale' })
+        expect(expired.outcome).toMatchObject({
+            status: 303,
+            location: '/auth/sign-in-failed?reason=stale&redirect=%2Fgraphs%3Fmanaged%3Dconnected',
+        })
         expect(forged.values.has(MANAGED_SESSION_COOKIE)).toBe(false)
     })
 
@@ -166,7 +173,6 @@ describe('GET /auth/callback', () => {
         await callback(corporate(async () => { throw new Error('no exchange') }), { query: '?code=code-1&state=forged' })
 
         expect(logged.warn).toHaveBeenCalledWith('managed sign-in callback refused', { stage: 'transaction-missing' })
-        expect(logged.warn).toHaveBeenCalledWith('managed sign-in callback refused', { stage: 'state-mismatch' })
         expect(JSON.stringify(logged.warn.mock.calls)).not.toMatch(/code-1|state-1|forged/)
     })
 
@@ -196,7 +202,7 @@ describe('GET /auth/callback', () => {
         expect(values.get('__Host-etherpk-client-sso-checked')).toBe('1')
     })
 
-    it('still refuses a code Corporate rejects, and an ID token that fails verification', async () => {
+    it('refuses a code Corporate rejects, and an ID token that fails verification, on the sign-in-failed page', async () => {
         const rejected = await callback(corporate(async () => Response.json({ error: 'invalid_grant' }, { status: 400 })))
         verification.nonceMatches = false
         const forged = await callback(corporate(async () => Response.json({
@@ -206,8 +212,12 @@ describe('GET /auth/callback', () => {
             expires_in: 900,
         })))
 
-        expect(rejected.outcome.status).toBe(400)
-        expect(forged.outcome.status).toBe(400)
+        for (const { outcome } of [rejected, forged]) {
+            expect(outcome).toMatchObject({
+                status: 303,
+                location: '/auth/sign-in-failed?reason=failed&redirect=%2Fgraphs%3Fmanaged%3Dconnected',
+            })
+        }
         expect(forged.values.has(MANAGED_SESSION_COOKIE)).toBe(false)
         expect(logged.warn).toHaveBeenCalledWith('managed sign-in callback refused', {
             stage: 'exchange-refused',
@@ -215,5 +225,43 @@ describe('GET /auth/callback', () => {
             upstreamError: 'invalid_grant',
         })
         expect(logged.warn).toHaveBeenCalledWith('managed sign-in callback refused', { stage: 'id-token-invalid' })
+    })
+})
+
+// Two sign-ins at once - two tabs, or a sign-in beside a background silent check - each keep a
+// transaction of their own; one used to overwrite the other, and both ended on error pages.
+describe('two sign-ins at once', () => {
+    it('lets each callback find its own transaction, and leaves the other attempt\'s alone', async () => {
+        const other = { ...transaction, state: 'state-2', returnPath: '/g/other-graph' }
+        const { outcome, values } = await callback(corporate(async () => Response.json({
+            access_token: 'access-1', refresh_token: 'refresh-1', id_token: 'id-1', expires_in: 900,
+        })), { query: '?code=code-2&state=state-2', stored: transaction, also: [other] })
+
+        expect(outcome).toMatchObject({ status: 303, location: '/g/other-graph' })
+        expect(values.has(transactionCookieName('state-1'))).toBe(true)
+        expect(values.has(transactionCookieName('state-2'))).toBe(false)
+    })
+
+    it('refuses a transaction whose own state differs from the one its cookie is named for', async () => {
+        const { cookies, values } = cookieJar()
+        values.set(transactionCookieName('state-9'), await encryptSessionCookie(transaction, sessionSecret, 'oauth-transaction'))
+        const outcome = await Promise.resolve()
+            .then(() => GET({
+                url: new URL('https://app.example.com/auth/callback?code=code-1&state=state-9'),
+                cookies,
+                fetch: corporate(async () => { throw new Error('no exchange') }),
+                setHeaders: vi.fn(),
+            } as unknown as Parameters<typeof GET>[0]))
+            .catch((thrown: unknown) => thrown)
+
+        expect(outcome).toMatchObject({ status: 303, location: '/auth/sign-in-failed?reason=stale&redirect=%2Fgraphs%3Fmanaged%3Dconnected' })
+        expect(logged.warn).toHaveBeenCalledWith('managed sign-in callback refused', { stage: 'state-mismatch' })
+    })
+
+    it('sends an authorization the account service refused to the sign-in-failed page', async () => {
+        const { outcome } = await callback(corporate(async () => { throw new Error('no exchange') }), {
+            query: '?error=access_denied&state=state-1',
+        })
+        expect(outcome).toMatchObject({ status: 303, location: '/auth/sign-in-failed?reason=failed&redirect=%2Fgraphs%3Fmanaged%3Dconnected' })
     })
 })

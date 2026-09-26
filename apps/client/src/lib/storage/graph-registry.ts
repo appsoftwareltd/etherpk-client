@@ -155,6 +155,7 @@ export function createGraphRegistry(
     }
 }
 
-function sameScope(left: ServerGraphScope | undefined, right: ServerGraphScope): boolean {
+/** Do a record's account scope and `right` name the same Principal on the same Sync Server? */
+export function sameScope(left: ServerGraphScope | undefined, right: ServerGraphScope): boolean {
     return left?.serverOrigin === right.serverOrigin && left.principalId === right.principalId
 }

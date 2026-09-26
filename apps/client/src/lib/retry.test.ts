@@ -103,4 +103,21 @@ describe('withRetry', () => {
             vi.useRealTimers()
         }
     })
+
+    it('stops the waits growing at maxDelayMs', async () => {
+        const waits: number[] = []
+        await expect(
+            withRetry(async () => {
+                throw new Error('down')
+            }, {
+                attempts: 6,
+                baseDelayMs: 100,
+                maxDelayMs: 500,
+                random: () => 1,
+                sleep: async (ms) => void waits.push(ms),
+            }),
+        ).rejects.toThrow('down')
+        expect(waits).toEqual([100, 200, 400, 500, 500])
+    })
 })
+

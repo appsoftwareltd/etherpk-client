@@ -7,7 +7,7 @@
     import { onMount } from "svelte";
 
     import { dev } from "$app/environment";
-    import { goto } from "$app/navigation";
+    import { goto, replaceState } from "$app/navigation";
     import { page } from "$app/state";
     import { env } from "$env/dynamic/public";
     import {
@@ -21,12 +21,11 @@
         STORAGE_RECOVERY_HEADLINE,
         STORAGE_RECOVERY_INTRO,
         acknowledgeStorageRecoveries,
-        clearLastGraphId,
         createIdbGraphRegistry,
+        createIdbGraphStoragePort,
         createWebFsDirectoryAdapter,
         describeDeviceStorage,
         ensurePermission,
-        getLastGraphId,
         isFsaSupported,
         pickGraphDirectory,
         readGraphSettings,
@@ -64,6 +63,7 @@
         setVaultWrapKey,
         getVaultWrapKey as getCachedWrapKey,
         lockVault,
+        lockEveryVault,
         acceptInvite as acceptInviteFlow,
         regenerateRecoveryCode,
         type RecoveryCodeRegeneration,
@@ -84,7 +84,8 @@
         SyncApiError,
         VaultLockedError,
     } from "$lib/sync";
-    import type { SyncAccountSummary } from "@appsoftwareltd/etherpk-shared";
+    import { safeReturnPath, type SyncAccountSummary } from "@appsoftwareltd/etherpk-shared";
+    import { managedSignInHref } from "$lib/auth/sign-in-links";
     import { EnvelopeError, fromBase64Url, openVault, type GraphKeyring } from "$lib/crypto";
     import { promptRecoveryCode } from "$lib/sync/recovery-code-prompt";
     import { describeSyncFailure } from "$lib/sync/sync-error-copy";
@@ -110,6 +111,7 @@
         clearManagedAccessToken,
     } from "$lib/auth/managed-token";
     import GraphPickerRow from "$lib/workspace/GraphPickerRow.svelte";
+    import { forgetGraphOnDevice } from "$lib/workspace/graph-device-memory";
     import { isDemoGraph } from "$lib/demo/demo-graph";
     import {
         loadSyncedGraphViews,
@@ -182,6 +184,34 @@
         | "signed-out"
         | "unavailable"
     >("disconnected");
+    /** How this device connects, as of the last account check: managed sign-in or an access token. */
+    let syncConnection = $state<"managed" | "custom" | null>(null);
+    /**
+     * Synced graphs this browser holds that the list leaves out: under another account, no longer
+     * a member, or while signed out. Signed out, the empty list says they are hidden, not gone.
+     */
+    let hiddenSyncedGraphs = $state(0);
+    /** Synced graphs this browser holds under any account: what "Remove synced graphs" would remove. */
+    let syncedOnBrowser = $state(0);
+    /**
+     * "Remove synced graphs from this browser", once the check has run: every synced graph this
+     * browser holds with the unsent changes in its copy, and whether they were downloaded. `grew`:
+     * more became unsent while the dialog was open, so it asks again. Null while closed.
+     */
+    let removeSynced = $state<{
+        held: Array<{ graph: GraphRecord; unsent: UnsentDocument[] }>;
+        downloaded: boolean;
+        grew: boolean;
+    } | null>(null);
+    let removeSyncedChecking = $state(false);
+    let removeSyncedBusy = $state(false);
+    /**
+     * Where Sync settings go back to once a connection is made: the page that sent the person
+     * here to connect (`?return=`), checked like any other return path.
+     */
+    const returnTo = $derived(
+        safeReturnPath(page.url.searchParams.get("return"), "") || null,
+    );
     /**
      * The account check in flight (or the last one settled). Actions gated on the plan await
      * it: on a fresh managed sign-in the first check is two round trips (the token exchange,
@@ -387,8 +417,31 @@
         }
         registryUnreadable = false;
         vaultUnlocked = getCachedWrapKey() !== null;
+        const held = await createIdbGraphStoragePort().getAll().catch(() => [] as GraphRecord[]);
+        hiddenSyncedGraphs = Math.max(0, held.length - graphs.length);
+        syncedOnBrowser = held.filter((record) => record.backend === "server").length;
+        if (syncAuthState === "signed-out") {
+            // Every call below would be refused; the signed-out card says what to do instead.
+            syncedGraphs = [];
+            syncedError = null;
+            invites = [];
+            vaultExists = null;
+            return;
+        }
         // Independent fetches — don't serialize the panel behind the invites call.
         await Promise.all([refreshInvites(), refreshSynced(), refreshVault()]);
+    }
+
+    /**
+     * The account check, or a call after it, was refused: this device is signed out, or its
+     * access token was revoked. The keys lock with it; the account's scope says which key to drop,
+     * so that goes second.
+     */
+    function markSignedOut() {
+        lockVault();
+        clearActiveSyncAccount();
+        syncAccount = null;
+        syncAuthState = "signed-out";
     }
 
     function refreshAccount(): Promise<void> {
@@ -441,6 +494,7 @@
             : null;
         syncConfigured = api !== null;
         capabilitiesChecked = true;
+        syncConnection = api ? (config?.mode ?? null) : null;
         if (!api || !connection) {
             syncAccount = null;
             syncAuthState = "disconnected";
@@ -463,8 +517,7 @@
                     error instanceof ManagedTokenError) &&
                 error.status === 401
             ) {
-                clearActiveSyncAccount();
-                syncAuthState = "signed-out";
+                markSignedOut();
             } else {
                 // Preserve the last verified partition for offline local work. It is not
                 // authentication: remote calls must still present a current token or PAT.
@@ -640,7 +693,17 @@
             }
         } catch (err) {
             syncedGraphs = [];
-            syncedError = (err as Error).message;
+            if (
+                (err instanceof SyncApiError || err instanceof ManagedTokenError) &&
+                err.status === 401
+            ) {
+                // Signed out since the account check: that is what the page says, not a
+                // connection failure.
+                syncedError = null;
+                markSignedOut();
+            } else {
+                syncedError = describeSyncFailure(err, "load your synced graphs");
+            }
         } finally {
             syncedLoading = false;
         }
@@ -810,7 +873,9 @@
         }
         clearActiveSyncAccount();
         writeSyncConfig({ mode: "managed" });
-        window.location.href = "/auth/login";
+        // Back to the page that sent the person here to connect, if one did; otherwise to this
+        // page, which then says the sign-in worked.
+        window.location.href = managedSignInHref(returnTo);
     }
 
     async function disconnectManagedSync() {
@@ -818,7 +883,48 @@
         lockVault();
         clearActiveSyncAccount();
         await fetch("/auth/logout", { method: "POST" });
-        window.location.href = "/graphs?managed=signed-out";
+        window.location.href = "/graphs?managed=disconnected";
+    }
+
+    /**
+     * A one-shot arrival notice: a sign-out, a disconnect or a sign-in that ended on this page
+     * says so here, then the parameter comes off the address so a reload does not repeat it.
+     */
+    function announceArrival() {
+        const managed = page.url.searchParams.get("managed");
+        const sync = page.url.searchParams.get("sync");
+        const notice =
+            managed === "signed-out"
+                ? "You are signed out of EtherPK in this browser."
+                : managed === "disconnected"
+                  ? "This device is disconnected and its keys are locked. Your EtherPK account and the Sync Server stay signed in."
+                  : managed === "connected"
+                    ? "Signed in to EtherPK."
+                    : sync === "disconnected"
+                      ? "This device is disconnected from the Sync Server. Its access token stays active until you revoke it on the server."
+                      : null;
+        if (!notice) return;
+        setStatus(notice);
+        const url = new URL(page.url);
+        url.searchParams.delete("managed");
+        if (sync === "disconnected") url.searchParams.delete("sync");
+        // After a macrotask: on a first load SvelteKit's router finishes starting after this
+        // page mounts, and replaceState before then throws in development.
+        setTimeout(() => replaceState(url.pathname + url.search, {}), 0);
+    }
+
+    /** Signed out, an action that needs the account starts the way back in instead. */
+    function startSignIn() {
+        if (syncConnection === "managed") {
+            connectManagedSync();
+            return;
+        }
+        setStatus(
+            "The Sync Server did not accept this device's access token. Add a new one in Sync settings, then try again.",
+            "error",
+        );
+        loadSyncConfig();
+        showSyncSettings = true;
     }
 
     function prepareManagedSignOut() {
@@ -853,7 +959,10 @@
         });
         showSyncSettings = false;
         setStatus("Sync settings saved on this device.");
-        void refresh();
+        void refresh().then(() => {
+            // Sent here by a page that needed this connection: go back to it once it works.
+            if (returnTo && syncAuthState === "authenticated") void goto(returnTo);
+        });
     }
 
     async function openFolder() {
@@ -911,6 +1020,11 @@
                 // lands before then waits for it rather than racing it (it then either
                 // proceeds or is refused, exactly as a later click would be).
                 await accountCheck;
+                // Signed out, or the token refused: naming a graph could only fail later.
+                if (syncAuthState === "signed-out") {
+                    startSignIn();
+                    return;
+                }
                 if (syncPlusRequired) {
                     setStatus(syncPlusRequiredMessage, "error");
                     return;
@@ -1174,6 +1288,91 @@
         leaveConfirm = graph;
     }
 
+    /**
+     * Start removing every synced graph this browser holds, under any account: count what each
+     * copy holds that the server never received first. A copy that cannot be checked stops it,
+     * since deleting what could not be checked is the loss the check exists to prevent.
+     */
+    async function startRemoveSynced() {
+        if (removeSyncedChecking || removeSynced) return;
+        removeSyncedChecking = true;
+        try {
+            const synced = (await createIdbGraphStoragePort().getAll()).filter(
+                (record) => record.backend === "server",
+            );
+            const held: Array<{ graph: GraphRecord; unsent: UnsentDocument[] }> = [];
+            for (const graph of synced) {
+                held.push({ graph, unsent: await staleCopyUnsentChanges(graph.id, rootDocIdOf(graph)) });
+            }
+            if (held.length === 0) {
+                syncedOnBrowser = 0;
+                setStatus("No synced graphs are stored in this browser.");
+                return;
+            }
+            removeSynced = { held, downloaded: false, grew: false };
+        } catch (err) {
+            setStatus(
+                `Could not check this browser's synced graphs for changes the server has not received, so nothing was removed: ${(err as Error).message}. Try again.`,
+                "error",
+            );
+        } finally {
+            removeSyncedChecking = false;
+        }
+    }
+
+    function downloadRemoveSyncedUnsent() {
+        if (!removeSynced) return;
+        for (const { graph, unsent } of removeSynced.held) {
+            if (unsent.length > 0) saveUnsentChangesFile(unsent, graph.name);
+        }
+        removeSynced = { ...removeSynced, downloaded: true };
+    }
+
+    /**
+     * Remove them: each copy goes only if what is unsent in it is what the dialog showed
+     * (`discardUnlessUnsent` counts again), and every account's keys held here are locked. The
+     * graphs stay on the sync server.
+     */
+    async function executeRemoveSynced() {
+        const pending = removeSynced;
+        if (!pending || removeSyncedBusy) return;
+        removeSyncedBusy = true;
+        const grew: Array<{ graph: GraphRecord; unsent: UnsentDocument[] }> = [];
+        let removed = 0;
+        try {
+            for (const { graph, unsent } of pending.held) {
+                const outcome = await discardUnlessUnsent(
+                    { graphId: graph.id, rootDocId: rootDocIdOf(graph) },
+                    {
+                        inspect: staleCopyUnsentChanges,
+                        discard: () => forgetGraphOnDevice(graph),
+                        agreed: unsent.map((document) => document.docId),
+                    },
+                );
+                if (outcome.kind === "confirm") grew.push({ graph, unsent: outcome.unsent });
+                else removed += 1;
+            }
+            lockEveryVault();
+            vaultUnlocked = false;
+            removeSynced = grew.length > 0 ? { held: grew, downloaded: false, grew: true } : null;
+            await refresh();
+            if (grew.length === 0) {
+                setStatus(
+                    `Removed ${removed === 1 ? "1 synced graph" : `${removed} synced graphs`} from this browser and locked the keys held here. The graphs are still on the sync server.`,
+                );
+            }
+        } catch (err) {
+            removeSynced = null;
+            await refresh();
+            setStatus(
+                `${describeSyncFailure(err, "remove every synced graph from this browser")} ${removed} of ${pending.held.length} were removed; try again for the rest.`,
+                "error",
+            );
+        } finally {
+            removeSyncedBusy = false;
+        }
+    }
+
     function downloadDiscardUnsent(name: string) {
         if (!discardUnsent) return;
         saveUnsentChangesFile(discardUnsent.unsent, name);
@@ -1194,17 +1393,16 @@
             if (graph.backend === "server") {
                 const outcome = await discardUnlessUnsent(
                     { graphId: graph.id, rootDocId: rootDocIdOf(graph) },
-                    { inspect: staleCopyUnsentChanges, discard: () => deleteGraphCache(graph.id), agreed: agreedUnsent(graph.id) },
+                    { inspect: staleCopyUnsentChanges, discard: () => forgetGraphOnDevice(graph), agreed: agreedUnsent(graph.id) },
                 );
                 if (outcome.kind === "confirm") {
                     // More became unsent since the dialog opened: count it again and ask again.
                     discardUnsent = { graphId: graph.id, unsent: outcome.unsent, downloaded: false, grew: true };
                     return;
                 }
+            } else {
+                await forgetGraphOnDevice(graph);
             }
-            discardGraphIndex(graph.id);
-            await registry.removeGraph(graph.id);
-            if (getLastGraphId() === graph.id) clearLastGraphId();
             forgetConfirm = null;
             discardUnsent = null;
             await refresh();
@@ -1545,7 +1743,7 @@
                     inspect: staleCopyUnsentChanges,
                     discard: async () => {
                         await api.deleteGraph(graph.id);
-                        await deleteGraphCache(graph.id);
+                        await forgetGraphOnDevice({ id: graph.id, backend: "server" });
                     },
                     agreed: agreedUnsent(graph.id),
                 },
@@ -1556,11 +1754,6 @@
                 return;
             }
             discardUnsent = null;
-            discardGraphIndex(graph.id);
-            if (graph.onDevice) {
-                await registry.removeGraph(graph.id);
-                if (getLastGraphId() === graph.id) clearLastGraphId();
-            }
             deleteConfirm = null;
             deleteText = "";
             await refresh();
@@ -1592,7 +1785,7 @@
                     inspect: staleCopyUnsentChanges,
                     discard: async () => {
                         await api.leaveGraph(graph.id);
-                        await deleteGraphCache(graph.id);
+                        await forgetGraphOnDevice({ id: graph.id, backend: "server" });
                     },
                     agreed: agreedUnsent(graph.id),
                 },
@@ -1602,11 +1795,6 @@
                 return;
             }
             discardUnsent = null;
-            discardGraphIndex(graph.id);
-            if (graph.onDevice) {
-                await registry.removeGraph(graph.id);
-                if (getLastGraphId() === graph.id) clearLastGraphId();
-            }
             leaveConfirm = null;
             await refresh();
             setStatus(
@@ -1967,6 +2155,11 @@
     }
 
     onMount(() => {
+        // Arriving from a managed sign-out that started on the account site or the Sync portal:
+        // no Client page ran on the way here, so the keys lock now, as a sign-out started here
+        // locks them. The active account still names whose keys they are.
+        if (page.url.searchParams.get("managed") === "signed-out") lockVault();
+        announceArrival();
         if (page.url.searchParams.get("sync") === "connect") {
             loadSyncConfig();
             showSyncSettings = true;
@@ -2204,16 +2397,44 @@
                 <p class="text-sm text-gray-500 dark:text-gray-400">
                     Checking your Sync account…
                 </p>
+            {:else if syncAuthState === "signed-out" && syncConnection === "managed"}
+                <p
+                    class="text-sm font-medium text-amber-700 dark:text-amber-300"
+                >
+                    You are signed out of EtherPK.
+                </p>
+                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                    Your synced graphs are hidden until you sign in. Local
+                    folder graphs are not affected.
+                </p>
+                <button
+                    type="button"
+                    data-testid="sync-sign-in"
+                    onclick={connectManagedSync}
+                    class="mt-3 rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-indigo-500"
+                    >Sign in</button
+                >
             {:else if syncAuthState === "signed-out"}
                 <p
                     class="text-sm font-medium text-amber-700 dark:text-amber-300"
                 >
-                    Not signed in to this Sync Server.
+                    The Sync Server did not accept this device's access token.
                 </p>
                 <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                    Server-backed graphs stay hidden until the Server confirms
-                    your account.
+                    It may have been revoked or have expired. Synced graphs
+                    from this server are hidden until you add a new token in
+                    Sync settings.
                 </p>
+                <button
+                    type="button"
+                    data-testid="sync-reconnect"
+                    onclick={() => {
+                        loadSyncConfig();
+                        showSyncSettings = true;
+                    }}
+                    class="mt-3 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-white/5"
+                    >Sync settings</button
+                >
             {:else if syncAuthState === "unavailable"}
                 <p
                     class="text-sm font-medium text-amber-700 dark:text-amber-300"
@@ -2504,11 +2725,14 @@
                     <p class="text-sm text-gray-500 dark:text-gray-400">
                         Once unlocked, your keys stay available on this device
                         so you are not asked for your Recovery Code in every
-                        tab. Lock them when stepping away from a shared machine,
-                        or if this device can no longer read your notes: locking
-                        and then unlocking again replaces the keys held here.
-                        Nothing is lost, and unlocking again just needs the
-                        code.
+                        tab. Locking them stops this browser opening your
+                        synced graphs until you unlock again, but the copies
+                        it already holds stay readable to anyone who can use
+                        it: on a shared machine, also remove them under Storage
+                        on this device. Locking and then unlocking again also
+                        replaces the keys held here, if this device can no
+                        longer read your notes. Nothing is lost, and unlocking
+                        again just needs the code.
                     </p>
                     <button
                         type="button"
@@ -2574,6 +2798,35 @@
                             null
                                 ? ` of the ${formatBytes(deviceStorage.quota)} this browser allows`
                                 : ""}.
+                        </p>
+                    {/if}
+                    <!-- Locking keys and signing out hide synced graphs; they do not remove this
+                         browser's readable copies, which only this does. -->
+                    <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">
+                        Each synced graph this browser has opened keeps a readable
+                        copy here, for every account that has used it, even with
+                        the keys locked or after signing out. On a shared machine,
+                        remove them before you leave. The graphs stay on the sync
+                        server.
+                    </p>
+                    {#if syncedOnBrowser > 0}
+                        <button
+                            type="button"
+                            data-testid="remove-synced"
+                            onclick={() => void startRemoveSynced()}
+                            disabled={removeSyncedChecking}
+                            aria-busy={removeSyncedChecking}
+                            class="mt-2 rounded-lg border border-gray-300 dark:border-gray-700 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5 aria-busy:cursor-progress aria-busy:opacity-70"
+                            >{removeSyncedChecking
+                                ? "Checking for unsent changes…"
+                                : "Remove synced graphs from this browser"}</button
+                        >
+                    {:else}
+                        <p
+                            class="mt-1 text-sm text-gray-500 dark:text-gray-400"
+                            data-testid="remove-synced-none"
+                        >
+                            No synced graphs are stored in this browser.
                         </p>
                     {/if}
                 </div>
@@ -2732,6 +2985,15 @@
                             Your graphs could not be read from this browser's storage.
                             Nothing has been deleted.
                         </li>
+                    {:else if hiddenSyncedGraphs > 0 && syncAuthState === "signed-out"}
+                        <li
+                            class="px-4 py-6 text-center text-sm text-gray-500"
+                            data-testid="graphs-hidden"
+                        >
+                            {syncConnection === "managed"
+                                ? "Your synced graphs are hidden until you sign in."
+                                : "Your synced graphs are hidden until the Sync Server accepts this device's access token again."}
+                        </li>
                     {:else}
                         <li
                             class="px-4 py-6 text-center text-sm text-gray-500"
@@ -2793,12 +3055,20 @@
                 {/if}
             </div>
             {#if syncedError}
-                <p
-                    class="text-sm text-red-600"
+                <div
+                    role="alert"
+                    class="flex flex-wrap items-center gap-3"
                     data-testid="synced-graphs-error"
                 >
-                    Could not reach the sync server: {syncedError}
-                </p>
+                    <p class="text-sm text-red-600">{syncedError}</p>
+                    <button
+                        type="button"
+                        onclick={() => void refreshSynced()}
+                        disabled={syncedLoading}
+                        class="rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-white/5"
+                        >Try again</button
+                    >
+                </div>
             {:else if syncedLoading && syncedGraphs.length === 0}
                 <!-- First load only: later refreshes keep the cards in place while data renews. -->
                 <p
@@ -3046,6 +3316,7 @@
         graphId={inviteDialog.graphId}
         graphName={inviteDialog.graphName}
         keyring={inviteDialog.keyring}
+        ownEmail={syncAccount?.principal.email ?? null}
         onclose={(result) => {
             const invitedGraphId = inviteDialog?.graphId;
             inviteDialog = null;
@@ -3326,6 +3597,66 @@
         </div>
     {/if}
 {/snippet}
+
+{#if removeSynced}
+    {@const withUnsent = removeSynced.held.filter((entry) => entry.unsent.length > 0)}
+    {@const unsentDocuments = withUnsent.reduce((sum, entry) => sum + entry.unsent.length, 0)}
+    <Modal
+        open={true}
+        title="Remove synced graphs from this browser"
+        busy={removeSyncedBusy}
+        busyReason="Removing…"
+        onclose={() => (removeSynced = null)}
+        onsubmit={executeRemoveSynced}
+    >
+        {#snippet body()}
+            <div class="space-y-3">
+                <p class="text-sm text-gray-600 dark:text-gray-400">
+                    This removes this browser's copy of {removeSynced!.held.length === 1
+                        ? "1 synced graph"
+                        : `${removeSynced!.held.length} synced graphs`}: the documents,
+                    search indexes and remembered tabs. It also locks the keys held
+                    here for every account. The graphs stay on the sync server, and
+                    you can add them back from this page.
+                </p>
+                {#if unsentDocuments > 0}
+                    <p role="alert" class="text-sm text-red-600" data-testid="remove-synced-unsent">
+                        {removeSynced!.grew ? "More changes were made while this was open. " : ""}Changes
+                        to {unsentDocuments === 1 ? "1 document" : `${unsentDocuments} documents`} in
+                        {withUnsent.map((entry) => `"${entry.graph.name}"`).join(", ")} never reached
+                        the sync server and are lost if you remove {withUnsent.length === 1 ? "it" : "them"}.
+                        {removeSynced!.downloaded ? "You have downloaded them." : "Download them first to keep them."}
+                    </p>
+                {/if}
+            </div>
+        {/snippet}
+        {#snippet footer()}
+            <button
+                type="button"
+                data-autofocus
+                onclick={() => (removeSynced = null)}
+                class="rounded-lg px-3 py-1.5 text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
+                >Cancel</button
+            >
+            {#if unsentDocuments > 0}
+                <button
+                    type="button"
+                    data-testid="remove-synced-download"
+                    onclick={downloadRemoveSyncedUnsent}
+                    class="rounded-lg border border-gray-300 dark:border-white/15 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5"
+                    >Download unsent changes</button
+                >
+            {/if}
+            <button
+                type="submit"
+                disabled={removeSyncedBusy}
+                data-testid="remove-synced-confirm"
+                class="rounded-lg bg-red-600 px-4 py-1.5 text-center text-sm font-medium text-white hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                >{unsentDocuments > 0 ? "Discard changes and remove" : "Remove"}</button
+            >
+        {/snippet}
+    </Modal>
+{/if}
 
 {#if forgetConfirm}
     {@const unsentCount = discardUnsent?.graphId === forgetConfirm.id ? discardUnsent.unsent.length : 0}

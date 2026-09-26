@@ -10,6 +10,7 @@ import { relayUrlFrom } from '$lib/sync/sync-config'
 import { createSyncTokenSource, type SyncTokenSource } from '$lib/sync/sync-token'
 
 import type { ServerCredentials } from './config'
+import { describeConnectionFailure } from './connection-errors'
 
 export interface HeadlessAccount {
     readonly api: SyncApi
@@ -36,7 +37,14 @@ export function createHeadlessAccount(config: Pick<ServerCredentials, 'syncServe
 /** Resolve the PAT to its principal; a graph-scoped or revoked token fails here, in words. */
 export async function connectAccount(config: Pick<ServerCredentials, 'syncServer' | 'pat'>): Promise<HeadlessAccount> {
     const account = createHeadlessAccount(config)
-    const me = await account.api.me()
+    let me: Awaited<ReturnType<typeof account.api.me>>
+    try {
+        me = await account.api.me()
+    } catch (error) {
+        // The first call to a server is where a wrong address, token or scheme shows up.
+        const described = describeConnectionFailure(error, config.syncServer)
+        throw described ? new Error(described, { cause: error }) : error
+    }
     return {
         ...account,
         principal: { id: me.principal.id, email: me.principal.email, name: me.principal.name },

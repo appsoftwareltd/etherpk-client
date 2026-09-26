@@ -5,6 +5,7 @@
  * dot, and in the first case its edits would replay into the shared graph after a re-invite.
  */
 import { ManagedTokenError } from '$lib/auth/managed-token'
+import { managedSignInHref, syncConnectHref } from '$lib/auth/sign-in-links'
 import { AccountEnded } from './account-signal'
 import type { SyncAccessLoss } from './graph-sync'
 
@@ -43,11 +44,12 @@ export interface AccessLossNotice {
     canDownload: boolean
 }
 
-const SIGN_IN = { label: 'Sign in again', href: '/auth/login' }
-const CONNECT = { label: 'Connect again', href: '/graphs?sync=connect' }
 const KEPT = 'Changes you made here are kept on this device and sync when you are back in.'
 
-export function describeAccessLoss(loss: WorkspaceAccessLoss): AccessLossNotice {
+/** `returnPath`: the page to come back to after signing in or connecting again. */
+export function describeAccessLoss(loss: WorkspaceAccessLoss, returnPath?: string): AccessLossNotice {
+    const signIn = { label: 'Sign in again', href: managedSignInHref(returnPath) }
+    const connect = { label: 'Connect again', href: syncConnectHref(returnPath) }
     switch (loss.reason) {
         case 'membership': {
             const unsent = loss.unsentDocuments === 1
@@ -65,14 +67,14 @@ export function describeAccessLoss(loss: WorkspaceAccessLoss): AccessLossNotice 
             return {
                 title: 'You are signed out',
                 body: `This graph stopped syncing because you signed out of EtherPK, in this tab or another. ${KEPT}`,
-                primary: SIGN_IN,
+                primary: signIn,
                 canDownload: false,
             }
         case 'disconnected':
             return {
                 title: 'This device was disconnected',
                 body: `Sync was disconnected on this device${loss.server ? ` from ${loss.server}` : ''}, in this tab or another, so this graph stopped syncing. ${KEPT}`,
-                primary: CONNECT,
+                primary: connect,
                 canDownload: false,
             }
         case 'refused':
@@ -80,13 +82,13 @@ export function describeAccessLoss(loss: WorkspaceAccessLoss): AccessLossNotice 
                 ? {
                       title: 'Your sign-in is no longer accepted',
                       body: `The Sync Server refused this device's sign-in. That happens after a password reset, or when the account is suspended or deleted. ${KEPT}`,
-                      primary: SIGN_IN,
+                      primary: signIn,
                       canDownload: false,
                   }
                 : {
                       title: 'The access token on this device no longer works',
                       body: `${loss.server ?? 'The Sync Server'} refused it: it was revoked or has expired, or the account's password was reset. Create a new token under Access tokens on the server and connect again. ${KEPT}`,
-                      primary: CONNECT,
+                      primary: connect,
                       canDownload: false,
                   }
     }

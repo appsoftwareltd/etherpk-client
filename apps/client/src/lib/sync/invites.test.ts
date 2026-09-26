@@ -10,7 +10,7 @@ import {
     openVault,
     toBase64Url,
 } from '$lib/crypto'
-import { InviteForHeldGraphError, InviteeNotFoundError, acceptInvite, prepareInvite, sendInvite } from './invites'
+import { InviteForHeldGraphError, InviteeNotFoundError, acceptInvite, isOwnAddress, prepareInvite, sendInvite } from './invites'
 import { SyncApiError, type SyncApi } from './sync-api'
 
 describe('invites', () => {
@@ -192,5 +192,19 @@ describe('invites', () => {
         expect(api.acceptInvite).not.toHaveBeenCalled()
         const opened = await openVault(fromBase64Url(vault.vault), wrapKey)
         expect(Buffer.from(opened.vault.keyrings[0].epochs[0].key).equals(Buffer.from(heldKeyring.epochs[0].key))).toBe(true)
+    })
+})
+
+describe('isOwnAddress', () => {
+    // The server refuses an invite to yourself, but only after the dialog has asked the owner to
+    // check their own key's fingerprint; the dialog refuses it before the lookup instead.
+    it('matches the signed-in address whatever its case and surrounding space', () => {
+        expect(isOwnAddress('  Owner@Example.com ', 'owner@example.com')).toBe(true)
+        expect(isOwnAddress('someone@example.com', 'owner@example.com')).toBe(false)
+    })
+
+    it('matches nothing when the signed-in address is not known', () => {
+        expect(isOwnAddress('owner@example.com', null)).toBe(false)
+        expect(isOwnAddress('owner@example.com', undefined)).toBe(false)
     })
 })

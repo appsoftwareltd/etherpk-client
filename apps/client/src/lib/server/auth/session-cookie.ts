@@ -1,7 +1,18 @@
-import { createCipheriv, createDecipheriv, hkdfSync, randomBytes } from 'node:crypto'
+import { createCipheriv, createDecipheriv, createHash, hkdfSync, randomBytes } from 'node:crypto'
 
 export const MANAGED_SESSION_COOKIE = '__Host-etherpk-managed-session'
+/** The prefix of every sign-in attempt's transaction cookie; see {@link transactionCookieName}. */
 export const OAUTH_TRANSACTION_COOKIE = '__Host-etherpk-oauth-transaction'
+
+/**
+ * Each sign-in attempt keeps its transaction in a cookie of its own, named for its state, so two
+ * at once (two tabs, or a sign-in beside a background silent check) cannot overwrite each other,
+ * and the callback reads the one its `state` names. A hash, not the state itself, so the name
+ * carries nothing the attempt depends on.
+ */
+export function transactionCookieName(state: string): string {
+    return `${OAUTH_TRANSACTION_COOKIE}-${createHash('sha256').update(state).digest('base64url').slice(0, 16)}`
+}
 
 /**
  * What a cookie is for. Both cookies are encrypted under the same configured secret; the

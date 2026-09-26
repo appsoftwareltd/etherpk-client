@@ -27,6 +27,7 @@ async function login(query: string, present: Record<string, string> = {}) {
     const values = new Map(Object.entries(present))
     const cookies = {
         get: (name: string) => values.get(name),
+        getAll: () => [...values].map(([name, value]) => ({ name, value })),
         set: (name: string, value: string) => void values.set(name, value),
         delete: (name: string) => void values.delete(name),
     } as unknown as Cookies

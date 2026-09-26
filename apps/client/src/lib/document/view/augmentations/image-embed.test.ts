@@ -1,6 +1,8 @@
 import type { EditorState } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+
+import { AssetUnavailableError } from '$lib/storage/fs/asset-store'
 
 import { editorFixture } from '../testing/editor-state-fixture'
 import { imageDecoded, imageEmbedAugmentation, imageKey, markImageDecoded } from './image-embed'
@@ -70,5 +72,95 @@ describe('the image widget after its picture decodes', () => {
         const [oneAfter, twoAfter] = imageWidgets(editor.state)
         expect(oneAfter.eq(one)).toBe(true)
         expect(twoAfter.eq(two)).toBe(false)
+    })
+})
+
+/**
+ * An asset whose fetch fails in a way that passes (the connection, a server failing for a moment):
+ * the placeholder says it is retrying, in the same box, and stops asking once CodeMirror destroys
+ * the widget. The DOM here is a stub (no browser in this tier); the box's height in a real layout
+ * is tests-client/synced-asset-upload.test.ts's.
+ */
+describe('the image widget while its asset cannot be fetched', () => {
+    class FakeElement {
+        className = ''
+        textContent = ''
+        alt = ''
+        src = ''
+        style: Record<string, string> = {}
+        dataset: Record<string, string> = {}
+        attrs = new Map<string, string>()
+        children: FakeElement[] = []
+        classList = {
+            add: (name: string) => {
+                this.className = [...this.className.split(' ').filter(Boolean), name].join(' ')
+            },
+            contains: (name: string) => this.className.split(' ').includes(name),
+        }
+        constructor(readonly tag: string) {}
+        setAttribute(name: string, value: string) {
+            this.attrs.set(name, value)
+        }
+        getAttribute(name: string) {
+            return this.attrs.get(name) ?? null
+        }
+        appendChild<T extends FakeElement>(child: T): T {
+            this.children.push(child)
+            return child
+        }
+        replaceChildren(...children: FakeElement[]) {
+            this.children = children
+        }
+        addEventListener() {}
+    }
+
+    /** Every element under `root`, depth first. */
+    const descendants = (root: FakeElement): FakeElement[] =>
+        root.children.flatMap((child) => [child, ...descendants(child)])
+
+    afterEach(() => {
+        vi.useRealTimers()
+        vi.unstubAllGlobals()
+    })
+
+    function mount(resolveAsset: () => Promise<null>) {
+        vi.useFakeTimers()
+        vi.stubGlobal('document', { createElement: (tag: string) => new FakeElement(tag) })
+        vi.stubGlobal('window', { addEventListener: () => {}, removeEventListener: () => {} })
+        vi.spyOn(console, 'warn').mockImplementation(() => {})
+        const editor = editorFixture('![pic](../assets/pic.png)\n\nafter|', {
+            extensions: [imageEmbedAugmentation({ resolveAsset })],
+        })
+        const [widget] = imageWidgets(editor.state) as unknown as Array<{
+            toDOM(view: EditorView): FakeElement
+            destroy(dom: FakeElement): void
+        }>
+        const root = widget.toDOM(null as unknown as EditorView)
+        return { widget, root }
+    }
+
+    it('says it is retrying in the placeholder, as an image rather than a live region', async () => {
+        const { root } = mount(async () => {
+            throw new AssetUnavailableError('down', { status: 503 })
+        })
+        await vi.advanceTimersByTimeAsync(0)
+
+        const placeholder = descendants(root).find((node) => node.classList.contains('cm-md-image--loading'))!
+        expect(placeholder.classList.contains('cm-md-image--unavailable')).toBe(true)
+        expect(placeholder.getAttribute('role')).toBe('img')
+        expect(placeholder.getAttribute('aria-label')).toBe('Image not loaded. Retrying')
+        expect(placeholder.children.map((child) => child.textContent)).toEqual(['Image not loaded. Retrying…'])
+    })
+
+    it('stops asking for the asset once CodeMirror destroys the widget', async () => {
+        const resolveAsset = vi.fn(async (): Promise<null> => {
+            throw new AssetUnavailableError('down', { status: 503 })
+        })
+        const { widget, root } = mount(resolveAsset)
+        await vi.advanceTimersByTimeAsync(0)
+
+        widget.destroy(root)
+        await vi.advanceTimersByTimeAsync(10 * 60_000)
+        expect(resolveAsset).toHaveBeenCalledOnce()
     })
 })

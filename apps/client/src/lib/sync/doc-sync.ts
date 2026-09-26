@@ -407,6 +407,10 @@ export function createDocSync(deps: DocSyncDeps): DocSync {
 
     async function transmit(operation: DurableOutboxOperation): Promise<void> {
         await persistTask(() => persist.markAttempt(operation.outboxId, now()))
+        // Acknowledged while this waited behind the persistence queue (a resync racing the ack):
+        // the ack has been confirmed and the relay has dropped the operation's receipt, so
+        // sending it now would have the relay store it a second time.
+        if (durableQueue[0]?.outboxId !== operation.outboxId) return
         if (operation.kind === 'delete') {
             send({
                 type: 'delete',

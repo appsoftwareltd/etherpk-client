@@ -60,4 +60,12 @@ describe('describeAccessLoss', () => {
         expect(token.body).toMatch(/https:\/\/sync\.example\.org/)
         expect(token.primary).toEqual({ label: 'Connect again', href: '/graphs?sync=connect' })
     })
+
+    it('brings the person back to the graph after signing in or connecting again', () => {
+        const here = '/g/graph-1/Plans'
+        expect(describeAccessLoss({ reason: 'signed-out' }, here).primary)
+            .toEqual({ label: 'Sign in again', href: '/auth/login?redirect=%2Fg%2Fgraph-1%2FPlans' })
+        expect(describeAccessLoss({ reason: 'disconnected', server: null }, here).primary)
+            .toEqual({ label: 'Connect again', href: '/graphs?sync=connect&return=%2Fg%2Fgraph-1%2FPlans' })
+    })
 })

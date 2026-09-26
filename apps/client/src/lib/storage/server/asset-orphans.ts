@@ -156,7 +156,7 @@ function orphanLabel(asset: ListedAsset, name: string | undefined): string {
 }
 
 /**
- * Each asset's file name from its encrypted metadata, the decrypt `readAssetBytes` performs
+ * Each asset's file name from its encrypted metadata, the decrypt `fetchAssetBytes` performs
  * without the chunks. Best effort: a name that cannot be read leaves that asset labelled by id.
  */
 async function assetNames(deps: ServerAssetOrphanDeps, assetIds: readonly string[]): Promise<Map<string, string>> {

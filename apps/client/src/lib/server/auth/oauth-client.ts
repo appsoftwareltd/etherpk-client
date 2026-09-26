@@ -35,6 +35,13 @@ const DISCOVERY_BUDGET_MS = 5_000
 const TOKEN_BUDGET_MS = 10_000
 
 /**
+ * A refresh gets longer than a browser waits for it (refresh-once.ts). Corporate rotates the
+ * refresh token before it answers, so abandoning a slow answer would leave the browser only the
+ * spent token, and presenting that again ends the account's Client sign-ins on every device.
+ */
+const REFRESH_BUDGET_MS = 30_000
+
+/**
  * Discovery metadata is static for a deployment, so one validated copy per process serves for a
  * while, as the Sync portal does (PORTAL_OAUTH_METADATA_TTL_MS), and /auth/token, /auth/login and
  * /auth/callback do not each fetch it from Corporate first. The TTL bounds how long a changed
@@ -90,10 +97,12 @@ export class OAuthTokenError extends Error {
 /**
  * Only a verdict from the token endpoint ends a session. Everything else that can go wrong on
  * the way to one - discovery, the network (`fetch` throws a `TypeError`), a deadline
- * (`TimeoutError`), a 5xx or a 429 - is Corporate being unavailable, and retrying later with
- * the same refresh token is safe: better-auth 1.6.15's refresh grant inserts the replacement
- * token row without deleting the previous one, so even a reply lost after rotation costs
- * nothing.
+ * (`TimeoutError`), a 5xx or a 429 - is Corporate being unavailable, and the browser is asked
+ * to retry. Retrying with the same refresh token is safe only while Corporate has not rotated
+ * it: better-auth's oauth-provider marks the old token revoked on rotation and, seeing it again,
+ * revokes every refresh token of this client and user. A reply lost after rotation is therefore
+ * covered by `refreshOnce`, which lets the refresh finish and answers a replay with the set
+ * already issued.
  */
 export function isDefinitiveOAuthTokenFailure(error: unknown): boolean {
     return error instanceof OAuthTokenError && error.definitive
@@ -243,7 +252,10 @@ export async function refreshAccessToken(
         client_id: config.clientId,
         scope: config.scopes.join(' '),
         resource: MANAGED_SYNC_AUDIENCE,
-    }), fetcher, { refreshToken, refreshExpiresAt: previousRefreshExpiresAt })
+    }), fetcher, {
+        previous: { refreshToken, refreshExpiresAt: previousRefreshExpiresAt },
+        budgetMs: REFRESH_BUDGET_MS,
+    })
     return tokens
 }
 
@@ -312,7 +324,10 @@ async function tokenRequest(
     endpoint: string,
     body: URLSearchParams,
     fetcher: typeof fetch,
-    previous?: Pick<ManagedTokenSet, 'refreshToken' | 'refreshExpiresAt'>,
+    { previous, budgetMs = TOKEN_BUDGET_MS }: {
+        previous?: Pick<ManagedTokenSet, 'refreshToken' | 'refreshExpiresAt'>
+        budgetMs?: number
+    } = {},
 ): Promise<ManagedTokenSet> {
     const response = await fetcher(endpoint, {
         method: 'POST',
@@ -327,7 +342,7 @@ async function tokenRequest(
             Accept: 'application/json',
         },
         body,
-        signal: AbortSignal.timeout(TOKEN_BUDGET_MS),
+        signal: AbortSignal.timeout(budgetMs),
     })
     const payload = await response.json().catch(() => null) as Record<string, unknown> | null
     if (!response.ok) {

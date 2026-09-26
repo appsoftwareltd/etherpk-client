@@ -11,7 +11,7 @@
  *   etherpk-mcp diagrams setup | status
  *
  * One config file holds a login per Sync Server (ADR 0075). `--sync-server` names the one a
- * command means and may be left out while only one is signed in.
+ * command means and may be left out while there is only one login.
  *
  * `serve` speaks MCP over stdio, so everything for the human goes to stderr; stdout belongs
  * to the agent. `login` and `graphs` are interactive and print to stdout.
@@ -50,7 +50,14 @@ import { describeGraphLabel, findGraphByName, resolveGraphLabel, type MetaNameRe
 import { readGraphName } from './graph-names'
 import { openHeadlessFolder } from './headless-folder'
 import { openHeadlessGraph, type HeadlessGraph } from './headless-graph'
-import { ApprovalAbandoned, unlockByDeviceApproval, unlockByRecoveryCode } from './login'
+import {
+    ApprovalAbandoned,
+    approvalWaitControls,
+    sleepUnlessAborted,
+    unlockByDeviceApproval,
+    unlockByRecoveryCode,
+    type QuitSignal,
+} from './login'
 import { createMcpServer } from './mcp-server'
 import { chromiumStatus, setupDiagrams } from './diagrams'
 import { defaultPublishFoldersPath, publishFolderOf, publishGraphKey, readPublishFolders, withPublishFolder, writePublishFolders } from './publish-folders'
@@ -76,11 +83,11 @@ const USAGE = `etherpk-mcp - EtherPK Headless Client (an MCP server over one syn
       Sign this machine in as a device of your account. Prompts for a Personal Access
       Token (an account-wide one, from the Sync Server portal at <url>/account/tokens)
       unless --pat or ETHERPK_PAT is given, then unlocks your keys by Device Approval:
-      open EtherPK in a browser signed in to the account with its graphs unlocked and
+      open EtherPK in a browser connected to the account with its keys unlocked and
       confirm the code shown. Press r while waiting, or pass --recovery-code, to type
       your Recovery Code instead (or ETHERPK_RECOVERY_CODE, for a scripted setup).
   ${CMD} graphs [--sync-server <url>]
-      List the synced graphs each signed-in account can reach, by name and id.
+      List the synced graphs each logged-in account can reach, by name and id.
   ${CMD} serve --graph <id or name> [--sync-server <url>] [--no-semantic]
       Serve one synced graph to an agent over stdio. For Claude Code:
         claude mcp add etherpk -- npx @appsoftwareltd/etherpk-mcp serve --sync-server <url> --graph <id>
@@ -118,8 +125,8 @@ const USAGE = `etherpk-mcp - EtherPK Headless Client (an MCP server over one syn
   ${CMD} diagrams status
       Which browser a publish would use, if any.
 
-This machine can be signed in to several Sync Servers at once; --sync-server says which one
-a command means, and can be left out while only one is signed in. The config file is
+This machine can hold logins for several Sync Servers at once; --sync-server says which one
+a command means, and can be left out while there is only one. The config file is
 ${defaultConfigPath()} (override with
 ETHERPK_MCP_CONFIG); cached graphs live under ~/.cache/etherpk/mcp (override with
 ETHERPK_MCP_CACHE_DIR).
@@ -131,8 +138,12 @@ function fail(message: string): never {
     process.exit(1)
 }
 
-async function ask(question: string, { secret = false } = {}): Promise<string> {
-    if (!process.stdin.isTTY) fail(`${question} - no terminal to ask on; pass it as an option.`)
+/**
+ * Ask on the terminal; `hint` says how to give the answer when there is none (a script, or
+ * an agent starting the process), since each question has its own option or variable.
+ */
+async function ask(question: string, { secret = false, hint }: { secret?: boolean; hint: string }): Promise<string> {
+    if (!process.stdin.isTTY) fail(`${question.replace(/:\s*$/, '')}: no terminal to ask on; ${hint}.`)
     if (!secret) {
         const rl = createInterface({ input: process.stdin, output: process.stderr, terminal: true })
         try {
@@ -182,9 +193,9 @@ function requireServer(config: HeadlessConfig, wanted: string | undefined): Serv
         case 'none':
             return fail(`Not logged in on this machine. Run: ${CMD} login --sync-server <url>`)
         case 'unknown':
-            return fail(`Not logged in to ${selection.syncServer}. Signed in to: ${selection.known.join(', ') || '(none)'}. Run: ${CMD} login --sync-server ${selection.syncServer}`)
+            return fail(`Not logged in to ${selection.syncServer}. Logged in to: ${selection.known.join(', ') || '(none)'}. Run: ${CMD} login --sync-server ${selection.syncServer}`)
         case 'ambiguous':
-            return fail(`Signed in to more than one Sync Server here: ${selection.known.join(', ')}. Say which with --sync-server <url>.`)
+            return fail(`Logged in to more than one Sync Server here: ${selection.known.join(', ')}. Say which with --sync-server <url>.`)
     }
 }
 
@@ -194,24 +205,24 @@ async function login(args: { 'sync-server'?: string; pat?: string; 'recovery-cod
     // and the user is about to make one.
     const config = (await readConfig(path)) ?? emptyConfig()
     const known = Object.keys(config.servers)
-    const syncServer = normaliseSyncServer(args['sync-server'] ?? (known.length === 1 ? known[0] : await ask('Sync Server URL: ')))
+    const syncServer = normaliseSyncServer(args['sync-server'] ?? (known.length === 1 ? known[0] : await ask('Sync Server URL: ', { hint: 'pass --sync-server <url>' })))
     if (!/^https?:\/\//.test(syncServer)) fail('The Sync Server must be an http(s) URL.')
-    const pat = args.pat ?? process.env.ETHERPK_PAT ?? (await ask(`Personal Access Token (account-wide, from ${syncServer}/account/tokens): `, { secret: true }))
+    const pat = args.pat ?? process.env.ETHERPK_PAT ?? (await ask(`Personal Access Token (account-wide, from ${syncServer}/account/tokens): `, { secret: true, hint: 'set ETHERPK_PAT or pass --pat <token>' }))
     if (!pat) fail('A Personal Access Token is required.')
 
     const account = await connectAccount({ syncServer, pat })
-    console.log(`Signed in to ${syncServer} as ${account.principal.email ?? account.principal.name ?? account.principal.id}.`)
+    console.log(`Connected to ${syncServer} as ${account.principal.email ?? account.principal.name ?? account.principal.id}.`)
 
     // ETHERPK_RECOVERY_CODE serves a box set up by a script, where there is no terminal to type
     // into and no tab to approve from; the variable is read once and never written anywhere.
     const byRecoveryCode = async () =>
-        unlockByRecoveryCode(account.api, process.env.ETHERPK_RECOVERY_CODE ?? (await ask('Recovery Code: ', { secret: true })))
+        unlockByRecoveryCode(account.api, process.env.ETHERPK_RECOVERY_CODE ?? (await ask('Recovery Code: ', { secret: true, hint: 'set ETHERPK_RECOVERY_CODE' })))
     const vaultKey = args['recovery-code'] ? await byRecoveryCode() : await approveOrFallBack(account, byRecoveryCode)
     config.servers[syncServer] = { pat, vaultKey: toBase64Url(vaultKey) }
     await writeConfig(path, config)
     console.log(`Keys unlocked and cached in ${path} (owner-only). Anyone who can read your files on this machine can read this account, as with a signed-in browser.`)
     const others = Object.keys(config.servers).filter((server) => server !== syncServer)
-    if (others.length > 0) console.log(`Also signed in to ${others.join(', ')}; commands now need --sync-server <url> to say which.`)
+    if (others.length > 0) console.log(`Also logged in to ${others.join(', ')}; commands now need --sync-server <url> to say which.`)
 
     await listGraphs({ syncServer, pat, vaultKey: toBase64Url(vaultKey) }, others.length > 0)
 }
@@ -226,23 +237,21 @@ async function approveOrFallBack(
     account: Awaited<ReturnType<typeof connectAccount>>,
     byRecoveryCode: () => Promise<Uint8Array>,
 ): Promise<Uint8Array> {
-    const abort = new AbortController()
+    const controls = approvalWaitControls()
     const io = {
         say: (line: string) => console.log(line),
-        sleep: (ms: number) => new Promise<void>((r) => setTimeout(r, ms)),
-        signal: abort.signal,
+        sleep: (ms: number) => sleepUnlessAborted(ms, controls.signal),
+        signal: controls.signal,
         clientUrl: account.clientUrl,
     }
     const stdin = process.stdin
     const interactive = stdin.isTTY === true
-    const onKey = (chunk: Buffer) => {
-        const key = chunk.toString('utf8')
-        if (key === 'r' || key === 'R') abort.abort()
-        if (key === '\u0003') {
-            console.log('')
-            process.exit(130)
-        }
-    }
+    const onKey = (chunk: Buffer) => controls.onKey(chunk.toString('utf8'))
+    // A quit that arrives as a signal (no terminal, or a supervisor stopping the process) aborts
+    // the wait the same way a Ctrl-C key does, so the approval is cancelled before the exit.
+    const quitSignals: QuitSignal[] = ['SIGINT', 'SIGTERM', 'SIGHUP']
+    const onSignal = (name: QuitSignal) => controls.onSignal(name)
+    for (const name of quitSignals) process.once(name, onSignal)
     if (interactive) {
         console.log('(Press r to type your Recovery Code instead.)')
         stdin.setRawMode(true)
@@ -258,11 +267,16 @@ async function approveOrFallBack(
         if (!(error instanceof ApprovalAbandoned)) throw error
         abandoned = true
     } finally {
+        for (const name of quitSignals) process.off(name, onSignal)
         if (interactive) {
             stdin.off('data', onKey)
             stdin.setRawMode(false)
             stdin.pause()
         }
+    }
+    if (controls.exitCode !== null) {
+        console.log('')
+        process.exit(controls.exitCode)
     }
     if (!abandoned) throw new Error('unreachable')
     console.log('Approval cancelled; unlocking with your Recovery Code instead.')

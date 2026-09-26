@@ -23,7 +23,7 @@ import {
     utf8,
 } from '$lib/crypto'
 import { withRetry, type RetryOptions } from '$lib/retry'
-import { mimeTypeForExt } from '$lib/storage/fs/asset-store'
+import { AssetUnavailableError, mimeTypeForExt } from '$lib/storage/fs/asset-store'
 import {
     ASSET_CHUNK_PLAINTEXT_BYTES,
     assetChunkCount,
@@ -110,7 +110,12 @@ class HttpFailure extends Error {
  */
 function isTransient(error: unknown): boolean {
     if (!(error instanceof HttpFailure)) return true
-    return error.status === 401 || error.status === 408 || error.status === 429 || error.status >= 500
+    return isTransientStatus(error.status)
+}
+
+/** "Not your fault, try again": a 401 only once a fresh token has been presented. */
+function isTransientStatus(status: number): boolean {
+    return status === 401 || status === 408 || status === 429 || status >= 500
 }
 
 interface AssetMetadata {
@@ -218,16 +223,40 @@ export function createServerAssetStore(deps: ServerAssetStoreDeps): AssetStore {
     }
 
     /**
-     * Fetch, decrypt and reassemble one asset. Both read paths go through here: the mirror
-     * wants the bytes themselves, a viewer wants them behind an object URL.
+     * A read request whose connection failure is a file that cannot be fetched just now, not a
+     * missing one. A cancellation stays a cancellation.
      */
-    async function readAssetBytes(ref: string): Promise<AssetBytes | null> {
+    async function readRequest(url: string, init?: RequestInit): Promise<Response> {
+        try {
+            return await f(url, init)
+        } catch (error) {
+            if (error instanceof DOMException && error.name === 'AbortError') throw error
+            throw new AssetUnavailableError('The file could not be fetched: the connection failed.', { cause: error })
+        }
+    }
+
+    /**
+     * Fetch, decrypt and reassemble one asset; both read paths go through here. `null` when the
+     * server has no such asset or refuses it. A failure that says nothing about the asset rejects
+     * with `AssetUnavailableError`: the connection, or a status that means "try again" (a 401
+     * after one fresh token). A file that will not decrypt or parse rejects with that error.
+     */
+    async function fetchAssetBytes(ref: string): Promise<AssetBytes | null> {
         const assetId = assetIdFromRef(ref)
         if (!assetId) return null
-        const res = await f(`${base}/api/v1/sync/assets/${deps.graphId}/${assetId}`, {
-            headers: { 'x-sync-token': await deps.syncToken() },
-        })
-        if (!res.ok) return null
+        const url = `${base}/api/v1/sync/assets/${deps.graphId}/${assetId}`
+        let res = await readRequest(url, { headers: { 'x-sync-token': await deps.syncToken() } })
+        // A token can be refused for having expired under a slow clock; one freshly minted says
+        // whether the refusal is about the token or about this account.
+        if (res.status === 401) {
+            res = await readRequest(url, { headers: { 'x-sync-token': await deps.syncToken({ force: true }) } })
+        }
+        if (!res.ok) {
+            if (isTransientStatus(res.status)) {
+                throw new AssetUnavailableError(`The sync server could not hand over the file just now (HTTP ${res.status}).`, { status: res.status })
+            }
+            return null
+        }
         const body = (await res.json()) as {
             encryptedMetadata: string
             downloadUrls: string[]
@@ -244,8 +273,14 @@ export function createServerAssetStore(deps: ServerAssetStoreDeps): AssetStore {
         // Download + decrypt each chunk, reassemble.
         const parts: Uint8Array[] = []
         for (let n = 0; n < body.downloadUrls.length; n++) {
-            const chunkRes = await f(body.downloadUrls[n])
-            if (!chunkRes.ok) return null
+            const chunkRes = await readRequest(body.downloadUrls[n])
+            if (!chunkRes.ok) {
+                // No 401 here: a download URL is signed, not authorised by the sync token.
+                if (chunkRes.status !== 401 && isTransientStatus(chunkRes.status)) {
+                    throw new AssetUnavailableError(`Storage could not hand over the file just now (HTTP ${chunkRes.status}).`, { status: chunkRes.status })
+                }
+                return null
+            }
             const encrypted = new Uint8Array(await chunkRes.arrayBuffer())
             const { plaintext } = await openSymmetric({
                 keyForEpoch: () => perAssetKey,
@@ -392,10 +427,15 @@ export function createServerAssetStore(deps: ServerAssetStoreDeps): AssetStore {
             return saved(assetId, false)
         },
 
-        readBytes: readAssetBytes,
+        // The mirror and the publisher report an asset they got no bytes for. A server that answered
+        // "try again" is that, as any refusal is; a connection that failed rejects, as it always has.
+        readBytes: (ref: string) =>
+            fetchAssetBytes(ref).catch((error: unknown) =>
+                error instanceof AssetUnavailableError && error.status !== undefined ? null : Promise.reject(error),
+            ),
 
         async resolve(ref: string): Promise<ResolvedAsset | null> {
-            const asset = await readAssetBytes(ref)
+            const asset = await fetchAssetBytes(ref)
             if (!asset) return null
             const url = URL.createObjectURL(new Blob([asset.bytes as BlobPart], { type: asset.type }))
             objectUrls.push(url)

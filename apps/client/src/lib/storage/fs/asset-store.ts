@@ -75,13 +75,33 @@ export interface ResolvedAsset {
     type: string
 }
 
+/**
+ * An asset could not be fetched just now: the connection failed, or the server answered with a
+ * status that means "try again". It says nothing about whether the file exists, so something
+ * showing the file asks again rather than calling it missing. `status` is the server's answer,
+ * absent when the connection failed before there was one.
+ */
+export class AssetUnavailableError extends Error {
+    readonly name = 'AssetUnavailableError'
+    readonly status: number | undefined
+
+    constructor(message: string, options: { status?: number; cause?: unknown } = {}) {
+        super(message, options.cause === undefined ? undefined : { cause: options.cause })
+        this.status = options.status
+    }
+}
+
 export interface AssetStore {
     /** Hash the bytes, derive the name, write-unless-present, and return the reference to embed. */
     save(
         file: { name: string; bytes: Uint8Array<ArrayBuffer>; type: string },
         onBytes?: AssetSaveProgressFn,
     ): Promise<SavedAsset>
-    /** Resolve a doc-relative asset reference to its bytes, name and type; `null` if absent or not an asset ref. */
+    /**
+     * Resolve a doc-relative asset reference to its bytes, name and type; `null` if absent or not
+     * an asset ref. Rejects with {@link AssetUnavailableError} when the bytes cannot be fetched just
+     * now (a synced graph's connection or server), and with another error when they cannot be read.
+     */
     resolve(ref: string): Promise<ResolvedAsset | null>
     /**
      * The same bytes as {@link resolve}, handed over directly rather than behind an object URL.

@@ -1,7 +1,9 @@
 <script lang="ts">
     import { onMount } from "svelte";
 
+    import { page } from "$app/state";
     import { env } from "$env/dynamic/public";
+    import { currentReturnPath, managedSignInHref, syncConnectHref } from "$lib/auth/sign-in-links";
     import { ManagedTokenError, clearManagedAccessToken } from "$lib/auth/managed-token";
     import {
         SYNC_CONFIG_CHANGED_EVENT,
@@ -119,6 +121,10 @@
             if ((error instanceof SyncApiError || error instanceof ManagedTokenError)
                 && error.status === 401) {
                 accountState = "signed-out";
+                // Signed out, or the token revoked, somewhere this tab could not see: the keys
+                // lock too, as a sign-out here locks them. Locking needs the account's scope, so
+                // it comes before the account is forgotten.
+                lockVault();
                 clearActiveSyncAccount();
                 // Signed out somewhere this tab could not see (on the account site, or a revoked
                 // token): open graphs in every tab stop syncing and say so.
@@ -140,7 +146,8 @@
     function connectManagedSync(): void {
         clearActiveSyncAccount();
         writeSyncConfig({ mode: "managed" });
-        window.location.href = "/auth/login";
+        // Back to this page once signed in: a document someone was about to open, not /graphs.
+        window.location.href = managedSignInHref(currentReturnPath(window.location));
     }
 
     async function disconnectThisDevice(): Promise<void> {
@@ -155,7 +162,7 @@
             // End only the Client-origin refresh session. Corporate and Server portal sessions
             // deliberately remain signed in for this narrower device action.
             await fetch("/auth/logout", { method: "POST" });
-            window.location.href = "/graphs?managed=signed-out";
+            window.location.href = "/graphs?managed=disconnected";
             return;
         }
 
@@ -279,7 +286,7 @@
     </button>
 {:else}
     <a
-        href="/graphs?sync=connect"
+        href={syncConnectHref(page.url.pathname === "/graphs" ? null : currentReturnPath(page.url))}
         class="rounded-lg border border-gray-950/10 bg-white px-3 py-1.5 text-sm font-semibold text-gray-700 shadow-sm transition-colors hover:bg-gray-50 hover:text-gray-950 dark:border-white/10 dark:bg-white/5 dark:text-gray-300 dark:hover:bg-white/10 dark:hover:text-white"
     >
         {accountState === "unavailable" ? "Sync unavailable" : "Connect Sync"}

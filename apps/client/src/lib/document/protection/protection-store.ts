@@ -137,7 +137,7 @@ export function vaultProtectionStore(graphId: string, access: VaultProtectionAcc
  * as a Filesystem Backend does. Without it a reload lost the passphrase entirely.
  */
 export function localProtectionStore(graphId: string): ProtectionRecordStore {
-    const key = `etherpk:protection:${graphId}`
+    const key = localProtectionKey(graphId)
     return {
         async read() {
             // A `getItem` that throws (storage disabled by policy) propagates: "could not look"
@@ -153,6 +153,11 @@ export function localProtectionStore(graphId: string): ProtectionRecordStore {
             localStorage.removeItem(key)
         },
     }
+}
+
+/** Where {@link localProtectionStore} keeps a graph's record. */
+export function localProtectionKey(graphId: string): string {
+    return `etherpk:protection:${graphId}`
 }
 
 /** For tests and for a graph whose backend has not been resolved yet. Never persists. */

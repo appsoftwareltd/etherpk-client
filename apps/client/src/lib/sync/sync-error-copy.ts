@@ -39,8 +39,11 @@ const QUOTA_CODES = new Set(Object.keys(QUOTA_COPY))
  * Refusals the server names with a code because the generic status copy would mislead: a 409
  * on an invite is not "something else changed it first", it is the address the user typed.
  */
+/** Inviting your own address: the server's `invite_self`, and the invite dialog's own check. */
+export const INVITE_SELF_COPY = 'That is your own address. You already own this graph, so there is nobody to invite.'
+
 const REFUSAL_COPY: Record<string, string> = {
-    invite_self: 'That is your own address. You already own this graph, so there is nobody to invite.',
+    invite_self: INVITE_SELF_COPY,
     invite_already_member: 'They are already a member of this graph.',
     ownership_changed: 'The graph changed hands while this ran. Refresh the page to see who owns it now.',
     asset_complete: 'This file has already been uploaded. Add it again to create a new copy.',

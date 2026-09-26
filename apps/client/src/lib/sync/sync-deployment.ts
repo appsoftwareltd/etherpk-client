@@ -7,6 +7,17 @@ export function isManagedSyncConfigured(environment: PublicSyncEnvironment): boo
     return Boolean(environment.PUBLIC_MANAGED_SYNC_URL?.trim())
 }
 
+/** The Managed Sync server's origin, when this deployment offers Managed Sync; null otherwise. */
+export function managedSyncOrigin(environment: PublicSyncEnvironment): string | null {
+    const configured = environment.PUBLIC_MANAGED_SYNC_URL?.trim()
+    if (!configured) return null
+    try {
+        return new URL(configured).origin
+    } catch {
+        return null
+    }
+}
+
 /** Optional deployment default for the PAT-authenticated custom Server form. */
 export function defaultCustomSyncUrl(environment: PublicSyncEnvironment): string {
     return environment.PUBLIC_CUSTOM_SYNC_URL?.trim().replace(/\/$/, '') ?? ''

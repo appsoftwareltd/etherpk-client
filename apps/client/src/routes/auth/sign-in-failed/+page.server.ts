@@ -9,11 +9,13 @@ import { sanitiseClientReturnPath } from '$lib/server/auth/oauth-client'
  * `reason` names why. A callback refusal that should also land here adds its own line below:
  *
  * - `busy`: Corporate could not finish the code exchange.
+ * - `failed`: Corporate refused the sign-in, or its answer did not check out.
  * - `stale`: the callback's transaction is spent, expired or for another attempt, as after a
  *   reload or a Back into an old callback URL.
  */
 const REASONS: Record<string, string> = {
     busy: 'The EtherPK account service was busy, so this sign-in stopped before it completed. Nothing was lost. Sign in again to carry on.',
+    failed: 'The EtherPK account service did not complete this sign-in. Nothing was lost. Sign in again to carry on.',
     stale: 'This sign-in link was already used or has expired, so it could not finish. Nothing was lost. Sign in again to carry on.',
 }
 

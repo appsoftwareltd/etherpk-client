@@ -3,7 +3,9 @@ import type { ManagedClientAuthConfig } from './config'
 import {
     MANAGED_SESSION_COOKIE,
     OAUTH_TRANSACTION_COOKIE,
+    decryptSessionCookie,
     encryptSessionCookie,
+    transactionCookieName,
     type AuthorizationTransaction,
     type ManagedSession,
 } from './session-cookie'
@@ -27,12 +29,33 @@ const controlCookieBase = {
     sameSite: 'lax' as const,
 }
 
+/** Sign-in attempts kept at once: enough for tabs and a silent check, few enough for the headers. */
+const MAX_TRANSACTIONS = 4
+
+function transactionCookies(cookies: Cookies): Array<{ name: string; value: string }> {
+    return cookies.getAll().filter(({ name }) => name.startsWith(`${OAUTH_TRANSACTION_COOKIE}-`))
+}
+
 export async function setAuthorizationTransaction(
     cookies: Cookies,
     transaction: AuthorizationTransaction,
     config: ManagedClientAuthConfig,
 ): Promise<void> {
-    cookies.set(OAUTH_TRANSACTION_COOKIE, await encryptSessionCookie(transaction, config.sessionSecret, 'oauth-transaction'), {
+    // Each transaction cookie lasts ten minutes, but repeated clicks inside that time would still
+    // add one each: drop the oldest past the limit. One that cannot be read counts as oldest.
+    const existing = transactionCookies(cookies)
+    if (existing.length >= MAX_TRANSACTIONS) {
+        const aged = await Promise.all(existing.map(async ({ name, value }) => ({
+            name,
+            createdAt: await decryptSessionCookie<AuthorizationTransaction>(value, config.sessionSecret, 'oauth-transaction')
+                .then((stored) => stored.createdAt, () => 0),
+        })))
+        aged.sort((a, b) => a.createdAt - b.createdAt)
+        for (const { name } of aged.slice(0, existing.length - MAX_TRANSACTIONS + 1)) {
+            cookies.delete(name, cookieBase(config))
+        }
+    }
+    cookies.set(transactionCookieName(transaction.state), await encryptSessionCookie(transaction, config.sessionSecret, 'oauth-transaction'), {
         ...cookieBase(config),
         maxAge: 10 * 60,
     })
@@ -59,7 +82,7 @@ export async function setManagedSession(
 
 export function clearManagedCookies(cookies: Cookies, config: ManagedClientAuthConfig): void {
     cookies.delete(MANAGED_SESSION_COOKIE, cookieBase(config))
-    cookies.delete(OAUTH_TRANSACTION_COOKIE, cookieBase(config))
+    for (const { name } of transactionCookies(cookies)) cookies.delete(name, cookieBase(config))
 }
 
 /** Mark an unsuccessful silent check so its immediate return request cannot loop. */

@@ -1,9 +1,15 @@
 import 'fake-indexeddb/auto'
 import { describe, expect, it, vi } from 'vitest'
 import * as Y from 'yjs'
-import { SYNC_PROTOCOL_LIMITS } from '@appsoftwareltd/etherpk-shared'
+import { SYNC_PROTOCOL_LIMITS, SYNC_PROTOCOL_VERSION } from '@appsoftwareltd/etherpk-shared'
 import { createGraphKeyring, fromBase64Url } from '$lib/crypto'
-import { createGraphSync, type GraphSyncDeps, type TransportSocket } from './graph-sync'
+import {
+    createGraphSync,
+    OPERATION_WINDOW,
+    type GraphSyncDeps,
+    type TransportCloseEvent,
+    type TransportSocket,
+} from './graph-sync'
 import { createLoopbackRelay } from './loopback-relay'
 import { fixedSyncToken } from './sync-token'
 import { openGraphCache, type GraphCache } from './local-cache'
@@ -1959,5 +1965,136 @@ describe('graph-sync protocol mismatch', () => {
             graph.dispose()
             cache.dispose()
         }
+    })
+})
+
+/**
+ * The relay handles a connection's messages one at a time and closes it once 256 are queued. A
+ * flush or a reconnect across an imported vault sent every document's operation at once, so the
+ * socket was cut, and cut again on every reconnect.
+ */
+describe('graph-sync operation window', () => {
+    /** A relay that answers catch-ups at once and acks appends only when the test says. */
+    function relayHoldingAcks() {
+        const appends: Array<{ outboxId: string; docId: string; socket: number }> = []
+        const sockets: Array<{ receive: (data: string) => void; drop: () => void }> = []
+        const connect = (): TransportSocket => {
+            const index = sockets.length
+            let receive: (data: string) => void = () => {}
+            let closed: (event?: TransportCloseEvent) => void = () => {}
+            let live = true
+            sockets.push({
+                receive: (data) => receive(data),
+                drop: () => {
+                    live = false
+                    closed({ code: 1006, reason: '' })
+                },
+            })
+            return {
+                send(data) {
+                    if (!live) return
+                    const message = JSON.parse(data) as { type: string; outboxId?: string; docId?: string; requestId?: string; generation?: number; afterSeq?: number }
+                    if (message.type === 'append') appends.push({ outboxId: message.outboxId!, docId: message.docId!, socket: index })
+                    if (message.type === 'catchup') {
+                        queueMicrotask(() =>
+                            receive(JSON.stringify({
+                                v: SYNC_PROTOCOL_VERSION,
+                                type: 'catchup_batch',
+                                requestId: message.requestId,
+                                docId: message.docId,
+                                generation: message.generation,
+                                state: 'active',
+                                updates: [],
+                                throughSeq: message.afterSeq ?? 0,
+                                hasMore: false,
+                            })),
+                        )
+                    }
+                },
+                close: () => {},
+                onOpen: (callback) => queueMicrotask(callback),
+                onMessage: (callback) => {
+                    receive = callback
+                },
+                onClose: (callback) => {
+                    closed = callback
+                },
+            }
+        }
+        const ack = (append: { outboxId: string; socket: number }) =>
+            sockets[append.socket].receive(JSON.stringify({
+                v: SYNC_PROTOCOL_VERSION,
+                type: 'ack',
+                outboxId: append.outboxId,
+                generation: 1,
+                state: 'active',
+                seq: 1,
+            }))
+        return { connect, appends, sockets, ack }
+    }
+
+    const docIds = (count: number) =>
+        Array.from({ length: count }, (_, n) => `018f47a0-7b5d-7cc5-b5c1-${(0x100000 + n).toString(16).padStart(12, '0')}`)
+
+    async function graphOver(relay: ReturnType<typeof relayHoldingAcks>) {
+        const graphId = `g-window-${Math.floor(performance.now() * 1000)}`
+        const cache = await openGraphCache(graphId)
+        const graph = createGraphSync({
+            graphId,
+            rootDocId: ROOT,
+            keyring: createGraphKeyring(graphId),
+            relayUrl: 'ws://relay',
+            token: fixedSyncToken('t'),
+            cache,
+            connect: relay.connect,
+            debounceMs: 5,
+            retryDelayMs: () => 0,
+        })
+        await graph.ready()
+        return { graph, cache }
+    }
+
+    it('keeps at most the window unacknowledged across many documents, and sends the rest as acks arrive', async () => {
+        const relay = relayHoldingAcks()
+        const { graph, cache } = await graphOver(relay)
+        const docs = docIds(OPERATION_WINDOW + 20)
+        for (const docId of docs) graph.docSync(docId).doc.getText('content').insert(0, docId)
+
+        await graph.flushAll()
+        await vi.waitFor(() => expect(relay.appends).toHaveLength(OPERATION_WINDOW))
+        await new Promise((resolve) => setTimeout(resolve, 30))
+        expect(relay.appends).toHaveLength(OPERATION_WINDOW)
+
+        relay.ack(relay.appends[0])
+        await vi.waitFor(() => expect(relay.appends).toHaveLength(OPERATION_WINDOW + 1))
+
+        // Answer everything as it arrives: every document's operation goes out exactly once.
+        for (let answered = 1; answered < docs.length; answered++) {
+            await vi.waitFor(() => expect(relay.appends.length).toBeGreaterThan(answered))
+            relay.ack(relay.appends[answered])
+        }
+        await expect(graph.awaitAcked({ stallMs: 2_000 })).resolves.toEqual({ settled: true, outstanding: 0 })
+        expect(new Set(relay.appends.map((append) => append.docId)).size).toBe(docs.length)
+        expect(relay.appends).toHaveLength(docs.length)
+
+        graph.dispose()
+        cache.dispose()
+    })
+
+    it('resends no more than the window when the connection opens again', async () => {
+        const relay = relayHoldingAcks()
+        const { graph, cache } = await graphOver(relay)
+        const docs = docIds(OPERATION_WINDOW + 20)
+        for (const docId of docs) graph.docSync(docId).doc.getText('content').insert(0, docId)
+        await graph.flushAll()
+        await vi.waitFor(() => expect(relay.appends).toHaveLength(OPERATION_WINDOW))
+
+        relay.sockets[0].drop()
+        await vi.waitFor(() => expect(relay.appends.filter((append) => append.socket === 1)).toHaveLength(OPERATION_WINDOW))
+        await new Promise((resolve) => setTimeout(resolve, 30))
+        expect(relay.appends.filter((append) => append.socket === 1)).toHaveLength(OPERATION_WINDOW)
+
+        graph.dispose()
+        cache.dispose()
     })
 })

@@ -1,5 +1,5 @@
 import type { Cookies } from '@sveltejs/kit'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
     MANAGED_SESSION_COOKIE,
     OAUTH_TRANSACTION_COOKIE,
@@ -8,6 +8,7 @@ import {
     type ManagedSession,
 } from '$lib/server/auth/session-cookie'
 import { resetOAuthMetadataCache } from '$lib/server/auth/oauth-client'
+import { resetRefreshOnce } from '$lib/server/auth/refresh-once'
 import { POST } from './+server'
 
 const logged = vi.hoisted(() => ({ warn: vi.fn(), info: vi.fn(), error: vi.fn(), debug: vi.fn() }))
@@ -15,8 +16,10 @@ vi.mock('$lib/server/logger', () => ({ logger: logged }))
 
 beforeEach(() => {
     resetOAuthMetadataCache()
+    resetRefreshOnce()
     for (const log of Object.values(logged)) log.mockReset()
 })
+afterEach(() => vi.useRealTimers())
 
 // The route reads its managed preset from the private environment. The shared test mock is
 // empty so Client unit tests never depend on workstation secrets, hence a complete preset here.
@@ -50,6 +53,9 @@ function cookieJar() {
     const cookies = {
         get(name: string) {
             return values.get(name)?.value
+        },
+        getAll() {
+            return [...values].map(([name, stored]) => ({ name, value: stored.value }))
         },
         set(name: string, value: string, options: Record<string, unknown>) {
             values.set(name, { value, options })
@@ -171,6 +177,17 @@ describe('POST /auth/token', () => {
         expect(discoveries).toHaveLength(1)
     })
 
+    it('answers 204 when the browser has no session at all, so a signed-out page logs no failed request', async () => {
+        const { cookies } = cookieJar()
+        const fetch = vi.fn<typeof globalThis.fetch>()
+
+        const response = await postToken(cookies, fetch)
+
+        expect(response.status).toBe(204)
+        expect(response.headers.get('cache-control')).toBe('no-store')
+        expect(fetch).not.toHaveBeenCalled()
+    })
+
     it('signs the browser out only when Corporate says the grant is dead', async () => {
         const { response, values } = await refreshWith(corporate(async () =>
             Response.json({ error: 'invalid_grant' }, { status: 400 })))
@@ -239,5 +256,44 @@ describe('POST /auth/token', () => {
             stage: 'refresh',
             upstreamStatus: 429,
         }))
+    })
+})
+
+// A reply that never reached the browser leaves it holding the refresh token Corporate has just
+// replaced; presenting that again would make Corporate revoke the grant on every device.
+describe('a refresh reply the browser never received', () => {
+    it('answers the replayed refresh token with the set already rotated, without asking Corporate again', async () => {
+        const fetch = corporate(async () => issued())
+        const first = await refreshWith(fetch)
+        expect(first.response.status).toBe(200)
+
+        // The browser lost that reply and still presents refresh-1.
+        const replay = await refreshWith(fetch)
+        expect(replay.response.status).toBe(200)
+        expect(await replay.response.json()).toMatchObject({ accessToken: 'access-2' })
+
+        const tokenCalls = fetch.mock.calls.filter(([url]) => String(url) === metadata.token_endpoint)
+        expect(tokenCalls).toHaveLength(1)
+    })
+
+    it('answers 503 while a slow refresh runs on, and hands its tokens to the retry', async () => {
+        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+        let answer: ((response: Response) => void) | undefined
+        const fetch = corporate(() => new Promise<Response>((resolve) => { answer = resolve }))
+
+        const first = refreshWith(fetch)
+        // The route's wait starts in the same tick as the call to the token endpoint.
+        for (let turn = 0; turn < 1000 && !answer; turn++) await new Promise((resolve) => setImmediate(resolve))
+        await vi.advanceTimersByTimeAsync(10_000)
+        expect((await first).response.status).toBe(503)
+
+        // Corporate rotated the token and answers late; the browser retries with refresh-1.
+        answer!(issued())
+        const retry = await refreshWith(fetch)
+        expect(retry.response.status).toBe(200)
+        expect(await retry.response.json()).toMatchObject({ accessToken: 'access-2' })
+
+        const tokenCalls = fetch.mock.calls.filter(([url]) => String(url) === metadata.token_endpoint)
+        expect(tokenCalls).toHaveLength(1)
     })
 })

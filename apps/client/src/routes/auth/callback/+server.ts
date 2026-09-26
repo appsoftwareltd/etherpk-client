@@ -18,8 +18,8 @@ import {
     type OAuthMetadata,
 } from '$lib/server/auth/oauth-client'
 import {
-    OAUTH_TRANSACTION_COOKIE,
     decryptSessionCookie,
+    transactionCookieName,
     type AuthorizationTransaction,
 } from '$lib/server/auth/session-cookie'
 import { logger } from '$lib/server/logger'
@@ -38,11 +38,18 @@ type RefusalStage =
     | 'id-token-invalid'
 
 /**
- * Log the refusal at warn and end the request with `status`.
+ * The account service refused the sign-in, or its answer did not check out: the provider sent an
+ * error, no code, a code it then rejected, or an ID token that fails verification. The sign-in
+ * ends on the page that says so and offers a fresh one back to the same place, never on
+ * SvelteKit's bare 400, and no session is created.
  */
-function refuse(stage: RefusalStage, status: number, message: string, detail: Record<string, unknown> = {}): never {
+function failed(
+    stage: Extract<RefusalStage, 'provider-error' | 'code-missing' | 'exchange-refused' | 'id-token-invalid'>,
+    returnPath: string,
+    detail: Record<string, unknown> = {},
+): never {
     logger.warn('managed sign-in callback refused', { stage, ...detail })
-    error(status, message)
+    redirect(303, `/auth/sign-in-failed?${new URLSearchParams({ reason: 'failed', redirect: returnPath })}`)
 }
 
 /**
@@ -95,24 +102,30 @@ export const GET: RequestHandler = async ({ url, cookies, fetch, setHeaders }) =
     setHeaders({ 'cache-control': 'no-store' })
     const config = parseOptionalManagedClientAuthConfig(env)
         ?? error(404, 'Managed Sync is not configured for this Client')
-    const encryptedTransaction = cookies.get(OAUTH_TRANSACTION_COOKIE)
-    cookies.delete(OAUTH_TRANSACTION_COOKIE, {
-        path: '/',
-        // Match the __Host- cookie attributes used when the transaction was created.
-        secure: true,
-    })
+    // Only this attempt's transaction is read and spent; another tab's attempt keeps its own.
+    const state = url.searchParams.get('state')
+    const cookieName = state ? transactionCookieName(state) : null
+    const encryptedTransaction = cookieName ? cookies.get(cookieName) : undefined
+    if (cookieName) {
+        cookies.delete(cookieName, {
+            path: '/',
+            // Match the __Host- cookie attributes used when the transaction was created.
+            secure: true,
+        })
+    }
     if (!encryptedTransaction) stale('transaction-missing')
 
     const transaction = await decryptSessionCookie<AuthorizationTransaction>(encryptedTransaction, config.sessionSecret, 'oauth-transaction')
         .catch(() => stale('transaction-invalid'))
     if (Date.now() - transaction.createdAt > 10 * 60 * 1000) stale('transaction-expired', transaction.returnPath)
-    if (url.searchParams.get('state') !== transaction.state) stale('state-mismatch', transaction.returnPath)
+    // The cookie is found by a hash of the state; the transaction inside must be for that state.
+    if (state !== transaction.state) stale('state-mismatch', transaction.returnPath)
     const providerError = url.searchParams.get('error')
     if (isSilentClientAuthorizationMiss(transaction, providerError)) silentMiss(cookies, transaction.returnPath)
     const code = url.searchParams.get('code')
     if (!code) {
-        if (providerError) refuse('provider-error', 400, 'OAuth authorization failed', { providerError })
-        refuse('code-missing', 400, 'Missing authorization code')
+        if (providerError) failed('provider-error', transaction.returnPath, { providerError })
+        failed('code-missing', transaction.returnPath)
     }
 
     let metadata: OAuthMetadata
@@ -129,7 +142,7 @@ export const GET: RequestHandler = async ({ url, cookies, fetch, setHeaders }) =
         // Only Corporate's verdict on the code is a validation failure. A 5xx, a 429, the network
         // or a deadline says nothing about it.
         if (isDefinitiveOAuthTokenFailure(failure)) {
-            refuse('exchange-refused', 400, 'OAuth callback validation failed', describeOAuthFailure(failure))
+            failed('exchange-refused', transaction.returnPath, describeOAuthFailure(failure))
         }
         interrupted('exchange-unavailable', describeOAuthFailure(failure), transaction, cookies)
     }
@@ -140,7 +153,7 @@ export const GET: RequestHandler = async ({ url, cookies, fetch, setHeaders }) =
     } catch {
         // Do not expose nonce, code, issuer or token details in a browser error or retain a
         // partial session.
-        refuse('id-token-invalid', 400, 'OAuth callback validation failed')
+        failed('id-token-invalid', transaction.returnPath)
     }
     await setManagedSession(cookies, {
         refreshToken: tokens.refreshToken,

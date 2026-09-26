@@ -1,19 +1,19 @@
 /**
  * Who administers a deployment is deployment configuration, not a runtime race.
  *
- * `ADMINISTRATOR_EMAIL_ADDRESS` names the operator of one application - the Sync Server names
- * its own, the Account site names its own - in the same way every other trust decision here is
- * expressed in the environment rather than inferred from whoever registered first. It is checked
- * on every sign-in as well as at sign-up, so setting it after the operator has already registered
- * still works, and clearing it takes the privilege away again.
+ * `ADMINISTRATOR_EMAIL_ADDRESS` names the operators of one application - the Sync Server names its
+ * own, the Account site names its own - in the same way every other trust decision here is
+ * expressed in the environment rather than inferred from whoever registered first. It holds one
+ * address, or several separated by commas. It is checked on every request, so setting it after an
+ * operator has registered works at once, and removing an address takes the privilege away again.
  */
 export function isConfiguredAdministrator(
     email: string | null | undefined,
     configured: string | null | undefined,
 ): boolean {
-    const wanted = normalise(configured)
-    if (!wanted) return false
-    return normalise(email) === wanted
+    const address = normalise(email)
+    if (!address) return false
+    return (configured ?? '').split(',').some((entry) => normalise(entry) === address)
 }
 
 /**

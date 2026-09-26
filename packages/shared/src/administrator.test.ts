@@ -24,4 +24,13 @@ describe('the configured administrator', () => {
         expect(isConfiguredAdministrator('someone@example.com', 'ops@example.com')).toBe(false)
         expect(isConfiguredAdministrator('ops@example.com.evil.test', 'ops@example.com')).toBe(false)
     })
+
+    it('matches any address in a comma-separated list', () => {
+        const configured = 'ops@example.com, Second@Example.com ,'
+        expect(isConfiguredAdministrator('ops@example.com', configured)).toBe(true)
+        expect(isConfiguredAdministrator('second@example.com', configured)).toBe(true)
+        expect(isConfiguredAdministrator('third@example.com', configured)).toBe(false)
+        // An empty entry names nobody, so a trailing comma grants nothing to an empty address.
+        expect(isConfiguredAdministrator('', configured)).toBe(false)
+    })
 })

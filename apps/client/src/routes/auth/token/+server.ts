@@ -4,6 +4,7 @@ import { env } from '$env/dynamic/private'
 import { parseOptionalManagedClientAuthConfig } from '$lib/server/auth/config'
 import { clearManagedCookies, setManagedSession } from '$lib/server/auth/cookies'
 import { isSameOriginPost } from '$lib/server/auth/same-origin'
+import { refreshOnce } from '$lib/server/auth/refresh-once'
 import {
     describeOAuthFailure,
     discoverOAuthMetadata,
@@ -27,7 +28,7 @@ export const POST: RequestHandler = async ({ cookies, fetch, request, url }) => 
     const config = parseOptionalManagedClientAuthConfig(env)
         ?? error(404, 'Managed Sync is not configured for this Client')
     const encrypted = cookies.get(MANAGED_SESSION_COOKIE)
-    if (!encrypted) return unauthorized()
+    if (!encrypted) return noSession()
 
     let session: ManagedSession
     try {
@@ -53,7 +54,12 @@ export const POST: RequestHandler = async ({ cookies, fetch, request, url }) => 
     try {
         const metadata = await discoverOAuthMetadata(config, fetch)
         stage = 'refresh'
-        const tokens = await refreshAccessToken(session.refreshToken, config, metadata, fetch, session.expiresAt)
+        // Corporate treats a refresh token presented twice as stolen and revokes the grant on
+        // every device, so a replay (a reply the browser never received, or one that came after
+        // this request stopped waiting) gets the set already rotated. A request that stops
+        // waiting throws a TimeoutError, which is answered 503 below.
+        const tokens = await refreshOnce(session.refreshToken, () =>
+            refreshAccessToken(session.refreshToken, config, metadata, fetch, session.expiresAt))
         await setManagedSession(cookies, {
             refreshToken: tokens.refreshToken,
             // Refresh responses need not issue a new ID token. Keep the validated ID token
@@ -82,6 +88,16 @@ export const POST: RequestHandler = async ({ cookies, fetch, request, url }) => 
 
 function tokenResponse(accessToken: string, expiresAt: number) {
     return json({ accessToken, expiresAt }, { headers: { 'Cache-Control': 'no-store' } })
+}
+
+/**
+ * No session cookie at all: the ordinary signed-out state, which the account menu and the sync
+ * code ask about on every load. It answers 204 so a signed-out page logs no failed request, which
+ * would bury real errors in the console; the browser reads it as signed out (managed-token.ts).
+ * A session that is present and refused still answers 401.
+ */
+function noSession() {
+    return new Response(null, { status: 204, headers: { 'Cache-Control': 'no-store' } })
 }
 
 function unauthorized() {

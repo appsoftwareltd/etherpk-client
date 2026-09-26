@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { SyncApiError, createSyncApi } from './sync-api'
+import { describeSyncFailure } from './sync-error-copy'
 
 function jsonResponse(status: number, body: unknown): Response {
     return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
@@ -154,5 +155,23 @@ describe('sync-api', () => {
             code: 'owned_storage_limit',
             retryable: true,
         })
+    })
+
+    // Every refusal other than a quota one nests its code under `error`, as the invite, transfer
+    // and asset routes answer. The code is what picks the copy the person sees.
+    it('reads a refusal code nested under error, as the server sends it, into the copy it names', async () => {
+        const api = createSyncApi({
+            baseUrl: 'https://s',
+            token: 't',
+            fetch: async () => jsonResponse(409, {
+                error: { code: 'invite_self', message: 'You already own this graph' },
+            }),
+        })
+
+        const refusal = await api.createInvite('graph-1', 'owner@example.com', 'sealed').catch((error: unknown) => error)
+        expect(refusal).toMatchObject({ status: 409, code: 'invite_self', message: 'You already own this graph' })
+        expect(describeSyncFailure(refusal, 'send the invite')).toBe(
+            'Could not send the invite. That is your own address. You already own this graph, so there is nobody to invite.',
+        )
     })
 })

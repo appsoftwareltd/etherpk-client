@@ -165,6 +165,41 @@ describe('doc-sync', () => {
         consumer.sync.destroy()
     })
 
+    // A resync can queue a resend of the head operation behind its acknowledgement's commit. By the
+    // time the resend goes, the ack has been confirmed and the relay has dropped the operation's
+    // receipt, so the relay would store the same operation a second time.
+    it('does not resend an operation acknowledged while its resend waited', async () => {
+        const cache = memoryCache()
+        const commit = cache.commitAcknowledgement.bind(cache)
+        let commitStarted!: () => void
+        const started = new Promise<void>((resolve) => { commitStarted = resolve })
+        let releaseCommit!: () => void
+        const gate = new Promise<void>((resolve) => { releaseCommit = resolve })
+        cache.commitAcknowledgement = async (...args) => {
+            commitStarted()
+            await gate
+            return commit(...args)
+        }
+        const { sync, sent } = harness(undefined, cache)
+        await sync.ready()
+        sync.doc.getText('content').insert(0, 'once')
+        await sync.flush()
+        const append = sent.find((message) => message.type === 'append')
+        if (append?.type !== 'append') throw new Error('expected append')
+
+        const acked = sync.receive({ type: 'ack', outboxId: append.outboxId, generation: 1, state: 'active', seq: 1 })
+        await started
+        sync.resync() // its resend queues behind the commit
+        releaseCommit()
+        await acked
+        await new Promise((resolve) => setTimeout(resolve, 15))
+
+        const sends = sent.filter((message) => message.type === 'append' && message.outboxId === append.outboxId)
+        expect(sends).toHaveLength(1)
+        expect(sent.some((message) => message.type === 'ack_confirm')).toBe(true)
+        sync.destroy()
+    })
+
     it('a contiguous ack advances the watermark; catchup requests after it', async () => {
         const { sync, sent } = harness()
         await sync.ready()

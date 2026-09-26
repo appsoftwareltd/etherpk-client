@@ -93,6 +93,9 @@ async function requestTokenOnce(fetcher: typeof fetch): Promise<BrowserToken> {
         credentials: 'same-origin',
         headers: { Accept: 'application/json' },
     })
+    // No session at all: signed out, as a 401 is. The endpoint keeps 401 for a session it has
+    // just ended, so an ordinary signed-out page load leaves no failed request in the console.
+    if (response.status === 204) throw new ManagedTokenError('Managed Sync sign-in is required', 401)
     const body = await response.json().catch(() => null) as Partial<BrowserToken> & { error?: string } | null
     if (!response.ok) {
         const error = new ManagedTokenError(

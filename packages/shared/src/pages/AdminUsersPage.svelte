@@ -2,6 +2,7 @@
     import { browser } from "$app/environment";
     import Dialog from "../components/Dialog.svelte";
     import type { AdminAuthClient } from "../auth/page-clients";
+    import { PASSWORD_HELP, WEAK_PASSWORD_CODE } from "../auth/password-strength";
 
     /**
      * Shared with the other application, which rendered a byte-identical copy. Only the
@@ -94,8 +95,6 @@
     let revokingAllSessions = $state(false);
 
     // ── Modal state: Role change ─────────────────────────────────
-    let roleChangeUser = $state<AdminUser | null>(null);
-    let changingRole = $state(false);
 
     // ── Per-user action loading ───────────────────────────────────
     let impersonating = $state<string | null>(null);
@@ -166,29 +165,6 @@
         }
     }
 
-    // ── Set role ──────────────────────────────────────────────────
-    function openRoleChangeModal(user: AdminUser) {
-        roleChangeUser = user;
-    }
-
-    async function confirmRoleChange() {
-        if (!roleChangeUser || roleChangeUser.id === currentUserId) return;
-        changingRole = true;
-        clearFeedback();
-        try {
-            const newRole = roleChangeUser.role === "admin" ? "user" : "admin";
-            const res = await authClient.admin.setRole({ userId: roleChangeUser.id, role: newRole });
-            if (res.error) throw new Error(res.error.message || "Failed to set role");
-            roleChangeUser.role = newRole;
-            showSuccess(`Role updated to ${newRole}`);
-            roleChangeUser = null;
-        } catch (err) {
-            actionError = err instanceof Error ? err.message : "Failed to update role";
-        } finally {
-            changingRole = false;
-        }
-    }
-
     // ── Ban user ──────────────────────────────────────────────────
     function openBanModal(user: AdminUser) {
         banModalUser = user;
@@ -244,26 +220,42 @@
     }
 
     // ── Reset password ────────────────────────────────────────────
+    // Said inside the dialog, at its field: a message behind the modal went unseen.
+    let resetPasswordError = $state<string | null>(null);
+
     function openResetPasswordModal(user: AdminUser) {
         resetPasswordUser = user;
         newPassword = "";
+        resetPasswordError = null;
     }
 
     async function confirmResetPassword() {
-        if (!resetPasswordUser || !newPassword) return;
+        if (!resetPasswordUser || resettingPassword) return;
+        if (!newPassword) {
+            resetPasswordError = "Enter a new password.";
+            return;
+        }
         resettingPassword = true;
+        resetPasswordError = null;
         clearFeedback();
         try {
             const res = await authClient.admin.setUserPassword({
                 userId: resetPasswordUser.id,
                 newPassword,
             });
-            if (res.error) throw new Error(res.error.message || "Failed to reset password");
-            showSuccess(`Password reset for ${resetPasswordUser.name || resetPasswordUser.email}`);
+            if (res.error) {
+                resetPasswordError = res.error.code === WEAK_PASSWORD_CODE
+                    ? (res.error.message ?? "Choose a password that is harder to guess.")
+                    : (res.error.message || "The server refused the new password. Try again.");
+                return;
+            }
+            // The server ends the person's sessions and revokes their sync access, as their own
+            // reset would (admin-policy.ts in each app).
+            showSuccess(`Password set for ${resetPasswordUser.name || resetPasswordUser.email}. They are signed out everywhere, and their devices must connect again.`);
             resetPasswordUser = null;
             newPassword = "";
         } catch (err) {
-            actionError = err instanceof Error ? err.message : "Failed to reset password";
+            resetPasswordError = err instanceof Error ? err.message : "Failed to reset password";
         } finally {
             resettingPassword = false;
         }
@@ -474,6 +466,8 @@
     {/if}
 
     <!-- ── Search / filter row ───────────────────────────────────── -->
+    <!-- Roles are not set here: the server reconciles them to its configuration on every request. -->
+    <p class="mb-3 text-sm text-gray-500 dark:text-gray-400">Administrators are named by ADMINISTRATOR_EMAIL_ADDRESS in the server configuration.</p>
     <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
         <div class="flex items-center gap-1">
             <button onclick={() => setRoleFilter("all")} class="rounded-full px-3 py-1 text-sm font-medium transition-colors {roleFilter === 'all' ? 'bg-gray-950 dark:bg-white/15 text-white' : 'bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-white/15'}">All</button>
@@ -550,13 +544,6 @@
 
                     <!-- Action buttons -->
                     <div class="mt-3 ml-12 flex flex-wrap items-center gap-1.5">
-                        <!-- Role toggle -->
-                        {#if !isSelf(user.id)}
-                            <button onclick={() => openRoleChangeModal(user)} class="rounded-md px-2 py-1 text-sm font-medium text-gray-600 hover:bg-gray-100 transition-colors">
-                                {user.role === "admin" ? "Make user" : "Make admin"}
-                            </button>
-                        {/if}
-
                         <!-- Ban / Unban -->
                         {#if !isSelf(user.id)}
                             {#if user.banned}
@@ -672,36 +659,6 @@
 -->
 <!-- ══════════════════════════════════════════════════════════════════ -->
 
-{#if roleChangeUser}
-    {@const isAdmin = roleChangeUser.role === "admin"}
-    <Dialog
-        open={true}
-        title={isAdmin ? "Remove admin role" : "Grant admin role"}
-        busy={changingRole}
-        busyReason="Updating…"
-        onclose={() => (roleChangeUser = null)}
-        onsubmit={() => void confirmRoleChange()}
-    >
-        {#snippet body()}
-            <p class="text-sm text-gray-600 dark:text-gray-400">
-                {#if isAdmin}
-                    This will remove admin privileges from <strong>{roleChangeUser.name || roleChangeUser.email}</strong>.
-                    They will no longer be able to access the admin panel.
-                {:else}
-                    This will grant admin privileges to <strong>{roleChangeUser.name || roleChangeUser.email}</strong>.
-                    They will have full access to the admin panel including user management.
-                {/if}
-            </p>
-        {/snippet}
-        {#snippet footer()}
-            <button type="button" onclick={() => (roleChangeUser = null)} class="rounded-lg px-3 py-1.5 text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300">Cancel</button>
-            <button type="submit" data-autofocus disabled={changingRole} data-testid="admin-role-confirm" class="min-w-32 rounded-lg bg-gray-950 px-4 py-1.5 text-center text-sm font-medium text-white hover:bg-gray-700 dark:bg-white/20 dark:hover:bg-white/25 disabled:opacity-50">
-                {changingRole ? "Updating\u2026" : isAdmin ? "Remove admin" : "Make admin"}
-            </button>
-        {/snippet}
-    </Dialog>
-{/if}
-
 {#if banModalUser}
     <Dialog
         open={true}
@@ -752,21 +709,29 @@
     >
         {#snippet body()}
             <p class="text-sm text-gray-600 dark:text-gray-400">
-                Set a new password for <strong>{resetPasswordUser.name || resetPasswordUser.email}</strong>.
+                Set a new password for <strong>{resetPasswordUser.name || resetPasswordUser.email}</strong>. This signs them out everywhere and revokes their sync access, as their own password reset would.
             </p>
             <div>
                 <label for="new-password" class="mb-1.5 block text-sm font-medium text-gray-500 dark:text-gray-400">New password</label>
-                <input id="new-password" type="password" bind:value={newPassword} placeholder="Enter new password" autocomplete="new-password" aria-describedby="new-password-hint" class="block w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-gray-950 dark:text-gray-100 focus:border-gray-950 dark:focus:border-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-950 dark:focus:ring-gray-400" />
-                <!-- Rule 7: the confirm button is disabled and therefore unfocusable, so its
-                     condition has to be readable from the field it depends on. -->
-                {#if !newPassword}
-                    <p id="new-password-hint" class="mt-1.5 text-sm text-gray-500 dark:text-gray-400">Enter a password to enable Reset password.</p>
+                <input
+                    id="new-password"
+                    type="password"
+                    bind:value={newPassword}
+                    oninput={() => (resetPasswordError = null)}
+                    autocomplete="new-password"
+                    aria-invalid={resetPasswordError !== null}
+                    aria-describedby={resetPasswordError ? "new-password-error new-password-help" : "new-password-help"}
+                    class="block w-full rounded-lg border bg-white dark:bg-white/10 px-3 py-2 text-sm text-gray-950 dark:text-gray-100 focus:border-gray-950 dark:focus:border-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-950 dark:focus:ring-gray-400 {resetPasswordError ? 'border-red-400' : 'border-gray-300 dark:border-gray-700'}"
+                />
+                {#if resetPasswordError}
+                    <p id="new-password-error" role="alert" class="mt-1.5 text-sm text-red-600">{resetPasswordError}</p>
                 {/if}
+                <p id="new-password-help" class="mt-1.5 text-sm text-gray-500 dark:text-gray-400">{PASSWORD_HELP}</p>
             </div>
         {/snippet}
         {#snippet footer()}
             <button type="button" onclick={() => (resetPasswordUser = null)} class="rounded-lg px-3 py-1.5 text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300">Cancel</button>
-            <button type="submit" disabled={resettingPassword || !newPassword} data-testid="admin-reset-password-confirm" class="min-w-36 rounded-lg bg-gray-950 px-4 py-1.5 text-center text-sm font-medium text-white hover:bg-gray-700 dark:bg-white/20 dark:hover:bg-white/25 disabled:opacity-50">
+            <button type="submit" disabled={resettingPassword} data-testid="admin-reset-password-confirm" class="min-w-36 rounded-lg bg-gray-950 px-4 py-1.5 text-center text-sm font-medium text-white hover:bg-gray-700 dark:bg-white/20 dark:hover:bg-white/25 disabled:opacity-50">
                 {resettingPassword ? "Resetting\u2026" : "Reset password"}
             </button>
         {/snippet}

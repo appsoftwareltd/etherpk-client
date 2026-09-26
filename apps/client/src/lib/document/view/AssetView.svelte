@@ -15,12 +15,13 @@
      * is framed, for the reasons in ADR 0055. A type with no viewer is not a failure: the tab
      * says so and offers the download, which always works.
      */
-    import { displayAssetName, type ResolvedAsset } from "$lib/storage/fs/asset-store";
+    import { AssetUnavailableError, displayAssetName, type ResolvedAsset } from "$lib/storage/fs/asset-store";
     import { assetViewerFor, tryGetActiveContributionRegistry } from "$lib/surface";
     import { viewKey, type ViewRef } from "$lib/layout";
     import { workspaceService } from "$lib/workspace/workspace-services";
 
     import { tryGetActiveAssetStore } from "../active-asset-store";
+    import { loadAssetWithRetry } from "./augmentations/asset-load-retry";
 
     /** `panelId` is supplied by the dockview presenter; the mobile presenter has no tabs to
      *  retitle and passes none, so the view key stands in and the retitle is a no-op there. */
@@ -31,6 +32,8 @@
 
     let resolved = $state<ResolvedAsset | null>(null);
     let failed = $state(false);
+    /** The bytes could not be fetched just now and are being asked for again (asset-load-retry.ts). */
+    let unavailable = $state(false);
 
     const name = $derived(resolved?.name ?? fallbackName);
     const viewer = $derived.by(() => {
@@ -43,33 +46,35 @@
     // trip plus a decrypt, and it has to re-run when the tab is pointed at a different asset.
     $effect(() => {
         const target = view.target;
-        let live = true;
         resolved = null;
         failed = false;
+        unavailable = false;
         const store = tryGetActiveAssetStore();
         if (!store) {
             failed = true;
             return;
         }
-        void store
-            .resolve(`../assets/${target}`)
-            .then((asset) => {
-                if (!live) return;
-                resolved = asset;
-                failed = asset === null;
-                // The tab was titled from the target at creation. Now the real name is known,
-                // give the tab that - on a synced graph the difference is a uuid versus
-                // "Q3 Report.pdf". A no-op where the name did not change.
-                if (asset && asset.name !== displayAssetName(target)) {
-                    workspaceService("retitleView")?.(panelId ?? viewKey(view), asset.name);
-                }
-            })
-            .catch(() => {
-                if (live) failed = true;
-            });
-        return () => {
-            live = false;
-        };
+        // Not being able to fetch the file just now is not the file being gone: that is asked
+        // again until it answers. Cancelled when the tab is pointed elsewhere or closed.
+        return loadAssetWithRetry(
+            () => store.resolve(`../assets/${target}`),
+            {
+                resolved: (asset) => {
+                    unavailable = false;
+                    resolved = asset;
+                    // The tab was titled from the target at creation. Now the real name is known,
+                    // give the tab that - on a synced graph the difference is a uuid versus
+                    // "Q3 Report.pdf". A no-op where the name did not change.
+                    if (asset.name !== displayAssetName(target)) {
+                        workspaceService("retitleView")?.(panelId ?? viewKey(view), asset.name);
+                    }
+                },
+                missing: () => (failed = true),
+                unavailable: () => (unavailable = true),
+                failed: () => (failed = true),
+            },
+            { retryable: (error) => error instanceof AssetUnavailableError },
+        );
     });
 
     function download() {
@@ -89,6 +94,13 @@
             <p class="text-sm text-gray-600 dark:text-gray-400" data-testid="asset-view-missing">
                 <span class="font-medium text-gray-900 dark:text-gray-100">{fallbackName}</span> is no longer
                 in this graph.
+            </p>
+        </div>
+    {:else if !resolved && unavailable}
+        <div class="flex flex-1 items-center justify-center p-6 text-center">
+            <p class="text-sm text-gray-600 dark:text-gray-400" role="status" data-testid="asset-view-unavailable">
+                <span class="font-medium text-gray-900 dark:text-gray-100">{fallbackName}</span> could not
+                be fetched just now. EtherPK keeps trying, and shows it once the connection is back.
             </p>
         </div>
     {:else if !resolved}

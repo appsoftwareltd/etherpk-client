@@ -5,7 +5,13 @@ import { deriveVaultWrapKey, generateRecoveryCode } from '$lib/crypto/recovery-c
 import { approveDevice, approvalSas } from '$lib/sync/device-approval'
 import type { SyncApi } from '$lib/sync/sync-api'
 
-import { ApprovalAbandoned, unlockByDeviceApproval, unlockByRecoveryCode } from './login'
+import {
+    approvalWaitControls,
+    ApprovalAbandoned,
+    sleepUnlessAborted,
+    unlockByDeviceApproval,
+    unlockByRecoveryCode,
+} from './login'
 
 /**
  * Both unlock routes against a fake Sync Server holding a real vault: what the CLI prints,
@@ -114,5 +120,47 @@ describe('unlockByDeviceApproval', () => {
             pollDeviceApproval: async () => ({ status: 'rejected' }),
         } as unknown as SyncApi
         await expect(unlockByDeviceApproval(api, { say: () => {}, sleep: async () => {} })).rejects.toThrow('rejected')
+    })
+})
+
+describe('ending the approval wait early', () => {
+    it('r switches to the Recovery Code: the wait aborts, and nothing exits', () => {
+        const controls = approvalWaitControls()
+        controls.onKey('r')
+        expect(controls.signal.aborted).toBe(true)
+        expect(controls.exitCode).toBeNull()
+    })
+
+    it('Ctrl-C quits, but only after the wait has aborted and cancelled its approval', () => {
+        const controls = approvalWaitControls()
+        controls.onKey('\u0003')
+        expect(controls.signal.aborted).toBe(true)
+        expect(controls.exitCode).toBe(130)
+    })
+
+    it.each([
+        ['SIGINT', 130],
+        ['SIGTERM', 143],
+        ['SIGHUP', 129],
+    ] as const)('%s quits with the shell exit code %s', (name, code) => {
+        const controls = approvalWaitControls()
+        controls.onSignal(name)
+        expect(controls.signal.aborted).toBe(true)
+        expect(controls.exitCode).toBe(code)
+    })
+
+    it('ignores other keys', () => {
+        const controls = approvalWaitControls()
+        controls.onKey('x')
+        expect(controls.signal.aborted).toBe(false)
+    })
+
+    it('stops sleeping as soon as the wait aborts, so a quit does not wait out the poll interval', async () => {
+        const abort = new AbortController()
+        const started = Date.now()
+        const sleeping = sleepUnlessAborted(60_000, abort.signal)
+        abort.abort()
+        await sleeping
+        expect(Date.now() - started).toBeLessThan(1_000)
     })
 })

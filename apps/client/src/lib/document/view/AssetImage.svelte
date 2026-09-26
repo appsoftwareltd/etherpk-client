@@ -24,11 +24,12 @@
      * One thing differs from the editor on purpose: the picture is capped to a thumbnail height,
      * because a reference is a quotation rather than the document. See {@link THUMBNAIL_MAX_HEIGHT}.
      */
-    import { assetNameFromRef, displayNameForRef } from "$lib/storage/fs/asset-store";
+    import { AssetUnavailableError, assetNameFromRef, displayNameForRef } from "$lib/storage/fs/asset-store";
     import { attachContextMenu } from "$lib/surface";
 
     import { tryGetActiveAssetStore } from "../active-asset-store";
     import AssetActions from "./AssetActions.svelte";
+    import { loadAssetWithRetry } from "./augmentations/asset-load-retry";
     import { isDirectImageUrl } from "./augmentations/image-target";
 
     let {
@@ -60,6 +61,8 @@
     let src = $state<string | null>(null);
     let loaded = $state(false);
     let broken = $state(false);
+    /** The bytes could not be fetched just now and are being asked for again (asset-load-retry.ts). */
+    let unavailable = $state(false);
 
     // Measured live, as the editor does with a ResizeObserver: an overlay wider than its picture
     // would cover it completely — a 24px icon against two buttons — leaving nothing to hover or
@@ -72,10 +75,10 @@
     // re-points this slot at a different image.
     $effect(() => {
         const target = url;
-        let live = true;
         src = null;
         loaded = false;
         broken = false;
+        unavailable = false;
 
         if (isDirectImageUrl(target)) {
             src = target;
@@ -86,19 +89,21 @@
             broken = true;
             return;
         }
-        void store
-            .resolve(target)
-            .then((resolved) => {
-                if (!live) return;
-                if (resolved) src = resolved.url;
-                else broken = true;
-            })
-            .catch(() => {
-                if (live) broken = true;
-            });
-        return () => {
-            live = false;
-        };
+        // A failure that passes (the connection, a server failing for a moment) is asked again, as
+        // the editor's embed does; missing or damaged is the broken state. Cancelled on re-point.
+        return loadAssetWithRetry(
+            () => store.resolve(target),
+            {
+                resolved: (resolved) => {
+                    unavailable = false;
+                    src = resolved.url;
+                },
+                missing: () => (broken = true),
+                unavailable: () => (unavailable = true),
+                failed: () => (broken = true),
+            },
+            { retryable: (error) => error instanceof AssetUnavailableError },
+        );
     });
 
     /** Right-click and long press raise the same actions the overlay shows — the touch route. */
@@ -120,9 +125,15 @@
             <!-- Holds the row open while the bytes arrive, so the panel does not jump when they
                  do. No remembered footprint to reserve here: unlike the editor, nothing collapses
                  and re-renders this image mid-read. -->
-            <span class="loading" role="status" aria-label="Loading image"
-                ><span class="spinner"></span></span
-            >
+            {#if unavailable}
+                <span class="loading" role="img" aria-label="Image not loaded. Retrying" data-testid="reference-image-unavailable"
+                    ><span class="unavailable" aria-hidden="true">Image not loaded. Retrying…</span></span
+                >
+            {:else}
+                <span class="loading" role="status" aria-label="Loading image"
+                    ><span class="spinner"></span></span
+                >
+            {/if}
         {/if}
         {#if src}
             <img
@@ -179,6 +190,12 @@
        case (a local file), and the spinner fades in only if the wait becomes one worth explaining —
        a synced asset being downloaded and decrypted. Fading in on a delay is what stops it
        flashing on every reference the panel draws. */
+    .unavailable {
+        padding: 0 0.5em;
+        text-align: center;
+        line-height: 1.4;
+        color: var(--gk-text-muted, #6b7280);
+    }
     .spinner {
         width: 1em;
         height: 1em;

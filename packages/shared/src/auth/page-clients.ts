@@ -42,9 +42,6 @@ export interface AccountAuthClient {
     }
 }
 
-/** The roles Better Auth's admin plugin accepts. */
-export type AdminRole = 'user' | 'admin'
-
 /** One row of the admin user list, narrowed to what the page renders. */
 export interface AdminUserRow {
     id: string
@@ -73,7 +70,6 @@ export interface AdminAuthClient {
         listUsers(input: { query: Record<string, string | number> }): Promise<
             AuthResult<{ users?: unknown[]; total?: number }>
         >
-        setRole(input: { userId: string; role: AdminRole | AdminRole[] }): Promise<AuthResult>
         banUser(input: { userId: string; banReason?: string; banExpiresIn?: number }): Promise<AuthResult>
         unbanUser(input: { userId: string }): Promise<AuthResult>
         setUserPassword(input: { userId: string; newPassword: string }): Promise<AuthResult>

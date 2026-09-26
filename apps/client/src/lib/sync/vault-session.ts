@@ -61,6 +61,21 @@ export async function unlockWithRecoveryCode(api: Pick<SyncApi, 'getVault'>, cod
     return vaultKey
 }
 
+/**
+ * Lock every account whose keys this browser holds, not only the active one: removing this
+ * browser's synced graphs, on a machine someone else will use, leaves no account's keys behind.
+ */
+export function lockEveryVault(): void {
+    removeUnsafeLegacyKey()
+    if (typeof localStorage === 'undefined') return
+    const held: string[] = []
+    for (let index = 0; index < localStorage.length; index++) {
+        const key = localStorage.key(index)
+        if (key?.startsWith(`${LEGACY_KEY}:`)) held.push(key)
+    }
+    for (const key of held) localStorage.removeItem(key)
+}
+
 /** Lock the active account without destroying keys cached for a different account. */
 export function lockVault(): void {
     removeUnsafeLegacyKey()

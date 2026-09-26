@@ -27,6 +27,8 @@
     let open = $state(false);
     let busy = $state(false);
     let error = $state<string | null>(null);
+    // The request on screen replaced one that was withdrawn, so its code is new.
+    let replaced = $state(false);
     // Requests the user closed without deciding - do not nag about them again this session.
     const dismissed = new Set<string>();
     /**
@@ -49,17 +51,28 @@
     }
 
     async function check() {
-        if (current) return; // one prompt at a time
+        if (busy) return; // an approve or reject is in flight: leave the prompt as it is
         if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
         const a = api();
         if (!a || !getVaultWrapKey() || refused) return; // locked devices can approve nothing
         try {
-            const pending = (await a.listDeviceApprovals()).find((p) => !dismissed.has(p.id));
-            if (pending) {
-                current = { approval: pending, sas: await approvalSas(pending) };
-                error = null;
-                open = true;
+            // Newest first, so a device that asks again after abandoning a request is the one shown.
+            const pending = (await a.listDeviceApprovals()).filter((p) => !dismissed.has(p.id));
+            if (busy) return;
+            // One prompt at a time, re-checked on every tick: a request withdrawn, answered
+            // elsewhere or expired has a code that matches nothing, so it goes.
+            if (current && pending.some((p) => p.id === current?.approval.id)) return;
+            const next = pending[0];
+            if (!next) {
+                open = false;
+                current = null;
+                replaced = false;
+                return;
             }
+            replaced = current !== null;
+            current = { approval: next, sas: await approvalSas(next) };
+            error = null;
+            open = true;
         } catch (e) {
             if (e instanceof SyncApiError && e.status === 401) {
                 refused = true;
@@ -91,6 +104,7 @@
             setVaultWrapKey(await approveDevice(a, current.approval, heldKey));
             open = false;
             current = null;
+            replaced = false;
         } catch (e) {
             error = describeSyncFailure(e, "approve the device");
         } finally {
@@ -108,6 +122,7 @@
             busy = false;
             open = false;
             current = null;
+            replaced = false;
         }
     }
 
@@ -115,6 +130,7 @@
         if (current) dismissed.add(current.approval.id);
         open = false;
         current = null;
+        replaced = false;
     }
 </script>
 
@@ -130,6 +146,9 @@
                     its screen shows this exact code:
                 </p>
                 <p class="text-center text-2xl font-mono font-semibold tracking-widest text-gray-950 dark:text-gray-100" data-testid="device-approval-sas">{current?.sas}</p>
+                <p role="status" class="text-sm text-gray-600 dark:text-gray-400" data-testid="device-approval-replaced">
+                    {replaced ? "The device withdrew its earlier request and asked again with this new code." : ""}
+                </p>
                 <p class="text-sm text-gray-500 dark:text-gray-400">
                     A different code - or a request you are not expecting - means someone else is
                     trying to get in: reject it.

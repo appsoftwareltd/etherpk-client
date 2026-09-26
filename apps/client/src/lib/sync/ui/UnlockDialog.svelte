@@ -17,7 +17,11 @@
         type DeviceApprovalRequest,
     } from "$lib/sync";
     import { describeSyncFailure } from "$lib/sync/sync-error-copy";
+    import { PUBLIC_DOCS_URL } from "@appsoftwareltd/etherpk-shared";
     import Modal from "@appsoftwareltd/etherpk-shared/dialog";
+
+    /** The user guide's section on getting back in without a Recovery Code. */
+    const RECOVERING_ACCESS_URL = `${PUBLIC_DOCS_URL}/recovery-code-and-device-approval#recovering-access`;
 
     let {
         onunlocked,
@@ -145,6 +149,10 @@
             <!-- The wait, and its outcome, are the only things happening here; a screen reader
                  that is told neither has no way to know the dialog is still working. -->
             <p class="text-sm text-gray-500 dark:text-gray-400" role="status" data-testid="approval-waiting">Waiting for approval…</p>
+            <!-- The server drops a request nobody approves within ten minutes (device-approval-store.ts). -->
+            <p class="text-sm text-gray-500 dark:text-gray-400" data-testid="approval-expiry">
+                If nobody approves it within 10 minutes, the request expires and you can start again.
+            </p>
         {:else}
             <p class="text-sm text-gray-600 dark:text-gray-400">
                 Enter your Recovery Code to unlock your encryption keys on this device. It never leaves
@@ -181,12 +189,35 @@
             {#if approvalError}
                 <p role="alert" class="text-sm text-red-600" data-testid="approval-error">{approvalError}</p>
             {/if}
+            <!-- Someone without their code and with no unlocked device reaches this dialog too; it
+                 names what they can still do rather than leaving them at a field they cannot fill. -->
+            <details class="text-sm text-gray-600 dark:text-gray-400" data-testid="unlock-lost-code">
+                <summary class="cursor-pointer font-medium text-gray-950 dark:text-gray-100">Lost your Recovery Code?</summary>
+                <div class="mt-1.5 space-y-1.5">
+                    <p>
+                        If another of your devices still has its keys unlocked, approve this one from
+                        it, then make a new code there with <strong>Regenerate Recovery Code</strong>.
+                        Nothing is lost.
+                    </p>
+                    <p>
+                        With no unlocked device, nothing can decrypt your notes.
+                        <strong>Reset encryption keys</strong>, in Sync settings, starts over: it deletes
+                        every graph you own, after offering to hand shared ones to a player.
+                    </p>
+                    <a
+                        href={RECOVERING_ACCESS_URL}
+                        target="_blank"
+                        rel="noopener"
+                        class="inline-block font-medium text-gray-950 underline underline-offset-2 hover:no-underline dark:text-gray-100"
+                    >What to do without your code</a>
+                </div>
+            </details>
         {/if}
     {/snippet}
 
     {#snippet footer()}
         {#if approval}
-            <button type="button" onclick={cancelApproval} data-testid="approval-cancel" class="rounded-lg px-3 py-1.5 text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300">Back</button>
+            <button type="button" onclick={cancelApproval} data-testid="approval-cancel" class="rounded-lg px-3 py-1.5 text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300">Use my Recovery Code instead</button>
         {:else}
             <button type="button" onclick={close} class="rounded-lg px-3 py-1.5 text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300">Cancel</button>
             <button

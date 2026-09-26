@@ -63,15 +63,17 @@ export function createSyncApi(deps: SyncApiDeps) {
             },
         })
         if (!res.ok) {
+            // Two shapes: a quota refusal carries its code at the top level beside
+            // `error: 'quota_denied'`; every other refusal nests it, `{ error: { code, message } }`.
             const body = (await res.json().catch(() => null)) as {
-                error?: { message?: string } | 'quota_denied'
+                error?: { message?: string; code?: string } | 'quota_denied'
                 code?: string
                 retryable?: boolean
             } | null
-            const message = typeof body?.error === 'object'
-                ? body.error.message
-                : body?.code
-            throw new SyncApiError(message ?? `HTTP ${res.status}`, res.status, body?.code, body?.retryable === true)
+            const nested = typeof body?.error === 'object' && body.error !== null ? body.error : null
+            const code = nested?.code ?? body?.code
+            const message = nested?.message ?? body?.code
+            throw new SyncApiError(message ?? `HTTP ${res.status}`, res.status, code, body?.retryable === true)
         }
         return (await res.json()) as T
     }

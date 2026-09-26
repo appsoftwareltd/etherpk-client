@@ -31,14 +31,19 @@
  * built, including each collapse of the raw markdown. A tinted placeholder with a spinner holds the
  * spot instead (`.cm-md-image--loading`), sized to the image's remembered footprint when there is
  * one so the swap-in does not move the layout. See tests-client/image-loading.test.ts.
+ *
+ * A resolve that fails in a way that passes (`AssetUnavailableError`: the connection, or a server
+ * failing for a moment) turns the spinner into "Image not loaded. Retrying…" in the same box and
+ * asks again (`asset-load-retry.ts`); any other failure shows the broken state.
  */
 
 import { type EditorState, type Extension, type Range, StateEffect, StateField } from '@codemirror/state'
 import { Decoration, type DecorationSet, EditorView, WidgetType } from '@codemirror/view'
 
-import { type ResolvedAsset, assetNameFromRef } from '$lib/storage/fs/asset-store'
+import { AssetUnavailableError, type ResolvedAsset, assetNameFromRef } from '$lib/storage/fs/asset-store'
 
 import { assetTargetAt, attachAssetContextMenu, buildAssetActions } from './asset-actions'
+import { loadAssetWithRetry } from './asset-load-retry'
 import { BLOCK_WIDGET_SPACING, BULLET_BLOCK_DROP, hangWidthForPos } from './content-clamp'
 import { parseImageDisplaySizeHint } from './image-display-size'
 import { isDirectImageUrl } from './image-target'
@@ -153,6 +158,9 @@ export const imageDecoded = StateEffect.define<string>()
 export function markImageDecoded(key: string): void {
     decodeGenerations.set(key, (decodeGenerations.get(key) ?? 0) + 1)
 }
+
+/** How to stop asking for a widget's asset, by the widget's root: called when CodeMirror destroys it. */
+const pendingLoads = new WeakMap<HTMLElement, () => void>()
 
 class ImageWidget extends WidgetType {
     constructor(
@@ -305,12 +313,51 @@ class ImageWidget extends WidgetType {
         if (isDirectImageUrl(this.url)) {
             start(this.url)
         } else {
-            void this.resolveAsset(this.url).then((resolved) => {
-                if (resolved) start(resolved.url)
-                else fail()
-            })
+            // A synced asset is downloaded first. A failure that may pass (the connection, a server
+            // failing for a moment) is not a missing image: the placeholder says so and the resolve
+            // is asked again. A damaged file is shown broken, as a missing one is.
+            let reported = false
+            const cancel = loadAssetWithRetry(() => this.resolveAsset(this.url), {
+                resolved: (resolved) => start(resolved.url),
+                missing: fail,
+                unavailable: (error) => {
+                    if (!reported) console.warn('[image] could not load an asset; retrying', error)
+                    reported = true
+                    this.showUnavailable(placeholder)
+                },
+                failed: (error) => {
+                    console.warn('[image] could not read an asset', error)
+                    fail()
+                },
+            }, { retryable: (error) => error instanceof AssetUnavailableError })
+            pendingLoads.set(root, cancel)
         }
         return root
+    }
+
+    /** The widget left the document: stop asking for its picture. */
+    destroy(dom: HTMLElement): void {
+        pendingLoads.get(dom)?.()
+        pendingLoads.delete(dom)
+    }
+
+    /**
+     * The picture could not be fetched and is being asked for again: the placeholder says so instead
+     * of spinning with no end. The note sits over the box, out of flow, so the box keeps the height
+     * CodeMirror measured it at; a taller one would move the lines below it behind the height map's
+     * back (Document Editor.md: block widgets). It stops being a live region: a dropped connection
+     * on a page of pictures would otherwise be announced once for every picture.
+     */
+    private showUnavailable(placeholder: HTMLElement): void {
+        if (placeholder.classList.contains('cm-md-image--unavailable')) return
+        placeholder.classList.add('cm-md-image--unavailable')
+        placeholder.setAttribute('role', 'img')
+        placeholder.setAttribute('aria-label', 'Image not loaded. Retrying')
+        const note = document.createElement('span')
+        note.className = 'cm-md-image-unavailable'
+        note.setAttribute('aria-hidden', 'true')
+        note.textContent = 'Image not loaded. Retrying…'
+        placeholder.replaceChildren(note)
     }
 
     /**
@@ -613,6 +660,7 @@ const theme = EditorView.baseTheme({
     // keeps a remembered width from a wider window from overflowing this one. `overflow:hidden` lets
     // a footprint smaller than the spinner (a tiny image) still hold its exact size.
     '.cm-md-image--loading': {
+        position: 'relative',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -621,6 +669,20 @@ const theme = EditorView.baseTheme({
         overflow: 'hidden',
         background: 'var(--gk-code-bg, rgba(127,127,127,0.10))',
         borderRadius: '3px',
+    },
+    // A resolve that will be tried again: the note covers the placeholder without adding to its
+    // height, at a line height that lets two lines sit in the default box.
+    '.cm-md-image-unavailable': {
+        position: 'absolute',
+        inset: '0',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '0 0.5em',
+        textAlign: 'center',
+        lineHeight: '1.4',
+        overflow: 'hidden',
+        color: 'var(--gk-text-muted, #6b7280)',
     },
     '.cm-md-image-spinner': {
         width: '1em',

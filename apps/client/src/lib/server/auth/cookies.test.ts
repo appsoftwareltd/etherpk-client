@@ -9,12 +9,20 @@ import {
     markClientSsoChecked,
     CLIENT_SSO_SUPPRESSION_COOKIE,
     isClientSsoSuppressed,
+    setAuthorizationTransaction,
     setClientSsoAttempted,
     setManagedSession,
     suppressClientSso,
     takeClientSsoAttempted,
 } from './cookies'
-import { MANAGED_SESSION_COOKIE, decryptSessionCookie, type ManagedSession } from './session-cookie'
+import {
+    MANAGED_SESSION_COOKIE,
+    OAUTH_TRANSACTION_COOKIE,
+    decryptSessionCookie,
+    transactionCookieName,
+    type AuthorizationTransaction,
+    type ManagedSession,
+} from './session-cookie'
 import type { ManagedClientAuthConfig } from './config'
 
 const config = { sessionSecret: 'a-client-session-secret-with-32-bytes' } as ManagedClientAuthConfig
@@ -29,6 +37,9 @@ function cookieJar() {
     const cookies = {
         get(name: string) {
             return values.get(name)?.value
+        },
+        getAll() {
+            return [...values].map(([name, { value }]) => ({ name, value }))
         },
         set(name: string, value: string, options: Record<string, unknown>) {
             values.set(name, { value, options })
@@ -123,5 +134,31 @@ describe('the managed session cookie', () => {
         expect(cookie.length).toBeLessThanOrEqual(3800)
         const stored = await decryptSessionCookie(cookie, config.sessionSecret, 'managed-session')
         expect(stored).toEqual(base)
+    })
+})
+
+describe('sign-in transactions', () => {
+    const attempt = (n: number): AuthorizationTransaction => ({
+        state: `state-${n}`,
+        nonce: 'nonce',
+        codeVerifier: 'verifier',
+        returnPath: '/graphs',
+        createdAt: Date.now() - (10 - n) * 1000,
+        interaction: 'interactive',
+    })
+    const transactionCookies = (values: Map<string, unknown>) =>
+        [...values.keys()].filter((name) => name.startsWith(`${OAUTH_TRANSACTION_COOKIE}-`))
+
+    it('keeps each attempt in a cookie named for its state', async () => {
+        const { cookies, values } = cookieJar()
+        await setAuthorizationTransaction(cookies, attempt(1), config)
+        await setAuthorizationTransaction(cookies, attempt(2), config)
+        expect(transactionCookies(values).sort()).toEqual([transactionCookieName('state-1'), transactionCookieName('state-2')].sort())
+    })
+
+    it('keeps at most four, dropping the oldest, so repeated clicks cannot grow the request headers without end', async () => {
+        const { cookies, values } = cookieJar()
+        for (let n = 1; n <= 6; n++) await setAuthorizationTransaction(cookies, attempt(n), config)
+        expect(transactionCookies(values).sort()).toEqual([3, 4, 5, 6].map((n) => transactionCookieName(`state-${n}`)).sort())
     })
 })

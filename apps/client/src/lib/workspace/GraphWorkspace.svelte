@@ -25,6 +25,8 @@
         replaceState,
     } from "$app/navigation";
     import { page } from "$app/state";
+    import { env } from "$env/dynamic/public";
+    import { currentReturnPath } from "$lib/auth/sign-in-links";
     import {
         capturePosition,
         clearPendingRestores,
@@ -432,12 +434,16 @@
         browserTransport,
         createConfiguredSyncApi,
         createGraphNamePublisher,
+        createSyncApi,
         describeSyncFailure,
         ensureGraphKeys,
+        managedSyncOrigin,
+        normaliseServerOrigin,
         readActiveSyncAccount,
         readSyncConfig,
         resolveSyncConnection,
         resolveSyncedGraphConnection,
+        setActiveSyncAccount,
         getVaultWrapKey,
         vaultProtectionAccess,
         setVaultWrapKey,
@@ -463,7 +469,13 @@
         workspaceAccessLoss,
         type WorkspaceAccessLoss,
     } from "$lib/sync/access-loss";
-    import { readUnsentChanges, saveUnsentChangesFile } from "$lib/sync/unsent-changes";
+    import {
+        discardUnlessUnsent,
+        readUnsentChanges,
+        saveUnsentChangesFile,
+        staleCopyUnsentChanges,
+        type UnsentDocument,
+    } from "$lib/sync/unsent-changes";
     import {
         createIndicatorSettle,
         describeSyncActivity,
@@ -480,8 +492,10 @@
     } from "$lib/crypto";
     import {
         diagnoseMissingGraph,
+        type MissingGraphDeps,
         type MissingGraphDiagnosis,
     } from "./graph-availability";
+    import { forgetGraphOnDevice } from "./graph-device-memory";
     import {
         GraphSessionCancelledError,
         createGraphSession,
@@ -545,7 +559,9 @@
      * typed into a graph that can no longer be saved.
      */
     let accessLoss = $state<WorkspaceAccessLoss | null>(null);
-    const accessLostNotice = $derived(accessLoss ? describeAccessLoss(accessLoss) : null);
+    /** The page to come back to after signing in or connecting from a notice: this one. */
+    const returnPath = $derived(currentReturnPath(page.url));
+    const accessLostNotice = $derived(accessLoss ? describeAccessLoss(accessLoss, returnPath) : null);
     let downloadingUnsent = $state(false);
     let unsentDownloadError = $state<string | null>(null);
     /**
@@ -562,6 +578,13 @@
     let missing = $state<MissingGraphDiagnosis | null>(null);
     let settingUp = $state(false);
     let setupError = $state<string | null>(null);
+    /**
+     * The unsent changes in the copy a lost membership left (`missing.kind === 'no-longer-member'`),
+     * once removing that copy found some: the person sees them, and downloads them or confirms.
+     */
+    let heldCopyUnsent = $state<{ unsent: UnsentDocument[]; downloaded: boolean } | null>(null);
+    let removingHeldCopy = $state(false);
+    let removeHeldCopyError = $state<string | null>(null);
     /**
      * A save to the Local Cache failed. Persistent, unlike `message`: until it is retried or
      * the page reloads, every further keystroke is at risk, and a transient toast is how a
@@ -2194,9 +2217,73 @@
         adoptSettingsFromUrl();
     });
 
+    /**
+     * What the missing-graph diagnosis needs, read from this device's Sync connection when it
+     * asks. Confirming the account records it as the active one, as the account menu does, so the
+     * registry's visibility filter and the diagnosis agree on who is signed in.
+     */
+    function missingGraphDeps(): MissingGraphDeps {
+        const config = readSyncConfig();
+        let connection: { managed: boolean; serverOrigin: string; api: SyncApi } | null = null;
+        try {
+            const resolved = config ? resolveSyncConnection(config) : null;
+            if (config && resolved) {
+                connection = {
+                    managed: config.mode === "managed",
+                    serverOrigin: normaliseServerOrigin(resolved.serverBaseUrl),
+                    api: createSyncApi({ baseUrl: resolved.serverBaseUrl, token: resolved.token }),
+                };
+            }
+        } catch {
+            // A malformed stored connection is no connection; Sync settings replaces it.
+            connection = null;
+        }
+        const connected = () => {
+            if (!connection) throw new Error("This device has no Sync connection");
+            return connection;
+        };
+        return {
+            allRecords: () => createIdbGraphStoragePort().getAll(),
+            connection: connection && { managed: connection.managed, serverOrigin: connection.serverOrigin },
+            managedServerOrigin: managedSyncOrigin(env),
+            currentAccount: async () => {
+                const { api, serverOrigin } = connected();
+                const scope = { serverOrigin, principalId: (await api.me()).principal.id };
+                setActiveSyncAccount(scope);
+                return scope;
+            },
+            listServerGraphs: async () => (await connected().api.graphsOverview()).graphs,
+        };
+    }
+
+    /**
+     * Before a backend is chosen: when the registry hides this graph's record, find out why. A
+     * browser's record of its own account's graph stays hidden until that account is confirmed,
+     * which straight after a sign-in can land after this open starts, and an old membership
+     * answer hides it too; both are put right here and the open carries on. Any other finding is
+     * returned for the missing-graph notice, so the server is asked once.
+     */
+    async function revealHiddenRecord(
+        attempt: GraphOpenAttempt,
+    ): Promise<MissingGraphDiagnosis | null> {
+        // The dev gates open without the registry.
+        if (dev && (server || opfs)) return null;
+        const registry = createIdbGraphRegistry();
+        if (await attempt.wait(registry.getGraph(graphId))) return null;
+        const diagnosis = await attempt.wait(
+            diagnoseMissingGraph(graphId, missingGraphDeps()),
+        );
+        if (diagnosis.kind !== "ready") return diagnosis;
+        await attempt.wait(
+            registry.reconcileServerMemberships(diagnosis.scope, diagnosis.memberships),
+        );
+        return null;
+    }
+
     /** The graph's directory root: a picked FSA handle, or (dev test) an OPFS subdir. */
     async function resolveRoot(
         attempt: GraphOpenAttempt,
+        known: MissingGraphDiagnosis | null,
     ): Promise<FileSystemDirectoryHandle | null> {
         if (dev && opfs) {
             const opfsRoot = await attempt.wait(getOpfsRoot());
@@ -2210,20 +2297,15 @@
             createIdbGraphRegistry().getGraph(graphId),
         );
         if (!record) {
-            // Three different situations reach here (graph-availability.ts): no record, a
-            // record under another account scope, or a membership the server has withdrawn.
-            // Work out which, so the notice can offer the one-write repair when the server
-            // still lists this account as a member instead of a flat "not in this browser".
-            const api = createConfiguredSyncApi();
-            const diagnosis = await attempt.wait(
-                diagnoseMissingGraph(graphId, {
-                    allRecords: () => createIdbGraphStoragePort().getAll(),
-                    activeScope: readActiveSyncAccount,
-                    listServerGraphs: api
-                        ? async () => (await api.graphsOverview()).graphs
-                        : null,
-                }),
-            );
+            // Several situations reach here (graph-availability.ts): no record, a record under
+            // another account, a membership the server has withdrawn, no sign-in or no
+            // connection. Work out which, so the notice says so and offers the repair that
+            // fits instead of a flat "not in this browser".
+            const diagnosis =
+                known ??
+                (await attempt.wait(
+                    diagnoseMissingGraph(graphId, missingGraphDeps()),
+                ));
             if (diagnosis.kind === "other-account") {
                 // Principal ids are for whoever is debugging, not for the notice.
                 console.warn(
@@ -2235,6 +2317,8 @@
                 );
             }
             missing = diagnosis;
+            heldCopyUnsent = null;
+            removeHeldCopyError = null;
             phase = "missing";
             return null;
         }
@@ -2518,6 +2602,7 @@
         // Phase timings, logged once per open: when "opening is slow" is reported, this
         // one line says WHICH phase — resolving params/vault, the store scan, or the index.
         const openStarted = performance.now();
+        const hidden = await revealHiddenRecord(attempt);
         const useServer = await resolveServerParams(attempt);
         if (dev && page.url.searchParams.get("openDelay") === "store") {
             await attempt.wait(
@@ -2626,7 +2711,7 @@
             return next;
         };
         if (!useServer) {
-            const root = await resolveRoot(attempt);
+            const root = await resolveRoot(attempt, hidden);
             if (!root) return false; // phase already set (missing / needs-permission)
             const adapter = createWebFsDirectoryAdapter(root);
             const s = createFilesystemDocumentStore(adapter, {
@@ -3833,6 +3918,50 @@
         missing = null;
         phase = "loading";
         await runBuild();
+    }
+
+    /**
+     * Remove the copy of a graph this account no longer has access to (`no-longer-member`): the
+     * registry hides its record, so nothing else in the app offers to. Its unsent changes are
+     * counted first; the copy goes only when there are none, or once the person has seen them and
+     * chosen to remove it anyway (`discardUnlessUnsent` counts again at that moment).
+     */
+    async function removeHeldCopy(): Promise<void> {
+        const diagnosis = missing;
+        if (diagnosis?.kind !== "no-longer-member" || removingHeldCopy) return;
+        removingHeldCopy = true;
+        removeHeldCopyError = null;
+        try {
+            const outcome = await discardUnlessUnsent(
+                { graphId, rootDocId: diagnosis.rootDocId },
+                {
+                    inspect: staleCopyUnsentChanges,
+                    // The copy, its search index, the record and what the browser remembers about it.
+                    discard: () => forgetGraphOnDevice({ id: graphId, backend: "server" }),
+                    agreed: heldCopyUnsent?.unsent.map((document) => document.docId),
+                },
+            );
+            if (outcome.kind === "confirm") {
+                heldCopyUnsent = { unsent: outcome.unsent, downloaded: false };
+                return;
+            }
+            await goto("/graphs");
+        } catch (err) {
+            removeHeldCopyError = describeSyncFailure(err, "remove this graph from this device");
+        } finally {
+            removingHeldCopy = false;
+        }
+    }
+
+    function downloadHeldCopyUnsent(): void {
+        if (!heldCopyUnsent || missing?.kind !== "no-longer-member") return;
+        saveUnsentChangesFile(heldCopyUnsent.unsent, missing.name);
+        heldCopyUnsent = { ...heldCopyUnsent, downloaded: true };
+    }
+
+    function keepHeldCopy(): void {
+        heldCopyUnsent = null;
+        removeHeldCopyError = null;
     }
 
     /**
@@ -5315,6 +5444,14 @@
     onback={() => void goto("/graphs")}
     onretry={() => void retryOpen()}
     onsetup={() => void setUpHere()}
+    {returnPath}
+    heldCopyUnsent={heldCopyUnsent?.unsent.length ?? null}
+    heldCopyDownloaded={heldCopyUnsent?.downloaded ?? false}
+    {removingHeldCopy}
+    {removeHeldCopyError}
+    onremoveheldcopy={() => void removeHeldCopy()}
+    ondownloadheldcopy={downloadHeldCopyUnsent}
+    onkeepheldcopy={keepHeldCopy}
 />
 
 {#if phase === "needs-unlock"}

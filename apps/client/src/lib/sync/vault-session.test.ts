@@ -3,7 +3,7 @@ import { deriveVaultWrapKey, encryptVault, generateIdentityKeyPair, generateReco
 import { clearActiveSyncAccount, setActiveSyncAccount } from './account-scope'
 import { NoVaultError } from './recovery-unlock'
 import type { SyncApi } from './sync-api'
-import { getVaultWrapKey, isVaultUnlocked, lockVault, setVaultWrapKey, unlockWithRecoveryCode } from './vault-session'
+import { getVaultWrapKey, isVaultUnlocked, lockEveryVault, lockVault, setVaultWrapKey, unlockWithRecoveryCode } from './vault-session'
 
 /** An account whose vault is wrapped by a fresh Recovery Code, behind a fake Sync API. */
 async function account() {
@@ -105,5 +105,21 @@ describe('vault-session', () => {
         expect(getVaultWrapKey()).toBeNull()
         expect(localStorage.getItem('etherpk:vault-wrap-key')).toBeNull()
         expect(sessionStorage.getItem('etherpk:vault-wrap-key')).toBeNull()
+    })
+
+    // Clearing a shared machine leaves no account's keys behind, whichever account is active.
+    it('locks every account whose keys this browser holds, and nothing else', () => {
+        setActiveSyncAccount(accountA)
+        setVaultWrapKey(new Uint8Array(32).fill(1))
+        setActiveSyncAccount(accountB)
+        setVaultWrapKey(new Uint8Array(32).fill(2))
+        localStorage.setItem('etherpk-recents:graph-1', 'kept')
+
+        lockEveryVault()
+
+        expect(getVaultWrapKey()).toBeNull()
+        setActiveSyncAccount(accountA)
+        expect(getVaultWrapKey()).toBeNull()
+        expect(localStorage.getItem('etherpk-recents:graph-1')).toBe('kept')
     })
 })

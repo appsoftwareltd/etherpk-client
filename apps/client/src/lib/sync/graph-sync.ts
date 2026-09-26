@@ -348,6 +348,16 @@ function refusalStatus(error: unknown): number | undefined {
 /** How long activity changes are gathered before listeners hear them: an import acks thousands. */
 const ACTIVITY_COALESCE_MS = 50
 
+/**
+ * How many documents may have an operation (append, delete, resurrect) awaiting the relay's answer
+ * at once. The relay handles one connection's messages in turn and closes it once 256 are queued
+ * (ws-handler's MAX_QUEUED_MESSAGES). Each document has at most one operation in flight, but a
+ * flush or a reconnect across an imported vault would otherwise send every document's at once and
+ * be cut off, then again on each reconnect. Half the relay's limit leaves room for catch-ups,
+ * subscriptions and presence.
+ */
+export const OPERATION_WINDOW = 128
+
 /** Internal signal: a watermark request is safe to repeat on the next socket generation. */
 class WatermarkConnectionInterruptedError extends Error {}
 
@@ -453,6 +463,11 @@ export function createGraphSync(deps: GraphSyncDeps): GraphSync {
         if (!disposed) deps.onError?.(error instanceof Error ? error : new Error(String(error)))
     }
     const outboundSnapshots: string[] = []
+    type OperationMessage = Extract<RelayClientMessage, { type: 'append' | 'delete' | 'resurrect' }>
+    /** Documents whose operation this socket has sent and the relay has not answered, to its outbox id. */
+    const operationsInFlight = new Map<string, string>()
+    /** Each document's operation waiting for room in {@link OPERATION_WINDOW}, oldest first. */
+    const operationsWaiting = new Map<string, OperationMessage>()
     type CatchupRequest = Extract<RelayClientMessage, { type: 'catchup' }>
     const foregroundCatchups: CatchupRequest[] = []
     const backgroundCatchups: CatchupRequest[] = []
@@ -598,6 +613,40 @@ export function createGraphSync(deps: GraphSyncDeps): GraphSync {
         catchupInFlight = undefined
         pumpCatchups()
         retireEngineIfIdle(completedDocId)
+    }
+
+    /**
+     * Send a document's operation within the window, or hold it until an answer makes room. A
+     * document's newer operation replaces one still waiting (the engine sends only its head).
+     */
+    function sendOperation(docId: string, message: OperationMessage): void {
+        ackRoute.set(message.outboxId, docId)
+        // Already durable: an operation that finds the socket closed is sent again on the next open.
+        if (!open || !socket) return
+        if (!operationsInFlight.has(docId) && operationsInFlight.size >= OPERATION_WINDOW) {
+            operationsWaiting.set(docId, message)
+            return
+        }
+        operationsWaiting.delete(docId)
+        operationsInFlight.set(docId, message.outboxId)
+        sendNow(message)
+    }
+
+    /**
+     * The relay answered `docId`'s operation, by acking or refusing it: its place in the window
+     * goes to the longest-waiting one. `outboxId`, when the answer names one, must be the
+     * operation in flight; an answer to an older one frees nothing.
+     */
+    function operationAnswered(docId: string, outboxId?: string): void {
+        const inFlight = operationsInFlight.get(docId)
+        if (inFlight === undefined || (outboxId !== undefined && inFlight !== outboxId)) return
+        operationsInFlight.delete(docId)
+        for (const [waitingDocId, waiting] of operationsWaiting) {
+            if (!open || !socket || operationsInFlight.size >= OPERATION_WINDOW) return
+            operationsWaiting.delete(waitingDocId)
+            operationsInFlight.set(waitingDocId, waiting.outboxId)
+            sendNow(waiting)
+        }
     }
 
     function rawSend(message: RelayClientMessage): void {
@@ -758,7 +807,8 @@ export function createGraphSync(deps: GraphSyncDeps): GraphSync {
                         message.type === 'delete' ||
                         message.type === 'resurrect'
                     ) {
-                        ackRoute.set(message.outboxId, docId)
+                        sendOperation(docId, message)
+                        return
                     }
                     rawSend(message)
                 },
@@ -931,6 +981,7 @@ export function createGraphSync(deps: GraphSyncDeps): GraphSync {
                 return
             }
             if (message.code === 'quota_denied') {
+                if (message.docId) operationAnswered(message.docId, message.outboxId)
                 noteRefusal(message)
                 return
             }
@@ -942,6 +993,8 @@ export function createGraphSync(deps: GraphSyncDeps): GraphSync {
                 if (catchupInFlight?.docId === message.docId) {
                     catchupInFlight = undefined
                 }
+                // The engine discards its operations for the old generation.
+                operationAnswered(message.docId)
                 void engine(message.docId).staleGeneration(message.currentGeneration)
                 pumpCatchups()
             }
@@ -964,6 +1017,7 @@ export function createGraphSync(deps: GraphSyncDeps): GraphSync {
         if (message.type === 'ack') {
             const docId = ackRoute.get(message.outboxId)
             if (docId) {
+                operationAnswered(docId, message.outboxId)
                 void engine(docId)
                     .receive(message)
                     .then(() => {
@@ -992,6 +1046,9 @@ export function createGraphSync(deps: GraphSyncDeps): GraphSync {
     function forgetSocketGeneration(): void {
         subscribed.clear()
         ackRoute.clear()
+        // The next open resends every document's head operation through the window afresh.
+        operationsInFlight.clear()
+        operationsWaiting.clear()
         catchupInFlight = undefined
         foregroundCatchups.length = 0
         backgroundCatchups.length = 0
