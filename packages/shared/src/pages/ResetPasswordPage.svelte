@@ -3,6 +3,7 @@
     import { focusFirstInvalid } from "../ui/index.svelte";
     import { touchAll, visibleErrors } from "../forms/field-errors";
     import type { PasswordResetAuthClient } from "../auth/page-clients";
+    import { PASSWORD_HELP, WEAK_PASSWORD_CODE } from "../auth/password-strength";
     import AlertBanner from "../components/AlertBanner.svelte";
     import { page } from "$app/state";
     import { replaceState } from "$app/navigation";
@@ -94,7 +95,12 @@
             newPassword: password,
             token,
         });
-        if (result.error) {
+        if (result.error?.code === WEAK_PASSWORD_CODE) {
+            // Refused by the server's password rule: say why at the field, keep what was typed.
+            touched = { ...touched, password: true };
+            fieldErrors = { ...fieldErrors, password: result.error.message ?? "Choose a password that is harder to guess." };
+            void focusFirstInvalid();
+        } else if (result.error) {
             formError = result.error.message ?? "Failed to reset password. The link may have expired.";
         } else {
             success = true;
@@ -144,10 +150,11 @@
         <form onsubmit={handleSubmit} novalidate class="mt-6 space-y-4">
             <div>
                 <label for="password" class="block text-sm font-medium text-gray-700 mb-1.5">New password</label>
-                <input id="password" onblur={() => blurField("password")} oninput={() => inputField("password")} type="password" bind:value={password} autocomplete="new-password" placeholder="Min. 8 characters" aria-invalid={!!fieldErrors.password} aria-describedby={fieldErrors.password ? "pw-error" : undefined} class="{inputBase} {fieldErrors.password ? inputError : inputNormal}" />
+                <input id="password" onblur={() => blurField("password")} oninput={() => inputField("password")} type="password" bind:value={password} autocomplete="new-password" aria-invalid={!!fieldErrors.password} aria-describedby={fieldErrors.password ? "pw-error pw-help" : "pw-help"} class="{inputBase} {fieldErrors.password ? inputError : inputNormal}" />
                 {#if fieldErrors.password}
                     <p id="pw-error" class="mt-1 text-sm text-red-600">{fieldErrors.password}</p>
                 {/if}
+                <p id="pw-help" class="mt-1 text-sm text-gray-500">{PASSWORD_HELP}</p>
             </div>
 
             <div>

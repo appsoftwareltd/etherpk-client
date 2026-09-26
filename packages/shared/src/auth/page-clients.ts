@@ -19,13 +19,16 @@ export interface PasswordResetAuthClient {
 }
 
 export interface AccountAuthClient {
-    changeEmail(input: { newEmail: string; callbackURL: string }): Promise<AuthResult>
+    /** `password` is the account's current one, which the apps' before hook asks for. */
+    changeEmail(input: { newEmail: string; callbackURL: string; password?: string }): Promise<AuthResult>
     changePassword(input: {
         currentPassword: string
         newPassword: string
         revokeOtherSessions?: boolean
     }): Promise<AuthResult>
     sendVerificationEmail(input: { email: string; callbackURL: string }): Promise<AuthResult>
+    revokeSession(input: { token: string }): Promise<AuthResult>
+    revokeOtherSessions(): Promise<AuthResult>
     linkSocial(input: { provider: string; callbackURL: string }): Promise<AuthResult>
     unlinkAccount(input: { providerId: string; accountId?: string }): Promise<AuthResult>
     twoFactor: {

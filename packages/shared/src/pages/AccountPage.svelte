@@ -1,10 +1,16 @@
 <script lang="ts">
+    import { flushSync, tick } from "svelte";
     import { uuidv7 } from "uuidv7";
     import QRCode from "qrcode";
     import { focusFirstInvalid } from "../ui/index.svelte";
     import AlertBanner from "../components/AlertBanner.svelte";
     import type { AccountAuthClient } from "../auth/page-clients";
     import { verificationResendWaitSeconds } from "../auth/verification-resend";
+    import { page } from "$app/state";
+    import { SESSION_ENDED_MESSAGE, signInPath } from "../navigation/sign-in-path";
+    import { socialFailureMessage } from "../auth/social-failure";
+    import { CURRENT_PASSWORD_REQUIRED_CODE, PASSWORD_HELP, WEAK_PASSWORD_CODE } from "../auth/password-strength";
+    import { describeDevice } from "../auth/device-name";
 
     /**
      * The Server and Corporate account pages were byte-identical, so every fix landed twice.
@@ -20,6 +26,14 @@
             linkedProviders: Array<{ providerId: string; accountId: string; providerDisplayName: string | null }>;
             passkeys: Array<{ id: string; name: string | null; deviceType: string; backedUp: boolean; createdAt: Date | null }>;
             emailVerificationLastSentAt: Date | string | null;
+            /** The providers this deployment has credentials for: only those can be connected. */
+            socialProviders: { github: boolean; google: boolean };
+            /** Where the account is signed in, this browser's session first. */
+            sessions: Array<{ id: string; token: string; userAgent: string | null; ipAddress: string | null; createdAt: Date | string; current: boolean }>;
+            /** How long an app open on another device keeps access after it is signed out, or null when it loses it at once. */
+            openAppsKeepAccessMinutes: number | null;
+            /** The Sync Server, whose Access tokens page lists what a sign-out leaves active. */
+            syncServerUrl: string;
             user?: { id: string; name: string; email: string; emailVerified: boolean; image?: string | null } | null;
         };
         authClient: AccountAuthClient;
@@ -34,16 +48,41 @@
             .toUpperCase(),
     );
 
+    /**
+     * The message for a failed request. A 401 means the session behind this page has ended, signed
+     * out in another tab or expired: no retry here can succeed, so the banner offers sign-in instead.
+     */
+    function failureMessage(error: { status?: number; message?: string } | null | undefined, fallback: string): string {
+        return error?.status === 401 ? SESSION_ENDED_MESSAGE : (error?.message ?? fallback);
+    }
+
+    // ── Keyboard: a step takes focus when it opens and gives it back when it closes ──
+    /** Attach to the control a step starts on, so its caret is there as soon as it opens. */
+    function focusOnMount(node: HTMLElement) {
+        node.focus();
+    }
+
+    /** Once a step has closed, put focus on what opened it, or on what now stands in its place. */
+    async function refocus(target: () => HTMLElement | undefined) {
+        await tick();
+        target()?.focus();
+    }
+
     // ── Email change state ─────────────────────────────────────────────────────
     let newEmail = $state("");
     let emailLoading = $state(false);
     let emailError = $state<string | null>(null);
     let emailSuccess = $state<string | null>(null);
     let emailFieldError = $state<string | null>(null);
+    // The account's current password, which a change of address needs when it has one.
+    let emailPassword = $state("");
+    let emailPasswordError = $state<string | null>(null);
 
     async function handleChangeEmail(e: SubmitEvent) {
         e.preventDefault();
+        if (emailLoading) return;
         emailFieldError = null;
+        emailPasswordError = null;
         if (!newEmail.trim()) {
             emailFieldError = "Email is required";
             void focusFirstInvalid();
@@ -54,18 +93,33 @@
             void focusFirstInvalid();
             return;
         }
+        if (hasPassword && !emailPassword) {
+            emailPasswordError = "Enter your current password to change your email address.";
+            void focusFirstInvalid();
+            return;
+        }
         emailLoading = true;
         emailError = null;
         emailSuccess = null;
+        const requested = newEmail.trim();
         const result = await authClient.changeEmail({
-            newEmail,
+            newEmail: requested,
             callbackURL: "/account",
+            ...(hasPassword ? { password: emailPassword } : {}),
         });
-        if (result.error) {
-            emailError = result.error.message ?? "Failed to change email. Please try again.";
+        if (result.error?.code === CURRENT_PASSWORD_REQUIRED_CODE || result.error?.code === "INVALID_PASSWORD") {
+            emailPasswordError = result.error.message ?? "That is not your current password.";
+            void focusFirstInvalid();
+        } else if (result.error) {
+            emailError = failureMessage(result.error, "Failed to change email. Please try again.");
         } else {
-            emailSuccess = "Verification email sent to " + newEmail + ". Your email will be updated once you verify the new address.";
+            // Better Auth answers an address that already has an account the same way and sends
+            // nothing, so say what to expect without claiming that an email went.
+            emailSuccess = data.user.emailVerified
+                ? `Check ${data.user.email} for a link to confirm the change. It sends a verification link to ${requested}, and your address changes when you open that. If no email arrives, ${requested} may already be in use.`
+                : `Check ${requested} for a verification link. Your address changes when you open it. If no email arrives, ${requested} may already be in use.`;
             newEmail = "";
+            emailPassword = "";
         }
         emailLoading = false;
     }
@@ -78,10 +132,14 @@
     let accountError = $state<string | null>(null);
     let accountSuccess = $state<string | null>(null);
 
-    const availableProviders = [
+    const PROVIDERS = [
         { id: "github", label: "GitHub" },
         { id: "google", label: "Google" },
     ] as const;
+
+    // A provider this deployment has credentials for, or one the account is already linked to:
+    // a link made before a provider was removed still shows, so it can be seen and disconnected.
+    const offeredProviders = $derived(PROVIDERS.filter((provider) => data.socialProviders[provider.id] || isLinked(provider.id)));
 
     function isLinked(providerId: string) {
         return linkedProviders.some((p: { providerId: string }) => p.providerId === providerId);
@@ -98,13 +156,13 @@
         return hasPassword || otherProviders.length > 0;
     }
 
-    async function linkProvider(providerId: string) {
+    async function linkProvider(providerId: "github" | "google") {
+        if (linkLoading) return;
         linkLoading = providerId;
         accountError = null;
-        await authClient.linkSocial({
-            provider: providerId as "github" | "google",
-            callbackURL: "/account",
-        });
+        const result = await authClient.linkSocial({ provider: providerId, callbackURL: "/account" }).catch(() => null);
+        // On success the browser is already on its way to the provider; only a refusal stays here.
+        if (!result || result.error) accountError = socialFailureMessage("connect", providerId, result?.error);
         linkLoading = null;
     }
 
@@ -114,7 +172,7 @@
         accountSuccess = null;
         const result = await authClient.unlinkAccount({ providerId });
         if (result.error) {
-            accountError = result.error.message ?? "Failed to unlink account.";
+            accountError = failureMessage(result.error, "Failed to unlink account.");
         } else {
             linkedProviders = linkedProviders.filter((p: { providerId: string }) => p.providerId !== providerId);
             accountSuccess = providerId.charAt(0).toUpperCase() + providerId.slice(1) + " account disconnected.";
@@ -136,8 +194,12 @@
     let mfaBackupCodes = $state<string[]>([]);
     let mfaLoading = $state(false);
     let mfaError = $state<string | null>(null);
+    // A missing password or code, said at its field rather than in the step's banner.
+    let mfaFieldError = $state<string | null>(null);
     let mfaSuccess = $state<string | null>(null);
     let backupCodesCopied = $state(false);
+    let enableButton = $state<HTMLButtonElement>();
+    let disableButton = $state<HTMLButtonElement>();
 
     async function copyBackupCodes() {
         try {
@@ -161,15 +223,23 @@
     async function startMfaEnable() {
         mfaStep = "confirm-password";
         mfaError = null;
+        mfaFieldError = null;
         mfaPassword = "";
     }
 
-    async function getMfaUri() {
+    async function getMfaUri(e: SubmitEvent) {
+        e.preventDefault();
+        if (mfaLoading) return;
+        if (!mfaPassword) {
+            mfaFieldError = "Enter your current password.";
+            return;
+        }
+        mfaFieldError = null;
         mfaLoading = true;
         mfaError = null;
         const result = await authClient.twoFactor.enable({ password: mfaPassword });
         if (result.error) {
-            mfaError = result.error.message ?? "Failed to set up two-factor authentication.";
+            mfaError = failureMessage(result.error, "Failed to set up two-factor authentication.");
             mfaLoading = false;
             return;
         }
@@ -186,12 +256,19 @@
         mfaLoading = false;
     }
 
-    async function verifyMfaCode() {
+    async function verifyMfaCode(e: SubmitEvent) {
+        e.preventDefault();
+        if (mfaLoading) return;
+        if (!/^\d{6}$/.test(mfaCode)) {
+            mfaFieldError = "Enter the 6-digit code from your app.";
+            return;
+        }
+        mfaFieldError = null;
         mfaLoading = true;
         mfaError = null;
         const result = await authClient.twoFactor.verifyTotp({ code: mfaCode });
         if (result.error) {
-            mfaError = result.error.message ?? "Invalid code. Please try again.";
+            mfaError = failureMessage(result.error, "Invalid code. Please try again.");
             mfaLoading = false;
             return;
         }
@@ -200,20 +277,29 @@
         mfaSuccess = "Two-factor authentication has been enabled.";
         mfaLoading = false;
         mfaCode = "";
+        void refocus(() => disableButton);
     }
 
     function startMfaDisable() {
         mfaStep = "disable-confirm";
         mfaError = null;
+        mfaFieldError = null;
         mfaPassword = "";
     }
 
-    async function disableMfa() {
+    async function disableMfa(e: SubmitEvent) {
+        e.preventDefault();
+        if (mfaLoading) return;
+        if (!mfaPassword) {
+            mfaFieldError = "Enter your current password.";
+            return;
+        }
+        mfaFieldError = null;
         mfaLoading = true;
         mfaError = null;
         const result = await authClient.twoFactor.disable({ password: mfaPassword });
         if (result.error) {
-            mfaError = result.error.message ?? "Failed to disable two-factor authentication.";
+            mfaError = failureMessage(result.error, "Failed to disable two-factor authentication.");
             mfaLoading = false;
             return;
         }
@@ -222,14 +308,17 @@
         mfaSuccess = "Two-factor authentication has been disabled.";
         mfaLoading = false;
         mfaPassword = "";
+        void refocus(() => enableButton);
     }
 
     function cancelMfa() {
         mfaStep = "idle";
         mfaError = null;
+        mfaFieldError = null;
         mfaPassword = "";
         mfaCode = "";
         mfaBackupCodes = [];
+        void refocus(() => (mfaEnabled ? disableButton : enableButton));
     }
 
     // ── Passkey state ──────────────────────────────────────────────────────────
@@ -241,7 +330,12 @@
     let passkeySupported = $state(false);
     let passkeyLoading = $state(false);
     let passkeyError = $state<string | null>(null);
+    // A missing name, said at its field rather than in the step's banner.
+    let passkeyFieldError = $state<string | null>(null);
     let passkeySuccess = $state<string | null>(null);
+    let addPasskeyButton = $state<HTMLButtonElement>();
+    // Each row's Rename, so focus can go back to the one that opened the rename step.
+    const renameButtons: Record<string, HTMLButtonElement | undefined> = {};
     let passkeyName = $state("");
     let passkeyDeleteLoading = $state<string | null>(null);
     let passkeyRenameId = $state<string | null>(null);
@@ -263,20 +357,24 @@
         passkeyStep = "add-name";
         passkeyName = "";
         passkeyError = null;
+        passkeyFieldError = null;
     }
 
-    async function addPasskey() {
+    async function addPasskey(e: SubmitEvent) {
+        e.preventDefault();
+        if (passkeyLoading) return;
         if (!passkeyName.trim()) {
-            passkeyError = "Please enter a name for your passkey";
+            passkeyFieldError = "Give the passkey a name.";
             return;
         }
+        passkeyFieldError = null;
         passkeyLoading = true;
         passkeyError = null;
         passkeySuccess = null;
 
         const result = await authClient.passkey.addPasskey({ name: passkeyName.trim() });
         if (result?.error) {
-            passkeyError = result.error.message ?? "Failed to register passkey. Please try again.";
+            passkeyError = failureMessage(result.error, "Failed to register passkey. Please try again.");
             passkeyLoading = false;
             return;
         }
@@ -304,14 +402,18 @@
         passkeyStep = "idle";
         passkeyLoading = false;
         passkeyName = "";
+        void refocus(() => addPasskeyButton);
     }
 
     function cancelPasskey() {
+        const renamed = passkeyRenameId;
         passkeyStep = "idle";
         passkeyError = null;
+        passkeyFieldError = null;
         passkeyName = "";
         passkeyRenameId = null;
         passkeyRenameName = "";
+        void refocus(() => (renamed ? renameButtons[renamed] : addPasskeyButton));
     }
 
     async function deletePasskey(id: string) {
@@ -320,7 +422,7 @@
         passkeySuccess = null;
         const result = await authClient.passkey.deletePasskey({ id });
         if (result?.error) {
-            passkeyError = result.error.message ?? "Failed to remove passkey.";
+            passkeyError = failureMessage(result.error, "Failed to remove passkey.");
             passkeyDeleteLoading = null;
             return;
         }
@@ -335,13 +437,17 @@
         passkeyRenameId = id;
         passkeyRenameName = currentName || "";
         passkeyError = null;
+        passkeyFieldError = null;
     }
 
-    async function renamePasskey() {
-        if (!passkeyRenameId || !passkeyRenameName.trim()) {
-            passkeyError = "Please enter a name";
+    async function renamePasskey(e: SubmitEvent) {
+        e.preventDefault();
+        if (passkeyRenameLoading || !passkeyRenameId) return;
+        if (!passkeyRenameName.trim()) {
+            passkeyFieldError = "Give the passkey a name.";
             return;
         }
+        passkeyFieldError = null;
         passkeyRenameLoading = true;
         passkeyError = null;
 
@@ -352,17 +458,19 @@
             body: JSON.stringify({ id: passkeyRenameId, name: passkeyRenameName.trim() }),
         });
         if (!res.ok) {
-            passkeyError = "Failed to rename passkey.";
+            passkeyError = res.status === 401 ? SESSION_ENDED_MESSAGE : "Failed to rename passkey.";
             passkeyRenameLoading = false;
             return;
         }
 
+        const renamed = passkeyRenameId;
         passkeys = passkeys.map((p) => (p.id === passkeyRenameId ? { ...p, name: passkeyRenameName.trim() } : p));
         passkeySuccess = "Passkey renamed.";
         passkeyStep = "idle";
         passkeyRenameId = null;
         passkeyRenameName = "";
         passkeyRenameLoading = false;
+        void refocus(() => renameButtons[renamed]);
     }
 
     function formatDate(dateVal: string | Date | null): string {
@@ -382,6 +490,8 @@
     let pwError = $state<string | null>(null);
     let pwSuccess = $state<string | null>(null);
     let pwFieldErrors = $state<{ current?: string; new?: string; confirm?: string }>({});
+    // Checked by default: a password is most often changed because someone else may know it.
+    let signOutOthers = $state(true);
 
     const inputBase = "block w-full rounded-lg border bg-white px-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 transition-colors";
     const inputNormal = "border-gray-300 text-gray-950 focus:border-gray-950 focus:ring-gray-950/10";
@@ -426,13 +536,22 @@
         pwLoading = true;
         pwError = null;
         pwSuccess = null;
-        const result = (await fetch("/api/v1/account/set-password", {
+        // A network failure or a body that is not JSON (a proxy's error page) must still end in a
+        // message, not leave the form stuck on "Saving".
+        const response = await fetch("/api/v1/account/set-password", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ newPassword: pwNew }),
-        }).then((r) => r.json())) as { status?: boolean; error?: { message: string } };
-        if (result.error) {
-            pwError = result.error.message ?? "Failed to set password. Please try again.";
+        }).catch(() => null);
+        const result = ((await response?.json().catch(() => null)) ?? {}) as { error?: { message?: string; code?: string } };
+        if (result.error?.code === WEAK_PASSWORD_CODE) {
+            pwFieldErrors = { new: result.error.message ?? "Choose a password that is harder to guess." };
+            void focusFirstInvalid();
+        } else if (!response?.ok) {
+            pwError = failureMessage(
+                { status: response?.status, message: result.error?.message },
+                "Failed to set password. Please try again.",
+            );
         } else {
             pwSuccess = "Password set successfully. You can now sign in with your email and password.";
             hasPassword = true;
@@ -449,15 +568,23 @@
         pwLoading = true;
         pwError = null;
         pwSuccess = null;
+        const signingOut = signOutOthers;
         const result = await authClient.changePassword({
             currentPassword: pwCurrent,
             newPassword: pwNew,
-            revokeOtherSessions: false,
+            revokeOtherSessions: signingOut,
         });
-        if (result.error) {
-            pwError = result.error.message ?? "Failed to change password. Please try again.";
+        if (result.error?.code === WEAK_PASSWORD_CODE) {
+            pwFieldErrors = { new: result.error.message ?? "Choose a password that is harder to guess." };
+            void focusFirstInvalid();
+        } else if (result.error) {
+            pwError = failureMessage(result.error, "Failed to change password. Please try again.");
         } else {
             pwSuccess = "Password changed successfully.";
+            if (signingOut) {
+                sessions = sessions.filter((session) => session.current);
+                othersSignedOutIn = "password";
+            }
             pwCurrent = "";
             pwNew = "";
             pwConfirm = "";
@@ -466,7 +593,45 @@
         pwLoading = false;
     }
 
+    // ── Sessions ──────────────────────────────────────────────────────────────
+    // svelte-ignore state_referenced_locally
+    let sessions = $state(data.sessions);
+    // The session being signed out, or "others" while signing out every other one.
+    let sessionsBusy = $state<string | null>(null);
+    let sessionsError = $state<string | null>(null);
+    // Where the last "other devices are signed out" happened, so the note shows beside it.
+    let othersSignedOutIn = $state<"password" | "sessions" | null>(null);
+    const accessTokensUrl = $derived(new URL("/account/tokens", data.syncServerUrl).href);
+
+    async function signOutSession(target: { id: string; token: string }) {
+        if (sessionsBusy) return;
+        sessionsBusy = target.id;
+        sessionsError = null;
+        const result = await authClient.revokeSession({ token: target.token }).catch(() => null);
+        if (!result || result.error) sessionsError = failureMessage(result?.error, "Could not sign that session out. Try again.");
+        else sessions = sessions.filter((session) => session.id !== target.id);
+        sessionsBusy = null;
+    }
+
+    async function signOutOtherSessions() {
+        if (sessionsBusy) return;
+        sessionsBusy = "others";
+        sessionsError = null;
+        othersSignedOutIn = null;
+        const result = await authClient.revokeOtherSessions().catch(() => null);
+        if (!result || result.error) {
+            sessionsError = failureMessage(result?.error, "Could not sign the other sessions out. Try again.");
+        } else {
+            sessions = sessions.filter((session) => session.current);
+            othersSignedOutIn = "sessions";
+        }
+        sessionsBusy = null;
+    }
+
     // ── Email verification state ───────────────────────────────────────────────
+    // A verification link sent from this page returns here; Better Auth adds `error` when the
+    // link has expired or was already used, and the account is then still unverified.
+    const verificationLinkFailed = $derived(["INVALID_TOKEN", "TOKEN_EXPIRED"].includes(page.url.searchParams.get("error") ?? ""));
     let verificationLoading = $state(false);
     let verificationSuccess = $state<string | null>(null);
     let verificationError = $state<string | null>(null);
@@ -510,7 +675,7 @@
             callbackURL: "/account",
         });
         if (result.error) {
-            verificationError = result.error.message ?? "Failed to send verification email. Please try again.";
+            verificationError = failureMessage(result.error, "Failed to send verification email. Please try again.");
         } else {
             verificationSuccess = `Verification email sent to ${data.user.email}. Check your inbox.`;
             lastSentAt = new Date();
@@ -518,11 +683,71 @@
         }
         verificationLoading = false;
     }
+
+    // The browser may keep this page in its back-forward cache when it navigates away, sign-out
+    // included. Nothing secret may be left in it then: the two-factor secret, its QR code and
+    // backup codes, and any password typed here.
+    function forgetSecrets() {
+        flushSync(() => {
+            mfaStep = "idle";
+            mfaPassword = "";
+            mfaQrDataUrl = "";
+            mfaSecret = "";
+            mfaCode = "";
+            mfaBackupCodes = [];
+            backupCodesCopied = false;
+            pwCurrent = "";
+            pwNew = "";
+            pwConfirm = "";
+            emailPassword = "";
+        });
+    }
 </script>
+
+<svelte:window onpagehide={forgetSecrets} />
 
 <svelte:head>
     <title>Account - EtherPK</title>
 </svelte:head>
+
+<!-- The password field of the two-factor steps: focused when its step opens. -->
+{#snippet mfaPasswordField(id: string)}
+    <input
+        {id}
+        type="password"
+        bind:value={mfaPassword}
+        {@attach focusOnMount}
+        oninput={() => {
+            if (mfaFieldError && mfaPassword) mfaFieldError = null;
+        }}
+        placeholder="Current password"
+        autocomplete="current-password"
+        aria-invalid={mfaFieldError !== null}
+        aria-describedby={mfaFieldError ? `${id}-error` : undefined}
+        class="{inputBase} {mfaFieldError ? inputErr : inputNormal}"
+    />
+    {#if mfaFieldError}
+        <p id="{id}-error" class="text-sm text-red-600">{mfaFieldError}</p>
+    {/if}
+{/snippet}
+
+<!-- After signing other devices out: what that reached, and what it did not. -->
+{#snippet othersSignedOutNote()}
+    <AlertBanner variant="success" dismissible ondismiss={() => (othersSignedOutIn = null)}>
+        Other devices are signed out{#if data.openAppsKeepAccessMinutes}, and EtherPK apps already open on them lose access within {data.openAppsKeepAccessMinutes} minutes{/if}.
+        Access tokens stay active: revoke any you no longer trust on the <a href={accessTokensUrl} class="font-medium underline">Access tokens</a> page.
+    </AlertBanner>
+{/snippet}
+
+<!-- A failed request's message, with the way on when the failure is a session that has ended. -->
+{#snippet errorBanner(message: string)}
+    <AlertBanner variant="error">
+        {message}
+        {#if message === SESSION_ENDED_MESSAGE}
+            <a href={signInPath(page.url)} class="font-medium underline">Sign in again</a>
+        {/if}
+    </AlertBanner>
+{/snippet}
 
 <div class="lg:max-w-4xl">
     <div class="mb-8">
@@ -572,10 +797,12 @@
 
                 {#if verificationSuccess}
                     <AlertBanner variant="success" message={verificationSuccess} dismissible ondismiss={() => (verificationSuccess = null)} />
+                {:else if verificationLinkFailed}
+                    <AlertBanner variant="warning" message="That verification link has expired or was already used. Send a new one below." />
                 {/if}
 
                 {#if verificationError}
-                    <AlertBanner variant="error" message={verificationError} />
+                    {@render errorBanner(verificationError)}
                 {/if}
 
                 <div class="flex flex-wrap items-center gap-3">
@@ -603,7 +830,13 @@
         <div class="px-6 py-5 space-y-4">
             <div>
                 <p class="text-sm font-medium text-gray-950">Change email address</p>
-                <p class="text-sm text-gray-500 mt-0.5">A verification email will be sent to the new address. Your email won't change until you verify it.</p>
+                <p class="text-sm text-gray-500 mt-0.5">
+                    {#if data.user.emailVerified}
+                        A link to confirm the change goes to your current address first, then a verification link to the new one. Your address changes when you open that.
+                    {:else}
+                        A verification link goes to the new address. Your address changes when you open it.
+                    {/if}
+                </p>
             </div>
 
             {#if emailSuccess}
@@ -611,7 +844,7 @@
             {/if}
 
             {#if emailError}
-                <AlertBanner variant="error" message={emailError} />
+                {@render errorBanner(emailError)}
             {/if}
 
             <form onsubmit={handleChangeEmail} novalidate class="space-y-3">
@@ -623,6 +856,27 @@
                     {/if}
                 </div>
 
+                {#if hasPassword}
+                    <div>
+                        <label for="email-password" class="block text-sm font-medium text-gray-700 mb-1">Password</label>
+                        <input
+                            id="email-password"
+                            type="password"
+                            bind:value={emailPassword}
+                            oninput={() => {
+                                if (emailPasswordError && emailPassword) emailPasswordError = null;
+                            }}
+                            autocomplete="current-password"
+                            aria-invalid={!!emailPasswordError}
+                            aria-describedby={emailPasswordError ? "email-password-error" : undefined}
+                            class="{inputBase} {emailPasswordError ? inputErr : inputNormal}"
+                        />
+                        {#if emailPasswordError}
+                            <p id="email-password-error" class="mt-1 text-sm text-red-600">{emailPasswordError}</p>
+                        {/if}
+                    </div>
+                {/if}
+
                 <button type="submit" disabled={emailLoading} class="rounded-lg bg-gray-950 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700 dark:bg-white/20 dark:hover:bg-white/25 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                     {emailLoading ? "Sending…" : "Change email"}
                 </button>
@@ -630,8 +884,9 @@
         </div>
     </div>
 
-    <!-- Connected accounts -->
-    <div class="mt-4 rounded-xl border border-gray-950/8 bg-white shadow-sm divide-y divide-gray-950/5">
+    <!-- Connected accounts: only when there is a provider to connect or a link to show. -->
+    {#if offeredProviders.length > 0}
+    <div data-testid="connected-accounts" class="mt-4 rounded-xl border border-gray-950/8 bg-white shadow-sm divide-y divide-gray-950/5">
         <div class="px-6 py-5">
             <h2 class="text-sm font-semibold text-gray-950">Connected accounts</h2>
         </div>
@@ -648,11 +903,11 @@
             {/if}
 
             {#if accountError}
-                <AlertBanner variant="error" message={accountError} />
+                {@render errorBanner(accountError)}
             {/if}
 
             <div class="space-y-3">
-                {#each availableProviders as provider (provider.id)}
+                {#each offeredProviders as provider (provider.id)}
                     <div class="flex items-center justify-between gap-4 rounded-lg border border-gray-950/8 px-4 py-3">
                         <div class="flex items-center gap-3">
                             {#if provider.id === "github"}
@@ -677,12 +932,16 @@
                             </div>
                         </div>
                         <div>
-                            {#if isLinked(provider.id)}
-                                <button onclick={() => unlinkProvider(provider.id)} disabled={!canUnlink(provider.id) || unlinkLoading === provider.id} title={!canUnlink(provider.id) ? "You need at least one sign-in method" : ""} class="text-sm text-red-600 hover:underline disabled:opacity-50 disabled:cursor-not-allowed disabled:no-underline">
+                            {#if isLinked(provider.id) && !canUnlink(provider.id)}
+                                <!-- Said in text, not a tooltip on a control that cannot be used. -->
+                                <span class="text-sm text-gray-500">Your only sign-in method</span>
+                            {:else if isLinked(provider.id)}
+                                <button type="button" onclick={() => unlinkProvider(provider.id)} disabled={unlinkLoading === provider.id} aria-label="Disconnect {provider.label}" class="text-sm text-red-600 hover:underline disabled:opacity-50 disabled:cursor-not-allowed disabled:no-underline">
                                     {unlinkLoading === provider.id ? "Disconnecting…" : "Disconnect"}
                                 </button>
                             {:else}
-                                <button onclick={() => linkProvider(provider.id)} disabled={linkLoading === provider.id || !data.user.emailVerified} title={!data.user.emailVerified ? "Verify your email address first" : ""} class="rounded-lg bg-gray-950 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-700 dark:bg-white/20 dark:hover:bg-white/25 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                                <!-- Unverified, the notice above the list says why this is unavailable. -->
+                                <button type="button" onclick={() => linkProvider(provider.id)} disabled={linkLoading === provider.id || !data.user.emailVerified} aria-label="Connect {provider.label}" class="rounded-lg bg-gray-950 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-700 dark:bg-white/20 dark:hover:bg-white/25 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                                     {linkLoading === provider.id ? "Connecting…" : "Connect"}
                                 </button>
                             {/if}
@@ -692,6 +951,7 @@
             </div>
         </div>
     </div>
+    {/if}
 
     <!-- Security -->
     <div class="mt-4 rounded-xl border border-gray-950/8 bg-white shadow-sm divide-y divide-gray-950/5">
@@ -712,9 +972,12 @@
                             <svg class="h-3 w-3" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M12.416 3.376a.75.75 0 0 1 .208 1.04l-5 7.5a.75.75 0 0 1-1.154.114l-3-3a.75.75 0 0 1 1.06-1.06l2.353 2.353 4.493-6.74a.75.75 0 0 1 1.04-.207Z" clip-rule="evenodd" /></svg>
                             Enabled
                         </span>
-                        <button onclick={startMfaDisable} class="text-sm text-red-600 hover:underline">Disable</button>
-                    {:else}
-                        <button onclick={startMfaEnable} class="rounded-lg bg-gray-950 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-700 dark:bg-white/20 dark:hover:bg-white/25 transition-colors">Enable</button>
+                        <!-- Hidden while a step is open: starting again would discard what it shows. -->
+                        {#if mfaStep === "idle"}
+                            <button type="button" bind:this={disableButton} onclick={startMfaDisable} class="text-sm text-red-600 hover:underline">Disable</button>
+                        {/if}
+                    {:else if mfaStep === "idle"}
+                        <button type="button" bind:this={enableButton} onclick={startMfaEnable} class="rounded-lg bg-gray-950 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-700 dark:bg-white/20 dark:hover:bg-white/25 transition-colors">Enable</button>
                     {/if}
                 </div>
             </div>
@@ -724,31 +987,33 @@
             {/if}
 
             {#if mfaError && mfaStep === "idle"}
-                <AlertBanner variant="error" message={mfaError} />
+                {@render errorBanner(mfaError)}
             {/if}
 
             <!-- Confirm password to start enable flow -->
             {#if mfaStep === "confirm-password"}
-                <div class="rounded-lg border border-gray-950/8 bg-gray-50 p-4 space-y-3">
-                    <p class="text-sm font-medium text-gray-700">Enter your current password to continue</p>
+                <form onsubmit={getMfaUri} novalidate class="rounded-lg border border-gray-950/8 bg-gray-50 p-4 space-y-3">
+                    <label for="account-mfa-enable-password" class="block text-sm font-medium text-gray-700">Enter your current password to continue</label>
                     {#if mfaError}
-                        <AlertBanner variant="error" message={mfaError} />
+                        {@render errorBanner(mfaError)}
                     {/if}
-                    <input type="password" bind:value={mfaPassword} placeholder="Current password" autocomplete="current-password" class="{inputBase} {inputNormal}" />
+                    {@render mfaPasswordField("account-mfa-enable-password")}
                     <div class="flex gap-2">
-                        <button onclick={getMfaUri} disabled={mfaLoading || !mfaPassword} class="rounded-lg bg-gray-950 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-700 dark:bg-white/20 dark:hover:bg-white/25 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                        <button type="submit" disabled={mfaLoading} class="rounded-lg bg-gray-950 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-700 dark:bg-white/20 dark:hover:bg-white/25 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                             {mfaLoading ? "Loading…" : "Continue"}
                         </button>
-                        <button onclick={cancelMfa} class="rounded-lg border border-gray-950/15 px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-100 transition-colors">Cancel</button>
+                        <button type="button" onclick={cancelMfa} class="rounded-lg border border-gray-950/15 px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-100 transition-colors">Cancel</button>
                     </div>
-                </div>
+                </form>
             {/if}
 
             <!-- Scan QR code -->
             {#if mfaStep === "scan"}
-                <div class="rounded-lg border border-gray-950/8 bg-gray-50 p-4 space-y-4">
+                <form onsubmit={verifyMfaCode} novalidate class="rounded-lg border border-gray-950/8 bg-gray-50 p-4 space-y-4">
                     <div>
-                        <p class="text-sm font-medium text-gray-950">1. Scan this QR code with your authenticator app</p>
+                        <!-- Focus starts on the instructions, so a screen reader reads the secret and
+                             the backup codes before it reaches the code field. -->
+                        <p tabindex="-1" {@attach focusOnMount} class="text-sm font-medium text-gray-950 outline-none">1. Scan this QR code with your authenticator app</p>
                         <p class="text-sm text-gray-500 mt-0.5">Use Google Authenticator, Authy, or any TOTP-compatible app.</p>
                     </div>
                     {#if mfaQrDataUrl}
@@ -787,38 +1052,56 @@
                         </div>
                     {/if}
                     <div>
-                        <p class="text-sm font-medium text-gray-700 mb-1.5">2. Enter the 6-digit code from your app</p>
+                        <label for="account-mfa-code" class="block text-sm font-medium text-gray-700 mb-1.5">2. Enter the 6-digit code from your app</label>
                         {#if mfaError}
                             <div class="mb-2">
-                                <AlertBanner variant="error" message={mfaError} />
+                                {@render errorBanner(mfaError)}
                             </div>
                         {/if}
-                        <input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="6" bind:value={mfaCode} placeholder="000000" autocomplete="one-time-code" class="{inputBase} {inputNormal} font-mono tracking-widest" />
+                        <input
+                            id="account-mfa-code"
+                            type="text"
+                            inputmode="numeric"
+                            pattern="[0-9]*"
+                            maxlength="6"
+                            bind:value={mfaCode}
+                            oninput={() => {
+                                if (mfaFieldError && /^\d{6}$/.test(mfaCode)) mfaFieldError = null;
+                            }}
+                            placeholder="000000"
+                            autocomplete="one-time-code"
+                            aria-invalid={mfaFieldError !== null}
+                            aria-describedby={mfaFieldError ? "account-mfa-code-error" : undefined}
+                            class="{inputBase} {mfaFieldError ? inputErr : inputNormal} font-mono tracking-widest"
+                        />
+                        {#if mfaFieldError}
+                            <p id="account-mfa-code-error" class="mt-1 text-sm text-red-600">{mfaFieldError}</p>
+                        {/if}
                     </div>
                     <div class="flex gap-2">
-                        <button onclick={verifyMfaCode} disabled={mfaLoading || mfaCode.length !== 6} class="rounded-lg bg-gray-950 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-700 dark:bg-white/20 dark:hover:bg-white/25 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                        <button type="submit" disabled={mfaLoading} class="rounded-lg bg-gray-950 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-700 dark:bg-white/20 dark:hover:bg-white/25 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                             {mfaLoading ? "Verifying…" : "Verify & Enable"}
                         </button>
-                        <button onclick={cancelMfa} class="rounded-lg border border-gray-950/15 px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-100 transition-colors">Cancel</button>
+                        <button type="button" onclick={cancelMfa} class="rounded-lg border border-gray-950/15 px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-100 transition-colors">Cancel</button>
                     </div>
-                </div>
+                </form>
             {/if}
 
             <!-- Disable confirmation -->
             {#if mfaStep === "disable-confirm"}
-                <div class="rounded-lg border border-red-200 bg-red-50 p-4 space-y-3">
-                    <p class="text-sm font-medium text-red-700">Enter your current password to disable two-factor authentication</p>
+                <form onsubmit={disableMfa} novalidate class="rounded-lg border border-red-200 bg-red-50 p-4 space-y-3">
+                    <label for="account-mfa-disable-password" class="block text-sm font-medium text-red-700">Enter your current password to disable two-factor authentication</label>
                     {#if mfaError}
-                        <AlertBanner variant="error" message={mfaError} />
+                        {@render errorBanner(mfaError)}
                     {/if}
-                    <input type="password" bind:value={mfaPassword} placeholder="Current password" autocomplete="current-password" class="{inputBase} {inputNormal}" />
+                    {@render mfaPasswordField("account-mfa-disable-password")}
                     <div class="flex gap-2">
-                        <button onclick={disableMfa} disabled={mfaLoading || !mfaPassword} class="rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                        <button type="submit" disabled={mfaLoading} class="rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                             {mfaLoading ? "Disabling…" : "Disable 2FA"}
                         </button>
-                        <button onclick={cancelMfa} class="rounded-lg border border-gray-950/15 px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-100 transition-colors">Cancel</button>
+                        <button type="button" onclick={cancelMfa} class="rounded-lg border border-gray-950/15 px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-100 transition-colors">Cancel</button>
                     </div>
-                </div>
+                </form>
             {/if}
         </div>
 
@@ -830,7 +1113,7 @@
                     <p class="text-sm text-gray-500 mt-0.5">Sign in with your fingerprint, face, or screen lock instead of a password.</p>
                 </div>
                 {#if passkeySupported && passkeyStep === "idle"}
-                    <button onclick={startAddPasskey} class="rounded-lg bg-gray-950 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-700 dark:bg-white/20 dark:hover:bg-white/25 transition-colors shrink-0">Add a passkey</button>
+                    <button type="button" bind:this={addPasskeyButton} onclick={startAddPasskey} class="rounded-lg bg-gray-950 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-700 dark:bg-white/20 dark:hover:bg-white/25 transition-colors shrink-0">Add a passkey</button>
                 {/if}
             </div>
 
@@ -839,7 +1122,7 @@
             {/if}
 
             {#if passkeyError && passkeyStep === "idle"}
-                <AlertBanner variant="error" message={passkeyError} />
+                {@render errorBanner(passkeyError)}
             {/if}
 
             {#if !passkeySupported}
@@ -848,37 +1131,69 @@
 
             <!-- Add passkey: name prompt -->
             {#if passkeyStep === "add-name"}
-                <div class="rounded-lg border border-gray-950/8 bg-gray-50 p-4 space-y-3">
-                    <p class="text-sm font-medium text-gray-700">Name your passkey</p>
-                    <p class="text-sm text-gray-500">Give it a recognisable name so you can identify it later.</p>
+                <form onsubmit={addPasskey} novalidate class="rounded-lg border border-gray-950/8 bg-gray-50 p-4 space-y-3">
+                    <label for="account-passkey-name" class="block text-sm font-medium text-gray-700">Name your passkey</label>
+                    <p id="account-passkey-name-hint" class="text-sm text-gray-500">Give it a recognisable name so you can identify it later.</p>
                     {#if passkeyError}
-                        <AlertBanner variant="error" message={passkeyError} />
+                        {@render errorBanner(passkeyError)}
                     {/if}
-                    <input type="text" bind:value={passkeyName} placeholder="e.g. MacBook Pro Touch ID" maxlength="100" class="{inputBase} {inputNormal}" />
+                    <input
+                        id="account-passkey-name"
+                        type="text"
+                        bind:value={passkeyName}
+                        {@attach focusOnMount}
+                        oninput={() => {
+                            if (passkeyFieldError && passkeyName.trim()) passkeyFieldError = null;
+                        }}
+                        placeholder="e.g. MacBook Pro Touch ID"
+                        maxlength="100"
+                        aria-invalid={passkeyFieldError !== null}
+                        aria-describedby={passkeyFieldError ? "account-passkey-name-error" : "account-passkey-name-hint"}
+                        class="{inputBase} {passkeyFieldError ? inputErr : inputNormal}"
+                    />
+                    {#if passkeyFieldError}
+                        <p id="account-passkey-name-error" class="text-sm text-red-600">{passkeyFieldError}</p>
+                    {/if}
                     <div class="flex gap-2">
-                        <button onclick={addPasskey} disabled={passkeyLoading || !passkeyName.trim()} class="rounded-lg bg-gray-950 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-700 dark:bg-white/20 dark:hover:bg-white/25 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                        <button type="submit" disabled={passkeyLoading} class="rounded-lg bg-gray-950 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-700 dark:bg-white/20 dark:hover:bg-white/25 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                             {passkeyLoading ? "Waiting for browser…" : "Continue"}
                         </button>
-                        <button onclick={cancelPasskey} class="rounded-lg border border-gray-950/15 px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-100 transition-colors">Cancel</button>
+                        <button type="button" onclick={cancelPasskey} class="rounded-lg border border-gray-950/15 px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-100 transition-colors">Cancel</button>
                     </div>
-                </div>
+                </form>
             {/if}
 
             <!-- Rename passkey -->
             {#if passkeyStep === "rename"}
-                <div class="rounded-lg border border-gray-950/8 bg-gray-50 p-4 space-y-3">
-                    <p class="text-sm font-medium text-gray-700">Rename passkey</p>
+                <form onsubmit={renamePasskey} novalidate class="rounded-lg border border-gray-950/8 bg-gray-50 p-4 space-y-3">
+                    <label for="account-passkey-rename" class="block text-sm font-medium text-gray-700">Rename passkey</label>
                     {#if passkeyError}
-                        <AlertBanner variant="error" message={passkeyError} />
+                        {@render errorBanner(passkeyError)}
                     {/if}
-                    <input type="text" bind:value={passkeyRenameName} placeholder="New name" maxlength="100" class="{inputBase} {inputNormal}" />
+                    <input
+                        id="account-passkey-rename"
+                        type="text"
+                        bind:value={passkeyRenameName}
+                        {@attach focusOnMount}
+                        oninput={() => {
+                            if (passkeyFieldError && passkeyRenameName.trim()) passkeyFieldError = null;
+                        }}
+                        placeholder="New name"
+                        maxlength="100"
+                        aria-invalid={passkeyFieldError !== null}
+                        aria-describedby={passkeyFieldError ? "account-passkey-rename-error" : undefined}
+                        class="{inputBase} {passkeyFieldError ? inputErr : inputNormal}"
+                    />
+                    {#if passkeyFieldError}
+                        <p id="account-passkey-rename-error" class="text-sm text-red-600">{passkeyFieldError}</p>
+                    {/if}
                     <div class="flex gap-2">
-                        <button onclick={renamePasskey} disabled={passkeyRenameLoading || !passkeyRenameName.trim()} class="rounded-lg bg-gray-950 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-700 dark:bg-white/20 dark:hover:bg-white/25 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                        <button type="submit" disabled={passkeyRenameLoading} class="rounded-lg bg-gray-950 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-700 dark:bg-white/20 dark:hover:bg-white/25 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                             {passkeyRenameLoading ? "Saving…" : "Save"}
                         </button>
-                        <button onclick={cancelPasskey} class="rounded-lg border border-gray-950/15 px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-100 transition-colors">Cancel</button>
+                        <button type="button" onclick={cancelPasskey} class="rounded-lg border border-gray-950/15 px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-100 transition-colors">Cancel</button>
                     </div>
-                </div>
+                </form>
             {/if}
 
             <!-- Passkey list -->
@@ -906,13 +1221,14 @@
                                 </div>
                             </div>
                             <div class="flex items-center gap-2 shrink-0">
-                                <button onclick={() => startRenamePasskey(pk.id, pk.name ?? "")} class="text-sm text-gray-500 hover:text-gray-950 hover:underline">Rename</button>
+                                <button type="button" bind:this={renameButtons[pk.id]} onclick={() => startRenamePasskey(pk.id, pk.name ?? "")} class="text-sm text-gray-500 hover:text-gray-950 hover:underline">Rename</button>
                                 {#if canDeletePasskey()}
-                                    <button onclick={() => deletePasskey(pk.id)} disabled={passkeyDeleteLoading === pk.id} class="text-sm text-red-600 hover:underline disabled:opacity-50 disabled:cursor-not-allowed">
+                                    <button type="button" onclick={() => deletePasskey(pk.id)} disabled={passkeyDeleteLoading === pk.id} class="text-sm text-red-600 hover:underline disabled:opacity-50 disabled:cursor-not-allowed">
                                         {passkeyDeleteLoading === pk.id ? "Removing…" : "Remove"}
                                     </button>
                                 {:else}
-                                    <span class="text-sm text-gray-400" title="This is your only sign-in method">Remove</span>
+                                    <!-- Said in text, not a tooltip on a control that cannot be used. -->
+                                    <span class="text-sm text-gray-500">Your only sign-in method</span>
                                 {/if}
                             </div>
                         </div>
@@ -939,9 +1255,12 @@
             {#if pwSuccess}
                 <AlertBanner variant="success" message={pwSuccess} dismissible ondismiss={() => (pwSuccess = null)} />
             {/if}
+            {#if othersSignedOutIn === "password"}
+                {@render othersSignedOutNote()}
+            {/if}
 
             {#if pwError}
-                <AlertBanner variant="error" message={pwError} />
+                {@render errorBanner(pwError)}
             {/if}
 
             {#if hasPassword}
@@ -956,10 +1275,11 @@
 
                     <div>
                         <label for="pw-new" class="block text-sm font-medium text-gray-700 mb-1">New password</label>
-                        <input id="pw-new" type="password" bind:value={pwNew} autocomplete="new-password" placeholder="Min. 8 characters" aria-invalid={!!pwFieldErrors.new} aria-describedby={pwFieldErrors.new ? "pw-new-error" : undefined} class="{inputBase} {pwFieldErrors.new ? inputErr : inputNormal}" />
+                        <input id="pw-new" type="password" bind:value={pwNew} autocomplete="new-password" aria-invalid={!!pwFieldErrors.new} aria-describedby={pwFieldErrors.new ? "pw-new-error pw-new-help" : "pw-new-help"} class="{inputBase} {pwFieldErrors.new ? inputErr : inputNormal}" />
                         {#if pwFieldErrors.new}
                             <p id="pw-new-error" class="mt-1 text-sm text-red-600">{pwFieldErrors.new}</p>
                         {/if}
+                        <p id="pw-new-help" class="mt-1 text-sm text-gray-500">{PASSWORD_HELP}</p>
                     </div>
 
                     <div>
@@ -970,6 +1290,11 @@
                         {/if}
                     </div>
 
+                    <label class="flex items-center gap-2 text-sm text-gray-700">
+                        <input type="checkbox" bind:checked={signOutOthers} class="h-4 w-4 rounded border-gray-300" />
+                        Sign out of other devices
+                    </label>
+
                     <button type="submit" disabled={pwLoading} class="rounded-lg bg-gray-950 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700 dark:bg-white/20 dark:hover:bg-white/25 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                         {pwLoading ? "Saving…" : "Update password"}
                     </button>
@@ -978,10 +1303,11 @@
                 <form onsubmit={handleSetPassword} novalidate class="space-y-3">
                     <div>
                         <label for="pw-new" class="block text-sm font-medium text-gray-700 mb-1">New password</label>
-                        <input id="pw-new" type="password" bind:value={pwNew} autocomplete="new-password" placeholder="Min. 8 characters" aria-invalid={!!pwFieldErrors.new} aria-describedby={pwFieldErrors.new ? "pw-new-error" : undefined} class="{inputBase} {pwFieldErrors.new ? inputErr : inputNormal}" />
+                        <input id="pw-new" type="password" bind:value={pwNew} autocomplete="new-password" aria-invalid={!!pwFieldErrors.new} aria-describedby={pwFieldErrors.new ? "pw-new-error pw-new-help" : "pw-new-help"} class="{inputBase} {pwFieldErrors.new ? inputErr : inputNormal}" />
                         {#if pwFieldErrors.new}
                             <p id="pw-new-error" class="mt-1 text-sm text-red-600">{pwFieldErrors.new}</p>
                         {/if}
+                        <p id="pw-new-help" class="mt-1 text-sm text-gray-500">{PASSWORD_HELP}</p>
                     </div>
 
                     <div>
@@ -997,6 +1323,57 @@
                     </button>
                 </form>
             {/if}
+        </div>
+
+        <!-- Sessions -->
+        <div class="px-6 py-5 space-y-4" data-testid="account-sessions">
+            <div class="flex items-start justify-between gap-4">
+                <div>
+                    <p class="text-sm font-medium text-gray-950">Sessions</p>
+                    <p class="text-sm text-gray-500 mt-0.5">Where your account is signed in. Signing a session out ends it at once.</p>
+                </div>
+                {#if sessions.length > 1}
+                    <button type="button" onclick={signOutOtherSessions} disabled={sessionsBusy !== null} class="shrink-0 rounded-lg border border-gray-950/15 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                        {sessionsBusy === "others" ? "Signing out…" : "Sign out of other sessions"}
+                    </button>
+                {/if}
+            </div>
+
+            {#if othersSignedOutIn === "sessions"}
+                {@render othersSignedOutNote()}
+            {/if}
+            {#if sessionsError}
+                {@render errorBanner(sessionsError)}
+            {/if}
+
+            <ul class="space-y-2">
+                {#each sessions as session (session.id)}
+                    <li class="flex items-center justify-between gap-3 rounded-lg border border-gray-950/8 px-4 py-3">
+                        <div class="min-w-0">
+                            <p class="flex items-center gap-2 text-sm font-medium text-gray-950">
+                                {describeDevice(session.userAgent)}
+                                {#if session.current}
+                                    <span class="rounded-full bg-gray-100 px-2 py-0.5 text-sm font-medium text-gray-700">This device</span>
+                                {/if}
+                            </p>
+                            <p class="text-sm text-gray-500">
+                                Signed in {formatDate(session.createdAt)}{session.ipAddress ? ` from ${session.ipAddress}` : ""}
+                            </p>
+                        </div>
+                        {#if !session.current}
+                            <button
+                                type="button"
+                                onclick={() => signOutSession(session)}
+                                disabled={sessionsBusy !== null}
+                                aria-label="Sign out {describeDevice(session.userAgent)}, signed in {formatDate(session.createdAt)}"
+                                class="shrink-0 text-sm text-red-600 hover:underline disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                {sessionsBusy === session.id ? "Signing out…" : "Sign out"}
+                            </button>
+                        {/if}
+                    </li>
+                {/each}
+            </ul>
         </div>
     </div>
 </div>
