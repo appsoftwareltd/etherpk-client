@@ -21,6 +21,9 @@ describe('.env.example', () => {
                 PORT: 'read by the SvelteKit Node adapter',
                 ADDRESS_HEADER: 'read by the SvelteKit Node adapter',
                 XFF_DEPTH: 'read by the SvelteKit Node adapter',
+                ORIGIN: 'read by the SvelteKit Node adapter',
+                PROTOCOL_HEADER: 'read by the SvelteKit Node adapter',
+                HOST_HEADER: 'read by the SvelteKit Node adapter',
             },
             // Settings of a hosted deployment that the self-hosting example does not describe.
             keptOutOfExample: [

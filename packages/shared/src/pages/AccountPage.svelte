@@ -34,10 +34,17 @@
             openAppsKeepAccessMinutes: number | null;
             /** The Sync Server, whose Access tokens page lists what a sign-out leaves active. */
             syncServerUrl: string;
+            /** Whether this deployment sends email; unset means it does. */
+            mailEnabled?: boolean;
             user?: { id: string; name: string; email: string; emailVerified: boolean; image?: string | null } | null;
         };
         authClient: AccountAuthClient;
     } = $props();
+
+    // Without mail nothing can verify an address or confirm a new one, so the page offers neither,
+    // and linking a social account is not held back for a verification that cannot happen.
+    const mailEnabled = $derived(data.mailEnabled !== false);
+    const verifyBeforeLinking = $derived(mailEnabled && !data.user.emailVerified);
 
     const initials = $derived(
         data.user.name
@@ -770,6 +777,7 @@
                 <p class="text-sm font-medium text-gray-950 truncate">{data.user.name}</p>
                 <p class="text-sm text-gray-500 truncate">{data.user.email}</p>
             </div>
+            {#if mailEnabled}
             <div class="ml-auto">
                 {#if data.user.emailVerified}
                     <span class="inline-flex items-center gap-1 rounded-full bg-green-50 px-2.5 py-0.5 text-sm font-medium text-green-700 ring-1 ring-green-600/20">
@@ -782,14 +790,15 @@
                     <span class="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-0.5 text-sm font-medium text-amber-700 ring-1 ring-amber-600/20"> Unverified </span>
                 {/if}
             </div>
+            {/if}
         </div>
 
-        {#if !data.user.emailVerified}
+        {#if mailEnabled && !data.user.emailVerified}
             <div class="px-6 py-5 space-y-3">
                 <div>
                     <p class="text-sm font-medium text-gray-950">Verify your email address</p>
-                    <!-- The send time is recorded only when an email went, so without one nothing has
-                         been sent, and the page must not say otherwise. -->
+                    <!-- The send time is recorded as an email goes and removed if the send fails, so
+                         without one nothing has been sent, and the page must not say otherwise. -->
                     <p class="mt-0.5 text-sm text-gray-500">
                         {lastSentAt ? "We sent you a verification link. Didn't receive it? Resend below." : "No verification email has been sent to this address yet. Send one below."}
                     </p>
@@ -830,8 +839,10 @@
         <div class="px-6 py-5 space-y-4">
             <div>
                 <p class="text-sm font-medium text-gray-950">Change email address</p>
-                <p class="text-sm text-gray-500 mt-0.5">
-                    {#if data.user.emailVerified}
+                <p class="text-sm text-gray-500 mt-0.5" data-testid="email-change-help">
+                    {#if !mailEnabled}
+                        This server does not send email, so it cannot confirm a new address. Your address stays {data.user.email}.
+                    {:else if data.user.emailVerified}
                         A link to confirm the change goes to your current address first, then a verification link to the new one. Your address changes when you open that.
                     {:else}
                         A verification link goes to the new address. Your address changes when you open it.
@@ -847,6 +858,7 @@
                 {@render errorBanner(emailError)}
             {/if}
 
+            {#if mailEnabled}
             <form onsubmit={handleChangeEmail} novalidate class="space-y-3">
                 <div>
                     <label for="new-email" class="block text-sm font-medium text-gray-700 mb-1">New email address</label>
@@ -881,6 +893,7 @@
                     {emailLoading ? "Sending…" : "Change email"}
                 </button>
             </form>
+            {/if}
         </div>
     </div>
 
@@ -894,7 +907,7 @@
         <div class="px-6 py-5 space-y-4">
             <p class="text-sm text-gray-500">Link your social accounts for faster sign-in.</p>
 
-            {#if !data.user.emailVerified}
+            {#if verifyBeforeLinking}
                 <p class="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800 ring-1 ring-amber-600/20">Verify your email address before linking a social account.</p>
             {/if}
 
@@ -941,7 +954,7 @@
                                 </button>
                             {:else}
                                 <!-- Unverified, the notice above the list says why this is unavailable. -->
-                                <button type="button" onclick={() => linkProvider(provider.id)} disabled={linkLoading === provider.id || !data.user.emailVerified} aria-label="Connect {provider.label}" class="rounded-lg bg-gray-950 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-700 dark:bg-white/20 dark:hover:bg-white/25 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                                <button type="button" onclick={() => linkProvider(provider.id)} disabled={linkLoading === provider.id || verifyBeforeLinking} aria-label="Connect {provider.label}" class="rounded-lg bg-gray-950 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-700 dark:bg-white/20 dark:hover:bg-white/25 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                                     {linkLoading === provider.id ? "Connecting…" : "Connect"}
                                 </button>
                             {/if}

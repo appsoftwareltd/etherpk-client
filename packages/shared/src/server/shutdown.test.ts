@@ -3,7 +3,9 @@ import {
     _resetShutdownRegistry,
     installShutdownSignalHandlers,
     registerShutdownTask,
+    runInBackground,
     runShutdown,
+    settleBackgroundWork,
 } from './shutdown'
 
 afterEach(() => {
@@ -82,6 +84,58 @@ describe('runShutdown', () => {
         await runShutdown()
 
         expect(run).not.toHaveBeenCalled()
+    })
+})
+
+describe('runInBackground', () => {
+    it('lets shutdown finish the work before anything is disposed', async () => {
+        const order: string[] = []
+        let finishSend!: () => void
+        runInBackground(new Promise<void>((resolve) => { finishSend = resolve }).then(() => { order.push('email sent') }))
+        registerShutdownTask({ name: 'database pool', phase: 'dispose', run: () => { order.push('pool closed') } })
+
+        const shutdown = runShutdown()
+        await new Promise((resolve) => setTimeout(resolve, 10))
+        expect(order).toEqual([])
+        finishSend()
+        await shutdown
+
+        expect(order).toEqual(['email sent', 'pool closed'])
+    })
+
+    it('waits for work started while it waits, such as by a request that was still draining', async () => {
+        const order: string[] = []
+        runInBackground(new Promise<void>((resolve) => setTimeout(resolve, 5)).then(() => {
+            runInBackground(new Promise<void>((resolve) => setTimeout(resolve, 5)).then(() => { order.push('second') }))
+            order.push('first')
+        }))
+
+        await settleBackgroundWork()
+
+        expect(order).toEqual(['first', 'second'])
+    })
+
+    it('keeps a failure from becoming an unhandled rejection', async () => {
+        const unhandled = vi.fn()
+        process.on('unhandledRejection', unhandled)
+        try {
+            runInBackground(Promise.reject(new Error('mail API down')))
+            await settleBackgroundWork()
+            await new Promise((resolve) => setTimeout(resolve, 0))
+            expect(unhandled).not.toHaveBeenCalled()
+        } finally {
+            process.off('unhandledRejection', unhandled)
+        }
+    })
+
+    it('holds nothing up once the work has settled', async () => {
+        const onError = vi.fn()
+        runInBackground(Promise.resolve())
+        await settleBackgroundWork()
+
+        await runShutdown({ timeoutMs: 20, onError })
+
+        expect(onError).not.toHaveBeenCalled()
     })
 })
 

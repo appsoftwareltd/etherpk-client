@@ -25,6 +25,9 @@ declare global {
      * vite.config.ts. hooks.server.ts stamps it into the top of every page source.
      */
     const __BUILD_INFO__: import('@appsoftwareltd/etherpk-shared/build-stamp').BuildInfo
+
+    /** This Client's release (`apps/client/package.json`), frozen in by vite.config.ts. */
+    const __RELEASE_VERSION__: string
 }
 
 export {}

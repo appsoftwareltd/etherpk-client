@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
     VERIFICATION_RESEND_COOLDOWN_SECONDS,
     isVerificationResendRequest,
+    verificationReason,
     verificationResendWaitSeconds,
 } from './verification-resend'
 
@@ -20,6 +21,27 @@ describe('isVerificationResendRequest', () => {
         expect(isVerificationResendRequest(new Request('https://www.test/api/auth/verify-email?token=x')))
             .toBe(false)
         expect(isVerificationResendRequest(undefined)).toBe(false)
+    })
+})
+
+describe('verificationReason', () => {
+    const post = (path: string) => new Request(`https://www.test/api/auth${path}`, { method: 'POST' })
+
+    it('is a resend at Better Auth’s resend endpoint', () => {
+        expect(verificationReason(post('/send-verification-email'))).toBe('resend')
+    })
+
+    it('is a new address during an email change', () => {
+        // An unverified account's change sends straight to the new address; a verified one's
+        // sends there when the link to the current address is opened.
+        expect(verificationReason(post('/change-email'))).toBe('new-address')
+        expect(verificationReason(new Request('https://www.test/api/auth/verify-email?token=x'))).toBe('new-address')
+    })
+
+    it('is a new account on sign-up, including a social sign-up the provider did not verify', () => {
+        expect(verificationReason(post('/sign-up/email'))).toBe('new-account')
+        expect(verificationReason(new Request('https://www.test/api/auth/callback/github?code=x'))).toBe('new-account')
+        expect(verificationReason(undefined)).toBe('new-account')
     })
 })
 

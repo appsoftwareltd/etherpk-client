@@ -55,10 +55,18 @@ describe('parseManagedClientAuthConfig', () => {
         })).toBeNull()
     })
 
-    it('rejects a partially configured managed OAuth preset', () => {
+    // The Client checks this as it starts, so the message is what an operator reads in the log.
+    it('rejects a partially configured managed OAuth preset, naming what is set and what is missing', () => {
         expect(() => parseOptionalManagedClientAuthConfig({
             ...environment,
             CORPORATE_ISSUER: '',
-        })).toThrow('Managed Client OAuth configuration must be either complete or disabled')
+        })).toThrow(
+            'Managed sign-in settings are incomplete: MANAGED_OAUTH_CLIENT_ID, MANAGED_SYNC_URL and CLIENT_SESSION_SECRET are set but CORPORATE_ISSUER is not. Set all four, or remove them all to run without Managed Sync.',
+        )
+        expect(() => parseOptionalManagedClientAuthConfig({
+            CLIENT_SESSION_SECRET: 'client-session-secret-with-at-least-32-bytes',
+        })).toThrow(
+            'Managed sign-in settings are incomplete: CLIENT_SESSION_SECRET is set but CORPORATE_ISSUER, MANAGED_OAUTH_CLIENT_ID and MANAGED_SYNC_URL are not.',
+        )
     })
 })

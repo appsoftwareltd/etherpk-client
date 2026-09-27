@@ -41,6 +41,8 @@ interface ShutdownRegistry {
     tasks: ShutdownTask[]
     handlersInstalled: boolean
     running: Promise<void> | null
+    /** Work handed to `runInBackground` that has not settled yet. */
+    background: Set<Promise<void>>
 }
 
 // Symbol.for gives one key across bundle copies; a plain module-level array would not.
@@ -50,7 +52,7 @@ function registry(): ShutdownRegistry {
     const container = globalThis as unknown as Record<symbol, ShutdownRegistry | undefined>
     let existing = container[REGISTRY_KEY]
     if (!existing) {
-        existing = { tasks: [], handlersInstalled: false, running: null }
+        existing = { tasks: [], handlersInstalled: false, running: null, background: new Set() }
         container[REGISTRY_KEY] = existing
     }
     return existing
@@ -64,6 +66,33 @@ export function registerShutdownTask(task: ShutdownTask): () => void {
         const index = current.tasks.indexOf(task)
         if (index >= 0) current.tasks.splice(index, 1)
     }
+}
+
+const BACKGROUND_WORK_TASK = 'background work'
+
+/**
+ * Hand over work a request has started but does not wait for, such as an account email, so the
+ * request can answer at once while shutdown's drain phase still waits for the work (within the
+ * shutdown budget) instead of cutting it off. `work` should handle and log its own failure; a
+ * rejection that reaches here is dropped, because an unhandled one would stop the process.
+ */
+export function runInBackground(work: Promise<unknown>): void {
+    const current = registry()
+    if (!current.tasks.some((task) => task.name === BACKGROUND_WORK_TASK)) {
+        registerShutdownTask({ name: BACKGROUND_WORK_TASK, phase: 'drain', run: settleBackgroundWork })
+    }
+    const settled = work.then(() => undefined, () => undefined)
+    current.background.add(settled)
+    void settled.then(() => current.background.delete(settled))
+}
+
+/**
+ * Resolve once everything handed to `runInBackground` has settled, including work started while
+ * waiting: a request still draining can start an email after this began.
+ */
+export async function settleBackgroundWork(): Promise<void> {
+    const { background } = registry()
+    while (background.size > 0) await Promise.all([...background])
 }
 
 /**

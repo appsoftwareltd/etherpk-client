@@ -8,9 +8,10 @@
      * Keyed by graph id: a cross-graph navigation rebuilds the workspace (onMount
      * does the building, and Svelte reuses the component otherwise).
      */
-    import type { Snippet } from 'svelte'
+    import { onMount, type Snippet } from 'svelte'
 
     import { isDemoGraph } from '$lib/demo/demo-graph'
+    import { ensurePersistentStorage } from '$lib/storage/storage-persistence'
     import DemoBar from '$lib/demo/ui/DemoBar.svelte'
     import GraphWorkspace from '$lib/workspace/GraphWorkspace.svelte'
 
@@ -25,6 +26,21 @@
     const HEADER_HEIGHT = '3.5rem'
     const DEMO_BAR_HEIGHT = '2.25rem'
     const demo = $derived(isDemoGraph(data.graphId))
+
+    // Ask the browser not to evict the graph registry, Local Cache and Derived Index under disk
+    // pressure. Asked here, where a graph opens, and not on the public pages: Firefox answers with
+    // a permission prompt, which a visitor reading the landing page has no reason to meet. Best
+    // effort and never awaited: the grant depends on the browser's engagement heuristics, so a
+    // refusal is logged for diagnosis rather than acted on.
+    onMount(() => {
+        void ensurePersistentStorage().then((outcome) => {
+            if (outcome.supported && !outcome.persisted) {
+                console.warn(
+                    '[storage] Persistent storage was not granted; this browser may evict local graph data under disk pressure.',
+                )
+            }
+        })
+    })
 </script>
 
 {#key data.graphId}

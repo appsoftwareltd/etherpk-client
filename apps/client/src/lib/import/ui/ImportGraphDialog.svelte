@@ -20,6 +20,7 @@
     import { getOpfsRoot } from "$lib/storage/fs/web-fs-adapter";
     import type { SyncApi } from "$lib/sync/sync-api";
     import { describeSyncFailure } from "$lib/sync/sync-error-copy";
+    import { PUBLIC_DOCS_URL } from "@appsoftwareltd/etherpk-shared";
     import Modal from "@appsoftwareltd/etherpk-shared/dialog";
 
     import { describeOversize, oversizeAssets } from "../asset-preflight";
@@ -36,7 +37,7 @@
     let {
         registry,
         syncTarget,
-        syncUnavailableReason = "Add a sync server in Sync settings first.",
+        syncUnavailableReason = "Connect this device to a sync server first.",
         getWrapKey,
         ensureVaultReady,
         assetLimits = null,
@@ -52,7 +53,7 @@
             serverBaseUrl: string;
             serverScope: ServerGraphScope;
         } | null;
-        /** Shown beside the disabled synced destination; the default is the no-server case. */
+        /** Why the synced destination is unavailable, shown beside it and if a run is attempted. */
         syncUnavailableReason?: string;
         getWrapKey: () => Promise<Uint8Array>;
         /** Settles the account's encryption keys before a synced run creates anything. */
@@ -208,8 +209,7 @@
                 });
             } else {
                 if (!syncTarget) {
-                    error =
-                        "Add a sync server URL and access token in Sync settings first.";
+                    error = syncUnavailableReason;
                     return;
                 }
                 // Ask for the keys here, in front of the user, rather than failing a long
@@ -258,6 +258,13 @@
                 Bring an existing EtherPK graph, Logseq graph or Obsidian vault
                 export in as a new knowledge graph, from a folder or from a zip
                 of one. The source is only read - your original stays untouched.
+                <a
+                    href="{PUBLIC_DOCS_URL}/importing-from-logseq-obsidian-or-etherpk"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    data-testid="import-guide"
+                    class="font-medium underline">What import converts</a
+                >
             </p>
             <input
                 bind:this={sourceInput}
@@ -366,9 +373,7 @@
                         >
                     </label>
                     <label
-                        class="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-200 {syncTarget
-                            ? ''
-                            : 'opacity-40'}"
+                        class="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-200"
                     >
                         <input
                             type="radio"
@@ -376,13 +381,16 @@
                             value="synced"
                             disabled={busy || !syncTarget}
                             data-testid="import-dest-synced"
+                            aria-describedby={syncTarget ? undefined : "import-dest-synced-reason"}
                             class="mt-0.5"
                         />
                         <span
-                            ><span class="font-medium">Synced graph</span> -
-                            end-to-end encrypted on your sync server, available
+                            ><span class="font-medium {syncTarget ? '' : 'opacity-60'}"
+                                >Synced graph</span
+                            > - end-to-end encrypted on your sync server, available
                             on all your devices.{#if !syncTarget}
-                                {syncUnavailableReason}{/if}</span
+                                <!-- Full contrast: the reason is what the reader needs from this line. -->
+                                <span id="import-dest-synced-reason" data-testid="import-dest-synced-reason" class="block text-gray-600 dark:text-gray-300">{syncUnavailableReason}</span>{/if}</span
                         >
                     </label>
                 </div>

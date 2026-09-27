@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ManagedTokenError } from '$lib/auth/managed-token'
 import { EnvelopeError, RecoveryCodeError } from '$lib/crypto'
 import { NoVaultError } from './recovery-unlock'
@@ -47,6 +47,20 @@ describe('describeSyncFailure', () => {
         expect(message).toContain('larger plan')
         // The bare status code never reaches the user.
         expect(message).not.toContain('403')
+    })
+
+    // A device on a custom server holds a Personal Access Token, and has no sign-in to renew.
+    describe('on a device connected with an access token', () => {
+        afterEach(() => vi.unstubAllGlobals())
+
+        it('says the token was refused, and where to add a new one', () => {
+            const stored = JSON.stringify({ mode: 'custom', serverBaseUrl: 'https://sync.example.com', token: 'epk_pat_x' })
+            vi.stubGlobal('localStorage', { getItem: () => stored })
+
+            const message = describeSyncFailure(new SyncApiError('Unauthorized', 401), 'load your graphs')
+
+            expect(message).toBe("Could not load your graphs. The sync server did not accept this device's access token. Add a new one in Sync settings, then retry.")
+        })
     })
 
     it('explains an expired session rather than reporting 401', () => {

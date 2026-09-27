@@ -43,7 +43,7 @@
         background: color-mix(in srgb, var(--gk-accent, #2563eb) 12%, var(--gk-surface-1));
         border-bottom: 1px solid var(--gk-border-soft);
         color: var(--gk-text-default);
-        font-size: 0.8125rem;
+        font-size: 0.875rem;
         line-height: 1.3;
     }
     .copy {

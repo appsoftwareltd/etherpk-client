@@ -27,9 +27,19 @@ export function parseOptionalManagedClientAuthConfig(environment: Environment): 
     const configuredVariables = managedOAuthVariables.filter((name) => environment[name]?.trim())
     if (configuredVariables.length === 0) return null
     if (configuredVariables.length !== managedOAuthVariables.length) {
-        throw new Error('Managed Client OAuth configuration must be either complete or disabled')
+        const missing = managedOAuthVariables.filter((name) => !configuredVariables.includes(name))
+        const verb = (names: readonly string[]) => (names.length === 1 ? 'is' : 'are')
+        throw new Error(
+            `Managed sign-in settings are incomplete: ${listNames(configuredVariables)} ${verb(configuredVariables)} set but `
+            + `${listNames(missing)} ${verb(missing)} not. Set all four, or remove them all to run without Managed Sync.`,
+        )
     }
     return parseManagedClientAuthConfig(environment)
+}
+
+/** "A", "A and B", "A, B and C". */
+function listNames(names: readonly string[]): string {
+    return names.length <= 1 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
 }
 
 export function parseManagedClientAuthConfig(environment: Environment): ManagedClientAuthConfig {

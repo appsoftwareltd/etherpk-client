@@ -1,5 +1,6 @@
 import { sveltekit } from '@sveltejs/kit/vite'
 import tailwindcss from '@tailwindcss/vite'
+import { readFileSync } from 'node:fs'
 import { defineConfig } from 'vite'
 // Relative rather than through the package exports map: Vite loads this config before it can
 // resolve workspace packages, and the module shells out to git, so it stays Node-only.
@@ -7,11 +8,18 @@ import { resolveBuildInfo } from '../../packages/shared/src/build-stamp/resolve-
 import { demoGraphPlugin } from './demo-graph-plugin'
 import { devDictionariesPlugin } from './dev-dictionaries-plugin'
 
+// This Client's release. `pnpm release:version` gives the Client, the Sync Server and the Headless
+// Client one version, so the Agents tab can name the Headless Client released with this Client.
+const { version: releaseVersion } = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')) as {
+    version: string
+}
+
 export default defineConfig({
     // The commit this bundle was built from, frozen in here because a running container has
     // no .git to ask. hooks.server.ts prints it at the top of every page (see build-stamp.ts).
     define: {
         __BUILD_INFO__: JSON.stringify(resolveBuildInfo()),
+        __RELEASE_VERSION__: JSON.stringify(releaseVersion),
     },
     plugins: [
         tailwindcss(),

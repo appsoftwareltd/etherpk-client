@@ -16,6 +16,10 @@
      * `static/marketing/` (the corporate e2e suite checks both), and Open Graph needs the
      * absolute URL.
      *
+     * `managed` is false on a self-hosted Client, which runs beside a team's own Sync Server
+     * rather than EtherPK's: the page then offers that server instead of Sync+, which such an
+     * install cannot sell, and asks search engines not to index a copy with no canonical page.
+     *
      * The feature copy is a condensed reading of the user docs' own feature list, and every
      * group links to the page it summarises so a claim can be checked. Nothing here should say
      * more than the docs do.
@@ -26,6 +30,8 @@
         pricingHref = "/pricing",
         docsHref = "https://docs.etherpk.com",
         canonicalUrl = null,
+        managed = true,
+        syncServerHref = null,
         belowHero,
     }: {
         appHref?: string;
@@ -33,6 +39,10 @@
         pricingHref?: string | null;
         docsHref?: string;
         canonicalUrl?: string | null;
+        /** Whether EtherPK's Managed Sync (Sync+) is on offer; false on a self-hosted Client. */
+        managed?: boolean;
+        /** The team's Sync Server, which a self-hosted page offers in place of Sync+. */
+        syncServerHref?: string | null;
         /** A section of the app's own, shown between the hero and the three steps. */
         belowHero?: Snippet;
     } = $props();
@@ -51,6 +61,9 @@
         ...(demoHref ? [{ id: "demo", label: "Try the demo", href: demoHref, icon: "demo" as const }] : []),
         ...(pricingHref ? [{ id: "pricing", label: "See pricing", href: pricingHref, icon: "pricing" as const }] : []),
     ]);
+
+    /** Where the synced graph comes from, in the hero and the descriptions. */
+    const syncedBy = $derived(managed ? "with Sync+" : "through your Sync Server");
 
     const steps = [
         {
@@ -78,7 +91,7 @@
 
     // Each entry restates a bullet from the docs' "Features" list in fewer words. Backticks mark
     // code, rendered by the `inline` snippet below; keep them balanced.
-    const featureGroups: FeatureGroup[] = [
+    const allFeatureGroups: FeatureGroup[] = [
         {
             id: "writing",
             label: "Writing",
@@ -265,6 +278,21 @@
         "EtherPK is in alpha. Things will change. The docs say what is built and what is only planned: queries and saved views, kanban boards over tasks, D2 and Excalidraw diagrams, block drag and drop, and working with no network at all are on the second list.",
     ];
 
+    /**
+     * A self-hosted Client's copy leaves out what only EtherPK's managed service offers: the
+     * Managed Sync item and the links to its page.
+     */
+    const featureGroups = $derived(
+        managed
+            ? allFeatureGroups
+            : allFeatureGroups.map((group) => ({
+                  ...group,
+                  heading: group.id === "running" ? "Synced through a server, or just your own machine" : group.heading,
+                  items: group.items.filter((item) => item.lead !== "Managed Sync"),
+                  docs: group.docs.filter((doc) => doc.slug !== "managed-sync"),
+              })),
+    );
+
     /** Splits text on backticks; the odd-numbered pieces were inside them. */
     function segments(text: string): { code: boolean; text: string }[] {
         return text.split("`").map((piece, index) => ({ code: index % 2 === 1, text: piece }));
@@ -276,15 +304,18 @@
 
 <svelte:head>
     <title>EtherPK - A personal knowledge base in plain markdown</title>
-    <meta name="description" content="EtherPK is a personal knowledge base in plain markdown files you own: a daily journal, wikilinks and backlinks, tasks, an outliner, code, diagrams and maths. Free on your own machine; Sync+ keeps it end-to-end encrypted across your devices, with live collaboration, protected documents, publishing to a static site and access for AI agents. Imports from Logseq and Obsidian." />
+    <meta name="description" content="EtherPK is a personal knowledge base in plain markdown files you own: a daily journal, wikilinks and backlinks, tasks, an outliner, code, diagrams and maths. Free on your own machine; {managed ? 'Sync+ keeps it' : 'a Sync Server keeps it'} end-to-end encrypted across your devices, with live collaboration, protected documents, publishing to a static site and access for AI agents. Imports from Logseq and Obsidian." />
     {#if canonicalUrl}
         <link rel="canonical" href={canonicalUrl} />
         <meta property="og:url" content={canonicalUrl} />
+    {:else}
+        <!-- A copy with no canonical page, on a self-hosted Client: one of many, not for search. -->
+        <meta name="robots" content="noindex" />
     {/if}
     <meta property="og:site_name" content="EtherPK" />
     <meta property="og:type" content="website" />
     <meta property="og:title" content="EtherPK - A personal knowledge base in plain markdown" />
-    <meta property="og:description" content="A journal a day, pages for what outlives it and wikilinks between them, as plain markdown files you own. Free on your own machine; Sync+ keeps it end-to-end encrypted across your devices." />
+    <meta property="og:description" content="A journal a day, pages for what outlives it and wikilinks between them, as plain markdown files you own. Free on your own machine; {managed ? 'Sync+ keeps it' : 'a Sync Server keeps it'} end-to-end encrypted across your devices." />
     <meta property="og:image" content={socialImageUrl} />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
@@ -337,7 +368,7 @@
     <div class="mx-auto max-w-7xl px-4 pt-16 text-center sm:px-6 sm:pt-24">
         <p class="text-sm font-semibold uppercase tracking-[0.2em] text-indigo-600 dark:text-indigo-400">Ether Personal Knowledge</p>
         <h1 id="hero-heading" class="mx-auto mt-5 max-w-4xl text-balance text-4xl font-semibold leading-[1.1] tracking-tight text-gray-950 sm:text-6xl dark:text-white">A personal knowledge base in plain markdown files you own.</h1>
-        <p class="mx-auto mt-6 max-w-3xl text-pretty text-lg leading-8 text-gray-600 dark:text-gray-300">Write a journal entry a day and give the things that outlive a day a page of their own. <code class="rounded bg-gray-950/6 px-1.5 py-0.5 font-mono text-gray-800 dark:bg-white/10 dark:text-gray-100">[[Wikilinks]]</code> tie them into a graph and every page shows what links to it. Every note is a plain .md file: free in a folder on your own machine, or encrypted end to end across your devices with Sync+.</p>
+        <p class="mx-auto mt-6 max-w-3xl text-pretty text-lg leading-8 text-gray-600 dark:text-gray-300">Write a journal entry a day and give the things that outlive a day a page of their own. <code class="rounded bg-gray-950/6 px-1.5 py-0.5 font-mono text-gray-800 dark:bg-white/10 dark:text-gray-100">[[Wikilinks]]</code> tie them into a graph and every page shows what links to it. Every note is a plain .md file: free in a folder on your own machine, or encrypted end to end across your devices {syncedBy}.</p>
 
         <div class="mt-10">
             {@render actionRow("marketing-hero-actions")}
@@ -453,24 +484,40 @@
                 <li class="flex items-start gap-3"><span class="mt-2.5 h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" aria-hidden="true"></span>The whole editor, with no limit on what you write</li>
                 <li class="flex items-start gap-3"><span class="mt-2.5 h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" aria-hidden="true"></span>Folder graphs in a Chromium desktop browser, or the Client on your own machine</li>
                 <li class="flex items-start gap-3"><span class="mt-2.5 h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" aria-hidden="true"></span>Run the source-available Client yourself, as a Node bundle or a Docker image</li>
-                <li class="flex items-start gap-3"><span class="mt-2.5 h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" aria-hidden="true"></span>Join synced graphs shared with you by a Sync+ subscriber</li>
+                <li class="flex items-start gap-3"><span class="mt-2.5 h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" aria-hidden="true"></span>{managed ? "Join synced graphs shared with you by a Sync+ subscriber" : "Join synced graphs shared with you on your Sync Server"}</li>
             </ul>
             <a href={appHref} class="mt-6 inline-flex h-11 items-center justify-center rounded-xl border border-gray-300 px-5 text-sm font-semibold text-gray-800 transition-colors hover:bg-gray-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-950 dark:border-white/15 dark:text-gray-100 dark:hover:bg-white/5 dark:focus-visible:outline-white">Open the app</a>
         </article>
-        <article class="flex flex-col rounded-3xl border border-gray-950 bg-gray-950 p-8 text-white shadow-xl dark:border-white/10">
-            <p class="text-sm font-semibold uppercase tracking-[0.2em] text-indigo-300">Sync+</p>
-            <h3 class="mt-3 text-xl font-semibold">Every device, end-to-end encrypted</h3>
-            <p class="mt-3 text-sm leading-6 text-gray-300">We run the sync service for you. Your graph is encrypted on your device with keys only you hold, then synced to your phone, tablet and laptop, and to the people you choose to share it with. A live markdown copy on your disk keeps the files yours.</p>
-            <ul class="mt-5 flex-1 space-y-2 text-sm leading-6 text-gray-100">
-                <li class="flex items-start gap-3"><span class="mt-2.5 h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400" aria-hidden="true"></span>Works on phones, Safari and Firefox too</li>
-                <li class="flex items-start gap-3"><span class="mt-2.5 h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400" aria-hidden="true"></span>Share a graph and edit it together, live</li>
-                <li class="flex items-start gap-3"><span class="mt-2.5 h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400" aria-hidden="true"></span>Managed storage for images and files</li>
-                <li class="flex items-start gap-3"><span class="mt-2.5 h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400" aria-hidden="true"></span>One flat monthly price, with a free trial</li>
-            </ul>
-            {#if pricingHref}
-                <a href={pricingHref} class="mt-6 inline-flex h-11 items-center justify-center rounded-xl bg-white px-5 text-sm font-semibold text-gray-950 transition-colors hover:bg-gray-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">See Sync+ pricing</a>
-            {/if}
-        </article>
+        {#if managed}
+            <article class="flex flex-col rounded-3xl border border-gray-950 bg-gray-950 p-8 text-white shadow-xl dark:border-white/10">
+                <p class="text-sm font-semibold uppercase tracking-[0.2em] text-indigo-300">Sync+</p>
+                <h3 class="mt-3 text-xl font-semibold">Every device, end-to-end encrypted</h3>
+                <p class="mt-3 text-sm leading-6 text-gray-300">We run the sync service for you. Your graph is encrypted on your device with keys only you hold, then synced to your phone, tablet and laptop, and to the people you choose to share it with. A live markdown copy on your disk keeps the files yours.</p>
+                <ul class="mt-5 flex-1 space-y-2 text-sm leading-6 text-gray-100">
+                    <li class="flex items-start gap-3"><span class="mt-2.5 h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400" aria-hidden="true"></span>Works on phones, Safari and Firefox too</li>
+                    <li class="flex items-start gap-3"><span class="mt-2.5 h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400" aria-hidden="true"></span>Share a graph and edit it together, live</li>
+                    <li class="flex items-start gap-3"><span class="mt-2.5 h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400" aria-hidden="true"></span>Managed storage for images and files</li>
+                    <li class="flex items-start gap-3"><span class="mt-2.5 h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400" aria-hidden="true"></span>One flat monthly price, with a free trial</li>
+                </ul>
+                {#if pricingHref}
+                    <a href={pricingHref} class="mt-6 inline-flex h-11 items-center justify-center rounded-xl bg-white px-5 text-sm font-semibold text-gray-950 transition-colors hover:bg-gray-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">See Sync+ pricing</a>
+                {/if}
+            </article>
+        {:else}
+            <article data-testid="home-sync-server" class="flex flex-col rounded-3xl border border-gray-950 bg-gray-950 p-8 text-white shadow-xl dark:border-white/10">
+                <p class="text-sm font-semibold uppercase tracking-[0.2em] text-indigo-300">Sync Server</p>
+                <h3 class="mt-3 text-xl font-semibold">Your team's Sync Server</h3>
+                <p class="mt-3 text-sm leading-6 text-gray-300">Your team runs the sync service. Your graph is encrypted on your device with keys only you hold, then synced to your phone, tablet and laptop, and to the people you choose to share it with. The server stores what it cannot read.</p>
+                <ul class="mt-5 flex-1 space-y-2 text-sm leading-6 text-gray-100">
+                    <li class="flex items-start gap-3"><span class="mt-2.5 h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400" aria-hidden="true"></span>Works on phones, Safari and Firefox too</li>
+                    <li class="flex items-start gap-3"><span class="mt-2.5 h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400" aria-hidden="true"></span>Share a graph and edit it together, live</li>
+                    <li class="flex items-start gap-3"><span class="mt-2.5 h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400" aria-hidden="true"></span>An account on the server, and an access token for each device</li>
+                </ul>
+                {#if syncServerHref}
+                    <a href={syncServerHref} class="mt-6 inline-flex h-11 items-center justify-center rounded-xl bg-white px-5 text-sm font-semibold text-gray-950 transition-colors hover:bg-gray-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">Go to your Sync Server</a>
+                {/if}
+            </article>
+        {/if}
     </div>
 </section>
 

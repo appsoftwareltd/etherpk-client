@@ -11,6 +11,9 @@
  * agent runs the Headless Client on its own machine and the tab shows the two commands that set
  * it up, with this graph's id filled in. Nothing here is secret and nothing here is a setting:
  * the Personal Access Token is minted at the Sync Server portal, never shown here.
+ *
+ * Every command runs the package spec in `headlessClient` (`headlessClientPackage`), which the
+ * workspace pins to this Client's release on a self-hosted Client.
  */
 
 export type AgentsTabProps =
@@ -20,6 +23,8 @@ export type AgentsTabProps =
           graphId: string
           /** The Sync Server origin the Client is connected to, for `--sync-server` and the portal link. */
           serverBaseUrl: string
+          /** What the commands run with `npx`: `headlessClientPackage`. */
+          headlessClient: string
       }
     | {
           kind: 'local'
@@ -27,10 +32,22 @@ export type AgentsTabProps =
           folderName: string | null
           /** The absolute path the user typed for this device (folder-path.ts), or null if none yet. */
           folderPath: string | null
+          /** What the commands run with `npx`: `headlessClientPackage`. */
+          headlessClient: string
       }
 
 /** The npm package the commands invoke. One place, so the docs and the tab cannot disagree. */
 export const HEADLESS_CLIENT_PACKAGE = '@appsoftwareltd/etherpk-mcp'
+
+/**
+ * The package spec the commands run: `version` pinned, or the bare name, which npm resolves to
+ * its latest release. The Client, the Sync Server and the Headless Client of one release share a
+ * version, so pinning to the Client's own keeps an agent on the Headless Client that was released
+ * with the server the operator runs, whatever npm has published since.
+ */
+export function headlessClientPackage(version: string | null): string {
+    return version ? `${HEADLESS_CLIENT_PACKAGE}@${version}` : HEADLESS_CLIENT_PACKAGE
+}
 
 export type AgentTool = 'claude' | 'codex' | 'cursor' | 'other'
 
@@ -42,8 +59,8 @@ export const AGENT_TOOLS: ReadonlyArray<{ id: AgentTool; label: string }> = [
 ]
 
 /** The one-time sign-in on the agent's machine. */
-export function loginCommand(serverBaseUrl: string): string {
-    return `npx ${HEADLESS_CLIENT_PACKAGE} login --sync-server ${serverBaseUrl}`
+export function loginCommand(serverBaseUrl: string, headlessClient: string): string {
+    return `npx ${headlessClient} login --sync-server ${serverBaseUrl}`
 }
 
 /**
@@ -52,9 +69,9 @@ export function loginCommand(serverBaseUrl: string): string {
  * serve command names the Sync Server as well as the graph, so it stays right on a machine
  * signed in to more than one (ADR 0075).
  */
-export function registerCommand(tool: AgentTool, graphId: string, serverBaseUrl: string): string {
+export function registerCommand(tool: AgentTool, graphId: string, serverBaseUrl: string, headlessClient: string): string {
     const server = serverBaseUrl.replace(/\/$/, '')
-    const serve = `npx ${HEADLESS_CLIENT_PACKAGE} serve --sync-server ${server} --graph ${graphId}`
+    const serve = `npx ${headlessClient} serve --sync-server ${server} --graph ${graphId}`
     switch (tool) {
         case 'claude':
             return `claude mcp add etherpk -- ${serve}`
@@ -65,7 +82,7 @@ export function registerCommand(tool: AgentTool, graphId: string, serverBaseUrl:
             return JSON.stringify(
                 {
                     mcpServers: {
-                        etherpk: { command: 'npx', args: [HEADLESS_CLIENT_PACKAGE, 'serve', '--sync-server', server, '--graph', graphId] },
+                        etherpk: { command: 'npx', args: [headlessClient, 'serve', '--sync-server', server, '--graph', graphId] },
                     },
                 },
                 null,
@@ -85,8 +102,8 @@ function shellPath(path: string): string {
  * ([[2026-09-18 Headless Client Serves A Local Folder]]). The path is this device's, from the
  * General tab; the tab shows nothing to copy until it is known.
  */
-export function registerFolderCommand(tool: AgentTool, folderPath: string): string {
-    const serve = `npx ${HEADLESS_CLIENT_PACKAGE} serve --folder ${shellPath(folderPath)}`
+export function registerFolderCommand(tool: AgentTool, folderPath: string, headlessClient: string): string {
+    const serve = `npx ${headlessClient} serve --folder ${shellPath(folderPath)}`
     switch (tool) {
         case 'claude':
             return `claude mcp add etherpk -- ${serve}`
@@ -95,7 +112,7 @@ export function registerFolderCommand(tool: AgentTool, folderPath: string): stri
         case 'cursor':
         case 'other':
             return JSON.stringify(
-                { mcpServers: { etherpk: { command: 'npx', args: [HEADLESS_CLIENT_PACKAGE, 'serve', '--folder', folderPath] } } },
+                { mcpServers: { etherpk: { command: 'npx', args: [headlessClient, 'serve', '--folder', folderPath] } } },
                 null,
                 2,
             )
@@ -112,13 +129,13 @@ export function tokensPageUrl(serverBaseUrl: string): string {
  * ([[2026-09-20 Headless Client Assets Rename And Publishing]]). Shown so a person can hand
  * them to the agent's machine; an agent's tools refuse with the same commands in their message.
  */
-export function semanticSetupCommand(): string {
-    return `npx ${HEADLESS_CLIENT_PACKAGE} semantic setup`
+export function semanticSetupCommand(headlessClient: string): string {
+    return `npx ${headlessClient} semantic setup`
 }
 
 /** Installs the browser a publish draws Mermaid with (ADR 0084). */
-export function diagramsSetupCommand(): string {
-    return `npx ${HEADLESS_CLIENT_PACKAGE} diagrams setup`
+export function diagramsSetupCommand(headlessClient: string): string {
+    return `npx ${headlessClient} diagrams setup`
 }
 
 /**
@@ -129,5 +146,5 @@ export function diagramsSetupCommand(): string {
 export function publishCommand(props: AgentsTabProps): string | null {
     const target = props.kind === 'synced' ? `--sync-server ${props.serverBaseUrl.replace(/\/$/, '')} --graph ${props.graphId}` : props.folderPath ? `--folder ${shellPath(props.folderPath)}` : null
     if (!target) return null
-    return `npx ${HEADLESS_CLIENT_PACKAGE} publish ${target} --publication <publication> --out <folder>`
+    return `npx ${props.headlessClient} publish ${target} --publication <publication> --out <folder>`
 }

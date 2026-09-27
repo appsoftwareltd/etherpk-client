@@ -9,6 +9,7 @@
         onrename,
         onsettings,
         onforget,
+        onreset,
     }: {
         graph: GraphRecord
         /**

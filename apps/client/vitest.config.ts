@@ -9,7 +9,9 @@ export default defineConfig({
         // SvelteKit build-time constants — needed by error() helper in @sveltejs/kit
         __SVELTEKIT_DEV__: false,
         __SVELTEKIT_APP_VERSION_FILE__: JSON.stringify('/_app/version.json'),
-        __SVELTEKIT_APP_VERSION_POLL_INTERVAL__: 0
+        __SVELTEKIT_APP_VERSION_POLL_INTERVAL__: 0,
+        // The release version vite.config.ts reads from package.json.
+        __RELEASE_VERSION__: JSON.stringify('0.0.0-test')
     },
     // Provide inline esbuild tsconfig so vitest doesn't try to resolve
     // ./.svelte-kit/tsconfig.json (which is only present after `svelte-kit sync`)

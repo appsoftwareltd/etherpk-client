@@ -882,13 +882,13 @@
                             <div class="flex items-start gap-2">
                                 <pre
                                     class="min-w-0 flex-1 overflow-x-auto rounded-md border border-gray-900/10 dark:border-gray-100/15 bg-gray-50 dark:bg-gray-900 p-3 font-mono text-sm"
-                                    data-testid="agents-register-folder-command">{registerFolderCommand(agentTool, agents.folderPath)}</pre>
+                                    data-testid="agents-register-folder-command">{registerFolderCommand(agentTool, agents.folderPath, agents.headlessClient)}</pre>
                                 <button
                                     type="button"
                                     onclick={() =>
                                         copyAgentCommand(
                                             "register",
-                                            registerFolderCommand(agentTool, agents!.kind === "local" ? agents!.folderPath! : ""),
+                                            registerFolderCommand(agentTool, agents!.kind === "local" ? agents!.folderPath! : "", agents!.headlessClient),
                                         )}
                                     class="shrink-0 rounded-lg border border-gray-300 dark:border-gray-700 px-4 py-2 text-sm font-medium text-gray-950 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800"
                                     data-testid="agents-copy-register-folder"
@@ -956,13 +956,13 @@
                             <div class="flex items-start gap-2">
                                 <pre
                                     class="min-w-0 flex-1 overflow-x-auto rounded-md border border-gray-900/10 dark:border-gray-100/15 bg-gray-50 dark:bg-gray-900 p-3 font-mono text-sm"
-                                    data-testid="agents-login-command">{loginCommand(agents.serverBaseUrl)}</pre>
+                                    data-testid="agents-login-command">{loginCommand(agents.serverBaseUrl, agents.headlessClient)}</pre>
                                 <button
                                     type="button"
                                     onclick={() =>
                                         copyAgentCommand(
                                             "login",
-                                            loginCommand(agents!.serverBaseUrl),
+                                            loginCommand(agents!.serverBaseUrl, agents!.headlessClient),
                                         )}
                                     class="shrink-0 rounded-lg border border-gray-300 dark:border-gray-700 px-4 py-2 text-sm font-medium text-gray-950 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800"
                                     data-testid="agents-copy-login"
@@ -989,13 +989,13 @@
                             <div class="flex items-start gap-2">
                                 <pre
                                     class="min-w-0 flex-1 overflow-x-auto rounded-md border border-gray-900/10 dark:border-gray-100/15 bg-gray-50 dark:bg-gray-900 p-3 font-mono text-sm"
-                                    data-testid="agents-register-command">{registerCommand(agentTool, agents.graphId, agents.serverBaseUrl)}</pre>
+                                    data-testid="agents-register-command">{registerCommand(agentTool, agents.graphId, agents.serverBaseUrl, agents.headlessClient)}</pre>
                                 <button
                                     type="button"
                                     onclick={() =>
                                         copyAgentCommand(
                                             "register",
-                                            registerCommand(agentTool, agents!.graphId, agents!.serverBaseUrl),
+                                            registerCommand(agentTool, agents!.graphId, agents!.serverBaseUrl, agents!.headlessClient),
                                         )}
                                     class="shrink-0 rounded-lg border border-gray-300 dark:border-gray-700 px-4 py-2 text-sm font-medium text-gray-950 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800"
                                     data-testid="agents-copy-register"
@@ -1248,8 +1248,8 @@
      tools name in a refusal, spelled here so a person can copy them to the agent's machine. -->
 {#snippet agentExtras(props: AgentsTabProps)}
     {@const extras = [
-        { key: "semantic" as const, label: "Search by meaning", text: semanticSetupCommand(), note: "Installs the embedding model once per computer; the agent's search gains mode: semantic." },
-        { key: "diagrams" as const, label: "Publish diagrams", text: diagramsSetupCommand(), note: "Installs the browser a publish draws Mermaid diagrams with; a publish with diagrams refuses until it has run." },
+        { key: "semantic" as const, label: "Search by meaning", text: semanticSetupCommand(props.headlessClient), note: "Installs the embedding model once per computer; the agent's search gains mode: semantic." },
+        { key: "diagrams" as const, label: "Publish diagrams", text: diagramsSetupCommand(props.headlessClient), note: "Installs the browser a publish draws Mermaid diagrams with; a publish with diagrams refuses until it has run." },
         ...(publishCommand(props) ? [{ key: "publish" as const, label: "Publish from the agent's machine", text: publishCommand(props)!, note: "Publishes once and remembers the folder; the agent's publish tool then writes there and cannot choose another folder." }] : []),
     ]}
     <div class="space-y-3" data-testid="agents-extras">

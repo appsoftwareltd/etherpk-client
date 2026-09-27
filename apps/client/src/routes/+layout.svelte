@@ -5,7 +5,6 @@
     import { onMount } from "svelte";
     import { beforeNavigate } from "$app/navigation";
     import { updated } from "$app/state";
-    import { ensurePersistentStorage } from "$lib/storage/storage-persistence";
     import { watchAppInstall } from "$lib/storage/app-install";
 
     let { children } = $props();
@@ -28,18 +27,9 @@
                 console.warn("[sw] Registration failed:", err);
             });
         }
-        // Ask the browser not to evict the graph registry, Local Cache and Derived Index under
-        // disk pressure. Best effort and never awaited: the grant depends on the browser's
-        // engagement heuristics, so a refusal is logged for diagnosis rather than acted on.
-        void ensurePersistentStorage().then((outcome) => {
-            if (outcome.supported && !outcome.persisted) {
-                console.warn(
-                    "[storage] Persistent storage was not granted; this browser may evict local graph data under disk pressure.",
-                );
-            }
-        });
         // Catch the browser's one-shot install offer now, so the Install section in Graph
-        // Settings can show it later: an installed app is what earns the grant above on a phone.
+        // Settings can show it later: an installed app is what earns persistent storage on a
+        // phone (the workspace layout asks for it).
         return watchAppInstall();
     });
 </script>

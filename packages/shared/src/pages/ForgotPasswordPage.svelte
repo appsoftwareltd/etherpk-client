@@ -4,7 +4,14 @@
     import type { PasswordResetAuthClient } from "../auth/page-clients";
     import AlertBanner from "../components/AlertBanner.svelte";
 
-    let { authClient }: { authClient: PasswordResetAuthClient } = $props();
+    let {
+        authClient,
+        mailEnabled = true,
+    }: {
+        authClient: PasswordResetAuthClient;
+        /** Whether this deployment sends email. Without it no reset link can arrive, so the page says so instead of offering one. */
+        mailEnabled?: boolean;
+    } = $props();
 
     let email = $state("");
     let loading = $state(false);
@@ -75,7 +82,15 @@
 </svelte:head>
 
 <div>
-    {#if sent}
+    {#if !mailEnabled}
+        <h1 class="text-lg font-semibold text-gray-950 text-center">Reset your password</h1>
+        <p class="mt-2 text-sm text-center text-gray-500" data-testid="password-reset-unavailable">
+            This server does not send email, so it cannot send you a reset link. Ask the server's administrator to set a new password for you.
+        </p>
+        <p class="mt-6 text-center text-sm text-gray-500">
+            <a href="/login" class="font-medium text-gray-950 hover:underline">Back to sign in</a>
+        </p>
+    {:else if sent}
         <div class="text-center">
             <div class="flex justify-center mb-4">
                 <div class="flex h-12 w-12 items-center justify-center rounded-full bg-blue-50 ring-1 ring-blue-600/20">

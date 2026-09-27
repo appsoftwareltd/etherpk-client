@@ -398,7 +398,8 @@
     import RecoveryCodeDialog from "$lib/sync/ui/RecoveryCodeDialog.svelte";
     import UnlockDialog from "$lib/sync/ui/UnlockDialog.svelte";
     import GraphSettingsDialog from "$lib/sync/ui/GraphSettingsDialog.svelte";
-    import type { AgentsTabProps } from "$lib/sync/ui/agents-tab";
+    import { headlessClientPackage, type AgentsTabProps } from "$lib/sync/ui/agents-tab";
+    import { RELEASE_VERSION } from "$lib/release";
     import ConfirmDialog from "@appsoftwareltd/etherpk-shared/confirm-dialog";
     import WorkspaceOpenState from "./WorkspaceOpenState.svelte";
     import WorkspaceToolbar from "./WorkspaceToolbar.svelte";
@@ -2435,16 +2436,21 @@
      * graph (ADR 0070): where its folder and AGENTS.md are.
      */
     function agentsTabProps(): AgentsTabProps | null {
+        // The EtherPK-hosted Client runs the latest release, which is also npm's latest, and a
+        // pin there could name a release npm has not published yet. A self-hosted Client names
+        // its own release, so its agents keep matching the Sync Server released with it.
+        const headlessClient = headlessClientPackage(managedSyncOrigin(env) ? null : RELEASE_VERSION);
         if (isServerStore) {
             const config = readSyncConfig();
             const connection = config ? resolveSyncConnection(config) : null;
             if (!connection) return null;
-            return { kind: "synced", graphId, serverBaseUrl: connection.serverBaseUrl };
+            return { kind: "synced", graphId, serverBaseUrl: connection.serverBaseUrl, headlessClient };
         }
         return {
             kind: "local",
             folderName: fsFolderName ?? null,
             folderPath: readGraphFolderPath(graphId) || null,
+            headlessClient,
         };
     }
 

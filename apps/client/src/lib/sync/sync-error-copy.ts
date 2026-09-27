@@ -15,6 +15,7 @@ import { NoVaultError } from './recovery-unlock'
 import { InviteForHeldGraphError } from './invites'
 import { SyncProtocolMismatchError } from './messages'
 import { SyncApiError } from './sync-api'
+import { readSyncConfig } from './sync-config'
 import { VaultLockedError } from './vault-session'
 
 /** What the server refused, and what the user can do about it. */
@@ -99,7 +100,10 @@ export function describeSyncFailure(error: unknown, action: string): string {
 
         switch (error.status) {
             case 401:
-                return `${opening} Your sign-in to the sync server has expired. Sign in again, then retry.`
+                // A device on a custom server holds an access token and has no sign-in to renew.
+                return readSyncConfig()?.mode === 'custom'
+                    ? `${opening} The sync server did not accept this device's access token. Add a new one in Sync settings, then retry.`
+                    : `${opening} Your sign-in to the sync server has expired. Sign in again, then retry.`
             case 403:
                 return `${opening} The sync server refused it: this account does not have permission. If you expected to, check you are signed in as the right account.`
             case 404:

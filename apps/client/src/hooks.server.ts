@@ -1,4 +1,4 @@
-import type { Handle, RequestEvent } from '@sveltejs/kit'
+import type { Handle, RequestEvent, ServerInit } from '@sveltejs/kit'
 import { hostname } from 'node:os'
 import { building } from '$app/environment'
 import { applySecurityHeaders } from '@appsoftwareltd/etherpk-shared'
@@ -35,6 +35,15 @@ import { buildStampComment, decorateHtmlWithBuildStamp } from '@appsoftwareltd/e
 const buildStamp = buildStampComment('etherpk-client', __BUILD_INFO__)
 
 const appHostname = hostname()
+
+/**
+ * Runs once as the server starts. A partial managed sign-in configuration stops the process here,
+ * with the settings it lacks, instead of every page answering 500 with the same error.
+ */
+export const init: ServerInit = () => {
+    if (building) return
+    parseOptionalManagedClientAuthConfig(env)
+}
 
 // The same structured logger Corporate and the Sync Server use. With OPENOBSERVE_URL unset, as
 // on a standalone deployment, it writes JSON lines to stdout only.

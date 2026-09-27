@@ -12,12 +12,14 @@
     import { goto } from "$app/navigation";
     import { page } from "$app/state";
     import manifest from "virtual:demo-graph";
+    import { showNotice } from "$lib/activity/notices";
     import { tryClaimLock } from "$lib/cross-tab-lock";
     import { DEMO_GRAPH_ID, openDemoGraph } from "$lib/demo/demo-graph";
     import { fetchDemoBundle, type SeedProgress } from "$lib/demo/seed";
     import { todayISO } from "$lib/document/calendar/month-grid-core";
     import { formatBytes } from "$lib/format-bytes";
     import { createIdbGraphRegistry, createWebFsDirectoryAdapter, getOpfsRoot } from "$lib/storage";
+    import { forgetGraphDeviceMemory } from "$lib/workspace/graph-device-memory";
 
     type Phase =
         | { kind: "confirm-reset" }
@@ -52,10 +54,23 @@
                 phase = { kind: "held", reset };
                 return;
             }
+            if (reset) {
+                // The pages are back as they shipped, so the tabs, Recents, reading positions and
+                // filters this browser kept for the old ones go too: the demo opens on its default
+                // layout at today's journal rather than on a tab for a page that is gone.
+                forgetGraphDeviceMemory(DEMO_GRAPH_ID);
+                // The notice rail lives in the app layout, so this outlasts the navigation.
+                showNotice({ id: "demo-reset-notice", tone: "info", text: "The demo is back as it shipped." });
+            }
             await goto(`/g/${DEMO_GRAPH_ID}`, { replaceState: true });
         } catch (err) {
             phase = { kind: "error", reset, message: (err as Error).message };
         }
+    }
+
+    /** The question starts on the answer that loses nothing, so a stray Enter keeps the changes. */
+    function focusOnShow(node: HTMLElement) {
+        node.focus();
     }
 
     onMount(() => {
@@ -76,8 +91,8 @@
             Every page goes back to how it shipped and anything you wrote or uploaded in the demo is discarded.
         </p>
         <div class="flex flex-wrap justify-center gap-2">
-            <button type="button" data-testid="demo-reset-confirm" onclick={() => void run(true)} class="primary">Reset demo</button>
-            <button type="button" data-testid="demo-reset-keep" onclick={() => void run(false)} class="secondary">Keep my changes</button>
+            <button type="button" data-testid="demo-reset-keep" onclick={() => void run(false)} class="primary" {@attach focusOnShow}>Keep my changes</button>
+            <button type="button" data-testid="demo-reset-confirm" onclick={() => void run(true)} class="secondary">Reset demo</button>
         </div>
     {:else if phase.kind === "working"}
         <p data-testid="demo-working" role="status">

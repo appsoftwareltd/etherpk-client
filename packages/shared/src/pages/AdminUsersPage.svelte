@@ -14,12 +14,15 @@
         authClient,
         impersonationDestination,
     }: {
-        data: { user?: { id: string } | null };
+        /** `mailEnabled` is false on a deployment that sends no email; unset means it does. */
+        data: { user?: { id: string } | null; mailEnabled?: boolean };
         authClient: AdminAuthClient;
         /** Where to land after starting an impersonation session. */
         impersonationDestination: string;
     } = $props();
     let currentUserId = $derived(data.user?.id);
+    // Without mail nobody can be verified, so the badge would mark every account.
+    const showUnverified = $derived(data.mailEnabled !== false);
 
     // ── Types ─────────────────────────────────────────────────────
     interface AdminUser {
@@ -529,6 +532,10 @@
                                 {/if}
                                 {#if user.twoFactorEnabled}
                                     <span class="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-sm font-medium text-emerald-700 ring-1 ring-emerald-600/20">2FA</span>
+                                {/if}
+                                {#if showUnverified && !user.emailVerified}
+                                    <!-- An unverified address can sync, but nobody can invite it to a graph. -->
+                                    <span class="inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-sm font-medium text-amber-700 ring-1 ring-amber-600/20">Unverified</span>
                                 {/if}
                                 {#if isSelf(user.id)}
                                     <span class="inline-flex items-center rounded-full bg-blue-50 px-2 py-0.5 text-sm font-medium text-blue-700 ring-1 ring-blue-600/20">You</span>

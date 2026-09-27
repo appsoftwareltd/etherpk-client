@@ -4,7 +4,7 @@
      * Local graph from a folder, or create/join a synced (Server-backed, E2EE) graph. Backend
      * is fixed at creation (ADR 0007).
      */
-    import { onMount } from "svelte";
+    import { onMount, tick, untrack } from "svelte";
 
     import { dev } from "$app/environment";
     import { goto, replaceState } from "$app/navigation";
@@ -82,13 +82,15 @@
         readActiveSyncAccount,
         setActiveSyncAccount,
         SyncApiError,
+        SYNC_CONFIG_STORAGE_KEY,
         VaultLockedError,
     } from "$lib/sync";
-    import { safeReturnPath, type SyncAccountSummary } from "@appsoftwareltd/etherpk-shared";
+    import { PUBLIC_DOCS_URL, safeReturnPath, type SyncAccountSummary } from "@appsoftwareltd/etherpk-shared";
     import { managedSignInHref } from "$lib/auth/sign-in-links";
     import { EnvelopeError, fromBase64Url, openVault, type GraphKeyring } from "$lib/crypto";
     import { promptRecoveryCode } from "$lib/sync/recovery-code-prompt";
     import { describeSyncFailure } from "$lib/sync/sync-error-copy";
+    import { describeConnectionCheckFailure } from "$lib/sync/connection-check";
     import { ownerCanWrite, syncPlanNotice } from "$lib/sync/sync-plan-notice";
     import InviteDialog from "$lib/sync/ui/InviteDialog.svelte";
     import UnlockDialog from "$lib/sync/ui/UnlockDialog.svelte";
@@ -144,6 +146,20 @@
     );
     let serverBaseUrl = $state(configuredCustomSyncUrl);
     let token = $state("");
+    // What is wrong with each Custom server field, said at the field (rule 6).
+    let syncUrlError = $state<string | null>(null);
+    let syncTokenError = $state<{ message: string; tokensUrl?: string } | null>(null);
+    let syncSaving = $state(false);
+    /** The typed server's origin, for links to its pages; null until the address parses. */
+    const customServerOrigin = $derived.by(() => {
+        const typed = serverBaseUrl.trim();
+        if (!/^https?:\/\//i.test(typed)) return null;
+        try {
+            return new URL(typed).origin;
+        } catch {
+            return null;
+        }
+    });
 
     // Dialog state. The Recovery Code ritual is NOT here - it is hosted in the app shell so
     // a background import can finish on any route (promptRecoveryCode, ADR 0035).
@@ -341,6 +357,52 @@
     let importDialog = $state(false);
     /** The graph list could not be read at all, which is not the same as there being none. */
     let registryUnreadable = $state(false);
+    /** The registry has answered once (or failed to): until then an empty list means nothing. */
+    let graphsListed = $state(false);
+
+    /**
+     * A browser with nothing of its own yet: no graphs but the demo, none hidden while signed out,
+     * and no synced graph on its account. The page then leads with the choices this browser has
+     * (the first-run card) rather than an empty list. Decided only once the registry and, with a
+     * server configured, the account have answered, so it cannot flash for a returning user.
+     */
+    const firstRun = $derived(
+        graphsListed &&
+            capabilitiesChecked &&
+            !registryUnreadable &&
+            ordinaryGraphs.length === 0 &&
+            !(hiddenSyncedGraphs > 0 && syncAuthState === "signed-out") &&
+            !(syncConfigured && (syncAuthState === "checking" || syncedLoading)) &&
+            syncedGraphs.length === 0,
+    );
+    /**
+     * The action the header leads with: a synced graph once one can be created here, else the
+     * free folder, else the demo. A paid option was primary for visitors who could not use it.
+     */
+    const primaryAction = $derived(
+        syncAuthState === "authenticated" && !syncPlusRequired
+            ? "synced"
+            : supported
+              ? "folder"
+              : demoAvailable
+                ? "demo"
+                : "synced",
+    );
+    /** What the first-run card's synced line offers: create, sign in, connect, or Sync+. */
+    const syncedFirstStep = $derived(
+        syncPlusRequired
+            ? "upgrade"
+            : syncAuthState === "authenticated"
+              ? "create"
+              : signsInToManagedSync()
+                ? "sign-in"
+                : "connect",
+    );
+    const PRIMARY_BUTTON =
+        "rounded-lg bg-gray-900 dark:bg-gray-100 px-3 py-1.5 text-sm font-medium text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-200";
+    const SECONDARY_BUTTON =
+        "rounded-lg border border-gray-300 dark:border-gray-700 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5";
+
     /**
      * What this tab has put back from the device's safety copy after the browser dropped
      * IndexedDB (storage/safety-copy.ts). Shown until dismissed: the person should know why
@@ -400,6 +462,25 @@
         return createConfiguredSyncApi();
     }
 
+    /** Whether this device's way to a synced graph is the EtherPK account rather than a custom server. */
+    function signsInToManagedSync(): boolean {
+        return managedSyncAvailable && connectionMode !== "custom";
+    }
+
+    /**
+     * What an action that needs a sync connection says when this device has none. With Managed
+     * Sync it is the EtherPK account, and a synced graph of one's own needs Sync+ (ADR 0068);
+     * with a custom server it is the server's address and an access token.
+     */
+    function noSyncConnectionMessage(): string {
+        if (signsInToManagedSync()) {
+            return supported
+                ? "Synced graphs need an EtherPK account with Sync+. Sign in to create one, or open a folder on this computer instead."
+                : "Synced graphs need an EtherPK account with Sync+. Sign in to create one.";
+        }
+        return "Connect this device to a Sync Server first: add its address and an access token in Sync settings.";
+    }
+
     async function refresh() {
         await refreshAccount();
         try {
@@ -409,6 +490,7 @@
             // to look identical: the list rejected, everything after it was skipped, and the
             // page said "No graphs yet" to someone whose graphs were all still there (2026-09-09).
             registryUnreadable = true;
+            graphsListed = true;
             setStatus(
                 `Your graphs could not be read from this browser's storage, so none are listed. Nothing has been deleted. (${(err as Error).message})`,
                 "error",
@@ -416,6 +498,7 @@
             return;
         }
         registryUnreadable = false;
+        graphsListed = true;
         vaultUnlocked = getCachedWrapKey() !== null;
         const held = await createIdbGraphStoragePort().getAll().catch(() => [] as GraphRecord[]);
         hiddenSyncedGraphs = Math.max(0, held.length - graphs.length);
@@ -765,7 +848,7 @@
         const api = syncApi();
         if (!api)
             throw new Error(
-                "Add a sync server URL and access token in Sync settings first.",
+                noSyncConnectionMessage(),
             );
         // Say it on the page as well as in the dialog: the ritual interrupts what they asked for.
         setStatus(
@@ -849,6 +932,36 @@
         if (syncPlusRequired) throw new Error(syncPlusRequiredMessage);
         await ensureAccountKeysReady();
     }
+
+    /**
+     * Open Sync settings with the caret where the next step is: the sign-in button on the Managed
+     * tab, else the server address while there is none, else the token.
+     */
+    async function openSyncSettings() {
+        loadSyncConfig();
+        showSyncSettings = true;
+        await tick();
+        const form = document.getElementById("graphs-sync-settings");
+        form?.scrollIntoView({ block: "nearest" });
+        const next =
+            connectionMode === "managed"
+                ? form?.querySelector<HTMLElement>('[data-testid="managed-sync-connect"]')
+                : document.getElementById(serverBaseUrl.trim() ? "sync-token" : "sync-url");
+        next?.focus();
+    }
+
+    // The header's Connect Sync and the notices that send people here open Sync settings. Read
+    // on every change of address, not once at mount: a click while this page is open navigates
+    // to the same route, which does not remount it. The parameter then comes off, so the next
+    // click opens the form again and a reload does not.
+    $effect(() => {
+        if (page.url.searchParams.get("sync") !== "connect") return;
+        untrack(() => void openSyncSettings());
+        const url = new URL(page.url);
+        url.searchParams.delete("sync");
+        // After a macrotask, as announceArrival does: on a first load the router is still starting.
+        setTimeout(() => replaceState(url.pathname + url.search, {}), 0);
+    });
 
     function loadSyncConfig() {
         const config = readSyncConfig();
@@ -935,30 +1048,62 @@
         clearActiveSyncAccount();
     }
 
-    function saveSyncConfig() {
+    /** The rules a Custom server field is held to before anything is sent. */
+    function syncFieldErrors(url: string, pat: string) {
+        return {
+            url: !url
+                ? "Enter the Sync Server's address."
+                : !/^https?:\/\//i.test(url)
+                  ? "Start the address with https://, or http:// for a server on this computer."
+                  : null,
+            token: pat ? null : { message: "Enter a Personal Access Token from the Sync Server." },
+        };
+    }
+
+    async function focusFirstSyncError() {
+        await tick();
+        document.getElementById(syncUrlError ? "sync-url" : "sync-token")?.focus();
+    }
+
+    /**
+     * Save a Custom server connection once the server has accepted it. The account lookup answers
+     * before anything is written, so a mistyped, revoked or graph-limited token, or the app's own
+     * address pasted as the server's, is said at its field while the form is still open.
+     */
+    async function saveSyncConfig() {
+        if (syncSaving) return;
         const url = serverBaseUrl.trim();
-        if (!url || !token.trim()) {
-            setStatus(
-                "Both a server URL and an access token are required.",
-                "error",
-            );
+        const pat = token.trim();
+        const errors = syncFieldErrors(url, pat);
+        syncUrlError = errors.url;
+        syncTokenError = errors.token;
+        if (syncUrlError || syncTokenError) {
+            await focusFirstSyncError();
             return;
         }
-        if (!/^https?:\/\//i.test(url)) {
-            setStatus(
-                "The server URL must start with http:// or https:// (use http:// for a local server).",
-                "error",
-            );
+        syncSaving = true;
+        try {
+            await createSyncApi({ baseUrl: url, token: pat }).me();
+        } catch (err) {
+            const failure = describeConnectionCheckFailure(err, url);
+            if (failure.field === "token") {
+                syncTokenError = { message: failure.message, tokensUrl: failure.tokensUrl };
+            } else {
+                syncUrlError = failure.message;
+            }
+            await focusFirstSyncError();
             return;
+        } finally {
+            syncSaving = false;
         }
         clearActiveSyncAccount();
         writeSyncConfig({
             mode: "custom",
             serverBaseUrl: url,
-            token: token.trim(),
+            token: pat,
         });
         showSyncSettings = false;
-        setStatus("Sync settings saved on this device.");
+        setStatus(`Connected to ${new URL(url).host}.`);
         void refresh().then(() => {
             // Sent here by a page that needed this connection: go back to it once it works.
             if (returnTo && syncAuthState === "authenticated") void goto(returnTo);
@@ -1007,10 +1152,19 @@
     function startCreateServerGraph() {
         if (createPending) return;
         if (!syncApi()) {
+            // Nothing to create a synced graph through yet, so start the way to one rather than
+            // refusing: the EtherPK sign-in, which comes back here.
+            if (signsInToManagedSync()) {
+                connectManagedSync();
+                return;
+            }
+            // A custom server's address and token, asked for where they are typed.
             setStatus(
-                "Add a sync server URL and access token in Sync settings first.",
-                "error",
+                serverBaseUrl.trim()
+                    ? "Connect this device to a Sync Server to create a synced graph: enter an access token from it below."
+                    : "Connect this device to a Sync Server to create a synced graph: enter its address and an access token below.",
             );
+            void openSyncSettings();
             return;
         }
         createPending = true;
@@ -1052,7 +1206,7 @@
         const api = syncApi();
         if (!api) {
             setStatus(
-                "Add a sync server URL and access token in Sync settings first.",
+                noSyncConnectionMessage(),
                 "error",
             );
             return;
@@ -1440,7 +1594,7 @@
         const connection = resolveSyncedGraphConnection(graphId);
         if (!connection)
             throw new Error(
-                "Connect Managed Sync or add a custom server in Sync settings first.",
+                noSyncConnectionMessage(),
             );
         const { api } = connection;
         let keyring = options.keyring;
@@ -1606,7 +1760,7 @@
         const api = syncApi();
         if (!api) {
             setStatus(
-                "Add a sync server URL and access token in Sync settings first.",
+                noSyncConnectionMessage(),
                 "error",
             );
             return;
@@ -1961,7 +2115,7 @@
         const api = syncApi();
         if (!api) {
             setStatus(
-                "Add a sync server URL and access token in Sync settings first.",
+                noSyncConnectionMessage(),
                 "error",
             );
             return;
@@ -1988,7 +2142,7 @@
         const api = syncApi();
         if (!api) {
             setStatus(
-                "Add a sync server URL and access token in Sync settings first.",
+                noSyncConnectionMessage(),
                 "error",
             );
             return;
@@ -2082,7 +2236,7 @@
         const api = syncApi();
         if (!api) {
             setStatus(
-                "Add a sync server URL and access token in Sync settings first.",
+                noSyncConnectionMessage(),
                 "error",
             );
             return;
@@ -2160,10 +2314,14 @@
         // locks them. The active account still names whose keys they are.
         if (page.url.searchParams.get("managed") === "signed-out") lockVault();
         announceArrival();
-        if (page.url.searchParams.get("sync") === "connect") {
+        // A connection made or dropped in another tab reaches this one through the storage event;
+        // this page's own changes either refresh it themselves or navigate away.
+        const onStorage = (event: StorageEvent) => {
+            if (event.key !== SYNC_CONFIG_STORAGE_KEY && event.key !== null) return;
             loadSyncConfig();
-            showSyncSettings = true;
-        }
+            void refresh();
+        };
+        window.addEventListener("storage", onStorage);
         // Subscribed before the first refresh, so a restore that happens inside it is caught;
         // one that happened earlier in this tab (a workspace open) is replayed on subscribe.
         const stopRecoveries = subscribeStorageRecoveries(
@@ -2175,7 +2333,10 @@
                 true;
         void describeDeviceStorage().then((report) => (deviceStorage = report));
         void refresh().then(sweepIndexPools);
-        return stopRecoveries;
+        return () => {
+            stopRecoveries();
+            window.removeEventListener("storage", onStorage);
+        };
     });
 </script>
 
@@ -2191,21 +2352,24 @@
             {#if supported}
                 <button
                     data-testid="graphs-open-folder"
+                    data-primary={primaryAction === "folder"}
                     onclick={openFolder}
-                    class="rounded-lg border border-gray-300 dark:border-gray-700 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5"
+                    class={primaryAction === "folder" ? PRIMARY_BUTTON : SECONDARY_BUTTON}
                     >Open folder (Local Graph)</button
                 >
             {/if}
             {#if demoAvailable}
                 <a
                     data-testid="graphs-try-demo"
+                    data-primary={primaryAction === "demo"}
                     href="/demo"
-                    class="rounded-lg border border-gray-300 dark:border-gray-700 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5"
+                    class={primaryAction === "demo" ? PRIMARY_BUTTON : SECONDARY_BUTTON}
                     >Try the demo</a
                 >
             {/if}
             <button
                 data-testid="graphs-create-server"
+                data-primary={primaryAction === "synced"}
                 onclick={startCreateServerGraph}
                 disabled={syncPlusRequired}
                 aria-disabled={syncPlusRequired}
@@ -2213,7 +2377,7 @@
                 title={syncPlusRequired
                     ? "Synced graphs need Sync+"
                     : undefined}
-                class="aria-busy:cursor-progress aria-busy:opacity-70 rounded-lg bg-gray-900 dark:bg-gray-100 px-3 py-1.5 text-sm font-medium text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-50"
+                class="aria-busy:cursor-progress aria-busy:opacity-70 disabled:cursor-not-allowed disabled:opacity-50 {primaryAction === 'synced' ? PRIMARY_BUTTON : SECONDARY_BUTTON}"
                 >New synced graph</button
             >
 
@@ -2225,6 +2389,8 @@
             >
             <button
                 data-testid="graphs-sync-settings-toggle"
+                aria-expanded={showSyncSettings}
+                aria-controls="graphs-sync-settings"
                 onclick={() => {
                     loadSyncConfig();
                     showSyncSettings = !showSyncSettings;
@@ -2236,38 +2402,46 @@
     </header>
 
     <!--
-        What this browser and this deployment can actually offer, said next to the buttons
-        rather than below the whole sync form. Two situations reach here and they need
-        different advice: a non-Chromium browser with a Server connected can still make synced
-        graphs, but a standalone deployment opened in Firefox or Safari can make nothing at
-        all, and telling that user "synced graphs work on any browser" is useless when no
-        Server is connected. Gated on capabilitiesChecked so the harder notice does not flash
-        before readSyncConfig() has been consulted.
+        One slot carries every page-level outcome, announced, just under the actions that cause
+        most of them, so it is in view when they report. Per-row failures that belong beside
+        their graph (delete, leave) report in their own dialog.
     -->
-    {#if !supported && capabilitiesChecked && !syncConfigured}
+    {#if status}
         <p
-            class="rounded-lg border border-amber-300 bg-amber-50 dark:border-amber-500/40 dark:bg-amber-950/30 px-4 py-3 text-sm text-amber-900 dark:text-amber-200"
-            data-testid="graphs-no-backends"
+            data-testid="graphs-status"
+            role={statusTone === "error" ? "alert" : "status"}
+            class="text-sm {statusTone === 'error'
+                ? 'text-red-600'
+                : 'text-gray-600 dark:text-gray-400'}"
         >
-            <span class="font-semibold"
-                >There is no way to create a graph on this device yet.</span
-            >
-            Keeping notes in a folder needs the File System Access API, which today
-            only Chromium-based desktop browsers (Chrome, Edge, Brave) provide, and
-            no Sync Server is connected here. Either open EtherPK in a Chromium desktop
-            browser to use a folder, or connect a Sync Server under
-            <span class="font-medium">Sync settings</span> and create a synced graph
-            instead.
+            {status}
         </p>
-    {:else if !supported}
-        <p
+    {/if}
+
+    <!--
+        A browser that cannot open a folder, said next to the buttons. A first visit gets the
+        first-run card instead, which lists only what this browser can do; this notice is for a
+        browser that already has graphs, with the way to a synced graph when none is set up.
+    -->
+    {#if !supported && graphsListed && capabilitiesChecked && !firstRun}
+        <div
             class="rounded-lg border border-amber-300 bg-amber-50 dark:border-amber-500/40 dark:bg-amber-950/30 px-4 py-3 text-sm text-amber-900 dark:text-amber-200"
             data-testid="graphs-unsupported"
         >
-            This browser cannot open a local folder. The Filesystem Backend
-            needs the File System Access API, available today only in
-            Chromium-based desktop browsers. Synced graphs work on any browser.
-        </p>
+            <p>
+                This browser cannot open a folder on this computer. Folders need a
+                Chromium-based desktop browser: Chrome, Edge or Brave. Synced graphs work in
+                any browser.
+            </p>
+            {#if !syncConfigured}
+                <button
+                    type="button"
+                    onclick={() => (signsInToManagedSync() ? connectManagedSync() : void openSyncSettings())}
+                    class="mt-2 rounded-lg border border-amber-400 px-3 py-1.5 text-sm font-medium hover:bg-amber-100 dark:border-amber-500/50 dark:hover:bg-amber-900/40"
+                    >{signsInToManagedSync() ? "Sign in" : "Connect to a Sync Server"}</button
+                >
+            {/if}
+        </div>
     {/if}
 
     {#if syncConfigured}
@@ -2462,10 +2636,11 @@
 
     {#if showSyncSettings}
         <form
+            id="graphs-sync-settings"
             data-testid="graphs-sync-settings"
             onsubmit={(e) => {
                 e.preventDefault();
-                saveSyncConfig();
+                void saveSyncConfig();
             }}
             class="space-y-4 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-white/5 p-5"
         >
@@ -2509,44 +2684,65 @@
                     >
                         EtherPK Managed Sync
                     </p>
-                    <p
-                        class="mt-1 text-sm leading-5 text-gray-600 dark:text-gray-300"
-                    >
-                        Sign in once to connect this device. There is no server
-                        address or access token to copy, and your graph content
-                        remains end-to-end encrypted.
-                    </p>
-                    <div class="mt-3 flex flex-wrap gap-2">
-                        <button
-                            type="button"
-                            data-testid="managed-sync-connect"
-                            onclick={connectManagedSync}
-                            class="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500"
-                            >Continue to secure sign in</button
-                        >
-                        <button
-                            type="submit"
-                            form="managed-global-logout"
-                            onclick={prepareManagedSignOut}
-                            class="rounded-lg border border-indigo-200 bg-white/70 px-4 py-2 text-sm font-semibold text-indigo-700 hover:bg-white dark:border-indigo-400/20 dark:bg-white/5 dark:text-indigo-200 dark:hover:bg-white/10"
-                            >Sign out of EtherPK</button
-                        >
-                    </div>
-                    <div
-                        class="mt-3 border-t border-indigo-200 pt-3 dark:border-indigo-400/20"
-                    >
+                    {#if syncConnection === "managed" && syncAuthState === "authenticated" && syncAccount}
+                        <!-- Signed in: the account and the two ways out, and no sign-in to offer. -->
                         <p
-                            class="text-sm leading-5 text-gray-600 dark:text-gray-300"
+                            data-testid="managed-connected-as"
+                            class="mt-1 text-sm leading-5 text-gray-600 dark:text-gray-300"
                         >
-                            {MANAGED_DEVICE_DISCONNECT_HELP}
+                            Connected as {syncAccount.principal.email ??
+                                syncAccount.principal.name ??
+                                "your EtherPK account"}.
                         </p>
-                        <button
-                            type="button"
-                            onclick={disconnectManagedSync}
-                            class="mt-2 rounded-lg border border-indigo-200 bg-white/70 px-4 py-2 text-sm font-semibold text-indigo-700 hover:bg-white dark:border-indigo-400/20 dark:bg-white/5 dark:text-indigo-200 dark:hover:bg-white/10"
-                            >Disconnect this device</button
+                        <div class="mt-3 flex flex-wrap gap-2">
+                            <button
+                                type="submit"
+                                form="managed-global-logout"
+                                onclick={prepareManagedSignOut}
+                                class="rounded-lg border border-indigo-200 bg-white/70 px-4 py-2 text-sm font-semibold text-indigo-700 hover:bg-white dark:border-indigo-400/20 dark:bg-white/5 dark:text-indigo-200 dark:hover:bg-white/10"
+                                >Sign out of EtherPK</button
+                            >
+                        </div>
+                        <div
+                            class="mt-3 border-t border-indigo-200 pt-3 dark:border-indigo-400/20"
                         >
-                    </div>
+                            <p
+                                class="text-sm leading-5 text-gray-600 dark:text-gray-300"
+                            >
+                                {MANAGED_DEVICE_DISCONNECT_HELP}
+                            </p>
+                            <button
+                                type="button"
+                                onclick={disconnectManagedSync}
+                                class="mt-2 rounded-lg border border-indigo-200 bg-white/70 px-4 py-2 text-sm font-semibold text-indigo-700 hover:bg-white dark:border-indigo-400/20 dark:bg-white/5 dark:text-indigo-200 dark:hover:bg-white/10"
+                                >Disconnect this device</button
+                            >
+                        </div>
+                    {:else if syncAuthState === "checking"}
+                        <p class="mt-1 text-sm leading-5 text-gray-600 dark:text-gray-300">
+                            Checking your EtherPK account…
+                        </p>
+                    {:else}
+                        <!-- Signed out, sign-in is the only thing here that can work. -->
+                        <p
+                            class="mt-1 text-sm leading-5 text-gray-600 dark:text-gray-300"
+                        >
+                            Sign in with your EtherPK account to connect this
+                            device. There is no server address or access token to
+                            copy, and your graph content stays end-to-end
+                            encrypted. Graphs of your own need Sync+; graphs others
+                            share with you work on any plan.
+                        </p>
+                        <div class="mt-3 flex flex-wrap gap-2">
+                            <button
+                                type="button"
+                                data-testid="managed-sync-connect"
+                                onclick={connectManagedSync}
+                                class="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500"
+                                >Continue to secure sign in</button
+                            >
+                        </div>
+                    {/if}
                 </div>
             {:else}
                 <div>
@@ -2559,13 +2755,22 @@
                         id="sync-url"
                         data-testid="sync-url"
                         bind:value={serverBaseUrl}
-                        placeholder="http://localhost:5173"
-                        class="block w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-gray-950 dark:text-gray-100 focus:border-gray-950 dark:focus:border-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-950 dark:focus:ring-gray-400"
+                        oninput={() => {
+                            // Once a field has errored it re-checks as it is corrected.
+                            if (syncUrlError) syncUrlError = syncFieldErrors(serverBaseUrl.trim(), token.trim()).url;
+                        }}
+                        placeholder="https://sync.example.com"
+                        aria-invalid={syncUrlError ? "true" : undefined}
+                        aria-describedby={syncUrlError ? "sync-url-help sync-url-error" : "sync-url-help"}
+                        class="block w-full rounded-lg border {syncUrlError ? 'border-red-400 dark:border-red-500' : 'border-gray-300 dark:border-gray-700'} bg-white dark:bg-white/10 px-3 py-2 text-sm text-gray-950 dark:text-gray-100 focus:border-gray-950 dark:focus:border-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-950 dark:focus:ring-gray-400"
                     />
-                    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                    <p id="sync-url-help" class="mt-1 text-sm text-gray-500 dark:text-gray-400">
                         Include the scheme. Use http:// for a local server,
                         https:// for a hosted one.
                     </p>
+                    {#if syncUrlError}
+                        <p id="sync-url-error" data-testid="sync-url-error" class="mt-1 text-sm text-red-600 dark:text-red-400">{syncUrlError}</p>
+                    {/if}
                 </div>
                 <div>
                     <label
@@ -2578,20 +2783,39 @@
                         data-testid="sync-token"
                         type="password"
                         bind:value={token}
+                        oninput={() => {
+                            if (syncTokenError) syncTokenError = syncFieldErrors(serverBaseUrl.trim(), token.trim()).token;
+                        }}
                         placeholder="epk_pat_…"
-                        class="block w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-white/10 px-3 py-2 text-sm font-mono text-gray-950 dark:text-gray-100 focus:border-gray-950 dark:focus:border-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-950 dark:focus:ring-gray-400"
+                        aria-invalid={syncTokenError ? "true" : undefined}
+                        aria-describedby={syncTokenError ? "sync-token-error" : undefined}
+                        class="block w-full rounded-lg border {syncTokenError ? 'border-red-400 dark:border-red-500' : 'border-gray-300 dark:border-gray-700'} bg-white dark:bg-white/10 px-3 py-2 text-sm font-mono text-gray-950 dark:text-gray-100 focus:border-gray-950 dark:focus:border-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-950 dark:focus:ring-gray-400"
                     />
+                    {#if syncTokenError}
+                        <p id="sync-token-error" data-testid="sync-token-error" class="mt-1 text-sm text-red-600 dark:text-red-400">
+                            {syncTokenError.message}
+                            {#if syncTokenError.tokensUrl}
+                                <a href={syncTokenError.tokensUrl} target="_blank" rel="noopener noreferrer" class="font-medium underline">Access tokens</a>
+                            {/if}
+                        </p>
+                    {/if}
                 </div>
-                <p class="text-sm text-gray-500 dark:text-gray-400">
-                    Create a PAT in your server's account portal. It
-                    authenticates sync but can never decrypt your notes.
+                <p class="text-sm text-gray-500 dark:text-gray-400" data-testid="sync-token-help">
+                    {#if customServerOrigin}
+                        Make a token on the server's <a href="{customServerOrigin}/account/tokens" target="_blank" rel="noopener noreferrer" class="font-medium underline">Access tokens page</a>,
+                        or <a href="{customServerOrigin}/register" target="_blank" rel="noopener noreferrer" class="font-medium underline">create an account</a> there first.
+                    {:else}
+                        Make a token on the Sync Server's Access tokens page.
+                    {/if}
+                    A token lets this device sync, but can never decrypt your notes.
                 </p>
                 <div class="flex justify-end">
                     <button
                         type="submit"
                         data-testid="sync-save"
-                        class="rounded-lg bg-gray-900 dark:bg-gray-100 px-4 py-1.5 text-sm font-medium text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-200"
-                        >Save custom server</button
+                        aria-busy={syncSaving}
+                        class="aria-busy:cursor-progress aria-busy:opacity-70 rounded-lg bg-gray-900 dark:bg-gray-100 px-4 py-1.5 text-sm font-medium text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-200"
+                        >{syncSaving ? "Checking the connection…" : "Save custom server"}</button
                     >
                 </div>
             {/if}
@@ -2599,152 +2823,158 @@
             <div
                 class="border-t border-gray-200 dark:border-gray-800 pt-4 space-y-3"
             >
-                <div>
+                {#if syncAuthState !== "authenticated"}
+                    <!-- Every key action needs the account, so none is offered before it answers. -->
                     <p
-                        class="text-sm font-medium text-gray-950 dark:text-white"
+                        data-testid="keys-after-connecting"
+                        class="text-sm text-gray-500 dark:text-gray-400"
                     >
-                        Recovery Code
+                        Your encryption keys and Recovery Code appear here once {signsInToManagedSync()
+                            ? "you are signed in"
+                            : "this device is connected to a Sync Server"}.
                     </p>
-                    {#if vaultExists === false}
-                        <!-- Fresh or just-reset account: there is no vault, so an unlock prompt
-                             would ask for a Recovery Code that does not exist. -->
+                {:else}
+                    <div>
                         <p
-                            data-testid="regenerate-code-none"
-                            class="text-sm text-gray-500 dark:text-gray-400"
+                            class="text-sm font-medium text-gray-950 dark:text-white"
                         >
-                            This account has no encryption keys yet. Create them
-                            now to get your Recovery Code, or let your first
-                            synced graph create them for you.
+                            Recovery Code
                         </p>
-                        <button
-                            type="button"
-                            data-testid="create-keys"
-                            onclick={createKeys}
-                            class="mt-2 rounded-lg border border-gray-300 dark:border-gray-700 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5"
-                            >Create encryption keys</button
-                        >
-                    {:else}
-                        <p class="text-sm text-gray-500 dark:text-gray-400">
-                            Your Recovery Code is a one-off code that unlocks
-                            your encryption keys on a device when no other
-                            device of yours is unlocked to vouch for it. It
-                            covers your whole account - every synced graph,
-                            including ones you join later - and the sync server
-                            never sees it, so nobody can recover your notes
-                            without it.
-                        </p>
-                        <p
-                            class="mt-1 text-sm text-gray-500 dark:text-gray-400"
-                        >
-                            Regenerating shows you a new code. Your current
-                            code keeps working until you confirm you have saved
-                            the new one, then it is retired for good. Devices
-                            already unlocked stay unlocked. Do it if you never
-                            saved your code, or think someone else may have seen
-                            it.
-                        </p>
-                        <button
-                            type="button"
-                            data-testid="regenerate-code"
-                            onclick={regenerateKit}
-                            class="mt-2 rounded-lg border border-gray-300 dark:border-gray-700 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5"
-                            >Regenerate Recovery Code</button
-                        >
-                    {/if}
-                </div>
-                <div>
-                    <p
-                        class="text-sm font-medium text-gray-950 dark:text-white"
-                    >
-                        Unlock keys on this device
-                    </p>
-                    <p class="text-sm text-gray-500 dark:text-gray-400">
-                        Restore this device's access with your Recovery Code, or
-                        by approving from a device that is already unlocked.
-                        Needed after clearing site data or signing out
-                        everywhere - and you do not have to own a synced graph
-                        to do it.
-                    </p>
-                    <button
-                        type="button"
-                        data-testid="unlock-keys"
-                        onclick={unlockKeys}
-                        disabled={vaultUnlocked || vaultExists === false}
-                        class="mt-2 rounded-lg border border-gray-300 dark:border-gray-700 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5 disabled:opacity-40 disabled:cursor-not-allowed"
-                        >{vaultUnlocked
-                            ? "Keys are unlocked"
-                            : "Unlock keys"}</button
-                    >
-                </div>
-                <div>
-                    <p
-                        class="text-sm font-medium text-gray-950 dark:text-white"
-                    >
-                        Your security fingerprint
-                    </p>
-                    <p class="text-sm text-gray-500 dark:text-gray-400">
-                        When somebody invites you to their graph, they are shown
-                        a fingerprint for your account and asked to check it is
-                        really yours. This is the one to read out to them, in
-                        person or over a call you trust. It is not a secret.
-                    </p>
-                    {#if ownFingerprint}
-                        <code
-                            data-testid="own-fingerprint"
-                            class="mt-2 block break-all rounded-lg bg-gray-100 dark:bg-white/5 px-4 py-3 text-center text-sm font-mono tracking-wide text-gray-950 dark:text-gray-100"
-                            >{ownFingerprint}</code
-                        >
-                    {:else}
-                        <button
-                            type="button"
-                            data-testid="show-own-fingerprint"
-                            onclick={showOwnFingerprint}
-                            disabled={fingerprintPending ||
-                                vaultExists === false}
-                            class="mt-2 rounded-lg border border-gray-300 dark:border-gray-700 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5 disabled:opacity-40 disabled:cursor-not-allowed"
-                            >{fingerprintPending
-                                ? "Reading…"
-                                : "Show my fingerprint"}</button
-                        >
                         {#if vaultExists === false}
+                            <!-- Fresh or just-reset account: there is no vault, so an unlock prompt
+                                 would ask for a Recovery Code that does not exist. -->
+                            <p
+                                data-testid="regenerate-code-none"
+                                class="text-sm text-gray-500 dark:text-gray-400"
+                            >
+                                No encryption keys yet. Your first synced graph
+                                creates them, or create them now: having keys is what
+                                lets others share their graphs with you, and gives you
+                                your Recovery Code.
+                            </p>
+                            <button
+                                type="button"
+                                data-testid="create-keys"
+                                onclick={createKeys}
+                                class="mt-2 rounded-lg border border-gray-300 dark:border-gray-700 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5"
+                                >Create encryption keys</button
+                            >
+                        {:else}
+                            <p class="text-sm text-gray-500 dark:text-gray-400">
+                                Your Recovery Code is a one-off code that unlocks
+                                your encryption keys on a device when no other
+                                device of yours is unlocked to vouch for it. It
+                                covers your whole account - every synced graph,
+                                including ones you join later - and the sync server
+                                never sees it, so nobody can recover your notes
+                                without it.
+                            </p>
                             <p
                                 class="mt-1 text-sm text-gray-500 dark:text-gray-400"
                             >
-                                Create your encryption keys first; a fingerprint
-                                identifies them.
+                                Regenerating shows you a new code. Your current
+                                code keeps working until you confirm you have saved
+                                the new one, then it is retired for good. Devices
+                                already unlocked stay unlocked. Do it if you never
+                                saved your code, or think someone else may have seen
+                                it.
                             </p>
+                            <button
+                                type="button"
+                                data-testid="regenerate-code"
+                                onclick={regenerateKit}
+                                class="mt-2 rounded-lg border border-gray-300 dark:border-gray-700 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5"
+                                >Regenerate Recovery Code</button
+                            >
                         {/if}
+                    </div>
+                    {#if vaultExists !== false}
+                        <div>
+                            <p
+                                class="text-sm font-medium text-gray-950 dark:text-white"
+                            >
+                                Unlock keys on this device
+                            </p>
+                            <p class="text-sm text-gray-500 dark:text-gray-400">
+                                Restore this device's access with your Recovery Code, or
+                                by approving from a device that is already unlocked.
+                                Needed after clearing site data or signing out
+                                everywhere - and you do not have to own a synced graph
+                                to do it.
+                            </p>
+                            <button
+                                type="button"
+                                data-testid="unlock-keys"
+                                onclick={unlockKeys}
+                                disabled={vaultUnlocked}
+                                class="mt-2 rounded-lg border border-gray-300 dark:border-gray-700 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5 disabled:opacity-40 disabled:cursor-not-allowed"
+                                >{vaultUnlocked
+                                    ? "Keys are unlocked"
+                                    : "Unlock keys"}</button
+                            >
+                        </div>
+                        <div>
+                            <p
+                                class="text-sm font-medium text-gray-950 dark:text-white"
+                            >
+                                Your security fingerprint
+                            </p>
+                            <p class="text-sm text-gray-500 dark:text-gray-400">
+                                When somebody invites you to their graph, they are shown
+                                a fingerprint for your account and asked to check it is
+                                really yours. This is the one to read out to them, in
+                                person or over a call you trust. It is not a secret.
+                            </p>
+                            {#if ownFingerprint}
+                                <code
+                                    data-testid="own-fingerprint"
+                                    class="mt-2 block break-all rounded-lg bg-gray-100 dark:bg-white/5 px-4 py-3 text-center text-sm font-mono tracking-wide text-gray-950 dark:text-gray-100"
+                                    >{ownFingerprint}</code
+                                >
+                            {:else}
+                                <button
+                                    type="button"
+                                    data-testid="show-own-fingerprint"
+                                    onclick={showOwnFingerprint}
+                                    disabled={fingerprintPending}
+                                    class="mt-2 rounded-lg border border-gray-300 dark:border-gray-700 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5 disabled:opacity-40 disabled:cursor-not-allowed"
+                                    >{fingerprintPending
+                                        ? "Reading…"
+                                        : "Show my fingerprint"}</button
+                                >
+                            {/if}
+                        </div>
+                        <div>
+                            <p
+                                class="text-sm font-medium text-gray-950 dark:text-white"
+                            >
+                                Lock keys on this device
+                            </p>
+                            <p class="text-sm text-gray-500 dark:text-gray-400">
+                                Once unlocked, your keys stay available on this device
+                                so you are not asked for your Recovery Code in every
+                                tab. Locking them stops this browser opening your
+                                synced graphs until you unlock again, but the copies
+                                it already holds stay readable to anyone who can use
+                                it: on a shared machine, also remove them under Storage
+                                on this device. Locking and then unlocking again also
+                                replaces the keys held here, if this device can no
+                                longer read your notes. Nothing is lost, and unlocking
+                                again just needs the code.
+                            </p>
+                            <button
+                                type="button"
+                                data-testid="lock-keys"
+                                onclick={lockKeys}
+                                disabled={!vaultUnlocked}
+                                class="mt-2 rounded-lg border border-gray-300 dark:border-gray-700 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5 disabled:opacity-40 disabled:cursor-not-allowed"
+                                >{vaultUnlocked
+                                    ? "Lock keys"
+                                    : "Keys are locked"}</button
+                            >
+                        </div>
                     {/if}
-                </div>
-                <div>
-                    <p
-                        class="text-sm font-medium text-gray-950 dark:text-white"
-                    >
-                        Lock keys on this device
-                    </p>
-                    <p class="text-sm text-gray-500 dark:text-gray-400">
-                        Once unlocked, your keys stay available on this device
-                        so you are not asked for your Recovery Code in every
-                        tab. Locking them stops this browser opening your
-                        synced graphs until you unlock again, but the copies
-                        it already holds stay readable to anyone who can use
-                        it: on a shared machine, also remove them under Storage
-                        on this device. Locking and then unlocking again also
-                        replaces the keys held here, if this device can no
-                        longer read your notes. Nothing is lost, and unlocking
-                        again just needs the code.
-                    </p>
-                    <button
-                        type="button"
-                        data-testid="lock-keys"
-                        onclick={lockKeys}
-                        disabled={!vaultUnlocked}
-                        class="mt-2 rounded-lg border border-gray-300 dark:border-gray-700 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5 disabled:opacity-40 disabled:cursor-not-allowed"
-                        >{vaultUnlocked
-                            ? "Lock keys"
-                            : "Keys are locked"}</button
-                    >
-                </div>
+                {/if}
                 <div data-testid="device-storage">
                     <p
                         class="text-sm font-medium text-gray-950 dark:text-white"
@@ -2830,53 +3060,39 @@
                         </p>
                     {/if}
                 </div>
-                <div>
-                    <p class="text-sm font-medium text-red-600">
-                        Reset encryption keys
-                    </p>
-                    <p class="text-sm text-gray-500 dark:text-gray-400">
-                        Start over with new keys. Graphs you own are permanently
-                        deleted unless you first hand them to another player.
-                        This cannot be undone.
-                    </p>
-                    <p class="text-sm text-gray-500 dark:text-gray-400">
-                        Only this device having trouble? A graph that says it is
-                        not in this browser is fixed by <span
-                            class="font-medium">Add to this device</span
+                {#if syncAuthState === "authenticated" && vaultExists !== false}
+                    <div>
+                        <p class="text-sm font-medium text-red-600">
+                            Reset encryption keys
+                        </p>
+                        <p class="text-sm text-gray-500 dark:text-gray-400">
+                            Start over with new keys. Graphs you own are permanently
+                            deleted unless you first hand them to another player.
+                            This cannot be undone.
+                        </p>
+                        <p class="text-sm text-gray-500 dark:text-gray-400">
+                            Only this device having trouble? A graph that says it is
+                            not in this browser is fixed by <span
+                                class="font-medium">Add to this device</span
+                            >
+                            on its row under Synced graphs, and keys that will not open your notes by
+                            <span class="font-medium">Lock keys</span>
+                            then <span class="font-medium">Unlock keys</span>.
+                            Neither deletes anything.
+                        </p>
+                        <button
+                            type="button"
+                            data-testid="reset-keys"
+                            onclick={() => (showReset = true)}
+                            class="mt-2 rounded-lg border border-red-300 dark:border-red-500/40 px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30"
+                            >Reset encryption keys</button
                         >
-                        above, and keys that will not open your notes by
-                        <span class="font-medium">Lock keys</span>
-                        then <span class="font-medium">Unlock keys</span>.
-                        Neither deletes anything.
-                    </p>
-                    <button
-                        type="button"
-                        data-testid="reset-keys"
-                        onclick={() => (showReset = true)}
-                        class="mt-2 rounded-lg border border-red-300 dark:border-red-500/40 px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30"
-                        >Reset encryption keys</button
-                    >
-                </div>
+                    </div>
+                {/if}
             </div>
         </form>
     {/if}
 
-    <!--
-        One slot still carries every page-level outcome, but it is at least announced now.
-        Per-row failures that belong beside their graph (delete, leave) report in their own
-        dialog instead of travelling up here.
-    -->
-    {#if status}
-        <p
-            data-testid="graphs-status"
-            role={statusTone === "error" ? "alert" : "status"}
-            class="text-sm {statusTone === 'error'
-                ? 'text-red-600'
-                : 'text-gray-600 dark:text-gray-400'}"
-        >
-            {status}
-        </p>
-    {/if}
 
     {#if invites.length > 0}
         <section
@@ -2965,9 +3181,80 @@
             />
         {/snippet}
 
+        {#snippet firstRunCard()}
+            <div
+                data-testid="graphs-first-run"
+                class="rounded-xl border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5 p-5 space-y-4"
+            >
+                <div>
+                    <h3 class="text-sm font-semibold text-gray-950 dark:text-white">
+                        Where will your notes live?
+                    </h3>
+                    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                        A graph's home is fixed when it is created.
+                    </p>
+                </div>
+                <ul class="space-y-3">
+                    {#if supported}
+                        <li data-testid="first-run-folder" class="flex flex-wrap items-center justify-between gap-2">
+                            <p class="min-w-0 flex-1 text-sm text-gray-700 dark:text-gray-300">
+                                <span class="font-medium text-gray-950 dark:text-white">A folder on this computer.</span>
+                                Free, in plain Markdown files any editor can open.
+                            </p>
+                            <button type="button" onclick={openFolder} class={SECONDARY_BUTTON}>Open folder</button>
+                        </li>
+                    {/if}
+                    <li data-testid="first-run-synced" class="flex flex-wrap items-center justify-between gap-2">
+                        <p class="min-w-0 flex-1 text-sm text-gray-700 dark:text-gray-300">
+                            <span class="font-medium text-gray-950 dark:text-white">A synced graph.</span>
+                            On all your devices and in any browser, end-to-end encrypted, {signsInToManagedSync()
+                                ? "with an EtherPK account that has Sync+."
+                                : "through your team's Sync Server."}
+                        </p>
+                        {#if syncedFirstStep === "create"}
+                            <button type="button" onclick={startCreateServerGraph} class={SECONDARY_BUTTON}>New synced graph</button>
+                        {:else if syncedFirstStep === "sign-in"}
+                            <button type="button" onclick={connectManagedSync} class={SECONDARY_BUTTON}>Sign in</button>
+                        {:else if syncedFirstStep === "connect"}
+                            <button type="button" onclick={() => void openSyncSettings()} class={SECONDARY_BUTTON}>Connect to a Sync Server</button>
+                        {:else if corporateBillingUrl}
+                            <a href={corporateBillingUrl} data-sveltekit-reload class={SECONDARY_BUTTON}>See Sync+</a>
+                        {/if}
+                    </li>
+                    {#if demoAvailable}
+                        <li data-testid="first-run-demo" class="flex flex-wrap items-center justify-between gap-2">
+                            <p class="min-w-0 flex-1 text-sm text-gray-700 dark:text-gray-300">
+                                <span class="font-medium text-gray-950 dark:text-white">The demo.</span>
+                                A sample graph to explore. It stays in this browser.
+                            </p>
+                            <a href="/demo" class={SECONDARY_BUTTON}>Try the demo</a>
+                        </li>
+                    {/if}
+                </ul>
+                {#if !supported}
+                    <p class="text-sm text-gray-500 dark:text-gray-400">
+                        Folders need a Chromium-based desktop browser: Chrome, Edge or Brave.
+                    </p>
+                {/if}
+                <p class="text-sm text-gray-500 dark:text-gray-400">
+                    Coming from Logseq or Obsidian?
+                    <button type="button" onclick={() => (importDialog = true)} class="font-medium text-gray-700 underline dark:text-gray-200">Import your notes</button>.
+                    <a
+                        href="{PUBLIC_DOCS_URL}/choosing-where-your-notes-live"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        class="font-medium text-gray-700 underline dark:text-gray-200"
+                        >Choosing where your notes live</a
+                    >
+                </p>
+            </div>
+        {/snippet}
+
+        {#if firstRun}
+            {@render firstRunCard()}
         <!-- Skipped when the demo is the only graph: an empty box reading "No graphs yet … try
              the demo" beside the demo itself would offer what is already there. -->
-        {#if ordinaryGraphs.length > 0 || graphs.length === 0}
+        {:else if ordinaryGraphs.length > 0 || graphs.length === 0}
             <ul
                 data-testid="graphs-list"
                 class="divide-y divide-gray-200 dark:divide-white/10 rounded-xl border border-gray-200 dark:border-white/10 overflow-hidden"
@@ -2999,11 +3286,9 @@
                             class="px-4 py-6 text-center text-sm text-gray-500"
                             data-testid="graphs-empty"
                         >
-                            No graphs yet. Open a folder, create a synced graph, or <a
-                                href="/demo"
-                                class="underline hover:text-gray-700 dark:hover:text-gray-300"
-                                >try the demo</a
-                            >.
+                            {syncedGraphs.length > 0
+                                ? "None on this device yet. Add a synced graph to it from the list below."
+                                : "No graphs on this device yet."}
                         </li>
                     {/if}
                 {/each}
@@ -3299,7 +3584,9 @@
         syncTarget={syncPlusRequired ? null : importSyncTarget()}
         syncUnavailableReason={syncPlusRequired
             ? syncPlusRequiredMessage
-            : undefined}
+            : signsInToManagedSync()
+              ? "Sign in with an EtherPK account that has Sync+ to import into a synced graph."
+              : "Connect this device to a Sync Server in Sync settings to import into a synced graph."}
         getWrapKey={importWrapKey}
         ensureVaultReady={ensureVaultReadyForSyncedImport}
         assetLimits={syncAccount?.entitlement.limits ?? null}

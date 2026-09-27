@@ -12,18 +12,38 @@
 /** How long after one verification email the next resend is held back. */
 export const VERIFICATION_RESEND_COOLDOWN_SECONDS = 60
 
+/** Why Better Auth is sending a verification email: a new account, a new address, or a resend. */
+export type VerificationReason = 'new-account' | 'new-address' | 'resend'
+
 /**
- * Whether Better Auth is calling `sendVerificationEmail` because someone asked for a resend.
- * Only then does the cooldown apply: sign-up and an email change send the first email for an
- * address, which must always go. Better Auth passes the triggering request as the hook's second
- * argument.
+ * Why Better Auth is calling `sendVerificationEmail`, read from the request it passes as the
+ * hook's second argument. `/send-verification-email` is a resend. An email change sends from
+ * `/change-email` (an unverified account's, straight to the new address) or from `/verify-email`
+ * (a verified account's, once the link sent to the current address is opened). Every other
+ * caller is a sign-up: the email form, or a social sign-up whose provider did not verify the
+ * address.
+ */
+export function verificationReason(request: Request | undefined): VerificationReason {
+    const path = requestPath(request)
+    if (path.endsWith('/send-verification-email')) return 'resend'
+    if (path.endsWith('/change-email') || path.endsWith('/verify-email')) return 'new-address'
+    return 'new-account'
+}
+
+/**
+ * Whether someone asked for this verification email again. Only then does the cooldown apply:
+ * sign-up and an email change send the first email for an address, which must always go.
  */
 export function isVerificationResendRequest(request: Request | undefined): boolean {
-    if (!request) return false
+    return verificationReason(request) === 'resend'
+}
+
+function requestPath(request: Request | undefined): string {
+    if (!request) return ''
     try {
-        return new URL(request.url).pathname.endsWith('/send-verification-email')
+        return new URL(request.url).pathname
     } catch {
-        return false
+        return ''
     }
 }
 
