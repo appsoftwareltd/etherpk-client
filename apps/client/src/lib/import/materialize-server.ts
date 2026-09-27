@@ -20,6 +20,7 @@
  */
 
 import { mapWithPool } from '$lib/concurrency'
+import { formatBytes } from '@appsoftwareltd/etherpk-shared'
 import type { AssetStore } from '$lib/storage/fs/asset-store'
 import { frontmatterIdentity, syncedImportText } from '$lib/document/frontmatter/identity'
 import { sanitizeGraphSettings } from '$lib/storage/fs/graph-settings'
@@ -180,7 +181,7 @@ export async function materializeToServer(
     for (const asset of skipped) {
         converted.report.push({
             category: 'not-stored',
-            detail: `"${asset.fileName}" (${formatSize(asset.bytes)}) was not uploaded: ${asset.detail}. Documents that reference it still point at the original file.`,
+            detail: `"${asset.fileName}" (${formatBytes(asset.bytes)}) was not uploaded: ${asset.detail}. Documents that reference it still point at the original file.`,
         })
     }
 
@@ -274,11 +275,4 @@ export async function materializeToServer(
         totalDocuments: total,
         skippedAssets: skipped,
     }
-}
-
-/** Sizes in a user-facing sentence, where "536870912 bytes" helps nobody. */
-function formatSize(bytes: number): string {
-    if (bytes >= 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`
-    if (bytes >= 1024 * 1024) return `${Math.round(bytes / (1024 * 1024))} MB`
-    return `${Math.max(1, Math.round(bytes / 1024))} KB`
 }

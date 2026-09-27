@@ -1,4 +1,4 @@
-import type { EntitlementLimits } from '@appsoftwareltd/etherpk-shared'
+import { type EntitlementLimits, formatBytes } from '@appsoftwareltd/etherpk-shared'
 import type { SourceFile } from './types'
 
 /** 4 MiB, matching the Server Asset Store's chunking - the chunk allowance is in these units. */
@@ -34,16 +34,10 @@ export function oversizeAssets(files: SourceFile[], limits: Pick<EntitlementLimi
     return oversize
 }
 
-/** "big.bin (312 MB)" - the shape the dialog and the Import Report both want. */
+/** "big.bin (312 MiB)" - the shape the dialog and the Import Report both want. */
 export function describeOversize(asset: OversizeAsset): string {
     const name = asset.path.split('/').pop() ?? asset.path
-    return `${name} (${formatSize(asset.bytes)})`
-}
-
-function formatSize(bytes: number): string {
-    if (bytes >= 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`
-    if (bytes >= 1024 * 1024) return `${Math.round(bytes / (1024 * 1024))} MB`
-    return `${Math.max(1, Math.round(bytes / 1024))} KB`
+    return `${name} (${formatBytes(asset.bytes)})`
 }
 
 function isMarkdown(path: string): boolean {

@@ -23,7 +23,7 @@
      */
     import { onMount } from "svelte";
     import { normalizeDisplaySize } from "$lib/document";
-    import { formatBytes } from "$lib/format-bytes";
+    import { formatBytes } from "@appsoftwareltd/etherpk-shared";
     import {
         type AppInstallState,
         type GraphSettings,

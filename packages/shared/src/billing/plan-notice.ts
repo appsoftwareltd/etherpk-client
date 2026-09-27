@@ -1,7 +1,8 @@
-import type { SyncAccountSummary } from '@appsoftwareltd/etherpk-shared'
+import type { SyncAccountSummary } from '../managed-service'
 
 /**
- * What the Graphs page says about a managed account's plan, beside the plan line:
+ * What the Client's Graphs page and the Sync portal's dashboard say about a managed account's plan,
+ * beside the plan line:
  *
  * - `payment_failed`: a payment failed and Stripe is retrying; the owner can still write.
  * - `payment_overdue`: read-only because a payment is still outstanding.
@@ -34,6 +35,22 @@ export function syncPlanNotice(account: SyncAccountSummary): SyncPlanNotice {
     if (status === 'active' && limits.ownedGraphs === 0) return 'upsell'
     return null
 }
+
+/**
+ * What each plan notice says, in the same sentences on the Client's Graphs page and the Sync
+ * portal's dashboard. The offer to a Free account is each surface's own, since what Free can do
+ * there differs.
+ */
+export const PLAN_NOTICE_TEXT = {
+    payment_failed:
+        'Your last Sync+ payment failed. Fix it from Billing to keep syncing: if it is not paid, the graphs you own become read-only.',
+    payment_overdue:
+        'A Sync+ payment is overdue, so the graphs you own are read-only. You can still open, export and delete them. Fix the payment from Billing to make them writable again.',
+    ended:
+        'Your Sync+ subscription has ended, so the graphs you own are read-only. You can still open, export and delete them. Owned graphs are deleted from the managed service after a retention period, so export anything you want to keep.',
+    unconfirmed:
+        'Your plan cannot be confirmed right now, so the graphs you own are read-only for the moment. Nothing is lost. Reload this page in a few minutes.',
+} as const satisfies Record<Exclude<SyncPlanNotice, 'upsell' | null>, string>
 
 /**
  * Whether the Sync Server accepts writes and new Players on graphs this account owns: the same

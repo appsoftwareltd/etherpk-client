@@ -11,7 +11,7 @@
      */
     import { createSubscriber } from "svelte/reactivity";
 
-    import { formatBytes } from "$lib/format-bytes";
+    import { formatBytes } from "@appsoftwareltd/etherpk-shared";
 
     import { isSpellCheckEnabled, setSpellCheckEnabled, subscribeSpellCheck } from "../../spell-check-preference";
     import { getGraphDictionary, removeDictionaryWords, subscribeGraphDictionary } from "../graph-dictionary";

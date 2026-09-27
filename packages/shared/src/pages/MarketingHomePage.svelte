@@ -185,7 +185,7 @@
             heading: "A folder of markdown is a complete graph",
             intro: "Journals, pages, assets and a small settings folder, and nothing else. Back it up, put it in git, edit it with other tools while EtherPK has it open.",
             items: [
-                { lead: "Import", text: " from Logseq, Obsidian or another EtherPK graph, as a new graph or merged into one, with a report of anything that could not be carried." },
+                { lead: "Import", text: " from Logseq, Obsidian or another EtherPK graph into a new graph, with a report of anything that could not be carried." },
                 { lead: "A local copy of a synced graph", text: ", kept up to date on disk as the same plain files." },
                 { lead: "Export", text: " any graph as a folder of markdown, any time." },
                 { lead: "A plain statement of what is stored where", text: ", and what ever leaves your device." },
@@ -200,10 +200,10 @@
             id: "sync",
             label: "Sync and collaboration",
             heading: "Encrypted on your device before anything is sent",
-            intro: "The Sync Server stores ciphertext and opaque ids. Not your text, not your titles, not the graph's name, not your images. It enforces limits by counting bytes it cannot read.",
+            intro: "The Sync Server stores only ciphertext, filed under ids that carry none of your content: not your text, not your titles, not the graph's name, not your images. It enforces limits by counting bytes it cannot read.",
             items: [
-                { lead: "Every device, live", text: ": real-time co-editing with collaborators' cursors, and offline edits that merge when you are back, in the order you made them." },
-                { lead: "Sharing by invitation", text: " with fingerprint verification. Remove someone and the key rotates, so they see nothing new." },
+                { lead: "Every device, live", text: ": real-time co-editing with collaborators' cursors. Edits made while the connection drops are kept, and merge when you are back in the order you made them." },
+                { lead: "Sharing by invitation", text: ", with a short key fingerprint to compare, so you know the key you share with is theirs." },
                 { lead: "A Recovery Code", text: " per account, stored nowhere, plus device approval, so a new device is usually let in by an existing one with a short code." },
                 { lead: "Phones, tablets, Safari and Firefox", text: " all work with a synced graph." },
             ],
@@ -275,7 +275,7 @@
         "Folder graphs need the File System Access API, which today means a Chromium desktop browser (Chrome, Edge, Brave). Phones, Safari and Firefox work with synced graphs.",
         "End-to-end encryption cuts both ways. Lose every signed-in device and your Recovery Code and nobody can decrypt your synced notes, us included. Keep the code, and keep a local copy if you like belt and braces.",
         "The editor is one text surface. No separate reading mode, no blocks as UI widgets, no rich-text layer hiding the markdown. Some people love that; some don't.",
-        "EtherPK is in alpha. Things will change. The docs say what is built and what is only planned: queries and saved views, kanban boards over tasks, D2 and Excalidraw diagrams, block drag and drop, and working with no network at all are on the second list.",
+        "EtherPK is in alpha. Things will change. The docs say what is built and what is only planned: queries and saved views, kanban boards over tasks, D2 and Excalidraw diagrams, block drag and drop, and working with no network at all are on the second list. Today the app needs a connection to load, and then a synced graph works through a dropped connection.",
     ];
 
     /**

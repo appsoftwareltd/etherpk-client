@@ -6,13 +6,13 @@
  * is lost: the refused operations stay in the durable outbox and are sent again until the server
  * accepts one (graph-sync.ts). What differs is who can do something about it. An owner can
  * restart the plan or fix the payment; a Player can only wait for the owner. The kinds of plan
- * notice are the Graphs page's (sync-plan-notice.ts), so the two surfaces never disagree.
+ * notice are the Graphs page's (`syncPlanNotice` in the shared package), so the two surfaces
+ * never disagree.
  *
  * Pure, so each case is unit tested rather than read off a screenshot.
  */
-import type { QuotaErrorCode } from '@appsoftwareltd/etherpk-shared'
+import type { QuotaErrorCode, SyncPlanNotice } from '@appsoftwareltd/etherpk-shared'
 import type { WriteRefusal } from './graph-sync'
-import type { SyncPlanNotice } from './sync-plan-notice'
 
 export interface WriteRefusalContext {
     refusal: WriteRefusal

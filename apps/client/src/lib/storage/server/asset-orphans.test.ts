@@ -102,7 +102,7 @@ describe('scanOrphanedServerAssets', () => {
         expect(scan.scannedDocuments).toBe(2)
         expect(scan.orphans).toHaveLength(1)
         expect(scan.orphans[0].id).toBe(ORPHAN)
-        expect(scan.orphans[0].label).toContain('3.1 MB')
+        expect(scan.orphans[0].label).toContain('3.1 MiB')
         graph.dispose()
         cache.dispose()
     })

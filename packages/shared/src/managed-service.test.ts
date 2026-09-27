@@ -79,6 +79,11 @@ describe('managed service contracts', () => {
         const overdue = { ...valid, status: 'grace', paymentOverdue: true }
         expect(serviceEntitlementSchema.parse(overdue)).toEqual(overdue)
         expect(() => serviceEntitlementSchema.parse({ ...valid, paymentOverdue: 'yes' })).toThrow()
+
+        // A running trial names its end, a timestamp like the statement's own.
+        const trialing = { ...valid, trialEndsAt: '2026-10-07T10:00:00.000Z' }
+        expect(serviceEntitlementSchema.parse(trialing)).toEqual(trialing)
+        expect(() => serviceEntitlementSchema.parse({ ...valid, trialEndsAt: '7 October' })).toThrow()
     })
 
     it('accepts only aggregate, content-free managed usage', () => {
@@ -132,6 +137,9 @@ describe('managed service contracts', () => {
 
         const overdue = { ...summary, entitlement: { ...summary.entitlement, status: 'read_only', paymentOverdue: true } }
         expect(syncAccountSummarySchema.parse(overdue)).toEqual(overdue)
+
+        const trialing = { ...summary, entitlement: { ...summary.entitlement, trialEndsAt: '2026-10-07T10:00:00.000Z' } }
+        expect(syncAccountSummarySchema.parse(trialing)).toEqual(trialing)
     })
 
     it('supports every browser authentication route while keeping mode and method distinct', () => {

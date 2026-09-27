@@ -124,18 +124,66 @@ describe('convertObsidian', () => {
         expect(text).toContain('- [x] #C dropped idea')
     })
 
-    it('leaves external links, tags, callouts, and fences untouched', async () => {
+    it('leaves external links, tags and fences as they are', async () => {
         const graph = await convertObsidian([
-            src(
-                'note.md',
-                '[site](https://example.com/page.md)\n#hashtag stays\n> [!note] a callout\n```\n![[not-an-embed]]\n```',
-            ),
+            src('note.md', '[site](https://example.com/page.md)\n#hashtag stays\n```\n![[not-an-embed]]\n```'),
         ])
         const text = doc(graph, 'note').text
         expect(text).toContain('[site](https://example.com/page.md)')
         expect(text).toContain('#hashtag stays')
-        expect(text).toContain('> [!note] a callout')
         expect(text).toContain('![[not-an-embed]]')
+    })
+
+    it('removes comments, which Obsidian hides, and lists each with its text', async () => {
+        const graph = await convertObsidian([
+            src(
+                'note.md',
+                [
+                    'before %%hidden inline%% after',
+                    '%%',
+                    'block line one',
+                    'block line two',
+                    '%%',
+                    'kept `%%not a comment%%` in code',
+                    '```',
+                    '%%in a fence%%',
+                    '```',
+                    'an unclosed %% stays',
+                ].join('\n'),
+            ),
+        ])
+        const text = doc(graph, 'note').text
+        expect(text).toContain('before after\nkept `%%not a comment%%` in code\n```\n%%in a fence%%\n```\nan unclosed %% stays')
+        expect(text).not.toContain('hidden inline')
+        expect(text).not.toContain('block line')
+        expect(graph.report.filter((r) => r.category === 'drop').map((r) => r.detail)).toEqual([
+            'Comment removed: "hidden inline"',
+            'Comment removed: "block line one block line two"',
+        ])
+    })
+
+    it('turns a callout into a quote with a bold heading, and says so', async () => {
+        const graph = await convertObsidian([
+            src('note.md', '> [!warning] Mind the gap\n> the body\n\n> [!tip]-\n> folded\n\n> [!NOTE] Note'),
+        ])
+        const text = doc(graph, 'note').text
+        expect(text).toContain('> **Warning: Mind the gap**\n> the body')
+        expect(text).toContain('> **Tip**\n> folded')
+        expect(text).toContain('> **Note**')
+        expect(graph.report.filter((r) => r.category === 'degradation' && r.detail.startsWith('Callout'))).toHaveLength(3)
+    })
+
+    it('reports the footnotes, tags and canvases it keeps as they are', async () => {
+        const graph = await convertObsidian([
+            src('note.md', '# Heading\nA claim[^1] about #project/alpha and #idea, not `#code`.\n\n[^1]: The source.'),
+            src('Board.canvas', '{"nodes":[],"edges":[]}'),
+        ])
+        expect(doc(graph, 'note').text).toContain('A claim[^1] about #project/alpha and #idea')
+        expect(graph.report.filter((r) => r.category === 'unsupported').map((r) => r.detail)).toEqual([
+            'Canvas "Board.canvas" imported as a file: EtherPK has no canvas view',
+            'Footnotes kept as written: EtherPK does not render them',
+            'Tags kept as plain text (#project/alpha, #idea): EtherPK has no tags',
+        ])
     })
 
     it('keeps other frontmatter keys and replaces a conflicting title', async () => {

@@ -17,6 +17,7 @@ import { normaliseAliases } from '$lib/document/frontmatter/identity'
 import { type PlannedAsset, normaliseRef, planAssets } from './assets'
 import { buildFrontmatter, createFenceTracker, dedupeConcept, outsideInlineCode, scopedConceptName } from './convert-shared'
 import { logseqDateToIso } from './logseq-dates'
+import { calloutHeading, obsidianComments, unsupportedConstructs, withoutComments } from './obsidian-constructs'
 import { convertObsidianTaskLine } from './obsidian-tasks'
 import { baseName, contentFiles, dirName, findFile, isMarkdownPath, readText } from './source'
 import { breathe, type ConvertedDocument, type ConvertedGraph, type ImportControl, type ReportEntry, type SourceFile } from './types'
@@ -78,6 +79,14 @@ export async function convertObsidian(files: SourceFile[], control?: ImportContr
         { control },
     )
     const mdFiles = content.filter((f) => isMarkdownPath(f.path))
+    // A canvas is Obsidian's JSON board: it arrives as a file, and a link to it downloads the JSON.
+    for (const planned of assetPlan.byPath.values()) {
+        if (!/\.canvas$/i.test(planned.path)) continue
+        report.push({
+            category: 'unsupported',
+            detail: `Canvas "${baseName(planned.path)}" imported as a file: EtherPK has no canvas view`,
+        })
+    }
 
     // ---- Identity: journals by date, pages flattened with scoped-collision handling.
     const notes: ObsidianNote[] = []
@@ -237,15 +246,24 @@ export async function convertObsidian(files: SourceFile[], control?: ImportContr
     }
 
     // ---- Body conversion.
-    const convertBody = (note: ObsidianNote): string => {
+    const convertBody = (note: ObsidianNote, body: string): string => {
         const inFence = createFenceTracker()
         const out: string[] = []
-        for (const raw of note.body.split('\n')) {
+        for (const raw of body.split('\n')) {
             if (inFence(raw)) {
                 out.push(raw)
                 continue
             }
-            let line = convertObsidianTaskLine(raw, note.concept, report)
+            // A callout header becomes a quote with a bold heading; its body lines already are one.
+            const callout = calloutHeading(raw)
+            if (callout) {
+                report.push({
+                    category: 'degradation',
+                    concept: note.concept,
+                    detail: `Callout \`[!${callout.type}]\` became a quote with a bold heading`,
+                })
+            }
+            let line = convertObsidianTaskLine(callout ? callout.line : raw, note.concept, report)
             line = outsideInlineCode(line, (segment) => {
                 let text = segment
 
@@ -334,7 +352,29 @@ export async function convertObsidian(files: SourceFile[], control?: ImportContr
     for (const note of notes) {
         await breathe(control)
         onProgress?.({ label: 'Converting documents', done: ++converted, total: notes.length })
-        const body = convertBody(note)
+        // Comments are hidden in Obsidian and would show, and publish, here: removed, and each
+        // listed with its text so nothing in them is lost.
+        const comments = obsidianComments(note.body)
+        for (const comment of comments) {
+            report.push({
+                category: 'drop',
+                concept: note.concept,
+                detail: `Comment removed: "${comment.text.replace(/\s+/g, ' ').trim()}"`,
+            })
+        }
+        const uncommented = withoutComments(note.body, comments)
+        const { footnotes, tags } = unsupportedConstructs(uncommented)
+        if (footnotes) {
+            report.push({ category: 'unsupported', concept: note.concept, detail: 'Footnotes kept as written: EtherPK does not render them' })
+        }
+        if (tags.length > 0) {
+            report.push({
+                category: 'unsupported',
+                concept: note.concept,
+                detail: `Tags kept as plain text (${tags.join(', ')}): EtherPK has no tags`,
+            })
+        }
+        const body = convertBody(note, uncommented)
         const { title, ...rest } = withAliasesList(note.frontmatter, note.aliases)
         if (typeof title === 'string' && title.trim() !== '' && title !== note.concept) {
             report.push({

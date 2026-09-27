@@ -68,7 +68,7 @@ describe('spelling notices', () => {
         const stop = bindSpellingNotices(fake.service)
         fake.set([german('downloading')], 'loading')
         vi.advanceTimersByTime(2500)
-        expect(getNotices().map((n) => n.text)).toEqual(['Downloading the German dictionary (330.0 KB)…'])
+        expect(getNotices().map((n) => n.text)).toEqual(['Downloading the German dictionary (330 KiB)…'])
         fake.set([german('ready')], 'ready')
         expect(getNotices()).toEqual([])
         stop()

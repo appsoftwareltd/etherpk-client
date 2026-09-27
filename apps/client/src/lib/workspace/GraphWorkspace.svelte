@@ -368,7 +368,7 @@
     } from "$lib/storage/server/export/export-scratch";
     import type { ExportTabProps } from "$lib/sync/ui/mirror-tab";
     import { describeDeviceStorage } from "$lib/storage/storage-persistence";
-    import { formatBytes } from "$lib/format-bytes";
+    import { formatBytes } from "@appsoftwareltd/etherpk-shared";
     import { portableFileStem } from "$lib/document/wikilink";
     import {
         claimLockWhenFree,
@@ -484,7 +484,7 @@
         type SyncIndicator,
     } from "$lib/sync/sync-indicator";
     import { describeWriteRefusal, type WriteRefusalCopy } from "$lib/sync/write-refusal";
-    import { syncPlanNotice, type SyncPlanNotice } from "$lib/sync/sync-plan-notice";
+    import { syncPlanNotice, type SyncPlanNotice } from "@appsoftwareltd/etherpk-shared";
     import SyncStateChip from "$lib/sync/ui/SyncStateChip.svelte";
     import {
         createGraphKeyring,

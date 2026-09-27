@@ -163,10 +163,10 @@ describe('uploadDetail', () => {
 
     it('appends the batch bytes before and after when a stored file was optimised', () => {
         expect(uploadDetail({ uploaded: 1, reused: 0, optimized: 1, givenBytes: 3_250_585, storedBytes: 491_520 })).toBe(
-            '1 asset uploaded, 3.1 MB → 480.0 KB',
+            '1 asset uploaded, 3.1 MiB → 480 KiB',
         )
         expect(uploadDetail({ uploaded: 3, reused: 1, optimized: 2, givenBytes: 2000, storedBytes: 900 })).toBe(
-            '2 assets uploaded, 1 already in this graph, reused, 2.0 KB → 900 B',
+            '2 assets uploaded, 1 already in this graph, reused, 2 KiB → 900 B',
         )
     })
 })

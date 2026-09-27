@@ -14,7 +14,7 @@
 
 import { runActivity } from '$lib/activity/store'
 import type { Activity } from '$lib/activity/types'
-import { formatBytes } from '$lib/format-bytes'
+import { formatBytes } from '@appsoftwareltd/etherpk-shared'
 import type { AssetStore } from '$lib/storage/fs/asset-store'
 import type { EditorView } from '@codemirror/view'
 

@@ -17,7 +17,7 @@
     import { DEMO_GRAPH_ID, openDemoGraph } from "$lib/demo/demo-graph";
     import { fetchDemoBundle, type SeedProgress } from "$lib/demo/seed";
     import { todayISO } from "$lib/document/calendar/month-grid-core";
-    import { formatBytes } from "$lib/format-bytes";
+    import { formatBytes } from "@appsoftwareltd/etherpk-shared";
     import { createIdbGraphRegistry, createWebFsDirectoryAdapter, getOpfsRoot } from "$lib/storage";
     import { forgetGraphDeviceMemory } from "$lib/workspace/graph-device-memory";
 

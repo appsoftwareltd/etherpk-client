@@ -35,6 +35,6 @@ describe('asset pre-flight', () => {
 
     it('describes a file the way the dialog shows it', () => {
         expect(describeOversize({ path: 'assets/holiday.mp4', bytes: 312 * 1024 * 1024, reason: 'size' }))
-            .toBe('holiday.mp4 (312 MB)')
+            .toBe('holiday.mp4 (312 MiB)')
     })
 })

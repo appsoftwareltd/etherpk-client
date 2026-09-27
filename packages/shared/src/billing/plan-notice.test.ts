@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import type { SyncAccountSummary } from '@appsoftwareltd/etherpk-shared'
-import { ownerCanWrite, syncPlanNotice } from './sync-plan-notice'
+import type { SyncAccountSummary } from '../managed-service'
+import { ownerCanWrite, syncPlanNotice } from './plan-notice'
 
 const syncPlusLimits = { ownedGraphs: 25, ownedStorageBytes: 50_000, playersPerGraph: 10, assetBytes: 100, assetChunks: 10 }
 const freeLimits = { ownedGraphs: 0, ownedStorageBytes: 0, playersPerGraph: 0, assetBytes: 0, assetChunks: 0 }

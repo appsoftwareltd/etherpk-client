@@ -85,13 +85,25 @@
         SYNC_CONFIG_STORAGE_KEY,
         VaultLockedError,
     } from "$lib/sync";
-    import { PUBLIC_DOCS_URL, safeReturnPath, type SyncAccountSummary } from "@appsoftwareltd/etherpk-shared";
+    import {
+        PLAN_NOTICE_TEXT,
+        PUBLIC_DOCS_URL,
+        UNLIMITED_ALLOWANCE,
+        entitlementStatusLabel,
+        formatBytes,
+        formatUsage,
+        isServerAllowance,
+        ownerCanWrite,
+        planLabel,
+        safeReturnPath,
+        syncPlanNotice,
+        type SyncAccountSummary,
+    } from "@appsoftwareltd/etherpk-shared";
     import { managedSignInHref } from "$lib/auth/sign-in-links";
     import { EnvelopeError, fromBase64Url, openVault, type GraphKeyring } from "$lib/crypto";
     import { promptRecoveryCode } from "$lib/sync/recovery-code-prompt";
     import { describeSyncFailure } from "$lib/sync/sync-error-copy";
     import { describeConnectionCheckFailure } from "$lib/sync/connection-check";
-    import { ownerCanWrite, syncPlanNotice } from "$lib/sync/sync-plan-notice";
     import InviteDialog from "$lib/sync/ui/InviteDialog.svelte";
     import UnlockDialog from "$lib/sync/ui/UnlockDialog.svelte";
     import ResetDialog from "$lib/sync/ui/ResetDialog.svelte";
@@ -107,7 +119,6 @@
         type UnsentDocument,
     } from "$lib/sync/unsent-changes";
     import ImportGraphDialog from "$lib/import/ui/ImportGraphDialog.svelte";
-    import { formatBytes } from "$lib/format-bytes";
     import {
         ManagedTokenError,
         clearManagedAccessToken,
@@ -1265,12 +1276,22 @@
         }
     }
 
-    /** The import dialog's synced-destination target, when this device is configured for sync. */
-    /** Plan ids are code names on the wire; the product names belong on screen. */
-    function planLabel(plan: string): string {
-        return plan === "sync_plus" ? "Sync+" : plan === "free" ? "Free" : plan;
+    const dayFormat = new Intl.DateTimeFormat(undefined, { dateStyle: "medium" });
+    const formatDay = (iso: string) => dayFormat.format(new Date(iso));
+
+    /**
+     * What the account owns, against its allowance where it has one: a self-hosted server with
+     * no limits shows the usage alone rather than "of Unlimited".
+     */
+    function ownedUsageLine(entitlement: SyncAccountSummary["entitlement"]): string {
+        const { usage, limits } = entitlement;
+        const oneGraphUnlimited = usage.ownedGraphs === 1 && limits.ownedGraphs >= UNLIMITED_ALLOWANCE;
+        const graphs = `${formatUsage(usage.ownedGraphs, limits.ownedGraphs, "count")} ${oneGraphUnlimited ? "owned graph" : "owned graphs"}`;
+        const storage = `${formatUsage(usage.ownedStorageBytes, limits.ownedStorageBytes, "bytes")} owned storage`;
+        return `${graphs} · ${storage}`;
     }
 
+    /** The import dialog's synced-destination target, when this device is configured for sync. */
     function importSyncTarget() {
         const config = readSyncConfig();
         const connection = config ? resolveSyncConnection(config) : null;
@@ -2501,16 +2522,21 @@
                         {/if}
                     </div>
                 {:else}
-                    <p class="mt-3 text-sm text-gray-500 dark:text-gray-400">
-                        {planLabel(syncAccount.entitlement.plan)} plan · {syncAccount.entitlement.status.replace(
-                            "_",
-                            " ",
-                        )} · {syncAccount.entitlement.usage.ownedGraphs} of {syncAccount
-                            .entitlement.limits.ownedGraphs} owned graphs · {formatBytes(
-                            syncAccount.entitlement.usage.ownedStorageBytes,
-                        )} of {formatBytes(
-                            syncAccount.entitlement.limits.ownedStorageBytes,
-                        )} owned storage
+                    <!-- A server's own allowance is not a plan anyone holds, so it has no plan
+                         line: only what the account owns against it. -->
+                    {#if !isServerAllowance(syncAccount.entitlement.plan)}
+                        <p data-testid="sync-plan-line" class="mt-3 text-sm font-medium text-gray-700 dark:text-gray-200">
+                            {planLabel(syncAccount.entitlement.plan)} · {entitlementStatusLabel(
+                                syncAccount.entitlement,
+                                formatDay,
+                            )}
+                        </p>
+                    {/if}
+                    <p
+                        data-testid="sync-usage-line"
+                        class="{isServerAllowance(syncAccount.entitlement.plan) ? 'mt-3' : 'mt-1'} text-sm text-gray-500 dark:text-gray-400"
+                    >
+                        {ownedUsageLine(syncAccount.entitlement)}
                     </p>
                     {#if planNotice === "payment_failed" || planNotice === "payment_overdue"}
                         <div
@@ -2520,9 +2546,7 @@
                             class="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm leading-5 text-amber-900 dark:border-amber-400/20 dark:bg-amber-400/10 dark:text-amber-100"
                         >
                             <p>
-                                {planNotice === "payment_failed"
-                                    ? "Your last Sync+ payment failed. Fix it from Billing to keep syncing: if it is not paid, the graphs you own become read-only."
-                                    : "A Sync+ payment is overdue, so the graphs you own are read-only. You can still open, export and delete them. Fix the payment from Billing to make them writable again."}
+                                {PLAN_NOTICE_TEXT[planNotice]}
                             </p>
                             {#if corporateBillingUrl}
                                 <a
@@ -2539,13 +2563,7 @@
                             data-testid="sync-read-only-notice"
                             class="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm leading-5 text-amber-900 dark:border-amber-400/20 dark:bg-amber-400/10 dark:text-amber-100"
                         >
-                            <p>
-                                Your Sync+ subscription has ended, so the graphs
-                                you own are read-only. You can still open, export
-                                and delete them. Owned graphs are deleted from the
-                                managed service after a retention period, so export
-                                anything you want to keep.
-                            </p>
+                            <p>{PLAN_NOTICE_TEXT.ended}</p>
                             {#if corporateBillingUrl}
                                 <a
                                     href={corporateBillingUrl}
@@ -2561,9 +2579,7 @@
                             data-testid="sync-plan-unconfirmed"
                             class="mt-2 text-sm leading-5 text-amber-800 dark:text-amber-200"
                         >
-                            Your plan cannot be confirmed right now, so the
-                            graphs you own are read-only for the moment. Nothing
-                            is lost. Reload this page in a few minutes.
+                            {PLAN_NOTICE_TEXT.unconfirmed}
                         </p>
                     {/if}
                 {/if}

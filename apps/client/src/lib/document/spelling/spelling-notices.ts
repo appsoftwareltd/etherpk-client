@@ -11,7 +11,7 @@
  */
 
 import { dismissNotice, showNotice } from '$lib/activity/notices'
-import { formatBytes } from '$lib/format-bytes'
+import { formatBytes } from '@appsoftwareltd/etherpk-shared'
 
 import type { LanguageStatus, SpellService } from './spell-service'
 

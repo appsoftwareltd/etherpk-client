@@ -20,6 +20,7 @@
 
 import { type GraphKeyring, contextAad, fromBase64Url, keyForEpoch, openSymmetric } from '$lib/crypto'
 import { mapWithPool } from '$lib/concurrency'
+import { formatBytes } from '@appsoftwareltd/etherpk-shared'
 import type { ProtectedTextReader } from '$lib/document/protection/protected-text-reader'
 import { contentBlocked } from '$lib/sync/doc-sync'
 import type { GraphSync } from '$lib/sync/graph-sync'
@@ -152,7 +153,7 @@ export async function scanOrphanedServerAssets(deps: ServerAssetOrphanDeps): Pro
 
 /** The file name the uploader chose, then the size; the id prefix only when no name could be read. */
 function orphanLabel(asset: ListedAsset, name: string | undefined): string {
-    return name ? `${name} (${formatSize(asset.size)})` : `${asset.assetId.slice(0, 8)}… (${formatSize(asset.size)})`
+    return name ? `${name} (${formatBytes(asset.size)})` : `${asset.assetId.slice(0, 8)}… (${formatBytes(asset.size)})`
 }
 
 /**
@@ -215,10 +216,4 @@ export async function deleteOrphanedServerAssets(
         else if (res.status !== 404) throw new Error(`asset delete failed: ${res.status}`)
     }
     return removed
-}
-
-function formatSize(bytes: number): string {
-    if (bytes >= 1_048_576) return `${(bytes / 1_048_576).toFixed(1)} MB`
-    if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KB`
-    return `${bytes} B`
 }

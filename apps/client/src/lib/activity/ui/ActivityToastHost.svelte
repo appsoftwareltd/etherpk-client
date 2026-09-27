@@ -17,7 +17,7 @@
      * the only progress surface, and a modal over it would be the competing surface the
      * glossary entry rules out.
      */
-    import { formatBytes } from "$lib/format-bytes";
+    import { formatBytes } from "@appsoftwareltd/etherpk-shared";
     import { onMount } from "svelte";
 
     import { cancelActivity, dismissActivity, subscribeActivities } from "../store";

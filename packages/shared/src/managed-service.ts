@@ -74,6 +74,13 @@ export type EntitlementLimits = z.infer<typeof entitlementLimitsSchema>
  */
 const paymentOverdueSchema = z.literal(true).optional()
 
+/**
+ * When the Billing Account's trial ends, set only while the trial runs, so the Client and the Sync
+ * portal can say "Trial, ends 7 Oct" as the Billing page does. Omitted otherwise, as
+ * `paymentOverdue` is.
+ */
+const trialEndsAtSchema = z.iso.datetime({ offset: true }).optional()
+
 export const serviceEntitlementSchema = z.strictObject({
     eventId: z.uuid(),
     issuer: httpsUrl,
@@ -85,6 +92,7 @@ export const serviceEntitlementSchema = z.strictObject({
     plan: z.string().min(1).max(64),
     limits: entitlementLimitsSchema,
     paymentOverdue: paymentOverdueSchema,
+    trialEndsAt: trialEndsAtSchema,
     effectiveAt: z.iso.datetime({ offset: true }),
     expiresAt: z.iso.datetime({ offset: true }),
 }).refine(
@@ -140,6 +148,7 @@ export const syncAccountSummarySchema = z.strictObject({
         status: serviceEntitlementSchema.shape.status,
         limits: entitlementLimitsSchema,
         paymentOverdue: paymentOverdueSchema,
+        trialEndsAt: trialEndsAtSchema,
         usage: z.strictObject({
             ownedGraphs: z.int().nonnegative(),
             ownedStorageBytes: z.int().nonnegative(),
