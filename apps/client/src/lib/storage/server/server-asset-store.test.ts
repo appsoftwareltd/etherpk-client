@@ -165,6 +165,34 @@ describe('ServerAssetStore', () => {
         expect(puts).toBe(4)
     })
 
+    it('says the connection dropped, not CORS, when the browser is offline', async () => {
+        // Offline, the same bare network error is the connection, and blaming a bucket policy
+        // the person cannot touch (on the managed service) sends them the wrong way.
+        const { fetchImpl } = fakeBackend()
+        const failingFetch = (async (input: string | URL | Request, init?: RequestInit) => {
+            const url = typeof input === 'string' ? input : input.toString()
+            if (url.startsWith('mem://obj/') && init?.method === 'PUT') throw new TypeError('Failed to fetch')
+            return fetchImpl(input, init)
+        }) as typeof fetch
+        vi.stubGlobal('navigator', { onLine: false })
+        try {
+            const store = createServerAssetStore({
+                graphId: 'g1',
+                keyring: createGraphKeyring('g1'),
+                baseUrl: 'https://sync.example',
+                syncToken: fixedSyncToken('sync-tok'),
+                fetch: failingFetch,
+                newAssetId: () => '00000000-0000-4000-8000-000000000002',
+                retry: { attempts: 2, sleep: async () => {} },
+            })
+            await expect(
+                store.save({ name: 'pic.png', bytes: new Uint8Array(16) as Uint8Array<ArrayBuffer>, type: 'image/png' }),
+            ).rejects.toThrow('The connection dropped while uploading to the storage bucket.')
+        } finally {
+            vi.unstubAllGlobals()
+        }
+    })
+
     it('presents a freshly sourced token on every request, not one captured at construction', async () => {
         // The live failure this pins: an import held the token minted at its start, uploaded
         // for exactly fifteen minutes, and then every `begin` call 401'd.

@@ -65,6 +65,8 @@
         lockVault,
         lockEveryVault,
         acceptInvite as acceptInviteFlow,
+        inviteGraphName,
+        type PendingInvite,
         regenerateRecoveryCode,
         type RecoveryCodeRegeneration,
         createGraphNamePublisher,
@@ -119,6 +121,7 @@
         type UnsentDocument,
     } from "$lib/sync/unsent-changes";
     import ImportGraphDialog from "$lib/import/ui/ImportGraphDialog.svelte";
+    import { importMarkers, type ImportMarker } from "$lib/import/import-marker";
     import {
         ManagedTokenError,
         clearManagedAccessToken,
@@ -187,14 +190,53 @@
     let showReset = $state(false);
 
     // Pending invites (invitee side).
-    let invites = $state<
-        Array<{
-            id: string;
-            graphId: string;
-            rootDocId: string;
-            sealedKeyring: string;
-        }>
-    >([]);
+    let invites = $state<PendingInvite[]>([]);
+    /**
+     * Each invite's graph name, read from its sealed keyring while the keys are unlocked
+     * (`inviteGraphName`); an invite with no entry says "a shared graph".
+     */
+    let inviteNames = $state<Record<string, string>>({});
+    /**
+     * Imports a closed or reloaded tab cut off partway (import-marker.ts), with what each left:
+     * a synced graph partly uploaded, or a folder partly written.
+     */
+    let interruptedImports = $state<ImportMarker[]>([]);
+    /** The interrupted import whose Delete waits for its confirmation, and one being deleted. */
+    let confirmingPartialDelete = $state<string | null>(null);
+    let deletingPartial = $state<string | null>(null);
+
+    function forgetInterruptedImport(item: ImportMarker) {
+        importMarkers().forget(item.id);
+        interruptedImports = interruptedImports.filter((other) => other.id !== item.id);
+    }
+
+    /** Remove what an interrupted synced import left on the server. A graph already gone is done. */
+    async function deletePartialImport(item: ImportMarker) {
+        const api = syncApi();
+        if (!item.graphId || deletingPartial) return;
+        if (!api) {
+            setStatus(noSyncConnectionMessage(), "error");
+            return;
+        }
+        deletingPartial = item.id;
+        try {
+            await api.deleteGraph(item.graphId).catch((err: unknown) => {
+                if (!(err instanceof SyncApiError && err.status === 404)) throw err;
+            });
+            forgetInterruptedImport(item);
+            setStatus(`Deleted the partial graph left by the import of "${item.name}".`);
+            await refresh();
+        } catch (err) {
+            setStatus(describeSyncFailure(err, "delete the partial graph"), "error");
+        } finally {
+            deletingPartial = null;
+            confirmingPartialDelete = null;
+        }
+    }
+
+    /** The invite whose Decline is waiting for its confirmation, and one being withdrawn. */
+    let decliningInvite = $state<string | null>(null);
+    let withdrawingInvite = $state<string | null>(null);
 
     // The Synced graphs management panel: server-side memberships cross-referenced with the
     // local registry for names (the server never knows them — ADR 0024).
@@ -277,6 +319,24 @@
               ? "Your plan cannot be confirmed right now, so no synced graph can be created. Try again in a few minutes."
               : "Synced graphs need Sync+. Start it from Billing to create one.",
     );
+    /**
+     * Where this account's address is verified: Corporate's Account page on Managed Sync, the
+     * server's own otherwise. Null when neither is known here.
+     */
+    const verifyEmailUrl = $derived.by(() => {
+        if (!syncAccount) return null;
+        if (syncAccount.authentication.mode === "managed") {
+            return (page.data.corporateAccountUrl as string | null | undefined) ?? null;
+        }
+        const origin = readActiveSyncAccount()?.serverOrigin;
+        return origin ? `${origin}/account` : null;
+    });
+    /** What somebody this account invites must have on this server, for the invite dialog to name. */
+    const inviteeNeeds = $derived({
+        account: syncAccount?.authentication.mode === "standalone" ? "an account on this server" : "an EtherPK account",
+        // An older server does not say; the stricter reading names the step that may be missing.
+        verifiedEmail: syncAccount?.invitesNeedVerifiedEmail ?? true,
+    });
     /** Owned graphs refuse writes and new Players while the owner's plan is not active. */
     const ownedGraphsWritable = $derived(ownerCanWrite(syncAccount));
     // Does this account have a vault at all? false right after a reset / on a brand-new
@@ -433,7 +493,7 @@
     let installedApp = $state(false);
     const deletePlayerCount = $derived(
         deleteConfirm
-            ? (deleteConfirm.members ?? []).filter((m) => m.role === "player")
+            ? (deleteConfirm.members ?? []).filter((m) => m.role === "player" && m.status !== "invited")
                   .length
             : 0,
     );
@@ -551,6 +611,21 @@
      * and account changes stay with the full refresh.
      */
     let planRecheck: Promise<void> | null = null;
+
+    /**
+     * Re-read the pending invites and the owned graphs' rosters when the tab comes back into
+     * view: an invite sent, accepted, declined or cancelled in another tab or on another device
+     * otherwise showed only after a reload. At most every thirty seconds, since each owned graph's
+     * roster is a request of its own.
+     */
+    let lastSharingRefresh = 0;
+    function refreshSharingQuietly() {
+        if (document.visibilityState !== "visible" || syncAuthState !== "authenticated") return;
+        if (Date.now() - lastSharingRefresh < 30_000) return;
+        lastSharingRefresh = Date.now();
+        void refreshInvites();
+        void refreshSynced();
+    }
     function recheckPlanQuietly() {
         if (
             document.visibilityState !== "visible" ||
@@ -810,6 +885,76 @@
             invites = await api.listInvites();
         } catch {
             invites = [];
+            return;
+        }
+        void readInviteNames(api, invites);
+    }
+
+    /**
+     * Name each invite's graph from its sealed keyring. Needs the keys unlocked here; locked,
+     * the invite says "a shared graph" and the name arrives with Accept. Best-effort: a vault
+     * that will not open leaves the names out rather than failing the list.
+     */
+    async function readInviteNames(api: SyncApi, listed: PendingInvite[]) {
+        if (listed.length === 0 || !getCachedWrapKey()) return;
+        try {
+            const opened = await openHeldVault(api);
+            if (!opened) return;
+            const named: Record<string, string> = {};
+            for (const invite of listed) {
+                const name = await inviteGraphName(invite, opened.vault.identityPrivateKey);
+                if (name) named[invite.id] = name;
+            }
+            inviteNames = named;
+        } catch (err) {
+            console.warn("[graphs] could not open the vault to name pending invites", err);
+        }
+    }
+
+    /**
+     * Decline an invite: it goes from the list and cannot be accepted any more; the owner
+     * would need to invite again. An invite already withdrawn (cancelled by its owner, or
+     * declined in another tab) comes off the list with a word to that effect.
+     */
+    async function declineInvite(invite: PendingInvite) {
+        const api = syncApi();
+        if (!api || withdrawingInvite) return;
+        withdrawingInvite = invite.id;
+        try {
+            await api.withdrawInvite(invite.id);
+            invites = invites.filter((pending) => pending.id !== invite.id);
+            setStatus("Invite declined.");
+        } catch (err) {
+            if (err instanceof SyncApiError && err.status === 404) {
+                invites = invites.filter((pending) => pending.id !== invite.id);
+                setStatus("That invite had already been withdrawn.");
+            } else {
+                setStatus(describeSyncFailure(err, "decline the invite"), "error");
+            }
+        } finally {
+            withdrawingInvite = null;
+            decliningInvite = null;
+        }
+    }
+
+    /** Cancel an invite this owner sent: the invitee can no longer accept it. */
+    async function cancelInvite(graph: SyncedGraphView, member: SyncedMember) {
+        const api = syncApi();
+        if (!api || !member.inviteId || withdrawingInvite) return;
+        withdrawingInvite = member.inviteId;
+        clearRowStatus(graph.id);
+        try {
+            await api.withdrawInvite(member.inviteId);
+            setRowStatus(graph.id, `Invite to ${member.email} cancelled.`);
+        } catch (err) {
+            if (err instanceof SyncApiError && err.status === 404) {
+                setRowStatus(graph.id, `${member.email} is no longer invited: they accepted or declined meanwhile.`);
+            } else {
+                setRowStatus(graph.id, describeSyncFailure(err, "cancel the invite"), "error");
+            }
+        } finally {
+            withdrawingInvite = null;
+            await refreshSynced();
         }
     }
 
@@ -1822,8 +1967,9 @@
         const api = syncApi();
         if (!api) return;
         clearRowStatus(graph.id);
+        // Only somebody who has accepted holds the graph's key and can take it over.
         const candidates = (graph.members ?? []).filter(
-            (m) => m.role === "player",
+            (m) => m.role === "player" && m.status !== "invited",
         );
         transferDialog = { api, graph, candidates };
     }
@@ -2335,6 +2481,9 @@
         // locks them. The active account still names whose keys they are.
         if (page.url.searchParams.get("managed") === "signed-out") lockVault();
         announceArrival();
+        void importMarkers()
+            .findInterrupted()
+            .then((found) => (interruptedImports = found));
         // A connection made or dropped in another tab reaches this one through the storage event;
         // this page's own changes either refresh it themselves or navigate away.
         const onStorage = (event: StorageEvent) => {
@@ -2362,7 +2511,12 @@
 </script>
 
 <svelte:head><title>Knowledge graphs · EtherPK</title></svelte:head>
-<svelte:document onvisibilitychange={recheckPlanQuietly} />
+<svelte:document
+    onvisibilitychange={() => {
+        recheckPlanQuietly();
+        refreshSharingQuietly();
+    }}
+/>
 
 <div class="mx-auto max-w-3xl px-4 py-8 space-y-6">
     <header class="flex flex-wrap items-center justify-between gap-3">
@@ -2582,6 +2736,48 @@
                             {PLAN_NOTICE_TEXT.unconfirmed}
                         </p>
                     {/if}
+                {/if}
+                <!-- What others need of this account before they can share a graph with it: the
+                     server says nobody is found until both are done, whatever the reason. -->
+                {#if syncAccount.invitesNeedVerifiedEmail && syncAccount.principal.emailVerified === false}
+                    <div
+                        role="status"
+                        data-testid="sharing-needs-verified-email"
+                        class="mt-3 rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm leading-5 text-gray-700 dark:border-white/10 dark:bg-white/5 dark:text-gray-300"
+                    >
+                        <p>
+                            Verify your email address so people can share
+                            graphs with you. Until then, an invite to
+                            {syncAccount.principal.email ?? "your address"} does not
+                            find you.
+                        </p>
+                        {#if verifyEmailUrl}
+                            <a
+                                href={verifyEmailUrl}
+                                data-sveltekit-reload
+                                class="mt-2 inline-flex rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-white dark:border-gray-700 dark:text-gray-200 dark:hover:bg-white/5"
+                                >Verify it on your Account page</a
+                            >
+                        {/if}
+                    </div>
+                {/if}
+                {#if vaultExists === false}
+                    <div
+                        role="status"
+                        data-testid="sharing-needs-keys"
+                        class="mt-3 rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm leading-5 text-gray-700 dark:border-white/10 dark:bg-white/5 dark:text-gray-300"
+                    >
+                        <p>
+                            Create encryption keys so people can share graphs
+                            with you. Your first synced graph creates them too.
+                        </p>
+                        <button
+                            type="button"
+                            onclick={createKeys}
+                            class="mt-2 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-white dark:border-gray-700 dark:text-gray-200 dark:hover:bg-white/5"
+                            >Create encryption keys</button
+                        >
+                    </div>
                 {/if}
             {:else if syncAuthState === "checking"}
                 <p class="text-sm text-gray-500 dark:text-gray-400">
@@ -3110,6 +3306,78 @@
     {/if}
 
 
+    {#if interruptedImports.length > 0}
+        <section
+            data-testid="interrupted-imports"
+            aria-labelledby="interrupted-imports-heading"
+            class="rounded-xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-400/20 dark:bg-amber-400/10"
+        >
+            <h2 id="interrupted-imports-heading" class="text-sm font-semibold text-amber-950 dark:text-amber-100">
+                Imports that did not finish
+            </h2>
+            <ul class="mt-2 space-y-3">
+                {#each interruptedImports as item (item.id)}
+                    <li data-testid="interrupted-import" class="text-sm leading-5 text-amber-900 dark:text-amber-100">
+                        <p>
+                            The import of "{item.name}" stopped partway, when its tab was closed or reloaded.
+                            {#if item.destination === "server" && item.graphId}
+                                Its partly imported graph is on the Sync Server, listed under Synced
+                                graphs as Import interrupted.
+                            {:else if item.destination === "server"}
+                                It had not uploaded anything.
+                            {:else}
+                                The folder "{item.folderName ?? "you chose"}" holds part of it: empty it
+                                before importing into it again, or choose another folder.
+                            {/if}
+                        </p>
+                        <div class="mt-2 flex flex-wrap items-center gap-2">
+                            {#if item.destination === "server" && item.graphId && confirmingPartialDelete === item.id}
+                                <span>Delete it from the Sync Server? This cannot be undone.</span>
+                                <button
+                                    type="button"
+                                    data-testid="interrupted-import-delete-confirm"
+                                    disabled={deletingPartial === item.id}
+                                    onclick={() => void deletePartialImport(item)}
+                                    class="rounded-lg border border-red-300 px-3 py-1.5 font-medium text-red-700 hover:bg-red-50 disabled:opacity-60 dark:border-red-500/40 dark:text-red-300 dark:hover:bg-red-950/30"
+                                    >{deletingPartial === item.id ? "Deleting…" : "Delete permanently"}</button
+                                >
+                                <button
+                                    type="button"
+                                    onclick={() => (confirmingPartialDelete = null)}
+                                    class="rounded-lg border border-amber-300 px-3 py-1.5 hover:bg-amber-100 dark:border-amber-400/30 dark:hover:bg-amber-400/10"
+                                    >Cancel</button
+                                >
+                            {:else if item.destination === "server" && item.graphId}
+                                <button
+                                    type="button"
+                                    data-testid="interrupted-import-delete"
+                                    onclick={() => (confirmingPartialDelete = item.id)}
+                                    class="rounded-lg border border-amber-300 px-3 py-1.5 font-medium hover:bg-amber-100 dark:border-amber-400/30 dark:hover:bg-amber-400/10"
+                                    >Delete the partial graph</button
+                                >
+                                <button
+                                    type="button"
+                                    data-testid="interrupted-import-keep"
+                                    onclick={() => forgetInterruptedImport(item)}
+                                    class="rounded-lg border border-amber-300 px-3 py-1.5 hover:bg-amber-100 dark:border-amber-400/30 dark:hover:bg-amber-400/10"
+                                    >Keep it</button
+                                >
+                            {:else}
+                                <button
+                                    type="button"
+                                    data-testid="interrupted-import-dismiss"
+                                    onclick={() => forgetInterruptedImport(item)}
+                                    class="rounded-lg border border-amber-300 px-3 py-1.5 hover:bg-amber-100 dark:border-amber-400/30 dark:hover:bg-amber-400/10"
+                                    >Dismiss</button
+                                >
+                            {/if}
+                        </div>
+                    </li>
+                {/each}
+            </ul>
+        </section>
+    {/if}
+
     {#if invites.length > 0}
         <section
             data-testid="graphs-invites"
@@ -3120,17 +3388,56 @@
             </h2>
             <ul class="mt-3 space-y-2">
                 {#each invites as invite (invite.id)}
-                    <li class="flex items-center justify-between gap-3">
-                        <span class="text-sm text-gray-700 dark:text-gray-300"
-                            >You have been invited to a shared graph.</span
-                        >
-                        <button
-                            data-testid="invite-accept"
-                            onclick={() => void acceptInvite(invite)}
-                            aria-busy={checkingInvite === invite.id}
-                            class="shrink-0 rounded-lg bg-gray-900 dark:bg-gray-100 px-3 py-1.5 text-sm font-medium text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-200"
-                            >{checkingInvite === invite.id ? "Checking…" : "Accept"}</button
-                        >
+                    {@const graphName = inviteNames[invite.id]}
+                    {@const sender = invite.inviterEmail ?? "Someone"}
+                    <li data-testid="invite-row" class="flex flex-wrap items-center justify-between gap-3">
+                        <p class="min-w-0 text-sm text-gray-700 dark:text-gray-300">
+                            <span class="font-medium break-all text-gray-950 dark:text-white">{sender}</span>
+                            invited you to
+                            {#if graphName}<span class="font-medium text-gray-950 dark:text-white">{graphName}</span
+                                >{:else}a shared graph{/if}{#if invite.createdAt}<span
+                                    class="text-gray-500 dark:text-gray-400"
+                                >, {formatDay(invite.createdAt)}</span
+                                >{/if}.
+                        </p>
+                        {#if decliningInvite === invite.id}
+                            <!-- Declining cannot be undone from this side: the owner would have to
+                                 invite again, so it asks once, here, rather than in a dialog. -->
+                            <div class="flex flex-wrap items-center gap-2" data-testid="invite-decline-confirmation">
+                                <span class="text-sm text-gray-600 dark:text-gray-400"
+                                    >Decline? {sender === "Someone" ? "The owner" : sender} would have to invite you again.</span
+                                >
+                                <button
+                                    data-testid="invite-decline-confirm"
+                                    disabled={withdrawingInvite === invite.id}
+                                    onclick={() => void declineInvite(invite)}
+                                    class="shrink-0 rounded-lg border border-red-300 dark:border-red-500/40 px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-60 dark:hover:bg-red-950/30"
+                                    >{withdrawingInvite === invite.id ? "Declining…" : "Decline"}</button
+                                >
+                                <button
+                                    data-testid="invite-decline-keep"
+                                    onclick={() => (decliningInvite = null)}
+                                    class="shrink-0 rounded-lg border border-gray-300 dark:border-gray-700 px-3 py-1.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5"
+                                    >Keep</button
+                                >
+                            </div>
+                        {:else}
+                            <div class="flex shrink-0 gap-2">
+                                <button
+                                    data-testid="invite-decline"
+                                    onclick={() => (decliningInvite = invite.id)}
+                                    class="rounded-lg border border-gray-300 dark:border-gray-700 px-3 py-1.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5"
+                                    >Decline</button
+                                >
+                                <button
+                                    data-testid="invite-accept"
+                                    onclick={() => void acceptInvite(invite)}
+                                    aria-busy={checkingInvite === invite.id}
+                                    class="rounded-lg bg-gray-900 dark:bg-gray-100 px-3 py-1.5 text-sm font-medium text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-200"
+                                    >{checkingInvite === invite.id ? "Checking…" : "Accept"}</button
+                                >
+                            </div>
+                        {/if}
                     </li>
                 {/each}
             </ul>
@@ -3427,6 +3734,13 @@
                                         ? "Owner"
                                         : "Player"}</span
                                 >
+                                {#if interruptedImports.some((item) => item.graphId === g.id)}
+                                    <span
+                                        data-testid="synced-import-interrupted"
+                                        class="rounded-full bg-amber-50 px-2 py-0.5 text-sm text-amber-800 dark:bg-amber-400/10 dark:text-amber-200"
+                                        >Import interrupted</span
+                                    >
+                                {/if}
                                 {#if g.role === "owner" && !ownedGraphsWritable}
                                     <span
                                         data-testid="synced-read-only"
@@ -3510,6 +3824,8 @@
                                     >
                                         {#each g.members as m (m.userId)}
                                             <li
+                                                data-testid="synced-member"
+                                                data-status={m.status ?? "active"}
                                                 class="flex items-center gap-2 text-sm"
                                             >
                                                 <span
@@ -3521,11 +3837,40 @@
                                                 >
                                                     {m.role === "owner"
                                                         ? "Owner"
-                                                        : "Player"}
+                                                        : m.status === "invited"
+                                                          ? "Invited"
+                                                          : "Player"}
                                                 </span>
+                                                {#if m.status === "invited" && m.inviteId}
+                                                    <button
+                                                        data-testid="member-cancel-invite"
+                                                        disabled={withdrawingInvite === m.inviteId}
+                                                        onclick={() => void cancelInvite(g, m)}
+                                                        class="ml-auto shrink-0 rounded-lg px-2 py-1 text-sm text-gray-600 hover:bg-gray-50 hover:text-gray-950 disabled:opacity-60 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-white"
+                                                        >{withdrawingInvite === m.inviteId
+                                                            ? "Cancelling…"
+                                                            : "Cancel invite"}</button
+                                                    >
+                                                {/if}
                                             </li>
                                         {/each}
                                     </ul>
+                                    <!-- Removing a player is not built yet (it needs the graph's key
+                                         rotated), and the card offers no control for it. -->
+                                    {#if g.members.some((m) => m.role === "player" && m.status !== "invited")}
+                                        <p
+                                            data-testid="synced-members-removal-note"
+                                            class="text-sm text-gray-500 dark:text-gray-400"
+                                        >
+                                            You can't remove a player yet. Ask them to leave,
+                                            or transfer or delete the graph.
+                                            <a
+                                                href={`${PUBLIC_DOCS_URL}/sharing-a-graph`}
+                                                class="font-medium text-gray-700 underline underline-offset-2 hover:text-gray-950 dark:text-gray-300 dark:hover:text-white"
+                                                >Sharing a graph</a
+                                            >
+                                        </p>
+                                    {/if}
                                 {:else}
                                     <p
                                         class="text-sm text-gray-400 dark:text-gray-500 border-t border-gray-100 dark:border-white/10 pt-3"
@@ -3620,6 +3965,7 @@
         graphName={inviteDialog.graphName}
         keyring={inviteDialog.keyring}
         ownEmail={syncAccount?.principal.email ?? null}
+        {inviteeNeeds}
         onclose={(result) => {
             const invitedGraphId = inviteDialog?.graphId;
             inviteDialog = null;

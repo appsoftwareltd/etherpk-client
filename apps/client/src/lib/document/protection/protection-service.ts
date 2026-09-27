@@ -1,10 +1,12 @@
 /**
  * One graph's protection: the record, the key while it is held, and the lock lifecycle around it.
  *
- * This is the only place a Protection Key exists in memory, and it exists nowhere else at all —
- * not in `localStorage`, not in IndexedDB, not in the Local Cache. That is what ADR 0057's third
- * adversary (the device at rest) requires, and it is why every read here is asynchronous and can
- * fail with {@link ProtectionUnavailableError} rather than returning stale plaintext.
+ * This is where a graph's Protection Key lives while the graph is unlocked, and it exists nowhere
+ * at rest — not in `localStorage`, not in IndexedDB, not in the Local Cache. That is what ADR 0057's
+ * third adversary (the device at rest) requires, and it is why every read here is asynchronous and
+ * can fail with {@link ProtectionUnavailableError} rather than returning stale plaintext. The one
+ * other holder is a synced import, which unwraps its source graph's key from the passphrase typed in
+ * the wizard and overwrites it when the run ends (ADR 0093, `import/sealed-references.ts`).
  *
  * Deliberately not a Svelte module: the clock, the settings and the commit callback are injected,
  * so the whole lifecycle is unit-testable without a browser. `protection-session.svelte.ts` wraps

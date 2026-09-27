@@ -9,7 +9,8 @@
  * orphans. Any doc that cannot catch up within the timeout ABORTS the scan.
  *
  * Reference test is conservative, like the filesystem scanner: an asset counts as
- * referenced if its (random, unguessable) asset id appears anywhere in any document. A
+ * referenced if its (random, unguessable) asset id appears anywhere in any document, or a
+ * reference names it by the file name its metadata holds (an imported file's source name). A
  * [[Protected Document]] is read through the protection session while it is unlocked, and while
  * any cannot be read nothing is offered: the rule and the reference test are the filesystem
  * scanner's own (`referenceTexts`, `orphanScanOf`), so the two backends cannot disagree.
@@ -140,7 +141,16 @@ export async function scanOrphanedServerAssets(deps: ServerAssetOrphanDeps): Pro
     const unused = assets.filter((a) => !isReferenced(texts, a.assetId))
     // Names only for what will be shown: a withheld candidate is not listed.
     const names = unreadableProtected === 0 && unreadableOther === 0 ? await assetNames(deps, unused.map((a) => a.assetId)) : new Map<string, string>()
-    const candidates: OrphanedAsset[] = unused.map((a) => ({ id: a.assetId, label: orphanLabel(a, names.get(a.assetId)), size: a.size }))
+    // An imported file is stored under the name it had in the source graph, and a reference the
+    // import could not repoint (one sealed inside a protected document it had no passphrase for)
+    // still uses that name. The file is in use under it, so it is not offered.
+    const inUseByName = (assetId: string) => {
+        const name = names.get(assetId)
+        return name !== undefined && texts.some((text) => text.includes(`assets/${name}`))
+    }
+    const candidates: OrphanedAsset[] = unused
+        .filter((a) => !inUseByName(a.assetId))
+        .map((a) => ({ id: a.assetId, label: orphanLabel(a, names.get(a.assetId)), size: a.size }))
     const scan = orphanScanOf(candidates, {
         totalAssets: assets.length,
         scannedDocuments: docIds.length,

@@ -10,7 +10,15 @@ import {
     openVault,
     toBase64Url,
 } from '$lib/crypto'
-import { InviteForHeldGraphError, InviteeNotFoundError, acceptInvite, isOwnAddress, prepareInvite, sendInvite } from './invites'
+import {
+    InviteForHeldGraphError,
+    InviteeNotFoundError,
+    acceptInvite,
+    inviteGraphName,
+    isOwnAddress,
+    prepareInvite,
+    sendInvite,
+} from './invites'
 import { SyncApiError, type SyncApi } from './sync-api'
 
 describe('invites', () => {
@@ -151,6 +159,25 @@ describe('invites', () => {
         )
         expect(legacy.name).toBeUndefined()
         expect(Buffer.from(legacy.keyring.epochs[0].key).equals(Buffer.from(legacyKeyring.epochs[0].key))).toBe(true)
+    })
+
+    it('reads the graph name from a pending invite without accepting it', async () => {
+        const invitee = generateIdentityKeyPair()
+        const stranger = generateIdentityKeyPair()
+        let posted = ''
+        const api = {
+            createInvite: vi.fn(async (_g: string, _e: string, sealedKeyring: string) => {
+                posted = sealedKeyring
+                return { id: 'inv-1' }
+            }),
+        } as unknown as SyncApi
+        await sendInvite(api, 'g1', 'invitee@test', invitee.publicKey, createGraphKeyring('g1'), 'Physics Notes')
+
+        expect(await inviteGraphName({ graphId: 'g1', sealedKeyring: posted }, invitee.privateKey)).toBe('Physics Notes')
+        // Another key cannot open it, and an invite for another graph does not match its sealing.
+        expect(await inviteGraphName({ graphId: 'g1', sealedKeyring: posted }, stranger.privateKey)).toBeUndefined()
+        expect(await inviteGraphName({ graphId: 'g2', sealedKeyring: posted }, invitee.privateKey)).toBeUndefined()
+        expect(api.createInvite).toHaveBeenCalledTimes(1)
     })
 
     it('refuses an invite for a graph whose key the vault already holds, and keeps that key', async () => {

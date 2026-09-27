@@ -1,7 +1,8 @@
 import 'fake-indexeddb/auto'
 import { describe, expect, it } from 'vitest'
 
-import { createGraphKeyring } from '$lib/crypto'
+import { armourProtected, createGraphKeyring, createProtectionRecord, keyFingerprint, newKdfParams, openProtected, sealProtected } from '$lib/crypto'
+import { documentProtection } from '$lib/document/protection/cipher-fence'
 import { createMemoryDirectoryAdapter } from '$lib/storage/fs/memory-adapter'
 import type { AssetStore, SavedAsset } from '$lib/storage/fs/asset-store'
 import { type GraphSync, createGraphSync } from '$lib/sync/graph-sync'
@@ -413,5 +414,110 @@ describe('materializeToServer keeps imported aliases in a kept block', () => {
         expect(phoenix.proposedOnImport).toEqual([])
         expect(phoenix.proposedAfterEdit).toEqual([])
         dispose()
+    })
+})
+
+/**
+ * A synced import gives every asset a new reference and rewrites documents to match, which plain
+ * text replacement cannot do inside a protected document's fence. With the Protection Key the
+ * wizard unwrapped from the passphrase, the fence is opened, repointed and sealed again.
+ */
+describe('materializeToServer and the references inside protected documents', () => {
+    const PASSPHRASE = 'correct horse battery staple'
+    const OLD_REF = '../assets/scan.a1b2c3d4.png'
+    const NEW_REF = '../assets/scan.11111111-2222-3333-4444-555555555555.png'
+    // The cheapest parameters a record may carry: the importer refuses anything cheaper.
+    const FAST_KDF = { m: 8 * 1024, t: 1, p: 1 }
+
+    /** A source graph whose protected page embeds its one image, sealed under `sealedUnder` (the record's key by default). */
+    async function protectedSource(opts: { sealedUnder?: Uint8Array } = {}) {
+        const { record, key } = await createProtectionRecord(PASSPHRASE, { ...newKdfParams(), ...FAST_KDF })
+        const sealing = opts.sealedUnder ?? key
+        const envelope = armourProtected(
+            await sealProtected({ key: sealing, fingerprint: await keyFingerprint(sealing), plaintext: `- ![scan](${OLD_REF})`, writtenAt: 1 }),
+        )
+        const converted = await convertSource(
+            [
+                src('pages/Vault Secrets.md', ['---', 'title: Vault Secrets', '---', '```etherpk-cipher', envelope, '```'].join('\n')),
+                src('assets/scan.a1b2c3d4.png', new Uint8Array([1, 2, 3])),
+                src('etherpk/protection.json', JSON.stringify(record)),
+            ],
+            'etherpk',
+        )
+        return { converted, key, envelope }
+    }
+
+    async function importInto(converted: Awaited<ReturnType<typeof protectedSource>>['converted'], protectionKey?: Uint8Array) {
+        const relay = createLoopbackRelay()
+        const cache = await openGraphCache(`import-sealed-refs-${Math.floor(performance.now() * 1000)}`)
+        const graph = createGraphSync({
+            graphId: 'g-sealed-refs',
+            rootDocId: '018f47a0-7b5d-7cc5-b5c1-f0fbcde23003',
+            keyring: createGraphKeyring('g-sealed-refs'),
+            relayUrl: 'ws://loopback/sync',
+            token: fixedSyncToken('t'),
+            cache,
+            connect: relay.connect,
+            debounceMs: 5,
+        })
+        await graph.ready()
+        const assetStore: AssetStore = {
+            save: async () => ({ ref: NEW_REF, name: NEW_REF.slice('../assets/'.length), stem: 'scan', isImage: true }),
+            readBytes: async () => null,
+            resolve: async () => null,
+            dispose() {},
+        }
+        await materializeToServer(
+            converted,
+            { graph, assetStore, name: 'Rebuilt', protection: inMemoryProtectionStore(), ...(protectionKey ? { protectionKey } : {}) },
+            { format: 'etherpk', reportDate: '2026-09-27' },
+        )
+        const textOf = (concept: string) => {
+            let text = ''
+            graph.registry().forEach((entry, docId) => {
+                if (entry.kind === 'page' && entry.title?.startsWith(concept)) text = graph.docSync(docId).doc.getText('content').toString()
+            })
+            return text
+        }
+        return { page: textOf('Vault Secrets'), report: textOf('Import Report'), dispose: () => (graph.dispose(), cache.dispose()) }
+    }
+
+    /** What the page's one fence holds, opened with `key`. */
+    async function sealedText(page: string, key: Uint8Array): Promise<string> {
+        const fence = documentProtection(page).fences[0]
+        return (await openProtected({ key, envelope: fence.winner! })).plaintext
+    }
+
+    it('repoints the reference inside with the key, and seals it again', async () => {
+        const { converted, key } = await protectedSource()
+        const imported = await importInto(converted, key.slice())
+
+        expect(imported.page).toContain('```etherpk-cipher')
+        expect(imported.page).not.toContain('scan.')
+        expect(await sealedText(imported.page, key)).toBe(`- ![scan](${NEW_REF})`)
+        expect(imported.report).not.toContain('will not display')
+        imported.dispose()
+    })
+
+    it('without the key, carries the document as it was and says its images will not display', async () => {
+        const { converted, key, envelope } = await protectedSource()
+        const imported = await importInto(converted)
+
+        expect(imported.page).toContain(envelope)
+        expect(await sealedText(imported.page, key)).toBe(`- ![scan](${OLD_REF})`)
+        expect(imported.report).toContain('Images and files embedded in protected documents will not display')
+        expect(imported.report).toContain('passphrase')
+        imported.dispose()
+    })
+
+    it('leaves content sealed under another key as it was, and names the document', async () => {
+        const otherKey = crypto.getRandomValues(new Uint8Array(32))
+        const { converted, key, envelope } = await protectedSource({ sealedUnder: otherKey })
+        const imported = await importInto(converted, key.slice())
+
+        expect(imported.page).toContain(envelope)
+        expect(imported.report).toContain('[[Vault Secrets]]')
+        expect(imported.report).toContain('sealed under a key other than this graph’s')
+        imported.dispose()
     })
 })

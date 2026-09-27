@@ -41,12 +41,22 @@ export function buildReportPage(
         `Imported ${graph.documents.length} documents and ${graph.assets.length} assets from a ${FORMAT_LABEL[format]} source on ${isoDate}.`,
         '',
     ]
-    if (graph.report.length === 0) {
+    // Files the server would not store are a storage outcome, not a conversion one, and the only
+    // entries the person may still act on, so they are counted on their own.
+    const notStored = graph.report.filter((r) => r.category === 'not-stored').length
+    const conversions = graph.report.length - notStored
+    if (notStored > 0) {
+        lines.push(`${notStored === 1 ? '1 file could not be uploaded; it is' : `${notStored} files could not be uploaded; they are`} listed first.`)
+    }
+    if (conversions === 0) {
         lines.push('Every document converted cleanly - nothing was degraded or dropped.')
-    } else {
-        lines.push(
-            `${graph.report.length} conversions could not be performed losslessly; they are listed below. This page is an ordinary page - delete it once read.`,
-        )
+    }
+    if (graph.report.length > 0) {
+        if (conversions > 0) {
+            lines.push(
+                `${conversions === 1 ? '1 conversion' : `${conversions} conversions`} could not be performed losslessly; they are listed below. This page is an ordinary page - delete it once read.`,
+            )
+        }
         for (const [category, heading] of SECTIONS) {
             const entries = graph.report.filter((r) => r.category === category)
             if (entries.length === 0) continue

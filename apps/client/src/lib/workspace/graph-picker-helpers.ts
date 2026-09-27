@@ -3,16 +3,14 @@ import { fromBase64Url, type GraphKeyring } from '$lib/crypto'
 import type { GraphRecord } from '$lib/storage'
 import { openGraphName } from '$lib/sync/graph-name-envelope'
 import type {
+    GraphMember,
     GraphStorageFigures,
     OwnedStorageTotals,
     SyncApi,
 } from '$lib/sync/sync-api'
 
-export interface SyncedMember {
-    userId: string
-    email: string
-    role: string
-}
+/** A member of an owned graph, or somebody invited to it (`status: 'invited'`). */
+export type SyncedMember = GraphMember
 
 export interface SyncedGraphView {
     id: string
@@ -30,7 +28,7 @@ export interface SyncedGraphView {
     /** False when the server membership has not been registered on this device. */
     onDevice: boolean
     role: string
-    /** Active members are owner-only; null also represents an unavailable member list. */
+    /** Members and invitees, for the owner only; null also represents an unavailable member list. */
     members: SyncedMember[] | null
     /** Absent when an older sync service does not report storage figures. */
     storage?: GraphStorageFigures

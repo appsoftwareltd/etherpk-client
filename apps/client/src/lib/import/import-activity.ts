@@ -9,7 +9,8 @@
  */
 
 import { createBreather } from '$lib/activity/breathe'
-import { runActivity, type ActivityHandle } from '$lib/activity/store'
+import { runActivity, type ActivityHandle, type ActivityOutcome } from '$lib/activity/store'
+import { importMarkers, type StartedImport } from './import-marker'
 import type { Activity, ActivityPhase } from '$lib/activity/types'
 import type { GraphRegistry } from '$lib/storage/graph-registry'
 
@@ -105,6 +106,8 @@ export interface StartImportOptions {
     /** Test seams. */
     createWorker?: WorkerFactory | null
     ackStallMs?: number
+    /** Test seam; defaults to this page's markers over localStorage (import-marker.ts). */
+    markers?: Pick<ReturnType<typeof importMarkers>, 'start'>
 }
 
 /**
@@ -124,56 +127,71 @@ export function startImport(options: StartImportOptions): Promise<Activity> {
         failureTitle: `Import cancelled - "${options.name}"`,
         phases,
         run: async (handle) => {
-            const control = controlFor(handle, phases)
-            // Show the first phase's label immediately, uncounted: spawning the worker and
-            // reaching its first tick is otherwise a visibly blank toast.
-            handle.beginPhase(0, 0)
-
-            const converted =
-                options.createWorker === undefined
-                    ? await convertInWorker(options.files, options.format, control)
-                    : await convertInWorker(options.files, options.format, control, options.createWorker)
-
-            const runOptions = { format: options.format, reportDate: options.reportDate, control, ackStallMs: options.ackStallMs }
-
-            if (options.destination.kind === 'filesystem') {
-                const result = await runFilesystemImport(
-                    converted,
-                    { handle: options.destination.handle, registry: options.destination.registry, name: options.name },
-                    runOptions,
-                )
-                options.onSettled?.(result)
-                return {
-                    title: `Imported "${options.name}"`,
-                    detail: summary(converted.documents.length, converted.assets.length),
-                    action: { label: 'Open', run: () => options.onOpen(result) },
-                }
-            }
-
-            const result = await runServerImport(
-                converted,
-                { ...options.destination.deps, name: options.name },
-                runOptions,
-            )
-            options.onSettled?.(result)
-            const missing = result.skippedAssets.length
-            return {
-                title: `Imported "${options.name}"`,
-                // A stall is a weaker claim, not a failure: the content is in the Local
-                // Cache and drains on the next open (ADR 0035 §4). Files the server would not
-                // store are the same shape of claim - the graph is yours, minus those.
-                state: result.fullyAcked && missing === 0 ? 'done' : 'partial',
-                detail: missing > 0
-                    ? `${missing === 1 ? '1 file' : `${missing} files`} could not be uploaded and ${missing === 1 ? 'is' : 'are'} listed in the import report - the rest of the graph is here.`
-                    : result.fullyAcked
-                        ? summary(converted.documents.length, converted.assets.length)
-                        : `Still syncing to the server - ${result.ackedDocuments} of ${result.totalDocuments} confirmed. It will finish in the background.`,
-                action: missing > 0 && result.retryAssets
-                    ? { label: 'Retry uploads', run: () => void retryUploads(options, result) }
-                    : { label: 'Open', run: () => options.onOpen(result) },
+            // Marked until it settles, so a tab closed or reloaded partway leaves a note the
+            // Knowledge graphs page reads, with what to clear up.
+            const marker = (options.markers ?? importMarkers()).start({
+                name: options.name,
+                destination: options.destination.kind,
+                ...(options.destination.kind === 'filesystem' ? { folderName: options.destination.handle.name } : {}),
+            })
+            try {
+                return await runImport(options, phases, handle, marker)
+            } finally {
+                marker.clear()
+                // The Protection Key the wizard unwrapped is needed only while documents are
+                // written, and the run is over: overwrite it rather than wait for collection.
+                if (options.destination.kind === 'server') options.destination.deps.protectionKey?.fill(0)
             }
         },
     })
+}
+
+async function runImport(
+    options: StartImportOptions,
+    phases: ActivityPhase[],
+    handle: ActivityHandle,
+    marker: StartedImport,
+): Promise<ActivityOutcome> {
+    const control = controlFor(handle, phases)
+    // Show the first phase's label immediately, uncounted: spawning the worker and
+    // reaching its first tick is otherwise a visibly blank toast.
+    handle.beginPhase(0, 0)
+
+    const converted =
+        options.createWorker === undefined
+            ? await convertInWorker(options.files, options.format, control)
+            : await convertInWorker(options.files, options.format, control, options.createWorker)
+
+    const runOptions = { format: options.format, reportDate: options.reportDate, control, ackStallMs: options.ackStallMs }
+
+    if (options.destination.kind === 'filesystem') {
+        const result = await runFilesystemImport(
+            converted,
+            { handle: options.destination.handle, registry: options.destination.registry, name: options.name },
+            runOptions,
+        )
+        options.onSettled?.(result)
+        return {
+            title: `Imported "${options.name}"`,
+            detail: summary(converted.documents.length, converted.assets.length),
+            action: { label: 'Open', run: () => options.onOpen(result) },
+        }
+    }
+
+    const result = await runServerImport(
+        converted,
+        { ...options.destination.deps, name: options.name, onGraphCreated: (graphId) => marker.setGraphId(graphId) },
+        runOptions,
+    )
+    options.onSettled?.(result)
+    const missing = result.skippedAssets.length
+    return {
+        title: `Imported "${options.name}"`,
+        ...serverImportOutcome({ ...result, missing }, converted.documents.length, converted.assets.length),
+        action: missing > 0 && result.retryAssets
+            ? { label: 'Retry uploads', run: () => void retryUploads(options, result) }
+            : { label: 'Open', run: () => options.onOpen(result) },
+    }
 }
 
 /**
@@ -199,6 +217,27 @@ function retryUploads(options: StartImportOptions, result: ServerImportResult): 
             }
         },
     })
+}
+
+/**
+ * What a synced import's toast says when it ends. A stall is a weaker claim, not a failure: the
+ * content is in the Local Cache and drains on the next open (ADR 0035 §4), and it comes first,
+ * since until the server has confirmed every document "the rest of the graph is here" is not
+ * yet true. Files the server would not store are the same shape of claim: the graph, minus those.
+ */
+export function serverImportOutcome(
+    result: { fullyAcked: boolean; ackedDocuments: number; totalDocuments: number; missing: number },
+    documents: number,
+    assets: number,
+): { state: 'done' | 'partial'; detail: string } {
+    const { missing } = result
+    const notUploaded = `${missing === 1 ? '1 file' : `${missing} files`} could not be uploaded and ${missing === 1 ? 'is' : 'are'} listed in the import report`
+    if (!result.fullyAcked) {
+        const syncing = `Still syncing to the server - ${result.ackedDocuments} of ${result.totalDocuments} confirmed. It will finish in the background.`
+        return { state: 'partial', detail: missing > 0 ? `${syncing} ${notUploaded}.` : syncing }
+    }
+    if (missing > 0) return { state: 'partial', detail: `${notUploaded} - the rest of the graph is here.` }
+    return { state: 'done', detail: summary(documents, assets) }
 }
 
 function summary(documents: number, assets: number): string {

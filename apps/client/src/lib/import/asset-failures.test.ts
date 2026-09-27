@@ -89,6 +89,69 @@ describe('assets that cannot be stored', () => {
         dispose()
     })
 
+    it('waits out a lost connection and uploads the files it failed, rather than listing them', async () => {
+        // Offline, a failed upload says nothing about the file. Skipping it listed every file the
+        // drop touched as "not uploaded", under a report that blamed the bucket.
+        const converted = await convertSource(graphWithAssets(3), 'etherpk')
+        const { graph, dispose } = await session('g-offline')
+        let offline = false
+        let comeBack: (() => void) | null = null
+        const failedWhileOffline: string[] = []
+        const store = refusingStore(() => null)
+        const flaky: AssetStore = {
+            ...store,
+            async save(asset, onBytes) {
+                if (asset.name === 'pic1.png' && failedWhileOffline.length === 0) {
+                    offline = true
+                    failedWhileOffline.push(asset.name)
+                    // The connection comes back a moment later.
+                    setTimeout(() => {
+                        offline = false
+                        comeBack?.()
+                    }, 5)
+                    throw new TypeError('Failed to fetch')
+                }
+                return store.save(asset, onBytes)
+            },
+        }
+
+        const result = await materializeToServer(
+            converted,
+            { graph, assetStore: flaky, name: 'Offline' },
+            {
+                format: 'etherpk',
+                reportDate: '2026-09-27',
+                connectivity: {
+                    offline: () => offline,
+                    online: () => (offline ? new Promise<void>((resolve) => { comeBack = resolve }) : Promise.resolve()),
+                },
+            },
+        )
+
+        expect(failedWhileOffline).toEqual(['pic1.png'])
+        expect(result.skippedAssets).toEqual([])
+        expect(converted.report.filter((e) => e.category === 'not-stored')).toHaveLength(0)
+        const texts = [...graph.registry().keys()].map((id) => graph.docSync(id).doc.getText('content').toString())
+        expect(texts.find((text) => text.includes('![pic1]'))).toContain('../assets/pic1.png.SERVER')
+        dispose()
+    })
+
+    it('ends a not-uploaded entry with one full stop whatever the reason already ends with', async () => {
+        const converted = await convertSource(graphWithAssets(1), 'etherpk')
+        const { graph, dispose } = await session('g-stops')
+        const endsWithStop: AssetStore = {
+            ...refusingStore(() => null),
+            async save() {
+                throw new Error('The connection dropped while uploading to the storage bucket.')
+            },
+        }
+        await materializeToServer(converted, { graph, assetStore: endsWithStop, name: 'Stops' }, { format: 'etherpk', reportDate: '2026-09-27' })
+        const [entry] = converted.report.filter((e) => e.category === 'not-stored')
+        expect(entry.detail).toContain('bucket. Documents that reference it')
+        expect(entry.detail).not.toContain('..')
+        dispose()
+    })
+
     it('abandons the import when a refusal means nothing else can be stored either', async () => {
         const converted = await convertSource(graphWithAssets(6), 'etherpk')
         const { graph, dispose } = await session('g-account-wide')

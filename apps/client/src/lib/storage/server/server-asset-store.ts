@@ -393,12 +393,16 @@ export function createServerAssetStore(deps: ServerAssetStoreDeps): AssetStore {
                             r = await f(u, { method: 'PUT', body: chunks[n] as BodyInit })
                         } catch {
                             // A presigned PUT that dies before any HTTP status (the browser's bare
-                            // "Failed to fetch") is the bucket refusing the cross-origin request:
-                            // the bucket's CORS policy must allow this app origin (see the Synced
-                            // Graphs user doc). Name that, or the failure costs hours to diagnose.
-                            // Indistinguishable from a dropped connection, so it retries first.
+                            // "Failed to fetch") is the connection dropping or the bucket refusing
+                            // the cross-origin request, which the browser reports alike; it
+                            // retries first either way. Offline, it is the connection. Online, the
+                            // Sync Server answered the begin call moments ago, so the bucket's CORS
+                            // policy is the likely cause (see the Synced Graphs user doc): named,
+                            // or the failure costs hours to diagnose.
                             throw new Error(
-                                'Uploading to the storage bucket was blocked. The bucket\'s CORS policy must allow this app\'s origin - see "Asset storage" in the Synced Graphs doc.',
+                                typeof navigator !== 'undefined' && navigator.onLine === false
+                                    ? 'The connection dropped while uploading to the storage bucket.'
+                                    : 'Uploading to the storage bucket was blocked. The bucket\'s CORS policy must allow this app\'s origin - see "Asset storage" in the Synced Graphs doc.',
                             )
                         }
                         if (!r.ok) throw new HttpFailure(r.status, `chunk ${n} upload failed: ${r.status}`)

@@ -10,7 +10,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { convertSource } from './convert'
-import { phasesFor } from './import-activity'
+import { phasesFor, serverImportOutcome } from './import-activity'
 import { materializeToFilesystem } from './materialize-filesystem'
 import { createMemoryDirectoryAdapter } from '$lib/storage/fs/memory-adapter'
 import type { ImportFormat, ImportProgress, SourceFile } from './types'
@@ -100,5 +100,29 @@ describe('phasesFor', () => {
             'Converting documents',
             'Preparing assets',
         ])
+    })
+})
+
+describe('serverImportOutcome', () => {
+    const acked = { fullyAcked: true, ackedDocuments: 10, totalDocuments: 10 }
+    const syncing = { fullyAcked: false, ackedDocuments: 3, totalDocuments: 10 }
+
+    it('says the graph is here only once the server has confirmed it', () => {
+        expect(serverImportOutcome({ ...acked, missing: 0 }, 9, 2)).toEqual({ state: 'done', detail: '9 documents, 2 assets' })
+        expect(serverImportOutcome({ ...acked, missing: 2 }, 9, 2)).toEqual({
+            state: 'partial',
+            detail: '2 files could not be uploaded and are listed in the import report - the rest of the graph is here.',
+        })
+    })
+
+    it('leads with the unconfirmed documents, whatever else went wrong', () => {
+        expect(serverImportOutcome({ ...syncing, missing: 0 }, 9, 2)).toEqual({
+            state: 'partial',
+            detail: 'Still syncing to the server - 3 of 10 confirmed. It will finish in the background.',
+        })
+        expect(serverImportOutcome({ ...syncing, missing: 1 }, 9, 2)).toEqual({
+            state: 'partial',
+            detail: 'Still syncing to the server - 3 of 10 confirmed. It will finish in the background. 1 file could not be uploaded and is listed in the import report.',
+        })
     })
 })

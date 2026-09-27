@@ -195,6 +195,42 @@ describe('scanOrphanedServerAssets', () => {
             graph.dispose()
             cache.dispose()
         })
+
+        // An import gives every file a new reference. One sealed inside a protected document the
+        // import had no passphrase for still names the file as the source graph did, and the file
+        // is stored under that name: it is in use, whatever its id.
+        it('keeps a file a protected document still names as the graph it was imported from did', async () => {
+            const { graph, cache } = await openTestGraph()
+            const service = await unlockedProtection()
+            graph.registry().set(PROTECTED_DOC, { kind: 'page', title: 'Vault Secrets' })
+            graph.docSync(PROTECTED_DOC).doc.getText('content').insert(0, await service.protectDocument('- ![scan](../assets/scan.a1b2c3d4.png)'))
+            const keyring = createGraphKeyring('g-orphans')
+            const metadata = new Map([
+                [ORPHAN, await sealedMetadata(keyring, ORPHAN, 'scan.a1b2c3d4.png')],
+                [UNUSED, await sealedMetadata(keyring, UNUSED, 'unused.png')],
+            ])
+            const f = (async (input: RequestInfo | URL) => {
+                const id = String(input).split('/').pop()!
+                const sealed = metadata.get(id)
+                if (sealed) return new Response(JSON.stringify({ encryptedMetadata: sealed, downloadUrls: [] }), { status: 200 })
+                const assets = [USED, ORPHAN, UNUSED].map((assetId) => ({ assetId, size: 1, chunkCount: 1, status: 'complete', hasDedupToken: true }))
+                return new Response(JSON.stringify({ assets }), { status: 200 })
+            }) as typeof fetch
+
+            const scan = await scanOrphanedServerAssets({
+                graph,
+                graphId: 'g-orphans',
+                baseUrl: 'http://server',
+                syncToken: fixedSyncToken('t'),
+                fetch: f,
+                keyring,
+                readProtected: protectedTextReader(service),
+            })
+
+            expect(scan.orphans.map((o) => o.id)).toEqual([UNUSED])
+            graph.dispose()
+            cache.dispose()
+        })
     })
 
     it('settles pending writes first, so a reference still in a pending edit counts', async () => {

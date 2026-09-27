@@ -23,6 +23,13 @@
     import { describeSyncFailure } from "$lib/sync/sync-error-copy";
     import { PUBLIC_DOCS_URL } from "@appsoftwareltd/etherpk-shared";
     import Modal from "@appsoftwareltd/etherpk-shared/dialog";
+    import {
+        ProtectionPassphraseError,
+        parseProtectionRecord,
+        unlockProtectionRecord,
+        type ProtectionRecord,
+    } from "$lib/crypto";
+    import { PROTECTION_FILE } from "$lib/document/protection/protection-store";
 
     import { describeOversize, oversizeAssets } from "../asset-preflight";
     import { startImport } from "../import-activity";
@@ -33,6 +40,7 @@
         type ServerImportResult,
     } from "../run-import";
     import { prepareZipSource } from "../zip-source";
+    import { findFile, isJunkPath, isMarkdownPath } from "../source";
     import type { ImportFormat } from "../types";
 
     let {
@@ -94,6 +102,22 @@
     let zipButton: HTMLButtonElement | undefined = $state();
     let nameInput: HTMLInputElement | undefined = $state();
     let runButton: HTMLButtonElement | undefined = $state();
+
+    /**
+     * The protection record a copy of a graph carries (ADR 0093), when it has files for its
+     * protected documents to embed. A synced import gives every file a new reference, and the
+     * ones sealed inside a protected document can only be updated with the key its passphrase
+     * unwraps, so the passphrase is asked for here.
+     */
+    let sourceProtection = $state.raw<ProtectionRecord | null>(null);
+    let protectionPassphrase = $state("");
+    let passphraseInvalid = $state(false);
+    let checkingPassphrase = $state(false);
+    let passphraseInput: HTMLInputElement | undefined = $state();
+    /** A folder import keeps every file's name, so only a synced one needs the passphrase. */
+    const offerPassphrase = $derived(
+        destination === "synced" && format === "etherpk" && sourceProtection !== null,
+    );
 
     /**
      * Put focus where the dialog now wants it, once the change that moved it has rendered: the
@@ -160,10 +184,32 @@
         error = null;
         prepared = next;
         format = next.format;
+        sourceProtection = null;
+        void readSourceProtection(next);
         if (!name.trim()) name = next.folderName;
         if (!folderAvailable) destination = "synced";
         // The source buttons are gone; the name is the next thing to check.
         void focusAfterRender(() => nameInput);
+    }
+
+    /**
+     * The source's protection record, when its protected documents could embed any of its files.
+     * A record this build cannot read offers nothing: the converter reports it, and no passphrase
+     * would open it.
+     */
+    async function readSourceProtection(source: PreparedSource) {
+        const file = findFile(source.files, `etherpk/${PROTECTION_FILE}`);
+        const embeds = source.files.some(
+            (f) => !isJunkPath(f.path) && !isMarkdownPath(f.path) && !f.path.startsWith("etherpk/"),
+        );
+        if (!file || !embeds) return;
+        try {
+            const record = parseProtectionRecord(await file.data.text());
+            // Another source may have been picked while this one was read.
+            if (prepared === source) sourceProtection = record;
+        } catch {
+            // Reported by the converter; there is nothing here to unlock.
+        }
     }
 
     /** The destination directory: the FSA picker, or a fresh OPFS dir under the dev gate. */
@@ -196,6 +242,7 @@
             return;
         }
         nameInvalid = false;
+        passphraseInvalid = false;
         // At most one import at a time (per tab): two large ones double a memory footprint
         // that is already the likeliest thing to fall over on a real graph.
         if (isRunning("import")) {
@@ -235,9 +282,33 @@
                     error = syncUnavailableReason;
                     return;
                 }
+                // Unwrapped here, in front of the person, so a mistyped passphrase is refused at
+                // the field rather than found in the report of a finished import.
+                let protectionKey: Uint8Array | null = null;
+                if (offerPassphrase && sourceProtection && protectionPassphrase !== "") {
+                    checkingPassphrase = true;
+                    try {
+                        protectionKey = await unlockProtectionRecord(sourceProtection, protectionPassphrase);
+                    } catch (e) {
+                        if (!(e instanceof ProtectionPassphraseError)) throw e;
+                        error =
+                            "That passphrase does not open this graph’s protected documents. Check it, or clear the field to import them without their images.";
+                        passphraseInvalid = true;
+                        void focusAfterRender(() => passphraseInput);
+                        return;
+                    } finally {
+                        checkingPassphrase = false;
+                    }
+                }
                 // Ask for the keys here, in front of the user, rather than failing a long
                 // background run - or creating a graph server-side it can never key.
-                await ensureVaultReady?.();
+                try {
+                    await ensureVaultReady?.();
+                } catch (e) {
+                    // The run that would have overwritten the key will not start.
+                    protectionKey?.fill(0);
+                    throw e;
+                }
                 void startImport({
                     ...common,
                     destination: {
@@ -248,6 +319,7 @@
                             serverBaseUrl: syncTarget.serverBaseUrl,
                             serverScope: syncTarget.serverScope,
                             getWrapKey,
+                            protectionKey,
                         },
                     },
                 });
@@ -264,8 +336,9 @@
         } finally {
             busy = false;
             // A refusal is announced by its alert; focus goes back to Import, which busy had
-            // disabled, so a keyboard user is still in the dialog to try again.
-            if (error) void focusAfterRender(() => runButton);
+            // disabled, so a keyboard user is still in the dialog to try again. A wrong
+            // passphrase has already sent it to the field.
+            if (error && !passphraseInvalid) void focusAfterRender(() => runButton);
         }
     }
 </script>
@@ -274,7 +347,7 @@
     {open}
     title="Import a graph"
     {busy}
-    busyReason="Starting…"
+    busyReason={checkingPassphrase ? "Checking the passphrase…" : "Starting…"}
     onclose={close}
     onsubmit={runImport}
 >
@@ -427,6 +500,37 @@
                     </label>
                 </div>
             </fieldset>
+            {#if offerPassphrase}
+                <div data-testid="import-protection">
+                    <label
+                        for="import-protection-passphrase"
+                        class="mb-1.5 block text-sm font-medium text-gray-500 dark:text-gray-400"
+                        >Protection passphrase (optional)</label
+                    >
+                    <p id="import-protection-help" class="mb-1.5 text-sm text-gray-600 dark:text-gray-300">
+                        This graph has protected documents. Enter its passphrase to bring
+                        the images and files inside them across too. Without it the
+                        documents still arrive, but images inside them will not display.
+                    </p>
+                    <input
+                        bind:this={passphraseInput}
+                        id="import-protection-passphrase"
+                        data-testid="import-protection-passphrase"
+                        type="password"
+                        bind:value={protectionPassphrase}
+                        oninput={() => (passphraseInvalid = false)}
+                        aria-invalid={passphraseInvalid}
+                        aria-describedby={passphraseInvalid
+                            ? "import-protection-help import-error"
+                            : "import-protection-help"}
+                        disabled={busy}
+                        autocomplete="current-password"
+                        class="block w-full rounded-lg border bg-white dark:bg-white/10 px-3 py-2 text-sm text-gray-950 dark:text-gray-100 focus:outline-none focus:ring-1 {passphraseInvalid
+                            ? 'border-red-400 dark:border-red-500/60 focus:border-red-500 focus:ring-red-500'
+                            : 'border-gray-300 dark:border-gray-700 focus:border-gray-950 dark:focus:border-gray-400 focus:ring-gray-950 dark:focus:ring-gray-400'}"
+                    />
+                </div>
+            {/if}
             <p class="text-sm text-gray-500 dark:text-gray-400">
                 Anything that can't convert losslessly is listed on an Import
                 Report page inside the new graph - nothing is silently dropped.

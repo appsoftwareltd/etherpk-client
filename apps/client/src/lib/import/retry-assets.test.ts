@@ -76,6 +76,39 @@ describe('retrying skipped assets', () => {
         dispose()
     })
 
+    it('says on the Import Report page when a retry uploaded what the import could not', async () => {
+        // The report listed every file as not uploaded even after Retry uploads had stored them.
+        const converted = await convertSource(
+            [
+                src('pages/Foo.md', 'see ![a](../assets/a.png) and ![b](../assets/b.png)'),
+                src('assets/a.png', new Uint8Array([1])),
+                src('assets/b.png', new Uint8Array([2])),
+            ],
+            'etherpk',
+        )
+        const { graph, dispose } = await session('g-retry-report')
+        const store = flakyStore(3) // both import attempts fail, the retry's succeed
+
+        const result = await materializeToServer(converted, { graph, assetStore: store, name: 'Retried' }, {
+            format: 'etherpk',
+            reportDate: '2026-09-27',
+            uploadConcurrency: 1,
+        })
+        expect(result.skippedAssets).toHaveLength(2)
+        expect(result.reportDocId).toBeTruthy()
+
+        await retrySkippedAssets(result.skippedAssets, converted.assets, {
+            graph,
+            assetStore: store,
+            reportDocId: result.reportDocId,
+            today: '2026-09-28',
+        })
+
+        const report = graph.docSync(result.reportDocId!).doc.getText('content').toString()
+        expect(report.trimEnd().endsWith('Retried 2026-09-28: all 2 files uploaded.')).toBe(true)
+        dispose()
+    })
+
     it('reports what is still refused rather than throwing', async () => {
         const converted = await convertSource(
             [src('pages/Foo.md', 'see ![pic](../assets/pic.png)'), src('assets/pic.png', new Uint8Array([1]))],

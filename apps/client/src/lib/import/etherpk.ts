@@ -153,8 +153,9 @@ export async function convertEtherpk(files: SourceFile[], control?: ImportContro
         }
     }
 
-    // Protected content passes through byte-for-byte - the fence IS the ciphertext, so an import
-    // neither can nor needs to touch it. What it must not do is stay quiet (ADR 0057,
+    // Protected content passes through byte-for-byte - the fence IS the ciphertext. Only a synced
+    // import given the passphrase opens it, to repoint the files it embeds (sealed-references.ts).
+    // What an import must not do is stay quiet (ADR 0057,
     // [[2026-09-06 Protected Documents]]): with the record beside it the content opens with the
     // passphrase of the graph it came from, and without one it is permanently unreadable here.
     for (const doc of documents) {
@@ -163,7 +164,7 @@ export async function convertEtherpk(files: SourceFile[], control?: ImportContro
             category: 'unsupported',
             concept: doc.concept,
             detail: protection
-                ? 'holds protected content, imported unchanged as ciphertext together with the graph’s protection record. Unlock it with the passphrase of the graph it came from.'
+                ? 'holds protected content, carried over as ciphertext together with the graph’s protection record. Unlock it with the passphrase of the graph it came from.'
                 : 'holds protected content, imported unchanged as ciphertext. It stays unreadable until you supply the passphrase of the graph it came from - this graph’s Protection Key will not open it.',
         })
     }
@@ -178,10 +179,15 @@ export async function convertEtherpk(files: SourceFile[], control?: ImportContro
             assetPlan.markReferenced(planned)
         }
     }
+    // Whether a protected document embeds a file is sealed inside it, so a file no readable
+    // document references may still be in use there, and the report does not claim otherwise.
+    const sealedContent = documents.some((d) => containsCipherFence(d.text))
     for (const asset of assetPlan.assets.filter((a) => a.unreferenced)) {
         report.push({
             category: 'unreferenced',
-            detail: `Asset "${asset.fileName}" is referenced by no document (imported anyway)`,
+            detail: sealedContent
+                ? `Asset "${asset.fileName}" is referenced by no readable document (imported anyway). A protected document may use it.`
+                : `Asset "${asset.fileName}" is referenced by no document (imported anyway)`,
         })
     }
 

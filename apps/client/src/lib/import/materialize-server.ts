@@ -21,13 +21,15 @@
 
 import { mapWithPool } from '$lib/concurrency'
 import { formatBytes } from '@appsoftwareltd/etherpk-shared'
-import type { AssetStore } from '$lib/storage/fs/asset-store'
+import type { AssetStore, SavedAsset } from '$lib/storage/fs/asset-store'
 import { frontmatterIdentity, syncedImportText } from '$lib/document/frontmatter/identity'
 import { sanitizeGraphSettings } from '$lib/storage/fs/graph-settings'
 import type { GraphSync, RegistryEntry } from '$lib/sync/graph-sync'
 import type { ProtectionRecordStore } from '$lib/document/protection/protection-store'
+import { containsCipherFence } from '$lib/document/protection/fence-info'
 
 import { buildReportPage } from './report'
+import { holdProtectionKey, repointSealedReferences } from './sealed-references'
 import { AssetRefusedError } from '$lib/storage/server/server-asset-store'
 
 /**
@@ -39,6 +41,42 @@ import { AssetRefusedError } from '$lib/storage/server/server-asset-store'
  */
 const ABANDON_AFTER_SYSTEMIC_FAILURES = 3
 
+/** Whether the browser is offline, and a wait for it to be online again. */
+export interface Connectivity {
+    offline(): boolean
+    /** Resolves when the browser is online; rejects when `signal` aborts the wait. */
+    online(signal?: AbortSignal): Promise<void>
+}
+
+const browserConnectivity: Connectivity = {
+    offline: () => typeof navigator !== 'undefined' && navigator.onLine === false,
+    online: (signal) =>
+        new Promise<void>((resolve, reject) => {
+            if (typeof window === 'undefined' || navigator.onLine !== false) {
+                resolve()
+                return
+            }
+            const cleanUp = () => {
+                window.removeEventListener('online', backOnline)
+                signal?.removeEventListener('abort', aborted)
+            }
+            const backOnline = () => {
+                cleanUp()
+                resolve()
+            }
+            const aborted = () => {
+                cleanUp()
+                reject(signal?.reason ?? new DOMException('The import was cancelled.', 'AbortError'))
+            }
+            if (signal?.aborted) {
+                aborted()
+                return
+            }
+            window.addEventListener('online', backOnline)
+            signal?.addEventListener('abort', aborted)
+        }),
+}
+
 /** An asset the server would not store, kept out of the graph and named in the Import Report. */
 export interface SkippedAsset {
     fileName: string
@@ -47,7 +85,7 @@ export interface SkippedAsset {
     code: string | null
     detail: string
 }
-import { breathe, type ConvertedGraph, type ImportControl, type ImportFormat } from './types'
+import { breathe, type ConvertedDocument, type ConvertedGraph, type ImportControl, type ImportFormat } from './types'
 
 /**
  * Assets uploaded at once. Each costs three round trips (begin, chunk PUTs, complete), so
@@ -76,6 +114,13 @@ export interface ServerMaterializeDeps {
      * carried is reported as not carried over rather than dropped in silence.
      */
     protection?: ProtectionRecordStore | null
+    /**
+     * The source graph's Protection Key, unwrapped in the import wizard from the passphrase the
+     * person gave. With it the asset references sealed inside protected documents are repointed
+     * too (`sealed-references.ts`); without it those documents arrive as they were, and the
+     * Import Report says the files they embed will not display.
+     */
+    protectionKey?: Uint8Array | null
     newDocId?: () => string
 }
 
@@ -87,6 +132,8 @@ export interface ServerMaterializeResult {
     fullyAcked: boolean
     ackedDocuments: number
     totalDocuments: number
+    /** The Import Report page's document, for a later retry to note its outcome on. */
+    reportDocId?: string
 }
 
 export async function materializeToServer(
@@ -99,10 +146,15 @@ export async function materializeToServer(
         ackStallMs?: number
         /** Test seam; defaults to {@link UPLOAD_CONCURRENCY}. */
         uploadConcurrency?: number
+        /** Test seam; defaults to the browser's online state and its `online` event. */
+        connectivity?: Connectivity
     },
 ): Promise<ServerMaterializeResult> {
     const { control } = options
+    const connectivity = options.connectivity ?? browserConnectivity
     const onProgress = control?.onProgress
+    const reportUploaded = () =>
+        onProgress?.({ label: 'Uploading assets', done: Math.min(uploaded, assetBytes), total: assetBytes, unit: 'bytes' })
     const newDocId = deps.newDocId ?? (() => crypto.randomUUID())
 
     // Assets first: uploads mint the refs the documents must carry. Measured in bytes, so
@@ -123,9 +175,10 @@ export async function materializeToServer(
         converted.assets,
         async (asset) => {
             if (!deps.assetStore) throw new Error('materializeToServer: assets present but no asset store')
-            try {
+            const assetStore = deps.assetStore
+            const upload = async () => {
                 const bytes = new Uint8Array(await asset.data.arrayBuffer())
-                const saved = await deps.assetStore.save(
+                return assetStore.save(
                     {
                         name: asset.fileName,
                         bytes,
@@ -133,15 +186,29 @@ export async function materializeToServer(
                     },
                     (delta) => {
                         uploaded += delta
-                        onProgress?.({ label: 'Uploading assets', done: uploaded, total: assetBytes, unit: 'bytes' })
+                        reportUploaded()
                     },
                 )
+            }
+            try {
+                let saved: SavedAsset
+                for (;;) {
+                    try {
+                        saved = await upload()
+                        break
+                    } catch (err) {
+                        // Offline, a failure says nothing about the file: wait for the connection
+                        // and send it again, rather than listing it as a file that was not uploaded.
+                        if (err instanceof AssetRefusedError || !connectivity.offline()) throw err
+                        await connectivity.online(control?.signal)
+                    }
+                }
                 // Reconcile on completion: an AssetStore is not obliged to report byte deltas,
                 // and without this the bar would sit at zero for one that does not.
                 completed += asset.data.size
                 if (uploaded < completed) {
                     uploaded = completed
-                    onProgress?.({ label: 'Uploading assets', done: uploaded, total: assetBytes, unit: 'bytes' })
+                    reportUploaded()
                 }
                 // A Map keyed by the source ref, so completion order does not matter.
                 refMap.set(`../assets/${asset.fileName}`, saved.ref)
@@ -181,7 +248,8 @@ export async function materializeToServer(
     for (const asset of skipped) {
         converted.report.push({
             category: 'not-stored',
-            detail: `"${asset.fileName}" (${formatBytes(asset.bytes)}) was not uploaded: ${asset.detail}. Documents that reference it still point at the original file.`,
+            // The reason is a sentence of its own, often with its full stop already.
+            detail: `"${asset.fileName}" (${formatBytes(asset.bytes)}) was not uploaded: ${asset.detail.replace(/\.+$/, '')}. Documents that reference it still point at the original file.`,
         })
     }
 
@@ -206,8 +274,48 @@ export async function materializeToServer(
         }
     }
 
+    const repoint = (text: string) => {
+        for (const [from, to] of refMap) text = text.split(from).join(to)
+        return text
+    }
+
+    // A protected document names its files too, inside ciphertext `repoint` cannot see. Worked
+    // out before the report page is built, so a document whose files keep their old references
+    // is named on it.
+    const repointedProtected = new Map<ConvertedDocument, string>()
+    if (refMap.size > 0) {
+        const held = deps.protectionKey ? await holdProtectionKey(deps.protectionKey) : null
+        let withoutKey = 0
+        for (const doc of converted.documents) {
+            if (!containsCipherFence(doc.text)) continue
+            if (!held) {
+                withoutKey += 1
+                continue
+            }
+            await breathe(control)
+            const sealed = await repointSealedReferences(repoint(syncedImportText(doc.text)), repoint, held, Date.now())
+            repointedProtected.set(doc, sealed.text)
+            if (sealed.sealedUnderOtherKeys > 0) {
+                converted.report.push({
+                    category: 'unresolved',
+                    concept: doc.concept,
+                    detail: 'holds protected content sealed under a key other than this graph’s, so images and files embedded in it will not display here',
+                })
+            }
+        }
+        // Without the graph's record nothing here opens anyway, and the converter has said so.
+        if (withoutKey > 0 && converted.protection) {
+            converted.report.push({
+                category: 'unresolved',
+                detail: 'Images and files embedded in protected documents will not display here: their references are sealed inside the documents, and updating them needs the graph’s protection passphrase. Import the graph again and enter the passphrase to carry them across.',
+            })
+        }
+    }
+
     const registry = deps.graph.registry()
-    const documents = [...converted.documents, buildReportPage(converted, options.format, options.reportDate)]
+    const reportPage = buildReportPage(converted, options.format, options.reportDate)
+    const documents = [...converted.documents, reportPage]
+    let reportDocId: string | undefined
     let pushed = 0
     for (const doc of documents) {
         // Y.Text.insert of a whole document is real CPU work; this loop had no await at all,
@@ -227,8 +335,8 @@ export async function materializeToServer(
                 ? { kind: 'journal', date: doc.concept, ...named }
                 : { kind: 'page', title: doc.concept, ...named }
         registry.set(docId, entry)
-        let text = syncedImportText(doc.text)
-        for (const [from, to] of refMap) text = text.split(from).join(to)
+        if (doc === reportPage) reportDocId = docId
+        const text = repointedProtected.get(doc) ?? repoint(syncedImportText(doc.text))
         deps.graph.docSync(docId).doc.getText('content').insert(0, text)
     }
 
@@ -274,5 +382,6 @@ export async function materializeToServer(
         ackedDocuments: total - acked.outstanding,
         totalDocuments: total,
         skippedAssets: skipped,
+        ...(reportDocId ? { reportDocId } : {}),
     }
 }

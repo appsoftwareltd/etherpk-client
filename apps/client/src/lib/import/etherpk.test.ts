@@ -226,6 +226,18 @@ describe('protected content', () => {
         expect(graph.report.find((r) => r.concept === 'Router')?.detail).toContain('will not open it')
     })
 
+    // Whether a protected document embeds a file is sealed inside it, so "no document references
+    // it" would be a guess, and the orphan scan would then offer the file for deletion.
+    it('does not call an asset unreferenced when a protected document may use it', async () => {
+        const text = ['```etherpk-cipher', 'AQQAAAGZaLmAAGZha2U', '```'].join('\n')
+
+        const graph = await convertEtherpk([src('pages/Router.md', text), src('assets/scan.a1b2c3d4.png', new Uint8Array([1]))])
+
+        expect(graph.report.find((r) => r.category === 'unreferenced')?.detail).toBe(
+            'Asset "scan.a1b2c3d4.png" is referenced by no readable document (imported anyway). A protected document may use it.',
+        )
+    })
+
     it('says nothing about a document with no protected content', async () => {
         const graph = await convertEtherpk([src('pages/Notes.md', '# Notes\n\nnothing secret here')])
 

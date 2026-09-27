@@ -147,6 +147,7 @@ export async function runActivity(options: RunActivityOptions): Promise<Activity
     }
     entries = [...entries, entry]
     emit()
+    guardUnload()
 
     const handle: ActivityHandle = {
         id: entry.id,
@@ -192,11 +193,34 @@ export async function runActivity(options: RunActivityOptions): Promise<Activity
             entry.autoDismiss = setTimeout(() => dismissActivity(entry.id), NOTICE_AUTO_DISMISS_MS)
         }
         emit()
+        guardUnload()
     }
     // Built from the entry rather than looked up: `resetActivities` (or a dismiss racing a
     // slow rollback) can drop it from the list, and the caller still needs its outcome.
     const { controller: _controller, ...finished } = entry
     return { ...finished }
+}
+
+/**
+ * Leaving the page abandons an import halfway: a synced graph partly uploaded, a folder partly
+ * written. While one runs, the browser is asked to confirm leaving. Uploads are not guarded:
+ * they finish in moments and leave no half-state.
+ */
+let unloadGuarded = false
+
+function warnBeforeUnload(event: BeforeUnloadEvent): void {
+    event.preventDefault()
+    // Browsers that predate preventDefault here prompt only for a set returnValue.
+    event.returnValue = ''
+}
+
+function guardUnload(): void {
+    if (typeof window === 'undefined') return
+    const importing = entries.some((e) => e.kind === 'import' && e.state === 'running')
+    if (importing === unloadGuarded) return
+    unloadGuarded = importing
+    if (importing) window.addEventListener('beforeunload', warnBeforeUnload)
+    else window.removeEventListener('beforeunload', warnBeforeUnload)
 }
 
 /** A message worth showing: an abort reads as a cancellation, not as a stack-trace. */
@@ -235,4 +259,5 @@ export function resetActivities(): void {
     }
     entries = []
     emit()
+    guardUnload()
 }

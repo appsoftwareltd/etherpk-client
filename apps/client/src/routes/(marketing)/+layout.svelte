@@ -2,8 +2,9 @@
     import ClientAccountNavigationMenu from "$lib/components/ClientAccountNavigationMenu.svelte";
     import GraphNavigationMenu from "$lib/components/GraphNavigationMenu.svelte";
     import ThemeToggle from "@appsoftwareltd/etherpk-shared/theme-toggle";
-    import { buildApplicationNavigation } from "@appsoftwareltd/etherpk-shared";
+    import { PUBLIC_DOCS_URL, buildApplicationNavigation } from "@appsoftwareltd/etherpk-shared";
     import ApplicationHeader from "@appsoftwareltd/etherpk-shared/application-header";
+    import MarketingFooter from "@appsoftwareltd/etherpk-shared/marketing-footer";
     import { MANAGED_SERVICE_OPERATOR, MANAGED_SERVICE_OPERATOR_NOTICE } from "@appsoftwareltd/etherpk-shared/legal";
 
     let { children, data } = $props();
@@ -25,6 +26,7 @@
         <ClientAccountNavigationMenu
             managedSessionAvailable={data.managedSessionAvailable}
             managedAccountUrl={data.corporateAccountUrl}
+            managedBillingUrl={data.corporateBillingUrl}
         />
     {/snippet}
 
@@ -51,28 +53,21 @@
         {@render children()}
     </main>
 
-    <footer class="mt-16 border-t border-gray-950/5 py-8 dark:border-white/10">
-        <div class="mx-auto flex max-w-7xl flex-col items-center justify-between gap-4 px-4 text-sm text-gray-500 sm:flex-row sm:px-6 dark:text-gray-400">
-            <span>© {new Date().getFullYear()} {data.managedService ? MANAGED_SERVICE_OPERATOR.name : "EtherPK"}. All rights reserved.</span>
-            <nav class="flex flex-wrap justify-center gap-5" aria-label="Footer">
-                {#if data.managedSessionAvailable && data.corporateAccountUrl}
-                    <a href={data.corporateAccountUrl} class="transition-colors hover:text-gray-700 dark:hover:text-white">Account</a>
-                {/if}
-                {#if data.serverPortalUrl}
-                    <a href={data.serverPortalUrl} class="transition-colors hover:text-gray-700 dark:hover:text-white">Sync Server</a>
-                {/if}
-                <a href="/graphs" class="transition-colors hover:text-gray-700 dark:hover:text-white">Graphs</a>
-                <!-- EtherPK pages on a managed Client, the operator's on a self-hosted one, or none. -->
-                {#if data.legalLinks.termsUrl}
-                    <a href={data.legalLinks.termsUrl} class="transition-colors hover:text-gray-700 dark:hover:text-white">Terms</a>
-                {/if}
-                {#if data.legalLinks.privacyUrl}
-                    <a href={data.legalLinks.privacyUrl} class="transition-colors hover:text-gray-700 dark:hover:text-white">Privacy</a>
-                {/if}
-            </nav>
-        </div>
-        {#if data.managedService}
-            <p class="mx-auto mt-4 max-w-7xl px-4 text-center text-sm text-gray-500 sm:px-6 dark:text-gray-400" data-testid="operator-notice">{MANAGED_SERVICE_OPERATOR_NOTICE}</p>
-        {/if}
-    </footer>
+    <!-- EtherPK's pages on a managed Client, the operator's on a self-hosted one, or none. The Client
+         is the same landing page as Corporate's, so it offers Pricing and Contact where EtherPK
+         runs it. -->
+    <MarketingFooter
+        copyrightHolder={data.managedService ? MANAGED_SERVICE_OPERATOR.name : "EtherPK"}
+        operatorNotice={data.managedService ? MANAGED_SERVICE_OPERATOR_NOTICE : null}
+        links={{
+            accountUrl: data.managedSessionAvailable ? data.corporateAccountUrl : null,
+            syncServerUrl: data.serverPortalUrl,
+            graphsUrl: "/graphs",
+            pricingUrl: data.corporatePricingUrl,
+            docsUrl: PUBLIC_DOCS_URL,
+            contactUrl: data.legalLinks.contactUrl,
+            termsUrl: data.legalLinks.termsUrl,
+            privacyUrl: data.legalLinks.privacyUrl,
+        }}
+    />
 </div>

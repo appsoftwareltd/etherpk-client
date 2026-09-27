@@ -25,18 +25,21 @@
         type SyncConfig,
     } from "$lib/sync";
     import { announceAccountSignal, onAccountSignal } from "$lib/sync/account-signal";
-    import { truncateNavigationEmail, type SyncAccountSummary } from "@appsoftwareltd/etherpk-shared";
+    import { buildAccountMenu, dismissibleMenu, truncateNavigationEmail, type SyncAccountSummary } from "@appsoftwareltd/etherpk-shared";
 
     type AccountState = "checking" | "authenticated" | "signed-out" | "unavailable" | "disconnected";
 
     interface Props {
         managedSessionAvailable?: boolean;
         managedAccountUrl?: string | null;
+        /** Corporate's Billing page, where Sync+ is paid for: offered on a managed connection. */
+        managedBillingUrl?: string | null;
     }
 
     let {
         managedSessionAvailable = false,
         managedAccountUrl = null,
+        managedBillingUrl = null,
     }: Props = $props();
 
     let accountState = $state<AccountState>("checking");
@@ -56,6 +59,14 @@
               : null,
     );
     const accessTokensUrl = $derived(serverBaseUrl ? `${serverBaseUrl}/account/tokens` : null);
+    // Access tokens in both modes: a managed user mints a Personal Access Token for the Headless
+    // Client at the Server portal, which is where tokens live whoever signed the session in (ADR 0072).
+    const menuItems = $derived(buildAccountMenu({
+        home: { label: "Graphs", href: "/graphs" },
+        accountUrl,
+        billingUrl: connectionMode === "managed" ? managedBillingUrl : null,
+        accessTokensUrl,
+    }));
     const disconnectHelp = $derived(
         connectionMode === "managed"
             ? MANAGED_DEVICE_DISCONNECT_HELP
@@ -222,7 +233,7 @@
 <svelte:document onvisibilitychange={refreshWhenVisible} />
 
 {#if accountState === "authenticated" && account}
-    <details class="group relative min-w-0">
+    <details class="group relative min-w-0" {@attach dismissibleMenu}>
         <summary
             data-testid="client-user-menu-trigger"
             aria-label={`Signed in as ${accountLabel}`}
@@ -244,16 +255,9 @@
                 <p class="mt-1 break-all text-sm text-gray-500 dark:text-gray-400">{accountLabel}</p>
             </div>
             <nav class="p-2" aria-label="Account navigation">
-                <a href="/graphs" class="block rounded-lg px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 hover:text-gray-950 dark:text-gray-300 dark:hover:bg-white/5 dark:hover:text-white">Graphs</a>
-                {#if accountUrl}
-                    <a href={accountUrl} class="block rounded-lg px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 hover:text-gray-950 dark:text-gray-300 dark:hover:bg-white/5 dark:hover:text-white">Account</a>
-                {/if}
-                <!-- Both modes: a managed user mints a Personal Access Token for the Headless
-                     Client at the Server portal, which is where tokens live whoever signed the
-                     session in (ADR 0072). -->
-                {#if accessTokensUrl}
-                    <a href={accessTokensUrl} class="block rounded-lg px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 hover:text-gray-950 dark:text-gray-300 dark:hover:bg-white/5 dark:hover:text-white">Access tokens</a>
-                {/if}
+                {#each menuItems as item (item.label)}
+                    <a href={item.href} class="block rounded-lg px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 hover:text-gray-950 dark:text-gray-300 dark:hover:bg-white/5 dark:hover:text-white">{item.label}</a>
+                {/each}
             </nav>
             <div class="border-t border-gray-950/5 p-2 dark:border-white/10">
                 {#if connectionMode === "managed"}

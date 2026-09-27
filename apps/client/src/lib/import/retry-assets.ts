@@ -29,7 +29,14 @@ export interface RetryOutcome {
 export async function retrySkippedAssets(
     skipped: SkippedAsset[],
     assets: ConvertedAsset[],
-    deps: { graph: GraphSync; assetStore: AssetStore },
+    deps: {
+        graph: GraphSync
+        assetStore: AssetStore
+        /** The Import Report page, to note the retry's outcome on; absent, nothing is noted. */
+        reportDocId?: string
+        /** The retry's date as the report writes dates (`2026-09-28`); defaults to today's. */
+        today?: string
+    },
 ): Promise<RetryOutcome> {
     const uploaded: string[] = []
     const stillFailed: SkippedAsset[] = []
@@ -53,6 +60,18 @@ export async function retrySkippedAssets(
         }
     }
 
+    // The report listed these files as not uploaded; say what the retry changed, so it does not
+    // go on reading as if nothing had.
+    if (uploaded.length > 0 && deps.reportDocId && deps.graph.registry().has(deps.reportDocId)) {
+        const report = deps.graph.docSync(deps.reportDocId).doc.getText('content')
+        const today = deps.today ?? new Date().toISOString().slice(0, 10)
+        const files = (count: number) => (count === 1 ? '1 file' : `${count} files`)
+        const note = stillFailed.length === 0
+            ? `Retried ${today}: all ${files(uploaded.length)} uploaded.`
+            : `Retried ${today}: ${files(uploaded.length)} uploaded, ${stillFailed.length} still not uploaded.`
+        const existing = report.toString()
+        report.insert(existing.length, `${existing.endsWith('\n') ? '' : '\n'}\n${note}\n`)
+    }
     if (uploaded.length > 0) await deps.graph.flushAll()
     return { uploaded, stillFailed }
 }

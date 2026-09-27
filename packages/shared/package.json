@@ -13,6 +13,10 @@
             "svelte": "./src/navigation/ApplicationHeader.svelte",
             "default": "./src/navigation/ApplicationHeader.svelte"
         },
+        "./marketing-footer": {
+            "svelte": "./src/navigation/MarketingFooter.svelte",
+            "default": "./src/navigation/MarketingFooter.svelte"
+        },
         "./hydration": {
             "svelte": "./src/forms/hydration.svelte.ts",
             "types": "./src/forms/hydration.svelte.ts",

@@ -102,6 +102,13 @@ export interface ServerImportDeps {
     getWrapKey: () => Promise<Uint8Array>
     /** Injectable for tests; defaults to the real browser WebSocket. */
     connect?: (url: string) => TransportSocket
+    /** Told the new graph's id as soon as the server has made it, before anything is written. */
+    onGraphCreated?: (graphId: string) => void
+    /**
+     * The source graph's Protection Key, unwrapped in the wizard from the passphrase the person
+     * gave, so the files protected documents embed are repointed too (`sealed-references.ts`).
+     */
+    protectionKey?: Uint8Array | null
 }
 
 export interface ServerImportResult {
@@ -137,6 +144,7 @@ export async function runServerImport(
     options: ImportRunOptions,
 ): Promise<ServerImportResult> {
     const graph = await deps.api.createGraph() // the server stores no name (ADR 0024)
+    deps.onGraphCreated?.(graph.id)
     let materialized: ServerMaterializeResult
     try {
         const keys = await ensureGraphKeys(deps.api, graph.id, deps.getWrapKey)
@@ -192,7 +200,11 @@ export async function runServerImport(
                           signal: options.control?.signal,
                       })
                     : null
-            materialized = await materializeToServer(converted, { graph: sync, assetStore, name: deps.name, protection }, options)
+            materialized = await materializeToServer(
+                converted,
+                { graph: sync, assetStore, name: deps.name, protection, protectionKey: deps.protectionKey },
+                options,
+            )
         } finally {
             sync.dispose()
             cache.dispose()
@@ -231,6 +243,7 @@ export async function runServerImport(
                         await retrySync.connected()
                         return await retrySkippedAssets(materialized.skippedAssets, converted.assets, {
                             graph: retrySync,
+                            reportDocId: materialized.reportDocId,
                             assetStore: createServerAssetStore({
                                 graphId: graph.id,
                                 keyring: keys.keyring,

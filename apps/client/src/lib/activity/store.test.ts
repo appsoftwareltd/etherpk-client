@@ -128,6 +128,35 @@ describe('runActivity', () => {
     })
 })
 
+describe('leaving the page during an import', () => {
+    afterEach(() => vi.unstubAllGlobals())
+
+    it('asks the browser to confirm leaving while an import runs, and only then', async () => {
+        const listeners = new Map<string, EventListener>()
+        vi.stubGlobal('window', {
+            addEventListener: (type: string, listener: EventListener) => listeners.set(type, listener),
+            removeEventListener: (type: string, listener: EventListener) => {
+                if (listeners.get(type) === listener) listeners.delete(type)
+            },
+        })
+
+        // An upload is not guarded: it finishes in moments and has no half-state to leave behind.
+        await runActivity({ kind: 'asset-upload', title: 'Uploading', phases: PHASES, run: async () => {} })
+        expect(listeners.has('beforeunload')).toBe(false)
+
+        const gate = deferred()
+        const running = runActivity({ kind: 'import', title: 'Importing "Notes"', phases: PHASES, run: () => gate.promise })
+        await vi.waitFor(() => expect(listeners.has('beforeunload')).toBe(true))
+        const event = { preventDefault: vi.fn(), returnValue: undefined as unknown }
+        listeners.get('beforeunload')!(event as unknown as Event)
+        expect(event.preventDefault).toHaveBeenCalled()
+
+        gate.release()
+        await running
+        expect(listeners.has('beforeunload')).toBe(false)
+    })
+})
+
 describe('cancelActivity', () => {
     it('aborts the run\'s signal and settles as failed once the work unwinds', async () => {
         let observed: AbortSignal | undefined

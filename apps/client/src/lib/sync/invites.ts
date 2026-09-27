@@ -120,6 +120,24 @@ export interface AcceptedInvite {
 }
 
 /**
+ * The graph's name from a pending invite, to say what the invite is for before it is accepted.
+ * The name rides inside the sealed payload, so reading it takes the account's identity key; the
+ * keyring beside it is read and dropped, and nothing reaches the vault. Undefined for an invite
+ * sealed without a name, or one this key cannot open.
+ */
+export async function inviteGraphName(
+    invite: { graphId: string; sealedKeyring: string },
+    identityPrivateKey: Uint8Array,
+): Promise<string | undefined> {
+    try {
+        const sealed = fromBase64Url(invite.sealedKeyring)
+        return parseInvitePayload(await openSealed(identityPrivateKey, sealed, inviteAad(invite.graphId))).name
+    } catch {
+        return undefined
+    }
+}
+
+/**
  * An invite for a graph whose keyring the vault already holds. An invite carries no proof of
  * who sealed it, so a server could seal a keyring it knows for a graph the user already has;
  * accepting would replace the real key with that one and encrypt every later edit to it. A

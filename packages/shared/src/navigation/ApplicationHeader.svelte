@@ -1,7 +1,8 @@
 <script lang="ts">
     import { afterNavigate } from "$app/navigation";
-    import type { Snippet } from "svelte";
+    import { onMount, type Snippet } from "svelte";
     import { dialogFocus } from "../ui/index.svelte";
+    import { announceMenuOpened, onOtherMenuOpened } from "./dismissible-menu";
 
     export interface ApplicationNavigationItem {
         href: string;
@@ -66,6 +67,16 @@
         mobileOpen = false;
         itemMenuOpen = false;
     });
+
+    // One header menu open at a time: the account menu opening closes this one, and this one
+    // opening closes the account menu (dismissible-menu.ts).
+    const itemMenuToken = {};
+    onMount(() => onOtherMenuOpened(itemMenuToken, closeItemMenu));
+
+    function toggleItemMenu() {
+        itemMenuOpen = !itemMenuOpen;
+        if (itemMenuOpen) announceMenuOpened(itemMenuToken);
+    }
 </script>
 
 <!-- The panel is modal, so it takes the same contract as every other dialog: focus enters and
@@ -130,7 +141,7 @@
                         aria-label={itemMenuOpen ? `Hide ${item.label} menu` : `Show ${item.label} menu`}
                         aria-expanded={itemMenuOpen}
                         aria-controls={itemMenuId}
-                        onclick={() => (itemMenuOpen = !itemMenuOpen)}
+                        onclick={toggleItemMenu}
                     >
                         {item.label}
                         <svg class="h-3.5 w-3.5 shrink-0 motion-safe:transition-transform {itemMenuOpen ? 'rotate-180' : ''}" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">

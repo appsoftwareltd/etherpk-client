@@ -135,8 +135,16 @@ export const syncAccountSummarySchema = z.strictObject({
         email: z.email().nullable(),
         name: z.string().min(1).nullable(),
         image: httpsUrl.nullable(),
+        /** The server has verified this address. Optional: an older Server does not send it. */
+        emailVerified: z.boolean().optional(),
     }),
     authentication: syncAuthenticationSchema,
+    /**
+     * Whether an invite here finds only an account whose address the server has verified: always
+     * on Managed Sync, and on a self-hosted server that sends email. Optional: an older Server
+     * does not send it.
+     */
+    invitesNeedVerifiedEmail: z.boolean().optional(),
     /**
      * Where the EtherPK Client for this deployment lives (`CLIENT_PUBLIC_URL`), so a device that
      * knows only the Sync Server - the Headless Client asking to be approved - can name the app
@@ -193,6 +201,9 @@ export const IDENTITY_STATEMENT_AUDIENCE = 'urn:etherpk:sync-identity'
  * - `deleted`: the account was deleted. Sync retires the Principal and revokes its tokens.
  * - `credentialsRevokedAt`: the last password reset (or the deletion). Sync refuses every
  *   credential issued before it and revokes the access tokens created before it.
+ * - `email` and `emailVerified`: the account's address and whether Corporate has verified it,
+ *   so an invite can find the account as soon as it verifies, rather than after its next sign-in.
+ *   Absent from statements issued before the address was reported.
  */
 export const identityStatementSchema = z.strictObject({
     eventId: z.uuid(),
@@ -203,6 +214,8 @@ export const identityStatementSchema = z.strictObject({
     disabled: z.boolean(),
     deleted: z.boolean(),
     credentialsRevokedAt: z.iso.datetime({ offset: true }).nullable(),
+    email: z.email().optional(),
+    emailVerified: z.boolean().optional(),
     issuedAt: z.iso.datetime({ offset: true }),
 })
 

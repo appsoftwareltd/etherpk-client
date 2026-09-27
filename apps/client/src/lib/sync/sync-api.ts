@@ -48,6 +48,32 @@ export class SyncApiError extends Error {
     }
 }
 
+/**
+ * A pending invite as the Sync Server lists it. Who sent it and when are absent from a server
+ * that predates them; the graph's name is only in the sealed keyring (`inviteGraphName`).
+ */
+export interface PendingInvite {
+    id: string
+    graphId: string
+    rootDocId: string
+    sealedKeyring: string
+    inviterEmail?: string | null
+    createdAt?: string
+}
+
+/**
+ * A graph's member or invitee, as the owner-only roster lists them. A server that predates
+ * `status` lists active members only.
+ */
+export interface GraphMember {
+    userId: string
+    email: string
+    role: string
+    status?: 'active' | 'invited'
+    /** The pending invite behind an invited member, for the owner to cancel. */
+    inviteId?: string
+}
+
 export function createSyncApi(deps: SyncApiDeps) {
     const f = deps.fetch ?? fetch
     const base = deps.baseUrl.replace(/\/$/, '')
@@ -140,16 +166,14 @@ export function createSyncApi(deps: SyncApiDeps) {
                 method: 'POST',
                 body: JSON.stringify({ graphId, inviteeEmail, sealedKeyring }),
             }),
-        listInvites: () =>
-            call<{ invites: Array<{ id: string; graphId: string; rootDocId: string; sealedKeyring: string }> }>(
-                '/api/v1/sync/invites',
-            ).then((r) => r.invites),
+        listInvites: () => call<{ invites: PendingInvite[] }>('/api/v1/sync/invites').then((r) => r.invites),
         acceptInvite: (id: string) =>
             call<{ graphId: string }>(`/api/v1/sync/invites/${id}/accept`, { method: 'POST' }).then((r) => r.graphId),
+        /** Decline an invite sent to this account, or cancel one this account sent as the graph's owner. */
+        withdrawInvite: (id: string) =>
+            call<{ graphId: string; by: 'invitee' | 'owner' }>(`/api/v1/sync/invites/${id}`, { method: 'DELETE' }),
         graphMembers: (graphId: string) =>
-            call<{ members: Array<{ userId: string; email: string; role: string }> }>(
-                `/api/v1/sync/graphs/${graphId}/members`,
-            ).then((r) => r.members),
+            call<{ members: GraphMember[] }>(`/api/v1/sync/graphs/${graphId}/members`).then((r) => r.members),
         leaveGraph: (graphId: string) =>
             call<{ ok: true }>(`/api/v1/sync/graphs/${graphId}/leave`, { method: 'POST' }),
         deleteGraph: (graphId: string) =>

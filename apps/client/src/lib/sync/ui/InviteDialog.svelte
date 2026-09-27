@@ -8,6 +8,7 @@
     import { InviteeNotFoundError, isOwnAddress, prepareInvite, sendInvite, type SyncApi } from "$lib/sync";
     import { INVITE_SELF_COPY, describeSyncFailure } from "$lib/sync/sync-error-copy";
     import Modal from "@appsoftwareltd/etherpk-shared/dialog";
+    import { copyFailureMessage, writeClipboardText } from "$lib/document/commands/clipboard-text";
 
     let {
         api,
@@ -15,6 +16,7 @@
         graphName,
         keyring,
         ownEmail = null,
+        inviteeNeeds = { account: "an EtherPK account", verifiedEmail: true },
         onclose,
     }: {
         api: SyncApi;
@@ -24,6 +26,11 @@
         keyring: GraphKeyring;
         /** The signed-in account's address, so inviting it is refused before the lookup. */
         ownEmail?: string | null;
+        /**
+         * What an invitee must have on this server, for the dialog to name: the kind of account,
+         * and whether its address must be verified (the owner's `invitesNeedVerifiedEmail`).
+         */
+        inviteeNeeds?: { account: string; verifiedEmail: boolean };
         onclose: (result?: { sentTo: string }) => void;
     } = $props();
 
@@ -35,7 +42,29 @@
     let prep = $state<{ inviteePublicKey: Uint8Array; fingerprint: string } | null>(null);
     const errorId = $props.id();
 
-    const INVITEE_NOT_FOUND = "No EtherPK user found for that email, or they have not set up a device yet.";
+    /** What an invitee needs, in words: an account, a verified address where asked, and keys. */
+    const needs = $derived(
+        `${inviteeNeeds.account}${inviteeNeeds.verifiedEmail ? " with a verified email address" : ""}`,
+    );
+    /**
+     * One answer for every reason nobody can be invited under an address, as the server gives
+     * one (it will not say whether an account exists). So it names every prerequisite.
+     */
+    const inviteeNotFound = $derived(
+        `Nobody with that address can be invited yet. They need ${needs}, and encryption keys: their first synced graph creates them, or Create encryption keys in Sync settings. Send them a link to EtherPK, then try again.`,
+    );
+    /** The app's address, for the owner to send to somebody who has not set it up yet. */
+    const appLink = $derived(`${location.origin}/graphs`);
+    let linkCopy = $state<"idle" | "copied" | string>("idle");
+    /** The last lookup or send found nobody to invite: the dialog offers the app's link to send. */
+    let inviteeMissing = $state(false);
+
+    function copyAppLink() {
+        writeClipboardText(appLink).then(
+            () => (linkCopy = "copied"),
+            (err: unknown) => (linkCopy = copyFailureMessage("link", err, appLink)),
+        );
+    }
 
     /** The step's primary action, so Enter in the field does what the button does. */
     function submitStep() {
@@ -47,6 +76,7 @@
     async function lookUp() {
         if (busy) return;
         error = null;
+        inviteeMissing = false;
         if (!email.trim()) {
             error = "Enter the person's email address.";
             return;
@@ -59,7 +89,8 @@
         try {
             const found = await prepareInvite(api, graphId, email.trim());
             if (!found) {
-                error = INVITEE_NOT_FOUND;
+                error = inviteeNotFound;
+                inviteeMissing = true;
                 return;
             }
             prep = found;
@@ -79,8 +110,9 @@
             await sendInvite(api, graphId, email.trim(), prep.inviteePublicKey, keyring, graphName);
             step = "done";
         } catch (e) {
-            error = e instanceof InviteeNotFoundError
-                ? `${INVITEE_NOT_FOUND} Nothing was shared.`
+            inviteeMissing = e instanceof InviteeNotFoundError;
+            error = inviteeMissing
+                ? `${inviteeNotFound} Nothing was shared.`
                 : `${describeSyncFailure(e, "send the invite")} Nothing was shared.`;
         } finally {
             busy = false;
@@ -93,12 +125,31 @@
     }
 </script>
 
+<!-- Somebody who cannot be invited yet usually has not set EtherPK up: the link is what to
+     send them. The link itself stays on screen, so a blocked clipboard is no dead end. -->
+{#snippet appLinkOffer()}
+    {#if inviteeMissing}
+        <div data-testid="invite-app-link" class="flex flex-wrap items-center gap-2">
+            <code class="break-all rounded bg-gray-100 px-2 py-1 font-mono text-sm text-gray-900 dark:bg-white/10 dark:text-gray-100">{appLink}</code>
+            <button
+                type="button"
+                onclick={copyAppLink}
+                class="min-h-9 rounded-lg border border-gray-300 px-3 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-white/5"
+            >{linkCopy === "copied" ? "Copied" : "Copy link"}</button>
+            <span role="status" class="text-sm text-gray-600 dark:text-gray-400">
+                {#if linkCopy !== "idle" && linkCopy !== "copied"}{linkCopy}{/if}
+            </span>
+        </div>
+    {/if}
+{/snippet}
+
 <Modal {open} title="Invite a player" busy={busy} busyReason="Working…" onclose={() => close()} onsubmit={submitStep}>
     {#snippet body()}
         {#if step === "email"}
             <p class="text-sm text-gray-600 dark:text-gray-400">
-                Enter the email address of the person you want to share this graph with. They need an
-                EtherPK account and must have set up a device.
+                Enter the email address of the person you want to share this graph with. They need
+                {needs} and encryption keys, which EtherPK creates with their first synced graph or from
+                Sync settings.
             </p>
             <div>
                 <label for="invite-email" class="mb-1.5 block text-sm font-medium text-gray-500 dark:text-gray-400">Email address</label>
@@ -118,6 +169,7 @@
                     <p id={errorId} role="alert" class="mt-1.5 text-sm text-red-600" data-testid="invite-error">{error}</p>
                 {/if}
             </div>
+            {@render appLinkOffer()}
         {:else if step === "verify" && prep}
             <p class="text-sm text-gray-600 dark:text-gray-400">
                 Before sharing your key, confirm this is really <span class="font-medium text-gray-900 dark:text-gray-200">{email}</span>.
@@ -132,13 +184,16 @@
         {:else if step === "done"}
             <p class="text-sm text-gray-600 dark:text-gray-400">
                 Invite sent to <span class="font-medium text-gray-900 dark:text-gray-200">{email}</span>.
-                They will see it under Pending invites when they next open EtherPK.
+                They will see it under Pending invites on their Knowledge graphs page. Until they
+                accept, they are listed on this graph as Invited, where you can cancel the invite.
             </p>
         {/if}
         {#if error && step !== "email"}
             <p role="alert" class="text-sm text-red-600" data-testid="invite-error">{error}</p>
+            {@render appLinkOffer()}
         {/if}
     {/snippet}
+
 
     {#snippet footer()}
         {#if step === "email"}
