@@ -170,7 +170,7 @@
                         aria-label="Close"
                         data-dialog-dismiss
                         data-testid="modal-close"
-                        class="rounded-lg p-1.5 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors"
+                        class="rounded-lg p-1.5 pointer-coarse:-my-1.5 pointer-coarse:p-3 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors"
                     >
                         <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
                             <path d="M6 18 18 6M6 6l12 12" stroke-linecap="round" stroke-linejoin="round" />
@@ -208,7 +208,7 @@
                         </div>
 
                         {#if footer}
-                            <div class="flex justify-end gap-2 border-t border-gray-100 dark:border-gray-800 px-5 py-3">
+                            <div class="flex justify-end gap-2 border-t border-gray-100 dark:border-gray-800 px-5 py-3 pointer-coarse:[&_button]:min-h-11">
                                 {@render footer()}
                             </div>
                         {/if}

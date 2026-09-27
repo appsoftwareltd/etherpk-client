@@ -622,6 +622,36 @@ export function createFilesystemDocumentStore(
         await settled(doc)
     }
 
+    /**
+     * The registry entry `target` names: a document by its own name, else by one of its aliases
+     * (ADR 0061), as a bookmark or a Recents entry can carry a renamed page's old name. A page's own
+     * name outranks another page's alias of the same name, as the index resolves it.
+     */
+    function entryNamed(target: string): DocumentEntry | undefined {
+        const key = conceptKey(target)
+        const own = registry.get(key)
+        if (own) return own
+        for (const entry of registry.values()) {
+            if (entry.aliases.some((alias) => conceptKey(alias) === key)) return entry
+        }
+        return undefined
+    }
+
+    /** The open document `target` names, opening it if it is not; throws when nothing has that name. */
+    function openDocNamed(target: string): OpenDoc {
+        // An open document answers to its name even after its file went (an edit brings it back).
+        const existing = open.get(conceptKey(target))
+        if (existing) return existing
+        const entry = entryNamed(target)
+        if (!entry) throw new DocumentNotFoundError(target)
+        // Reached by an alias: the document it names, open under that name's key, which it keeps.
+        const opened = open.get(entry.key)
+        if (opened) return opened
+        const doc = makeOpenDoc(entry.key === conceptKey(target) ? target : entry.concept, entry)
+        open.set(entry.key, doc)
+        return doc
+    }
+
     function makeOpenDoc(target: string, entry: DocumentEntry): OpenDoc {
         const doc: OpenDoc = {
             key: entry.key,
@@ -767,22 +797,12 @@ export function createFilesystemDocumentStore(
 
     return {
         open(target) {
-            const key = conceptKey(target)
-            const existing = open.get(key)
-            if (existing) return existing.handle
-            const entry = registry.get(key)
-            if (!entry) {
-                throw new DocumentNotFoundError(target)
-            }
-            const doc = makeOpenDoc(target, entry)
-            open.set(key, doc)
-            return doc.handle
+            return openDocNamed(target).handle
         },
 
         async whenReady(target) {
             // Opening is what starts the read; a document already open just awaits its own.
-            const doc = open.get(conceptKey(target)) ?? (this.open(target), open.get(conceptKey(target)))
-            await doc?.ready
+            await openDocNamed(target).ready
         },
 
         async scan() {

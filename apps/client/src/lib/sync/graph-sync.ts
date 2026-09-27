@@ -361,6 +361,13 @@ export const OPERATION_WINDOW = 128
 /** Internal signal: a watermark request is safe to repeat on the next socket generation. */
 class WatermarkConnectionInterruptedError extends Error {}
 
+/**
+ * The relay did not answer in time: the socket reads open, but nothing reaches the server, as on a
+ * connection that dropped without closing. Named so a caller can say "can't reach the Sync Server"
+ * rather than repeat the protocol's words.
+ */
+export class RelayUnansweredError extends Error {}
+
 export function createGraphSync(deps: GraphSyncDeps): GraphSync {
     const engines = new Map<string, DocSync>()
     const retained = new Map<string, number>([[deps.rootDocId, 1]])
@@ -522,7 +529,7 @@ export function createGraphSync(deps: GraphSyncDeps): GraphSync {
                     const requestId = crypto.randomUUID()
                     const timer = setTimeout(() => {
                         watermarkRequests.delete(requestId)
-                        reject(new Error('the sync relay did not answer a watermark check'))
+                        reject(new RelayUnansweredError('the sync relay did not answer a watermark check'))
                     }, 15_000)
                     watermarkRequests.set(requestId, { resolve, reject, timer })
                     activeSocket.send(

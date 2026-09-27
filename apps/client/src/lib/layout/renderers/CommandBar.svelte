@@ -165,6 +165,13 @@
         /* Buttons must not consume the touch as a scroll/zoom gesture. */
         touch-action: manipulation;
     }
+    /* A finger needs a 44 CSS px target. */
+    @media (pointer: coarse) {
+        .command-bar__btn {
+            width: 2.75rem;
+            height: 2.75rem;
+        }
+    }
     .command-bar__btn:active:not(:disabled) {
         background: var(--gk-surface-2);
     }

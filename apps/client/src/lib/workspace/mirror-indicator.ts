@@ -10,6 +10,8 @@
  * stopped, which after a browser restart is the normal state until the folder's permission is
  * given back - and with the Settings tab as its only home, that looked identical to working.
  */
+import { MIRROR_PHASE_LABELS, type MirrorStatus } from '$lib/storage/server/local-mirror'
+
 export type MirrorIndicator =
     | { state: 'hidden' }
     | {
@@ -23,3 +25,41 @@ export type MirrorIndicator =
           title: string
           onclick: () => void
       }
+
+/** The dot without its click, which only the workspace can give it. */
+export type MirrorIndicatorView = { state: 'hidden' } | { state: 'writing' | 'current' | 'paused' | 'waiting'; title: string }
+
+/**
+ * What the dot says for a mirror's status. `current` only after a completed pass with nothing
+ * outstanding: a mirror still starting, or waiting to retry a failed pass, may be behind the graph,
+ * so it shows amber and says why rather than claiming the folder matches.
+ */
+export function mirrorIndicatorView(status: MirrorStatus | null, heldElsewhere: boolean): MirrorIndicatorView {
+    if (heldElsewhere && !status) {
+        return { state: 'waiting', title: 'Another tab of this browser is mirroring this graph to its folder.' }
+    }
+    if (!status) return { state: 'hidden' }
+    if (status.paused) {
+        return { state: 'paused', title: `Mirroring to “${status.folder}” has stopped. ${status.paused.message}` }
+    }
+    if (status.syncing) {
+        const phase = status.pass?.progress
+        const detail = phase && phase.total > 0 ? ` ${MIRROR_PHASE_LABELS[phase.phase]}: ${phase.done} of ${phase.total}.` : ''
+        return { state: 'writing', title: `Writing to “${status.folder}”.${detail}` }
+    }
+    if (status.retrying) {
+        return { state: 'writing', title: `Waiting to mirror to “${status.folder}”. ${status.retrying.message}` }
+    }
+    if (status.lastSyncAt === undefined) {
+        return { state: 'writing', title: `Getting ready to mirror to “${status.folder}”.` }
+    }
+    const waiting = status.skipped.length + status.missingAssets.length
+    return {
+        state: 'current',
+        title: waiting
+            ? `Mirroring to “${status.folder}”. ${waiting} ${waiting === 1 ? 'item is' : 'items are'} still to be written.`
+            : status.changesElsewhereUnchecked
+              ? `Mirroring to “${status.folder}”. Could not check the server for edits made on other devices, so some may not be in the folder yet.`
+              : `“${status.folder}” matches this graph.`,
+    }
+}

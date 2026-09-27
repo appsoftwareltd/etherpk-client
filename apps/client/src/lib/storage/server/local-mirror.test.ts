@@ -6,12 +6,15 @@ import type { GraphTheme } from '$lib/document/publish/theme/graph-theme'
 import type { DirectoryAdapter } from '$lib/storage/fs/directory-adapter'
 import { createMemoryDirectoryAdapter } from '$lib/storage/fs/memory-adapter'
 
+import { RelayUnansweredError } from '$lib/sync/graph-sync'
+
 import { assetIdFromRef } from './server-asset-store'
 import {
     type MirrorAssetResult,
     type MirrorSource,
     type MirrorStatus,
     type MirrorText,
+    OFFLINE_MESSAGE,
     assetFileFates,
     createLocalMirror,
 } from './local-mirror'
@@ -777,6 +780,51 @@ describe('local mirror', () => {
             mirror.dispose()
         })
 
+        it('says, while a retry waits, that it is waiting for the Sync Server', async () => {
+            let reads = 0
+            const mirror = createLocalMirror(
+                source([{ docId: 'p1', kind: 'page', concept: 'Doc', text: 'body' }], {
+                    async readTexts() {
+                        reads += 1
+                        throw new RelayUnansweredError('the sync relay did not answer a watermark check')
+                    },
+                }),
+                tickingAdapter(),
+                { retryDelaysMs: [60_000] },
+            )
+            await mirror.sync()
+            expect(reads).toBe(1)
+            expect(mirror.status().paused).toBeUndefined()
+            expect(mirror.status().retrying).toEqual({ kind: 'offline', message: OFFLINE_MESSAGE })
+            mirror.dispose()
+        })
+
+        it('pauses as offline, in words, when the Sync Server stays out of reach', async () => {
+            let reachable = false
+            const adapter = tickingAdapter()
+            const docs = [{ docId: 'p1', kind: 'page' as const, concept: 'Doc', text: 'body' }]
+            const plain = source(docs)
+            const mirror = createLocalMirror(
+                source(docs, {
+                    async readTexts(docIds, onProgress) {
+                        if (!reachable) throw new RelayUnansweredError('the sync relay did not answer a watermark check')
+                        return plain.readTexts(docIds, onProgress)
+                    },
+                }),
+                adapter,
+                { retryDelaysMs: [] },
+            )
+            await mirror.sync()
+            expect(mirror.status().paused).toEqual({ kind: 'offline', message: OFFLINE_MESSAGE })
+            expect(mirror.status().retrying).toBeUndefined()
+
+            reachable = true
+            mirror.resume()
+            await vi.waitFor(async () => expect(await namesIn(adapter, 'pages')).toEqual(['Doc.md']))
+            expect(mirror.status().paused).toBeUndefined()
+            mirror.dispose()
+        })
+
         it('gives up after its retries, then writes everything once resumed', async () => {
             const adapter = tickingAdapter()
             let failing = true
@@ -994,6 +1042,25 @@ describe('local mirror', () => {
             feed.fire('Doc')
             await vi.waitFor(async () => expect(await namesIn(adapter, 'assets')).toContain(`pasted.${ID}.png`))
             expect(graph.listings()).toBe(2)
+            mirror.dispose()
+        })
+
+        it('fetches the assets again when a protected document changes, whose references it cannot read', async () => {
+            // A protected document is mirrored as ciphertext: an image pasted into it adds no
+            // reference the mirror can see, so any change to one may have added an attachment.
+            const adapter = tickingAdapter()
+            const sealed = (body: string) => '```etherpk-cipher\n' + body + '\n```'
+            const docs: FakeDocument[] = [{ docId: 'p1', kind: 'page', concept: 'Vault', text: sealed('AQQAAAGZaLmAAGZha2UtZW52ZWxvcGU') }]
+            const graph = countingAssets()
+            const feed = source(docs, graph)
+            const mirror = createLocalMirror(feed, adapter, { debounceMs: 0 })
+            await mirror.sync()
+            expect(graph.listings()).toBe(1)
+
+            docs[0].text = sealed('AQQAAAGZaLmAAG5ldy1lbnZlbG9wZS13aXRoLWFuLWltYWdl')
+            feed.fire('Vault')
+            await vi.waitFor(async () => expect(await textOf(adapter, 'pages', 'Vault.md')).toContain('AG5ldy1lbnZl'))
+            await vi.waitFor(() => expect(graph.listings()).toBe(2))
             mirror.dispose()
         })
 

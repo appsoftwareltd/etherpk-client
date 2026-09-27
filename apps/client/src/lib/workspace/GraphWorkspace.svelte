@@ -91,7 +91,7 @@
         setActiveDocument,
     } from "$lib/document";
     import { todayISO } from "$lib/document/calendar/month-grid-core";
-    import { openConcept } from "$lib/document/open-concept";
+    import { canonicalConceptName, openConcept } from "$lib/document/open-concept";
     import AllDocumentsView from "$lib/document/view/AllDocumentsView.svelte";
     import GraphSidebarView from "$lib/document/view/GraphSidebarView.svelte";
     import RenameDocumentDialog from "$lib/document/view/RenameDocumentDialog.svelte";
@@ -379,7 +379,7 @@
     import { dismissNotice, retractNotice, showNotice } from "$lib/activity/notices";
     import type { ActivityOutcome } from "$lib/activity/store";
     import type { ActivityProgress } from "$lib/activity/types";
-    import type { MirrorIndicator } from "./mirror-indicator";
+    import { type MirrorIndicator, mirrorIndicatorView } from "./mirror-indicator";
 
     /** One tab per graph owns the mirror folder; the rest queue behind this. */
     const MIRROR_LOCK_PREFIX = "etherpk-mirror-folder:";
@@ -700,6 +700,27 @@
             tone: text.startsWith("Could not") ? "error" : "info",
         });
     }
+    /** What a tab that followed a rename made outside this tab says happened. */
+    function renamedElsewhereMessage(from: string, to: string): string {
+        const where = isServerStore ? "elsewhere" : "outside EtherPK";
+        return `"${from}" was renamed to "${to}" ${where}; it now answers to that name.`;
+    }
+
+    /**
+     * Follow the renames a synced store saw before anything listened: those made while this
+     * device was away arrive as `scan()` catches the root up, before the layout exists, so the
+     * layout restored its tabs under their old names. Each open one is re-keyed in place.
+     */
+    function followRenamesObserved(): void {
+        if (!isServerStore) return;
+        for (const { from, to } of (store as ServerDocumentStore).renamesObserved()) {
+            const shown =
+                controller?.isOpen({ kind: "document", target: from }) ?? false;
+            void documentMutations.followRename(from, to);
+            if (shown) notify(renamedElsewhereMessage(from, to));
+        }
+    }
+
     /** Take a status down early, if it is still the one showing. */
     function retract(text: string) {
         retractNotice(STATUS_NOTICE, text);
@@ -724,7 +745,9 @@
         sg.onActivity((activity) => {
             if (sg !== serverGraph) return;
             const before = syncActivity?.refusal ?? null;
+            const wasOpen = syncActivity?.connection === "open";
             syncActivity = activity;
+            if (activity.connection === "open" && !wasOpen) resumeMirrorAfterOutage();
             if (activity.refusal && (!before || before.quotaCode !== activity.refusal.quotaCode)) {
                 void explainRefusal(sg, activity.refusal);
             } else if (!activity.refusal && before) {
@@ -2968,8 +2991,11 @@
             identityIndex = null;
             bus?.emit("documents:changed", {});
         });
-        // A `title` edited outside the app is a rename that already happened (ADR 0061): the
-        // store re-keyed the document, and everything keyed by its old name follows.
+        // A rename that already happened: a `title` edited outside the app on a Filesystem
+        // Backend (ADR 0061), or a synced document renamed on another device or by an agent. The
+        // store has re-keyed the document, and everything keyed by its old name follows. Renames
+        // that reached a synced store before this listener did are followed once the layout
+        // exists (`followRenamesObserved`).
         detachDocRenamed = (
             s as {
                 onDocumentRenamed?: (
@@ -2978,10 +3004,10 @@
             }
         ).onDocumentRenamed?.((from, to) => {
             identityIndex = null;
+            const shown =
+                controller?.isOpen({ kind: "document", target: from }) ?? false;
             void documentMutations.followRename(from, to);
-            notify(
-                `"${from}" was renamed to "${to}" outside EtherPK; it now answers to that name.`,
-            );
+            if (shown) notify(renamedElsewhereMessage(from, to));
         });
         // A document that has gone must not leave its tab behind over a phantom buffer.
         // `onDocumentRemoved` has existed on both stores from the start with NO consumer -
@@ -3580,6 +3606,29 @@
     }
 
     /**
+     * The first mount's share of the activation policy below. The Layout is assembled with
+     * activation focus suppressed, so the document in front (today's entry, on a new graph) opened
+     * with the caret nowhere, where ADR 0023 has a loaded document focused. On a desktop the policy
+     * always takes the caret, so it is applied once here; a phone opens on its drawer and keeps the
+     * keyboard down, rechecked each frame in case the presenter swaps meanwhile. It waits a few
+     * frames for the View to register, then hands over to the View's own retries, and stands down
+     * the moment anything else has focus, so it never takes focus from the user or a dialog.
+     */
+    function focusInitialDocument(): void {
+        let frames = 0;
+        const attempt = () => {
+            if (useMobile) return;
+            const focused = document.activeElement;
+            if (focused && focused !== document.body) return;
+            const active = controller?.activeView();
+            if (!active || active.region !== "main" || active.view.kind !== "document") return;
+            if (focusEditor(active.panelId)) return;
+            if (++frames < 60) requestAnimationFrame(attempt);
+        };
+        requestAnimationFrame(attempt);
+    }
+
+    /**
      * A document View became the active one — however it happened, on whichever presenter.
      *
      * The focus policy lives here, once, because the workspace is the only party that knows
@@ -3689,6 +3738,7 @@
         controller.restore(initial);
         // A restored Layout brings the title its tab was saved with; the name is the truth.
         retitleSidebar();
+        followRenamesObserved();
         // Tasks is a RESIDENT of the right Sidebar (CONTEXT.md → Sidebar): present as a tab from
         // the first open, on every device. A Layout persisted before it became one has no
         // Tasks tab and — being per-device — would never gain it, so the resident is ensured
@@ -3723,6 +3773,7 @@
             navEngine?.seed();
             adoptSettingsFromUrl();
             seeded = true;
+            focusInitialDocument();
         } else {
             suppressNav = false;
         }
@@ -3735,7 +3786,9 @@
      */
     function viewFromParams(): ViewRef | null {
         const concept = page.params.concept;
-        if (concept) return { kind: "document", target: concept };
+        // By the name the index resolves it to, as a wikilink opens it: an alias (a bookmark, a
+        // renamed page's old name) opens the page it names, under that page's own name.
+        if (concept) return { kind: "document", target: canonicalConceptName(concept) };
         const assetId = page.params.assetId;
         if (assetId) return { kind: "asset", target: assetId };
         const themeId = page.params.themeId;
@@ -5199,44 +5252,21 @@
      * second copy of "is the mirror all right" is a second thing to get wrong.
      */
     function mirrorIndicator(): MirrorIndicator {
-        const status = mirrorStatus ?? rememberedMirrorStatus();
-        if (mirrorHeldElsewhere && !status) {
-            return {
-                state: "waiting",
-                title: "Another tab of this browser is mirroring this graph to its folder.",
-                onclick: () => openGraphSettings("mirror"),
-            };
-        }
-        if (!status) return { state: "hidden" };
-        if (status.paused) {
-            return {
-                state: "paused",
-                title: `Mirroring to “${status.folder}” has stopped. ${status.paused.message}`,
-                onclick: () => openGraphSettings("mirror"),
-            };
-        }
-        if (status.syncing) {
-            const phase = status.pass?.progress;
-            const detail =
-                phase && phase.total > 0
-                    ? ` ${MIRROR_PHASE_LABELS[phase.phase]}: ${phase.done} of ${phase.total}.`
-                    : "";
-            return {
-                state: "writing",
-                title: `Writing to “${status.folder}”.${detail}`,
-                onclick: () => openGraphSettings("mirror"),
-            };
-        }
-        const waiting = status.skipped.length + status.missingAssets.length;
-        return {
-            state: "current",
-            title: waiting
-                ? `Mirroring to “${status.folder}”. ${waiting} ${waiting === 1 ? "item is" : "items are"} still to be written.`
-                : status.changesElsewhereUnchecked
-                  ? `Mirroring to “${status.folder}”. Could not check the server for edits made on other devices, so some may not be in the folder yet.`
-                  : `“${status.folder}” matches this graph.`,
-            onclick: () => openGraphSettings("mirror"),
-        };
+        const view = mirrorIndicatorView(
+            mirrorStatus ?? rememberedMirrorStatus(),
+            mirrorHeldElsewhere,
+        );
+        return view.state === "hidden"
+            ? view
+            : { ...view, onclick: () => openGraphSettings("mirror") };
+    }
+
+    /**
+     * A mirror paused because the Sync Server was out of reach carries on once the connection is
+     * back, the browser's or the relay's, without being asked: nothing about the folder changed.
+     */
+    function resumeMirrorAfterOutage(): void {
+        if (mirrorStatus?.paused?.kind === "offline") mirror?.resume();
     }
 
     /**
@@ -5404,7 +5434,10 @@
         const followOnline = () => {
             browserOnline = navigator.onLine;
             refreshSyncIndicator();
-            if (browserOnline) serverGraph?.retryRefused();
+            if (browserOnline) {
+                serverGraph?.retryRefused();
+                resumeMirrorAfterOutage();
+            }
         };
         const retryWhenVisible = () => {
             if (document.visibilityState === "visible") serverGraph?.retryRefused();

@@ -12,16 +12,14 @@
  * turned down.
  */
 
-/** The bits of pdf.js this viewer uses, so the lazy import stays typed without importing eagerly. */
-type PdfPage = {
-    getViewport(options: { scale: number }): { width: number; height: number }
-    render(options: { canvasContext: CanvasRenderingContext2D; viewport: unknown }): { promise: Promise<void> }
-}
-export interface PdfDocument {
-    numPages: number
-    getPage(pageNumber: number): Promise<PdfPage>
-    destroy(): Promise<void>
-}
+import type { PDFDocumentProxy, PDFPageProxy } from 'pdfjs-dist'
+
+/**
+ * An open PDF, typed from pdf.js itself so an API change fails the type check rather than the
+ * running app. The import is type-only: the library still loads lazily, below.
+ */
+export type PdfDocument = PDFDocumentProxy
+type PdfPage = PDFPageProxy
 
 let pdfjs: Promise<typeof import('pdfjs-dist')> | undefined
 
@@ -39,7 +37,15 @@ async function library(): Promise<typeof import('pdfjs-dist')> {
 /** Open a PDF from an object URL. Rejects when the bytes are not a PDF at all. */
 export async function openPdf(url: string): Promise<PdfDocument> {
     const lib = await library()
-    return (await lib.getDocument({ url }).promise) as unknown as PdfDocument
+    return lib.getDocument({ url }).promise
+}
+
+/**
+ * Release an open PDF: its worker, its buffers and its fonts. The loading task owns them; the
+ * document itself has no destroy().
+ */
+export function closePdf(document: PdfDocument): Promise<void> {
+    return document.loadingTask.destroy()
 }
 
 /**
@@ -56,12 +62,10 @@ export function fitScale(pageWidth: number, containerWidth: number, max = 2): nu
 export async function renderPage(page: PdfPage, canvas: HTMLCanvasElement, scale: number): Promise<void> {
     const dpr = Math.min(globalThis.devicePixelRatio || 1, 3)
     const viewport = page.getViewport({ scale: scale * dpr })
-    const context = canvas.getContext('2d')
-    if (!context) return
     canvas.width = Math.floor(viewport.width)
     canvas.height = Math.floor(viewport.height)
     // CSS size is the unscaled box; the backing store carries the extra device pixels.
     canvas.style.width = `${Math.floor(viewport.width / dpr)}px`
     canvas.style.height = `${Math.floor(viewport.height / dpr)}px`
-    await page.render({ canvasContext: context, viewport }).promise
+    await page.render({ canvas, viewport }).promise
 }

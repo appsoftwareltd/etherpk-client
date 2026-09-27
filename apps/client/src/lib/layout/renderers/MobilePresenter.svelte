@@ -303,7 +303,7 @@
                         style:--gk-tab-title-width={tabTitleWidth(renderer.registry.tabTitleChars(v.view))}
                         onclick={() => controller.focusView(v.view)}
                     >
-                        {renderer.registry.title(v.view)}
+                        <span class="tab-title">{renderer.registry.title(v.view)}</span>
                     </button>
                 </div>
             {/each}
@@ -344,7 +344,7 @@
                         style:--gk-tab-title-width={tabTitleWidth(renderer.registry.tabTitleChars(v.view))}
                         onclick={() => controller.focusView(v.view)}
                     >
-                        {renderer.registry.title(v.view)}
+                        <span class="tab-title">{renderer.registry.title(v.view)}</span>
                     </button>
                     {@render tabMark(v.panelId)}
                     <button
@@ -791,23 +791,29 @@
         width: 1.9rem;
         cursor: pointer;
     }
+    /* The button fills the tab's height, so a tap anywhere above or below the title lands on
+       it; the title inside it is what gets trimmed and centred. */
     .tab-label {
-        /* Block (not flex) so text-box trimming applies to its line box. The parent
-           .tab (flex, align-items:center) then vertically centres the trimmed box. */
-        display: block;
+        display: flex;
+        align-items: center;
+        align-self: stretch;
         padding: 0 0.15rem 0 0.6rem;
         border: 0;
         background: transparent;
         color: inherit;
         font: inherit;
-        /* MUST come after `font` — the `font` shorthand resets line-height. */
+        cursor: pointer;
+    }
+    .tab-title {
+        /* Block (not flex) so text-box trimming applies to its line box. The label (flex,
+           align-items:center) then vertically centres the trimmed box. */
+        display: block;
         line-height: 1;
         /* Trim the box to the cap-height→baseline ink so centring centres the visible
            glyphs, not the em box (whose empty descender space leaves text sitting
            high). Chromium-supported (text-box). */
         text-box: trim-both cap alphabetic;
         white-space: nowrap;
-        cursor: pointer;
         /* The desktop tab's cap (compass-theme.css → .dv-default-tab-content): about 30
            characters, set per View kind through the same `tabTitleWidth`, then an ellipsis.
            The button keeps the whole title as its accessible name. Clipped on the inline axis
@@ -832,6 +838,25 @@
     }
     .tab-close:hover {
         opacity: 1;
+    }
+    /* A finger needs a 44 CSS px target: on a touch screen the top bar's toggles and tabs grow
+       to that inside their 1px borders, so a tab's label and close button get the whole 44px,
+       and the close button and each row of the pane list are at least as wide. */
+    @media (pointer: coarse) {
+        .topbar .toggle {
+            width: calc(2.75rem + 2px);
+            height: calc(2.75rem + 2px);
+        }
+        .tab {
+            height: calc(2.75rem + 2px);
+        }
+        .tab-close,
+        .tabmenu-close {
+            min-width: 2.75rem;
+        }
+        .tabmenu-item {
+            min-height: 2.75rem;
+        }
     }
     .tab-close svg {
         width: 0.8rem;

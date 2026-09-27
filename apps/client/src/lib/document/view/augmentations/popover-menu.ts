@@ -97,6 +97,13 @@ export function popoverMenu<S extends PopoverBase>(opts: PopoverMenuOptions<S>):
             }),
     })
 
+    // A popover belongs to the editor that has focus. When focus leaves - a click elsewhere, or a
+    // context menu opened from the keyboard, which takes focus - the popover closes rather than
+    // staying over whatever now has it.
+    const closeOnBlur = EditorView.focusChangeEffect.of((state, focusing) =>
+        !focusing && state.field(menuField, false) ? closeMenu.of(null) : null,
+    )
+
     function accept(view: EditorView, index?: number): boolean {
         const menu = view.state.field(menuField)
         if (!menu) return false
@@ -264,5 +271,5 @@ export function popoverMenu<S extends PopoverBase>(opts: PopoverMenuOptions<S>):
         [`.${p}__detail`]: { minWidth: '0', maxWidth: '60%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
     })
 
-    return [paneTooltips, menuField, completionKeymap, theme]
+    return [paneTooltips, menuField, closeOnBlur, completionKeymap, theme]
 }

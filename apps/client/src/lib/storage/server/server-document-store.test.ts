@@ -375,10 +375,95 @@ describe('ServerDocumentStore', () => {
         await s.createPage('Beta')
         s.open('Alpha').applyChange({ from: 0, to: 0, insert: '- alpha body' })
 
-        expect(s.snapshotDocument('Alpha')?.text).toContain('alpha body')
-        expect(s.snapshotDocument('Beta')?.text).toBe('')
-        expect(s.snapshotDocument('Nonexistent')).toBeNull()
+        expect((await s.snapshotDocument('Alpha'))?.text).toContain('alpha body')
+        expect((await s.snapshotDocument('Beta'))?.text).toBe('')
+        expect(await s.snapshotDocument('Nonexistent')).toBeNull()
         await s.dispose()
+    })
+
+    describe('reopening a graph from its Local Cache', () => {
+        // A reload builds the store before the root document has read its cache row, so the
+        // registry arrives afterwards, and every document it names starts with no engine.
+        const keyring = createGraphKeyring('g1')
+
+        async function session(relay: ReturnType<typeof createLoopbackRelay>, cacheName: string) {
+            const cache = await openGraphCache(cacheName)
+            const graph = createGraphSync({
+                graphId: 'g1',
+                rootDocId: ROOT,
+                keyring,
+                relayUrl: 'ws://loopback/sync',
+                token: fixedSyncToken('t'),
+                cache,
+                connect: relay.connect,
+                debounceMs: 5,
+            })
+            const s = createServerDocumentStore(graph, { readyTimeoutMs: 100 })
+            return { s, graph, cache }
+        }
+
+        /** A graph whose Source page links to Target, written through and closed. */
+        async function writtenGraph(relay: ReturnType<typeof createLoopbackRelay>): Promise<string> {
+            const cacheName = `reopen-index-${++cacheSeq}`
+            const first = await session(relay, cacheName)
+            await first.s.scan()
+            await first.s.createPage('Target', '- the target')
+            await first.s.createPage('Source', '- see [[Target]] here')
+            await first.graph.flushAll()
+            await vi.waitFor(async () => {
+                const snapshot = await first.s.snapshotForIndex()
+                expect(snapshot.find((d) => d.concept === 'Source')?.text).toContain('[[Target]]')
+            })
+            await first.s.dispose()
+            first.cache.dispose()
+            return cacheName
+        }
+
+        it('snapshotDocument reads a document no engine has loaded from the Local Cache', async () => {
+            // An engine created on demand is empty until its cache read lands. Its snapshot has to
+            // wait for that read: indexing the empty text would replace the document's rows, and
+            // no later event would restore them.
+            const relay = createLoopbackRelay()
+            const second = await session(relay, await writtenGraph(relay))
+            await second.s.scan()
+
+            expect((await second.s.snapshotDocument('Source'))?.text).toBe('- see [[Target]] here')
+            await second.s.dispose()
+            second.cache.dispose()
+        })
+
+        it('reports the restored registry as a new document set, not as document changes', async () => {
+            // The persisted index already holds these documents, and the Local Cache's own
+            // journal names any the index missed, so naming each of them again on a reload would
+            // only make the index read every one back.
+            const relay = createLoopbackRelay()
+            const second = await session(relay, await writtenGraph(relay))
+            const changes = vi.fn()
+            const documentSets = vi.fn()
+            second.s.onChange(changes)
+            second.s.onDocumentsChanged(documentSets)
+            await second.s.scan()
+
+            expect(second.s.listDocuments().map((d) => d.concept)).toEqual(['Source', 'Target'])
+            expect(documentSets).toHaveBeenCalled()
+            expect(changes).not.toHaveBeenCalled()
+            await second.s.dispose()
+            second.cache.dispose()
+        })
+    })
+
+    it("a page's own name outranks another page's alias of the same name", async () => {
+        // Whichever order the registry lists them in: the index resolves the name to the page.
+        for (const order of [['Physics', 'Notes'], ['Notes', 'Physics']]) {
+            const relay = createLoopbackRelay()
+            const s = await store(relay)
+            for (const title of order) await s.createPage(title, `- ${title.toLowerCase()}`)
+            await s.setAliases('Notes', ['Physics'])
+
+            expect(s.open('Physics').getText()).toBe('- physics')
+            expect(s.open('Notes').getText()).toBe('- notes')
+            await s.dispose()
+        }
     })
 
     it('a content edit names the document that changed', async () => {
@@ -471,6 +556,94 @@ describe('ServerDocumentStore', () => {
 
         await a.dispose()
         await b.dispose()
+    })
+
+    it('snapshotDocument fetches a page another device created, which this one has never held', async () => {
+        // B has no cache row and no engine for the page. The change naming it is the index's
+        // only cue, so the snapshot catches the document up from the relay; the text that
+        // arrives names the page again, and that snapshot carries it.
+        const keyring = createGraphKeyring('g1')
+        const relay = createLoopbackRelay()
+        const a = await store(relay, keyring)
+        const b = await store(relay, keyring)
+        const named = vi.fn()
+        b.onChange((change) => named(change?.concept))
+
+        await a.createPage('Remote', '- written on A')
+        await vi.waitFor(() => expect(named).toHaveBeenCalledWith('Remote'), { timeout: 2000 })
+        named.mockClear()
+        await b.snapshotDocument('Remote')
+        await vi.waitFor(() => expect(named).toHaveBeenCalledWith('Remote'), { timeout: 2000 })
+        await vi.waitFor(async () => {
+            expect((await b.snapshotDocument('Remote'))?.text).toBe('- written on A')
+        }, { timeout: 2000 })
+
+        await a.dispose()
+        await b.dispose()
+    })
+
+    it('a rename made on another device is reported as a rename, not a removal', async () => {
+        const keyring = createGraphKeyring('g1')
+        const relay = createLoopbackRelay()
+        const a = await store(relay, keyring)
+        const b = await store(relay, keyring)
+        await a.createPage('Project Alpha', '- the plan')
+        await vi.waitFor(() => expect(b.listDocuments().map((d) => d.concept)).toContain('Project Alpha'), { timeout: 2000 })
+        const renamedOnA = vi.fn()
+        const renamedOnB = vi.fn()
+        const removedOnB = vi.fn()
+        a.onDocumentRenamed(renamedOnA)
+        b.onDocumentRenamed(renamedOnB)
+        b.onDocumentRemoved(removedOnB)
+
+        await a.renamePage('Project Alpha', 'Project Apollo', { strategy: 'rewrite' })
+
+        await vi.waitFor(() => expect(renamedOnB).toHaveBeenCalledWith('Project Alpha', 'Project Apollo'), { timeout: 2000 })
+        expect(removedOnB).not.toHaveBeenCalled()
+        expect(b.renamesObserved()).toEqual([{ from: 'Project Alpha', to: 'Project Apollo' }])
+        // The renaming tab follows its own rename where it makes it.
+        expect(renamedOnA).not.toHaveBeenCalled()
+        expect(a.renamesObserved()).toEqual([])
+        await a.dispose()
+        await b.dispose()
+    })
+
+    it('a rename made while this device was away is among the renames its reopen observed', async () => {
+        const keyring = createGraphKeyring('g1')
+        const relay = createLoopbackRelay()
+        const cacheName = `renamed-away-${++cacheSeq}`
+        const session = async () => {
+            const cache = await openGraphCache(cacheName)
+            const graph = createGraphSync({
+                graphId: 'g1',
+                rootDocId: ROOT,
+                keyring,
+                relayUrl: 'ws://loopback/sync',
+                token: fixedSyncToken('t'),
+                cache,
+                connect: relay.connect,
+                debounceMs: 5,
+            })
+            return { s: createServerDocumentStore(graph, { readyTimeoutMs: 100 }), graph, cache }
+        }
+        const first = await session()
+        await first.s.scan()
+        await first.s.createPage('Project Alpha', '- the plan')
+        await first.graph.flushAll()
+        await first.graph.awaitAcked({ stallMs: 1000 })
+        await first.s.dispose()
+        first.cache.dispose()
+
+        const other = await store(relay, keyring)
+        await vi.waitFor(() => expect(other.listDocuments().map((d) => d.concept)).toContain('Project Alpha'), { timeout: 2000 })
+        await other.renamePage('Project Alpha', 'Project Apollo', { strategy: 'rewrite' })
+        await other.dispose()
+
+        const second = await session()
+        await second.s.scan()
+        expect(second.s.renamesObserved()).toEqual([{ from: 'Project Alpha', to: 'Project Apollo' }])
+        await second.s.dispose()
+        second.cache.dispose()
     })
 
     it('text edits on A reach B via subscribe; applyChange never notifies own subscribers', async () => {

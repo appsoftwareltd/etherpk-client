@@ -308,18 +308,26 @@ function analyseIncrementally(
                 .join('\n'),
         }
     })
+    // A delimiter edit takes the full path (ordinarySingleLineChange), so mapping the block's end
+    // is exact here, and the line's links are filtered against it as a full analysis filters them.
+    const mappedFrontmatterEnd =
+        previous.frontmatterEnd < 0
+            ? previous.frontmatterEnd
+            : transaction.changes.mapPos(previous.frontmatterEnd, 1)
     const localWikilinks = insideFence || lineWasCode
         ? []
-        : wikilinkSegmentsInSource(change.newLineText, lineLocalCodeRanges).map((segment) => ({
-              ...segment,
-              start: segment.start + change.newLineFrom,
-              end: segment.end + change.newLineFrom,
-              wikilink: {
-                  ...segment.wikilink,
-                  start: segment.wikilink.start + change.newLineFrom,
-                  end: segment.wikilink.end + change.newLineFrom,
-              },
-          }))
+        : wikilinkSegmentsInSource(change.newLineText, lineLocalCodeRanges)
+              .map((segment) => ({
+                  ...segment,
+                  start: segment.start + change.newLineFrom,
+                  end: segment.end + change.newLineFrom,
+                  wikilink: {
+                      ...segment.wikilink,
+                      start: segment.wikilink.start + change.newLineFrom,
+                      end: segment.wikilink.end + change.newLineFrom,
+                  },
+              }))
+              .filter((segment) => mappedFrontmatterEnd < 0 || segment.start >= mappedFrontmatterEnd)
     const wikilinks = previous.wikilinks
         .filter(
             (segment) =>
@@ -339,10 +347,7 @@ function analyseIncrementally(
         lines,
         renderableFences,
         codeRanges: mappedCodeRanges,
-        frontmatterEnd:
-            previous.frontmatterEnd < 0
-                ? previous.frontmatterEnd
-                : transaction.changes.mapPos(previous.frontmatterEnd, 1),
+        frontmatterEnd: mappedFrontmatterEnd,
         wikilinks,
         imageLines,
         pendingFence: previous.pendingFence,

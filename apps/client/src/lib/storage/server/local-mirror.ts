@@ -37,10 +37,12 @@ import { graphThemeFileText, themeFileName, themeIdOfFileName } from '$lib/stora
 import type { GraphTheme } from '$lib/document/publish/theme/graph-theme'
 import { serialiseProtectionRecord, type ProtectionRecord } from '$lib/crypto'
 import { PROTECTION_FILE } from '$lib/document/protection/protection-store'
+import { documentProtection } from '$lib/document/protection/cipher-fence'
 import { withFrontmatterIdentity } from '$lib/document/frontmatter/identity'
 import { conceptKey, fileStem } from '$lib/storage/fs/identity'
 import type { DirectoryAdapter, Subdir } from '$lib/storage/fs/directory-adapter'
 
+import { RelayUnansweredError } from '$lib/sync/graph-sync'
 import { referencedAssetNames } from './mirror-assets'
 import {
     type MirrorDocument,
@@ -152,8 +154,14 @@ export interface MirrorDanglingLink {
     concept: string
 }
 
-/** Why a mirror stopped: the first two need the user, the third only a retry. */
-export type MirrorPauseKind = 'permission' | 'folder' | 'error'
+/**
+ * Why a mirror stopped: the first two need the user, `error` only a retry, and `offline` the
+ * connection back, which the host watches for so it can resume without being asked.
+ */
+export type MirrorPauseKind = 'permission' | 'folder' | 'error' | 'offline'
+
+/** What an unreachable Sync Server is called, while it is retried and once the mirror pauses. */
+export const OFFLINE_MESSAGE = "Can't reach the Sync Server. The mirror carries on when you're back online."
 
 export interface MirrorPause {
     kind: MirrorPauseKind
@@ -173,6 +181,11 @@ export interface MirrorStatus {
     pass?: { kind: 'full' | 'targeted'; progress: MirrorProgress }
     /** Set when mirroring has stopped and needs the user or a retry. */
     paused?: MirrorPause
+    /**
+     * Set while a failed pass waits for its retry: why it failed. The folder may be behind the
+     * graph, so a host must not call it current while this is set.
+     */
+    retrying?: MirrorPause
     /** Epoch-ms of the last pass that completed without error. */
     lastSyncAt?: number
     documents: number
@@ -381,6 +394,11 @@ export function classifyMirrorFailure(error: unknown): MirrorPause {
     if (name === 'NotFoundError') {
         return { kind: 'folder', message: 'The mirror folder is no longer there.' }
     }
+    // The Sync Server out of reach, or the browser offline: said in words, and retried. After the
+    // folder's own failures, which going offline does not cause and coming back does not fix.
+    if (error instanceof RelayUnansweredError || globalThis.navigator?.onLine === false) {
+        return { kind: 'offline', message: OFFLINE_MESSAGE }
+    }
     return { kind: 'error', message: (error as Error)?.message || 'Writing to the folder failed.' }
 }
 
@@ -442,6 +460,7 @@ export function createLocalMirror(
     let retries = 0
     let lastSyncAt: number | undefined
     let paused: MirrorPause | undefined
+    let retrying: MirrorPause | undefined
     let pass: MirrorStatus['pass']
     const statusListeners = new Set<(status: MirrorStatus) => void>()
 
@@ -452,6 +471,7 @@ export function createLocalMirror(
             syncing,
             pass: pass && { kind: pass.kind, progress: { ...pass.progress } },
             paused,
+            ...(retrying ? { retrying } : {}),
             lastSyncAt,
             documents: written.size,
             assets: assetCount,
@@ -715,6 +735,9 @@ export function createLocalMirror(
             const refs = referencedAssetNames(text)
             const previous = written.get(doc.docId)
             if (!previous || previous.refs.join('\n') !== refs.join('\n')) refsChanged = true
+            // A protected document is mirrored as ciphertext, where no reference can be read: any
+            // change to one may have added or dropped an attachment, so it counts as a moved one.
+            if (previous && previous.hash !== hash && documentProtection(got.text).kind === 'document') refsChanged = true
             written.set(doc.docId, { fileName, concept: doc.concept, hash, identity: identityOf(doc), refs })
             dirty.delete(doc.docId)
         }
@@ -1021,8 +1044,9 @@ export function createLocalMirror(
             pass = undefined
         }
         if (failure) {
-            if (failure.kind === 'error' && retries < retryDelays.length) {
+            if ((failure.kind === 'error' || failure.kind === 'offline') && retries < retryDelays.length) {
                 const delay = retryDelays[retries++]
+                retrying = failure
                 // The retry is a full pass, which asks and re-arms the timed check itself; a check
                 // armed before the failure would only start a pass in the middle of the backoff.
                 disarmCatchUp()
@@ -1030,10 +1054,12 @@ export function createLocalMirror(
                 schedule(delay)
                 return
             }
+            retrying = undefined
             paused = failure
             running = false
             disarmCatchUp()
         }
+        if (completed) retrying = undefined
         // Asked and done: the next question is due after the interval, or sooner when this one
         // went unanswered, so a device coming back online is not left unchecked for minutes.
         if (completed && check) armCatchUp(changesElsewhereUnchecked ? catchUpRetryMs : catchUpIntervalMs)
@@ -1081,6 +1107,7 @@ export function createLocalMirror(
         stop() {
             running = false
             continuous = false
+            retrying = undefined
             disarmCatchUp()
             if (timer) clearTimeout(timer)
             timer = undefined
@@ -1107,6 +1134,7 @@ export function createLocalMirror(
         resume() {
             if (disposed) return
             paused = undefined
+            retrying = undefined
             retries = 0
             disk = undefined
             running = true

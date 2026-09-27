@@ -112,6 +112,35 @@ describe('index-db', () => {
         expect(sources).toEqual(['2026-06-24', '2026-06-25'])
     })
 
+    // A line naming the page more than once, by its name or its aliases, is one place it is
+    // referenced: listing it once per link repeated the line and inflated the count.
+    it('lists a block that names the page several times once', () => {
+        ingestOne(db, {
+            concept: '2026-06-26',
+            kind: 'journal',
+            aliases: [],
+            text: '- met about [[Project]], also called [[Proj]], and [[project]] again\n  - a note',
+        })
+
+        const refs = backlinksFor(db, 'Project').find((g) => g.sourceConcept === '2026-06-26')!.refs
+
+        expect(refs).toHaveLength(1)
+        expect(refs[0].kind).toBe('block')
+    })
+
+    it('lists a prose line that names the page several times once, and keeps two lines as two', () => {
+        ingestOne(db, {
+            concept: 'Notes',
+            kind: 'page',
+            aliases: [],
+            text: 'The [[Project]] and the [[Proj]] are one.\n\nLater, [[Project]] again.',
+        })
+
+        const refs = backlinksFor(db, 'Project').find((g) => g.sourceConcept === 'Notes')!.refs
+
+        expect(refs.map((ref) => ref.line)).toEqual([0, 2])
+    })
+
     it('orders journals newest-first', () => {
         const groups = backlinksFor(db, 'Project')
         expect(groups.map((g) => g.sourceConcept)).toEqual(['2026-06-25', '2026-06-24'])

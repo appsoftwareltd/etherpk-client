@@ -12,6 +12,20 @@ const FOCUSABLE =
     'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
 
 /**
+ * Whether the element is laid out, so `focus()` can land on it. A control under `display: none`
+ * (a styled file input, a picker only a phone shows) matches the selectors above, but focusing it
+ * does nothing and leaves focus wherever it was, behind the dialog.
+ */
+function isRendered(el: HTMLElement): boolean {
+    return el.checkVisibility?.({ visibilityProperty: true }) ?? el.getClientRects().length > 0
+}
+
+/** The focusable descendants that can take focus now, in tab order. */
+function focusableIn(node: HTMLElement): HTMLElement[] {
+    return [...node.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(isRendered)
+}
+
+/**
  * Which control a dialog should land on when it opens.
  *
  * Not simply "the first focusable": that is nearly always the header close button, which is
@@ -21,17 +35,22 @@ const FOCUSABLE =
  *  2. the first text-entry control, because a dialog with a field exists to collect it,
  *  3. the first focusable that is not a dismissal,
  *  4. the dialog itself, so focus at least enters the dialog rather than staying behind it.
+ *
+ * Only controls that are laid out count: one that is not cannot take focus.
  */
 export function autofocusTarget(node: HTMLElement): HTMLElement {
-    const explicit = node.querySelector<HTMLElement>('[data-autofocus]')
+    const explicit = [...node.querySelectorAll<HTMLElement>('[data-autofocus]')].find(isRendered)
     if (explicit) return explicit
 
-    const entry = node.querySelector<HTMLElement>(
-        'input:not([disabled]):not([type="hidden"]):not([type="checkbox"]):not([type="radio"]), select:not([disabled]), textarea:not([disabled])',
-    )
+    // Not a file input: choosing a file is a button's job, and the input is usually hidden.
+    const entry = [
+        ...node.querySelectorAll<HTMLElement>(
+            'input:not([disabled]):not([type="hidden"]):not([type="checkbox"]):not([type="radio"]):not([type="file"]), select:not([disabled]), textarea:not([disabled])',
+        ),
+    ].find(isRendered)
     if (entry) return entry
 
-    const focusable = [...node.querySelectorAll<HTMLElement>(FOCUSABLE)]
+    const focusable = focusableIn(node)
     return focusable.find((el) => !el.hasAttribute('data-dialog-dismiss')) ?? focusable[0] ?? node
 }
 
@@ -51,10 +70,13 @@ export function dialogFocus(node: HTMLElement): () => void {
     const opener = document.activeElement as HTMLElement | null
 
     autofocusTarget(node).focus()
+    // Whatever went wrong, focus ends up in the dialog (which carries tabindex="-1"), never
+    // behind it, so Tab starts from inside and the trap below engages.
+    if (!node.contains(document.activeElement)) node.focus()
 
     function onKeydown(event: KeyboardEvent) {
         if (event.key !== 'Tab') return
-        const items = [...node.querySelectorAll<HTMLElement>(FOCUSABLE)]
+        const items = focusableIn(node)
         if (items.length === 0) {
             // Nothing to cycle between: keep focus on the dialog rather than letting Tab
             // wander into the page behind it.

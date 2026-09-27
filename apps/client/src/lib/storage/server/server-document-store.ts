@@ -29,7 +29,7 @@ import type {
 } from '$lib/document/backlinks/live-index'
 import { createBreather } from '$lib/activity/breathe'
 import type { GraphSync, RegistryEntry } from '$lib/sync/graph-sync'
-import { REMOTE, SUPPRESSED, contentBlocked } from '$lib/sync/doc-sync'
+import { CACHE_SEED, REMOTE, SUPPRESSED, contentBlocked } from '$lib/sync/doc-sync'
 import { type TextSplice, countWikilinkTargets, wikilinkScopeSplices } from '$lib/document/wikilink/rename'
 import { documentProtection } from '$lib/document/protection/cipher-fence'
 import { mergeDocuments } from '../merge'
@@ -121,6 +121,18 @@ export interface ServerDocumentStore {
     confirmRegistry(timeoutMs?: number): Promise<boolean>
     onDocumentsChanged(listener: () => void): () => void
     onDocumentRemoved(listener: (target: string) => void): () => void
+    /**
+     * A document renamed somewhere other than this tab (another device or tab, the Headless
+     * Client), by its old and new names. Its old name is not reported removed. A rename made here
+     * is followed where it is made, so it is not reported.
+     */
+    onDocumentRenamed(listener: (from: string, to: string) => void): () => void
+    /**
+     * Every rename from elsewhere this store has seen, one per document with its first and latest
+     * name, including those that arrived before anything listened: the renames made while this
+     * device was away reach it as `scan()` catches the root up.
+     */
+    renamesObserved(): { from: string; to: string }[]
     onChange(listener: StoreChangeListener): () => void
     snapshotForIndex(): Promise<IndexDocSnapshot[]>
     streamForIndex(options?: IndexSnapshotOptions): Promise<{
@@ -131,8 +143,11 @@ export interface ServerDocumentStore {
     catchUpPersistedIndex(): Promise<void>
     /** Durable Local Cache boundaries not yet represented by a committed index operation. */
     pendingIndexChanges(): Promise<IndexChangeCheckpoint>
-    /** One document's index snapshot, for a listener that knows which one changed. */
-    snapshotDocument(concept: string): IndexDocSnapshot | null
+    /**
+     * One document's index snapshot, for a listener that knows which one changed. Waits for the
+     * document's Local Cache row when no engine has read it yet.
+     */
+    snapshotDocument(concept: string): Promise<IndexDocSnapshot | null>
     reconcile(): Promise<void>
     resolveConflict(target: string, choice: 'keep-mine' | 'take-disk'): Promise<void>
     /**
@@ -209,6 +224,9 @@ export function createServerDocumentStore(
     const changeListeners = new Set<StoreChangeListener>()
     const docsChangedListeners = new Set<() => void>()
     const removedListeners = new Set<(target: string) => void>()
+    const renamedListeners = new Set<(from: string, to: string) => void>()
+    /** docId to the name it had when first seen renamed from elsewhere, and its latest name. */
+    const renamesFromElsewhere = new Map<string, { from: string; to: string }>()
     const resurrectionClaims = new Map<string, RegistryEntry>()
     let disposed = false
     /** Whether the encrypted registry has been read to its terminal relay page this session. */
@@ -323,11 +341,18 @@ export function createServerDocumentStore(
         return out
     }
 
+    /**
+     * Every name a document answers to, to its docId. A page's own name outranks another page's
+     * alias of the same name, whatever order the registry lists them in, as the index resolves it.
+     */
     function currentDocIds(): Map<string, string> {
         const out = new Map<string, string>()
+        registry.forEach((entry, docId) => out.set(conceptKey(conceptOf(entry)), docId))
         registry.forEach((entry, docId) => {
-            out.set(conceptKey(conceptOf(entry)), docId)
-            for (const alias of entry.aliases ?? []) out.set(conceptKey(alias), docId)
+            for (const alias of entry.aliases ?? []) {
+                const key = conceptKey(alias)
+                if (!out.has(key)) out.set(key, docId)
+            }
         })
         return out
     }
@@ -345,31 +370,53 @@ export function createServerDocumentStore(
             // Emitting an unnamed index change here made every new tab walk the full graph.
             if (changedDocIds.length === 0) return
 
+            // The root reading its Local Cache row restores the registry the previous session
+            // left. A persisted index already holds those documents, and the cache journal names
+            // any it missed (`pendingIndexChanges`), so the restore is a new document set but not
+            // a change to any document, just as a content row's cache read is not (graph-sync).
+            const restored = event.transaction.origin === CACHE_SEED
+            // A document that keeps its docId under a new name was renamed. One renamed here is
+            // followed by the rename that made it; one renamed elsewhere is reported as a rename,
+            // so what is keyed by its old name can follow, and its old name is not a removal.
+            const fromElsewhere = !restored && !event.transaction.local
             const additions: string[] = []
+            const renames: Array<{ docId: string; from: string; to: string }> = []
             let additionsOnly = true
             for (const docId of changedDocIds) {
                 const before = knownRegistry.get(docId)
                 const after = nextRegistry.get(docId)
+                if (fromElsewhere && before && after && before.concept !== after.concept) {
+                    renames.push({ docId, from: before.concept, to: after.concept })
+                }
                 if (before || !after) {
                     additionsOnly = false
                     continue
                 }
                 additions.push(after.concept)
             }
+            const renamedAway = new Set(renames.map((rename) => conceptKey(rename.from)))
             const next = currentConcepts()
             for (const [key, concept] of known) {
-                if (!next.has(key)) removedListeners.forEach((l) => l(concept))
+                if (!next.has(key) && !renamedAway.has(key)) removedListeners.forEach((l) => l(concept))
             }
             known = next
             docIdsByConcept = currentDocIds()
             knownRegistry = nextRegistry
             docsChangedListeners.forEach((l) => l())
-            if (additionsOnly) {
-                for (const concept of additions) {
-                    changeListeners.forEach((listener) => listener({ concept }))
+            if (!restored) {
+                if (additionsOnly) {
+                    for (const concept of additions) {
+                        changeListeners.forEach((listener) => listener({ concept }))
+                    }
+                } else {
+                    changeListeners.forEach((listener) => listener())
                 }
-            } else {
-                changeListeners.forEach((listener) => listener())
+            }
+            for (const { docId, from, to } of renames) {
+                const first = renamesFromElsewhere.get(docId)?.from ?? from
+                if (first === to) renamesFromElsewhere.delete(docId)
+                else renamesFromElsewhere.set(docId, { from: first, to })
+                renamedListeners.forEach((listener) => listener(from, to))
             }
             for (const [docId, change] of event.changes.keys) {
                 if (change.action !== 'delete') continue
@@ -765,6 +812,13 @@ export function createServerDocumentStore(
             removedListeners.add(listener)
             return () => removedListeners.delete(listener)
         },
+        onDocumentRenamed(listener) {
+            renamedListeners.add(listener)
+            return () => renamedListeners.delete(listener)
+        },
+        renamesObserved() {
+            return [...renamesFromElsewhere.values()].map((rename) => ({ ...rename }))
+        },
         onChange(listener) {
             changeListeners.add(listener)
             return () => changeListeners.delete(listener)
@@ -903,11 +957,24 @@ export function createServerDocumentStore(
                 acknowledge: checkpoint.acknowledge,
             }
         },
-        snapshotDocument(concept: string): IndexDocSnapshot | null {
+        async snapshotDocument(concept: string): Promise<IndexDocSnapshot | null> {
             const docId = docIdFor(concept)
-            const entry = docId ? registry.get(docId) : undefined
-            if (!docId || !entry) return null
-            return indexSnapshotFor(entry, graph.docSync(docId).doc.getText('content').toString())
+            if (!docId || !registry.has(docId)) return null
+            // A named change can reach the index before any tab has opened the document, when its
+            // engine does not exist or is still reading its Local Cache row, and so is empty. Hold
+            // a synchronised engine until that read lands: the snapshot is then the cached content,
+            // and the relay catch-up the engine starts names the document again with anything newer
+            // (a page another device created has no cache row, and only that catch-up fetches it).
+            // The engine is retired once it is idle, unless a tab has retained it meanwhile.
+            try {
+                await graph.readyDocs([docId])
+                const entry = registry.get(docId)
+                return entry
+                    ? indexSnapshotFor(entry, graph.docSync(docId).doc.getText('content').toString())
+                    : null
+            } finally {
+                graph.retireDocs([docId])
+            }
         },
 
         async compactDocument(target: string): Promise<void> {

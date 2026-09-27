@@ -122,7 +122,7 @@ describe('what the index receives', () => {
         const g = await graph('g-fm-index')
         await page(g.store, 'Kanban', '---\ntitle: Kanban\nalias: [[Physics]]\n---\n- see [[Physics]]')
 
-        expect(g.store.snapshotDocument('Kanban')?.text).toBe('- see [[Physics]]')
+        expect((await g.store.snapshotDocument('Kanban'))?.text).toBe('- see [[Physics]]')
         const all = await g.store.snapshotForIndex()
         expect(all.find((d) => d.concept === 'Kanban')?.text).toBe('- see [[Physics]]')
         expect(all.find((d) => d.concept === 'Kanban')).not.toHaveProperty('includes')
@@ -134,7 +134,7 @@ describe('what the index receives', () => {
         await page(g.store, 'Docs', '---\ntitle: Docs\npublication:\n  id: docs\n  includes:\n    footer: Site Footer\n---\n- [[Kanban]]')
 
         const expected = { text: '- [[Kanban]]', includes: [{ publication: 'docs', slot: 'footer', concept: 'Site Footer' }] }
-        expect(g.store.snapshotDocument('Docs')).toMatchObject(expected)
+        expect(await g.store.snapshotDocument('Docs')).toMatchObject(expected)
         const all = await g.store.snapshotForIndex()
         expect(all.find((d) => d.concept === 'Docs')).toMatchObject(expected)
         g.dispose()

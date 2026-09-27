@@ -11,6 +11,7 @@
      * the click's user gesture, and the empty-folder check must fail while there is still
      * a dialog to show the message in. After that the [[Activity Toast]] owns the run.
      */
+    import { tick } from "svelte";
     import { ActivityConflictError, isRunning } from "$lib/activity/store";
     import { isFsaSupported, pickGraphDirectory } from "$lib/storage";
     import type {
@@ -86,8 +87,23 @@
     /** Only ever true across the pre-flight awaits (the picker, the empty check). */
     let busy = $state(false);
     let error = $state<string | null>(null);
+    /** The error is about the name, so the name field is where it is shown and focused. */
+    let nameInvalid = $state(false);
     let sourceInput: HTMLInputElement | undefined = $state();
     let zipInput: HTMLInputElement | undefined = $state();
+    let zipButton: HTMLButtonElement | undefined = $state();
+    let nameInput: HTMLInputElement | undefined = $state();
+    let runButton: HTMLButtonElement | undefined = $state();
+
+    /**
+     * Put focus where the dialog now wants it, once the change that moved it has rendered: the
+     * control that had focus may have gone (the source buttons, once a source is picked) or been
+     * disabled while busy, and either leaves focus behind the dialog.
+     */
+    async function focusAfterRender(target: () => HTMLElement | undefined): Promise<void> {
+        await tick();
+        target()?.focus();
+    }
 
     /**
      * Files this account cannot store, known before anything uploads. Only meaningful for the
@@ -135,6 +151,8 @@
             error = `Could not read that zip: ${(e as Error).message}`;
         } finally {
             busy = false;
+            // Busy disabled the button that had focus; a refused zip goes back to it.
+            if (!prepared) void focusAfterRender(() => zipButton);
         }
     }
 
@@ -144,6 +162,8 @@
         format = next.format;
         if (!name.trim()) name = next.folderName;
         if (!folderAvailable) destination = "synced";
+        // The source buttons are gone; the name is the next thing to check.
+        void focusAfterRender(() => nameInput);
     }
 
     /** The destination directory: the FSA picker, or a fresh OPFS dir under the dev gate. */
@@ -171,8 +191,11 @@
         const trimmed = name.trim();
         if (!trimmed) {
             error = "Give the graph a name.";
+            nameInvalid = true;
+            void focusAfterRender(() => nameInput);
             return;
         }
+        nameInvalid = false;
         // At most one import at a time (per tab): two large ones double a memory footprint
         // that is already the likeliest thing to fall over on a real graph.
         if (isRunning("import")) {
@@ -240,6 +263,9 @@
                     : describeSyncFailure(e, "start the import");
         } finally {
             busy = false;
+            // A refusal is announced by its alert; focus goes back to Import, which busy had
+            // disabled, so a keyboard user is still in the dialog to try again.
+            if (error) void focusAfterRender(() => runButton);
         }
     }
 </script>
@@ -287,12 +313,14 @@
                 <button
                     type="button"
                     data-testid="import-choose-source"
+                    data-autofocus
                     disabled={busy}
                     onclick={() => sourceInput?.click()}
                     class="rounded-lg border border-gray-300 dark:border-gray-700 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5"
                     >Choose folder…</button
                 >
                 <button
+                    bind:this={zipButton}
                     type="button"
                     data-testid="import-choose-zip"
                     disabled={busy}
@@ -338,9 +366,13 @@
                     >Graph name</label
                 >
                 <input
+                    bind:this={nameInput}
                     id="import-name"
                     data-testid="import-name"
                     bind:value={name}
+                    oninput={() => (nameInvalid = false)}
+                    aria-invalid={nameInvalid}
+                    aria-describedby={nameInvalid ? "import-error" : undefined}
                     disabled={busy}
                     autocomplete="off"
                     class="block w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-gray-950 dark:text-gray-100 focus:border-gray-950 dark:focus:border-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-950 dark:focus:ring-gray-400"
@@ -420,7 +452,7 @@
                     : "them"} in the new graph.
             </p>
         {/if}
-        {#if error}<p class="text-sm text-red-600" data-testid="import-error">
+        {#if error}<p id="import-error" role="alert" class="text-sm text-red-600" data-testid="import-error">
                 {error}
             </p>{/if}
     {/snippet}
@@ -435,6 +467,7 @@
         >
         {#if prepared}
             <button
+                bind:this={runButton}
                 type="submit"
                 disabled={busy ||
                     (destination === "synced" && !syncTarget) ||

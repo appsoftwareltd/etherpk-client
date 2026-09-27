@@ -13,7 +13,7 @@
      */
     import type { AssetViewerProps } from "$lib/surface";
 
-    import { fitScale, openPdf, renderPage, type PdfDocument } from "./pdf-render";
+    import { closePdf, fitScale, openPdf, renderPage, type PdfDocument } from "./pdf-render";
 
     let { url, name }: AssetViewerProps = $props();
 
@@ -34,7 +34,7 @@
         void openPdf(source)
             .then((document) => {
                 if (live) pdf = document;
-                else void document.destroy();
+                else void closePdf(document);
             })
             .catch(() => {
                 if (live) error = "This file could not be opened as a PDF.";
@@ -48,7 +48,7 @@
     $effect(() => {
         const open = pdf;
         return () => {
-            void open?.destroy();
+            if (open) void closePdf(open);
         };
     });
 

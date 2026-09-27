@@ -175,6 +175,23 @@ describe('editor structural analysis', () => {
         expect(editorAnalysisDiagnostics().fullAnalyses).toBe(1)
     })
 
+    it('keeps a link on a frontmatter line out of wikilinks after an edit on that line', () => {
+        // Frontmatter is metadata the index never derives from, so its links are not links: the
+        // full analysis drops them, and an ordinary edit on the line must not bring them back.
+        resetEditorAnalysisDiagnostics()
+        let state = EditorState.create({
+            doc: '---\nrelated: "[[Physics]]"\n---\n- body [[Body Link]]',
+            extensions: [editorAnalysis()],
+        })
+        expect(analysisFor(state).wikilinks.map((segment) => segment.wikilink.concept)).toEqual(['Body Link'])
+        const lineEnd = state.doc.line(2).to
+
+        state = state.update({ changes: { from: lineEnd, insert: 'x' } }).state
+
+        expect(analysisFor(state).wikilinks.map((segment) => segment.wikilink.concept)).toEqual(['Body Link'])
+        expect(editorAnalysisDiagnostics()).toEqual({ fullAnalyses: 1, incrementalAnalyses: 1 })
+    })
+
     it('still suppresses edits to a genuine indented code block', () => {
         resetEditorAnalysisDiagnostics()
         let state = EditorState.create({

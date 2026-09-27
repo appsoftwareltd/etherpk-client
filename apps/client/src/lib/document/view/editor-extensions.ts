@@ -41,6 +41,7 @@ import { markdownLinkAugmentation } from './augmentations/markdown-link'
 import { markdownTableAugmentation } from './augmentations/markdown-table'
 import { mathInlineAugmentation } from './augmentations/math-inline'
 import { outlineGuidesAugmentation } from './augmentations/outline-guides'
+import { type PlaceholderSource, placeholderAugmentation } from './augmentations/placeholder'
 import { selectionLayerAugmentation } from './augmentations/selection-layer'
 import { slashCompletion } from './augmentations/slash-complete'
 import { spellCheckAugmentation } from './augmentations/spell-check'
@@ -93,6 +94,11 @@ export interface EditorExtensionServices {
     isProtectedDocument?: () => boolean
     /** Which backend the open graph stores documents on; null outside a graph. */
     backend?: () => Backend | null
+    /**
+     * The line an empty editor shows until the first keystroke: the View knows a journal day from
+     * a [[Draft]], and when the content has arrived (placeholder.ts). Absent, no hint is shown.
+     */
+    placeholder?: PlaceholderSource
 }
 
 /** One named feature of the stack: the name is what the order test asserts on. */
@@ -156,7 +162,7 @@ export function editorFeatures(services: EditorExtensionServices): EditorFeature
         // everything that marks inside a code line: the container stays one box.
         { name: 'code-scroll', extension: codeScrollAugmentation() },
         { name: 'selection-layer', extension: selectionLayerAugmentation() },
-        { name: 'markdown-table', extension: markdownTableAugmentation() },
+        { name: 'markdown-table', extension: markdownTableAugmentation({ isMissing: services.conceptIsMissing }) },
         // Frontmatter wears the fenced-code panel over its own parse node — kept beside the
         // fence so the two block-panel constructs stay together.
         {
@@ -227,6 +233,8 @@ export function editorFeatures(services: EditorExtensionServices): EditorFeature
         },
         // The Table Size Picker: the insert-table Command's popover, a sibling of the calendar.
         { name: 'table-size-picker', extension: tableSizePicker() },
+        // A line of guidance over an empty journal day or Draft, until the first keystroke.
+        { name: 'placeholder', extension: placeholderAugmentation(services.placeholder) },
         // A refused edit reaches the user: after every filter that can refuse one.
         { name: 'edit-refusal', extension: editRefusalReporter(services.editRefused ?? (() => {})) },
         // The View's own hooks last: focus makes this editor the active one; updates keep the

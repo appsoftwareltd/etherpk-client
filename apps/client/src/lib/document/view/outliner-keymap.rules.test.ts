@@ -14,14 +14,17 @@
  * displays for it, the caret deciding which lines reveal their source, as in the editor.
  */
 
-import { describe, expect, it } from 'vitest'
-import { showTooltip } from '@codemirror/view'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { EditorView, keymap, showTooltip, type WidgetType } from '@codemirror/view'
 
 import { hiddenSyntax, revealStateOf } from './augmentations/base-renderer'
 import { markdownWithCodeHighlight } from './augmentations/code-highlight'
 import { formatDecorations, RULE_LINE_CLASS } from './augmentations/markdown-format'
+import { markdownTableAugmentation } from './augmentations/markdown-table'
 import { guideThreadsFor } from './augmentations/outline-guides'
 import { wikilinkCompletion } from './augmentations/wikilink-complete'
+import { refreshWikilinks, wikilinkAugmentation } from './augmentations/wikilink'
+import { displayNameForRef } from '../../storage/fs/asset-store'
 import { editorFixture, press } from './testing/editor-state-fixture'
 import { wikilinkButtonSpec } from './wrap-selection'
 
@@ -64,6 +67,48 @@ describe('completion popovers (EtherPK)', () => {
     }
 })
 
+// Following a link is a read: the key never edits, and outside a link it is not handled, so the
+// keys under it keep their meaning (Editor Content Rules → Following a link).
+describe('Alt+Enter follows the link at the caret (Obsidian)', () => {
+    function follow(before: string, typeFirst?: string) {
+        const opened: string[] = []
+        const editor = editorFixture(before, {
+            extensions: [wikilinkAugmentation({ onOpen: (concept) => opened.push(concept) })],
+        })
+        // Typing first takes the analysis down its incremental path, as live editing does.
+        if (typeFirst) editor.type(typeFirst)
+        const bindings = editor.state.facet(keymap).flat().filter((binding) => binding.key === 'Alt-Enter')
+        const handled = bindings.some((binding) => binding.run?.(editor as never) ?? false)
+        return { opened, handled, after: editor.fixture() }
+    }
+
+    for (const row of [
+        { rule: 'inside the link text', before: '- see [[Phys|ics]] now', opens: ['Physics'] },
+        { rule: 'on its brackets', before: '- see [|[Physics]] now', opens: ['Physics'] },
+        { rule: 'just before its opening brackets', before: '- see |[[Physics]] now', opens: ['Physics'] },
+        { rule: 'just after its closing brackets', before: '- see [[Physics]]| now', opens: ['Physics'] },
+        { rule: 'the innermost of nested links', before: '- [[Types of [[Pl|ant]]]]', opens: ['Plant'] },
+        { rule: 'the outer link, outside the inner one', before: '- [[Ty|pes of [[Plant]]]]', opens: ['Types of [[Plant]]'] },
+        { rule: 'nothing outside a link', before: '- se|e [[Physics]] now', opens: [] },
+        { rule: 'nothing for a link inside code', before: '- `[[Phys|ics]]`', opens: [] },
+        { rule: 'nothing with a selection', before: '- see [[«Phys»ics]] now', opens: [] },
+        { rule: 'the link it touches from the left, between two touching links', before: '- [[A]]|[[B]]', opens: ['B'] },
+    ]) {
+        it(row.rule, () => {
+            const result = follow(row.before)
+            expect(result.opened).toEqual(row.opens)
+            expect(result.handled).toBe(row.opens.length > 0)
+            expect(result.after).toBe(row.before)
+        })
+    }
+
+    it('nothing for a link in the frontmatter block, after typing on its line', () => {
+        const result = follow('---\nrelated: "[[Phys|ics]]"\n---\n- body', 'x')
+        expect(result.opened).toEqual([])
+        expect(result.handled).toBe(false)
+    })
+})
+
 describe('completion over a wrapped word (EtherPK, ADR 0077)', () => {
     const physics = { display: 'Physics', key: 'physics', kind: 'page' as const }
     const tooltips = (editor: ReturnType<typeof editorFixture>) =>
@@ -99,6 +144,116 @@ describe('completion over a wrapped word (EtherPK, ADR 0077)', () => {
 })
 
 // ── Editor Content Rules → Standard prose ────────────────────────────────────────────────────
+
+// A table off the caret renders its cells as the editor renders a line off the caret: a link is a
+// link, marks are styled, syntax is hidden (Editor Content Rules → Standard prose). Rendered with
+// just enough DOM for the widget to build into; the browser suite keeps the click and the layout.
+describe('a table cell renders its inline markdown (Obsidian)', () => {
+    class FakeElement {
+        className = ''
+        style: Record<string, string> = {}
+        attrs = new Map<string, string>()
+        children: Array<FakeElement | { text: string }> = []
+        constructor(readonly tag: string) {}
+        set textContent(text: string) {
+            this.children = [{ text }]
+        }
+        setAttribute(name: string, value: string) {
+            this.attrs.set(name, value)
+        }
+        appendChild<T extends FakeElement | { text: string }>(child: T): T {
+            this.children.push(child)
+            return child
+        }
+    }
+    const textOf = (node: FakeElement | { text: string }): string =>
+        'text' in node ? node.text : node.children.map(textOf).join('')
+    const all = (node: FakeElement): FakeElement[] =>
+        [node, ...node.children.flatMap((child) => (child instanceof FakeElement ? all(child) : []))]
+    const classes = (node: FakeElement) => all(node).map((el) => el.className).filter(Boolean)
+
+    afterEach(() => vi.unstubAllGlobals())
+
+    /** The table widget over the fixture, the caret being off it. */
+    function tableWidget(editor: ReturnType<typeof editorFixture>): WidgetType {
+        const widgets: WidgetType[] = []
+        for (const set of editor.state.facet(EditorView.decorations)) {
+            if (typeof set === 'function') continue
+            for (const cursor = set.iter(); cursor.value; cursor.next()) {
+                const widget = cursor.value.spec.widget as WidgetType | undefined
+                if (widget) widgets.push(widget)
+            }
+        }
+        return widgets[0]
+    }
+
+    function render(doc: string, options: Parameters<typeof markdownTableAugmentation>[0] = {}) {
+        vi.stubGlobal('document', {
+            createElement: (tag: string) => new FakeElement(tag),
+            createTextNode: (text: string) => ({ text }),
+        })
+        const editor = editorFixture(doc, { caret: '¦', extensions: [markdownTableAugmentation(options)] })
+        /** The rows of cells, header first, as the grid draws them. */
+        const rows = (widget = tableWidget(editor)) => {
+            const table = widget.toDOM(null as never) as unknown as FakeElement
+            return all(table).filter((el) => el.tag === 'tr').map((tr) => tr.children as FakeElement[])
+        }
+        return { editor, rows }
+    }
+
+    const TABLE = [
+        '| **Plant** | Kind | Link |',
+        '| --- | --- | --- |',
+        '| [[Fern]] | **leafy** and `green` | [docs](https://example.com/ferns) |',
+        '| ![](../assets/pic.11111111-1111-4111-8111-111111111111.png) | $x^2$ | plain |',
+        '',
+        'after¦',
+    ].join('\n')
+
+    it('a wikilink in a cell is a link to its page', () => {
+        const [, [fern]] = render(TABLE).rows()
+        const link = all(fern).find((el) => el.className.split(' ').includes('cm-wikilink'))
+        expect(link?.attrs.get('data-concept')).toBe('Fern')
+        expect(textOf(link!)).toBe('[[Fern]]')
+    })
+
+    it('marks style their text and hide their syntax, in a header cell too', () => {
+        const [[plant], [, kind]] = render(TABLE).rows()
+        expect(textOf(plant)).toBe('Plant')
+        expect(classes(plant)).toEqual(['cm-md-strong'])
+        expect(textOf(kind)).toBe('leafy and green')
+        expect(classes(kind)).toEqual(['cm-md-strong', 'cm-md-code'])
+    })
+
+    it('a hyperlink carries the address the link handler opens', () => {
+        const [, [, , docs]] = render(TABLE).rows()
+        const link = all(docs).find((el) => el.className === 'cm-md-link')
+        expect(link?.attrs.get('data-href')).toBe('https://example.com/ferns')
+        expect(textOf(link!)).toBe('docs')
+    })
+
+    it('an image with no alt text shows its file name, and maths its source', () => {
+        const [, , [image, maths]] = render(TABLE).rows()
+        expect(textOf(image)).toBe(displayNameForRef('../assets/pic.11111111-1111-4111-8111-111111111111.png'))
+        expect(textOf(image)).not.toBe('')
+        expect(textOf(maths)).toBe('$x^2$')
+    })
+
+    it('a link to a page that does not exist is dashed until the index says it does', () => {
+        const pages = new Set<string>()
+        const { editor, rows } = render(TABLE, { isMissing: (concept) => !pages.has(concept) })
+        const before = tableWidget(editor)
+        const fernClasses = (widget: WidgetType) => classes(rows(widget)[1][0])
+        expect(fernClasses(before)).toEqual(['cm-wikilink cm-wikilink--missing'])
+
+        pages.add('Fern')
+        editor.dispatch(editor.state.update({ effects: refreshWikilinks.of(null) }))
+
+        const after = tableWidget(editor)
+        expect(after.eq(before)).toBe(false)
+        expect(fernClasses(after)).toEqual(['cm-wikilink'])
+    })
+})
 
 table('prose is deliberately boring', [
     { rule: 'Enter is a plain newline', precedent: 'VS Code', before: 'text|', key: 'Enter', after: 'text\n|' },

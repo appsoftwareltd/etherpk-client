@@ -36,6 +36,9 @@
     import { getActiveDocumentStore } from '../active-store'
     import { getActiveGraphIndex } from '../backlinks'
     import { draftConceptNowExists } from '../draft-presence'
+    import { msUntilNextLocalMidnight, todayISO } from '../calendar/month-grid-core'
+    import { isJournalConcept } from '../journal-concept'
+    import { placeholderText } from '../placeholder-text'
     import { conceptIsMissing, openConcept } from '../open-concept'
     import { documentBody } from '../protection/cipher-fence'
     import { frontmatterLineOffset, subscribeReveal, takeReveal } from '../reveal'
@@ -83,6 +86,15 @@
     // seed queued behind the background materialisation walk) — the editor would otherwise
     // sit silently empty, which reads as "my notes are gone" (live, 2026-07-28).
     let seeding = $state(false)
+    /**
+     * Whether the mounted document's content has arrived. Until it has, an empty editor is not an
+     * empty document, and no hint is shown: "Type to start" over a day that has text would be a lie.
+     * Set by the seed that belongs to the current mount only (`seedToken`).
+     */
+    let contentReady = false
+    let seedToken: object | undefined
+    /** Pushes the hint's words into the mounted editor (placeholder.ts). */
+    let showPlaceholder: ((text: string | null) => void) | undefined
     let seedShowTimer: ReturnType<typeof setTimeout> | undefined
     // True while a cache seed is outstanding, and set when the workspace asked for the caret
     // before it landed — see focusIfEmpty.
@@ -378,12 +390,31 @@
         const view = editor?.view
         if (!view) return
         let attempts = 10
+        // What had focus when this was asked for: the retries may take focus from it, and from
+        // nothing, but not from whatever the user or a dialog has moved to since.
+        const from = document.activeElement
         const tryFocus = () => {
             if (!view.dom.isConnected) return
+            const now = document.activeElement
+            if (now && now !== from && now !== document.body && !view.dom.contains(now)) return
             view.focus()
             if (!view.hasFocus && --attempts > 0) requestAnimationFrame(tryFocus)
         }
         tryFocus()
+    }
+
+    /** The hint for this View's document now, or none while its content is still on the way. */
+    function pushPlaceholder(): void {
+        showPlaceholder?.(
+            contentReady
+                ? placeholderText({
+                      target: view.target,
+                      today: todayISO(),
+                      draft: draft !== undefined,
+                      coarsePointer: matchMedia('(pointer: coarse)').matches,
+                  })
+                : null,
+        )
     }
 
     /**
@@ -553,8 +584,21 @@
         // A Draft has no backing content to wait for; asking would resolve instantly anyway,
         // but saying so keeps the loading overlay off a surface that is already complete.
         const pendingSeed = draft ? undefined : activeStore.whenReady?.(view.target)
+        contentReady = !pendingSeed
+        seedToken = undefined
         if (pendingSeed) {
             seedPending = true
+            const token = (seedToken = {})
+            // Only a seed that ARRIVED lifts the hint's hold: one that failed leaves the pane
+            // showing its error, not an invitation to start typing.
+            void pendingSeed.then(
+                () => {
+                    if (seedToken !== token) return
+                    contentReady = true
+                    pushPlaceholder()
+                },
+                () => {},
+            )
             seedShowTimer = setTimeout(() => (seeding = true), 150)
             void pendingSeed
                 .catch((error) => {
@@ -618,6 +662,24 @@
                 // removed while a document is open.
                 isProtectedDocument: isProtectedNow,
                 backend: () => currentWorkspaceServices()?.backend ?? null,
+                placeholder: (show) => {
+                    showPlaceholder = show
+                    pushPlaceholder()
+                    // A journal day's words depend on the date: today's entry is yesterday's after
+                    // midnight, and a tab is left open for days.
+                    let midnight: ReturnType<typeof setTimeout> | undefined
+                    const armMidnight = () => {
+                        midnight = setTimeout(() => {
+                            pushPlaceholder()
+                            armMidnight()
+                        }, msUntilNextLocalMidnight())
+                    }
+                    if (isJournalConcept(view.target)) armMidnight()
+                    return () => {
+                        clearTimeout(midnight)
+                        if (showPlaceholder === show) showPlaceholder = undefined
+                    }
+                },
                 editRefused: showRefusal,
                 conceptIsMissing,
                 openConcept: (concept) => void openConcept(concept, panelId),

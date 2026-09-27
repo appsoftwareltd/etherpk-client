@@ -399,9 +399,9 @@
                 : "connect",
     );
     const PRIMARY_BUTTON =
-        "rounded-lg bg-gray-900 dark:bg-gray-100 px-3 py-1.5 text-sm font-medium text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-200";
+        "inline-flex items-center justify-center rounded-lg bg-gray-900 dark:bg-gray-100 px-3 py-1.5 pointer-coarse:min-h-11 text-sm font-medium text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-200";
     const SECONDARY_BUTTON =
-        "rounded-lg border border-gray-300 dark:border-gray-700 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5";
+        "inline-flex items-center justify-center rounded-lg border border-gray-300 dark:border-gray-700 px-3 py-1.5 pointer-coarse:min-h-11 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5";
 
     /**
      * What this tab has put back from the device's safety copy after the browser dropped

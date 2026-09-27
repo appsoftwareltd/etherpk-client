@@ -6,14 +6,18 @@
  * (confirming first when it has no document yet). Holding the mod key (Ctrl / ⌘)
  * suppresses that and just places the cursor, which is how link text is edited —
  * inverted from the usual editor convention so touch, which has no modifier, can
- * follow a link at all. The model lives in `$lib/document/wikilink` (see Wikilinks.md, ADR 0011).
+ * follow a link at all. From the keyboard, Alt+Enter follows the link at the caret and
+ * Shift+F10 or the ContextMenu key opens its menu there. The model lives in
+ * `$lib/document/wikilink` (see Wikilinks.md, ADR 0011).
  */
 
 import { type EditorState, type Extension, RangeSetBuilder, StateEffect, type Transaction } from '@codemirror/state'
 import {
+    type Command,
     Decoration,
     type DecorationSet,
     EditorView,
+    keymap,
     ViewPlugin,
     type ViewUpdate,
 } from '@codemirror/view'
@@ -141,6 +145,50 @@ function episodePlugin(options: WikilinkAugmentationOptions): Extension {
     )
 }
 
+/**
+ * The concept of the link at the caret, for the keys that act on one: the innermost link holding
+ * the caret, anywhere from just before its `[[` to just after its `]]`. Null for a range selection
+ * or a caret outside every link. Links in code and in the frontmatter block are not links here
+ * either: the shared analysis leaves them out.
+ */
+export function wikilinkAtCaret(state: EditorState): string | null {
+    const { main } = state.selection
+    if (!main.empty) return null
+    const head = main.head
+    const segments = analysisFor(state).wikilinks
+    // The segment the caret is in; failing that, the one it sits just after.
+    const segment =
+        segments.find((candidate) => candidate.start <= head && head < candidate.end) ??
+        segments.find((candidate) => candidate.end === head)
+    return segment?.wikilink.concept ?? null
+}
+
+/** Alt+Enter: open the link at the caret, as a click on it does. Not handled outside a link. */
+function followLinkAtCaret(options: WikilinkAugmentationOptions): Command {
+    return ({ state }) => {
+        const concept = wikilinkAtCaret(state)
+        if (!concept || !options.onOpen) return false
+        options.onOpen(concept)
+        return true
+    }
+}
+
+/**
+ * Shift+F10 and the ContextMenu key: the link's Context Menu at the caret, as a right-click on the
+ * link raises it. The menu takes focus, so the browser's own menu a Menu key raises on release
+ * lands on it and is refused there (ContextMenu.svelte).
+ */
+function linkMenuAtCaret(options: WikilinkAugmentationOptions): Command {
+    return (view) => {
+        const concept = wikilinkAtCaret(view.state)
+        if (!concept || !options.onContextMenu) return false
+        const coords = view.coordsAtPos(view.state.selection.main.head)
+        if (!coords) return false
+        options.onContextMenu(concept, coords.left, coords.bottom)
+        return true
+    }
+}
+
 const LONG_PRESS_MS = 500
 const LONG_PRESS_SLOP_PX = 10
 
@@ -216,8 +264,12 @@ function contextMenuHandlers(options: WikilinkAugmentationOptions): Extension {
     })
 }
 
-/** Carried by the transaction the plugin dispatches when the index says it changed. */
-const refreshWikilinks = StateEffect.define<null>()
+/**
+ * Carried by the transaction the plugin dispatches when the index says a concept this document
+ * links to changed: a page created or removed. Exported for widgets that draw links themselves (a
+ * table's cells), which have to redraw their missing-link styling on it too.
+ */
+export const refreshWikilinks = StateEffect.define<null>()
 let decorationBuildCount = 0
 
 /** Content-free counters used by the performance harness and regression tests. */
@@ -392,7 +444,13 @@ export function wikilinkAugmentation(options: WikilinkAugmentationOptions = {}):
             textDecorationStyle: 'dashed',
         },
     })
+    const keys = keymap.of([
+        { key: 'Alt-Enter', run: followLinkAtCaret(options) },
+        { key: 'Shift-F10', run: linkMenuAtCaret(options) },
+        { key: 'ContextMenu', run: linkMenuAtCaret(options) },
+    ])
+
     // The context-menu handlers precede the click handler so a fired long-press swallows the
     // mousedown before it can open the link.
-    return [plugin, contextMenuHandlers(options), clickHandler, episodePlugin(options), theme]
+    return [plugin, contextMenuHandlers(options), clickHandler, keys, episodePlugin(options), theme]
 }

@@ -65,6 +65,7 @@ describe('editor feature stack', () => {
             'slash-completion',
             'date-calendar',
             'table-size-picker',
+            'placeholder',
             'edit-refusal',
             'view-hooks',
         ])
@@ -81,6 +82,12 @@ describe('editor feature stack', () => {
         // one (ADR 0094). Split, the clamp's absolute prefix drew the bullet at the line's edge.
         const decorating = names().slice(names().indexOf('markdown-format'))
         for (const name of decorating) before('spell-check', name)
+    })
+
+    it('gives a misspelt word touching a link its spelling menu before the link its menu', () => {
+        // Both answer Shift+F10 and the Menu key at the caret; spell check excludes link text, so
+        // they meet only at a caret between a misspelt word and a link, where the word wins.
+        before('spell-check', 'wikilink')
     })
 
     it('lets clipboard files claim a paste before the HTML route sees it', () => {

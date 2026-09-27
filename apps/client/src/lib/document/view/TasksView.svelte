@@ -742,23 +742,28 @@
                         {#each group.hits as hit (hitKey(hit))}
                             {@const tags = parseTaskTags(hit.text)}
                             <li class="rounded-md py-1 hover:bg-(--gk-surface-2)" data-testid="tasks-row">
-                                <div class="flex items-start gap-2 px-1">
+                                <div class="flex items-start gap-2 px-1 pointer-coarse:gap-0 pointer-coarse:px-0">
                                     <!-- mt-1.5 rather than mt-1: the row is items-start, and at
                                          mt-1 the box's centre sat 2px above the first line of
-                                         the task's text. -->
-                                    <input
-                                        type="checkbox"
-                                        data-testid="tasks-checkbox"
-                                        checked={isDone(hit)}
-                                        aria-label="Toggle {tags.text}"
-                                        onchange={() => void toggle(hit)}
-                                        class="mt-1.5 shrink-0"
-                                    />
+                                         the task's text. On a touch screen the label around
+                                         the box is a 44px target, and the text below drops by
+                                         half of that less half a line, so the box still centres
+                                         on the first line. -->
+                                    <label class="flex shrink-0 cursor-pointer pointer-coarse:size-11 pointer-coarse:items-center pointer-coarse:justify-center">
+                                        <input
+                                            type="checkbox"
+                                            data-testid="tasks-checkbox"
+                                            checked={isDone(hit)}
+                                            aria-label="Toggle {tags.text}"
+                                            onchange={() => void toggle(hit)}
+                                            class="mt-1.5 pointer-coarse:mt-0"
+                                        />
+                                    </label>
                                     <button
                                         type="button"
                                         data-testid="tasks-row-open"
                                         onclick={() => open(hit)}
-                                        class="min-w-0 flex-1 text-left"
+                                        class="min-w-0 flex-1 text-left pointer-coarse:pt-3"
                                     >
                                         <span class="text-sm" class:line-through={isDone(hit)} class:opacity-60={isDone(hit)}>
                                             <!-- A wikilink in the text opens ITS document, as it does in

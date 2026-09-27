@@ -1218,7 +1218,8 @@ export function backlinksFor(db: SqlDb, concept: string): DbBacklinkGroup[] {
         `SELECT l.page_id, p.concept AS sourceConcept, p.kind AS sourceKind, l.line, l.line_text,
                 l.match_start, l.match_end, l.block_local_id, l.in_title
          FROM links l JOIN pages p ON p.id = l.page_id
-         WHERE p.generation=? AND l.concept_key IN (${placeholders})`,
+         WHERE p.generation=? AND l.concept_key IN (${placeholders})
+         ORDER BY l.page_id, l.line, l.match_start`,
         [generation, ...names],
     )
 
@@ -1257,7 +1258,18 @@ export function backlinksFor(db: SqlDb, concept: string): DbBacklinkGroup[] {
     }
 
     const groups = new Map<string, DbBacklinkGroup>()
+    // One reference per place the page is named: the title, a block, or a line outside any block.
+    // A place naming it more than once, by its name or its aliases, is listed once, at its first
+    // mention; one entry per link repeated the line and inflated the count.
+    const places = new Set<string>()
     for (const h of hits) {
+        const place = h.in_title
+            ? `${h.page_id}:title`
+            : h.block_local_id != null
+              ? `${h.page_id}:block:${h.block_local_id}`
+              : `${h.page_id}:line:${h.line}`
+        if (places.has(place)) continue
+        places.add(place)
         let group = groups.get(h.sourceConcept)
         if (!group) {
             group = { sourceConcept: h.sourceConcept, sourceKind: h.sourceKind, refs: [] }

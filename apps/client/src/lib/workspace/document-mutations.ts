@@ -228,20 +228,22 @@ export function createDocumentMutationController(dependencies: DocumentMutationD
 
         /**
          * A rename that already happened - a `title` edited outside the app on a Filesystem
-         * Backend (ADR 0061). The store has re-keyed the document; here everything keyed by its
-         * old name follows: favourites, recents, and the open View, which reopens under the new
-         * name over the same buffer.
+         * Backend (ADR 0061), or a synced document renamed on another device or by an agent. The
+         * store has re-keyed the document; here everything keyed by its old name follows: the
+         * open View, which reopens under the new name over the same document, recents and
+         * favourites.
          */
         async followRename(from: string, to: string): Promise<void> {
-            await dependencies.renameFavourite(from, to)
-            dependencies.recents()?.rename(from, to)
             const layout = dependencies.layout()
             // Re-keyed in place, as a rename from inside the app is: the tab keeps its place
-            // and is fronted only if it was the front one already.
+            // and is fronted only if it was the front one already. Done before the favourite
+            // write is awaited, so a caller that goes on to save the layout saves the new name.
             const wasOpen = layout?.isOpen({ kind: 'document', target: from }) ?? false
             const wasFront = layout ? isFrontTab(layout, from) : false
             layout?.closeView({ kind: 'document', target: from })
             if (wasOpen) layout?.openView({ kind: 'document', target: to }, { activate: wasFront })
+            dependencies.recents()?.rename(from, to)
+            await dependencies.renameFavourite(from, to)
         },
     }
 }

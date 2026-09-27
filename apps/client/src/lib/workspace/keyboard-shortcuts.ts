@@ -7,10 +7,12 @@
  *   hands it to `attachKeybindings`, and the Keyboard Shortcuts dialog reads the same rows, so
  *   the dialog cannot drift from what the keys do. Add a chord here and it is both bound and
  *   documented.
- * - `EDITOR_SHORTCUTS` are the CodeMirror-native block ops. Their bindings live in
- *   `document/view/outliner-keymap.ts` (and the popover keymaps beside it) and are executable
- *   in `outliner-keymap.rules.test.ts`; the rows here are the reference card for them, kept
- *   deliberately to what a user would look up rather than every rule the keymap holds.
+ * - `EDITOR_SHORTCUTS` are the CodeMirror-native editor keys. Their bindings live in
+ *   `document/view/outliner-keymap.ts`, the popover keymaps beside it, and the augmentations that
+ *   own a key (a link's keys in `augmentations/wikilink.ts`, the spelling menu's in
+ *   `augmentations/spell-check.ts`); most are executable in `outliner-keymap.rules.test.ts`. The
+ *   rows here are the reference card for them, kept deliberately to what a user would look up
+ *   rather than every rule the keymap holds.
  */
 
 import type { Keybinding } from '$lib/surface'
@@ -103,6 +105,8 @@ export const EDITOR_SHORTCUTS: ShortcutGroup[] = [
         shortcuts: [
             { key: '/', label: 'Open the command menu' },
             { key: '[[', label: 'Link to a document' },
+            { key: 'Alt+Enter', label: 'On a link: open the page it names' },
+            { key: 'Shift+F10', label: 'On a link: its menu (Show backlinks, Rename…)' },
             { key: '#', label: 'Add a task tag (on a task line)' },
             { key: '* _ ~ = [ ( `', label: 'Over selected text: wrap it (press again to add a layer, e.g. ** or [[)' },
             { key: 'Mod+B', label: 'Bold the selection, or unbold it' },

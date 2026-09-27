@@ -54,6 +54,7 @@
         type DocumentContextMenuTarget,
     } from "$lib/surface";
     import { getActiveGraphIndex } from "$lib/document/backlinks/active-index";
+    import { openConcept } from "$lib/document/open-concept";
     import { iconSvg } from "$lib/surface/icons";
     import {
         currentWorkspaceServices,
@@ -170,11 +171,12 @@
             .map((d) => ({ concept: d.concept, kind: d.kind }));
     }
 
+    /**
+     * Open a Recents, Favourites or calendar entry by the name the index resolves it to: an entry
+     * can hold an alias, or the old name of a page renamed elsewhere, and opens the page it names.
+     */
     function open(concept: string) {
-        getActiveLayoutController().openView({
-            kind: "document",
-            target: concept,
-        });
+        openConcept(concept);
     }
 
     /**

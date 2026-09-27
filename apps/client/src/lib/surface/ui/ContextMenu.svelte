@@ -106,12 +106,17 @@
             closeContextMenu();
         }}
     ></div>
+    <!--
+        The menu takes focus when it opens, so the `contextmenu` the Menu key raises on release
+        (Windows) lands here; refusing it keeps the browser's own menu from opening over this one.
+    -->
     <div
         bind:this={el}
         data-testid="context-menu"
         role="menu"
         tabindex="-1"
         onkeydown={onKeydown}
+        oncontextmenu={(e) => e.preventDefault()}
         style:left="{pos.x}px"
         style:top="{pos.y}px"
         class="fixed z-50 min-w-48 rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-(--gk-surface-1) py-1 shadow-lg focus:outline-none"
@@ -125,7 +130,7 @@
                 role="menuitem"
                 data-testid="context-menu-item"
                 data-command={row.command}
-                class="block w-full px-3 py-1.5 text-left text-sm text-gray-700 dark:text-gray-200 {index === active
+                class="flex w-full items-center px-3 py-1.5 text-left text-sm text-gray-700 pointer-coarse:min-h-11 dark:text-gray-200 {index === active
                     ? 'bg-gray-100 dark:bg-white/10'
                     : ''} hover:bg-gray-100 dark:hover:bg-white/10"
                 onpointerenter={() => (active = index)}

@@ -40,6 +40,41 @@ describe('FilesystemDocumentStore — open, hydrate, autosave', () => {
         expect(seen).toEqual(['# Physics']) // hydration delivered the external way
     })
 
+    it('open() by an alias opens the document the alias names, one buffer under both names', async () => {
+        // A bookmark or a Recents entry can carry an alias, or a renamed page's old name.
+        const fs = createMemoryDirectoryAdapter({
+            now: clock(),
+            seed: { pages: { 'Notes.md': '---\ntitle: Notes\naliases:\n  - Jottings\n---\n- body' } },
+        })
+        const store = createFilesystemDocumentStore(fs)
+        await store.scan()
+
+        const byAlias = store.open('jottings')
+        await store.whenReady('Jottings')
+        expect(byAlias.getText()).toContain('- body')
+        expect(byAlias.id).toBe('Notes')
+        expect(store.open('Notes')).toBe(byAlias)
+        expect(() => store.open('Nowhere')).toThrow()
+    })
+
+    it("a page's own name outranks another page's alias of the same name", async () => {
+        const fs = createMemoryDirectoryAdapter({
+            now: clock(),
+            seed: {
+                pages: {
+                    'Notes.md': '---\ntitle: Notes\naliases:\n  - Physics\n---\n- notes',
+                    'Physics.md': '- physics',
+                },
+            },
+        })
+        const store = createFilesystemDocumentStore(fs)
+        await store.scan()
+
+        const doc = store.open('Physics')
+        await store.whenReady('Physics')
+        expect(doc.getText()).toBe('- physics')
+    })
+
     it('applyChange mutates the buffer, autosaves to disk, and does NOT notify', async () => {
         const fs = createMemoryDirectoryAdapter({ now: clock(), seed: { pages: { 'A.md': 'a' } } })
         const store = createFilesystemDocumentStore(fs, { autosaveMs: 400 })

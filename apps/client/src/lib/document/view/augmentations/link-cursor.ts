@@ -17,7 +17,7 @@ import { type Extension } from '@codemirror/state'
 import { EditorView, ViewPlugin } from '@codemirror/view'
 
 /** Every decoration that a plain click acts on. Keep in step with the three click handlers. */
-const LINK_SELECTORS = ['.cm-wikilink', '.cm-md-link', '.cm-asset-link']
+export const LINK_SELECTORS = ['.cm-wikilink', '.cm-md-link', '.cm-asset-link']
 
 const HELD_CLASS = 'cm-mod-held'
 

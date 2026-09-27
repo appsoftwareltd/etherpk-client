@@ -554,6 +554,12 @@
                                 {:else}
                                     Checking what has changed.
                                 {/if}
+                            {:else if mirror.status.retrying}
+                                <!-- A failed pass waiting for its retry: the folder may be behind. -->
+                                Waiting to mirror to <strong
+                                    >{mirror.status.folder}</strong
+                                >.
+                                {mirror.status.retrying.message}
                             {:else}
                                 Mirroring to <strong
                                     >{mirror.status.folder}</strong

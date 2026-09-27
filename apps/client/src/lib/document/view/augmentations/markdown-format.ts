@@ -27,6 +27,7 @@ import type { SyntaxNode } from '@lezer/common'
 import { isFrontmatterDelimiter } from '$lib/storage/fs/frontmatter-span'
 
 import { contentColumn } from '../../outliner'
+import type { InlineMark } from '../../inline-parts'
 import { analysisFor } from '../analysis/editor-analysis'
 import { fencedBlockAt } from '../outliner-context'
 import { hiddenSyntax, hiddenSyntaxPlugin, type RevealState } from './base-renderer'
@@ -46,6 +47,15 @@ const STYLE: Record<string, string> = {
     InlineCode: 'cm-md-code',
     Strikethrough: 'cm-md-strike',
     Highlight: 'cm-md-highlight',
+}
+
+/** The inline marks' classes by mark (`inline-parts.ts`), for a widget that draws marked text itself. */
+export const INLINE_MARK_CLASS: Readonly<Record<InlineMark, string>> = {
+    strong: STYLE.StrongEmphasis,
+    em: STYLE.Emphasis,
+    code: STYLE.InlineCode,
+    strike: STYLE.Strikethrough,
+    highlight: STYLE.Highlight,
 }
 
 /**

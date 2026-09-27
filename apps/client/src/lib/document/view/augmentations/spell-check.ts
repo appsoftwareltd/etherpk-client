@@ -187,17 +187,10 @@ export function misspellingAt(view: EditorView, pos: number | null): WordRange |
     return hit
 }
 
-/**
- * Set when the keyboard opened the menu: Windows raises the browser's own `contextmenu` on the
- * Menu key's release, after the keydown that opened ours, and it must not open over it.
- */
-let keyboardMenuAt = 0
-
 /** The menu at the caret, for Shift+F10, the Menu key and the Command Bar's Fix spelling. */
 export function openSpellingMenuAtCaret(view: EditorView): boolean {
     const hit = misspellingAt(view, view.state.selection.main.head)
     if (!hit) return false
-    keyboardMenuAt = Date.now()
     const at = view.coordsAtPos(hit.to) ?? view.coordsAtPos(hit.from)
     void openSpellingMenu(view, hit, at?.left ?? 0, at?.bottom ?? 0)
     return true
@@ -222,11 +215,6 @@ export function spellCheckAugmentation(): Extension {
         theme,
         EditorView.domEventHandlers({
             contextmenu(event, view) {
-                // The browser's menu the Menu key raises on release, just after ours opened.
-                if (Date.now() - keyboardMenuAt < 500) {
-                    event.preventDefault()
-                    return true
-                }
                 // A touch hold is native text selection on a phone; Fix spelling is its route.
                 if ((event as PointerEvent).pointerType === 'touch') return false
                 // Only on an underline itself: not the blank end of a line that finishes with one.
