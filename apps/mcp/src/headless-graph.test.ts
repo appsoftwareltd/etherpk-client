@@ -11,8 +11,8 @@ import { editDocument, listDocuments, search } from './tools'
 /**
  * A running [[Headless Client]] follows the graph it serves: what another device writes -
  * a new page, an edit to an existing one - reaches its index while it runs, not only on the
- * next start. Two clients over one loopback relay, sharing a keyring; the agent's view is
- * always through the tools, never the cache (2026-09-17: a serve that had run for half an
+ * next start. Two clients over one loopback relay, sharing a keyring, each with a Local Cache of
+ * its own as two devices have; the agent's view is always through the tools, never the cache (2026-09-17: a serve that had run for half an
  * hour had not learned of two pages the server had held for ten minutes).
  */
 
@@ -36,7 +36,11 @@ function pair(id: string) {
     const keyring = createGraphKeyring(id)
     const graphId = `${id}-${Math.floor(performance.now() * 1000)}`
     const member = async (name: string, connect: (url: string) => TransportSocket = relay.connect, readyTimeoutMs?: number) => {
-        const g = await openHeadlessGraph({ graphId, rootDocId: ROOT, keyring, relayUrl: 'ws://loopback/sync', token: fixedSyncToken('t'), presenceName: name, connect, readyTimeoutMs })
+        // A cache per member: in one process the Local Cache is one in-memory IndexedDB, and two
+        // members sharing a graph's rows would each find the other's writes already cached. The
+        // agent would then seed an edit it was never told of, and its index would miss it: under
+        // CI load the other member's cache write could land before the agent opened the document.
+        const g = await openHeadlessGraph({ graphId, rootDocId: ROOT, keyring, relayUrl: 'ws://loopback/sync', token: fixedSyncToken('t'), presenceName: name, connect, readyTimeoutMs, localCacheName: `${graphId}/${name}` })
         open.push(g)
         return g
     }

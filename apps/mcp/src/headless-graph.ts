@@ -66,6 +66,15 @@ export interface HeadlessGraphDeps {
     presenceName: string
     /** Swap point for tests (the loopback relay); production uses the Node WebSocket. */
     connect?: (url: string) => TransportSocket
+    /**
+     * The name this session's [[Local Cache]] rows are kept under; the graph id by default, one
+     * cache per graph in a process, as one device has. Two members of one graph open in one
+     * process (a test standing in for a second device) each need their own: sharing one, the
+     * other member's write lands in this cache without passing through this session's engine,
+     * which then seeds the new text from the cache, a seed no index is told of, and this
+     * session's index never learns of the edit.
+     */
+    localCacheName?: string
     /** Bounded wait for the first relay connection; a serve that cannot reach the relay fails loudly. */
     readyTimeoutMs?: number
     /**
@@ -346,10 +355,11 @@ export function assembleHeadlessGraph(parts: HeadlessGraphParts): HeadlessGraph 
 
 /** Open a synced graph, scan its registry and build the index; resolves once tools can answer. */
 export async function openHeadlessGraph(deps: HeadlessGraphDeps): Promise<HeadlessGraph> {
-    const cache = await openGraphCache(deps.graphId)
+    const cacheName = deps.localCacheName ?? deps.graphId
+    const cache = await openGraphCache(cacheName)
     // The saved rows go into the (fresh, in-memory) database the line above just created, before
     // the engine seeds from it: what it then reads is what the last run left.
-    if (deps.persistDir) await loadLocalCache(deps.persistDir, deps.graphId)
+    if (deps.persistDir) await loadLocalCache(deps.persistDir, cacheName)
     const indexHost: NodeIndexHost | undefined = deps.persistDir ? nodeIndexHost(deps.persistDir) : undefined
     const sync = createGraphSync({
         graphId: deps.graphId,
@@ -484,7 +494,7 @@ export async function openHeadlessGraph(deps: HeadlessGraphDeps): Promise<Headle
             embeddingModel: deps.embeddingModel,
             onSemanticProgress: deps.onSemanticProgress,
             onError: deps.onError,
-            persistBackend: deps.persistDir ? () => persistLocalCache(deps.persistDir!, deps.graphId) : undefined,
+            persistBackend: deps.persistDir ? () => persistLocalCache(deps.persistDir!, cacheName) : undefined,
             onChange: (schedule) => sync.onDocUpdate(schedule),
             async settle(schedulePersist) {
                 await sync.flushAll()
