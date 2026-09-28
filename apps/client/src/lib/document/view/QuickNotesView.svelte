@@ -213,7 +213,7 @@
         onclick={move}
         disabled={count === 0 || moving || !hasMoveCommand}
         aria-busy={moving}
-        class="flex w-full items-center justify-center gap-2 rounded-md border border-(--gk-border-soft) bg-(--gk-surface-1) px-2 py-1.5 text-sm font-medium text-(--gk-text-strong) hover:bg-(--gk-surface-2) disabled:cursor-default disabled:opacity-50 disabled:hover:bg-(--gk-surface-1)"
+        class="flex w-full items-center justify-center gap-2 rounded-md border border-(--gk-border-soft) bg-(--gk-surface-1) px-2 py-1.5 text-sm font-medium text-(--gk-text-strong) hover:bg-(--gk-surface-2) disabled:cursor-default disabled:opacity-50 disabled:hover:bg-(--gk-surface-1) pointer-coarse:min-h-11"
     >
         <svg
             class="h-4 w-4 shrink-0 text-(--gk-text-subtle)"
@@ -260,7 +260,7 @@
                 data-testid="quick-notes-clear"
                 onclick={clear}
                 disabled={text === ""}
-                class="rounded-md px-2 py-1 text-sm text-(--gk-text-muted) hover:bg-(--gk-surface-2) hover:text-(--gk-text-strong) disabled:cursor-default disabled:opacity-50 disabled:hover:bg-transparent"
+                class="rounded-md px-2 py-1 text-sm text-(--gk-text-muted) hover:bg-(--gk-surface-2) hover:text-(--gk-text-strong) disabled:cursor-default disabled:opacity-50 disabled:hover:bg-transparent pointer-coarse:min-h-11"
             >
                 Clear
             </button>
@@ -269,7 +269,7 @@
                 data-testid="quick-notes-add"
                 onclick={add}
                 disabled={!canAdd}
-                class="rounded-md bg-(--gk-accent) px-3 py-1 text-sm font-medium text-white hover:bg-(--gk-accent-hover) disabled:cursor-default disabled:opacity-50 disabled:hover:bg-(--gk-accent)"
+                class="rounded-md bg-(--gk-accent) px-3 py-1 text-sm font-medium text-(--gk-surface-0) hover:bg-(--gk-accent-hover) disabled:cursor-default disabled:opacity-50 disabled:hover:bg-(--gk-accent) pointer-coarse:min-h-11"
             >
                 Add
             </button>
@@ -305,7 +305,7 @@
                             disabled={deleting.has(note.id)}
                             aria-label="Delete note"
                             title="Delete note"
-                            class="rounded-md px-1.5 py-0.5 text-sm text-(--gk-text-subtle) opacity-70 hover:bg-(--gk-surface-2) hover:text-(--gk-text-strong) hover:opacity-100 focus-visible:opacity-100 disabled:opacity-40 motion-safe:transition-opacity"
+                            class="rounded-md px-1.5 py-0.5 text-sm text-(--gk-text-subtle) hover:bg-(--gk-surface-2) hover:text-(--gk-text-strong) disabled:opacity-40 pointer-coarse:min-h-11 pointer-coarse:min-w-11"
                         >
                             <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
                                 <path stroke-linecap="round" stroke-linejoin="round" d="M6 6l12 12M6 18L18 6" />

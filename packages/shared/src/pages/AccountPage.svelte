@@ -500,7 +500,7 @@
     // Checked by default: a password is most often changed because someone else may know it.
     let signOutOthers = $state(true);
 
-    const inputBase = "block w-full rounded-lg border bg-white px-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 transition-colors";
+    const inputBase = "block w-full rounded-lg border bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 transition-colors";
     const inputNormal = "border-gray-300 text-gray-950 focus:border-gray-950 focus:ring-gray-950/10";
     const inputErr = "border-red-300 text-red-900 focus:border-red-500 focus:ring-red-500/10";
 
@@ -940,7 +940,7 @@
                                 {#if isLinked(provider.id)}
                                     <p class="text-sm text-gray-500">{getDisplayName(provider.id) ? `Connected as ${getDisplayName(provider.id)}` : "Connected"}</p>
                                 {:else}
-                                    <p class="text-sm text-gray-400">Not connected</p>
+                                    <p class="text-sm text-gray-500 dark:text-gray-400">Not connected</p>
                                 {/if}
                             </div>
                         </div>
@@ -1139,7 +1139,7 @@
             {/if}
 
             {#if !passkeySupported}
-                <p class="text-sm text-gray-400">Your browser doesn't support passkeys (WebAuthn).</p>
+                <p class="text-sm text-gray-500 dark:text-gray-400">Your browser doesn't support passkeys (WebAuthn).</p>
             {/if}
 
             <!-- Add passkey: name prompt -->
@@ -1248,7 +1248,7 @@
                     {/each}
                 </div>
             {:else if passkeySupported && passkeyStep === "idle"}
-                <p class="text-sm text-gray-400">No passkeys registered. Add one to sign in without a password.</p>
+                <p class="text-sm text-gray-500 dark:text-gray-400">No passkeys registered. Add one to sign in without a password.</p>
             {/if}
         </div>
 

@@ -143,7 +143,7 @@
                 if (previewBundle) previewStale = true;
             }),
             EditorView.theme({
-                "&": { height: "100%", fontSize: "13px" },
+                "&": { height: "100%", fontSize: "14px" },
                 ".cm-scroller": { fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" },
             }),
         ];

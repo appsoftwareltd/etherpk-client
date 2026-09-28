@@ -23,7 +23,7 @@
     // handler exists - a click landing then submits natively and silently reloads the page.
     const hydrated = useHydrated();
 
-    const inputBase = "block w-full rounded-lg border bg-white px-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 transition-colors";
+    const inputBase = "block w-full rounded-lg border bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 transition-colors";
     const inputNormal = "border-gray-300 text-gray-950 focus:border-gray-950 focus:ring-gray-950/10";
     const inputError = "border-red-300 text-red-900 focus:border-red-500 focus:ring-red-500/10";
 

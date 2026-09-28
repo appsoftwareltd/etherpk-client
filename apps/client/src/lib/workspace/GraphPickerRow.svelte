@@ -56,21 +56,21 @@
         </span>
         {#if demo}
             <span
-                class="truncate text-sm text-gray-400 dark:text-gray-500"
+                class="truncate text-sm text-gray-500 dark:text-gray-400"
                 data-testid="graphs-demo-hint"
                 title="The demo graph lives in this browser's storage and is not backed up anywhere"
             >In this browser only</span>
         {:else if graph.backend !== 'server'}
             {#if folderName}
                 <span
-                    class="truncate text-sm text-gray-400 dark:text-gray-500"
+                    class="truncate text-sm text-gray-500 dark:text-gray-400"
                     data-testid="graphs-folder-hint"
                     title="Folder on disk"
                 >…/{folderName}</span>
             {/if}
         {:else}
             <span
-                class="truncate text-sm text-gray-400 dark:text-gray-500"
+                class="truncate text-sm text-gray-500 dark:text-gray-400"
                 data-testid="graphs-cache-hint"
                 title="A synced graph's local copy lives in browser storage, not a folder"
             >Local browser cache</span>

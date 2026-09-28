@@ -337,9 +337,18 @@ const theme = EditorView.baseTheme({
     },
     // Flex, because the app's base styles make every `svg` display:block — which put the padlock
     // on its own line above the title instead of beside it.
-    '.gk-protected-title': { display: 'flex', alignItems: 'center', gap: '0.35em', fontWeight: '600', fontSize: '0.9em' },
+    // The card is editor chrome, sized off the editor font so it follows the zoom, and never below
+    // the app's 14px floor for text however far the zoom goes down.
+    '.gk-protected-title': {
+        display: 'flex',
+        alignItems: 'center',
+        gap: '0.35em',
+        fontWeight: '600',
+        fontSize: 'max(0.875rem, 0.9em)',
+    },
     '.gk-protected-title svg': { flex: 'none' },
-    '.gk-protected-note': { fontSize: '0.85em', opacity: '0.8', marginTop: '0.2em' },
+    // Set apart by colour, not opacity, so the explanation keeps 4.5:1 however the card is lit.
+    '.gk-protected-note': { fontSize: 'max(0.875rem, 0.85em)', color: 'var(--gk-text-muted)', marginTop: '0.2em' },
     '.gk-protected-assets': { marginTop: '0.45em' },
     // Four classes out-specify the frontmatter theme's three: the block's own gap - sized for a
     // first line of text - is dropped when the card follows, and the card root's padding is the gap.
@@ -353,9 +362,10 @@ const theme = EditorView.baseTheme({
         background: 'transparent',
         cursor: 'pointer',
         font: 'inherit',
-        fontSize: '0.85em',
+        fontSize: 'max(0.875rem, 0.85em)',
     },
-    '.gk-protected--other-member': { opacity: '0.75' },
+    // Another member's: nothing here opens it, so the card recedes, by colour rather than opacity.
+    '.gk-protected--other-member': { color: 'var(--gk-text-muted)' },
 })
 
 /**

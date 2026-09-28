@@ -3597,7 +3597,7 @@
                         </li>
                     {:else if hiddenSyncedGraphs > 0 && syncAuthState === "signed-out"}
                         <li
-                            class="px-4 py-6 text-center text-sm text-gray-500"
+                            class="px-4 py-6 text-center text-sm text-gray-500 dark:text-gray-400"
                             data-testid="graphs-hidden"
                         >
                             {syncConnection === "managed"
@@ -3606,7 +3606,7 @@
                         </li>
                     {:else}
                         <li
-                            class="px-4 py-6 text-center text-sm text-gray-500"
+                            class="px-4 py-6 text-center text-sm text-gray-500 dark:text-gray-400"
                             data-testid="graphs-empty"
                         >
                             {syncedGraphs.length > 0
@@ -3680,7 +3680,7 @@
             {:else if syncedLoading && syncedGraphs.length === 0}
                 <!-- First load only: later refreshes keep the cards in place while data renews. -->
                 <p
-                    class="flex items-center gap-2 text-sm text-gray-500"
+                    class="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400"
                     data-testid="synced-graphs-loading"
                 >
                     <svg
@@ -3707,7 +3707,7 @@
                 </p>
             {:else if syncedGraphs.length === 0}
                 <p
-                    class="text-sm text-gray-500"
+                    class="text-sm text-gray-500 dark:text-gray-400"
                     data-testid="synced-graphs-empty"
                 >
                     No synced graphs on this server yet.
@@ -3750,14 +3750,14 @@
                                 {/if}
                                 {#if !g.onDevice}
                                     <span
-                                        class="text-sm text-gray-400 dark:text-gray-500"
+                                        class="text-sm text-gray-500 dark:text-gray-400"
                                         data-testid="synced-not-local"
                                         >Not on this device</span
                                     >
                                 {/if}
                             </div>
                             <p
-                                class="truncate font-mono text-sm text-gray-400 dark:text-gray-500 select-all"
+                                class="truncate font-mono text-sm text-gray-500 dark:text-gray-400 select-all"
                                 data-testid="synced-id"
                             >
                                 {g.id}
@@ -3793,7 +3793,7 @@
                                      0031, amended). The line must never read as a key failure: "Encrypted
                                      name" once sent a user towards Reset (2026-09-01). -->
                                 <p
-                                    class="text-sm text-gray-400 dark:text-gray-500"
+                                    class="text-sm text-gray-500 dark:text-gray-400"
                                     data-testid="synced-name-encrypted"
                                     aria-live="polite"
                                 >
@@ -3873,7 +3873,7 @@
                                     {/if}
                                 {:else}
                                     <p
-                                        class="text-sm text-gray-400 dark:text-gray-500 border-t border-gray-100 dark:border-white/10 pt-3"
+                                        class="text-sm text-gray-500 dark:text-gray-400 border-t border-gray-100 dark:border-white/10 pt-3"
                                     >
                                         Could not load the member list.
                                     </p>

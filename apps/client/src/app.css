@@ -78,7 +78,7 @@ html.dark select {
     background-color: #1c1c20;
 }
 
-/* Site-wide link colour (light blue, both modes). Placed in the `base` layer so
+/* Site-wide link colour (the accent, in both modes). Placed in the `base` layer so
    it ranks BELOW Tailwind's `utilities` layer — any explicit text-colour utility
    (text-white, text-gray-600, …) wins in every state, including :hover. This keeps
    chrome links (header logo/nav, footer) and button-styled anchors on their own
@@ -91,6 +91,13 @@ html.dark select {
     }
     a:hover {
         color: var(--gk-accent-hover);
+    }
+    /* Every field's placeholder in the muted ink: 4.5:1 or more on every field background in
+       both themes, dark mode's translucent white fields included, where the subtle ink fell to
+       4.1:1. Tailwind's preflight draws it at half the field's text colour, under 4:1. */
+    input::placeholder,
+    textarea::placeholder {
+        color: var(--gk-text-muted);
     }
 }
 
@@ -106,17 +113,24 @@ html.dark select {
     --gk-highlight-bg: rgba(250, 204, 21, 0.5);
     --gk-surface-3: #111827;
     --gk-surface-4: #1f2937;
-    /* Light-blue link colour (matches asmusictheory.com), used site-wide. */
-    --gk-accent: #1f9cf0;
-    --gk-accent-hover: #0f8be0;
+    /* The link and accent colour, used site-wide. Deep enough to read as text: 5.7:1 on
+       surface-0 and 4.6:1 on surface-2, and white text on it (a chip, a highlighted row) is
+       5.7:1 too. Every text colour here meets WCAG's 4.5:1 on every surface text sits on
+       (surface-0 to surface-2), and a rendered audit checks the result in both themes. */
+    --gk-accent: #0a66c2;
+    --gk-accent-hover: #08529c;
     /* Editor text selection: a pale tint of the accent. Opaque on purpose: the selection is drawn as
        overlapping per-line rectangles plus a padding shadow, and a translucent colour compounds
        where they overlap into darker seams. Light: the accent at 20% over the surface. */
-    --gk-selection: #d2ebfc;
+    --gk-selection: #cee0f3;
     --gk-text-strong: #030712;
     --gk-text-default: #374151;
-    --gk-text-muted: #6b7280;
-    --gk-text-subtle: #9ca3af;
+    /* Muted and subtle stay steps below default, and both clear 4.5:1 on surface-2 (the
+       darkest surface text sits on): 5.0:1 and 4.7:1 there, 6.2:1 and 5.8:1 on surface-0.
+       De-emphasis beyond subtle comes from weight, case and size (never under 14px), not from
+       fainter ink or opacity. */
+    --gk-text-muted: #5b616e;
+    --gk-text-subtle: #5f6672;
     --gk-border-soft: rgba(3, 7, 18, 0.08);
     --gk-border-strong: rgba(3, 7, 18, 0.16);
     --gk-shadow: 0 18px 45px rgba(3, 7, 18, 0.12);
@@ -124,6 +138,20 @@ html.dark select {
     --gk-success-surface: rgba(34, 197, 94, 0.14);
     --gk-info-surface: rgba(59, 130, 246, 0.14);
     --gk-warning-surface: rgba(245, 158, 11, 0.15);
+    /* Error text: 6.5:1 on surface-0, and at least 4.5:1 on the danger surface. */
+    --gk-text-danger: #b91c1c;
+    /* Code tokens (code-token-styles.ts), each at least 4.5:1 on the code panel (a 10% grey wash
+       over the surface): the hues of the original palette, deepened until they read as text. */
+    --gk-code-keyword: #067a55;
+    --gk-code-string: #4d7300;
+    --gk-code-comment: #6b6b6b;
+    --gk-code-number: #990055;
+    --gk-code-fn: #a34f00;
+    --gk-code-type: #7d5f00;
+    --gk-code-op: #555555;
+    --gk-code-prop: #1b6aa8;
+    --gk-code-tag: #1a7431;
+    --gk-code-invalid: #c00000;
 }
 
 html.dark {
@@ -140,15 +168,53 @@ html.dark {
     --gk-selection: #2c465f;
     --gk-text-strong: #fafafa;
     --gk-text-default: #d4d4d8;
+    /* Both clear 4.5:1 on surface-2 (the lightest surface text sits on): 5.8:1 and 4.6:1 there,
+       6.9:1 and 5.5:1 on surface-0. */
     --gk-text-muted: #a1a1aa;
-    --gk-text-subtle: #71717a;
+    --gk-text-subtle: #8e8e97;
     --gk-border-soft: rgba(161, 161, 170, 0.16);
     --gk-border-strong: rgba(161, 161, 170, 0.28);
     --gk-shadow: 0 18px 45px rgba(0, 0, 0, 0.45);
+    --gk-text-danger: #fca5a5;
+    /* The same hues lifted for the dark code panel, each at least 4.5:1 on it. Without these the
+       light-theme fallbacks applied here too, and numbers read at 2.1:1. */
+    --gk-code-keyword: #3dc99a;
+    --gk-code-string: #a5c261;
+    --gk-code-comment: #929292;
+    --gk-code-number: #e879b9;
+    --gk-code-fn: #f0a45d;
+    --gk-code-type: #e0c050;
+    --gk-code-op: #b4b4bb;
+    --gk-code-prop: #6cb6ff;
+    --gk-code-tag: #6fd08c;
+    --gk-code-invalid: #ff6b6b;
 }
 
 html.dark [class~="bg-white"]:not([class*="dark:bg-"]) {
     background-color: var(--gk-surface-0) !important;
+}
+
+/* Coloured text written for a light surface only (an error in text-red-600, say) reads at under
+   4.5:1 on a dark one, so without its own dark: variant it is lifted to a light tint of the same
+   hue, as the Sync portal and Corporate do. */
+html.dark [class~="text-red-600"]:not([class*="dark:text-"]),
+html.dark [class~="text-red-700"]:not([class*="dark:text-"]) {
+    color: #fca5a5 !important;
+}
+
+html.dark [class~="text-amber-600"]:not([class*="dark:text-"]),
+html.dark [class~="text-amber-700"]:not([class*="dark:text-"]) {
+    color: #fcd34d !important;
+}
+
+html.dark [class~="text-green-600"]:not([class*="dark:text-"]),
+html.dark [class~="text-green-700"]:not([class*="dark:text-"]) {
+    color: #86efac !important;
+}
+
+html.dark [class~="text-blue-600"]:not([class*="dark:text-"]),
+html.dark [class~="text-blue-700"]:not([class*="dark:text-"]) {
+    color: #93c5fd !important;
 }
 
 html.dark [class~="bg-gray-50"]:not([class*="dark:bg-"]) {
@@ -332,10 +398,6 @@ html.dark [class~="focus:ring-gray-950"]:focus {
 
 html.dark [class~="disabled:bg-gray-50"]:disabled {
     background-color: var(--gk-surface-1) !important;
-}
-
-html.dark [class~="placeholder:text-gray-400"]::placeholder {
-    color: var(--gk-text-subtle) !important;
 }
 
 /* ── Board page: make mobile header fully opaque ────────────────────────────

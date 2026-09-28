@@ -476,7 +476,8 @@ const theme = EditorView.baseTheme({
         background: 'var(--gk-code-bg, rgba(127,127,127,0.10))',
         color: 'var(--gk-code-invalid, #d00)',
         cursor: 'pointer',
-        fontSize: '0.9em',
+        // Chrome over the fence: follows the editor zoom, never below the 14px floor for text.
+        fontSize: 'max(0.875rem, 0.9em)',
     },
     // Outer spacer: vertical spacing as PADDING (height-integrity rule above); the visible
     // panel is the inner element.
@@ -489,7 +490,7 @@ const theme = EditorView.baseTheme({
     '.gk-rendered-preview-error': {
         color: 'var(--gk-code-invalid, #d00)',
         fontFamily: 'var(--gk-mono, ui-monospace, SFMono-Regular, Menlo, monospace)',
-        fontSize: '0.85em',
+        fontSize: 'max(0.875rem, 0.85em)',
         whiteSpace: 'pre-wrap',
     },
 })

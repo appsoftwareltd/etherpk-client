@@ -1207,7 +1207,7 @@
                     Settings are shared by every member of the graph and sync
                     end-to-end encrypted.
                 </p>
-                <p class="text-sm text-gray-400 dark:text-gray-500">
+                <p class="text-sm text-gray-500 dark:text-gray-400">
                     Graph id: <code
                         data-testid="graph-id"
                         class="font-mono select-all">{graphId}</code

@@ -205,7 +205,7 @@
                         </button>
                     {/if}
                 </div>
-                <p class="text-sm text-gray-400 dark:text-gray-500">
+                <p class="text-sm text-gray-500 dark:text-gray-400">
                     Ctrl+V (⌘V on a Mac) pastes any copied image or file. The
                     Paste button reads images from your clipboard, which is the
                     way to paste on a phone or tablet.

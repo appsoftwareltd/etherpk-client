@@ -49,7 +49,7 @@
     {#if isAdmin}
         <div class="mt-3 border-t border-gray-950/5 pt-3 dark:border-white/10">
             <button type="button" onclick={() => (adminExpanded = !adminExpanded)} class="group flex w-full items-center justify-between px-3 py-1" aria-expanded={adminExpanded}>
-                <span class="text-sm font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">Admin</span>
+                <span class="text-sm font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Admin</span>
                 <span aria-hidden="true">{adminExpanded ? "−" : "+"}</span>
             </button>
             {#if adminExpanded}

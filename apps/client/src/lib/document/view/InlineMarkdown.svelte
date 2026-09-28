@@ -188,7 +188,9 @@
     }
     .md-code {
         font-family: var(--gk-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
-        font-size: max(0.875rem, 0.86em);
+        /* The editor's code scale (CODE_FONT_SCALE), floored at 14px: this line also renders in
+           lists set at 14px, where the scale alone would take it under the floor. */
+        font-size: max(0.875rem, 0.875em);
         background: var(--gk-code-bg, rgba(127, 127, 127, 0.1));
         border-radius: 4px;
         padding: 0.1em 0.4em;

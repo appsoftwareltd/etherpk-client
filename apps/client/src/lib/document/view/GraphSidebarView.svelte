@@ -598,7 +598,7 @@
                 bind:value={query}
                 oninput={scheduleRank}
                 onkeydown={onQuickFindKeydown}
-                class="min-w-0 flex-1 rounded-md border border-(--gk-border-soft) bg-(--gk-surface-1) px-2 py-1.5 text-sm text-(--gk-text-strong) placeholder:text-(--gk-text-subtle) focus:border-(--gk-border-strong) focus:outline-none"
+                class="min-w-0 flex-1 rounded-md border border-(--gk-border-soft) bg-(--gk-surface-1) px-2 py-1.5 text-sm text-(--gk-text-strong) placeholder:text-(--gk-text-subtle) focus:border-(--gk-border-strong) focus:outline-none pointer-coarse:min-h-11"
             />
             <button
                 type="button"
@@ -607,7 +607,7 @@
                 title="Search everything"
                 onpointerdown={keepFocus}
                 onclick={openSearch}
-                class="inline-flex shrink-0 items-center justify-center rounded-md border border-(--gk-border-soft) bg-(--gk-surface-1) px-2 text-(--gk-text-subtle) hover:bg-(--gk-surface-2) hover:text-(--gk-text-strong)"
+                class="inline-flex shrink-0 items-center justify-center rounded-md border border-(--gk-border-soft) bg-(--gk-surface-1) px-2 text-(--gk-text-subtle) hover:bg-(--gk-surface-2) hover:text-(--gk-text-strong) pointer-coarse:min-w-11"
             >
                 <!-- In-repo constant markup from the icon table, never user or document content. -->
                 <!-- eslint-disable-next-line svelte/no-at-html-tags -->
@@ -630,7 +630,7 @@
                             aria-selected={index === activeRow}
                             data-testid="quick-find-result"
                             data-kind={row.kind}
-                            class="flex w-full gap-2 px-2 text-left text-sm {row.kind ===
+                            class="flex w-full gap-2 px-2 text-left text-sm pointer-coarse:min-h-11 {row.kind ===
                             'draft'
                                 ? 'items-center py-2'
                                 : 'items-baseline py-1.5'} {index === activeRow
@@ -695,7 +695,7 @@
                 data-testid="quick-find-search-all"
                 onpointerdown={keepFocus}
                 onclick={openSearch}
-                class="flex w-full items-baseline gap-2 rounded-b-md border border-t-0 border-(--gk-border-soft) bg-(--gk-surface-1) px-2 py-1.5 text-left text-sm text-(--gk-text-subtle) shadow-lg hover:bg-(--gk-surface-2)"
+                class="flex w-full items-baseline gap-2 rounded-b-md border border-t-0 border-(--gk-border-soft) bg-(--gk-surface-1) px-2 py-1.5 text-left text-sm text-(--gk-text-subtle) shadow-lg hover:bg-(--gk-surface-2) pointer-coarse:min-h-11"
             >
                 <span class="min-w-0 flex-1 truncate"
                     >Search everything for “{query.trim()}”</span
@@ -715,10 +715,10 @@
                 data-testid="quick-find-search-link"
                 onpointerdown={keepFocus}
                 onclick={openSearch}
-                class="underline underline-offset-2 hover:text-(--gk-text-default)"
+                class="underline underline-offset-2 hover:text-(--gk-text-default) pointer-coarse:min-h-11"
                 >Search everything</button
             >
-            <span class="opacity-70">(Ctrl+K)</span>
+            <span>(Ctrl+K)</span>
         </p>
     </div>
 
@@ -727,7 +727,7 @@
         type="button"
         data-testid="sidebar-today"
         onclick={openToday}
-        class="flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm font-medium hover:bg-(--gk-surface-2)"
+        class="flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm font-medium hover:bg-(--gk-surface-2) pointer-coarse:min-h-11"
     >
         <svg
             class="h-4 w-4 shrink-0 text-(--gk-text-subtle)"
@@ -752,7 +752,7 @@
             type="button"
             data-testid="calendar-toggle"
             onclick={() => (calendarOpen = !calendarOpen)}
-            class="flex w-full items-center gap-1 px-2 py-1 text-left text-sm font-semibold tracking-wide text-(--gk-text-subtle) uppercase"
+            class="flex w-full items-center gap-1 px-2 py-1 text-left text-sm font-semibold tracking-wide text-(--gk-text-subtle) uppercase pointer-coarse:min-h-11"
             aria-expanded={calendarOpen}
         >
             <span
@@ -778,7 +778,7 @@
     {#if protection?.isConfigured}
         <section data-testid="protection-section">
             <div
-                class="flex w-full items-center gap-1 px-2 py-1 text-left text-sm font-semibold tracking-wide text-(--gk-text-subtle) uppercase"
+                class="flex w-full items-center gap-1 px-2 py-1 text-left text-sm font-semibold tracking-wide text-(--gk-text-subtle) uppercase pointer-coarse:min-h-11"
             >
                 Protected documents
             </div>
@@ -798,8 +798,8 @@
                         unlocked
                             ? protection?.lockNow()
                             : protection?.requestUnlock()}
-                    class="inline-flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm font-medium transition-colors {unlocked
-                        ? 'border-transparent bg-(--gk-accent,#2563eb) text-white hover:bg-(--gk-accent-hover,#1d4ed8)'
+                    class="inline-flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm font-medium transition-colors pointer-coarse:min-h-11 {unlocked
+                        ? 'border-transparent bg-(--gk-accent,#2563eb) text-(--gk-surface-0) hover:bg-(--gk-accent-hover,#1d4ed8)'
                         : 'border-(--gk-border-soft) text-(--gk-text-default) hover:bg-(--gk-surface-2)'}"
                 >
                     <span class="inline-flex shrink-0" aria-hidden="true">
@@ -822,7 +822,7 @@
             type="button"
             data-testid="favourites-toggle"
             onclick={() => (favouritesOpen = !favouritesOpen)}
-            class="flex w-full items-center gap-1 px-2 py-1 text-left text-sm font-semibold tracking-wide text-(--gk-text-subtle) uppercase"
+            class="flex w-full items-center gap-1 px-2 py-1 text-left text-sm font-semibold tracking-wide text-(--gk-text-subtle) uppercase pointer-coarse:min-h-11"
             aria-expanded={favouritesOpen}
         >
             <span
@@ -861,7 +861,7 @@
                             data-testid="favourite-row"
                             {@attach menuTarget("favourite", concept)}
                             onclick={() => open(concept)}
-                            class="flex w-full touch-manipulation select-none items-center gap-1.5 rounded-md py-1.5 pr-14 pl-6 text-left text-sm hover:bg-(--gk-surface-2)"
+                            class="flex w-full touch-manipulation select-none items-center gap-1.5 rounded-md py-1.5 pr-14 pl-6 text-left text-sm hover:bg-(--gk-surface-2) pointer-coarse:min-h-11"
                             title={concept}
                         >
                             <span class="min-w-0 flex-1 truncate"
@@ -905,7 +905,7 @@
                             onpointercancel={cancelFavouriteDrag}
                             onkeydown={(e) =>
                                 void onFavouriteHandleKeydown(e, concept, i)}
-                            class="absolute top-1/2 right-1 -translate-y-1/2 touch-none rounded px-0.5 py-1 text-(--gk-text-subtle) opacity-60 group-hover/row:opacity-100 hover:bg-(--gk-surface-2) focus-visible:opacity-100 {drag
+                            class="absolute top-1/2 right-1 -translate-y-1/2 touch-none rounded px-0.5 py-1 text-(--gk-text-subtle) hover:bg-(--gk-surface-2) {drag
                                 ? 'cursor-grabbing'
                                 : 'cursor-grab'}"
                         >
@@ -931,7 +931,7 @@
             type="button"
             data-testid="recents-toggle"
             onclick={() => (recentsOpen = !recentsOpen)}
-            class="flex w-full items-center gap-1 px-2 py-1 text-left text-sm font-semibold tracking-wide text-(--gk-text-subtle) uppercase"
+            class="flex w-full items-center gap-1 px-2 py-1 text-left text-sm font-semibold tracking-wide text-(--gk-text-subtle) uppercase pointer-coarse:min-h-11"
             aria-expanded={recentsOpen}
         >
             <span
@@ -950,7 +950,7 @@
                             data-testid="recent-row"
                             {@attach menuTarget("recent", concept)}
                             onclick={() => open(concept)}
-                            class="flex w-full touch-manipulation select-none items-center gap-1.5 rounded-md py-1.5 pr-8 pl-6 text-left text-sm hover:bg-(--gk-surface-2)"
+                            class="flex w-full touch-manipulation select-none items-center gap-1.5 rounded-md py-1.5 pr-8 pl-6 text-left text-sm hover:bg-(--gk-surface-2) pointer-coarse:min-h-11"
                             title={concept}
                         >
                             <span class="min-w-0 flex-1 truncate"
@@ -985,7 +985,7 @@
             type="button"
             data-testid="open-all-documents"
             onclick={openAllDocuments}
-            class="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-sm hover:bg-(--gk-surface-2)"
+            class="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-sm hover:bg-(--gk-surface-2) pointer-coarse:min-h-11"
         >
             <span>All documents</span>
             <span class="text-sm text-(--gk-text-subtle)"
@@ -1035,7 +1035,7 @@
                 type="button"
                 data-testid="reset-workspace"
                 onclick={resetWorkspace}
-                class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-(--gk-surface-2)"
+                class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-(--gk-surface-2) pointer-coarse:min-h-11"
             >
                 <svg
                     class="h-4 w-4 shrink-0"

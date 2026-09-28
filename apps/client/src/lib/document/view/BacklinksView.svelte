@@ -58,6 +58,7 @@
     import { openConcept, openConceptAtLine } from "../open-concept";
     import type { BacklinksPreferences, ShownConcept } from "../backlinks-preferences";
     import { lineText } from "../quote-segments";
+    import { CONTENT_GUTTER } from "./augmentations/content-clamp";
     import { GUIDE_WIDTH_PX } from "./augmentations/outline-guides-core";
     import InlineMarkdown from "./InlineMarkdown.svelte";
     import QuotedText from "./QuotedText.svelte";
@@ -329,6 +330,7 @@
 <div
     class="backlinks"
     {@attach measureProse}
+    style:--content-gutter={CONTENT_GUTTER}
     aria-busy={loading}
     class:backlinks--highlight={highlight}
     data-testid="backlinks-view"
@@ -346,7 +348,7 @@
                 aria-checked={highlight}
                 class="switch"
                 data-testid="backlinks-highlight"
-                title="Dim everything in a reference except the link to this document"
+                title="Show the rest of each reference in grey, and the link to this document in bold"
                 onclick={() => setHighlight(!highlight)}
             >
                 <span class="switch__label">Highlight reference</span>
@@ -483,7 +485,7 @@
         font-size: 0.875rem;
         text-transform: uppercase;
         letter-spacing: 0.04em;
-        opacity: 0.7;
+        color: var(--gk-text-muted);
     }
     .count {
         min-width: 1.4rem;
@@ -571,6 +573,16 @@
         opacity: 0.4;
         cursor: default;
     }
+    /* A finger needs a 44 CSS px target: on a touch screen the switch's row and the pin grow to it. */
+    @media (pointer: coarse) {
+        .switch {
+            min-height: 2.75rem;
+        }
+        .pin {
+            min-width: 2.75rem;
+            min-height: 2.75rem;
+        }
+    }
     /* Pinned: the accent, and a tint that stays without hover, so the state is legible at rest.
        Declared after the hover rule and repeated with it, so the state wins under the pointer too. */
     .pin--on,
@@ -598,7 +610,7 @@
     }
     .hint {
         margin: 0;
-        opacity: 0.6;
+        color: var(--gk-text-muted);
         font-size: 0.875rem;
     }
     /* Not dimmed like the other hints: this one asks for something. */
@@ -715,14 +727,14 @@
         /*
          * The editor's outline geometry, built the way the editor builds it from the prose font's
          * space and dash (measured into --ref-space and --ref-dash; Inter's are the fallbacks):
-         * - a row's text starts a dash, a space and CONTENT_GUTTER (0.6em of the code font, which
-         *   is 0.86 of this one) in from where its `- ` would be (content-clamp.ts);
+         * - a row's text starts a dash, a space and CONTENT_GUTTER in from where its `- ` would be
+         *   (content-clamp.ts; passed in on the root as --content-gutter, the editor's own value);
          * - each level steps in the two spaces of the Indent Unit plus INDENT_STEP_PX (12px);
          * - the dot sits at the middle of the dash, half a line pitch down (bullet-marker.ts).
          * Rows are the editor's pitch: 1.7 lines, rounded to a whole pixel where the browser can
          * (cm-document.ts), so every row, and every dot on it, lands on the pixel grid alike.
          */
-        --ref-content: calc(var(--ref-dash, 0.457em) + var(--ref-space, 0.2778em) + 0.6em * 0.86);
+        --ref-content: calc(var(--ref-dash, 0.457em) + var(--ref-space, 0.2778em) + var(--content-gutter));
         --ref-step: calc(2 * var(--ref-space, 0.2778em) + 12px);
         line-height: 1.7;
         padding: 0.4rem 0.55rem;
@@ -858,17 +870,16 @@
     }
     /* Highlighting: everything but the reference itself recedes, the matched block least of all.
        Off by default — a reference reads best in the document's own colours — and the muted
-       tones here are the whole feature when it is on. */
-    .backlinks--highlight .ref__chain {
-        opacity: 0.6;
+       tones here are the whole feature when it is on. The steps are colours, each 4.5:1 or more,
+       where opacity had taken the receding text under that; links keep their own colour. */
+    .backlinks--highlight .ref__chain,
+    .backlinks--highlight .ref__block {
+        color: var(--gk-text-subtle);
     }
     .backlinks--highlight .ref__text {
-        opacity: 0.85;
-    }
-    .backlinks--highlight .ref__block {
-        opacity: 0.7;
+        color: var(--gk-text-muted);
     }
     .backlinks--highlight .ref__block--match {
-        opacity: 0.95;
+        color: var(--gk-text-default);
     }
 </style>

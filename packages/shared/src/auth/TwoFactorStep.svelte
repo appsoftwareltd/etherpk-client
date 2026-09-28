@@ -113,7 +113,7 @@
                 aria-invalid={!!error}
                 aria-describedby={error ? "two-factor-instructions two-factor-error" : "two-factor-instructions"}
                 class={[
-                    "block w-full rounded-lg border bg-white px-3 py-2 text-center text-lg tracking-widest placeholder:text-gray-400 focus:outline-none focus:ring-2 transition-colors",
+                    "block w-full rounded-lg border bg-white px-3 py-2 text-center text-lg tracking-widest focus:outline-none focus:ring-2 transition-colors",
                     error ? "border-red-300 text-red-900 focus:border-red-500 focus:ring-red-500/10" : "border-gray-300 text-gray-950 focus:border-gray-950 focus:ring-gray-950/10",
                 ]}
             />
@@ -133,7 +133,7 @@
                 aria-invalid={!!error}
                 aria-describedby={error ? "two-factor-instructions two-factor-error" : "two-factor-instructions"}
                 class={[
-                    "block w-full rounded-lg border bg-white px-3 py-2 text-center font-mono text-lg tracking-wider placeholder:text-gray-400 focus:outline-none focus:ring-2 transition-colors",
+                    "block w-full rounded-lg border bg-white px-3 py-2 text-center font-mono text-lg tracking-wider focus:outline-none focus:ring-2 transition-colors",
                     error ? "border-red-300 text-red-900 focus:border-red-500 focus:ring-red-500/10" : "border-gray-300 text-gray-950 focus:border-gray-950 focus:ring-gray-950/10",
                 ]}
             />

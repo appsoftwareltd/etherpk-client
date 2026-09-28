@@ -131,7 +131,7 @@ function markers(view: EditorView): RectangleMarker[] {
 }
 
 const theme = EditorView.baseTheme({
-    [`.${CLASS}`]: { background: 'var(--gk-selection, #d2ebfc)', position: 'absolute' },
+    [`.${CLASS}`]: { background: 'var(--gk-selection, #cee0f3)', position: 'absolute' },
     // drawSelection still draws the caret; only its selection rectangles are replaced.
     '.cm-selectionLayer': { display: 'none' },
 })

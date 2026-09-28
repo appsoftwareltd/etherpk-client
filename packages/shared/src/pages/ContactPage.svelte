@@ -50,7 +50,7 @@
         token = btoa(Date.now().toString());
     });
 
-    const inputBase = "block w-full rounded-lg border bg-white px-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 transition-colors";
+    const inputBase = "block w-full rounded-lg border bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 transition-colors";
     const inputNormal = "border-gray-300 text-gray-950 focus:border-gray-950 focus:ring-gray-950/10";
     const inputError = "border-red-300 text-red-900 focus:border-red-500 focus:ring-red-500/10";
 
@@ -226,7 +226,7 @@
                 {#if fieldErrors.message}
                     <p id="message-error" class="mt-1 text-sm text-red-600">{fieldErrors.message}</p>
                 {/if}
-                <p class="mt-1 text-sm text-gray-400 text-right">{message.length.toLocaleString()} / 5,000</p>
+                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400 text-right">{message.length.toLocaleString()} / 5,000</p>
             </div>
 
             <button type="submit" disabled={loading} class="w-full rounded-lg bg-gray-950 px-4 py-2.5 text-sm font-medium text-white hover:bg-gray-700 dark:bg-white/20 dark:hover:bg-white/25 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">

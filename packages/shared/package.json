@@ -184,6 +184,10 @@
         "./env-example": {
             "types": "./src/testing/env-example.ts",
             "default": "./src/testing/env-example.ts"
+        },
+        "./text-floor": {
+            "types": "./src/testing/text-floor.ts",
+            "default": "./src/testing/text-floor.ts"
         }
     },
     "scripts": {

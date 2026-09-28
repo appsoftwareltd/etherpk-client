@@ -76,7 +76,9 @@ export interface MonthGrid {
 const P = 'gk-cal'
 const WEEKDAYS = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su']
 
-const CELL_BASE = 'rounded py-1 cursor-pointer hover:bg-(--gk-surface-2) focus:outline-none'
+// A day, or a month in the year view. On a touch screen each is 44px tall; the grid's seven
+// columns share whatever width the calendar has, which in a phone drawer is under 44px each.
+const CELL_BASE = 'rounded py-1 cursor-pointer hover:bg-(--gk-surface-2) focus:outline-none pointer-coarse:min-h-11'
 const CELL_SELECTED = 'bg-(--gk-surface-2) ring-1 ring-(--gk-accent) '
 
 export function createMonthGrid(config: MonthGridConfig): MonthGrid {
@@ -103,7 +105,7 @@ export function createMonthGrid(config: MonthGridConfig): MonthGrid {
         header.className = `${P}__header flex items-center justify-between px-1 pb-2 font-medium`
 
         const title = document.createElement(config.allowYearView ? 'button' : 'span')
-        title.className = `${P}__title rounded px-1`
+        title.className = `${P}__title rounded px-1 pointer-coarse:min-h-11`
         title.textContent =
             state.mode === 'days'
                 ? state.focused.toLocaleString(undefined, { month: 'long', year: 'numeric' })
@@ -125,7 +127,7 @@ export function createMonthGrid(config: MonthGridConfig): MonthGrid {
             ['‹', -1],
             ['›', 1],
         ] as const) {
-            const b = cellButton(`${P}__nav rounded px-1 hover:bg-(--gk-surface-2)`)
+            const b = cellButton(`${P}__nav rounded px-1 hover:bg-(--gk-surface-2) pointer-coarse:min-h-11 pointer-coarse:min-w-11`)
             b.textContent = label
             b.setAttribute('data-page-delta', String(delta))
             b.setAttribute('aria-label', `${delta < 0 ? 'Previous' : 'Next'} ${step}`)

@@ -932,7 +932,7 @@
         justify-content: center;
         gap: 0.5rem;
         pointer-events: none;
-        font-size: 0.8125rem;
+        font-size: 0.875rem;
         color: var(--gk-text-muted, var(--gk-text-default));
     }
     .document-view__loading :global(.loading-sweep) {
@@ -947,7 +947,7 @@
         border-bottom: 1px solid var(--gk-border-soft);
         background: var(--gk-surface-2);
         padding: 0.5rem 0.75rem;
-        font-size: 0.8125rem;
+        font-size: 0.875rem;
     }
     .document-view__notice button {
         flex-shrink: 0;
@@ -973,7 +973,7 @@
         background: var(--gk-surface-1);
         box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
         padding: 0.5rem 0.75rem;
-        font-size: 0.8125rem;
+        font-size: 0.875rem;
         line-height: 1.4;
     }
     .document-view__refusal p {
@@ -995,9 +995,9 @@
     .document-view__error {
         border-bottom: 1px solid var(--gk-danger-border, #fecaca);
         background: var(--gk-danger-surface, #fef2f2);
-        color: var(--gk-danger-text, #991b1b);
+        color: var(--gk-text-danger);
         padding: 0.5rem 0.75rem;
-        font-size: 0.8125rem;
+        font-size: 0.875rem;
     }
     /* Let CodeMirror fill the pane. */
     .document-view__editor :global(.cm-editor) {

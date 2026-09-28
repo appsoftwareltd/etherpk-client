@@ -292,7 +292,7 @@
         padding: 0.15rem 0.35rem;
         border: 1px dashed var(--gk-border-soft, rgba(127, 127, 127, 0.5));
         border-radius: 4px;
-        opacity: 0.75;
+        color: var(--gk-text-muted);
     }
     .broken-label {
         font-style: italic;

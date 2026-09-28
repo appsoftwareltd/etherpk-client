@@ -2,6 +2,7 @@
 
 [![Build and release](https://github.com/appsoftwareltd/etherpk-client/actions/workflows/build.yaml/badge.svg?branch=main)](https://github.com/appsoftwareltd/etherpk-client/actions/workflows/build.yaml)
 [![Unit tests](https://github.com/appsoftwareltd/etherpk-client/actions/workflows/unit-tests.yaml/badge.svg?branch=main)](https://github.com/appsoftwareltd/etherpk-client/actions/workflows/unit-tests.yaml)
+[![npm](https://img.shields.io/npm/v/@appsoftwareltd/etherpk-mcp?label=npm)](https://www.npmjs.com/package/@appsoftwareltd/etherpk-mcp)
 
 The source of the [EtherPK](https://etherpk.com) Client and Headless Client, available under the
 [Elastic License 2.0](LICENSE).
@@ -30,7 +31,7 @@ source one.
 | Path | Contents |
 | --- | --- |
 | `apps/client` | The Client |
-| `apps/mcp` | The Headless Client, published to npm as `@appsoftwareltd/etherpk-mcp` ([README](apps/mcp/README.md)) |
+| `apps/mcp` | The Headless Client / MCP Server, published to npm as [`@appsoftwareltd/etherpk-mcp`](https://www.npmjs.com/package/@appsoftwareltd/etherpk-mcp) ([README](apps/mcp/README.md)) |
 | `packages/shared` | Code the Client shares with the Sync Server: the sync protocol, UI components and auth pages |
 | `packages/themes` | The site themes the publisher bundles |
 
@@ -41,6 +42,9 @@ source one.
 ```bash
 docker run --rm -p 3000:3000 ghcr.io/appsoftwareltd/etherpk-client:latest
 ```
+
+Every tag is listed on the image's
+[package page](https://github.com/appsoftwareltd/etherpk-client/pkgs/container/etherpk-client).
 
 Open <http://localhost:3000>. With no settings the Client works with graph folders on your
 computer and offers a **Custom server** form for connecting to a Sync Server by its address. The
@@ -61,7 +65,10 @@ HOST=127.0.0.1 PORT=3000 node build
 The full guide, including Windows commands, is
 [Running EtherPK On Your Own Computer](https://docs.etherpk.com/running-etherpk-on-your-own-computer).
 
-### Headless Client
+### Headless Client / MCP Server
+
+Published to npm as
+[`@appsoftwareltd/etherpk-mcp`](https://www.npmjs.com/package/@appsoftwareltd/etherpk-mcp).
 
 ```bash
 npx @appsoftwareltd/etherpk-mcp --help

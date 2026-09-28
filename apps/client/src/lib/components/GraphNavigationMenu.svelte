@@ -77,7 +77,7 @@
 </script>
 
 <div class="p-2">
-    <p class="px-3 pb-1 pt-1 text-sm font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+    <p class="px-3 pb-1 pt-1 text-sm font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
         On this device
     </p>
     {#if loaded && graphs.length === 0}

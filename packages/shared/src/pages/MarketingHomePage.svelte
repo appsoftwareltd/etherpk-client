@@ -459,7 +459,7 @@
                     <p class="mt-6 flex flex-wrap items-baseline gap-x-2 gap-y-1 text-sm leading-6 text-gray-500 dark:text-gray-400">
                         <span>In the docs:</span>
                         {#each group.docs as doc, index (doc.slug)}
-                            {#if index > 0}<span class="text-gray-950/25 dark:text-white/25" aria-hidden="true">&middot;</span>{/if}
+                            {#if index > 0}<span class="text-gray-500 dark:text-gray-400" aria-hidden="true">&middot;</span>{/if}
                             <a href="{docsHref}/{doc.slug}" class="font-medium text-gray-700 underline decoration-gray-400 underline-offset-2 transition-colors hover:text-gray-950 dark:text-gray-300 dark:hover:text-white" aria-label="{doc.title} in the docs">{doc.title}</a>
                         {/each}
                     </p>

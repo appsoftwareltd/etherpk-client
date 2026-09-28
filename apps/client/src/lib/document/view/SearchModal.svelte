@@ -678,8 +678,10 @@
         -webkit-box-orient: vertical;
         overflow: hidden;
     }
+    /* The editor's own ==highlight== wash, translucent so the text keeps its colour and reads at
+       4.5:1 or more in both themes (a solid pale fill under dark mode's light text did not). */
     .search__snippet mark {
-        background: var(--gk-accent-soft, #fde68a);
+        background: var(--gk-highlight-bg);
         color: inherit;
     }
     .search__more,

@@ -114,7 +114,7 @@
             <!-- Nothing else while loading: an empty `owned` renders as the reassuring
                  "0 graphs will be permanently deleted", which is the C5 failure in miniature. -->
             {#if showLoading.current}
-                <p role="status" class="text-sm text-gray-500">Loading your graphs…</p>
+                <p role="status" class="text-sm text-gray-500 dark:text-gray-400">Loading your graphs…</p>
             {/if}
         {:else if previewFailed && step === "review"}
             <div role="alert" data-testid="reset-preview-failed" class="rounded-lg border border-red-200 dark:border-red-500/40 bg-red-50 dark:bg-red-950/20 p-3">
@@ -140,7 +140,7 @@
                     </p>
                     {#each shared as g (g.graphId)}
                         <div class="flex items-center justify-between gap-2">
-                            <span class="text-sm font-mono text-gray-500 truncate">{g.graphId.slice(0, 8)}…</span>
+                            <span class="text-sm font-mono text-gray-500 dark:text-gray-400 truncate">{g.graphId.slice(0, 8)}…</span>
                             <button
                                 type="button"
                                 data-testid="reset-transfer-{g.graphId}"

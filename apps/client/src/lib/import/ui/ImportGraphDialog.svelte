@@ -458,9 +458,7 @@
                 >
                 <div class="space-y-2">
                     <label
-                        class="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-200 {folderAvailable
-                            ? ''
-                            : 'opacity-40'}"
+                        class="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-200"
                     >
                         <input
                             type="radio"
@@ -470,11 +468,13 @@
                             data-testid="import-dest-folder"
                             class="mt-0.5"
                         />
+                        <!-- An unavailable choice recedes by colour, never opacity; its reason keeps full
+                             contrast, as the synced choice below does. -->
                         <span
-                            ><span class="font-medium">Local folder</span> -
+                            ><span class="font-medium {folderAvailable ? '' : 'text-gray-500 dark:text-gray-400'}">Local folder</span> -
                             plain markdown files in a new, empty folder you
                             choose.{#if !folderAvailable}
-                                Needs a Chromium-based desktop browser.{/if}</span
+                                <span class="block text-gray-600 dark:text-gray-300">Needs a Chromium-based desktop browser.</span>{/if}</span
                         >
                     </label>
                     <label
@@ -490,7 +490,7 @@
                             class="mt-0.5"
                         />
                         <span
-                            ><span class="font-medium {syncTarget ? '' : 'opacity-60'}"
+                            ><span class="font-medium {syncTarget ? '' : 'text-gray-500 dark:text-gray-400'}"
                                 >Synced graph</span
                             > - end-to-end encrypted on your sync server, available
                             on all your devices.{#if !syncTarget}

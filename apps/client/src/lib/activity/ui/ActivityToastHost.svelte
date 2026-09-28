@@ -130,14 +130,14 @@
                             onclick={() => dismissActivity(activity.id)}
                             data-testid="activity-dismiss"
                             aria-label="Dismiss"
-                            class="shrink-0 rounded-lg p-1 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-white/10"
+                            class="shrink-0 rounded-lg p-1 text-gray-500 dark:text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-white/10"
                         >
                             <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
                                 <path d="M6 18 18 6M6 6l12 12" stroke-linecap="round" stroke-linejoin="round" />
                             </svg>
                         </button>
                     {:else if activity.phases.length > 1}
-                        <span class="shrink-0 text-sm text-gray-400 dark:text-gray-500" data-testid="activity-step">
+                        <span class="shrink-0 text-sm text-gray-500 dark:text-gray-400" data-testid="activity-step">
                             Step {activity.phase + 1} of {activity.phases.length}
                         </span>
                     {/if}
@@ -248,7 +248,7 @@
                     onclick={() => closeNotice(notice.id)}
                     data-testid="notice-dismiss"
                     aria-label="Dismiss"
-                    class="shrink-0 rounded-lg p-1 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-white/10"
+                    class="shrink-0 rounded-lg p-1 text-gray-500 dark:text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-white/10"
                 >
                     <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
                         <path d="M6 18 18 6M6 6l12 12" stroke-linecap="round" stroke-linejoin="round" />

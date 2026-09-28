@@ -91,13 +91,18 @@ const QUOTE_PAD = '0.9em'
  * continuation line's structural indent and its text — so a plain bullet's text sits the same distance
  * from its dot as a code block's shaded CONTAINER edge sits from its dot. A code block's container edge
  * already starts one {@link PANEL_PAD} left of its code, so without this a plain bullet would read closer
- * to the dot than the code container. Sized to equal `PANEL_PAD` in absolute px: `PANEL_PAD` is `0.6em`
- * of the code font (which is {@link CODE_FONT_SCALE}× the base), so `0.6em × CODE_FONT_SCALE` of the base
- * font is the same width. On a plain bullet the clamp folds it into the line's `padding-left` (the
- * lifted prefix takes no space, so the padding alone places the content); on a form-1 opener, whose
- * `- ` stays in flow, the bullet dot carries it as `margin-right` (bullet-marker.ts).
+ * to the dot than the code container. Sized to equal `PANEL_PAD` in absolute px at every zoom:
+ * `PANEL_PAD` is `0.6em` of a code line's font, which is {@link CODE_FONT_SCALE} of `.cm-content`'s
+ * font, `--editor-font-size` (editor-font.ts). The gutter is written against that variable rather
+ * than `em`, so it is one length on every element that resolves it: `em` would be the code font
+ * on a form-1 opener's dot (the opener's prefix mark nests inside the dot, so the dot's box takes
+ * the code line's font), and that dot's gap would fall short of a plain bullet's by the code
+ * scale. On a plain bullet the clamp folds it into the line's
+ * `padding-left` (the lifted prefix takes no space, so the padding alone places the content); on a
+ * form-1 opener, whose `- ` stays in flow, the bullet dot carries it as `margin-right`
+ * (bullet-marker.ts). The Backlinks panel reads it too, for its rows' content column.
  */
-export const CONTENT_GUTTER = `calc(0.6em * ${CODE_FONT_SCALE})`
+export const CONTENT_GUTTER = `calc(0.6 * ${CODE_FONT_SCALE} * var(--editor-font-size, 1rem))`
 
 /**
  * The structural prefix of a bullet or continuation line, lifted out of the flow (see the module

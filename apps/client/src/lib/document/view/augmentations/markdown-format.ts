@@ -32,7 +32,7 @@ import { analysisFor } from '../analysis/editor-analysis'
 import { fencedBlockAt } from '../outliner-context'
 import { hiddenSyntax, hiddenSyntaxPlugin, type RevealState } from './base-renderer'
 import { blockquoteLines } from './blockquote-core'
-import { CODE_FONT_SCALE } from './code-highlight'
+import { CODE_FONT_SIZE } from './code-highlight'
 
 /** Node name → the style class applied over the construct's content. */
 const STYLE: Record<string, string> = {
@@ -255,7 +255,8 @@ const theme = EditorView.baseTheme({
     '.cm-md-h3': { fontSize: '1.2em', fontWeight: '700' },
     '.cm-md-h4': { fontSize: '1.1em', fontWeight: '700' },
     '.cm-md-h5': { fontWeight: '700' },
-    '.cm-md-h6': { fontWeight: '700', opacity: '0.85' },
+    // The lowest heading recedes by colour, not opacity, so it keeps 4.5:1 on any surface.
+    '.cm-md-h6': { fontWeight: '700', color: 'var(--gk-text-muted)' },
     '.cm-md-strong': { fontWeight: '700' },
     '.cm-md-em': { fontStyle: 'italic' },
     '.cm-md-strike': { textDecoration: 'line-through' },
@@ -284,7 +285,7 @@ const theme = EditorView.baseTheme({
     // reads as the same thing as the block below it rather than a larger, different typeface.
     '.cm-md-code': {
         fontFamily: 'var(--gk-mono, ui-monospace, SFMono-Regular, Menlo, monospace)',
-        fontSize: `${CODE_FONT_SCALE}em`,
+        fontSize: CODE_FONT_SIZE,
         background: 'var(--gk-surface-2, rgba(0,0,0,0.06))',
         borderRadius: '4px',
         // Room around the text: horizontal padding plus a hair of vertical padding (inline padding does

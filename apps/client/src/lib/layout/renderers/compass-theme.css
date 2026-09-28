@@ -30,6 +30,10 @@
  * whichever way the chunks land.
  */
 .dockview-theme-compass.dockview-theme-compass {
+    /* Tab text at the app's 14px floor; the base themes set 13px, and 11px for a tab-group chip.
+       The strip keeps its height: the tab box grows by its line box and still fits. */
+    --dv-tabs-and-actions-container-font-size: 0.875rem;
+    --dv-tab-group-chip-font-size: 0.875rem;
     /* Panel + tab-strip surfaces */
     --dv-group-view-background-color: var(--gk-surface-0);
     --dv-tabs-and-actions-container-background-color: var(--gk-surface-1);

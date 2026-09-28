@@ -478,8 +478,8 @@
             <button onclick={() => setRoleFilter("user")} class="rounded-full px-3 py-1 text-sm font-medium transition-colors {roleFilter === 'user' ? 'bg-gray-950 dark:bg-white/15 text-white' : 'bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-white/15'}">User</button>
         </div>
         <div class="flex items-center gap-3">
-            <input type="search" aria-label="Search users by email" value={searchValue} oninput={handleSearchInput} placeholder="Search by email\u2026" class="w-56 rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-700 placeholder-gray-400 focus:border-gray-950 focus:outline-none focus:ring-1 focus:ring-gray-950" />
-            <span class="text-sm text-gray-400">{total} user{total !== 1 ? "s" : ""}</span>
+            <input type="search" aria-label="Search users by email" value={searchValue} oninput={handleSearchInput} placeholder="Search by email…" class="w-56 rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-700 focus:border-gray-950 focus:outline-none focus:ring-1 focus:ring-gray-950" />
+            <span class="text-sm text-gray-500 dark:text-gray-400">{total} user{total !== 1 ? "s" : ""}</span>
         </div>
     </div>
 
@@ -505,9 +505,9 @@
             </div>
         {:else if users.length === 0}
             <div class="px-6 py-8 text-center">
-                <p class="text-sm text-gray-400">No users found.</p>
+                <p class="text-sm text-gray-500 dark:text-gray-400">No users found.</p>
                 {#if debouncedSearch || roleFilter !== "all"}
-                    <p class="mt-1 text-sm text-gray-400">Try adjusting your search or filter.</p>
+                    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Try adjusting your search or filter.</p>
                 {/if}
             </div>
         {:else}
@@ -542,7 +542,7 @@
                                 {/if}
                             </div>
                             <p class="text-sm text-gray-500 truncate">{user.email}</p>
-                            <p class="text-sm text-gray-400 mt-0.5">Joined {formatDate(user.createdAt)}</p>
+                            <p class="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Joined {formatDate(user.createdAt)}</p>
                             {#if user.banned && user.banReason}
                                 <p class="text-sm text-red-600 mt-0.5">Reason: {user.banReason}</p>
                             {/if}
@@ -590,9 +590,9 @@
                     {#if expandedSessionsUserId === user.id}
                         <div class="mt-3 ml-12 rounded-lg border border-gray-200 bg-gray-50 p-3">
                             {#if loadingSessions}
-                                <p class="text-sm text-gray-400 motion-safe:animate-pulse">Loading sessions\u2026</p>
+                                <p class="text-sm text-gray-500 dark:text-gray-400 motion-safe:animate-pulse">Loading sessions\u2026</p>
                             {:else if userSessions.length === 0}
-                                <p class="text-sm text-gray-400">No active sessions.</p>
+                                <p class="text-sm text-gray-500 dark:text-gray-400">No active sessions.</p>
                             {:else}
                                 <div class="space-y-2">
                                     {#each userSessions as session (session.id)}
@@ -600,14 +600,14 @@
                                             <div class="min-w-0 flex-1">
                                                 <div class="flex items-center gap-2 flex-wrap">
                                                     <code class="text-sm font-mono text-gray-500">{truncateToken(session.token)}</code>
-                                                    <span class="text-sm text-gray-400">{parseUserAgent(session.userAgent)}</span>
+                                                    <span class="text-sm text-gray-500 dark:text-gray-400">{parseUserAgent(session.userAgent)}</span>
                                                 </div>
                                                 <div class="flex items-center gap-3 mt-0.5">
                                                     {#if session.ipAddress}
-                                                        <span class="text-sm text-gray-400">IP: {session.ipAddress}</span>
+                                                        <span class="text-sm text-gray-500 dark:text-gray-400">IP: {session.ipAddress}</span>
                                                     {/if}
-                                                    <span class="text-sm text-gray-400">Created: {formatDateTime(session.createdAt)}</span>
-                                                    <span class="text-sm text-gray-400">Expires: {formatDateTime(session.expiresAt)}</span>
+                                                    <span class="text-sm text-gray-500 dark:text-gray-400">Created: {formatDateTime(session.createdAt)}</span>
+                                                    <span class="text-sm text-gray-500 dark:text-gray-400">Expires: {formatDateTime(session.expiresAt)}</span>
                                                 </div>
                                             </div>
                                             <button onclick={() => revokeSession(session.token)} disabled={revokingSession === session.token} class="shrink-0 rounded-md px-2 py-1 text-sm font-medium text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50">

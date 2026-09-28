@@ -356,7 +356,7 @@
     }
     .page-header p {
         margin: 0.15rem 0 0;
-        font-size: 0.82rem;
+        font-size: 0.875rem;
         opacity: 0.65;
     }
 
@@ -383,12 +383,12 @@
     }
     .desc {
         margin: 0;
-        font-size: 0.8rem;
+        font-size: 0.875rem;
         line-height: 1.45;
         opacity: 0.7;
     }
     .desc code {
-        font-size: 0.92em;
+        font-size: 0.875rem;
     }
     .row {
         display: flex;
@@ -449,7 +449,7 @@
         align-items: center;
         padding: 0.2rem 0.6rem;
         border-radius: 999px;
-        font-size: 0.74rem;
+        font-size: 0.875rem;
         font-weight: 600;
         font-variant-numeric: tabular-nums;
     }
@@ -482,7 +482,7 @@
         padding: 0.25rem 0.55rem;
         border-radius: 7px;
         background: var(--gk-surface-2, rgba(127, 127, 127, 0.12));
-        font-size: 0.78rem;
+        font-size: 0.875rem;
         font-weight: 500;
     }
     .chip--muted {
@@ -525,7 +525,7 @@
         gap: 0.2rem;
         max-height: 9rem;
         overflow: auto;
-        font-size: 0.82rem;
+        font-size: 0.875rem;
     }
     .doc-list li {
         display: flex;
@@ -534,7 +534,7 @@
         padding: 0.15rem 0;
     }
     .tag {
-        font-size: 0.66rem;
+        font-size: 0.875rem;
         font-weight: 700;
         text-transform: uppercase;
         letter-spacing: 0.03em;
@@ -556,11 +556,11 @@
         border-radius: 7px;
         background: #fef3c7;
         color: #92400e;
-        font-size: 0.82rem;
+        font-size: 0.875rem;
     }
     .status {
         margin: 0;
-        font-size: 0.8rem;
+        font-size: 0.875rem;
         opacity: 0.75;
     }
 
@@ -578,7 +578,7 @@
     }
     .placeholder {
         opacity: 0.5;
-        font-size: 0.85rem;
+        font-size: 0.875rem;
     }
 
     .conflict {
@@ -607,7 +607,7 @@
         display: flex;
         flex-direction: column;
         gap: 0.15rem;
-        font-size: 0.82rem;
+        font-size: 0.875rem;
     }
     .conflict__actions {
         display: flex;

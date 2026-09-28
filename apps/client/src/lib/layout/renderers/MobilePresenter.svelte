@@ -754,20 +754,22 @@
             transition: none;
         }
     }
-    /* The drawers' tabs, in the desktop `.dv-tab` style (compass-theme.css): 13px / 500, squared
+    /* The drawers' tabs, in the desktop `.dv-tab` style (compass-theme.css): 14px / 500, squared
        top corners sitting on the strip's rule; the active tab filled with the panel background
        and text-strong, the inactive ones surface-2 and text-subtle. Every tab has a 1px bottom
        border of the same width, so both states are the same height: inactive shows the rule,
        active is painted panel-colour over it.
        A tab has no close button, so its content has the tab's edge gap at both ends: before the
-       View's icon or the label, whichever leads, and after the title.
+       View's icon or the label, whichever leads, and after the title. The gap is what the tab's
+       height leaves above and below the title's cap height, so the room around the title is the
+       same on all four sides at either height (the touch height is below).
        The tabs share the drawer's width: the strip has no list to reach a tab it hides, and a
        graph's name can be long enough to push Quick notes past the edge. Each tab grows from
        nothing towards its own width, so a tab that fits in an equal share keeps its width and
        the rest split what is left, their titles ending in an ellipsis. A title with room is
        never cut. */
     .tab {
-        --edge-gap: 0.6rem;
+        --edge-gap: calc((1.9rem - 2px - 1cap) / 2);
         position: relative; /* holds the label's stretched hit area, below */
         display: inline-flex;
         align-items: center;
@@ -782,7 +784,7 @@
         background: var(--gk-surface-2);
         color: var(--gk-text-subtle);
         font: inherit;
-        font-size: 0.8125rem;
+        font-size: 0.875rem;
         font-weight: 500; /* same weight in both states, so selecting never changes a width */
         overflow: hidden;
         /* Pressed, never read: no text selection, callout or double-tap zoom. */
@@ -881,7 +883,7 @@
     }
     .empty {
         padding: 1rem;
-        opacity: 0.6;
+        color: var(--gk-text-muted);
     }
     .backdrop {
         position: absolute;

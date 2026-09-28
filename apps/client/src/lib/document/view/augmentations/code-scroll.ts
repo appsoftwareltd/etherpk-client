@@ -37,7 +37,7 @@ import { type EditorState, type Extension, Prec, type Range, StateEffect, StateF
 import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate, WidgetType } from '@codemirror/view'
 
 import { visibleFencedBlocks } from '../outliner-context'
-import { CODE_FONT_SCALE, CODE_PANEL_PAD_RIGHT } from './code-highlight'
+import { CODE_FONT_SIZE, CODE_PANEL_PAD_RIGHT } from './code-highlight'
 import { codeShiftsField, PANEL_PAD } from './content-clamp'
 import {
     clampScroll,
@@ -595,7 +595,7 @@ const theme = EditorView.baseTheme({
         boxSizing: 'content-box',
         height: '0.5em',
         padding: `0.15em ${CODE_PANEL_PAD_RIGHT} 0.15em ${PANEL_PAD}`,
-        fontSize: `${CODE_FONT_SCALE}em`,
+        fontSize: CODE_FONT_SIZE,
         background: 'var(--gk-code-bg, rgba(127,127,127,0.10))',
         touchAction: 'none',
         userSelect: 'none',

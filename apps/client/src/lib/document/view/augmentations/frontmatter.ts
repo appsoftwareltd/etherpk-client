@@ -298,19 +298,36 @@ const theme = EditorView.baseTheme({
     },
     '.cm-line.gk-frontmatter.gk-code-block-last::after': { bottom: FRONTMATTER_GAP },
     // The mismatch mark sits on the opening line after the dimmed `---`, in the prose font so it
-    // reads as chrome rather than as part of the YAML.
+    // reads as chrome rather than as part of the YAML. It never changes the row's height, so
+    // nothing below moves when it comes or goes (it goes as soon as an edit in the block starts):
+    // its line box is shorter than the code row's and centred in it, and it never wraps onto a
+    // second row. It takes the rest of the row, stopping 4em short of the line's width (more than
+    // the three dashes and its margin take); with less room its explanation and the apply button
+    // end in an ellipsis (the mark's tooltip carries the whole explanation). The size containment
+    // keeps its unwrapped text out of the line's intrinsic width, which would otherwise make the
+    // whole explanation on one line the editor's minimum width and push every line past the
+    // pane's edge.
     '.gk-frontmatter-mismatch': {
         display: 'inline-flex',
-        alignItems: 'baseline',
+        alignItems: 'center',
         gap: '0.5em',
+        width: 'calc(100% - 4em)',
+        contain: 'inline-size',
         marginLeft: '1em',
-        fontFamily: 'var(--gk-font-prose, inherit)',
-        fontSize: '0.8em',
+        verticalAlign: 'middle',
+        fontFamily: 'var(--gk-sans, "Inter", system-ui, sans-serif)',
+        // Follows the editor zoom, never below the app's 14px floor for text.
+        fontSize: 'max(0.875rem, 0.8em)',
+        lineHeight: '1',
         color: 'var(--gk-text-subtle, #6b7280)',
         whiteSpace: 'nowrap',
         userSelect: 'none',
     },
+    // The explanation and the apply button give way together, each in proportion to its length;
+    // Restore never does.
+    '.gk-frontmatter-mismatch-text': { minWidth: '0', overflow: 'hidden', textOverflow: 'ellipsis' },
     '.gk-frontmatter-mismatch-action': {
+        flexShrink: '0',
         padding: '0.05em 0.5em',
         borderRadius: '4px',
         border: '1px solid var(--gk-border-soft, rgba(127,127,127,0.45))',
@@ -319,6 +336,7 @@ const theme = EditorView.baseTheme({
         cursor: 'pointer',
         font: 'inherit',
     },
+    '.gk-frontmatter-mismatch-action[data-action="apply"]': { minWidth: '0', flexShrink: '1', overflow: 'hidden', textOverflow: 'ellipsis' },
 })
 
 export function frontmatterAugmentation(options: FrontmatterOptions): Extension {

@@ -104,7 +104,7 @@
     }
     .quoted-h6 {
         font-weight: 700;
-        opacity: 0.85;
+        color: var(--gk-text-muted);
     }
     /* The quote panel (markdown-format.ts, `.gk-quote-line`): muted text on a translucent shade
        with a 3px left rule, the text 0.9em in from the rule (content-clamp.ts's QUOTE_PAD), 0.4em

@@ -524,8 +524,8 @@
         data-testid={testid}
         aria-pressed={on}
         {onclick}
-        class="rounded-full border px-2 py-0.5 text-sm transition-colors {on
-            ? 'border-transparent bg-(--gk-accent,#2563eb) text-white'
+        class="rounded-full border px-2 py-0.5 text-sm transition-colors pointer-coarse:min-h-11 pointer-coarse:min-w-11 pointer-coarse:px-3 {on
+            ? 'border-transparent bg-(--gk-accent,#2563eb) text-(--gk-surface-0)'
             : 'border-(--gk-border-soft) text-(--gk-text-subtle) hover:bg-(--gk-surface-2)'}"
     >
         {label}
@@ -535,14 +535,14 @@
 <div class="flex h-full flex-col overflow-hidden text-(--gk-text-default)" data-testid="tasks-view">
     <div class="flex flex-col gap-2 border-b border-(--gk-border-soft) p-3">
         <div class="flex items-baseline gap-2">
-            <h3 class="m-0 text-sm font-normal uppercase tracking-[0.04em] opacity-70">Tasks</h3>
+            <h3 class="m-0 text-sm font-normal uppercase tracking-[0.04em] text-(--gk-text-muted)">Tasks</h3>
             {#if !isDefaultFilter}
                 <button
                     type="button"
                     data-testid="tasks-reset-filters"
                     title="Back to every unfinished task, every priority, any date, grouped by priority"
                     onclick={resetFilters}
-                    class="ml-auto shrink-0 text-sm text-(--gk-accent,#2563eb) hover:underline"
+                    class="ml-auto shrink-0 text-sm text-(--gk-accent,#2563eb) hover:underline pointer-coarse:min-h-11"
                 >
                     Reset filters
                 </button>
@@ -557,7 +557,8 @@
             <!-- oninput as well as onfocus: selecting a name and pressing Escape both close
                  the list while focus STAYS in the input, so onfocus alone would never fire
                  again and the box would look dead until it was blurred and refocused. -->
-            <div class="flex items-center gap-1">
+            <!-- The same 8px between the field and its button as Quick Find's. -->
+            <div class="flex items-center gap-2">
                 <input
                     data-testid="tasks-name-filter"
                     placeholder="Any name…"
@@ -572,7 +573,7 @@
                     onblur={() => setTimeout(() => (nameFocused = false), 150)}
                     onkeydown={onNameKeydown}
                     oninput={onNameInput}
-                    class="min-w-0 flex-1 rounded-md border border-(--gk-border-soft) bg-(--gk-surface-1) px-2 py-1.5 text-sm text-(--gk-text-strong) placeholder:text-(--gk-text-subtle) focus:border-(--gk-border-strong) focus:outline-none"
+                    class="min-w-0 flex-1 rounded-md border border-(--gk-border-soft) bg-(--gk-surface-1) px-2 py-1.5 text-sm text-(--gk-text-strong) placeholder:text-(--gk-text-subtle) focus:border-(--gk-border-strong) focus:outline-none pointer-coarse:min-h-11"
                 />
                 {#if filter.concept !== null}
                     <!-- self-stretch: the row is items-center, and a button sized by its own
@@ -584,7 +585,7 @@
                         aria-label="Clear the name filter"
                         data-testid="tasks-name-clear"
                         onclick={() => selectName(null)}
-                        class="inline-flex shrink-0 items-center justify-center self-stretch rounded-md border border-(--gk-border-soft) px-2 text-(--gk-text-subtle) hover:bg-(--gk-surface-2) hover:text-(--gk-text-strong)"
+                        class="inline-flex shrink-0 items-center justify-center self-stretch rounded-md border border-(--gk-border-soft) px-2 text-(--gk-text-subtle) hover:bg-(--gk-surface-2) hover:text-(--gk-text-strong) pointer-coarse:min-w-11"
                     >
                         <!-- heroicons/outline x-mark -->
                         <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
@@ -613,7 +614,7 @@
                                 data-selected={i === nameSelected ? "true" : undefined}
                                 onclick={() => selectName(candidate.display)}
                                 onmousemove={() => (nameSelected = i)}
-                                class="flex w-full items-baseline gap-2 px-2 py-1.5 text-left text-sm {i === nameSelected
+                                class="flex w-full items-baseline gap-2 px-2 py-1.5 text-left text-sm pointer-coarse:min-h-11 {i === nameSelected
                                     ? 'bg-(--gk-surface-2)'
                                     : ''}"
                             >
@@ -635,7 +636,7 @@
                 type="button"
                 data-testid="tasks-use-active"
                 onclick={() => selectName(activeConcept)}
-                class="self-start text-left text-sm text-(--gk-accent,#2563eb) hover:underline"
+                class="self-start text-left text-sm text-(--gk-accent,#2563eb) hover:underline pointer-coarse:min-h-11"
             >
                 ↳ Use {activeConcept}
             </button>
@@ -660,7 +661,7 @@
                     aria-label="Filter by due date"
                     value={filter.due}
                     onchange={(e) => update({ due: e.currentTarget.value as TaskFilterState["due"] })}
-                    class="rounded-md border border-(--gk-border-soft) bg-(--gk-surface-1) px-1.5 py-1 text-sm"
+                    class="rounded-md border border-(--gk-border-soft) bg-(--gk-surface-1) px-1.5 py-1 text-sm pointer-coarse:min-h-11"
                 >
                     <option value="any">Any date</option>
                     <option value="overdue">Overdue</option>
@@ -672,7 +673,7 @@
                     aria-label="Group tasks by"
                     value={filter.groupBy}
                     onchange={(e) => update({ groupBy: e.currentTarget.value as TaskGroupBy })}
-                    class="rounded-md border border-(--gk-border-soft) bg-(--gk-surface-1) px-1.5 py-1 text-sm"
+                    class="rounded-md border border-(--gk-border-soft) bg-(--gk-surface-1) px-1.5 py-1 text-sm pointer-coarse:min-h-11"
                 >
                     <option value="priority">By priority</option>
                     <option value="document">By document</option>
@@ -694,7 +695,7 @@
              space, so nothing below it moves, and it pins to the top as the list scrolls, the
              way the headings do (z-20 keeps it above them). Inside the scroller rather than
              over it, so it never sits on the scrollbar. The headings and messages below carry
-             pr-8 so no text runs under it.
+             pr-8 (pr-12 on a touch screen, where the button is 44px) so no text runs under it.
              -top-2 here and on the headings cancels the list's py-2: sticky insets are measured
              inside the scroller's padding, so top-0 pinned them 8px below the list's edge and
              rows scrolled visibly through the gap above them. -->
@@ -705,7 +706,7 @@
                 title="Refresh tasks"
                 aria-label="Refresh tasks"
                 onclick={onRefreshPress}
-                class="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-(--gk-surface-0) text-(--gk-text-subtle) hover:bg-(--gk-surface-2) hover:text-(--gk-text-strong)"
+                class="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-(--gk-surface-0) pointer-coarse:size-11 text-(--gk-text-subtle) hover:bg-(--gk-surface-2) hover:text-(--gk-text-strong)"
             >
                 <!-- heroicons/outline arrow-path -->
                 <svg bind:this={refreshIcon} class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
@@ -718,9 +719,9 @@
             </button>
         </div>
         {#if loading && hits.length === 0}
-            <p class="m-0 py-2 pr-8 text-sm text-(--gk-text-subtle)">Loading…</p>
+            <p class="m-0 py-2 pr-8 text-sm text-(--gk-text-subtle) pointer-coarse:pr-12">Loading…</p>
         {:else if groups.length === 0}
-            <p class="m-0 py-2 pr-8 text-sm text-(--gk-text-subtle)" data-testid="tasks-empty">
+            <p class="m-0 py-2 pr-8 text-sm text-(--gk-text-subtle) pointer-coarse:pr-12" data-testid="tasks-empty">
                 {failed
                     ? "Couldn't read the task index. Refresh to try again."
                     : filter.statuses.length === 0 || filter.priorities.length === 0
@@ -733,7 +734,7 @@
             {#each groups as group, g (group.label + g)}
                 <section data-testid="tasks-group">
                     <h4
-                        class="sticky -top-2 m-0 bg-(--gk-surface-0) py-1 pr-8 text-sm font-semibold uppercase tracking-[0.04em] text-(--gk-text-subtle)"
+                        class="sticky -top-2 m-0 bg-(--gk-surface-0) py-1 pr-8 text-sm font-semibold uppercase tracking-[0.04em] text-(--gk-text-subtle) pointer-coarse:pr-12"
                         data-testid="tasks-group-label"
                     >
                         {group.label}
@@ -844,7 +845,7 @@
                     type="button"
                     data-testid="tasks-show-more"
                     onclick={showMore}
-                    class="mt-2 w-full rounded-md border border-(--gk-border-soft) py-1.5 text-sm hover:bg-(--gk-surface-2)"
+                    class="mt-2 w-full rounded-md border border-(--gk-border-soft) py-1.5 text-sm hover:bg-(--gk-surface-2) pointer-coarse:min-h-11"
                 >
                     Show more
                 </button>

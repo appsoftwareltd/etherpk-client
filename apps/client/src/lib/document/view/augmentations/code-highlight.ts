@@ -26,9 +26,19 @@ import { CODE_TOKEN_STYLES } from './code-token-styles'
 import { renderCompleted, rendererCollapsedStarts, themeTick } from './rendered-common'
 import { editorMarkdownExtensions } from './scheme-url-autolink'
 
-/** Code renders slightly smaller than prose. Exported so the content-clamp can measure the monospace
- *  space width at the SAME size when it aligns code blocks to the proportional content column. */
-export const CODE_FONT_SCALE = 0.86
+/** Code renders slightly smaller than prose: 14px at the default 16px zoom, the app's floor for
+ *  text. Exported for the read-only quotes (QuotedCode), which size their code off the same scale. */
+export const CODE_FONT_SCALE = 0.875
+
+/**
+ * The code font's size as CSS, for any element sized off the editor font. Code in a document is
+ * document text, so like the prose around it it follows the editor zoom, down to 9.6px at the
+ * smallest; only the chrome the editor draws is held at 14px (ADR 0106). The editor's
+ * code rules read this expression; the content clamp's gutter writes the same size against
+ * `--editor-font-size` (CONTENT_GUTTER). The read-only quotes floor theirs at 14px, because their
+ * text also appears at the fixed sizes of the app's lists (InlineMarkdown's `.md-code` in Tasks).
+ */
+export const CODE_FONT_SIZE = `${CODE_FONT_SCALE}em`
 
 /** The code-block panel's paddings (in the code font). Exported for a code line's scroll container
  *  (code-scroll.ts), which spans the panel from the left padding's edge to the right one's, and for the
@@ -118,7 +128,7 @@ const codeLineTheme = EditorView.baseTheme({
         position: 'relative',
         isolation: 'isolate',
         fontFamily: 'var(--gk-mono, ui-monospace, SFMono-Regular, Menlo, monospace)',
-        fontSize: `${CODE_FONT_SCALE}em`,
+        fontSize: CODE_FONT_SIZE,
         // Tighter than the prose `line-height: 1.7` — code reads better compact, and the loose leading
         // is what made the top/bottom panel padding dwarf the side padding (`0.7em`). At 1.4 the leading
         // is small enough that the first/last rows' padding lands the fences `0.7em` from the panel edge,
@@ -128,6 +138,14 @@ const codeLineTheme = EditorView.baseTheme({
         paddingBottom: '0.2em',
         paddingLeft: `calc(var(--code-inset, 0px) + ${CODE_PANEL_PAD_LEFT})`,
         paddingRight: CODE_PANEL_PAD_RIGHT,
+    },
+    // A whole-pixel row, as the prose rows are (cm-document.ts). The browser rounds a font's ascent
+    // and descent to whole pixels and gives the leading's odd fraction to the bottom, so in a
+    // fractional row the text sits up to a pixel above centre: at 14px code, 1px of leading above
+    // it and 2.6px below, which put the frontmatter's opening `---` nearer its panel edge than the
+    // closing one is to its own. A whole-pixel row leaves at most a pixel between the two.
+    '@supports (line-height: round(1px, 1px))': {
+        '.cm-line.gk-code-block': { lineHeight: 'round(1.4em, 1px)' },
     },
     '.cm-line.gk-code-block::after': {
         content: '""',
@@ -165,7 +183,9 @@ const codeLineTheme = EditorView.baseTheme({
     '.cm-line.gk-code-block-last::after': { bottom: '0.42em', borderBottomLeftRadius: '5px', borderBottomRightRadius: '5px' },
     // Dim is a MARK over the fence text only (backticks + language id) — the panel background,
     // a line decoration behind it, is unaffected, so fence lines and body share one background.
-    '.gk-code-fence-dim': { opacity: '0.5' },
+    // It recedes by colour, not opacity: the subtle ink still reads at 4.5:1 on the panel, where
+    // half opacity took the language id under that.
+    '.gk-code-fence-dim': { color: 'var(--gk-text-subtle)' },
     // A form-1 opener (`- ``` `) is a bullet line that also opens a code block, so the whole line is
     // monospaced by `gk-code-block`. That makes the `- ` marker render in the (wider) mono font, pushing
     // the bullet dot right of its siblings and the fence off the proportional content column — worse with
