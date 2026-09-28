@@ -12,6 +12,8 @@ interface Harness {
     engine: HistoryEngine
     pushed: { url: string; state: VisitState }[]
     replaced: { url: string; state: VisitState }[]
+    /** Addresses written with no Visit in them (the graph's own, once nothing it names is open). */
+    cleared: string[]
     positions: Map<string, ViewPosition> // live "editor" positions by viewKey
     reading: Map<string, ViewPosition>
     snapshots: Map<number, ViewPosition>
@@ -21,6 +23,7 @@ interface Harness {
 function makeHarness(): Harness {
     const pushed: Harness['pushed'] = []
     const replaced: Harness['replaced'] = []
+    const cleared: Harness['cleared'] = []
     const positions = new Map<string, ViewPosition>()
     const reading = new Map<string, ViewPosition>()
     const snapshots = new Map<number, ViewPosition>()
@@ -34,6 +37,7 @@ function makeHarness(): Harness {
         controller: () => controller,
         pushUrl: (url, state) => pushed.push({ url, state }),
         replaceUrl: (url, state) => replaced.push({ url, state }),
+        replaceUrlWithoutVisit: (url) => cleared.push(url),
         capture: (viewKey) => positions.get(viewKey) ?? null,
         restore: (viewKey, position) => void restored.push({ viewKey, position }),
         readingPosition: (viewKey) => reading.get(viewKey) ?? null,
@@ -41,7 +45,7 @@ function makeHarness(): Harness {
         loadSnapshot: (id) => snapshots.get(id) ?? null,
     })
     controller.restore(null) // default layout; onChange not fired during restore
-    return { controller, engine, pushed, replaced, positions, reading, snapshots, restored }
+    return { controller, engine, pushed, replaced, cleared, positions, reading, snapshots, restored }
 }
 
 describe('seed', () => {
@@ -94,6 +98,35 @@ describe('sync', () => {
         expect(h.pushed[1].state.panelId).toBe('document:today')
     })
 
+    it('puts the graph\'s own address back when the page it names closes and nothing takes its place', () => {
+        const h = makeHarness()
+        h.engine.seed()
+        h.controller.closeView({ kind: 'document', target: 'today' })
+        // Replaced in place, never pushed: a close is not a Visit, and a reload of the old
+        // address would reopen the page just closed.
+        expect(h.pushed).toHaveLength(0)
+        expect(h.cleared).toEqual(['/g/g1'])
+    })
+
+    it('clears the address when its page closes behind a View that has none', () => {
+        const h = makeHarness()
+        h.engine.seed()
+        h.controller.openView({ kind: 'backlinks', target: 'Physics' }, { region: 'main' })
+        // The page is still open behind the unaddressed View, so the address still names it.
+        expect(h.cleared).toHaveLength(0)
+        h.controller.closeView({ kind: 'document', target: 'today' })
+        expect(h.cleared).toEqual(['/g/g1'])
+    })
+
+    it('pushes the next page opened after the address was cleared', () => {
+        const h = makeHarness()
+        h.engine.seed()
+        h.controller.closeView({ kind: 'document', target: 'today' })
+        h.controller.openView({ kind: 'document', target: 'Alpha' })
+        expect(h.pushed.map((entry) => entry.url)).toEqual(['/g/g1/d/Alpha'])
+        expect(h.cleared).toHaveLength(1)
+    })
+
     it('ignores sidebar focus entirely', () => {
         const h = makeHarness()
         h.engine.seed()
@@ -102,6 +135,7 @@ describe('sync', () => {
         // and switching back to the SAME document pushes nothing either
         h.controller.focusView({ kind: 'document', target: 'today' })
         expect(h.pushed).toHaveLength(0)
+        expect(h.cleared).toHaveLength(0)
     })
 
     it('snapshots the Visit being left at the moment of leaving', () => {

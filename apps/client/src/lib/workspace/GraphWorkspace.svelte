@@ -480,12 +480,11 @@
     import {
         createIndicatorSettle,
         describeSyncActivity,
-        type SyncChipAction,
         type SyncIndicator,
+        type SyncStatusAction,
     } from "$lib/sync/sync-indicator";
     import { describeWriteRefusal, type WriteRefusalCopy } from "$lib/sync/write-refusal";
     import { syncPlanNotice, type SyncPlanNotice } from "@appsoftwareltd/etherpk-shared";
-    import SyncStateChip from "$lib/sync/ui/SyncStateChip.svelte";
     import {
         createGraphKeyring,
         fromBase64Url,
@@ -726,7 +725,7 @@
         retractNotice(STATUS_NOTICE, text);
     }
 
-    /** Recompute the chip from the session's activity; passing states wait (sync-indicator.ts). */
+    /** Recompute the sync status from the session's activity; passing states wait (sync-indicator.ts). */
     function refreshSyncIndicator(): void {
         if (!syncActivity) {
             syncIndicator = null;
@@ -736,7 +735,7 @@
         syncIndicatorSettle.update(describeSyncActivity(syncActivity, browserOnline, refusalCopy?.reason));
     }
 
-    /** Follow a new graph session's activity: the chip, and the refusal card when writes are refused. */
+    /** Follow a new graph session's activity: the sync status, and the refusal card when writes are refused. */
     function watchSyncActivity(sg: GraphSync): void {
         syncActivity = sg.activity();
         refusalCopy = null;
@@ -799,9 +798,9 @@
     /** The Billing page on EtherPK, when this Client is configured for Managed Sync. */
     const billingUrl = $derived((page.data.corporateBillingUrl as string | null | undefined) ?? null);
 
-    /** What the chip's panel and the refusal card offer; the same list in both places. */
-    const syncChipActions = $derived.by((): SyncChipAction[] => {
-        const actions: SyncChipAction[] = [];
+    /** What the sync status's panel and the refusal card offer; the same list in both places. */
+    const syncStatusActions = $derived.by((): SyncStatusAction[] => {
+        const actions: SyncStatusAction[] = [];
         if (!syncActivity) return actions;
         if (syncActivity.refusal && refusalCopy?.billing && billingUrl) {
             actions.push({ id: "sync-state-billing", label: refusalCopy.billing.label, href: billingUrl });
@@ -815,14 +814,14 @@
                 id: "sync-state-download",
                 label: downloadingUnsent ? "Preparing download…" : "Download unsent changes",
                 disabled: downloadingUnsent,
-                run: () => void downloadUnsentFromChip(),
+                run: () => void downloadUnsentFromStatus(),
             });
         }
         return actions;
     });
 
-    /** The access-lost download, from the chip: a failure is reported in the rail, not in a notice the workspace hides. */
-    async function downloadUnsentFromChip(): Promise<void> {
+    /** The access-lost download, from the sync status: a failure is reported in the rail, not in a notice the workspace hides. */
+    async function downloadUnsentFromStatus(): Promise<void> {
         await downloadUnsentChanges();
         if (unsentDownloadError) notify(`Could not download the unsent changes. ${unsentDownloadError}`);
     }
@@ -850,7 +849,7 @@
             tone: "error",
             title: "Changes are not reaching the sync server",
             text: `${refusalCopy.reason} ${refusalCopy.next}`,
-            actions: syncChipActions.map((action) => ({
+            actions: syncStatusActions.map((action) => ({
                 id: `${action.id}-notice`,
                 label: action.label,
                 primary: action.href !== undefined,
@@ -1014,14 +1013,14 @@
     /** The account API behind a registry graph, to word a write refusal; null under the dev gate. */
     let serverApi: SyncApi | null = null;
     /**
-     * The synced graph's sync state for the chip: the session's activity, the browser's online
-     * flag, and why the server refuses writes, worded for this person. `syncActivity` is null for
-     * a folder graph, which shows no chip.
+     * The synced graph's sync state for the Sidebar's sync status: the session's activity, the
+     * browser's online flag, and why the server refuses writes, worded for this person.
+     * `syncActivity` is null for a folder graph, which shows no status.
      */
     let syncActivity = $state.raw<SyncActivity | null>(null);
     let browserOnline = $state(true);
     let refusalCopy = $state.raw<WriteRefusalCopy | null>(null);
-    /** The person closed the refusal card; the chip still says it, and a new refusal re-posts it. */
+    /** The person closed the refusal card; the sync status still says it, and a new refusal re-posts it. */
     let refusalNoticeDismissed = $state(false);
     let syncIndicator = $state.raw<SyncIndicator | null>(null);
     let syncIndicatorSettle: ReturnType<typeof createIndicatorSettle> | null = null;
@@ -3402,6 +3401,14 @@
                 pushState(url + withoutSettingsTab(page.url.search), { etherpkVisit: state }),
             replaceUrl: (url, state) =>
                 replaceState(url + withoutSettingsTab(page.url.search), { etherpkVisit: state }),
+            // The last page closed. Unlike a Visit this keeps Settings: a page can close under an
+            // open modal (a delete from elsewhere, Lock now), and the modal stays where it was.
+            // `location`, not `page.url`, which shallow writes never update.
+            replaceUrlWithoutVisit: (url) => {
+                const state = { ...page.state };
+                delete state.etherpkVisit;
+                replaceState(url + location.search, state);
+            },
             capture: capturePosition,
             restore: (key, position) => void restorePosition(key, position),
             readingPosition: (key) => readingPositions?.get(key) ?? null,
@@ -3564,6 +3571,19 @@
                 },
                 lockNow,
                 requestUnlock: () => void openUnlockProtection(null),
+            },
+            // The Sidebar's sync status. Getters for the same reason: `syncActivity` is set once
+            // the graph session starts, and the status follows every change after it.
+            sync: {
+                get isSynced() {
+                    return syncActivity !== null;
+                },
+                get indicator() {
+                    return syncIndicator;
+                },
+                get actions() {
+                    return syncStatusActions;
+                },
             },
             recents,
             taskFilter,
@@ -5427,7 +5447,7 @@
             stopAccountSignals();
             window.removeEventListener("storage", watchSyncConfig);
         });
-        // The sync chip reads the browser's online flag; a refused write is tried again when the
+        // The sync status reads the browser's online flag; a refused write is tried again when the
         // connection returns and when the person comes back to the tab, which is when a plan
         // restarted in another tab usually shows.
         browserOnline = navigator.onLine;
@@ -5819,11 +5839,6 @@
     />
 {/if}
 
-<!-- The phone's sync chip, in the top bar the mobile presenter draws. -->
-{#snippet syncStatus()}
-    <SyncStateChip compact indicator={syncIndicator} actions={syncChipActions} />
-{/snippet}
-
 <!-- The presenter is chosen by viewport. Desktop: a toolbar + the dockview host
      (which must exist whenever ready & desktop). Mobile: the self-contained
      MobilePresenter, which carries its own chrome (drawer toggles + tab strip),
@@ -5839,7 +5854,6 @@
             ontasks={() => void commandRegistry?.execute("tasks.open")}
             onreset={() => void commandRegistry?.execute("workspace.reset")}
             mirror={mirrorIndicator()}
-            sync={syncActivity ? { indicator: syncIndicator, actions: syncChipActions } : null}
         />
         <div
             bind:this={container}
@@ -5853,7 +5867,6 @@
                     {controller}
                     renderer={mobileRenderer}
                     markFor={tabMarkFor}
-                    status={syncActivity ? syncStatus : undefined}
                 />
             {/if}
         </div>

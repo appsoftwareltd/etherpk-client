@@ -7,7 +7,7 @@
  * holds a copy of must discard that copy, because replaying it would put the old membership's
  * edits into the shared graph as if they were typed today; before it does, the Graphs page asks,
  * names how many documents would be lost, and offers the same download. Forget and Leave on the
- * Graphs page delete the same copy, so they ask the same way, and the workspace's sync chip
+ * Graphs page delete the same copy, so they ask the same way, and the workspace's sync status
  * offers the download while changes are refused or waiting for a connection. One reader and one
  * file format serve them all.
  *

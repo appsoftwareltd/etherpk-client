@@ -1,13 +1,13 @@
 /**
- * What a synced workspace's sync chip says: whether this device's edits have reached the server.
+ * What a synced workspace's sync status says: whether this device's edits have reached the server.
  * Without it, edits made offline or refused by the server would look saved, and the docs' advice
  * to check a graph is caught up before clearing data would have nothing on screen to check. The
- * chip answers from the graph session's own state (`GraphSync.activity`) and the browser's
+ * status answers from the graph session's own state (`GraphSync.activity`) and the browser's
  * online flag.
  *
  * Two functions: {@link describeSyncActivity} says what is true now, and
  * {@link createIndicatorSettle} holds back states that normally pass in a moment (an ack on its
- * way, a reconnect) so the chip does not flicker with every keystroke.
+ * way, a reconnect) so the status does not flicker with every keystroke.
  */
 import type { SyncActivity } from './graph-sync'
 
@@ -15,16 +15,16 @@ export type SyncIndicatorState = 'synced' | 'sending' | 'connecting' | 'reconnec
 
 export interface SyncIndicator {
     state: SyncIndicatorState
-    /** One or two words for the chip. */
+    /** One or two words for the status row. */
     label: string
-    /** The whole story, for the chip's panel and its accessible name. */
+    /** The whole story, for the status's panel and its accessible name. */
     detail: string
     /** Documents with changes the server has not acknowledged. */
     unsent: number
 }
 
-/** Something the chip's panel offers. Here rather than in the component: an instance script cannot export a type. */
-export interface SyncChipAction {
+/** Something the status's panel offers. Here rather than in the component: an instance script cannot export a type. */
+export interface SyncStatusAction {
     id: string
     label: string
     /** A link (Billing, on another origin) opens in a new tab; otherwise `run` is called. */
@@ -33,7 +33,7 @@ export interface SyncChipAction {
     disabled?: boolean
 }
 
-/** How long a passing state must last before the chip shows it. */
+/** How long a passing state must last before the status shows it. */
 export const INDICATOR_SETTLE_MS = 2_000
 
 /** States that normally clear by themselves within a moment. */
@@ -45,7 +45,7 @@ function documents(count: number): string {
 
 /**
  * @param online `navigator.onLine`: false is reliable ("certainly offline"), true is not, which is
- *   why an open socket, not this flag, is what makes the chip say Synced.
+ *   why an open socket, not this flag, is what makes the status say Synced.
  * @param refusalReason Why the server refuses, worded for this person (write-refusal.ts).
  */
 export function describeSyncActivity(activity: SyncActivity, online: boolean, refusalReason?: string): SyncIndicator {

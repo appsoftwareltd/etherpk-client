@@ -1,20 +1,20 @@
 <script lang="ts">
     /**
-     * The mobile presenter: one active View at a time, an "open panes" tab strip
-     * for the rest of `main`, and the Sidebars as overlay drawers. It reads the
+     * The mobile presenter: one active View at a time, a control naming it whose list
+     * reaches the rest of `main`, and the Sidebars as overlay drawers. It reads the
      * same shared model off the {@link LayoutController} (re-read whenever the
      * mobile renderer's revision bumps) and drives the controller back through the
      * identical API — `focusView` to switch tabs, `toggleSidebar` to close a drawer.
      */
-    import { untrack, type Snippet } from 'svelte'
+    import { untrack } from 'svelte'
 
     import type { LayoutController, LayoutModel, Region, ViewInstance } from '$lib/layout'
     import { attachContextMenu, type ContextMenuTarget, tryGetActiveCommandRegistry } from '$lib/surface'
 
     import CommandBar from './CommandBar.svelte'
-    import HScrollbar from './HScrollbar.svelte'
     import type { MobileRenderer } from './mobile-renderer.svelte'
     import SidebarToggleIcon from './SidebarToggleIcon.svelte'
+    import { NO_PAGE_OPEN } from './no-page-open'
     import { markIcon, tabTitleWidth, type TabMark } from './tab-renderer'
     import { iconSvg } from '$lib/surface/icons'
     import { unavailableViewMessage } from './unavailable-view'
@@ -23,7 +23,6 @@
         controller,
         renderer,
         markFor = () => null,
-        status,
     }: {
         controller: LayoutController
         renderer: MobileRenderer
@@ -33,11 +32,6 @@
          * and whether a [[Protected Document]] is readable right now is invisible from its title.
          */
         markFor?: (panelId: string) => TabMark | null
-        /**
-         * A status control for the top bar, before Tasks: the synced workspace's sync chip. A
-         * snippet, so this presenter learns nothing about sync.
-         */
-        status?: Snippet
     } = $props()
 
     // Re-derive the model whenever the renderer signals a mutation.
@@ -69,40 +63,31 @@
     }
 
     /**
-     * The [[Context Menu]] target a main-strip tab stands for - the same mapping the dockview
-     * adapter makes for a desktop tab: a document's rows for a document, and for anything else
-     * (an Asset, All Documents) only the tab-management rows, which are the reason such a tab
-     * has a menu at all. The presenter has the View and the panel id to hand, so unlike the
-     * adapter it needs no label lookup.
+     * The [[Context Menu]] target an open main-region View stands for, from the document control
+     * or its row in the list - the same mapping the dockview adapter makes for a desktop tab: a
+     * document's rows for a document, and for anything else (an Asset, All Documents) only the
+     * tab-management rows, which are the reason such a tab has a menu at all. The presenter has
+     * the View and the panel id to hand, so unlike the adapter it needs no label lookup.
+     * `vertical`, because the phone lists its open Views down the screen: the rows that close
+     * tabs by position say below and above.
      */
     function tabTarget(v: ViewInstance): ContextMenuTarget {
         return v.view.kind === 'document'
-            ? { kind: 'document-tab', concept: v.view.target, panelId: v.panelId }
-            : { kind: 'tab', panelId: v.panelId }
+            ? { kind: 'document-tab', concept: v.view.target, panelId: v.panelId, vertical: true }
+            : { kind: 'tab', panelId: v.panelId, vertical: true }
     }
 
     /**
-     * Right-click and long-press on a tab, both raising the menu. The attachment returns its
-     * cleanup directly; the movement guard, the swallowed click that would otherwise switch the
-     * tab under the open menu, and the `touch-action` / `user-select` the element must carry
-     * are all `attachContextMenu`'s (see the `.tab` rule below for the last).
+     * Right-click and long-press on the document control or a row of the list, both raising the
+     * menu. The attachment returns its cleanup directly; the movement guard, the swallowed click
+     * that would otherwise open the list or switch documents under the open menu, and the
+     * `touch-action` / `user-select` the element must carry are all `attachContextMenu`'s (see
+     * the `.current` and `.tabmenu-item` rules below for the last).
      */
     function tabMenu(v: ViewInstance) {
         return (node: HTMLElement) => attachContextMenu(node, () => tabTarget(v))
     }
 
-    // The Tasks button is offered only where the workspace registered its Command — read once,
-    // the registry is not reactive and the button set is fixed at mount.
-    const hasTasksCommand = tryGetActiveCommandRegistry()?.has('tasks.open') ?? false
-    /**
-     * Open the Tasks View, then enforce this presenter's one-drawer rule. The Command itself
-     * expands the right Sidebar (it does that on desktop too), but it knows nothing about the
-     * mobile rule that opening one drawer closes the other — that rule lives here.
-     */
-    function openTasks() {
-        void tryGetActiveCommandRegistry()?.execute('tasks.open')
-        controller.toggleSidebar('left', false)
-    }
     /**
      * Toggle a sidebar, enforcing the mobile rule that only one drawer is open at a
      * time: opening one closes the other. (Closing leaves the other untouched.)
@@ -187,36 +172,72 @@
         return model.regions[region].panes.flatMap((pane) => pane.views)
     }
 
-    // --- Dedicated tab scrollbar -------------------------------------------------
-    // The native horizontal scrollbar on the tab strip is hard to grab on touch, so it
-    // is hidden and replaced by the shared {@link HScrollbar} in its own row below the
-    // nav controls. `tabsOverflow` is bound out of that component.
-    let tabsEl = $state<HTMLDivElement>()
-    let tabsOverflow = $state(false)
-
-    // --- Overflow tab menu -------------------------------------------------------
-    // When the strip overflows, a chevron (no count) opens a panel beneath the
-    // scrollbar listing EVERY open tab vertically, in the same order as the
-    // horizontal strip. Selecting one focuses it (and reveals it in the strip).
+    // --- The list of open documents -----------------------------------------------
+    // A phone has no room for a strip of tabs, so the top bar names the View in front with one
+    // control, and the control opens a list of every open main-region View in tab order,
+    // pinned first. Choosing a row brings its View to the front, each row closes its own View,
+    // and a long press on the control or a row raises that tab's Context Menu.
     let menuOpen = $state(false)
-    // The chevron only exists while overflowing, so fold the menu shut the moment
-    // it would be orphaned (a tab closed, the viewport widened).
+    let currentEl = $state<HTMLButtonElement>()
+
+    /** Put the list away, handing focus back to the control that opened it. */
+    function closeList() {
+        menuOpen = false
+        currentEl?.focus()
+    }
+
+    function choose(v: ViewInstance) {
+        controller.focusView(v.view)
+        closeList()
+    }
+
+    // With nothing left open the list has nothing to show, however the last View went: its
+    // row's close, Lock now closing protected documents, a close from another surface.
     $effect(() => {
-        if (!tabsOverflow) menuOpen = false
+        if (!activeMain) menuOpen = false
     })
 
-    // When the active tab changes (a new document opened / navigated to), scroll the
-    // strip so that tab is visible — newly opened tabs often land off the right edge.
+    // A drawer opening while the list is up would open beneath it - Show backlinks from a row's
+    // menu does exactly that - so the list gets out of the way of the drawer asked for.
     $effect(() => {
-        const id = activeMain?.panelId
-        if (!id || !tabsEl) return
-        const el = tabsEl.querySelector('.tab.active') as HTMLElement | null
-        if (!el) return
-        const strip = tabsEl.getBoundingClientRect()
-        const tab = el.getBoundingClientRect()
-        if (tab.left < strip.left) tabsEl.scrollLeft -= strip.left - tab.left + 8
-        else if (tab.right > strip.right) tabsEl.scrollLeft += tab.right - strip.right + 8
+        if (leftOpen || rightOpen) menuOpen = false
     })
+
+    /** Escape puts the list away from the control, as it does from inside the list. */
+    function onCurrentKeydown(event: KeyboardEvent) {
+        if (event.key !== 'Escape' || !menuOpen) return
+        event.preventDefault()
+        closeList()
+    }
+
+    /**
+     * Keys inside the list, on either button of a row: the arrows, Home and End move between the
+     * rows' titles, and Escape puts the list away.
+     */
+    function onListKeydown(event: KeyboardEvent) {
+        if (event.key === 'Escape') {
+            event.preventDefault()
+            closeList()
+            return
+        }
+        const row = (event.currentTarget as HTMLElement).closest<HTMLElement>('.tabmenu-item')
+        const rows = [...(row?.parentElement?.querySelectorAll<HTMLElement>('.tabmenu-item') ?? [])]
+        const at = row ? rows.indexOf(row) : -1
+        const last = rows.length - 1
+        const next = { ArrowDown: Math.min(at + 1, last), ArrowUp: Math.max(at - 1, 0), Home: 0, End: last }[
+            event.key
+        ]
+        if (next === undefined || at < 0) return
+        event.preventDefault()
+        rows[next]?.querySelector<HTMLElement>('.tabmenu-label')?.focus()
+    }
+
+    /** Focus starts on the row in front, so the keyboard begins where the eye does. */
+    function focusActiveRow(list: HTMLElement) {
+        const row = list.querySelector<HTMLElement>('.tabmenu-item.active')
+        row?.scrollIntoView({ block: 'nearest' })
+        row?.querySelector<HTMLElement>('.tabmenu-label')?.focus({ preventScroll: true })
+    }
 
     // --- Ride above the soft keyboard --------------------------------------------
     // The soft keyboard overlays the layout viewport (it does not shrink it), so a
@@ -240,7 +261,7 @@
     })
 </script>
 
-<!-- The pin on a pinned tab, leading the label as pinned tabs lead the strip. Read straight off
+<!-- The pin on a pinned View, leading its title as pinned Views lead the list. Read straight off
      the model: the flag lives on the View instance, so unlike the padlock it needs no callback. -->
 {#snippet pin(v: ViewInstance)}
     {#if v.pinned}
@@ -287,11 +308,8 @@
     {#if views.length > 0}
         <div class="drawer-tabs" data-testid="mobile-drawer-tabs">
             {#each views as v (v.panelId)}
-                <!-- The same .tab / .tab-label structure as the main strip, so one style rules
-                     every mobile tab; `tab--plain` only balances the padding a close button
-                     would otherwise occupy. -->
                 <div
-                    class="tab tab--plain"
+                    class="tab"
                     class:active={v.panelId === inst?.panelId}
                     data-testid="mobile-drawer-tab"
                     data-view-key="{v.view.kind}:{v.view.target}"
@@ -316,7 +334,7 @@
 {/snippet}
 
 <div class="mobile" data-testid="mobile-presenter" style="--keyboard-inset: {keyboardInset}px">
-    <!-- Sidebar toggles + open-panes tab strip -->
+    <!-- The drawer toggles, and between them the control naming the document in front -->
     <div class="topbar" data-testid="mobile-topbar">
         <button
             class="toggle"
@@ -327,76 +345,39 @@
         >
             <SidebarToggleIcon side="left" />
         </button>
-        <div class="tabs" class:overflowing={tabsOverflow} data-testid="mobile-tabs" bind:this={tabsEl}>
-            {#each mainViews as v (v.panelId)}
-                <div
-                    class="tab"
-                    class:active={v.panelId === activeMain?.panelId}
-                    data-testid="mobile-tab"
-                    data-view-key="{v.view.kind}:{v.view.target}"
-                    data-pinned={v.pinned ? 'true' : 'false'}
-                    {@attach tabMenu(v)}
-                >
-                    {@render pin(v)}
-                    {@render viewIcon(v)}
-                    <button
-                        class="tab-label"
-                        style:--gk-tab-title-width={tabTitleWidth(renderer.registry.tabTitleChars(v.view))}
-                        onclick={() => controller.focusView(v.view)}
-                    >
-                        <span class="tab-title">{renderer.registry.title(v.view)}</span>
-                    </button>
-                    {@render tabMark(v.panelId)}
-                    <button
-                        class="tab-close"
-                        data-testid="mobile-tab-close"
-                        title="Close"
-                        aria-label="Close {renderer.registry.title(v.view)}"
-                        onclick={() => controller.closeView(v.view)}
-                    >
-                        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
-                            <path d="M5 5l10 10M15 5L5 15" />
-                        </svg>
-                    </button>
-                </div>
-            {/each}
-        </div>
-        {#if tabsOverflow}
+        <!-- Where a strip of tabs would be: the View in front, wearing the indicators its tab
+             would. One control: a tap opens the list of every open View, a long press raises the
+             tab's menu. With nothing open it says so and does nothing. -->
+        {#if activeMain}
+            {@const v = activeMain}
+            {@const title = renderer.registry.title(v.view)}
             <button
-                class="toggle chevron"
+                class="current"
                 class:open={menuOpen}
-                data-testid="mobile-tab-overflow"
-                title="All open panes"
-                aria-label="All open panes"
+                data-testid="mobile-current"
+                data-view-key="{v.view.kind}:{v.view.target}"
+                data-pinned={v.pinned ? 'true' : 'false'}
+                aria-label="{title}, open documents"
                 aria-expanded={menuOpen}
+                aria-controls={menuOpen ? 'mobile-open-documents' : undefined}
+                bind:this={currentEl}
                 onclick={() => (menuOpen = !menuOpen)}
+                onkeydown={onCurrentKeydown}
+                {@attach tabMenu(v)}
             >
-                <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                {@render pin(v)}
+                {@render viewIcon(v)}
+                <span class="current-title">{title}</span>
+                {@render tabMark(v.panelId)}
+                <svg class="current-chevron" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                     <path d="M5 8l5 5 5-5" />
                 </svg>
             </button>
+        {:else}
+            <div class="current current--empty" data-testid="mobile-current">{NO_PAGE_OPEN}</div>
         {/if}
-        {#if status}
-            <div class="status" data-testid="mobile-status">{@render status()}</div>
-        {/if}
-        {#if hasTasksCommand}
-            <!-- Sits just before the right toggle, as on desktop: it opens a View INTO that
-                 drawer. Goes through the Command registry rather than a prop so this generic
-                 presenter learns nothing about tasks — it appears only when the workspace has
-                 registered the command (the dev harness has not). -->
-            <button
-                class="toggle"
-                data-testid="mobile-tasks"
-                title="Tasks"
-                aria-label="Tasks"
-                onclick={openTasks}
-            >
-                <!-- Sized to match SidebarToggleIcon (1.1rem); unsized it filled the button. -->
-                <svg class="tasks-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M11.35 3.836c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75 2.25 2.25 0 0 0-.1-.664m-5.8 0A2.251 2.251 0 0 1 13.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m8.9-4.414c.376.023.75.05 1.124.08 1.131.094 1.976 1.057 1.976 2.192V16.5A2.25 2.25 0 0 1 18 18.75h-2.25m-7.5-10.5H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V18.75m-7.5-10.5h6.375c.621 0 1.125.504 1.125 1.125v9.375m-8.25-3 1.5 1.5 3-3.75" />
-                </svg>
-            </button>
-        {/if}
+        <!-- No Tasks button here, unlike the desktop toolbar: the top bar is kept to the drawer
+             toggles and the document control, and Tasks is a resident tab of the right drawer. -->
         <button
             class="toggle"
             data-testid="mobile-toggle-right"
@@ -408,47 +389,50 @@
         </button>
     </div>
 
-    <!-- Dedicated tab scrollbar (its own grid row, below the nav controls). The shared
-         HScrollbar renders nothing unless the strip overflows. -->
-    <div class="tabscroll-slot">
-        <HScrollbar target={tabsEl} bind:overflowing={tabsOverflow} testid="mobile-tabscroll" />
-    </div>
-
     <!-- Content area: the active View plus the Sidebar drawers. Drawers are absolute
-         within THIS region (not the whole presenter), so they sit below the nav
-         controls and the tab scrollbar rather than being clipped under them. -->
+         within THIS region (not the whole presenter), so they sit below the top bar
+         rather than being clipped under it. -->
     <div class="content">
-        <!-- Overflow tab menu: a vertical list of every open pane, in strip order,
-             dropping down from the top of the content region (i.e. directly beneath
-             the tab scrollbar). Dismissed by selecting a tab or tapping the backdrop. -->
+        <!-- The list of open documents: every View open in the editor area, in tab order,
+             dropping from the top of the content region directly beneath the top bar. Put away
+             by choosing a row, tapping the backdrop, or Escape. -->
         {#if menuOpen}
-            <button class="backdrop menu-backdrop" aria-label="Close pane list" onclick={() => (menuOpen = false)}></button>
-            <div class="tabmenu" data-testid="mobile-tab-menu">
+            <button
+                class="backdrop menu-backdrop"
+                tabindex="-1"
+                aria-label="Close the list of open documents"
+                onclick={closeList}
+            ></button>
+            <div class="tabmenu" id="mobile-open-documents" data-testid="mobile-tab-menu" {@attach focusActiveRow}>
                 {#each mainViews as v (v.panelId)}
+                    {@const title = renderer.registry.title(v.view)}
+                    {@const active = v.panelId === activeMain?.panelId}
                     <div
                         class="tabmenu-item"
-                        class:active={v.panelId === activeMain?.panelId}
+                        class:active
                         data-testid="mobile-tab-menu-item"
                         data-view-key="{v.view.kind}:{v.view.target}"
                         data-pinned={v.pinned ? 'true' : 'false'}
+                        {@attach tabMenu(v)}
                     >
                         {@render pin(v)}
                         {@render viewIcon(v)}
                         <button
                             class="tabmenu-label"
-                            onclick={() => {
-                                controller.focusView(v.view)
-                                menuOpen = false
-                            }}
+                            aria-current={active ? 'true' : undefined}
+                            onclick={() => choose(v)}
+                            onkeydown={onListKeydown}
                         >
-                            {renderer.registry.title(v.view)}
+                            {title}
                         </button>
                         {@render tabMark(v.panelId)}
                         <button
                             class="tabmenu-close"
+                            data-testid="mobile-tab-close"
                             title="Close"
-                            aria-label="Close {renderer.registry.title(v.view)}"
+                            aria-label="Close {title}"
                             onclick={() => controller.closeView(v.view)}
+                            onkeydown={onListKeydown}
                         >
                             <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
                                 <path d="M5 5l10 10M15 5L5 15" />
@@ -470,7 +454,7 @@
                     {#key activeMain.panelId}<Active view={activeMain.view} />{/key}
                 {:else}<p class="empty" data-testid="view-unavailable">{unavailableViewMessage(activeMain.view.kind)}</p>{/if}
             {:else}
-                <p class="empty">No View open.</p>
+                <p class="empty" data-testid="no-page-open">{NO_PAGE_OPEN}</p>
             {/if}
         </div>
 
@@ -496,8 +480,8 @@
 </div>
 
 <style>
-    /* The mark on a tab - a [[Protected Document]]'s padlock, a published include's globe - on
-       both the strip and the overflow list. Muted: an indicator, not a warning. */
+    /* The mark a tab would wear - a [[Protected Document]]'s padlock, a published include's
+       globe - on the document control and the list's rows. Muted: an indicator, not a warning. */
     .tab-mark {
         display: inline-flex;
         align-items: center;
@@ -511,7 +495,8 @@
         color: var(--gk-accent);
     }
 
-    /* The pin on a pinned tab, on both the strip and the overflow list. Muted like the padlock. */
+    /* The pin on a pinned View, on the document control and the list's rows. Muted like the
+       padlock. */
     .tab-pin {
         display: inline-flex;
         align-items: center;
@@ -519,18 +504,18 @@
         color: var(--gk-text-muted);
         line-height: 0;
     }
-    /* The label's own leading padding is the tab's edge gap; after a pin it is just a gap. */
-    .tab-pin + .tab-label,
+    /* The label's own leading padding is the row's edge gap; after a pin it is just a gap. */
     .tab-pin + .tabmenu-label {
         padding-inline-start: 0.3rem;
     }
 
-    /* The View kind's icon, ahead of the label: the tab's edge gap, then the glyph, then the
-       label a small gap on. After a pin the pin already paid the edge gap. */
+    /* The View kind's icon, ahead of the label: the edge gap (a drawer tab's own, see `.tab`),
+       then the glyph, then the label a small gap on. After a pin the pin already paid the edge
+       gap. */
     .tab-icon {
         display: inline-flex;
         align-items: center;
-        margin-inline-start: 0.6rem;
+        margin-inline-start: var(--edge-gap, 0.6rem);
         color: var(--gk-text-muted);
         line-height: 0;
     }
@@ -549,13 +534,11 @@
            lands just above the keyboard rather than behind it. */
         inset: 0 0 var(--keyboard-inset, 0px) 0;
         display: grid;
-        /* Rows: nav controls, the dedicated tab scrollbar (0 when not overflowing),
-           the content area, then the Command Bar. Explicit grid-row on each child keeps
-           content in the 1fr track even when the scrollbar row is absent. */
-        grid-template-rows: auto auto 1fr auto;
+        /* Rows: the top bar, the content area, then the Command Bar. */
+        grid-template-rows: auto 1fr auto;
         /* minmax(0, 1fr): the single column fills the width and may shrink BELOW
            its content's size. Without it the implicit `auto` column grows to the
-           topbar's max-content (the full un-scrolled tab strip), so the row
+           topbar's max-content (the document control's whole title), so the row
            overflows and the right toggle is pushed off-screen. */
         grid-template-columns: minmax(0, 1fr);
         /* Clamp every child to the viewport so nothing (a wide editor line, a long
@@ -570,73 +553,24 @@
         align-items: center;
         gap: 0.5rem;
         padding: 0.4rem 0.5rem;
-        /* The strip's rule is an INSET shadow rather than a border so that a tab reaching the
-           bottom edge can paint over it and read as joined to what is below — the same
-           connected tab the desktop strip and the drawers draw. A border sits outside anything
-           a child can cover. */
+        /* The bar's bottom rule, drawn inside it as the drawers' strips draw theirs. */
         box-shadow: inset 0 -1px 0 var(--gk-border-soft);
         /* The graph's own colour when one is set (Graph Settings → Toolbar colour, ADR 0071),
            set as a custom property on the workspace root; the theme surface otherwise. This
            strip is the phone's counterpart of the desktop toolbar - the drawer toggles live
-           here - so it is the surface that colour paints. The toggles and the tabs each paint
-           their own surface over it. */
+           here - so it is the surface that colour paints. The toggles and the document control
+           each paint their own surface over it. */
         background: var(--gk-toolbar-accent, var(--gk-surface-1));
-    }
-    .tabs {
-        display: flex;
-        gap: 0.375rem; /* desktop .dv-tab: margin 0 3px */
-        overflow-x: auto;
-        overflow-y: hidden;
-        flex: 1;
-        /* Reach the topbar's bottom edge (through its padding) and sit the tabs on it, so the
-           active tab's bottom edge covers the rule. The toggles beside stay centred in the row.
-           A negative margin on the SCROLLER is safe — its children stay inside it, so nothing
-           is clipped and nothing overflows vertically. */
-        align-self: stretch;
-        align-items: flex-end;
-        margin-bottom: -0.4rem;
-        /* Let the strip shrink below its content width so it scrolls internally;
-           without this the tabs push the right toggle off-screen. */
-        min-width: 0;
-        /* Hide the native scrollbar — the dedicated .tabscroll replaces it. */
-        scrollbar-width: none;
-    }
-    .tabs::-webkit-scrollbar {
-        display: none;
-    }
-    /* When the strip overflows (scrollbar needed), bound it with separators in the
-       button-outline colour so it reads as a distinct, scrollable region between
-       the two column toggles. */
-    .tabs.overflowing {
-        border-inline: 1px solid var(--gk-border-soft);
-        /* Match the topbar gap (0.5rem) so the first/last tab is spaced from the
-           divider by the same amount as the toggle buttons on the other side. */
-        padding-inline: 0.5rem;
-    }
-    /* The tab scrollbar's grid row; the HScrollbar inside renders nothing (0 height)
-       unless the strip overflows. */
-    .tabscroll-slot {
-        grid-row: 2;
     }
     /* The Command Bar's grid row, pinned to the bottom of the surface. */
     .command-bar-slot {
-        grid-row: 4;
+        grid-row: 3;
     }
-    /* Overflow chevron: sized as a toggle (via `.toggle`), with a rotating glyph. */
-    .chevron svg {
-        width: 1rem;
-        height: 1rem;
-        display: block;
-        transition: transform 0.15s ease;
-    }
-    .chevron.open svg {
-        transform: rotate(180deg);
-    }
-    /* The pane list drops from the top of the content region (beneath the tab
-       scrollbar). Scrolls vertically; never taller than the content area. */
-    /* Above the sidebar drawers (z 11) and their backdrop (z 10) so the pane list
-       overlays everything when a drawer happens to be open. (Two classes to win the
-       cascade against the later `.backdrop` rule.) */
+    /* The list drops from the top of the content region, directly beneath the top bar.
+       Scrolls vertically; never taller than the content area. */
+    /* Above the sidebar drawers (z 11) and their backdrop (z 10) so the list overlays
+       everything when a drawer happens to be open. (Two classes to win the cascade against
+       the later `.backdrop` rule.) */
     .backdrop.menu-backdrop {
         z-index: 20;
     }
@@ -657,12 +591,20 @@
         box-shadow: var(--gk-shadow, 0 10px 30px rgba(0, 0, 0, 0.3));
     }
     .tabmenu-item {
+        /* Holds the title button's stretched hit area (`.tabmenu-label::after`). */
+        position: relative;
         display: flex;
         align-items: center;
         box-sizing: border-box;
         border: 1px solid var(--gk-border-soft);
         border-radius: 6px;
         background: transparent;
+        /* A long press raises the Context Menu (attachContextMenu): without these iOS Safari's
+           text-selection callout takes the gesture first, and the title gets selected. */
+        touch-action: manipulation;
+        user-select: none;
+        -webkit-user-select: none;
+        -webkit-touch-callout: none;
     }
     .tabmenu-item.active {
         background: var(--gk-surface-2);
@@ -685,7 +627,25 @@
         text-overflow: ellipsis;
         cursor: pointer;
     }
+    /* A row answers a tap anywhere on it, its pin, icon and mark included: the title's button
+       stretches its hit area over the row, and the close button sits above that. */
+    .tabmenu-label::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        border-radius: 5px;
+    }
+    /* Keyboard focus rings the whole row, the target the title stands for, not the title alone. */
+    .tabmenu-label:focus-visible {
+        outline: none;
+    }
+    .tabmenu-label:focus-visible::after {
+        outline: auto;
+        outline-offset: -2px;
+    }
     .tabmenu-close {
+        position: relative;
+        z-index: 1;
         display: inline-flex;
         align-items: center;
         justify-content: center;
@@ -707,7 +667,7 @@
         display: block;
     }
     .content {
-        grid-row: 3;
+        grid-row: 2;
         position: relative;
         /* `clip` rather than `hidden` for the same reason as the desktop shell (GraphWorkspace
            → `.layout`): a hidden box is still scrollable programmatically, so a caret revealed
@@ -717,10 +677,11 @@
            rather than stretch the grid past the viewport. */
         min-width: 0;
     }
-    /* Column toggles (icon-only) and document tabs share one box so they are the
-       same height. Height is fixed (not derived from line-height) because `font:
-       inherit` resets line-height — the two would otherwise diverge. */
-    .topbar .toggle {
+    /* The drawer toggles (icon-only) and the document control share one box, so they are the
+       same height and read as one set. Height is fixed (not derived from line-height) because
+       `font: inherit` resets line-height — the two would otherwise diverge. */
+    .topbar .toggle,
+    .current {
         display: inline-flex;
         align-items: center;
         box-sizing: border-box;
@@ -735,18 +696,85 @@
         color: var(--gk-text-default);
         font: inherit;
     }
-    /* ONE tab style for every mobile tab — the main strip and both drawers — and it is the
-       desktop `.dv-tab` (compass-theme.css): 13px / 500, squared top corners, sitting on the
-       strip's rule; the active tab filled with the panel background and text-strong, the
-       inactive ones surface-2 and text-subtle. Before this the main strip's pills had the
-       states INVERTED (active filled, inactive transparent) at 16px / 400, so the same state
-       looked different in every region. Every tab has a 1px bottom border of the same width,
-       so both states are the same height: inactive shows the rule, active is painted panel-
-       colour over it. */
+    /* The document control: the View in front, its indicators, and the chevron saying the
+       control opens a list. It takes the bar's width between the toggles, and a title too long
+       for it ends in an ellipsis. */
+    .current {
+        flex: 1;
+        min-width: 0;
+        gap: 0.4rem;
+        padding: 0 0.5rem 0 0.75rem;
+        color: var(--gk-text-strong);
+        font-size: 0.875rem;
+        font-weight: 500;
+        text-align: start;
+        cursor: pointer;
+        /* A long press raises the Context Menu (attachContextMenu): without these iOS Safari's
+           text-selection callout takes the gesture first, and the title gets selected. */
+        touch-action: manipulation;
+        user-select: none;
+        -webkit-user-select: none;
+        -webkit-touch-callout: none;
+    }
+    /* The control spaces its glyphs with its gap, not the margins they take in a row. */
+    .current .tab-pin,
+    .current .tab-icon,
+    .current .tab-mark {
+        margin: 0;
+    }
+    .current-title {
+        flex: 1;
+        min-width: 0;
+        /* Block, trimmed to the cap height and centred by the flex row, as a drawer tab's title
+           is; clipped on the inline axis only, so the descenders still show. */
+        display: block;
+        line-height: 1;
+        text-box: trim-both cap alphabetic;
+        white-space: nowrap;
+        overflow-x: clip;
+        text-overflow: ellipsis;
+    }
+    .current-chevron {
+        flex: none;
+        width: 1rem;
+        height: 1rem;
+        color: var(--gk-text-muted);
+        transition: transform 150ms ease-out;
+    }
+    .current.open .current-chevron {
+        transform: rotate(180deg);
+    }
+    /* Nothing open: the control keeps its place and says so, and is not a button. */
+    .current--empty {
+        color: var(--gk-text-muted);
+        cursor: default;
+    }
+    @media (prefers-reduced-motion: reduce) {
+        .current-chevron {
+            transition: none;
+        }
+    }
+    /* The drawers' tabs, in the desktop `.dv-tab` style (compass-theme.css): 13px / 500, squared
+       top corners sitting on the strip's rule; the active tab filled with the panel background
+       and text-strong, the inactive ones surface-2 and text-subtle. Every tab has a 1px bottom
+       border of the same width, so both states are the same height: inactive shows the rule,
+       active is painted panel-colour over it.
+       A tab has no close button, so its content has the tab's edge gap at both ends: before the
+       View's icon or the label, whichever leads, and after the title.
+       The tabs share the drawer's width: the strip has no list to reach a tab it hides, and a
+       graph's name can be long enough to push Quick notes past the edge. Each tab grows from
+       nothing towards its own width, so a tab that fits in an equal share keeps its width and
+       the rest split what is left, their titles ending in an ellipsis. A title with room is
+       never cut. */
     .tab {
+        --edge-gap: 0.6rem;
+        position: relative; /* holds the label's stretched hit area, below */
         display: inline-flex;
         align-items: center;
         box-sizing: border-box;
+        flex: 1 1 0;
+        min-width: 0;
+        max-width: max-content;
         height: 1.9rem;
         border: 1px solid var(--gk-border-soft);
         border-bottom: 1px solid var(--gk-border-soft);
@@ -756,12 +784,8 @@
         font: inherit;
         font-size: 0.8125rem;
         font-weight: 500; /* same weight in both states, so selecting never changes a width */
-        /* Full natural width (label + close), never shrunk — so the close button is always
-           visible; the strip scrolls instead of clipping tabs. */
-        flex: none;
         overflow: hidden;
-        /* A long press raises the Context Menu (attachContextMenu): without these iOS Safari's
-           text-selection callout takes the gesture first, and the label gets selected. */
+        /* Pressed, never read: no text selection, callout or double-tap zoom. */
         touch-action: manipulation;
         user-select: none;
         -webkit-user-select: none;
@@ -775,16 +799,15 @@
         border-bottom-color: var(--gk-surface-0);
         color: var(--gk-text-strong);
     }
-    /* A drawer tab has no close button; balance the label's padding. */
-    .tab--plain .tab-label {
-        padding: 0 0.6rem;
+    /* The label is a tab's only control, so its hit area covers the whole tab: a tap on the icon
+       ahead of it, or in the edge gap, reaches the button. */
+    .tab-label::after {
+        content: '';
+        position: absolute;
+        inset: 0;
     }
-    /* Toggles never shrink, so they stay visible and clickable as tabs accumulate. */
-    /* The status control never shrinks: it keeps its place however the tab strip grows. */
-    .status {
-        display: flex;
-        flex: none;
-    }
+    /* Toggles never shrink, so they stay visible and clickable however long the title between
+       them. */
     .topbar .toggle {
         flex: none;
         justify-content: center;
@@ -797,7 +820,8 @@
         display: flex;
         align-items: center;
         align-self: stretch;
-        padding: 0 0.15rem 0 0.6rem;
+        min-width: 0;
+        padding: 0 var(--edge-gap);
         border: 0;
         background: transparent;
         color: inherit;
@@ -821,47 +845,34 @@
            off every descender and the tops of the tallest letters. `clip` (unlike `hidden`)
            leaves the other axis visible. */
         max-width: var(--gk-tab-title-width);
+        min-width: 0;
         overflow-x: clip;
         text-overflow: ellipsis;
     }
-    .tab-close {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        height: 100%;
-        padding: 0 0.4rem;
-        border: 0;
-        background: transparent;
-        color: inherit;
-        cursor: pointer;
-        opacity: 0.55;
-    }
-    .tab-close:hover {
-        opacity: 1;
-    }
-    /* A finger needs a 44 CSS px target: on a touch screen the top bar's toggles and tabs grow
-       to that inside their 1px borders, so a tab's label and close button get the whole 44px,
-       and the close button and each row of the pane list are at least as wide. */
+    /* A finger needs a 44 CSS px target: on a touch screen the top bar's toggles, its document
+       control and the drawers' tabs grow to that inside their 1px borders, each row of the list
+       is at least that tall, and a row's close button at least that wide. */
     @media (pointer: coarse) {
         .topbar .toggle {
             width: calc(2.75rem + 2px);
             height: calc(2.75rem + 2px);
         }
-        .tab {
+        .current {
             height: calc(2.75rem + 2px);
         }
-        .tab-close,
+        /* A drawer tab has no close button to widen it, so its edge gap grows with its height,
+           to what the 44px leaves above and below the title's cap height (about 17px): the tab
+           keeps the desktop tab's proportions instead of standing tall and narrow. */
+        .tab {
+            --edge-gap: calc((2.75rem - 1cap) / 2);
+            height: calc(2.75rem + 2px);
+        }
         .tabmenu-close {
             min-width: 2.75rem;
         }
         .tabmenu-item {
-            min-height: 2.75rem;
+            min-height: calc(2.75rem + 2px);
         }
-    }
-    .tab-close svg {
-        width: 0.8rem;
-        height: 0.8rem;
-        display: block;
     }
     .active-view {
         position: absolute;
@@ -928,11 +939,6 @@
     }
     .drawer-tabs {
         gap: 0.375rem; /* the tabs themselves are the shared .tab rule above */
-    }
-    .tasks-icon {
-        width: 1.1rem;
-        height: 1.1rem;
-        display: block;
     }
     .drawer.left {
         left: 0;

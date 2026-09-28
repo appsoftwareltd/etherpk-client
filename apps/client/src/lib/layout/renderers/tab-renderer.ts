@@ -48,6 +48,11 @@ export interface TabRendererOptions {
     iconFor: (panelId: string) => string | undefined
     /** How many characters wide the title behind `panelId` may be drawn before its ellipsis. */
     titleCharsFor: (panelId: string) => number
+    /**
+     * Close the tab for `panelId`: what the close button does. The adapter's, not dockview's own
+     * `api.close()`, which deletes an emptied group even when it is the whole editor area.
+     */
+    close: (panelId: string) => void
 }
 
 /**
@@ -209,7 +214,7 @@ export function createTabRenderer(options: TabRendererOptions): ITabRenderer {
             const onClick = (event: MouseEvent) => {
                 if (event.defaultPrevented) return
                 event.preventDefault()
-                params.api.close()
+                options.close(panelId)
             }
             action.addEventListener('pointerdown', onPointerDown)
             action.addEventListener('click', onClick)

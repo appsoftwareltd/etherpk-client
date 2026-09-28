@@ -1,7 +1,7 @@
 <script lang="ts">
     /**
      * The graph [[Sidebar]]: [[Quick Find]], today's [[Journal Entry]], [[Favourite]]s,
-     * [[Recents]], and the way into [[All Documents]].
+     * [[Recents]], the way into [[All Documents]], and a synced graph's sync status at its foot.
      *
      * Replaces the old `document-tree`, which listed every journal and every page flat -
      * unusable at real scale (2838 documents on the graph this was built against) and, until
@@ -56,6 +56,7 @@
     import { getActiveGraphIndex } from "$lib/document/backlinks/active-index";
     import { openConcept } from "$lib/document/open-concept";
     import { iconSvg } from "$lib/surface/icons";
+    import SyncStatus from "$lib/sync/ui/SyncStatus.svelte";
     import {
         currentWorkspaceServices,
         type ProtectionControls,
@@ -103,6 +104,14 @@
     const unlocked = $derived(
         protection?.status === "unlocked" || protection?.status === "masked",
     );
+
+    /**
+     * A synced graph's sync status, for the foot of the Sidebar. Its fields are getters over the
+     * workspace's runes, so reading them in the template follows every change. Read once: the
+     * workspace publishes it with the graph's services, before any presenter mounts this View.
+     * Absent in the dev harnesses, which have no workspace.
+     */
+    const syncStatus = currentWorkspaceServices()?.sync;
 
     const recentLimit = $derived(recentCountOf(getActiveGraphSettings()));
     /** Concepts that currently resolve, for the [[Journal Calendar]]'s bold days. */
@@ -537,9 +546,9 @@
     }
 
     /**
-     * Whether the workspace offers its Settings modal as a Command. Read once at mount, like the
-     * mobile presenter's Tasks button: the Sidebar is remounted with its presenter, and the dev
-     * harness registers no such command, so the row is simply absent there.
+     * Whether the workspace offers its Settings modal as a Command. Read once at mount: the
+     * registry is not reactive, the Sidebar is remounted with its presenter, and the dev harness
+     * registers no such command, so the row is simply absent there.
      */
     const hasSettingsCommand =
         tryGetActiveCommandRegistry()?.has("graph.settings.open") ?? false;
@@ -1044,6 +1053,14 @@
                 </svg>
                 <span>Reset workspace</span>
             </button>
+        {/if}
+        {#if syncStatus?.isSynced}
+            <!-- Last in the footer, on every presenter: the toolbar and the phone's top bar have
+                 no room for it, and the foot of the Sidebar is where a status line is looked for. -->
+            <SyncStatus
+                indicator={syncStatus.indicator}
+                actions={syncStatus.actions}
+            />
         {/if}
     </div>
 </div>

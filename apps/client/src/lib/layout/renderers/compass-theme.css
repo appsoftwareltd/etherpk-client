@@ -246,13 +246,21 @@
     background: var(--gk-text-strong);
 }
 
-/* The pin on a pinned tab's overflow row, leading the label as it leads the tab. */
-.dockview-theme-compass .dv-compass-overflow-pin {
+/* An overflow row's glyphs, where its tab has them, in the tab's places: the pin and the View's
+   icon lead the label, the mark (padlock, globe) follows it. Muted, as on the tab. */
+.dockview-theme-compass .dv-compass-overflow-pin,
+.dockview-theme-compass .dv-compass-overflow-icon,
+.dockview-theme-compass .dv-compass-overflow-mark {
     flex: 0 0 auto;
     display: inline-flex;
     align-items: center;
     color: var(--gk-text-muted);
     line-height: 0;
+}
+
+/* Unlocked is the state worth noticing, as on the tab. */
+.dockview-theme-compass .dv-compass-overflow-mark[data-state='unlocked'] {
+    color: var(--gk-accent);
 }
 
 /* The overflow row's label takes the space; its close button sits hard right. Revealed on
@@ -347,4 +355,19 @@
    open — so it gets the accent as well as the open shackle; locked stays muted. */
 .dockview-theme-compass .gk-tab-mark[data-state='unlocked'] {
     color: var(--gk-accent);
+}
+
+/*
+ * The empty editor area: dockview's watermark for an empty group, which only the editor area's
+ * last group is ever left as (the adapter keeps it when every page closes). Centred in the Pane
+ * and muted, as the Sidebars' own empty states are.
+ */
+.dockview-theme-compass .gk-no-page-open {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    padding: 1rem;
+    color: var(--gk-text-muted);
+    font-size: 0.875rem;
 }

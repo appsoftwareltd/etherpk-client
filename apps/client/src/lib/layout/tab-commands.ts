@@ -24,6 +24,7 @@ import {
     type CommandRegistry,
     type ContextMenuTarget,
     type ContributionRegistry,
+    isVerticalTab,
     registerContextMenuItem,
     tabPanelIdOf,
 } from '$lib/surface'
@@ -174,16 +175,18 @@ export function registerTabCommands(
             // Only once the region is split: with one Pane it is the row above under another name.
             when: (target) => (resolve(target)?.at.panes.length ?? 0) > 1 && closes(target, 'all-panes'),
         }),
+        // Named for where the tabs are drawn: the phone lists its open documents down the screen,
+        // so a strip's right is the list's below.
         registerContextMenuItem(contributions, {
             id: TABS_CLOSE_RIGHT,
-            label: 'Close tabs to the right',
+            label: (target) => (isVerticalTab(target) ? 'Close tabs below' : 'Close tabs to the right'),
             command: TABS_CLOSE_RIGHT,
             order: 110,
             when: (target) => closes(target, 'right'),
         }),
         registerContextMenuItem(contributions, {
             id: TABS_CLOSE_LEFT,
-            label: 'Close tabs to the left',
+            label: (target) => (isVerticalTab(target) ? 'Close tabs above' : 'Close tabs to the left'),
             command: TABS_CLOSE_LEFT,
             order: 120,
             when: (target) => closes(target, 'left'),

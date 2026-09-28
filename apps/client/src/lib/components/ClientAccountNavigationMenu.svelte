@@ -72,13 +72,6 @@
             ? MANAGED_DEVICE_DISCONNECT_HELP
             : STANDALONE_DEVICE_DISCONNECT_HELP,
     );
-    const accountModeLabel = $derived(
-        connectionMode === "managed"
-            ? "Managed account"
-            : account?.authentication.mode === "standalone"
-              ? "Standalone account"
-              : "Custom server account",
-    );
 
     /**
      * `announce`: tell the other tabs when this check finds a signed-in account signed out. Off
@@ -240,7 +233,6 @@
             title={accountLabel}
             class="flex min-w-0 cursor-pointer list-none items-center gap-2 rounded-lg border border-gray-950/10 bg-white px-2.5 py-1.5 text-sm font-medium text-gray-700 shadow-sm transition-colors hover:bg-gray-50 hover:text-gray-950 dark:border-white/10 dark:bg-white/5 dark:text-gray-300 dark:hover:bg-white/10 dark:hover:text-white [&::-webkit-details-marker]:hidden"
         >
-            <span class="h-2 w-2 shrink-0 rounded-full bg-emerald-500" aria-hidden="true"></span>
             <span class="min-w-0 max-w-36 truncate whitespace-nowrap sm:max-w-none">{displayedAccountLabel}</span>
             <svg class="h-3.5 w-3.5 shrink-0 motion-safe:transition-transform group-open:rotate-180" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
                 <path fill-rule="evenodd" d="M5.22 8.22a.75.75 0 0 1 1.06 0L10 11.94l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 9.28a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd" />
@@ -249,10 +241,7 @@
 
         <div class="absolute right-0 z-40 mt-2 w-64 overflow-hidden rounded-xl border border-gray-950/10 bg-white shadow-xl dark:border-white/10 dark:bg-[#202023]">
             <div class="border-b border-gray-950/5 px-4 py-3 dark:border-white/10">
-                <p class="text-sm font-semibold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
-                    {accountModeLabel}
-                </p>
-                <p class="mt-1 break-all text-sm text-gray-500 dark:text-gray-400">{accountLabel}</p>
+                <p class="break-all text-sm text-gray-500 dark:text-gray-400">{accountLabel}</p>
             </div>
             <nav class="p-2" aria-label="Account navigation">
                 {#each menuItems as item (item.label)}

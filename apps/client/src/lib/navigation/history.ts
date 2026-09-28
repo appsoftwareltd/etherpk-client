@@ -6,7 +6,9 @@
  *    main region's active *document* View changed. Everything else (sidebar
  *    focus, geometry) falls out as a no-op by construction; a close is never
  *    itself a Visit, but the neighbouring document it reveals becoming active
- *    is one.
+ *    is one. A close that reveals nothing addressable puts the graph's own
+ *    address back in place, so the address never names a closed page (which a
+ *    reload would reopen).
  *  - `seed()` — replaceState baseline after a layout restore (bare-URL
  *    normalisation; never a push).
  *  - `apply(state)` — a popped shallow entry (Back/Forward): focus or reopen
@@ -24,7 +26,7 @@
 import type { LayoutController, ViewRef } from '$lib/layout'
 import { parseViewKey, viewKey } from '$lib/layout'
 
-import { viewUrl } from './document-url'
+import { graphUrl, viewUrl } from './document-url'
 import type { ViewPosition } from './position'
 
 /** What a history entry carries (via `page.state.etherpkVisit`). */
@@ -43,6 +45,8 @@ export interface HistoryEngineOptions {
     controller: () => LayoutController | undefined
     pushUrl(url: string, state: VisitState): void
     replaceUrl(url: string, state: VisitState): void
+    /** Replace the current entry's address with one that names no Visit (the graph's own). */
+    replaceUrlWithoutVisit(url: string): void
     capture(viewKey: string): ViewPosition | null
     restore(viewKey: string, position: ViewPosition): void
     readingPosition(viewKey: string): ViewPosition | null
@@ -106,7 +110,20 @@ export function createHistoryEngine(options: HistoryEngineOptions): HistoryEngin
         sync() {
             if (applying) return
             const active = mainVisit()
-            if (!active || active.panelId === current?.panelId) return
+            if (!active) {
+                // The View the address names has closed and nothing addressable took its place:
+                // the whole editor area emptied, or an unaddressed View is left in front. The
+                // address goes back to the graph's own, replaced in place because a close is not
+                // a Visit. By the canonical key, so closing one copy of a page still open in
+                // another Pane leaves the address naming it.
+                const controller = options.controller()
+                if (current && controller && !controller.isOpen(parseViewKey(canonicalKey(current.panelId)))) {
+                    current = null
+                    options.replaceUrlWithoutVisit(graphUrl(graphId))
+                }
+                return
+            }
+            if (active.panelId === current?.panelId) return
             leaveCurrent()
             const visit: VisitState = {
                 id: nextId(),

@@ -221,6 +221,19 @@ describe('the tab rows', () => {
         expect(h.rows(tab(B))).toEqual(['Pin tab'])
     })
 
+    it('says below and above for a tab drawn as a row of a vertical list, as on the phone', () => {
+        const h = harness()
+        expect(h.rows({ kind: 'tab', panelId: B, vertical: true })).toEqual([
+            'Pin tab',
+            'Close other tabs in this pane',
+            'Close tabs below',
+            'Close tabs above',
+        ])
+        expect(h.rows({ kind: 'document-tab', concept: 'Bravo', panelId: B, vertical: true })).toContain(
+            'Close tabs below',
+        )
+    })
+
     it('offers only the pin row on a lone tab', () => {
         const only = harness({ main: [pane('p1', A)] })
         expect(only.rows(tab(A))).toEqual(['Pin tab'])

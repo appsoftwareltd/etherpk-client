@@ -71,6 +71,8 @@ export interface DocumentContextMenuTarget {
     concept: string
     /** The panel it is open as, when the target IS a tab — what the close rows act on. */
     panelId?: string
+    /** See {@link TabContextMenuTarget.vertical}; meaningful only when the target is a tab. */
+    vertical?: boolean
 }
 
 /**
@@ -82,12 +84,22 @@ export interface DocumentContextMenuTarget {
 export interface TabContextMenuTarget {
     kind: 'tab'
     panelId: string
+    /**
+     * The tab is drawn as a row of a vertical list, as the phone draws its open documents, rather
+     * than in a strip: the rows that close tabs by position say below and above, not right and left.
+     */
+    vertical?: boolean
 }
 
 /** The panel a tab-management row acts on, or `null` when the target is not a tab. */
 export function tabPanelIdOf(target: ContextMenuTarget): string | null {
     if (target.kind === 'tab') return target.panelId
     return target.kind === 'document-tab' ? (target.panelId ?? null) : null
+}
+
+/** Whether the target is a tab drawn in a vertical list (see {@link TabContextMenuTarget.vertical}). */
+export function isVerticalTab(target: ContextMenuTarget): boolean {
+    return (target.kind === 'tab' || target.kind === 'document-tab') && target.vertical === true
 }
 
 /**

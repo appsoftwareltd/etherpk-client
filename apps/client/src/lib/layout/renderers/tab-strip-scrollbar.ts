@@ -21,6 +21,8 @@ import type { DockviewApi } from 'dockview-core'
 
 import { iconSvg } from '$lib/surface/icons'
 
+import { markIcon, type TabMark } from './tab-renderer'
+
 /** How close to a strip's top edge the pointer must be to reveal the scrollbar. */
 const HOVER_ZONE_PX = 6
 /** Minimum thumb width so it stays grabbable on very wide strips. */
@@ -270,9 +272,30 @@ export function installTabStripScrollbar(api: DockviewApi, container: HTMLElemen
                 pin.setAttribute('aria-hidden', 'true')
                 pin.innerHTML = iconSvg('pin', { size: 12 })
             }
+            // The View's icon and the tab's mark come over too, in the tab's order: icon, label,
+            // mark. Read off the elements the tab renderer draws, so a row always says what its
+            // tab says, a padlock's state included.
+            const kindIcon = realTab.querySelector<HTMLElement>('.gk-tab-icon')?.dataset.icon
+            if (kindIcon) {
+                const icon = item.appendChild(document.createElement('span'))
+                icon.className = 'dv-compass-overflow-icon'
+                icon.dataset.icon = kindIcon
+                icon.setAttribute('aria-hidden', 'true')
+                icon.innerHTML = iconSvg(kindIcon, { size: 13 })
+            }
             const text = item.appendChild(document.createElement('span'))
             text.className = 'dv-compass-overflow-label'
             text.textContent = name
+            const tabMark = realTab.querySelector<HTMLElement>('.gk-tab-mark')
+            const markState = tabMark?.dataset.state as TabMark['state'] | '' | undefined
+            if (tabMark && markState) {
+                const mark = item.appendChild(document.createElement('span'))
+                mark.className = 'dv-compass-overflow-mark'
+                mark.dataset.state = markState
+                mark.title = tabMark.title
+                mark.setAttribute('aria-hidden', 'true')
+                mark.innerHTML = iconSvg(markIcon(markState), { size: 13 })
+            }
 
             // A close control per row: with a strip this long the row you want to close is
             // often the one you cannot see, which is the whole reason this list exists.

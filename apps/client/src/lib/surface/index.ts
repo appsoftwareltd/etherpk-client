@@ -69,6 +69,7 @@ export {
     isEditableAssetTarget,
     isWikilinkTarget,
     isMisspellingTarget,
+    isVerticalTab,
     tabPanelIdOf,
     registerContextMenuItem,
     listContextMenuItems,

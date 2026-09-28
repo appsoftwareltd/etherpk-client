@@ -43,7 +43,7 @@ describe('describeWriteRefusal', () => {
     })
 
     it('gives a self-hosted refusal the server limits as its reason, not a second "not accepting"', () => {
-        // The chip already opens with "The sync server is not accepting changes to this graph."
+        // The sync status already opens with "The sync server is not accepting changes to this graph."
         expect(describeWriteRefusal({ refusal: { quotaCode: 'entitlement_inactive' }, owner: null, plan: null, managed: false }).reason).toBe(
             'This sync server’s limits do not allow changes to this graph at the moment.',
         )

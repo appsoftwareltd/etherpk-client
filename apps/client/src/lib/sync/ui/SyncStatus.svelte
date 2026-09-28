@@ -1,27 +1,24 @@
 <script lang="ts">
     /**
-     * The synced workspace's sync chip: whether this device's edits have reached the Sync Server,
-     * in words, in the desktop toolbar and the phone's top bar.
+     * A synced graph's sync status: whether this device's edits have reached the Sync Server, in
+     * words, as the last row at the foot of the Graph Sidebar (desktop and the phone's left drawer
+     * alike). It used to be a chip in the toolbar and the phone's top bar, which had no room for it.
      *
-     * The chip says a word or two and how many documents hold changes the server has not
+     * The row says a word or two and how many documents hold changes the server has not
      * acknowledged; pressing it opens a panel with the whole sentence and anything there is to do
      * (restart a plan, try again now, download the unsent changes). The panel is a native popover:
-     * it sits in the top layer, so no toolbar or drawer clips it, and the browser gives it light
+     * it sits in the top layer, so no Sidebar or drawer clips it, and the browser gives it light
      * dismissal and Escape. Nothing is only on hover.
-     *
-     * `compact` is the phone: the dot and the count only, in a box the size of the bar's toggles.
      */
-    import type { SyncChipAction, SyncIndicator } from "../sync-indicator";
+    import type { SyncIndicator, SyncStatusAction } from "../sync-indicator";
 
     let {
         indicator,
         actions = [],
-        compact = false,
     }: {
-        /** Null until the first state has settled: the chip keeps its place and says nothing yet. */
+        /** Null until the first state has settled: the row keeps its place and says nothing yet. */
         indicator: SyncIndicator | null;
-        actions?: SyncChipAction[];
-        compact?: boolean;
+        actions?: SyncStatusAction[];
     } = $props();
 
     const panelId = $props.id();
@@ -30,32 +27,40 @@
 
     const PANEL_MAX_WIDTH = 320;
     const GUTTER = 8;
+    /** Between the row and the panel. */
+    const GAP = 6;
 
     /**
-     * Place the panel under the chip before it shows. Its width is known from the CSS rule
+     * Place the panel beside the row before it shows. Its width is known from the CSS rule
      * (`min(20rem, 100vw - 16px)`), so the left edge can be clamped to the viewport without a
      * measuring frame in which it would sit at the popover's default centre.
+     *
+     * The row sits at the foot of the Sidebar, so the panel usually opens upwards. It is anchored
+     * by its bottom edge then, so its height need not be measured either. A Sidebar short enough
+     * to leave the row in the top half of the viewport opens it downwards instead.
      */
     function place(event: Event) {
         if ((event as ToggleEvent).newState !== "open" || !trigger || !panel) return;
         const rect = trigger.getBoundingClientRect();
         const width = Math.min(PANEL_MAX_WIDTH, window.innerWidth - GUTTER * 2);
         const left = Math.min(Math.max(rect.left, GUTTER), window.innerWidth - width - GUTTER);
-        panel.style.top = `${rect.bottom + 6}px`;
         panel.style.left = `${left}px`;
+        if (rect.top > window.innerHeight / 2) {
+            panel.style.top = "auto";
+            panel.style.bottom = `${window.innerHeight - rect.top + GAP}px`;
+        } else {
+            panel.style.bottom = "auto";
+            panel.style.top = `${rect.bottom + GAP}px`;
+        }
     }
 
-    function runAction(action: SyncChipAction) {
+    function runAction(action: SyncStatusAction) {
         action.run?.();
         panel?.hidePopover();
     }
 
     const unsentText = $derived(
-        indicator && indicator.unsent > 0
-            ? compact
-                ? indicator.unsent.toLocaleString()
-                : `${indicator.unsent.toLocaleString()} unsent`
-            : "",
+        indicator && indicator.unsent > 0 ? `${indicator.unsent.toLocaleString()} unsent` : "",
     );
     const accessibleName = $derived(
         indicator ? `Sync: ${indicator.label}. ${indicator.detail}` : "Sync: checking",
@@ -65,17 +70,16 @@
 <button
     bind:this={trigger}
     type="button"
-    class={["chip", { compact }]}
+    class="status"
     data-testid="sync-state"
     data-state={indicator?.state ?? "pending"}
     popovertarget={panelId}
     aria-label={accessibleName}
     title={indicator?.detail}
 >
-    <span class="dot" aria-hidden="true"></span>
-    {#if !compact && indicator}
-        <span class="label">{indicator.label}</span>
-    {/if}
+    <!-- The dot sits in a box the size of the footer rows' icons, so the labels line up. -->
+    <span class="icon" aria-hidden="true"><span class="dot"></span></span>
+    <span class="label">{indicator?.label ?? ""}</span>
     {#if unsentText}
         <span class="count" data-testid="sync-state-unsent">{unsentText}</span>
     {/if}
@@ -119,72 +123,84 @@
 </div>
 
 <style>
-    .chip {
-        display: inline-flex;
+    /* The Sidebar footer's own row: the same box, padding and hover as All documents and Reset
+       workspace above it. A min-height, so the row does not shrink while the label is empty. */
+    .status {
+        display: flex;
         align-items: center;
-        gap: 0.4rem;
+        gap: 0.5rem;
         box-sizing: border-box;
-        height: 1.9rem;
-        padding: 0 0.6rem;
-        border: 1px solid var(--gk-border-soft);
-        border-radius: 9999px;
-        background: var(--gk-surface-1);
-        color: var(--gk-text-default);
+        width: 100%;
+        min-height: 2rem;
+        padding: 0.375rem 0.5rem;
+        border: 0;
+        border-radius: 0.375rem;
+        background: transparent;
+        color: inherit;
         font: inherit;
         font-size: 0.875rem;
-        line-height: 1;
+        line-height: 1.25rem;
+        text-align: left;
         white-space: nowrap;
         cursor: pointer;
-        flex: none;
     }
-    .chip:hover {
+    .status:hover {
         background: var(--gk-surface-2, rgba(127, 127, 127, 0.12));
     }
-    .chip:focus-visible {
+    .status:focus-visible {
         outline: 2px solid var(--gk-focus, #6366f1);
-        outline-offset: 2px;
+        outline-offset: -2px;
     }
-    /* The phone: the size of the bar's toggles, growing only for a count. */
-    .chip.compact {
-        min-width: 1.9rem;
+    .icon {
+        display: inline-flex;
+        align-items: center;
         justify-content: center;
-        padding: 0 0.45rem;
-        border-radius: 6px;
+        width: 1rem;
+        height: 1rem;
+        flex: none;
     }
     .dot {
         width: 0.5rem;
         height: 0.5rem;
         border-radius: 9999px;
         background: var(--sync-dot, #9ca3af);
-        flex: none;
     }
-    .chip[data-state="synced"] {
+    .status[data-state="synced"] {
         --sync-dot: var(--gk-sync-ok, #16a34a);
     }
     /* Amber: not settled yet, as the mirror dot's "writing". */
-    .chip[data-state="sending"],
-    .chip[data-state="connecting"],
-    .chip[data-state="reconnecting"] {
+    .status[data-state="sending"],
+    .status[data-state="connecting"],
+    .status[data-state="reconnecting"] {
         --sync-dot: var(--gk-sync-busy, #d97706);
     }
-    .chip[data-state="offline"] {
+    .status[data-state="offline"] {
         --sync-dot: var(--gk-sync-idle, #6b7280);
     }
-    .chip[data-state="refused"],
-    .chip[data-state="ended"] {
+    .status[data-state="refused"],
+    .status[data-state="ended"] {
         --sync-dot: var(--gk-sync-stopped, #dc2626);
     }
+    .label {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    /* Right-aligned, as the document count on the All documents row. */
     .count {
+        margin-left: auto;
         font-variant-numeric: tabular-nums;
         color: var(--gk-text-subtle, inherit);
     }
     .panel {
-        /* The popover's default is centred in the viewport; `place` puts it under the chip. */
+        /* The popover's default is centred in the viewport; `place` puts it beside the row. */
         position: fixed;
         inset: auto;
         margin: 0;
         box-sizing: border-box;
         width: min(20rem, calc(100vw - 16px));
+        max-height: calc(100vh - 16px);
+        overflow-y: auto;
         padding: 0.75rem;
         border: 1px solid var(--gk-border-soft);
         border-radius: 8px;
