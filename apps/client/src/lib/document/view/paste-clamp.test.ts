@@ -6,7 +6,7 @@
 
 import { describe, expect, it } from 'vitest'
 
-import { clampPastedText, healPastedBullets, healPastedTree } from './paste-clamp'
+import { clampPastedText, healPastedBullets, healPastedTree, pasteClamp } from './paste-clamp'
 import { editorFixture } from './testing/editor-state-fixture'
 
 function paste(before: string, text: string, event: 'input.paste' | 'input.drop' = 'input.paste'): string {
@@ -84,9 +84,34 @@ describe('paste into a fenced block or prose: the clamp', () => {
         expect(paste('|', '- x\n  ```\n  \tcode\n  ```')).toBe('- x\n  ```\n  \tcode\n  ```|')
     })
 
+    it('places a fragment pasted onto an empty code line at the fence column, keeping its own indentation', () => {
+        // A blank code line written without the fence column's spaces (by another tool, an agent): the
+        // fragment lands as it would on a padded line. Padded line by line after the paste instead, the
+        // `return` would sit at the `def`'s level.
+        expect(paste('- a\n  - ```py\n    x = 1\n|\n    ```', 'def f():\n    return 1')).toBe(
+            '- a\n  - ```py\n    x = 1\n    def f():\n        return 1|\n    ```',
+        )
+        expect(paste('- ```py\n  x = 1\n|\n  ```', '  def f():\n      return 1')).toBe('- ```py\n  x = 1\n  def f():\n      return 1|\n  ```')
+    })
+
+    it('keeps a single pasted line’s own indentation on an empty code line, as on a padded one', () => {
+        // Padded after the paste instead, the pasted spaces would fill the gap to the fence column and
+        // the code would lose its indentation, which changes Python and YAML.
+        expect(paste('- ```py\n  x = 1\n|\n  ```', '    return 1')).toBe('- ```py\n  x = 1\n      return 1|\n  ```')
+        expect(paste('- ```py\n  x = 1\n  |\n  ```', '    return 1')).toBe('- ```py\n  x = 1\n      return 1|\n  ```')
+        expect(paste('- ```py\n  x = 1\n|\n  ```', ' x', 'input.drop')).toBe('- ```py\n  x = 1\n   x|\n  ```')
+        expect(paste('- a\n  - ```py\n    x = 1\n  |\n    ```', 'y')).toBe('- a\n  - ```py\n    x = 1\n    y|\n    ```')
+    })
+
+    it('clamps a paste on a code line shaped like a bullet to the fence column, as on any code line', () => {
+        expect(paste('- ```md\n  - x|\n  ```', 'a\nb')).toBe('- ```md\n  - xa\n  b|\n  ```')
+    })
+
     it('applies to a text drop as well as a paste, and not to typing', () => {
         expect(paste('- ```\n  |\n  ```', 'one\ntwo', 'input.drop')).toBe('- ```\n  one\n  two|\n  ```')
-        const editor = editorFixture('- ```\n  |\n  ```')
+        // The clamp alone: the source guard would pad the typed line to the fence column as well,
+        // and this row is about which edits the clamp itself answers.
+        const editor = editorFixture('- ```\n  |\n  ```', { withoutFilters: true, extensions: [pasteClamp()] })
         editor.dispatch(editor.state.update(editor.state.replaceSelection('one\ntwo'), { userEvent: 'input.type' }))
         expect(editor.text()).toBe('- ```\n  one\ntwo\n  ```')
     })

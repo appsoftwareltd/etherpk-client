@@ -11,12 +11,11 @@
 
 import type { EditorView } from '@codemirror/view'
 
-import { isBulletLine } from './outliner'
 import { bodyWritable } from './view/body-writable'
 import { canRedo, canUndo } from './view/editor-history'
 import { misspellingAt } from './view/augmentations/spell-check'
 import { tableAtCaret, tableInsertable } from './view/table-context'
-import { taskToggleable } from './view/task-toggleable'
+import { indentable, outlinerBulletAtCaret, taskToggleable } from './view/task-toggleable'
 
 /** What the Command Bar's table group needs to know about the table under the caret. */
 export interface EditorTableContext {
@@ -29,6 +28,7 @@ export interface EditorTableContext {
 export const editorContext = $state<{
     inOutlinerBlock: boolean
     taskToggleable: boolean
+    indentable: boolean
     bodyWritable: boolean
     tableInsertable: boolean
     table: EditorTableContext | null
@@ -39,6 +39,8 @@ export const editorContext = $state<{
     inOutlinerBlock: false,
     /** The task button's own, wider gate: prose counts, headings / code / frontmatter do not. */
     taskToggleable: false,
+    /** The Indent button's gate: the task button's, and a form-1 opener too (`view/task-toggleable.ts`). */
+    indentable: false,
     /**
      * The reactive mirror of `bodyWritable(view.state)` for the active editor: false on a locked
      * Protected Document, where every editing Command is off (`view/body-writable.ts`). The
@@ -73,6 +75,7 @@ export function refreshEditorContext(view: EditorView | null): void {
     if (!view) {
         editorContext.inOutlinerBlock = false
         editorContext.taskToggleable = false
+        editorContext.indentable = false
         editorContext.bodyWritable = false
         editorContext.tableInsertable = false
         editorContext.table = null
@@ -81,9 +84,10 @@ export function refreshEditorContext(view: EditorView | null): void {
         editorContext.misspelling = false
         return
     }
-    const line = view.state.doc.lineAt(view.state.selection.main.head)
-    editorContext.inOutlinerBlock = isBulletLine(line.text)
+    // A bullet of the outline, a form-1 opener included; a bullet-shaped code or YAML line is not one.
+    editorContext.inOutlinerBlock = outlinerBulletAtCaret(view.state)
     editorContext.taskToggleable = taskToggleable(view.state)
+    editorContext.indentable = indentable(view.state)
     editorContext.bodyWritable = bodyWritable(view.state)
     editorContext.tableInsertable = tableInsertable(view.state)
     const table = tableAtCaret(view.state)

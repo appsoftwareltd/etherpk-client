@@ -275,7 +275,7 @@
         "Folder graphs need the File System Access API, which today means a Chromium desktop browser (Chrome, Edge, Brave). Phones, Safari and Firefox work with synced graphs.",
         "End-to-end encryption cuts both ways. Lose every signed-in device and your Recovery Code and nobody can decrypt your synced notes, us included. Keep the code, and keep a local copy if you like belt and braces.",
         "The editor is one text surface. No separate reading mode, no blocks as UI widgets, no rich-text layer hiding the markdown. Some people love that; some don't.",
-        "EtherPK is in alpha. Things will change. The docs say what is built and what is only planned: queries and saved views, kanban boards over tasks, D2 and Excalidraw diagrams, block drag and drop, and working with no network at all are on the second list. Today the app needs a connection to load, and then a synced graph works through a dropped connection.",
+        "EtherPK changes often. The docs say what is built and what is only planned: queries and saved views, kanban boards over tasks, D2 and Excalidraw diagrams, block drag and drop, and working with no network at all are on the second list. Today the app needs a connection to load, and then a synced graph works through a dropped connection.",
     ];
 
     /**

@@ -37,7 +37,7 @@ import { EditorState, type Extension, MapMode, Transaction, type TransactionSpec
 import { frontmatterLines } from '$lib/storage/fs/frontmatter-span'
 
 import { fencedBlocks } from '../fenced-code'
-import { blockBodyEnd, branchRange, bulletContent, contentColumn, isBulletLine, lineIndent, markerLength, opaqueLineFlags, ownerBulletIndex } from '../outliner'
+import { blockBodyEnd, branchRange, bulletContent, contentColumn, formOneOpeners, isBulletLine, lineIndent, markerLength, opaqueLineFlags, ownerBulletIndex } from '../outliner'
 import { EXTERNAL } from './cm-document'
 
 /** Where a caret is, as far as tidying is concerned: an outliner block (by its bullet line), a prose line, or nothing tidyable. */
@@ -104,11 +104,12 @@ export function tidiedBlock(lines: string[], owner: number): { from: number; to:
 export function tidiedAfterChildren(lines: string[], owner: number): { from: number; to: number; lines: string[] }[] {
     const blocks = fencedBlocks(lines)
     const opaque = opaqueLineFlags(lines, blocks)
+    const bulletOpeners = formOneOpeners(lines, blocks)
     const bodyEnd = blockBodyEnd(lines, owner, blocks)
     const branchEnd = branchRange(lines, owner, blocks).end
     const runs: { from: number; to: number }[] = []
     for (let j = bodyEnd + 1; j <= branchEnd; j++) {
-        if (isBulletLine(lines[j]) && !opaque[j]) {
+        if (isBulletLine(lines[j]) && (!opaque[j] || bulletOpeners.has(j))) {
             j = branchRange(lines, j, blocks).end // a child's branch, its own tidy's business
             continue
         }

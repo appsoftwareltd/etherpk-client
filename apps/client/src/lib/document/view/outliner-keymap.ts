@@ -22,8 +22,9 @@ import {
     canOutdent,
     computeMove,
     contentColumn,
-    continuationFloor,
+    continuationColumn,
     cycleTask,
+    formOneOpeners,
     healAfterRangeDelete,
     healOrphanIndent,
     opaqueLineFlags,
@@ -153,7 +154,7 @@ function branchShift(view: Target, lines: string[], root: number, delta: number)
 }
 
 export const indentBranch: StateCommand = (view) => {
-    const { lines, index, line, lineFrom, head } = ctx(view)
+    const { lines, index } = ctx(view)
     const selected = selectedBranchRoots(view, lines)
     if (selected) {
         // Every selected branch nests one level, or none does: each needs a previous sibling to
@@ -171,20 +172,12 @@ export const indentBranch: StateCommand = (view) => {
     const at = rangeBlockOwner(view.state) ?? index
     if (!isBulletLine(lines[at])) {
         // Prose: Tab makes the line a block. Leading spaces in markdown prose are meaningless at best
-        // and an indented code block at four, so "indent" here means "enter the list": a bullet at
-        // column 0, or one level under its bullet when the line is a continuation (the same rule the
-        // task conversion uses). Headings, code and frontmatter are refused; the key is still consumed
-        // so focus never leaves the editor. This is also the Command Bar's indent button on mobile,
-        // where there is no other way into block mode than positioning the caret by touch.
+        // and an indented code block at four, so "indent" here means "enter the list" (enterList).
+        // Headings, code and frontmatter are refused; the key is still consumed so focus never leaves
+        // the editor. This is also the Command Bar's indent button on mobile, where there is no other
+        // way into block mode than positioning the caret by touch.
         if (!taskToggleable(view.state)) return true
-        const indent = ' '.repeat(taskIndentFor(lines, index))
-        const text = line.trimStart()
-        const next = `${indent}- ${text}`
-        const textCaret = Math.max(0, head - lineFrom - (line.length - text.length))
-        dispatch(view, {
-            changes: { from: lineFrom, to: lineFrom + line.length, insert: next },
-            selection: { anchor: lineFrom + indent.length + MARKER_WIDTH + textCaret },
-        })
+        enterList(view, '- ')
         return true
     }
     if (!canIndent(lines, at)) return true // consume — never move focus
@@ -194,6 +187,10 @@ export const indentBranch: StateCommand = (view) => {
 
 export const outdentBranch: StateCommand = (view) => {
     const { lines, index, line, lineFrom } = ctx(view)
+    // [[Frontmatter]] is YAML: a `- alias` there is a list entry, and stripping its marker breaks the
+    // list. The key is still consumed, as Alt+Up and Alt+Down consume it there.
+    const context = caretContext(view.state)
+    if (context === 'frontmatter') return true
     // Shift-Tab lands the root on its parent's indent (column 0 without one): one press is one level
     // on any grid (ADR 0067), the descendants keeping their own offsets.
     const outdentDelta = (root: number) => outdentTarget(lines, root) - lineIndent(lines[root])
@@ -209,9 +206,13 @@ export const outdentBranch: StateCommand = (view) => {
         return true
     }
     const at = rangeBlockOwner(view.state) ?? index // a range inside one block lifts the block, as for Tab
+    // A code line is code: Shift+Tab reaches the code handlers first, and the Command Bar's Outdent,
+    // which runs this command alone, leaves it be. A form-1 opener is its bullet, and outdents.
+    if (at === index && context === 'fenced-code' && !formOneOpeners(lines, fencedBlocks(lines)).has(index)) return true
     if (!isBulletLine(lines[at])) {
-        // A continuation line under a bullet can't outdent past the content column (bullet + space).
-        const floor = continuationFloor(lines, index)
+        // A continuation line under a bullet can't outdent past the content column (bullet + space);
+        // a line short of the column is prose, and outdents like prose.
+        const floor = continuationColumn(lines, index)
         const n = Math.max(0, Math.min(INDENT_UNIT, lineIndent(line) - floor))
         if (n > 0) dispatch(view, { changes: { from: lineFrom, to: lineFrom + n } })
         return true
@@ -258,7 +259,7 @@ function continuationAt(view: Target): { lines: string[]; index: number; line: s
     const c = ctx(view)
     if (isBulletLine(c.line)) return null
     const owner = ownerBulletIndex(c.lines, c.index)
-    const floor = continuationFloor(c.lines, c.index)
+    const floor = continuationColumn(c.lines, c.index)
     if (owner === null || floor <= 0) return null
     return { ...c, owner, floor }
 }
@@ -586,7 +587,12 @@ function indentCodeLines(view: Target, block: FencedBlock, delta: number): void 
     const { state } = view
     const sel = state.selection.main
     if (sel.empty && delta > 0) {
-        dispatch(view, state.replaceSelection(INDENT))
+        // A blank line short of the fence column (written without the column's spaces, as other tools
+        // write it) is drawn from the column, the caret at the code's start: the spaces it lacks go in
+        // first, so Tab indents the code as it would on the padded line instead of pressing dead.
+        const line = state.doc.lineAt(sel.head)
+        const lacking = line.text.trim() === '' ? Math.max(0, block.fenceColumn - lineIndent(line.text)) : 0
+        dispatch(view, state.replaceSelection(' '.repeat(lacking) + INDENT))
         return
     }
     const { first, last } = selectedLines(view)
@@ -982,12 +988,14 @@ const rangeDeleteHeal: StateCommand = (view) => {
     // Resolved in the ORIGINAL doc: the target survives the delete (it sits above `from`), so its offset is
     // unchanged in the result — which is robust whether the deletion was in the middle or at the very end.
     const origLines = text.split('\n')
-    const origInFence = opaqueLineFlags(origLines, fencedBlocks(origLines))
+    const origBlocks = fencedBlocks(origLines)
+    const origInFence = opaqueLineFlags(origLines, origBlocks)
+    const origOpeners = formOneOpeners(origLines, origBlocks)
     const fromIdx = state.doc.lineAt(from).number - 1
     const R = lineIndent(origLines[fromIdx])
     let target = -1
     for (let j = fromIdx - 1; j >= 0; j--) {
-        if (origInFence[j]) continue // fenced content is opaque
+        if (origInFence[j] && !origOpeners.has(j)) continue // fenced content is opaque; a form-1 opener is a bullet
         if (origLines[j].trim() === '' || isHeadingLine(origLines[j])) break // group boundary → before the group
         const ind = lineIndent(origLines[j])
         if (ind > R) continue // a descendant/continuation of an earlier block — skip past it
@@ -1050,64 +1058,70 @@ const breakoutFromCode: StateCommand = (view) => {
 }
 
 
-/** The indent a non-bullet line takes when it becomes a task: one level under the bullet above it in
- *  its group when it sits at or beyond that bullet's content column, else its own indentation. */
-function taskIndentFor(lines: string[], index: number): number {
-    const raw = lineIndent(lines[index])
-    const inFence = opaqueLineFlags(lines, fencedBlocks(lines))
-    for (let j = index - 1; j >= 0; j--) {
-        const above = lines[j]
-        if (inFence[j]) continue // fenced content is opaque
-        if (above.length === 0 || isHeadingLine(above)) break // a bare blank or heading bounds the group
-        if (!isBulletLine(above)) continue
-        const bulletIndent = lineIndent(above)
-        return raw >= bulletIndent + MARKER_WIDTH ? bulletIndent + INDENT_UNIT : raw
+/**
+ * A prose line entering the list, as Tab and the task toggle make it, behind `marker` (`- ` or
+ * `- [ ] `). A continuation becomes a child of the bullet it continues, one level under it, whatever
+ * extra indent it carried (a Tab on a soft line adds code-style indentation, which is not a nesting
+ * level); any other line becomes a block at column 0, its spaces dropped (kept, they would make an
+ * indented bullet under nothing, or one off the grid). A prose line bounds an outliner group, so the
+ * bullets after it may start indented (the "allowable orphan" a Ctrl+Enter split leaves); once the
+ * line is a block the two groups are one, and the lines below are healed to one level under it at
+ * most, as a range delete heals. The caret keeps its character of the text, or the marker's end when
+ * it sat in the indent; a range collapses to its head.
+ */
+function enterList(view: Target, marker: string): void {
+    const { lines, index, line, lineFrom, head } = ctx(view)
+    const owner = ownerBulletIndex(lines, index)
+    const indent = owner !== null && continuationColumn(lines, index) > 0 ? lineIndent(lines[owner]) + INDENT_UNIT : 0
+    const text = line.trimStart()
+    const next = `${' '.repeat(indent)}${marker}${text}`
+    const merged = lines.slice()
+    merged[index] = next
+    const blocks = fencedBlocks(merged)
+    const inFence = opaqueLineFlags(merged, blocks)
+    let groupEnd = index
+    while (groupEnd < merged.length - 1 && (inFence[groupEnd + 1] || (merged[groupEnd + 1].trim() !== '' && !isHeadingLine(merged[groupEnd + 1])))) groupEnd++
+    // The heal starts at the new block, whose own ancestors sit above the range: it may keep its indent.
+    const healed = healOrphanIndent(merged, index, groupEnd, blocks, indent)
+    const changes: ChangeSpec[] = [{ from: lineFrom, to: lineFrom + line.length, insert: next }]
+    for (let j = index + 1; j <= groupEnd; j++) {
+        if (healed[j] === lines[j]) continue
+        const ln = view.state.doc.line(j + 1)
+        changes.push({ from: ln.from, to: ln.to, insert: healed[j] })
     }
-    return raw
+    const textCaret = Math.max(0, head - lineFrom - (line.length - text.length))
+    dispatch(view, { changes, selection: { anchor: lineFrom + indent + marker.length + textCaret } })
 }
 
 export const toggleTask: StateCommand = (view) => {
-    const { line, lineFrom, head } = ctx(view)
+    const { lines, index, line } = ctx(view)
+    // A range across one block's lines acts on that block, as Tab does (Logseq): its bullet cycles.
+    const owner = rangeBlockOwner(view.state)
+    if (owner !== null) return cycleTaskAt(view, lines, owner)
+    // A heading, a code line, frontmatter, a form-1 opener and an unterminated fence line are refused
+    // — see task-toggleable.ts, which the Command Bar shares so its button is disabled exactly where
+    // this returns false.
+    if (!taskToggleable(view.state)) return false
     if (!isBulletLine(line)) {
-        // Prose becomes a task (keeping its indentation and text); a heading, a code line or
-        // frontmatter is refused — see task-toggleable.ts, which the Command Bar shares so
-        // its button is disabled exactly where this returns false.
-        if (!taskToggleable(view.state)) return false
-        const { lines, index } = ctx(view)
-        // A line under a bullet (a soft line, or any line indented to the bullet's content column or
-        // beyond) becomes that bullet's child task, whatever extra indent it carried: a Tab on a soft
-        // line adds code-style indentation, which is not a nesting level. Keeping the raw indent would
-        // nest the new task deeper than one level, an orphan the invariant property test caught. Plain
-        // prose with no bullet above it keeps its own indentation.
-        const indent = ' '.repeat(taskIndentFor(lines, index))
-        const text = line.trimStart()
-        const next = `${indent}- [ ] ${text}`
-        // A prose line bounds an outliner group, so the bullets after it may start indented (the
-        // "allowable orphan" a Ctrl+Enter split leaves). Turning the line into a task joins the two
-        // groups, and the lines below must then be healed into one tree, as a range delete heals.
-        const merged = lines.slice()
-        merged[index] = next
-        let groupEnd = index
-        const mergedInFence = opaqueLineFlags(merged, fencedBlocks(merged))
-        while (groupEnd < merged.length - 1 && (mergedInFence[groupEnd + 1] || (merged[groupEnd + 1].trim() !== '' && !isHeadingLine(merged[groupEnd + 1])))) groupEnd++
-        const healed = healOrphanIndent(merged, index, groupEnd)
-        const changes: ChangeSpec[] = [{ from: lineFrom, to: lineFrom + line.length, insert: next }]
-        for (let j = index + 1; j <= groupEnd; j++) {
-            if (healed[j] === lines[j]) continue
-            const ln = view.state.doc.line(j + 1)
-            changes.push({ from: ln.from, to: ln.to, insert: healed[j] })
-        }
-        // Keep the caret on the same character of the text (or at the marker end when it sat in the indent).
-        const textCaret = Math.max(0, head - lineFrom - (line.length - text.length))
-        dispatch(view, { changes, selection: { anchor: lineFrom + indent.length + 6 + textCaret } })
+        // Prose becomes a task where Tab would make it a block (enterList).
+        enterList(view, '- [ ] ')
         return true
     }
-    const next = cycleTask(line)
-    const delta = next.length - line.length
-    dispatch(view, {
-        changes: { from: lineFrom, to: lineFrom + line.length, insert: next },
-        selection: { anchor: Math.max(lineFrom, head + delta) },
-    })
+    return cycleTaskAt(view, lines, index)
+}
+
+/**
+ * Cycle the task state of bullet line `index` (plain → `[ ]` → `[x]` → plain), the selection kept
+ * on its text through the smallest change. Refused on a form-1 opener: the task marker would push its
+ * fence off the content column, where its closer no longer pairs with it.
+ */
+function cycleTaskAt(view: Target, lines: string[], index: number): boolean {
+    if (formOneOpeners(lines, fencedBlocks(lines)).has(index)) return false
+    const line = view.state.doc.line(index + 1)
+    const change = minimalReplacement(line.text, cycleTask(line.text))
+    if (!change) return true
+    const set = view.state.changes({ from: line.from + change.from, to: line.from + change.to, insert: change.insert })
+    dispatch(view, { changes: set, selection: view.state.selection.map(set, 1) })
     return true
 }
 
@@ -1150,7 +1164,7 @@ function moveBranch(view: Target, dir: 'up' | 'down'): boolean {
             if (fencedBlockAt(view.state, offsetOfLine(view, neighbour))) return true
             // Nor into an outliner group: swapping a prose line with a bullet or continuation line would
             // drop the prose inside the tree and leave the block below it without its parent.
-            if (isBulletLine(lines[neighbour]) || continuationFloor(lines, neighbour) > 0) return true
+            if (isBulletLine(lines[neighbour]) || continuationColumn(lines, neighbour) > 0) return true
         }
         return false
     }

@@ -33,7 +33,7 @@ import type { Command } from '@codemirror/view'
 import { editorAnalysis } from '../analysis/editor-analysis'
 import { blockSelection } from '../block-select'
 import { caretClamp } from '../caret-clamp'
-import { fenceGuard } from '../fence-guard'
+import { fenceGuard, fencePad } from '../fence-guard'
 import { frontmatterBoundaryGuard } from '../frontmatter-boundary'
 import { deleteHeal } from '../delete-heal'
 import { leaveTidy } from '../leave-tidy'
@@ -189,11 +189,12 @@ export function editorFixture(text: string, options: EditorFixtureOptions = {}):
             outlinerKeymap(),
             editorAnalysis(),
             // The live order: cm-document.ts registers the fence guard, paste clamp and delete heal,
-            // then the feature stack (editor-extensions.ts) adds block selection, the caret clamp and
-            // the frontmatter guard AFTER them. Filters run last-registered first, so the clamp runs
-            // before the delete heal, and the paste clamp sees the raw paste before the guard re-pads
-            // what is left. A fixture in another order passes rows the browser fails (the heal's caret).
-            ...(withoutFilters ? [] : [leaveTidy(), fenceGuard(), pasteClamp(), deleteHeal(), blockSelection(), caretClamp(), frontmatterBoundaryGuard()]),
+            // then the feature stack (editor-extensions.ts) adds block selection, the caret clamp, the
+            // fence pad and the frontmatter guard AFTER them. Filters run last-registered first, so the
+            // pad runs before the clamp, the clamp before the delete heal, and the paste clamp sees the
+            // raw paste before the guard re-pads what is left. A fixture in another order passes rows
+            // the browser fails (the heal's caret).
+            ...(withoutFilters ? [] : [leaveTidy(), fenceGuard(), pasteClamp(), deleteHeal(), blockSelection(), caretClamp(), fencePad(), frontmatterBoundaryGuard()]),
             ...extensions,
         ],
     })

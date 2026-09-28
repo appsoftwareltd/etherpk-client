@@ -87,7 +87,7 @@ describe('Task Concept relatedness (ADR 0051)', () => {
     })
 
     it("treats a document's own concept as a virtual root, with no self-link written", () => {
-        // The case the "Use <active tab>" shortcut exists for.
+        // The case the "Filter to <active tab>" shortcut exists for.
         expect(texts(query({ concept: 'Acme Rebuild' }))).toContain('#P1 Ship v2')
     })
 

@@ -6,7 +6,7 @@
      * Deliberately NOT a Backlinks View for tasks. Backlinks follows the active document;
      * this pins its filter, because the moment you click a result the main region navigates —
      * and a list that retargets itself out from under you is useless for working down. The
-     * "Use <name>" link is the pinned alternative: one press to hop to wherever you now are.
+     * "Filter to <name>" link is the pinned alternative: one press to hop to wherever you now are.
      *
      * Mounted through the dockview adapter, so it reads its services via module accessors
      * rather than Svelte context (a separate Svelte root has none to inherit).
@@ -22,6 +22,7 @@
         type TaskStatus,
         taskDateKey,
     } from "../backlinks";
+    import ChoiceDropdown from "$lib/components/ChoiceDropdown.svelte";
     import type { ViewRef } from "$lib/layout";
     import { tryGetActiveEventBus } from "$lib/surface";
     import { workspaceService } from "$lib/workspace/workspace-services";
@@ -30,6 +31,16 @@
     import { conceptIsMissing, openConcept, openConceptAtLine } from "../open-concept";
     import { quickFindKey } from "../quick-find";
     import { createSettleScheduler } from "../settle-scheduler";
+    import {
+        DUE_OPTIONS,
+        GROUP_BY_OPTIONS,
+        PRIORITY_OPTIONS,
+        STATUS_OPTIONS,
+        optionLabel,
+        priorityFilterLabel,
+        sameSelection,
+        statusFilterLabel,
+    } from "../task-filter-labels";
     import { defaultTaskFilter, type TaskFilterState } from "../task-filter-store";
     import { parseTaskTags } from "../task-tags";
     import { toggleIndexedTask } from "../task-toggle";
@@ -76,7 +87,7 @@
      * The hold records the state the tick ASKED FOR, and a row is shown in that state only
      * while the index has yet to agree. It used to show the *inverse of whatever row was
      * rendered* — right for the stale snapshot, wrong the moment the index caught up and
-     * still returned the row (the Done chip on, say): that fresh row already said done, so
+     * still returned the row (Done ticked, say): that fresh row already said done, so
      * inverting it showed the task open again while the document said `[x]`. Reported from
      * live testing as the sidebar "not synchronising" with the document.
      */
@@ -134,8 +145,8 @@
 
     /**
      * Ask the index again, now, with the filter as it stands. A filter change comes through
-     * here, and so does the Refresh button, which exists because toggling a chip off and on
-     * was the only other way to get a fresh list.
+     * here, and so does the Refresh button, which exists because unticking a filter option and
+     * ticking it again was the only other way to get a fresh list.
      *
      * Both let go of the ticked rows being held in place: whoever asks for the list again
      * wants the answer the query gives, not rows it has stopped returning. The pages already
@@ -246,13 +257,13 @@
      * windows are measured from. Read from the clock as each query is sent and kept only once
      * its answer lands, so the grouping always agrees with the rows. It used to be derived
      * from the filter, which froze it at the last filter change: a tab left open overnight
-     * went on filing today's tasks under their date until a chip was toggled.
+     * went on filing today's tasks under their date until a filter was changed.
      */
     let today = $state(taskDateKey(new Date()));
 
     /**
      * The index lives in a worker (ADR 0041), so this is a round trip. `wanted` guards against
-     * a slow answer for an old filter overwriting a newer one — the user changes chips faster
+     * a slow answer for an old filter overwriting a newer one — the user ticks options faster
      * than the worker replies.
      */
     let wanted = 0;
@@ -444,22 +455,7 @@
         return held.get(hitKey(hit))?.done ?? hit.done;
     }
 
-    // ── Chips ──────────────────────────────────────────────────────────────
-    const STATUS_CHIPS: Array<{ value: TaskStatus; label: string }> = [
-        { value: "open", label: "Open" },
-        { value: "doing", label: "Doing" },
-        { value: "waiting", label: "Waiting" },
-        { value: "done", label: "Done" },
-        { value: "cancelled", label: "Cancelled" },
-    ];
-
-    const PRIORITY_CHIPS: Array<{ value: TaskPriorityFilter; label: string }> = [
-        { value: 1, label: "P1" },
-        { value: 2, label: "P2" },
-        { value: 3, label: "P3" },
-        { value: null, label: "None" },
-    ];
-
+    // ── Filter controls ────────────────────────────────────────────────────
     function toggleStatus(value: TaskStatus): void {
         const on = filter.statuses.includes(value);
         update({ statuses: on ? filter.statuses.filter((s) => s !== value) : [...filter.statuses, value] });
@@ -471,23 +467,31 @@
     }
 
     /**
-     * Whether the filter is the one a fresh graph starts with. Chip sets compare as sets:
-     * turning a chip off and on again leaves it at the end of the array, and that ordering
-     * is not a different filter. Governs the reset control, which is offered only while
-     * there is something to reset — a "Reset" beside an already-default filter would be a
-     * button that visibly does nothing.
+     * Which filters are off their default, each drawn in the accent so a narrowed list shows it
+     * at a glance. Group by is never one of them: it arranges the list and hides nothing.
      */
-    const isDefaultFilter = $derived.by(() => {
-        const base = defaultTaskFilter();
-        const same = <T,>(a: readonly T[], b: readonly T[]) => a.length === b.length && a.every((x) => b.includes(x));
-        return (
-            filter.concept === base.concept &&
-            filter.due === base.due &&
-            filter.groupBy === base.groupBy &&
-            same(filter.statuses, base.statuses) &&
-            same(filter.priorities, base.priorities)
-        );
-    });
+    const DEFAULT_FILTER = defaultTaskFilter();
+    const statusChanged = $derived(!sameSelection(filter.statuses, DEFAULT_FILTER.statuses));
+    const priorityChanged = $derived(!sameSelection(filter.priorities, DEFAULT_FILTER.priorities));
+    const dueChanged = $derived(filter.due !== DEFAULT_FILTER.due);
+
+    /**
+     * Whether the filter is the one a fresh graph starts with, grouping and name included.
+     * Governs the reset control, which is offered only while there is something to reset — a
+     * "Reset" beside an already-default filter would be a button that visibly does nothing.
+     */
+    const isDefaultFilter = $derived(
+        !statusChanged &&
+            !priorityChanged &&
+            !dueChanged &&
+            filter.concept === DEFAULT_FILTER.concept &&
+            filter.groupBy === DEFAULT_FILTER.groupBy,
+    );
+
+    /** Which of the two option filters has nothing ticked, named as their controls are. */
+    const emptySelections = $derived(
+        [filter.statuses.length === 0 && "Status", filter.priorities.length === 0 && "Priority"].filter(Boolean).join(" or "),
+    );
 
     /** Every control back to its starting state, the Name Filter's box included. */
     function resetFilters(): void {
@@ -517,20 +521,6 @@
         store?.flush();
     });
 </script>
-
-{#snippet chip(label: string, on: boolean, onclick: () => void, testid: string)}
-    <button
-        type="button"
-        data-testid={testid}
-        aria-pressed={on}
-        {onclick}
-        class="rounded-full border px-2 py-0.5 text-sm transition-colors pointer-coarse:min-h-11 pointer-coarse:min-w-11 pointer-coarse:px-3 {on
-            ? 'border-transparent bg-(--gk-accent,#2563eb) text-(--gk-surface-0)'
-            : 'border-(--gk-border-soft) text-(--gk-text-subtle) hover:bg-(--gk-surface-2)'}"
-    >
-        {label}
-    </button>
-{/snippet}
 
 <div class="flex h-full flex-col overflow-hidden text-(--gk-text-default)" data-testid="tasks-view">
     <div class="flex flex-col gap-2 border-b border-(--gk-border-soft) p-3">
@@ -638,47 +628,55 @@
                 onclick={() => selectName(activeConcept)}
                 class="self-start text-left text-sm text-(--gk-accent,#2563eb) hover:underline pointer-coarse:min-h-11"
             >
-                ↳ Use {activeConcept}
+                ↳ Filter to {activeConcept}
             </button>
         {/if}
 
-        <div class="flex flex-wrap gap-1" data-testid="tasks-status-chips">
-            {#each STATUS_CHIPS as { value, label } (value)}
-                {@render chip(label, filter.statuses.includes(value), () => toggleStatus(value), "tasks-status-chip")}
-            {/each}
-        </div>
-
-        <div class="flex flex-wrap items-center gap-1">
-            <div class="flex gap-1" data-testid="tasks-priority-chips">
-                {#each PRIORITY_CHIPS as { value, label } (label)}
-                    {@render chip(label, filter.priorities.includes(value), () => togglePriority(value), "tasks-priority-chip")}
-                {/each}
-            </div>
-            <!-- One flex item, so a narrow side view wraps both selects together onto the next line. -->
-            <div class="ml-auto flex gap-1" data-testid="tasks-select-group">
-                <select
-                    data-testid="tasks-due"
-                    aria-label="Filter by due date"
-                    value={filter.due}
-                    onchange={(e) => update({ due: e.currentTarget.value as TaskFilterState["due"] })}
-                    class="rounded-md border border-(--gk-border-soft) bg-(--gk-surface-1) px-1.5 py-1 text-sm pointer-coarse:min-h-11"
-                >
-                    <option value="any">Any date</option>
-                    <option value="overdue">Overdue</option>
-                    <option value="today">Due today</option>
-                    <option value="next7">Next 7 days</option>
-                </select>
-                <select
-                    data-testid="tasks-group-by"
-                    aria-label="Group tasks by"
-                    value={filter.groupBy}
-                    onchange={(e) => update({ groupBy: e.currentTarget.value as TaskGroupBy })}
-                    class="rounded-md border border-(--gk-border-soft) bg-(--gk-surface-1) px-1.5 py-1 text-sm pointer-coarse:min-h-11"
-                >
-                    <option value="priority">By priority</option>
-                    <option value="document">By document</option>
-                    <option value="due">By due date</option>
-                </select>
+        <!-- The four filter controls, in equal columns so a control's text changing length never
+             moves the control beside it: one row of four when the View is wide, two rows of two
+             when it is narrow (a Sidebar, a phone's drawer). Measured on the View's own width,
+             since a Sidebar is narrow in a wide window. The container is this wrapper alone: container
+             queries bring layout containment, which would trap the name suggestions (z-10, above)
+             under the list's sticky headings if the whole header were the container. -->
+        <div class="@container">
+            <div class="grid grid-cols-2 gap-2 @min-[34rem]:grid-cols-4" data-testid="tasks-filter-controls">
+                <ChoiceDropdown
+                    label="Status"
+                    summary={statusFilterLabel(filter.statuses)}
+                    options={STATUS_OPTIONS}
+                    selected={filter.statuses}
+                    multiple
+                    changed={statusChanged}
+                    testid="tasks-status-filter"
+                    onChoose={toggleStatus}
+                />
+                <ChoiceDropdown
+                    label="Priority"
+                    summary={priorityFilterLabel(filter.priorities)}
+                    options={PRIORITY_OPTIONS}
+                    selected={filter.priorities}
+                    multiple
+                    changed={priorityChanged}
+                    testid="tasks-priority-filter"
+                    onChoose={togglePriority}
+                />
+                <ChoiceDropdown
+                    label="Due"
+                    summary={optionLabel(DUE_OPTIONS, filter.due)}
+                    options={DUE_OPTIONS}
+                    selected={[filter.due]}
+                    changed={dueChanged}
+                    testid="tasks-due"
+                    onChoose={(due) => update({ due })}
+                />
+                <ChoiceDropdown
+                    label="Group by"
+                    summary={optionLabel(GROUP_BY_OPTIONS, filter.groupBy)}
+                    options={GROUP_BY_OPTIONS}
+                    selected={[filter.groupBy]}
+                    testid="tasks-group-by"
+                    onChoose={(groupBy) => update({ groupBy })}
+                />
             </div>
         </div>
     </div>
@@ -724,8 +722,8 @@
             <p class="m-0 py-2 pr-8 text-sm text-(--gk-text-subtle) pointer-coarse:pr-12" data-testid="tasks-empty">
                 {failed
                     ? "Couldn't read the task index. Refresh to try again."
-                    : filter.statuses.length === 0 || filter.priorities.length === 0
-                      ? "Nothing selected — turn a chip back on."
+                    : emptySelections !== ""
+                      ? `Nothing ticked in ${emptySelections}.`
                       : filter.concept === null
                         ? "No tasks match these filters."
                         : `No tasks for "${filter.concept}".`}

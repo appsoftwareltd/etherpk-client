@@ -31,20 +31,25 @@
 import type { EditorState, Extension } from '@codemirror/state'
 import { EditorView, layer, RectangleMarker } from '@codemirror/view'
 
-import { isBulletLine, lineIndent, continuationFloor } from '../../outliner'
+import { continuationColumn, isBulletLine, lineIndent } from '../../outliner'
+import { analysisFor } from '../analysis/editor-analysis'
 import { isBlockSelection } from '../block-select'
 import { SELECTION_PAD } from '../cm-document'
 import { visibleFencedBlockAt } from '../outliner-context'
 
 const CLASS = 'gk-selection'
 
-/** The column the highlight starts at: the marker start on a bullet, the fence column in code, the floor on a continuation. */
+/**
+ * The column the highlight starts at: the marker start on a bullet, the fence column in code, the
+ * floor on a continuation, and column 0 on prose, a line short of a bullet's content column included
+ * (the caret clamp's reading, `continuationColumn`).
+ */
 function contentColumn(state: EditorState, line: { from: number; text: string; number: number }): number {
     const block = visibleFencedBlockAt(state, line.from)
     if (block && block.from !== line.from) return Math.min(block.fenceColumn, line.text.length)
     if (isBulletLine(line.text)) return lineIndent(line.text)
-    const floor = continuationFloor(state.doc.toString().split('\n'), line.number - 1)
-    return floor > 0 ? Math.min(floor, line.text.length) : 0
+    const { lines, outline } = analysisFor(state)
+    return continuationColumn(lines as string[], line.number - 1, outline)
 }
 
 /** The scroll-content origin, the coordinate space the layer's markers are positioned in. */

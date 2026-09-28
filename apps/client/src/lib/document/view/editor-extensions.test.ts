@@ -37,6 +37,7 @@ describe('editor feature stack', () => {
         expect(order).toEqual([
             'block-selection',
             'caret-clamp',
+            'fence-pad',
             'frontmatter-boundary',
             'wrap-selection',
             'spell-check',
@@ -74,7 +75,15 @@ describe('editor feature stack', () => {
     it('runs the transaction filters before anything that decorates', () => {
         before('block-selection', 'markdown-format')
         before('caret-clamp', 'markdown-format')
+        before('fence-pad', 'markdown-format')
         before('frontmatter-boundary', 'markdown-format')
+    })
+
+    it('pads a code line short of its fence column before the caret clamp judges the caret', () => {
+        // Filters run last-registered first, so the pad registered after the clamp runs before it: the
+        // clamp judges the padded line as code. Judged unpadded, a joined `- x` code line took a bullet's
+        // clamp and the pad then carried the caret past the `- ` (fence-guard.ts, fencePad).
+        before('caret-clamp', 'fence-pad')
     })
 
     it('nests spell check marks inside every other decoration, so none is split at their edges', () => {

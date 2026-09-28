@@ -29,7 +29,10 @@ export interface CommandBarItem {
     order?: number
     /** Which side of the bar the button sits on. `'start'` (default) scrolls; `'end'` is pinned. */
     align?: 'start' | 'end'
-    /** Disabled (shown greyed) when the caret is not in an outliner block. */
+    /**
+     * Disabled (shown greyed) when the caret is not on a bullet of the outline: a form-1 opener
+     * counts, a bullet-shaped line in code or in the frontmatter does not (`outlinerBulletAtCaret`).
+     */
     outlinerOnly?: boolean
     /**
      * Disabled when the document's body will not take an edit - a locked [[Protected Document]].
@@ -38,8 +41,9 @@ export interface CommandBarItem {
      */
     writableOnly?: boolean
     /**
-     * Disabled only where a line cannot be converted: headings, fenced code and frontmatter. Prose
-     * counts (the button converts it), bullets count. The indent and task buttons use this gate.
+     * Disabled only where a line cannot be indented or converted: headings, fenced code and
+     * frontmatter. Prose counts (the button converts it), bullets count, a form-1 opener (the
+     * bullet whose fence opens on its line) included. The indent button uses this gate.
      */
     convertibleOnly?: boolean
     /**

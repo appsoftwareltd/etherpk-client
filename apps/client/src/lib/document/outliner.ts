@@ -15,7 +15,7 @@
 import { frontmatterLines } from '$lib/storage/fs/frontmatter-span'
 
 import { type FencedBlockRange, fencedBlocks } from './fenced-code'
-import { INDENT_UNIT } from './indent-unit'
+import { INDENT_UNIT, type OutlineLine, outlineLines } from './indent-unit'
 
 /**
  * Width of the bullet marker that sets the content column: `- ` is always 2 chars. It is a
@@ -89,6 +89,18 @@ export function opaqueLineFlags(lines: string[], blocks: FencedBlockRange[]): bo
     for (const b of blocks) for (let k = b.start; k <= b.end; k++) flags[k] = true
     for (let k = frontmatterLines(lines) - 1; k >= 0; k--) flags[k] = true
     return flags
+}
+
+/**
+ * The line indices of the form-1 openers (`- \`\`\`py`): a fence opening on a bullet line in the body,
+ * outside any other block's code. The opener is that bullet, not fenced content, as the outline walk
+ * reads it, so a scan that steps over opaque lines must stop at one. An opener inside another block's
+ * code stays code, and one in the [[Frontmatter]] stays YAML: the walk reads no bullet there.
+ */
+export function formOneOpeners(lines: readonly string[], blocks: readonly FencedBlockRange[]): Set<number> {
+    const body = frontmatterLines(lines)
+    const outermost = (b: FencedBlockRange) => !blocks.some((o) => o.start < b.start && b.start <= o.end)
+    return new Set(blocks.filter((b) => b.start >= body && isBulletLine(lines[b.start]) && outermost(b)).map((b) => b.start))
 }
 
 /** Map from a fenced block's opener line index to the block, for O(1) "does a fence start here?". */
@@ -227,6 +239,7 @@ export function prevSiblingRange(
 ): { start: number; end: number } | null {
     const root = lineIndent(lines[i])
     const inFence = opaqueLineFlags(lines, blocks)
+    const bulletOpeners = formOneOpeners(lines, blocks)
     const parent = parentIndex(lines, i, blocks)
     for (let j = i - 1; j >= 0; j--) {
         if (parent !== null && j <= parent) return null // reached the parent — nothing above it is a sibling
@@ -236,7 +249,9 @@ export function prevSiblingRange(
             if (lineIndent(line) > root) continue // an indented soft line — part of a block above (indent decides)
             return null // a bare blank at/left of the root bounds the group
         }
-        if (inFence[j]) continue // fenced content is opaque: a `# comment` or `- item` in code is neither a heading nor a bullet
+        // Fenced content is opaque: a `# comment` or `- item` in code is neither a heading nor a bullet.
+        // A form-1 opener is a bullet, a sibling like any other, and its code block moves with it.
+        if (inFence[j] && !bulletOpeners.has(j)) continue
         if (isHeadingLine(line)) return null
         const ind = lineIndent(line)
         if (!isBulletLine(line)) {
@@ -283,13 +298,12 @@ export function mergeTargetAbove(lines: string[], index: number, blocks: FencedB
     const inFence = opaqueLineFlags(lines, blocks)
     const above = lines[index - 1]
     if (inFence[index - 1]) return false // fenced-code content/closer — never append onto it
-    if (above.trim() === '') {
-        // Indent decides: an indented soft line is part of its block and can take the merged text as
-        // its content; a bare empty line bounds the group and blocks the merge.
-        return lineIndent(above) > 0 && continuationFloor(lines, index - 1) > 0
-    }
     if (isHeadingLine(above)) return false
-    return isBulletLine(above) || continuationFloor(lines, index - 1) > 0 // a bullet or a continuation line
+    if (isBulletLine(above)) return true
+    // A continuation line. Indent decides for a blank one: an indented soft line is part of its block
+    // and can take the merged text as its content; a bare empty line, or one short of the content
+    // column, bounds the group.
+    return continuationColumn(lines, index - 1, outlineLines(lines, blocks)) > 0
 }
 
 /**
@@ -315,24 +329,25 @@ export function isMergeableSource(lines: string[], k: number, blocks: FencedBloc
     if (k < 0 || k >= lines.length) return false
     const inFence = opaqueLineFlags(lines, blocks)
     if (inFence[k] || isHeadingLine(lines[k])) return false
-    if (lines[k].trim() === '') {
-        // An indented soft line can be pulled up (the join simply removes it); a bare empty line bounds.
-        return lineIndent(lines[k]) > 0 && continuationFloor(lines, k) > 0
-    }
-    return isBulletLine(lines[k]) || continuationFloor(lines, k) > 0
+    if (isBulletLine(lines[k])) return true
+    // A continuation line. An indented soft line can be pulled up (the join simply removes it); a bare
+    // empty line, or one short of the content column, bounds.
+    return continuationColumn(lines, k, outlineLines(lines, blocks)) > 0
 }
 
 /**
  * Re-indent lines `[start, end]` so no line sits more than one nesting level below its nearest shallower
  * ancestor — removing the orphan **level-jumps** a delete can leave (ADR 0021). A jumped line (and, via the
  * running stack, its descendants) is pulled left to exactly one level under its parent; well-formed lines
- * are untouched. Headings reset the ancestry; fenced-code interiors are left verbatim.
+ * are untouched. Headings reset the ancestry; fenced-code interiors are left verbatim. `base` is the
+ * deepest indent a line with no ancestor in the range may keep: 0, unless the range starts at a line
+ * whose own ancestors sit above it, as a prose line just made a block does.
  */
-export function healOrphanIndent(lines: string[], start: number, end: number, blocks: FencedBlockRange[] = fencedBlocks(lines)): string[] {
+export function healOrphanIndent(lines: string[], start: number, end: number, blocks: FencedBlockRange[] = fencedBlocks(lines), base = 0): string[] {
     const out = lines.slice()
     const inFence = opaqueLineFlags(lines, blocks)
     const starts = fenceStartMap(blocks)
-    const stack: { raw: number; corr: number }[] = [] // ancestry: raw (source) indent + corrected indent
+    const stack: { raw: number; corr: number; bullet: boolean }[] = [] // ancestry: raw (source) indent + corrected indent
     // A fenced block moves with the line it hangs under, as a unit, so its fences stay paired: the
     // whole block by the owner's correction (a form-2 fence under a bullet), or by the opener's own
     // correction when the opener is the bullet line (form-1).
@@ -358,11 +373,19 @@ export function healOrphanIndent(lines: string[], start: number, end: number, bl
         const ind = lineIndent(line)
         while (stack.length && stack[stack.length - 1].raw >= ind) stack.pop()
         const parent = stack.length ? stack[stack.length - 1] : null
-        const allowed = parent === null ? 0 : parent.corr + INDENT_UNIT // deepest valid indent for a child here
+        // A non-bullet line at or past the nearest bullet's content column is that bullet's continuation,
+        // as the outline walk reads it: it moves with its bullet and is no parent a deeper line may hang
+        // under (a soft line at the content column would otherwise let a child sit two levels down).
+        if (parent?.bullet && !isBulletLine(line) && ind >= parent.raw + MARKER_WIDTH) {
+            const delta = parent.corr - parent.raw
+            if (delta !== 0) out[i] = ' '.repeat(Math.max(0, ind + delta)) + line.slice(ind)
+            continue
+        }
+        const allowed = parent === null ? base : parent.corr + INDENT_UNIT // deepest valid indent for a child here
         const corr = Math.min(ind, allowed)
         if (corr !== ind) out[i] = ' '.repeat(corr) + line.slice(ind)
         lastDelta = corr - ind
-        stack.push({ raw: ind, corr })
+        stack.push({ raw: ind, corr, bullet: isBulletLine(line) })
         if (block) {
             // A form-1 block: the bullet line is the node; its fence lines follow it.
             shiftBlock(block, i + 1, lastDelta)
@@ -444,10 +467,11 @@ export function treeRootIndex(lines: string[], i: number, blocks: FencedBlockRan
 export function parentIndex(lines: string[], i: number, blocks: FencedBlockRange[] = fencedBlocks(lines)): number | null {
     const inFence = opaqueLineFlags(lines, blocks)
     const starts = fenceStartMap(blocks)
+    const bulletOpeners = formOneOpeners(lines, blocks)
     let limit = lineIndent(lines[i]) // a parent must be shallower than this
     for (let j = i - 1; j >= 0; j--) {
         const line = lines[j]
-        if (inFence[j]) {
+        if (inFence[j] && !bulletOpeners.has(j)) {
             // Fenced content is opaque (a `# comment` in code is not a heading). The block as a whole
             // is a continuation of its owner though, and closes the bullets at or below its fence
             // column like any continuation line: a form-2 fence at a bullet's content column ends a
@@ -474,7 +498,42 @@ export function parentIndex(lines: string[], i: number, blocks: FencedBlockRange
     return null
 }
 
-/** Whether non-bullet line `j` is a [[Continuation Line]]: at or past its owning bullet's content column. */
+/**
+ * Non-bullet line `j`'s continuation column: the content column of the bullet it continues, once
+ * its indent reaches that column, and 0 when the line is prose (a line short of the column is
+ * prose, however close). The bullet is the one the outline walk gives the line (ADR 0067), or the
+ * one directly above it (`continuationFloor`), since each reaches lines the other does not: the
+ * walk looks past a soft line, a `*` item or a closer to the bullet above them, and the floor looks
+ * past a blank line. The caret clamp, the selection highlight and the content clamp read a line by
+ * it alone. The joining, outdenting, splitting and moving keys ask it too, and take the bullet to
+ * measure against from `ownerBulletIndex`, which finds the same bullet for the lines this reads as
+ * continuations with two exceptions: a line after a blank line in a list, which is drawn and clamped
+ * as a continuation but belongs to no block, so the keys treat it as prose; and a line after a
+ * heading indented inside the block, where `ownerBulletIndex` stops. `outline` is the walk over
+ * `lines`; pass the editor analysis's to spare the walk.
+ */
+export function continuationColumn(lines: string[], j: number, outline: readonly OutlineLine[] = outlineLines(lines)): number {
+    const indent = lineIndent(lines[j])
+    const info = outline[j]
+    const owner = info?.owner ?? -1
+    // The walk's bullet counts only for a line directly in its block, at its depth. A blank line takes
+    // the nearest bullet on the walk's stack even when a prose line (one short of the column, or a
+    // heading) sits nested under that bullet above it; text typed there would nest under the prose
+    // line instead, and that line's depth, not the bullet's, is the blank line's. So a blank line
+    // reads as the line it becomes, and typing on it never changes how it is drawn or clamped.
+    if (owner >= 0 && owner !== j && !isBulletLine(lines[j]) && info.depth === outline[owner].depth) {
+        const column = lineIndent(lines[owner]) + MARKER_WIDTH
+        if (indent >= column) return column
+    }
+    const floor = continuationFloor(lines, j)
+    return floor > 0 && indent >= floor ? floor : 0
+}
+
+/**
+ * Whether non-bullet line `j` is a [[Continuation Line]] by the bullet directly above it: at or past
+ * that bullet's content column. The tree's own parent and sibling scans ask this, not the outline
+ * walk, which they are part of computing.
+ */
 function isContinuationLine(lines: string[], j: number): boolean {
     const floor = continuationFloor(lines, j)
     return floor > 0 && lineIndent(lines[j]) >= floor
@@ -518,13 +577,15 @@ export function groupBounds(lines: string[], i: number, blocks: FencedBlockRange
 export function ownerBulletIndex(lines: string[], i: number, blocks: FencedBlockRange[] = fencedBlocks(lines)): number | null {
     if (isBulletLine(lines[i])) return i
     const inFence = opaqueLineFlags(lines, blocks)
+    // A form-1 opener is the bullet the block belongs to, and owns the lines after its closer.
+    const bulletOpeners = formOneOpeners(lines, blocks)
     for (let j = i - 1; j >= 0; j--) {
         if (lines[j].trim() === '') {
             if (inFence[j]) continue
             if (lineIndent(lines[j]) > 0) continue // an indented soft line — inside some block (indent decides)
             return null // a bare empty line bounds the group
         }
-        if (inFence[j]) continue // fenced content is opaque
+        if (inFence[j] && !bulletOpeners.has(j)) continue // fenced content is opaque
         if (isHeadingLine(lines[j])) return null
         if (!isBulletLine(lines[j])) continue
         if (branchRange(lines, j, blocks).end < i) continue // a closed child or sibling above: not the owner

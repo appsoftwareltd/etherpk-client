@@ -11,11 +11,12 @@
  *   every wrapped row at W.
  * - **Code body lines** carry the padding alone and publish it as `--gk-code-hang`. A body line
  *   never wraps: its text sits in a one-row clipped container (code-scroll.ts, ADR 0094) that
- *   reaches back across the padding to the line's padding edge, so the leading spaces render at
- *   column 0 inside it and every line's container starts at the same x, an unindented line of a
- *   prose fence included (its padding is the panel's own, `CODE_PANEL_PAD_LEFT`).
- * - **Bullets and prose continuation lines** instead have their structural prefix — the leading
- *   indent plus the `- ` / `- [ ] ` marker — LIFTED OUT OF THE FLOW: a `cm-line-prefix` mark
+ *   reaches back across the whole padding to the line's padding edge, so every line's container
+ *   starts at the same x, and pads itself (`--gk-code-inner`) so that the line's code starts on
+ *   the block's code column ({@link codeLineIndent}). The code's own leading spaces render after
+ *   it, so an indented line sits its indentation right of an unindented one.
+ * - **Bullets, prose continuation lines and indented plain prose** instead have their prefix — the
+ *   leading indent plus the `- ` / `- [ ] ` marker — LIFTED OUT OF THE FLOW: a `cm-line-prefix` mark
  *   positions it absolutely at the line's left edge, and the line's `padding-left` alone places
  *   the content at the column (no `text-indent`). The hanging pair is a trap for prose: the space
  *   after the marker is a soft-wrap opportunity, so a long unbreakable word (a URL, a token) that
@@ -24,7 +25,9 @@
  *   the marker out of flow the content starts the line: there is nothing to break before the
  *   word, so the browser breaks INSIDE it at the edge and the first row stays beside the dot.
  *   Every lifted prefix keeps its real characters (ADR 0001) so `coordsAtPos`, the guides, and
- *   click mapping still resolve to them; the caret clamp already keeps the caret out of it.
+ *   click mapping still resolve to them; the caret clamp keeps the caret out of a bullet's or a
+ *   continuation's prefix. Plain prose is unclamped, so the caret reaches its spaces, which its
+ *   prefix draws where they would sit in the flow ({@link indentedLineReading}).
  *
  * Units: `ch` is exact in monospace, so fenced-code lines (tagged `gk-code-line`, themed monospace
  * in code-highlight.ts) align precisely. Prose uses a proportional font where a space is far narrower
@@ -33,8 +36,10 @@
  * whitespace and marker in the prose font ({@link proseMetricsField}, measured off a canvas with the
  * content element's font and re-measured on zoom); `ch` remains the fallback until the first measure.
  *
- * The same content column is exported as {@link hangWidthForPos} for the image/table block widgets,
- * which pad their own DOM (a replace-widget has no text for `text-indent` to act on).
+ * A block widget that stands in for a line (a block image, a block table, a rendered fence) sits in
+ * no line box, so it pads its own DOM to where the line's text would start ({@link blockWidgetIndent}):
+ * the same margin and hang, written against the measured widths this module publishes as variables
+ * on the editor, which follow a zoom without the widget being rebuilt.
  */
 
 import { syntaxTree } from '@codemirror/language'
@@ -42,8 +47,8 @@ import { type EditorState, type Extension, type Range, StateEffect, StateField }
 import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate } from '@codemirror/view'
 
 import type { FencedBlockRange } from '../../fenced-code'
-import { INDENT_UNIT } from '../../indent-unit'
-import { contentColumn, continuationFloor, isBulletLine, lineIndent, markerLength, MARKER_WIDTH } from '../../outliner'
+import { INDENT_UNIT, type OutlineLine } from '../../indent-unit'
+import { contentColumn, continuationColumn, isBulletLine, lineIndent, markerLength, MARKER_WIDTH } from '../../outliner'
 import { fencedBlockAtIn, visibleFencedBlocks } from '../outliner-context'
 import { treeChanged } from './base-renderer'
 import { blockquoteLines } from './blockquote-core'
@@ -105,6 +110,28 @@ const QUOTE_PAD = '0.9em'
 export const CONTENT_GUTTER = `calc(0.6 * ${CODE_FONT_SCALE} * var(--editor-font-size, 1rem))`
 
 /**
+ * Where a code body line's code starts, as the line's `padding-left` (which the scroll container
+ * reaches back across whole, and so also `--gk-code-hang`) and the container's own left padding
+ * (`--gk-code-inner`): on the block's code column. The code is what `codeLineText`
+ * (fenced-code.ts) reads, the line less its indentation up to the fence column, which is the
+ * block's place in the outline; the code's own leading spaces render as monospace columns after
+ * the code column, as in a `<pre>` (CommonMark).
+ *
+ * - A block owned by prose (fence column 0) has its panel at the line's edge, and its code column
+ *   the panel's left padding in (`CODE_PANEL_PAD_LEFT`, the theme's padding for its fence lines).
+ * - A block with an indented fence (a bullet's) has its panel `PANEL_PAD` left of the fence
+ *   column, and the fence column is its code column. A line's first `fenceCol` spaces fill the
+ *   width up to it; a blank line, or one holding fewer spaces, is padded out to it.
+ */
+export function codeLineIndent(cols: number, fenceCol: number): { padding: string; inner: string } {
+    if (fenceCol === 0) {
+        return { padding: cols > 0 ? `calc(${CODE_PANEL_PAD_LEFT} + ${cols}ch)` : CODE_PANEL_PAD_LEFT, inner: CODE_PANEL_PAD_LEFT }
+    }
+    const short = Math.max(0, fenceCol - cols)
+    return { padding: `${cols + short}ch`, inner: short > 0 ? `${short}ch` : '0px' }
+}
+
+/**
  * The structural prefix of a bullet or continuation line, lifted out of the flow (see the module
  * comment). A bullet's covers its indent and marker (`- ` / `- [ ] `, so a task's checkbox rides in
  * it); a continuation line's covers its leading indent. Emitted by THIS augmentation rather than
@@ -116,6 +143,19 @@ export const CONTENT_GUTTER = `calc(0.6 * ${CODE_FONT_SCALE} * var(--editor-font
  */
 const bulletPrefix = Decoration.mark({ class: 'cm-line-prefix cm-line-prefix--bullet' })
 const proseIndentPrefix = Decoration.mark({ class: 'cm-line-prefix cm-line-prefix--indent' })
+/** A plain prose line's own leading spaces, lifted at the line's edge, where they would sit in the flow. */
+const plainIndentPrefix = Decoration.mark({ class: 'cm-line-prefix' })
+
+/**
+ * How non-bullet line `i`, indented and outside code, is drawn: as the **continuation** of the
+ * bullet it continues, hung at that bullet's text column, or as **plain** prose, its leading spaces
+ * drawn as the spaces they are (Obsidian). The question is the caret clamp's and the keys'
+ * (`continuationColumn`), so a line is never drawn as one thing and edited as another: a line short
+ * of the bullet's content column, a blank line one space in included, is prose to all of them.
+ */
+export function indentedLineReading(lines: readonly string[], outline: readonly OutlineLine[], i: number): 'continuation' | 'plain' {
+    return continuationColumn(lines as string[], i, outline) > 0 ? 'continuation' : 'plain'
+}
 
 /**
  * Px to pull a fenced code block LEFT, keyed by its nesting depth. A code line sits `fenceColumn`
@@ -269,10 +309,124 @@ function metricsEqual(a: ProseMetrics | null, b: ProseMetrics | null): boolean {
     return Math.abs(a.space - b.space) < 0.05 && Math.abs(a.dash - b.dash) < 0.05
 }
 
-/** The content column (in characters) for the line containing `pos` — the clamp anchor. */
-export function hangWidthForPos(state: EditorState, pos: number): number {
+/** The widths a prose indent is written in, as CSS lengths: a space and the bullet dash. */
+interface ProseUnits {
+    space: string
+    dash: string
+}
+
+/**
+ * The measured widths as numbers, which the clamp's own decorations carry (the clamp rebuilds when
+ * a zoom re-measures them); one `ch` each until the first measure.
+ */
+function measuredUnits(metrics: ProseMetrics | null): ProseUnits {
+    return metrics ? { space: `${metrics.space.toFixed(2)}px`, dash: `${metrics.dash.toFixed(2)}px` } : { space: '1ch', dash: '1ch' }
+}
+
+/**
+ * The same widths as the variables {@link proseMetricsAttributes} publishes on the editor, for the
+ * block widgets. CodeMirror keeps a widget whose `eq` holds, so a number written into its DOM would
+ * stay behind after a zoom; a variable follows it.
+ */
+const PUBLISHED_UNITS: ProseUnits = { space: 'var(--gk-prose-space, 1ch)', dash: 'var(--gk-prose-dash, 1ch)' }
+
+/** Publishes the measured widths as `--gk-prose-space` and `--gk-prose-dash` on the editor element. */
+const proseMetricsAttributes = EditorView.editorAttributes.compute([proseMetricsField], (state): Record<string, string> => {
+    const metrics = state.field(proseMetricsField)
+    return metrics ? { style: `--gk-prose-space:${metrics.space.toFixed(2)}px;--gk-prose-dash:${metrics.dash.toFixed(2)}px` } : {}
+})
+
+/** The terms of the width of `indentCols` spaces, and of a `- ` marker after them when `marker`. */
+function hangTerms(indentCols: number, marker: boolean, units: ProseUnits): string[] {
+    const terms: string[] = []
+    if (indentCols > 0) terms.push(indentCols === 1 ? units.space : `${indentCols} * ${units.space}`)
+    if (marker) terms.push(units.dash, units.space)
+    return terms
+}
+
+/** One length from the terms of a sum. */
+function sumOf(terms: readonly string[]): string {
+    return terms.length === 0 ? '0px' : `calc(${terms.join(' + ')})`
+}
+
+/**
+ * Where an indented prose line's text starts inside its box, as the terms of its `padding-left`.
+ * A **continuation** hangs at its bullet's text: two of its columns stand in for the owner's `- `,
+ * at the marker's measured width rather than two spaces' (a space is narrower than a dash, and at
+ * two spaces its text, and a quote panel's edge, sat left of the owner's: a visible stagger on a
+ * quoted bullet's soft lines, 2026-09-14), plus the gutter. **Plain** prose sits exactly its spaces'
+ * width in, with no gutter.
+ */
+function proseTextTerms(reading: 'continuation' | 'plain', cols: number, units: ProseUnits): string[] {
+    return reading === 'continuation' ? [...hangTerms(cols - MARKER_WIDTH, true, units), CONTENT_GUTTER] : hangTerms(cols, false, units)
+}
+
+/**
+ * A line's nesting steps, its `margin-left` in {@link INDENT_STEP_PX}. Plain prose takes none, its
+ * columns being its own spaces: a blank line the walk gives to a bullet across a prose line reads as
+ * prose (continuationColumn) and sits where the text typed on it will. For every other line a bullet
+ * owns it is the line's STRUCTURAL depth from the outline walk (ADR 0067): a bullet's own level, and
+ * for a continuation line, a code line or a BLANK row inside a code block the owning bullet's level,
+ * so a whole block shares one margin (a blank row shifting left would notch the panel) and a
+ * four-space child sits at the same depth as a two-space one. Anything else owned by no bullet (a
+ * code block, a continuation past a blank line, which the walk leaves unowned) takes the step
+ * `columns` give it.
+ */
+function nestingDepth(info: OutlineLine | undefined, plain: boolean, columns: number): number {
+    if (plain) return 0
+    if (info && info.owner >= 0) return info.depth
+    return Math.max(0, Math.floor((columns - MARKER_WIDTH) / INDENT_UNIT))
+}
+
+/**
+ * Where a bullet line's text starts inside its box, as the terms of its `padding-left`: its indent
+ * and `- ` marker at their measured widths, the gutter, and on a task the checkbox slot and the
+ * space after it, so its wrapped rows hang under its text, not under the box.
+ */
+function bulletTextTerms(line: string, units: ProseUnits): string[] {
+    const checkbox = markerLength(line) > MARKER_WIDTH ? [CHECKBOX_SLOT, units.space] : []
+    return [...hangTerms(lineIndent(line), true, units), CONTENT_GUTTER, ...checkbox]
+}
+
+/**
+ * Where the text of the line at `pos` starts, as {@link buildClamp} draws a bullet or an indented
+ * prose line, in the published widths: its margin (px) and the terms of its padding. Null for a
+ * prose line at column 0, whose text starts at the text area's edge.
+ */
+function textPlacement(state: EditorState, pos: number): { margin: number; padding: string[] } | null {
     const line = state.doc.lineAt(pos)
-    return isBulletLine(line.text) ? contentColumn(line.text) : lineIndent(line.text)
+    const { lines, outline } = analysisFor(state)
+    const i = line.number - 1
+    if (isBulletLine(line.text)) {
+        return { margin: nestingDepth(outline[i], false, contentColumn(line.text)) * INDENT_STEP_PX, padding: bulletTextTerms(line.text, PUBLISHED_UNITS) }
+    }
+    const cols = lineIndent(line.text)
+    if (cols === 0) return null
+    const reading = indentedLineReading(lines, outline, i)
+    return { margin: nestingDepth(outline[i], reading === 'plain', cols) * INDENT_STEP_PX, padding: proseTextTerms(reading, cols, PUBLISHED_UNITS) }
+}
+
+/**
+ * The `padding-left` of a block widget for the line at `pos`, or null for none: the line's margin
+ * and padding as one length, since the widget sits in no line box, so it starts where the line's
+ * text would. A widget standing in for a line (a block image, a block table, a collapsed fence) is
+ * never on a bullet line, where it is inline after the marker; the live preview under a form-1
+ * fence is, and starts at the bullet's text, where the fence's collapsed render sits.
+ */
+export function blockWidgetIndent(state: EditorState, pos: number): string | null {
+    const placement = textPlacement(state, pos)
+    if (!placement) return null
+    return sumOf(placement.margin > 0 ? [`${placement.margin}px`, ...placement.padding] : placement.padding)
+}
+
+/**
+ * Where the text of the line at `pos` starts inside the line's own box (its `padding-left`), or
+ * null at column 0: where a block image stood when its line is revealed for editing, since the
+ * image started where the text does.
+ */
+export function proseTextInset(state: EditorState, pos: number): string | null {
+    const placement = textPlacement(state, pos)
+    return placement ? sumOf(placement.padding) : null
 }
 
 interface LineClamp {
@@ -330,7 +484,6 @@ function classifyLine(
     // A non-bullet line: code line (inside a fence) gets the monospace class; otherwise plain prose.
     const block = fencedBlockAtIn(state, lineFrom, visibleBlocks)
     const cols = lineIndent(lineText)
-    // Prose masks its whole indent; code masks only up to the fence column (the panel covers the rest).
     return {
         cols,
         code: block !== null,
@@ -345,7 +498,7 @@ function classifyLine(
 function buildClamp(view: EditorView): DecorationSet {
     const { state } = view
     const codeShifts = state.field(codeShiftsField)
-    const metrics = state.field(proseMetricsField)
+    const units = measuredUnits(state.field(proseMetricsField))
     const collapsedStarts = rendererCollapsedStarts(state)
     const visibleBlocks = visibleFencedBlocks(state)
     const { frontmatterEnd, outline } = analysisFor(state)
@@ -388,47 +541,37 @@ function buildClamp(view: EditorView): DecorationSet {
                 // it, so its wrapped rows hang under its text, not under the box. Code lines and form-1
                 // openers keep the classic hang-indent pair (their text is positioned by the panel
                 // machinery, and an opener's `- ` stays in flow, the dot carrying the gutter).
-                const proseHang = (indentCols: number, marker: boolean): string =>
-                    metrics
-                        ? `${(indentCols * metrics.space + (marker ? metrics.dash + metrics.space : 0)).toFixed(2)}px`
-                        : `${indentCols + (marker ? 2 : 0)}ch`
                 let style = ''
+                /** Plain prose (indentedLineReading): drawn as typed, so it takes no nesting step either. */
+                let plain = false
                 // The quote panel's left edge — the line's content column, where its text starts when it is not
                 // quoted — published for the panel; a quoted line's padding then carries the text QUOTE_PAD past it.
-                const quotePad = quote ? ` + ${QUOTE_PAD}` : ''
+                const quotePad = quote ? [QUOTE_PAD] : []
                 let contentEdge = '0px'
                 if (bullet) {
-                    const hang = proseHang(cols - 2, true)
-                    const marker = markerLength(line.text)
-                    const task = marker > MARKER_WIDTH
-                    const space = metrics ? `${metrics.space.toFixed(2)}px` : '1ch'
-                    const checkbox = task ? ` + ${CHECKBOX_SLOT} + ${space}` : ''
-                    contentEdge = `calc(${hang} + ${CONTENT_GUTTER}${checkbox})`
-                    style = `padding-left:calc(${hang} + ${CONTENT_GUTTER}${checkbox}${quotePad})`
+                    const text = bulletTextTerms(line.text, units)
+                    contentEdge = sumOf(text)
+                    style = `padding-left:${sumOf([...text, ...quotePad])}`
                     classes.push('gk-prefixed')
-                    decos.push(bulletPrefix.range(line.from, line.from + lineIndent(line.text) + marker))
+                    decos.push(bulletPrefix.range(line.from, line.from + lineIndent(line.text) + markerLength(line.text)))
                 } else if (!code && !panel && cols > 0) {
-                    // A bullet's continuation line: two of its indent columns stand in for the owner's `- `,
-                    // so it hangs at the marker's measured width, not two spaces' — a space is narrower than
-                    // a dash, and at two spaces its text (and a quote panel's edge) sat left of the owner's,
-                    // a visible stagger on a quoted bullet's soft lines (2026-09-14). Other indented prose
-                    // hangs at its own spaces.
-                    const soft = cols >= MARKER_WIDTH && continuationFloor(docLines, line.number - 1) > 0
-                    const hang = soft ? proseHang(cols - MARKER_WIDTH, true) : proseHang(cols, false)
-                    contentEdge = `calc(${hang} + ${CONTENT_GUTTER})`
-                    style = `padding-left:calc(${hang} + ${CONTENT_GUTTER}${quotePad})`
+                    // A continuation hangs at its bullet's text; plain prose sits its spaces' width in, with
+                    // no gutter and no nesting step (below), the lift only hanging its wrapped rows under it.
                     classes.push('gk-prefixed')
-                    decos.push(proseIndentPrefix.range(line.from, line.from + cols))
+                    const reading = indentedLineReading(docLines, outline, line.number - 1)
+                    plain = reading === 'plain'
+                    const text = proseTextTerms(reading, cols, units)
+                    contentEdge = sumOf(text)
+                    style = `padding-left:${sumOf([...text, ...quotePad])}`
+                    decos.push((plain ? plainIndentPrefix : proseIndentPrefix).range(line.from, line.from + cols))
                 } else if (body) {
                     // Padding only, published as `--gk-code-hang` (module comment): the scroll container
-                    // reaches back across it, so no negative text-indent is needed to place the leading
-                    // spaces, and an unindented line's reach is the theme's panel padding. A fence line
-                    // has no container and keeps the pair below.
-                    // An unindented line has no leading spaces to fill its reach, so the container pads
-                    // itself by the same amount (`--gk-code-inner`) and the text stays on the code column.
-                    style = cols > 0
-                        ? `padding-left:${cols}ch;--gk-code-hang:${cols}ch`
-                        : `--gk-code-hang:${CODE_PANEL_PAD_LEFT};--gk-code-inner:${CODE_PANEL_PAD_LEFT}`
+                    // reaches back across all of it and pads itself to the block's code column, so no
+                    // negative text-indent is needed to place the leading spaces. A fence line has no
+                    // container and keeps the pair below: its indent is the fence column, since the
+                    // fence scan pairs a closer only at its opener's column (fenced-code.ts).
+                    const { padding, inner } = codeLineIndent(cols, fenceCol)
+                    style = `padding-left:${padding};--gk-code-hang:${padding};--gk-code-inner:${inner}`
                 } else if (cols > 0) {
                     style = `padding-left:${cols}ch;text-indent:-${cols}ch`
                 } else if (quote) {
@@ -436,15 +579,10 @@ function buildClamp(view: EditorView): DecorationSet {
                 }
                 if (quote) style += `;--gk-quote-inset:${contentEdge}`
                 // Widen each nesting level visually (Logseq-like). `margin-left` shifts the whole line —
-                // marker, content, mask and any code panel together — so every internal alignment is
-                // preserved while the indent grows. For every line a bullet owns, depth is the line's
-                // STRUCTURAL depth from the outline walk (ADR 0067): a bullet's own level, and for a
-                // continuation line, a code line or a BLANK row inside a code block the owning bullet's
-                // level, so a whole block shares one margin (a blank row shifting left would notch the
-                // panel) and a four-space child sits at the same depth as a two-space one. Prose owned by
-                // no bullet is on no grid; its margin stays what its own columns always gave it.
+                // marker, content and any code panel together — so every internal alignment is
+                // preserved while the indent grows (nestingDepth says how many steps each line takes).
                 const info = outline[line.number - 1]
-                const depth = info && info.owner >= 0 ? info.depth : Math.max(0, Math.floor(((panel ? fenceCol : cols) - MARKER_WIDTH) / INDENT_UNIT))
+                const depth = nestingDepth(info, plain, panel ? fenceCol : cols)
                 const ownerIndent = info && info.owner >= 0 ? lineIndent(docLines[info.owner]) : -1
                 const shift = ownerIndent >= 0 ? (codeShifts.get(shiftKey(fenceCol, ownerIndent)) ?? 0) : 0
                 // Code body/closer lines shift LEFT by the measured per-depth amount, to land the block's
@@ -572,5 +710,5 @@ export function contentClampAugmentation(): Extension {
         },
     )
 
-    return [codeShiftsField, proseMetricsField, plugin, measurer, theme]
+    return [codeShiftsField, proseMetricsField, proseMetricsAttributes, plugin, measurer, theme]
 }

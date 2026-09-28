@@ -44,7 +44,7 @@ import { AssetUnavailableError, type ResolvedAsset, assetNameFromRef } from '$li
 
 import { assetTargetAt, attachAssetContextMenu, buildAssetActions } from './asset-actions'
 import { loadAssetWithRetry } from './asset-load-retry'
-import { BLOCK_WIDGET_SPACING, BULLET_BLOCK_DROP, hangWidthForPos } from './content-clamp'
+import { BLOCK_WIDGET_SPACING, BULLET_BLOCK_DROP, blockWidgetIndent, proseTextInset } from './content-clamp'
 import { parseImageDisplaySizeHint } from './image-display-size'
 import { isDirectImageUrl } from './image-target'
 import { pinReveal, pinnedRevealField, pinnedRevealFrom, revealInputsChanged, revealedLines } from './reveal-policy'
@@ -171,8 +171,8 @@ class ImageWidget extends WidgetType {
         /** Maximum display height in px. */
         readonly maxHeight: number | undefined,
         readonly resolveAsset: (ref: string) => Promise<ResolvedAsset | null>,
-        /** Content-column clamp in characters (ADR 0020) — pads the widget to align inside a bullet. */
-        readonly hangWidth: number,
+        /** Where its line's text starts (`blockWidgetIndent`): a block image pads itself to it. Null at column 0. */
+        readonly indent: string | null,
         /** Inline variant: the image is a bullet's sole content (`- ![…]`), rendered after the marker. */
         readonly inline = false,
         /** A [[Remote Image]] a Rich Paste is still storing: a notice over the picture says so (`uploading-images.ts`). */
@@ -189,7 +189,7 @@ class ImageWidget extends WidgetType {
             this.alt === other.alt &&
             this.maxWidth === other.maxWidth &&
             this.maxHeight === other.maxHeight &&
-            this.hangWidth === other.hangWidth &&
+            this.indent === other.indent &&
             this.inline === other.inline &&
             this.uploading === other.uploading &&
             this.decodeGeneration === other.decodeGeneration
@@ -208,7 +208,7 @@ class ImageWidget extends WidgetType {
 
     /** The widget apart from its notice, stamped on the DOM so a notice change updates in place. */
     private identity(): string {
-        return [this.url, this.alt, this.maxWidth, this.maxHeight, this.hangWidth, this.inline].join('\u0000')
+        return [this.url, this.alt, this.maxWidth, this.maxHeight, this.indent, this.inline].join('\u0000')
     }
 
     /**
@@ -240,9 +240,9 @@ class ImageWidget extends WidgetType {
         }
         root.setAttribute('data-augmentation', 'image')
         root.dataset.imageIdentity = this.identity()
-        // Inline images sit right after the bullet marker (the marker stays real text); block images
-        // carry the content-column clamp padding so they align under the bullet.
-        if (!this.inline && this.hangWidth > 0) wrap.style.paddingLeft = `${this.hangWidth}ch`
+        // Inline images sit right after the bullet marker (the marker stays real text); a block image
+        // starts where its line's text would, under a bullet's text or a prose line's own spaces.
+        if (!this.inline && this.indent) wrap.style.paddingLeft = this.indent
 
         // The `<img>` is created detached and only enters the wrap once it has decoded (or failed).
         // Setting `src` on a detached image still fetches it, so nothing is lost by waiting — but an
@@ -370,7 +370,7 @@ class ImageWidget extends WidgetType {
         notice.className = 'cm-md-image-uploading'
         notice.setAttribute('role', 'status')
         notice.textContent = 'Uploading…'
-        if (!this.inline && this.hangWidth > 0) notice.style.left = `calc(${this.hangWidth}ch + ${OVERLAY_INSET}px)`
+        if (!this.inline && this.indent) notice.style.left = `calc(${this.indent} + ${OVERLAY_INSET}px)`
         return notice
     }
 
@@ -528,13 +528,13 @@ function buildDecorations(state: EditorState, options: ImageEmbedOptions): Decor
                 // Reserve the image's full height and tint a placeholder the size of the image (painted by
                 // `.cm-md-image-reveal::after`) so the held-open space reads as the image rather than an
                 // unexplained blank gap. Width, left offset and top offset are the IMAGE's actual rendered
-                // footprint (captured on load), so the tint lands exactly where the image sat — left via the
-                // measured px (not a `ch` guess that drifts with the font), top via the bullet drop.
-                const top = isBulletImageLine(line.text) ? `;--gk-img-top:${BULLET_BLOCK_DROP}` : ''
-                const style =
-                    `min-height:${size.height}px;--gk-img-w:${size.width}px` +
-                    (size.left > 0 ? `;--gk-img-left:${size.left}px` : '') +
-                    top
+                // footprint, so the tint lands exactly where the image sat: a bullet image's left is the px
+                // captured on load (it sat after the marker, in the line), a block image's is where its
+                // line's text starts, which is where it started; the top is the bullet drop.
+                const bullet = isBulletImageLine(line.text)
+                const top = bullet ? `;--gk-img-top:${BULLET_BLOCK_DROP}` : ''
+                const left = bullet ? (size.left > 0 ? `${size.left}px` : null) : proseTextInset(state, line.from)
+                const style = `min-height:${size.height}px;--gk-img-w:${size.width}px` + (left ? `;--gk-img-left:${left}` : '') + top
                 decos.push(Decoration.line({ attributes: { class: 'cm-md-image-reveal', style } }).range(line.from))
             }
             continue
@@ -544,10 +544,10 @@ function buildDecorations(state: EditorState, options: ImageEmbedOptions): Decor
         const { cleanAlt, maxWidth, maxHeight } = parseImageDisplaySizeHint(image.alt)
         const decoded = decodeGenerations.get(imageKey(image.url, maxWidth, maxHeight)) ?? 0
         if (image.kind === 'standalone') {
-            const hangWidth = hangWidthForPos(state, line.from)
+            const indent = blockWidgetIndent(state, line.from)
             decos.push(
                 Decoration.replace({
-                    widget: new ImageWidget(image.url, cleanAlt, maxWidth, maxHeight, options.resolveAsset, hangWidth, false, uploading.has(image.url), decoded),
+                    widget: new ImageWidget(image.url, cleanAlt, maxWidth, maxHeight, options.resolveAsset, indent, false, uploading.has(image.url), decoded),
                     block: true,
                 }).range(line.from, line.to),
             )
@@ -557,7 +557,7 @@ function buildDecorations(state: EditorState, options: ImageEmbedOptions): Decor
         // just the image span, leaving the `- ` marker as real text so the line stays a list item.
         decos.push(
             Decoration.replace({
-                widget: new ImageWidget(image.url, cleanAlt, maxWidth, maxHeight, options.resolveAsset, 0, true, uploading.has(image.url), decoded),
+                widget: new ImageWidget(image.url, cleanAlt, maxWidth, maxHeight, options.resolveAsset, null, true, uploading.has(image.url), decoded),
                 block: false,
             }).range(line.from + image.imageStart, line.to),
         )

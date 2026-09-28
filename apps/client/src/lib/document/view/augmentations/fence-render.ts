@@ -31,7 +31,7 @@
  *   the closing fence — the marker stays real text, so the dot, guide thread and block
  *   identity render exactly as a bullet image's do (image-embed.ts).
  * - **Form-2 / prose**: a BLOCK replace over the fence's full lines; the widget pads itself
- *   to the content column (`hangWidthForPos`).
+ *   to where the opener line's text would start (`blockWidgetIndent`).
  * - An unterminated fence never gets here (renderableFences is built on the complete-block
  *   pairing) — a half-typed fence stays plain text.
  * - A `flip` renderer's hard failure falls back to raw source (never a silent empty widget);
@@ -42,7 +42,7 @@
 import { type EditorState, type Extension, Prec, type Range, StateField, type TransactionSpec } from '@codemirror/state'
 import { Decoration, type DecorationSet, EditorView, keymap, ViewPlugin, type ViewUpdate, WidgetType } from '@codemirror/view'
 
-import { BLOCK_WIDGET_SPACING,hangWidthForPos } from './content-clamp'
+import { BLOCK_WIDGET_SPACING, blockWidgetIndent } from './content-clamp'
 import {
     type DispatchedFence,
     type FenceRenderResult,
@@ -87,8 +87,8 @@ class RenderedWidget extends WidgetType {
         /** Result version at build time — a completed render changes it, forcing a redraw. */
         readonly version: number,
         readonly dark: boolean,
-        /** Content-column pad (ch) for the block form; 0 for the inline (form-1) variant. */
-        readonly hangWidth: number,
+        /** Where the opener line's text starts, for the block form (`blockWidgetIndent`); null for the inline (form-1) variant and at column 0. */
+        readonly indent: string | null,
     ) {
         super()
     }
@@ -100,7 +100,7 @@ class RenderedWidget extends WidgetType {
             this.fence.source === other.fence.source &&
             this.version === other.version &&
             this.dark === other.dark &&
-            this.hangWidth === other.hangWidth &&
+            this.indent === other.indent &&
             this.fence.bulletOpener === other.fence.bulletOpener
         )
     }
@@ -115,7 +115,7 @@ class RenderedWidget extends WidgetType {
         wrap.className = f.bulletOpener ? 'gk-rendered gk-rendered--inline' : 'gk-rendered gk-rendered--block'
         wrap.setAttribute('data-augmentation', 'rendered')
         wrap.setAttribute('data-render-info', f.info)
-        if (!f.bulletOpener && this.hangWidth > 0) wrap.style.paddingLeft = `${this.hangWidth}ch`
+        if (!f.bulletOpener && this.indent) wrap.style.paddingLeft = this.indent
         const entry = fenceRenderResults.get(fenceResultKey(this.owner, f.info, f.start))
         const key = renderKey(f.info, f.source, this.dark)
         if (entry && entry.source === f.source && entry.node) {
@@ -152,6 +152,8 @@ class PreviewWidget extends WidgetType {
         readonly owner: number,
         readonly version: number,
         readonly dark: boolean,
+        /** Where the opener line's text starts (`blockWidgetIndent`), where the collapsed render sits; null at column 0. */
+        readonly indent: string | null,
     ) {
         super()
     }
@@ -163,7 +165,7 @@ class PreviewWidget extends WidgetType {
             this.fence.start === other.fence.start &&
             this.version === other.version &&
             this.dark === other.dark &&
-            this.fence.fenceColumn === other.fence.fenceColumn
+            this.indent === other.indent
         )
     }
 
@@ -173,7 +175,8 @@ class PreviewWidget extends WidgetType {
         // height-integrity rule on the theme); inner = the visible panel.
         const wrap = document.createElement('div')
         wrap.className = 'gk-rendered-preview'
-        if (f.fenceColumn > 0) wrap.style.paddingLeft = `${f.fenceColumn}ch`
+        // At the collapsed render's x, so the diagram does not shift sideways as the caret leaves.
+        if (this.indent) wrap.style.paddingLeft = this.indent
         const panel = wrap.appendChild(document.createElement('div'))
         panel.className = 'gk-rendered-preview-panel'
         const entry = fenceRenderResults.get(fenceResultKey(this.owner, f.info, f.start))
@@ -209,15 +212,15 @@ function buildDecorations(state: EditorState): DecorationSet {
         if (collapsedStarts.has(f.start)) {
             if (f.bulletOpener) {
                 // Inline collapse: the `[indent]- ` marker stays real text (dot + thread render as usual).
-                const widget = new RenderedWidget(f, owner, version, dark, 0)
+                const widget = new RenderedWidget(f, owner, version, dark, null)
                 decos.push(Decoration.replace({ widget }).range(openerLine.from + f.fenceColumn, f.blockTo))
             } else {
-                const widget = new RenderedWidget(f, owner, version, dark, hangWidthForPos(state, openerLine.from))
+                const widget = new RenderedWidget(f, owner, version, dark, blockWidgetIndent(state, openerLine.from))
                 decos.push(Decoration.replace({ widget, block: true }).range(f.blockFrom, f.blockTo))
             }
         } else if (f.revealed && f.renderer.editing === 'preview') {
             // Revealed 'preview' block: the source is the editing surface; the render rides below it.
-            const widget = new PreviewWidget(f, owner, entry?.version ?? -1, dark)
+            const widget = new PreviewWidget(f, owner, entry?.version ?? -1, dark, blockWidgetIndent(state, openerLine.from))
             decos.push(Decoration.widget({ widget, block: true, side: 1 }).range(f.blockTo))
         }
     }

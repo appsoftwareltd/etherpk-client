@@ -25,9 +25,28 @@ describe('clampColumn', () => {
         expect(clampColumn(L('```\nx\n```'), 0)).toBe(0)
     })
 
-    it('is the continuation floor on a soft line, capped at the line length', () => {
+    it('is the continuation floor on a soft line, and 0 on a line short of it, which is prose', () => {
         expect(clampColumn(L('- a\n  x'), 1)).toBe(2)
-        expect(clampColumn(L('- a\n '), 1)).toBe(1)
+        expect(clampColumn(L('- a\n   '), 1)).toBe(2) // a blank soft line past the content column
+        // Short of the bullet's content column a line is not its continuation (continuationColumn):
+        // a space typed at column 0 under a list must leave the caret after that space.
+        expect(clampColumn(L('- a\n '), 1)).toBe(0)
+        expect(clampColumn(L('- a\n x'), 1)).toBe(0)
+    })
+
+    it('is the bullet’s content column on a line the outline reaches across a soft line, a `*` item or a closer', () => {
+        // The nearest shallower line above each is not the bullet, so the floor alone reads it as prose;
+        // the outline walk gives it to the bullet, and the drawing hangs it at the bullet's column.
+        expect(clampColumn(L('- a\n  cont\n    deeper'), 2)).toBe(2)
+        expect(clampColumn(L('- a\n  * one\n    * two'), 2)).toBe(2)
+        expect(clampColumn(L('- a\n  ```\n  x\n  ```\n    after'), 4)).toBe(2)
+        expect(clampColumn(L('  - a\n    cont\n      deeper'), 2)).toBe(4)
+    })
+
+    it('is 0 on a blank line under a prose line short of the content column, as it is once text is typed there', () => {
+        expect(clampColumn(L('- a\n p\n   \n- b'), 2)).toBe(0)
+        expect(clampColumn(L('- a\n p\n   y\n- b'), 2)).toBe(0)
+        expect(clampColumn(L('- a\n  cont\n    \n    deeper'), 2)).toBe(2) // under a soft line it is the bullet's, like the line below it
     })
 
     it('is 0 for prose, headings and blank lines', () => {
@@ -84,6 +103,21 @@ describe('caret clamp filter', () => {
         const editor = editorFixture('- abc\n- def|')
         editor.select(0, 8)
         expect(editor.state.selection.main.from).toBe(0)
+    })
+
+    it('snaps a caret in the indent of a line the outline gives to a bullet to that bullet’s column', () => {
+        const editor = editorFixture('- a\n  cont\n    deeper|')
+        editor.select(12) // "- a\n  cont\n" is 11 characters: column 1 of "    deeper"
+        expect(editor.fixture()).toBe('- a\n  cont\n  |  deeper')
+    })
+
+    it('reads a soft line turned into a heading at once: the line nested under it is prose from then on', () => {
+        const editor = editorFixture('- a\n  |x\n    y')
+        editor.type('#')
+        editor.type(' ')
+        editor.select(editor.text().indexOf('    y')) // leaving the heading trims its indent (leave-tidy)
+        const line = editor.state.doc.lineAt(editor.head())
+        expect([line.text, editor.head() - line.from]).toEqual(['    y', 0])
     })
 
     it('clamps each end of a range inside one block on its own line, keeping its direction', () => {

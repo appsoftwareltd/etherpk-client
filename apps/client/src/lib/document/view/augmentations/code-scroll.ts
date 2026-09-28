@@ -304,7 +304,8 @@ function lineElementAt(view: EditorView, pos: number): HTMLElement | null {
 
 /**
  * How far (px) a span's text reaches from the span's left edge, independent of the current
- * offset: the union of its text rects plus the span's own left padding (an unindented line's).
+ * offset: the union of its text rects plus the span's own left padding (what brings its code to
+ * the block's code column).
  */
 function textReach(span: HTMLElement): number {
     const range = document.createRange()
@@ -566,12 +567,12 @@ function blockOpenerAt(view: EditorView, pos: number): number | null {
 }
 
 const theme = EditorView.baseTheme({
-    // The scroll container: from the line's padding edge, reached back across the line's padding
-    // (`--gk-code-hang`, published by the clamp, so the leading fence-column spaces render at
-    // column 0 inside it; an unindented line has none, so the container pads itself by
-    // `--gk-code-inner` instead), to the panel's right edge. It is one row (`pre`), clipped; the
-    // offset comes in through `text-indent` from the block's property, and the clip starts at the
-    // panel's edge so nothing scrolled shows over the guides.
+    // The scroll container: from the line's padding edge, reached back across the whole of the
+    // line's padding (`--gk-code-hang`, published by the clamp), to the panel's right edge, and
+    // padded (`--gk-code-inner`) so that the line's code starts on the block's code column
+    // (content-clamp.ts, `codeLineIndent`). It is one row (`pre`), clipped; the offset comes
+    // in through `text-indent` from the block's property, and the clip starts at the panel's edge
+    // so nothing scrolled shows over the guides.
     // `contain: inline-size` is load-bearing: `.cm-content` is a flex item whose minimum size is
     // its min-content width, and an inline-block's percentage width is cyclic there, so without it
     // the unbreakable text widened the whole content to the longest line and `100%` followed.

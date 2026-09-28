@@ -40,9 +40,9 @@ export const CODE_FONT_SCALE = 0.875
  */
 export const CODE_FONT_SIZE = `${CODE_FONT_SCALE}em`
 
-/** The code-block panel's paddings (in the code font). Exported for a code line's scroll container
- *  (code-scroll.ts), which spans the panel from the left padding's edge to the right one's, and for the
- *  content clamp, which publishes an unindented line's padding as the container's reach. */
+/** The code-block panel's paddings (in the code font). The left one is the content clamp's: a block
+ *  owned by prose has its code column that far in from the panel's edge (`codeLineIndent`). The right
+ *  one is the scroll container's (code-scroll.ts), which reaches across it to the panel's right edge. */
 export const CODE_PANEL_PAD_LEFT = '0.7em'
 export const CODE_PANEL_PAD_RIGHT = '0.8em'
 
@@ -119,11 +119,11 @@ const codeLineTheme = EditorView.baseTheme({
         fontFamily: 'var(--gk-mono, ui-monospace, SFMono-Regular, Menlo, monospace)',
     },
     // The shaded code-block panel is drawn by a `::after` rectangle, NOT a line background — so it can
-    // start exactly at the fence column and carry real rounded corners there. It spans to the right edge
-    // and the full line height, BEHIND the text, so a code line's own indentation sits on the panel
-    // instead of being whited out by the clamp mask (which stops at this same edge — see
-    // content-clamp.ts). Inside a bullet the panel begins AT the fence column (one space right of the
-    // `- ` marker) so it no longer butts against the bullet; the code is slightly smaller than prose.
+    // start at its own column and carry real rounded corners there. It spans to the right edge and the
+    // full line height, BEHIND the text, so a code line's own indentation sits on the panel. Its left
+    // edge is `--code-inset` from the line's (content-clamp.ts): the line's own edge in a block owned by
+    // prose, and `PANEL_PAD` left of the fence column in a bullet's block, where the measured shift lands
+    // it on the sibling bullets' text column. The code is slightly smaller than prose.
     '.cm-line.gk-code-block': {
         position: 'relative',
         isolation: 'isolate',

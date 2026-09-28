@@ -95,6 +95,13 @@ describe('tidyTargetAt', () => {
         expect(editor.text()).toBe('- a\n  - b\n  \n  trailing\n- c')
     })
 
+    it('a soft line after a form-1 block’s closer belongs to that block, as after a form-2 closer', () => {
+        expect(tidyTargetAt(L('- ```py\n  code\n  ```\n  after'), 3)).toEqual({ kind: 'block', owner: 0 })
+        const editor = editorFixture('- ```py\n  code\n  ```\n  after|\n- c')
+        editor.select(editor.text().length)
+        expect(editor.text()).toBe('- ```py\n  code\n  ```\n  after\n- c')
+    })
+
     it('leaving a line after the children tidies it as the block’s own: trailing spaces go, a blank at the end goes with its line break', () => {
         const trailing = editorFixture('- a\n  - b\n  trailing   |\n- c')
         trailing.select(trailing.text().length)

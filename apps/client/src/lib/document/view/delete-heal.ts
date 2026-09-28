@@ -30,7 +30,7 @@
 import { EditorState, type Extension } from '@codemirror/state'
 
 import { fencedBlocks } from '../fenced-code'
-import { healAfterRangeDelete, healOrphanIndent, healSpan, isBulletLine, opaqueLineFlags } from '../outliner'
+import { formOneOpeners, healAfterRangeDelete, healOrphanIndent, healSpan, isBulletLine, opaqueLineFlags } from '../outliner'
 import { clampColumn } from './caret-clamp'
 import { minimalReplacement } from './minimal-replacement'
 
@@ -51,7 +51,9 @@ export function deleteHeal(): Extension {
         const before = tr.startState.doc
         const startLines = before.toString().split('\n')
         const firstA = before.lineAt(fromA).number - 1
-        if (opaqueLineFlags(startLines, fencedBlocks(startLines))[firstA]) return tr // code or YAML: not an outline
+        const startBlocks = fencedBlocks(startLines)
+        // Code or YAML is not an outline; a form-1 opener is a bullet, whose code travels with it.
+        if (opaqueLineFlags(startLines, startBlocks)[firstA] && !formOneOpeners(startLines, startBlocks).has(firstA)) return tr
         const removedLines = before.lineAt(toA).number - firstA
         const text = tr.newDoc.toString()
         const lines = text.split('\n')

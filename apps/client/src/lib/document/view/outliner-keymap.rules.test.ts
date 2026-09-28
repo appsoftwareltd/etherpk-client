@@ -25,6 +25,8 @@ import { guideThreadsFor } from './augmentations/outline-guides'
 import { wikilinkCompletion } from './augmentations/wikilink-complete'
 import { refreshWikilinks, wikilinkAugmentation } from './augmentations/wikilink'
 import { displayNameForRef } from '../../storage/fs/asset-store'
+import { collaborative } from './cm-document'
+import { outdentBranch } from './outliner-keymap'
 import { editorFixture, press } from './testing/editor-state-fixture'
 import { wikilinkButtonSpec } from './wrap-selection'
 
@@ -261,10 +263,41 @@ table('prose is deliberately boring', [
     { rule: 'Tab on an empty line opens an empty bullet', precedent: 'EtherPK', before: '|', key: 'Tab', after: '- |' },
     { rule: 'Tab on a heading is refused', precedent: 'EtherPK', before: '# h|', key: 'Tab', after: '# h|' },
     { rule: 'Tab on a continuation makes it a child of its bullet', precedent: 'EtherPK', before: '- a\n  te|xt', key: 'Tab', after: '- a\n  - te|xt' },
+    { rule: '…with a range selected inside it too, the caret kept at the range’s head', precedent: 'EtherPK', before: '- a\n  «so»ft\n  - child', key: 'Tab', after: '- a\n  - so|ft\n  - child' },
+    { rule: 'Tab on an unterminated fence line is refused: as a bullet it would take the next block’s fence for its closer', precedent: 'EtherPK', before: '```py|\n- b\n  ```\n  code\n  ```', key: 'Tab', after: '```py|\n- b\n  ```\n  code\n  ```' },
+    // Only a continuation nests: any other prose line enters the list at column 0, whatever its spaces.
+    // Kept, they would make an indented bullet under nothing, or one off the grid.
+    { rule: 'Tab on indented prose with no bullet above makes a block at column 0', precedent: 'EtherPK', before: 'para\n  te|xt', key: 'Tab', after: 'para\n- te|xt' },
+    { rule: 'Tab on a line one space in under a list makes a block at column 0: it is prose', precedent: 'EtherPK', before: '- a\n te|xt', key: 'Tab', after: '- a\n- te|xt' },
+    { rule: 'Tab on a line after a blank line in a list makes a block at column 0: it is in no block', precedent: 'EtherPK', before: '- a\n  - b\n\n    te|xt', key: 'Tab', after: '- a\n  - b\n\n- te|xt' },
+    { rule: 'Tab heals the bullets below a prose line it joins to the list: one level under the new block at most', precedent: 'EtherPK', before: '- a\n  - b\n te|xt\n    - c', key: 'Tab', after: '- a\n  - b\n- te|xt\n  - c' },
+    { rule: '…and under a continuation it makes a child, measured from there', precedent: 'EtherPK', before: '- a\n  te|xt\n      - c', key: 'Tab', after: '- a\n  - te|xt\n    - c' },
+    { rule: 'Tab on a line nested under a soft line makes it a child of the bullet the outline gives it', precedent: 'EtherPK', before: '- a\n  cont\n    dee|per', key: 'Tab', after: '- a\n  cont\n  - dee|per' },
     { rule: 'Alt+Up is the ordinary line move', precedent: 'VS Code', before: 'one\ntwo|', key: 'Alt-ArrowUp', after: 'two|\none' },
     { rule: 'Alt+Down is the ordinary line move', precedent: 'VS Code', before: 'one|\ntwo', key: 'Alt-ArrowDown', after: 'two\none|' },
     { rule: 'a heading edits as a plain line', precedent: 'Obsidian', before: '# Title|', key: 'Enter', after: '# Title\n|' },
 ])
+
+// A space typed at column 0 goes where it is typed. Under a list, a line short of the bullet's content
+// column is still prose, so the caret stays after the space; the space that reaches the column makes
+// the line the bullet's continuation. (The typed table splits its key on spaces, hence the rows.)
+describe('prose is deliberately boring: leading spaces', () => {
+    const spaces = (before: string, count: number) => {
+        const editor = editorFixture(before)
+        for (let k = 0; k < count; k++) editor.type(' ')
+        return editor.fixture()
+    }
+    it('a space typed at column 0 of prose stays where it is typed (Obsidian)', () => {
+        expect(spaces('|text', 1)).toBe(' |text')
+    })
+    it('…and under a list, short of the bullet’s content column (Obsidian)', () => {
+        expect(spaces('- a\n|text', 1)).toBe('- a\n |text')
+        expect(spaces('- a\n\n|text', 1)).toBe('- a\n\n |text')
+    })
+    it('the space that reaches the content column makes the line the bullet’s continuation, the caret after it (EtherPK)', () => {
+        expect(spaces('- a\n|text', 2)).toBe('- a\n  |text')
+    })
+})
 
 // ── Editor Content Rules → Standard prose → Rules and heading underlines ─────────────────────
 
@@ -417,6 +450,75 @@ table('Shift+Enter is the soft line', [
     { rule: 'a continuation after the children gets another at the owner’s floor', precedent: 'EtherPK', before: '- a\n  - b\n  trailing|', key: 'Shift-Enter', after: '- a\n  - b\n  trailing\n  |' },
 ])
 
+// A line under a bullet is its continuation only once its indent reaches the bullet's content
+// column, and then whether the bullet is directly above it or the outline reaches it across a soft
+// line or a `*` item (continuationColumn, outliner.ts). The caret clamp, the highlight and the
+// drawing read it so, and the joining, outdenting and moving keys read it the same way.
+table('a line under a bullet is its continuation once it reaches the content column', [
+    { rule: 'Backspace at a bullet below a line short of the column is refused, as below prose', precedent: 'EtherPK', before: '- a\n x\n- |b', key: 'Backspace', after: '- a\n x\n- |b' },
+    { rule: 'Delete never pulls a line short of the column up into the bullet', precedent: 'EtherPK', before: '- a|\n x', key: 'Delete', after: '- a|\n x' },
+    { rule: 'Shift+Tab on a line short of the column outdents it like prose', precedent: 'VS Code', before: '- a\n |x', key: 'Shift-Tab', after: '- a\n|x' },
+    { rule: 'Alt+Up moves a prose line past a line short of the column, which is prose too', precedent: 'VS Code', before: '- a\n x\ny|', key: 'Alt-ArrowUp', after: '- a\ny|\n x' },
+    { rule: 'a line nested under a soft line is the bullet’s continuation: Backspace merges onto it', precedent: 'Logseq', before: '- a\n  cont\n    deeper\n- |b', key: 'Backspace', after: '- a\n  cont\n    deeper|b' },
+    { rule: '…Delete pulls it up like any continuation', precedent: 'Logseq', before: '- a\n  cont|\n    deeper', key: 'Delete', after: '- a\n  cont|deeper' },
+    { rule: '…Enter splits the block there', precedent: 'Logseq', before: '- a\n  cont\n    dee|per', key: 'Enter', after: '- a\n  cont\n    dee\n- |per' },
+    { rule: '…as it does under a `*` item', precedent: 'Logseq', before: '- a\n  * one\n    * t|wo', key: 'Enter', after: '- a\n  * one\n    * t\n- |wo' },
+    { rule: '…Mod+Enter leaves from it as from any continuation', precedent: 'EtherPK', before: '- a\n  cont\n    dee|per', key: 'Mod-Enter', after: '- a\n  cont\n    dee\n|per' },
+    { rule: '…and Alt+Up never moves a prose line in beside it', precedent: 'EtherPK', before: '- a\n  cont\n    deeper\ny|', key: 'Alt-ArrowUp', after: '- a\n  cont\n    deeper\ny|' },
+])
+
+// A block whose fence opens on the bullet line (form 1, `- ```py`) owns the lines after its closer
+// exactly as a block whose fence opens below the bullet (form 2) does, and every row here is its
+// form-2 twin's result. The keys measure merges, splits and moves against the form-1 bullet, which
+// owns those lines, never against its parent.
+table('a form-1 block owns the lines after its closer, as a form-2 block does', [
+    { rule: 'Backspace at a bullet below its continuation is refused when a child would be stranded', precedent: 'EtherPK', before: '- ```py\n  code\n  ```\n    after\n  - |b\n    - c', key: 'Backspace', after: '- ```py\n  code\n  ```\n    after\n  - |b\n    - c' },
+    { rule: '…at the content column too', precedent: 'EtherPK', before: '- ```py\n  code\n  ```\n  after\n  - |b\n    - c', key: 'Backspace', after: '- ```py\n  code\n  ```\n  after\n  - |b\n    - c' },
+    { rule: '…and at an empty bullet with a child', precedent: 'EtherPK', before: '- ```py\n  code\n  ```\n    after\n  - |\n    - c', key: 'Backspace', after: '- ```py\n  code\n  ```\n    after\n  - |\n    - c' },
+    { rule: 'Delete at the end of its soft line never splices the next bullet in', precedent: 'EtherPK', before: '- ```py\n  code\n  ```\n  after|\n  - b\n    - c', key: 'Delete', after: '- ```py\n  code\n  ```\n  after|\n  - b\n    - c' },
+    { rule: 'Enter on its continuation splits the block at the form-1 bullet’s level', precedent: 'Logseq', before: '- p\n  - ```py\n    code\n    ```\n      af|ter\n  - q\n    - r', key: 'Enter', after: '- p\n  - ```py\n    code\n    ```\n      af\n  - |ter\n  - q\n    - r' },
+    { rule: 'a block merged onto its continuation keeps its soft lines at the content column', precedent: 'Logseq', before: '- ```py\n  code\n  ```\n    after\n- |b\n  soft', key: 'Backspace', after: '- ```py\n  code\n  ```\n    after|b\n  soft' },
+    { rule: 'Alt+Up from its soft line moves the form-1 bullet’s branch, not its parent’s', precedent: 'Logseq', before: '- o\n- p\n  - ```py\n    code\n    ```\n    after|', key: 'Alt-ArrowUp', after: '- o\n- ```py\n  code\n  ```\n  after|\n- p' },
+    // The form-1 bullet is a sibling like any other: a move over it carries its whole code block.
+    { rule: 'Alt+Up past a form-1 sibling jumps its whole block and never deletes it', precedent: 'Logseq', before: '- a\n- ```py\n  code\n  ```\n- |c', key: 'Alt-ArrowUp', after: '- a\n- |c\n- ```py\n  code\n  ```' },
+    { rule: '…with its soft lines', precedent: 'Logseq', before: '- a\n- ```py\n  ```\n  soft\n- |c', key: 'Alt-ArrowUp', after: '- a\n- |c\n- ```py\n  ```\n  soft' },
+    { rule: 'Tab nests a bullet under a form-1 sibling', precedent: 'Logseq', before: '- a\n  - ```py\n    code\n    ```\n  - |c', key: 'Tab', after: '- a\n  - ```py\n    code\n    ```\n    - |c' },
+    { rule: 'deleting the blocks after it lands the caret at the end of its line, as for any previous sibling', precedent: 'Logseq', before: '- a\n- ```py\n  x\n  ```\n«- b\n- c»', key: 'Backspace', after: '- a\n- ```py|\n  x\n  ```' },
+    { rule: 'Tab on the opener nests the form-1 branch under its previous sibling, fence and all', precedent: 'Logseq', before: '- a\n- |```py\n  x\n  ```', key: 'Tab', after: '- a\n  - |```py\n    x\n    ```' },
+    { rule: 'Mod+Shift+Enter over a range from the opener into its code is refused too', precedent: 'EtherPK', before: '- «```py\n  co»de\n  ```', key: 'Mod-Shift-Enter', after: '- «```py\n  co»de\n  ```' },
+    // A task marker moves the fence off the content column, where its closer no longer pairs with it.
+    { rule: 'Mod+Shift+Enter on the form-1 opener is refused: a task’s fence cannot open on its line', precedent: 'EtherPK', before: '- |```py\n  code\n  ```', key: 'Mod-Shift-Enter', after: '- |```py\n  code\n  ```' },
+    { rule: 'Mod+Shift+Enter makes its soft line a task one level under the form-1 bullet', precedent: 'Logseq', before: '- a\n  - ```py\n    code\n    ```\n    aft|er', key: 'Mod-Shift-Enter', after: '- a\n  - ```py\n    code\n    ```\n    - [ ] aft|er' },
+])
+
+// A fence written inside the frontmatter is YAML text, whatever it looks like: never a form-1 bullet
+// the body's first bullets could take for a parent or a sibling.
+table('a bullet-shaped fence in the frontmatter is YAML, never a bullet', [
+    { rule: 'Alt+Up on the body’s first bullet is consumed: the frontmatter holds no sibling', precedent: 'EtherPK', before: '---\n- ```\n  ```\n---\n- b|', key: 'Alt-ArrowUp', after: '---\n- ```\n  ```\n---\n- b|' },
+    { rule: '…and Tab is refused: nothing to nest under', precedent: 'EtherPK', before: '---\n- ```\n  ```\n---\n- b|', key: 'Tab', after: '---\n- ```\n  ```\n---\n- b|' },
+])
+
+// A block scalar's `|` is the fixture's caret marker, so this row takes another.
+it('Alt-ArrowUp: …nor when the fence sits in a block scalar (EtherPK)', () => {
+    const before = '---\nsnippet: |\n  - ```js\n    x\n    ```\n---\n    - b¦'
+    const editor = editorFixture(before, { caret: '¦' })
+    editor.key('Alt-ArrowUp')
+    expect(editor.fixture()).toBe(before)
+})
+
+// A `- item` in the frontmatter is a YAML list entry: Shift+Tab stripping its marker broke the list.
+table('Shift+Tab in the frontmatter is consumed', [
+    { rule: 'on a flush YAML list entry', precedent: 'EtherPK', before: '---\ntags:\n- fo|o\n---\nbody', key: 'Shift-Tab', after: '---\ntags:\n- fo|o\n---\nbody' },
+    { rule: 'on an indented one, as EtherPK writes them', precedent: 'EtherPK', before: '---\naliases:\n  - fo|o\n---\nbody', key: 'Shift-Tab', after: '---\naliases:\n  - fo|o\n---\nbody' },
+])
+
+// A blank line reads as the line it becomes with text typed in it. Under a prose line short of the
+// bullet's column, text there is prose, nested under that line; so the blank line is prose too, and
+// never the bullet's continuation that the join could merge the next bullet onto.
+table('a blank line under a prose line short of the content column is prose', [
+    { rule: 'Backspace at the bullet below it is refused, as below any prose', precedent: 'EtherPK', before: '- a\n p\n   \n- |b', key: 'Backspace', after: '- a\n p\n   \n- |b' },
+])
+
 table('Mod+Enter is the one deliberate exit', [
     { rule: 'a prose line at column 0 after the whole tree', precedent: 'EtherPK', before: '- a|\n  - b', key: 'Mod-Enter', after: '- a\n  - b\n|' },
     { rule: 'from a nested block the exit is after its top-level ancestor’s tree, never splitting it', precedent: 'EtherPK', before: '- a\n  - b|\n  - c', key: 'Mod-Enter', after: '- a\n  - b\n  - c\n|' },
@@ -551,12 +653,38 @@ table('Backspace and Delete merge Logseq-style', [
     { rule: 'a YAML list entry in the frontmatter is not a bullet', precedent: 'EtherPK', before: '---\ntags:\n  «- a»\n---\n- b', key: 'Backspace', after: '---\ntags:\n  |\n---\n- b' },
 ])
 
+describe('the survivors of a block delete keep one level under the soft line’s bullet (ADR 0021)', () => {
+    it('Backspace over the blocks under a soft line heals their child to the bullet’s level', () => {
+        const editor = editorFixture('- a\n  soft\n  «- b\n  - c»\n    - d')
+        editor.key('Backspace')
+        expect(editor.text()).toBe('- a\n  soft\n  - d')
+    })
+})
+
+// The Command Bar's Outdent runs the command alone; the keyboard's Shift+Tab reaches code handlers first.
+describe('the outdent command on code or YAML (the Command Bar’s Outdent)', () => {
+    for (const before of ['```md\n- in fen|ce\n```', '- ```md\n  - in fen|ce\n  ```', '---\ntags:\n- fo|o\n---\nbody']) {
+        it(`leaves ${JSON.stringify(before)} as it is`, () => {
+            const editor = editorFixture(before)
+            outdentBranch(editor as never)
+            expect(editor.fixture()).toBe(before)
+        })
+    }
+})
+
 describe('cutting blocks heals the survivors (ADR 0021)', () => {
     const cut = (before: string) => {
         const editor = editorFixture(before)
         editor.cut()
         return editor.fixture()
     }
+    it('heals the survivors of a block selection that starts on a form-1 bullet, as for any bullet', () => {
+        expect(cut('- a\n«- ```py\n  x\n  ```\n  - c1»\n    - c2')).toBe(cut('- a\n«- p\n  x\n  - c1»\n    - c2'))
+        expect(cut('- a\n«- ```py\n  x\n  ```\n  - c1»\n    - c2')).toBe('- a\n  - |c2')
+    })
+    it('reads a soft line above the cut as its bullet’s, not as a parent the survivors may hang deeper under', () => {
+        expect(cut('- a\n  soft\n  «- b\n  - c»\n    - d').replace('|', '')).toBe('- a\n  soft\n  - d')
+    })
     it('pulls the orphaned descendants up to indent 0 when the whole top of the tree went', () => {
         expect(cut('«- a\n  - b\n  - c\n    - d\n»      - e\n    - f\n    - g')).toBe('- |e\n- f\n- g')
     })
@@ -578,11 +706,22 @@ table('Mod+Shift+Enter cycles the task state', [
     { rule: 'plain bullet becomes an open task', precedent: 'EtherPK', before: '- a|', key: 'Mod-Shift-Enter', after: '- [ ] a|' },
     { rule: 'open task becomes done', precedent: 'EtherPK', before: '- [ ] a|', key: 'Mod-Shift-Enter', after: '- [x] a|' },
     { rule: 'done task becomes a plain bullet', precedent: 'EtherPK', before: '- [x] a|', key: 'Mod-Shift-Enter', after: '- a|' },
-    { rule: 'a prose line becomes a task, indentation kept', precedent: 'EtherPK', before: '  text|', key: 'Mod-Shift-Enter', after: '  - [ ] text|' },
+    // A prose line enters the list as Tab makes it: at column 0, its spaces dropped (kept, they
+    // would make an indented task under nothing, or one off the grid), and the bullets below are
+    // healed one level under it at most.
+    { rule: 'a prose line becomes a task at column 0, its spaces dropped', precedent: 'EtherPK', before: '  text|', key: 'Mod-Shift-Enter', after: '- [ ] text|' },
+    { rule: '…a line one space in under a list too: it is prose', precedent: 'EtherPK', before: '- a\n te|xt', key: 'Mod-Shift-Enter', after: '- a\n- [ ] te|xt' },
+    { rule: '…and the bullets below it are healed one level under the new task', precedent: 'EtherPK', before: '  te|xt\n    - c', key: 'Mod-Shift-Enter', after: '- [ ] te|xt\n  - c' },
     { rule: 'a continuation becomes a child task of its bullet', precedent: 'Logseq', before: '- a\n  text|', key: 'Mod-Shift-Enter', after: '- a\n  - [ ] text|' },
     { rule: 'an over-indented continuation still becomes a child, never an orphan', precedent: 'EtherPK', before: '- a\n      te|xt', key: 'Mod-Shift-Enter', after: '- a\n  - [ ] te|xt' },
     { rule: 'an empty indented line under a bullet becomes a child task', precedent: 'EtherPK', before: '- a\n    |', key: 'Mod-Shift-Enter', after: '- a\n  - [ ] |' },
+    { rule: 'a range across one block’s lines cycles that block, as Tab nests it', precedent: 'Logseq', before: '- «a\n  so»ft', key: 'Mod-Shift-Enter', after: '- [ ] «a\n  so»ft' },
+    // An unterminated fence line is prose; as a bullet or a task it would open a block that pairs with
+    // the next fence at its column, taking that block's opener for its closer.
+    { rule: 'an unterminated fence line is refused', precedent: 'EtherPK', before: '```py|\n- b\n  ```\n  code\n  ```', key: 'Mod-Shift-Enter', after: '```py|\n- b\n  ```\n  code\n  ```' },
     { rule: 'a heading is refused', precedent: 'EtherPK', before: '# h|', key: 'Mod-Shift-Enter', after: '# h|' },
+    { rule: 'a bullet-shaped line inside a fence is code: refused', precedent: 'EtherPK', before: '- ```md\n  - |x\n  ```', key: 'Mod-Shift-Enter', after: '- ```md\n  - |x\n  ```' },
+    { rule: 'a YAML list entry in the frontmatter is metadata: refused', precedent: 'EtherPK', before: '---\ntags:\n  - fo|o\n---', key: 'Mod-Shift-Enter', after: '---\ntags:\n  - fo|o\n---' },
     { rule: 'a prose line that split a group re-joins it as a task and the blocks below are healed', precedent: 'EtherPK', before: '- a\n  - b\n|\n    - c', key: 'Mod-Shift-Enter', after: '- a\n  - b\n- [ ] |\n  - c' },
 ])
 
@@ -678,6 +817,79 @@ table('keys inside a block', [
     { rule: 'Shift+Home in code selects back to the first non-space character', precedent: 'VS Code', before: '- ```\n    foo b|ar\n  ```', key: 'Shift-Home', after: '- ```\n    «foo b»ar\n  ```' },
     { rule: 'End on a fence line is the end of the fence', precedent: 'VS Code', before: '```|js\nfoo\n```', key: 'End', after: '```js|\nfoo\n```' },
 ])
+
+// Another tool, or an agent, writes a bullet's code block with its blank lines empty: none of the
+// fence column's spaces. A character typed there lands at the fence column, where Enter starts a
+// new code line: left of it, the line would end the block and dissolve it into prose.
+typedTable('typing inside a block', [
+    { rule: 'a character typed on an empty line of a bullet’s block lands at the fence column', precedent: 'EtherPK', before: '- ```\n  foo\n|\n  bar\n  ```', key: 'x', after: '- ```\n  foo\n  x|\n  bar\n  ```' },
+    { rule: '…at any depth', precedent: 'EtherPK', before: '- a\n  - ```\n    foo\n|\n    ```', key: 'x', after: '- a\n  - ```\n    foo\n    x|\n    ```' },
+    { rule: '…and on a line of fewer spaces than the fence column', precedent: 'EtherPK', before: '- ```\n  foo\n |\n  ```', key: 'x', after: '- ```\n  foo\n  x|\n  ```' },
+    { rule: 'a prose block’s empty line takes the character where it is typed', precedent: 'VS Code', before: '```\nfoo\n|\n```', key: 'x', after: '```\nfoo\nx|\n```' },
+    { rule: 'inside nested blocks the character lands at the innermost block’s fence column', precedent: 'EtherPK', before: '- ```md\n  text\n    ```js\n|\n    ```\n  ```', key: 'x', after: '- ```md\n  text\n    ```js\n    x|\n    ```\n  ```' },
+    // The re-clamp runs on the padded text: on the unpadded text the typed line had ended the block,
+    // and its closer paired with the fence above instead and was dragged to that fence's column.
+    { rule: 'an unterminated fence above never takes the block’s closer', precedent: 'EtherPK', before: '```\ntext\n- ```\n  foo\n|\n  bar\n  ```', key: 'x', after: '```\ntext\n- ```\n  foo\n  x|\n  bar\n  ```' },
+    { rule: 'a bullet’s block inside a prose block keeps both blocks', precedent: 'EtherPK', before: '```\n- ```\n  foo\n|\n  ```\n```', key: 'x', after: '```\n- ```\n  foo\n  x|\n  ```\n```' },
+])
+
+table('keys on an empty code line written without the fence column’s spaces', [
+    // The caret clamp ran before the guard padded the joined line, on text where it was not code
+    // yet; the pad carries the caret onto the fence column with it.
+    { rule: 'Backspace joining a line into the empty line above leaves the caret on the fence column', precedent: 'EtherPK', before: '- ```\n  foo\n\n  |bar\n  ```', key: 'Backspace', after: '- ```\n  foo\n  |bar\n  ```' },
+    { rule: 'Delete from the empty line joins the line below the same way', precedent: 'EtherPK', before: '- ```\n  foo\n|\n  bar\n  ```', key: 'Delete', after: '- ```\n  foo\n  |bar\n  ```' },
+    // The pad runs before the caret clamp, so the clamp judges the joined line as code: unpadded, a
+    // `- x` there is a bullet, and its clamp put the caret after the `- `.
+    { rule: '…when the joined code looks like a bullet too', precedent: 'EtherPK', before: '- ```\n  foo\n\n  |- x\n  ```', key: 'Backspace', after: '- ```\n  foo\n  |- x\n  ```' },
+    { rule: '…or like a task', precedent: 'EtherPK', before: '- ```\n  foo\n\n  |- [ ] x\n  ```', key: 'Backspace', after: '- ```\n  foo\n  |- [ ] x\n  ```' },
+    // The line is drawn from the fence column, so the caret on it already sits at the code's start:
+    // Tab indents the code from there, as it would on the padded line, and never presses dead.
+    { rule: 'Tab on the empty line indents the code one level, as on a padded line', precedent: 'EtherPK', before: '- ```\n  foo\n|\n  ```', key: 'Tab', after: '- ```\n  foo\n    |\n  ```' },
+    { rule: '…in a nested block too, whatever the line holds short of the column', precedent: 'EtherPK', before: '- a\n  - ```\n    foo\n  |\n    ```', key: 'Tab', after: '- a\n  - ```\n    foo\n      |\n    ```' },
+    { rule: '…and from its start, where the text is empty', precedent: 'EtherPK', before: '- a\n  - ```\n    foo\n|\n    ```', key: 'Tab', after: '- a\n  - ```\n    foo\n      |\n    ```' },
+])
+
+// Rows the typed table cannot hold: its key splits on spaces, and undo is a second step.
+describe('typing inside a block: a space, and undo', () => {
+    it('a space typed on an empty line leaves it blank, so it stays as typed (EtherPK)', () => {
+        const editor = editorFixture('- ```\n  foo\n|\n  ```')
+        editor.type(' ')
+        expect(editor.fixture()).toBe('- ```\n  foo\n |\n  ```')
+    })
+
+    it('one undo takes back the character and the padding together (EtherPK)', () => {
+        const editor = editorFixture('- ```\n  foo\n|\n  ```')
+        editor.type('x')
+        editor.key('Mod-z')
+        expect(editor.fixture()).toBe('- ```\n  foo\n|\n  ```')
+    })
+
+    it('leaves an IME composition where it was typed: a change beside the composed text can break it (EtherPK)', () => {
+        const editor = editorFixture('- ```\n  foo\n|\n  ```')
+        editor.dispatch(editor.state.update({ ...editor.state.replaceSelection('x'), userEvent: 'input.type.compose' }))
+        expect(editor.text()).toBe('- ```\n  foo\nx\n  ```')
+    })
+
+    it('…whole: nothing re-clamps the unpadded text, where the dissolved block’s closer would pair with a fence above (EtherPK)', () => {
+        const editor = editorFixture('```\ntext\n- ```\n  foo\n|\n  bar\n  ```')
+        editor.dispatch(editor.state.update({ ...editor.state.replaceSelection('x'), userEvent: 'input.type.compose' }))
+        expect(editor.text()).toBe('```\ntext\n- ```\n  foo\nx\n  bar\n  ```')
+    })
+
+    it('pads this user’s own typing in a shared graph (EtherPK)', () => {
+        const editor = editorFixture('- ```\n  foo\n|\n  ```', { extensions: [collaborative.of(true)] })
+        editor.type('x')
+        expect(editor.text()).toBe('- ```\n  foo\n  x\n  ```')
+    })
+
+    it('leaves another member’s change alone in a shared graph, where a correction would never reach the shared text (EtherPK)', () => {
+        // A remote member's change, or the shared undo manager's, arrives with no user event.
+        const editor = editorFixture('- ```\n  foo\n|\n  ```', { extensions: [collaborative.of(true)] })
+        const at = editor.head()
+        editor.dispatch(editor.state.update({ changes: { from: at, insert: 'x' } }))
+        expect(editor.text()).toBe('- ```\n  foo\nx\n  ```')
+    })
+})
 
 table('Frontmatter keeps its edges', [
     // Joining body text onto the closing delimiter would make it not a delimiter, and the whole

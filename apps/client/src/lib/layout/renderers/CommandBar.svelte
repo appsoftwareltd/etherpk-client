@@ -46,12 +46,14 @@
 
     /**
      * Disabled when the button's gate says its command would do nothing here: outliner-only
-     * buttons off a bullet, the task toggle on a heading / in code / in frontmatter, undo and
+     * buttons off a bullet, the task toggle on a heading / in code / in frontmatter, Indent there
+     * too except on a form-1 opener (`view/task-toggleable.ts`), undo and
      * redo on an empty history stack, and every editing button on a locked Protected Document.
      */
     function disabled(item: CommandBarItem): boolean {
         if (item.writableOnly && !editorContext.bodyWritable) return true
-        if ((item.taskToggleOnly || item.convertibleOnly) && !editorContext.taskToggleable) return true
+        if (item.taskToggleOnly && !editorContext.taskToggleable) return true
+        if (item.convertibleOnly && !editorContext.indentable) return true
         if (item.tableInsertOnly && !editorContext.tableInsertable) return true
         if (item.tableRowOnly && !(editorContext.table && editorContext.table.bodyRow >= 0)) return true
         if (item.tableMultiColumnOnly && !(editorContext.table && editorContext.table.columns > 1)) return true

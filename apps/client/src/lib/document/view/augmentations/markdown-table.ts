@@ -23,7 +23,7 @@ import { type InlinePart, inlineParts } from '../../inline-parts'
 import { type Align, type MarkdownTable } from '../../markdown-table'
 import { analysisFor } from '../analysis/editor-analysis'
 import { blockWidgetField } from './base-renderer'
-import { BLOCK_WIDGET_SPACING, BULLET_BLOCK_DROP, hangWidthForPos } from './content-clamp'
+import { BLOCK_WIDGET_SPACING, BULLET_BLOCK_DROP, blockWidgetIndent } from './content-clamp'
 import { LINK_SELECTORS } from './link-cursor'
 import { INLINE_MARK_CLASS } from './markdown-format'
 import { refreshWikilinks } from './wikilink'
@@ -101,8 +101,8 @@ class TableWidget extends WidgetType {
         readonly table: MarkdownTable,
         /** Source offset of the table's first line — used to place the caret on click. */
         readonly from: number,
-        /** Content-column clamp in characters (ADR 0020) — pads the widget to align inside a bullet. */
-        readonly hangWidth: number,
+        /** Where its first line's text starts (`blockWidgetIndent`): a block grid pads itself to it. Null at column 0. */
+        readonly indent: string | null,
         /** Inline variant: the table is a bullet's content, rendered after the marker (no padding). */
         readonly inline: boolean,
         /** The cells' linked concepts with no page yet: a page created elsewhere redraws the grid. */
@@ -114,7 +114,7 @@ class TableWidget extends WidgetType {
     eq(other: TableWidget): boolean {
         return (
             this.from === other.from &&
-            this.hangWidth === other.hangWidth &&
+            this.indent === other.indent &&
             this.inline === other.inline &&
             sameSet(this.missing, other.missing) &&
             JSON.stringify(this.table) === JSON.stringify(other.table)
@@ -126,7 +126,7 @@ class TableWidget extends WidgetType {
         wrap.className = this.inline ? 'cm-md-table cm-md-table--inline' : 'cm-md-table cm-md-table--block'
         wrap.setAttribute('data-augmentation', 'table')
         wrap.setAttribute('data-table-from', String(this.from))
-        if (!this.inline && this.hangWidth > 0) wrap.style.paddingLeft = `${this.hangWidth}ch`
+        if (!this.inline && this.indent) wrap.style.paddingLeft = this.indent
         const table = wrap.appendChild(document.createElement('table'))
         const styleCell = (cell: HTMLElement, align: Align) => {
             if (align) cell.style.textAlign = align
@@ -167,7 +167,7 @@ function tableField(options: MarkdownTableOptions) {
         markerLength: (t) => t.headerStart,
         widget: (t, state, from) => {
             const inline = t.headerStart > 0
-            return new TableWidget(t, from, inline ? 0 : hangWidthForPos(state, from), inline, missingIn(t, options.isMissing))
+            return new TableWidget(t, from, inline ? null : blockWidgetIndent(state, from), inline, missingIn(t, options.isMissing))
         },
         rebuildOn: (tr) => tr.effects.some((effect) => effect.is(refreshWikilinks)),
     })

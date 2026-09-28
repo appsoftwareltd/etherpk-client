@@ -11,6 +11,8 @@
 import fc from 'fast-check'
 import { describe, expect, it } from 'vitest'
 
+import { frontmatterLines } from '$lib/storage/fs/frontmatter-span'
+
 import { fencedBlocks } from '../fenced-code'
 import { normaliseIndentUnit, outlineLines } from '../indent-unit'
 import { isBulletLine, lineIndent, markerLength, opaqueLineFlags, parentIndex } from '../outliner'
@@ -81,8 +83,26 @@ const extrasArb = fc.array(fc.constantFrom(0, 2, 4), { minLength: 7, maxLength: 
  *  like the extras, so the stream under the CI seed is unchanged for the other properties. */
 const afterChildrenArb = fc.array(fc.option(word, { nil: null }), { minLength: 7, maxLength: 7 })
 
-function render(outline: Bullet[], grid: Grid = 'unit', extras: number[] = [], afterChildren: (string | null)[] = []): string {
-    const lines: string[] = []
+/** Whether each bullet's fence carries empty lines, without the fence column's spaces: its own blank
+ *  lines written empty, and one more at the top of its body. That is how other tools and agents write
+ *  them, where the editor's own keys always indent them. Beside the outline, like the extras. */
+const bareBlanksArb = fc.array(fc.boolean(), { minLength: 7, maxLength: 7 })
+
+/** Where each plain bullet with a fence opens it: below the bullet's text (form 2), or on the bullet
+ *  line (form 1, `- \`\`\``), as Logseq writes a code block that is a block's whole content - bare, with an
+ *  info string, or with nothing after its closer. When something follows the closer, the bullet's text
+ *  is a soft line there and its trailing line sits deeper still, where the outline walk gives it to
+ *  the bullet across the closer. Beside the outline, like the extras. */
+type FenceForm = 'below' | 'on' | 'on-info' | 'on-bare'
+const formOneArb = fc.array(fc.constantFrom<FenceForm>('below', 'on', 'on-info', 'on-bare'), { minLength: 7, maxLength: 7 })
+
+/** Frontmatter above the outline: none, plain YAML with a list, or YAML holding a bullet-shaped fence
+ *  in a (folded) block scalar, which is text and never a bullet the body could nest under. The `>`
+ *  scalar, not `|`, since `|` is the fixture's caret marker. */
+const frontmatterArb = fc.constantFrom<string[]>([], ['---', 'title: T', 'tags:', '  - x', '---'], ['---', 'snippet: >', '  - ```js', '    x', '    ```', '---'])
+
+function render(outline: Bullet[], grid: Grid = 'unit', extras: number[] = [], afterChildren: (string | null)[] = [], bareBlanks: boolean[] = [], formOne: FenceForm[] = [], frontmatter: string[] = []): string {
+    const lines: string[] = [...frontmatter]
     const step = grid === 'tab' ? '\t' : ' '.repeat(grid === 'four' || grid === 'ragged' ? 4 : INDENT)
     /** Paragraphs waiting for their block's subtree to close, innermost last. */
     const pending: { level: number; line: string }[] = []
@@ -93,13 +113,27 @@ function render(outline: Bullet[], grid: Grid = 'unit', extras: number[] = [], a
         closeTo(b.level)
         const indent = step.repeat(b.level) + (grid === 'ragged' && b.level > 0 ? ' '.repeat(extras[n] ?? 0) : '')
         const marker = b.task === 'none' ? '- ' : b.task === 'open' ? '- [ ] ' : '- [x] '
-        lines.push(`${indent}${marker}${b.text}`)
+        // A task's fence cannot open on its line: its backticks would sit past the content column, where
+        // no closer at the column pairs with them.
+        const form = formOne[n] ?? 'below'
+        const onBulletLine = b.fence !== null && b.task === 'none' && form !== 'below'
+        lines.push(onBulletLine ? `${indent}${marker}\`\`\`${form === 'on-info' ? 'py' : ''}` : `${indent}${marker}${b.text}`)
         // The content column is indent + the fixed marker width (ADR 0020), for tasks too - a
         // continuation typed with Shift+Enter lands there, not after the checkbox.
         const column = indent + '  '
-        if (b.continuation !== null) lines.push(`${column}${b.continuation}`)
-        if (b.fence !== null) lines.push(`${column}\`\`\``, ...b.fence.map((l) => `${column}${l}`), `${column}\`\`\``)
-        if (b.trailing !== null) lines.push(`${column}${b.trailing}`)
+        const body = b.fence === null ? [] : [...(bareBlanks[n] ? [''] : []), ...b.fence.map((l) => (l === '' && bareBlanks[n] ? '' : `${column}${l}`))]
+        if (onBulletLine) {
+            lines.push(...body, `${column}\`\`\``)
+            if (form !== 'on-bare') {
+                lines.push(`${column}${b.text}`)
+                if (b.continuation !== null) lines.push(`${column}${b.continuation}`)
+                if (b.trailing !== null) lines.push(`${column}  ${b.trailing}`)
+            }
+        } else {
+            if (b.continuation !== null) lines.push(`${column}${b.continuation}`)
+            if (b.fence !== null) lines.push(`${column}\`\`\``, ...body, `${column}\`\`\``)
+            if (b.trailing !== null) lines.push(`${column}${b.trailing}`)
+        }
         const paragraph = afterChildren[n] ?? null
         if (paragraph !== null && (outline[n + 1]?.level ?? 0) > b.level) pending.push({ level: b.level, line: `${column}${paragraph}` })
     }
@@ -118,8 +152,8 @@ const scenarioArb = fc.record({
     keys: fc.array(fc.constantFrom(...STRUCTURAL_KEYS), { minLength: 1, maxLength: 6 }),
 })
 
-function editorFor(outline: Bullet[], caretAt: number, selectTo?: number, grid: Grid = 'unit', extras: number[] = [], afterChildren: (string | null)[] = []): HeadlessEditor {
-    const doc = render(outline, grid, extras, afterChildren)
+function editorFor(outline: Bullet[], caretAt: number, selectTo?: number, grid: Grid = 'unit', extras: number[] = [], afterChildren: (string | null)[] = [], bareBlanks: boolean[] = [], formOne: FenceForm[] = [], frontmatter: string[] = []): HeadlessEditor {
+    const doc = render(outline, grid, extras, afterChildren, bareBlanks, formOne, frontmatter)
     const pos = Math.round(caretAt * doc.length)
     const editor = editorFixture(doc.slice(0, pos) + '|' + doc.slice(pos))
     // Re-place the caret through a selection transaction so the caret clamp applies, exactly as a
@@ -146,9 +180,10 @@ function editorFor(outline: Bullet[], caretAt: number, selectTo?: number, grid: 
 function noOrphans(lines: string[], proseAsNode = false): boolean {
     const blocks = fencedBlocks(lines)
     const interior = (i: number) => blocks.some((b) => i > b.start && i <= b.end)
+    const body = frontmatterLines(lines) // YAML is never outline
     let previous: number | null = null
     lines.forEach((line, i) => {
-        if (interior(i)) return
+        if (i < body || interior(i)) return
         if (line.length === 0) {
             previous = null // a bare empty line bounds the group
             return
@@ -168,14 +203,19 @@ function noOrphans(lines: string[], proseAsNode = false): boolean {
     return true
 }
 
-/** Every bullet indent is a whole number of nesting units. */
+/** Every bullet indent is a whole number of nesting units. A `- x` line inside a fence is code, whose
+ *  own indentation is the user's: Delete or Tab inside it moves it by one space or two. */
 function indentsOnGrid(lines: string[]): boolean {
-    return lines.every((line) => !isBulletLine(line) || lineIndent(line) % INDENT === 0)
+    const blocks = fencedBlocks(lines)
+    const body = frontmatterLines(lines) // a YAML list entry is metadata, on whatever grid its author chose
+    return lines.every((line, i) => i < body || blocks.some((f) => i > f.start && i <= f.end) || !isBulletLine(line) || lineIndent(line) % INDENT === 0)
 }
 
-/** Every fenced block that was complete is still complete: openers and closers stay paired. */
+/** Every fenced block that was complete is still complete: openers and closers stay paired. A fence
+ *  in the frontmatter is YAML text, which the keys edit as text. */
 function fencesBalanced(lines: string[]): number {
-    return fencedBlocks(lines).length
+    const body = frontmatterLines(lines)
+    return fencedBlocks(lines).filter((b) => b.start >= body).length
 }
 
 /** Backspace or Delete with the caret inside a fence line's own text (right of the fence column). */
@@ -198,6 +238,13 @@ function editsFenceText(editor: HeadlessEditor, key: string): boolean {
     const margin = lineIndent(line.text) + (isBulletLine(line.text) ? markerLength(line.text) : 0)
     // Backspace right of the margin removes a fence character; Delete at the margin removes the first one.
     return onFence && (key === 'Delete' ? sel.head - line.from >= margin : sel.head - line.from > margin)
+}
+
+/** The selection starts inside the frontmatter: YAML editing, which may dissolve the block on purpose
+ *  (a delimiter edited away), leaving its lines to the body as text the user now owns. */
+function editsFrontmatter(editor: HeadlessEditor): boolean {
+    const body = frontmatterLines(editor.text().split('\n'))
+    return body > 0 && editor.state.doc.lineAt(editor.state.selection.main.from).number - 1 < body
 }
 
 /**
@@ -231,7 +278,8 @@ function keysAndWalkAgree(lines: string[]): boolean {
  *  fence is code: a `- x` there edited down to `-` is not a marker (seed 1 used to flag it). */
 function markersIntact(lines: string[]): boolean {
     const blocks = fencedBlocks(lines)
-    return lines.every((line, i) => blocks.some((f) => i > f.start && i <= f.end) || !/^\s*-(\[|$)/.test(line))
+    const body = frontmatterLines(lines)
+    return lines.every((line, i) => i < body || blocks.some((f) => i > f.start && i <= f.end) || !/^\s*-(\[|$)/.test(line))
 }
 
 describe('outliner invariants under random key sequences', () => {
@@ -278,6 +326,40 @@ describe('outliner invariants under random key sequences', () => {
                 }
             }),
             fuzz(300),
+        )
+    })
+
+    it('with form-1 blocks (the fence on the bullet line) every key keeps the invariants', () => {
+        // The lines after a form-1 block's closer are its bullet's, as after a form-2 block's: the keys
+        // measure merges, splits and moves against that bullet. No fence dissolves unless the key edits
+        // a fence's own characters, and the caret never rests left of its line's clamp.
+        fc.assert(
+            fc.property(scenarioArb, formOneArb, frontmatterArb, ({ outline, caretAt, selectTo, keys }, formOne, frontmatter) => {
+                // The caret starts in the body. An edit before the opening delimiter moves the block off
+                // the first line, where it stops being frontmatter: that edge is not this property's.
+                const doc = render(outline, 'unit', [], [], [], formOne, frontmatter)
+                const from = frontmatter.length ? frontmatter.join('\n').length + 1 : 0
+                const editor = editorFor(outline, (from + caretAt * (doc.length - from)) / doc.length, selectTo, 'unit', [], [], [], formOne, frontmatter)
+                let fences = fencesBalanced(editor.text().split('\n'))
+                for (const key of keys) {
+                    if (editsFenceText(editor, key) || editsFrontmatter(editor)) return
+                    editor.key(key)
+                    const lines = editor.text().split('\n')
+                    expect(noOrphans(lines)).toBe(true)
+                    expect(indentsOnGrid(lines)).toBe(true)
+                    expect(markersIntact(lines)).toBe(true)
+                    expect(keysAndWalkAgree(lines)).toBe(true)
+                    expect(normaliseIndentUnit(editor.text())).toBe(editor.text())
+                    const next = fencesBalanced(lines)
+                    expect(next, key).toBeGreaterThanOrEqual(fences)
+                    fences = next
+                    const sel = editor.state.selection.main
+                    if (!sel.empty) continue
+                    const line = editor.state.doc.lineAt(sel.head)
+                    expect(sel.head - line.from, key).toBeGreaterThanOrEqual(clampColumn(lines, line.number - 1))
+                }
+            }),
+            fuzz(400),
         )
     })
 
@@ -376,6 +458,58 @@ describe('outliner invariants under random key sequences', () => {
                 const after = editor.text().split('\n')
                 expect(fencesBalanced(after)).toBeGreaterThanOrEqual(fences)
                 expect(noOrphans(after)).toBe(true)
+            }),
+            fuzz(300),
+        )
+    })
+
+    it('typing a character never dissolves a fenced block, blank lines written empty included', () => {
+        // A block's blank line written without the fence column's spaces takes the caret at column 0.
+        // A character typed on any code line, that one included, must land inside the block (Editor
+        // Content Rules → The source guard).
+        fc.assert(
+            fc.property(outlineArb, bareBlanksArb, fc.double({ min: 0, max: 1, noNaN: true }), fc.stringMatching(/^[a-z]$/), (outline, bareBlanks, lineAt, ch) => {
+                // The caret at the end of one of the blocks' code lines, each as likely as another: a
+                // caret placed by character offset would almost never land on an empty line.
+                const lines = render(outline, 'unit', [], [], bareBlanks).split('\n')
+                const code = fencedBlocks(lines).flatMap((b) => Array.from({ length: b.end - b.start - 1 }, (_, k) => b.start + 1 + k))
+                if (code.length === 0) return
+                const n = code[Math.min(code.length - 1, Math.floor(lineAt * code.length))]
+                const editor = editorFor(outline, 0, undefined, 'unit', [], [], bareBlanks)
+                editor.select(editor.state.doc.line(n + 1).to)
+                editor.type(ch)
+                // The same blocks, not only as many: one character adds no line, so every block keeps
+                // its fences where they were (a block dissolved while another formed would count equal).
+                expect(fencedBlocks(editor.text().split('\n'))).toEqual(fencedBlocks(lines))
+            }),
+            fuzz(300),
+        )
+    })
+
+    it('with blank code lines written empty, no structural key dissolves a block or leaves the caret left of the content column', () => {
+        // The keys over the text other tools write (`bareBlanksArb`), each from the start, the fence
+        // column and the end of one code line: the source guard pads a line a key leaves short of its
+        // fence column and carries the caret onto the column with it (Backspace joining a line into the
+        // empty one above). An empty line, or one shorter than its clamp column, holds the caret at its end.
+        fc.assert(
+            fc.property(outlineArb, bareBlanksArb, fc.double({ min: 0, max: 1, noNaN: true }), fc.constantFrom('start', 'column', 'end'), (outline, bareBlanks, lineAt, where) => {
+                const lines = render(outline, 'unit', [], [], bareBlanks).split('\n')
+                const code = fencedBlocks(lines).flatMap((b) => Array.from({ length: b.end - b.start - 1 }, (_, k) => b.start + 1 + k))
+                if (code.length === 0) return
+                const n = code[Math.min(code.length - 1, Math.floor(lineAt * code.length))]
+                for (const key of STRUCTURAL_KEYS) {
+                    const editor = editorFor(outline, 0, undefined, 'unit', [], [], bareBlanks)
+                    const line = editor.state.doc.line(n + 1)
+                    editor.select(where === 'start' ? line.from : where === 'column' ? line.from + lineIndent(line.text) : line.to)
+                    const editsFence = editsFenceText(editor, key)
+                    editor.key(key)
+                    const after = editor.text().split('\n')
+                    if (!editsFence) expect(fencesBalanced(after), key).toBeGreaterThanOrEqual(fencesBalanced(lines))
+                    const sel = editor.state.selection.main
+                    if (!sel.empty) continue
+                    const at = editor.state.doc.lineAt(sel.head)
+                    expect(sel.head - at.from, key).toBeGreaterThanOrEqual(Math.min(clampColumn(after, at.number - 1), at.length))
+                }
             }),
             fuzz(300),
         )

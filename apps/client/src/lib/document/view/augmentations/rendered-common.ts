@@ -1,7 +1,7 @@
 /**
  * Shared machinery for the rendered-augmentation hosts (ADR 0022), split out of
  * fence-render.ts so code-highlight.ts and content-clamp.ts can consult the SAME
- * collapse predicate without an import cycle (fence-render imports hangWidthForPos
+ * collapse predicate without an import cycle (fence-render imports blockWidgetIndent
  * FROM content-clamp):
  *
  * - {@link rendererCollapsedFences} — the one definition of "this fence is currently a

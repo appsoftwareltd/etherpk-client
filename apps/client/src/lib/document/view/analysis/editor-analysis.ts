@@ -9,6 +9,7 @@ import { MapMode, StateField, type Extension, type Text, type Transaction } from
 import { defangFence, fencedBlocks, fenceLineInfo, type FencedBlockRange } from '../../fenced-code'
 import { imageLineKind, type ImageLineKind } from '../../image-line'
 import { outlineLines, type OutlineLine } from '../../indent-unit'
+import { isHeadingLine } from '../../outliner'
 import { findTables, type MarkdownTable } from '../../markdown-table'
 import { codeRanges, type CodeRange } from '../../wikilink/code-ranges'
 import { frontmatterSpan, isFrontmatterDelimiter } from '$lib/storage/fs/frontmatter-span'
@@ -222,6 +223,9 @@ function ordinarySingleLineChange(transaction: Transaction): SingleLineChange | 
         if (isFrontmatterDelimiter(oldText) || isFrontmatterDelimiter(newText)) return
         if (oldText.includes('|') || newText.includes('|')) return
         if (structuralPrefix(oldText) !== structuralPrefix(newText)) return
+        // A heading is a node of the outline walk, never a continuation, so a line becoming one (or
+        // ceasing to be one) re-reads who owns the lines below it.
+        if (isHeadingLine(oldText) !== isHeadingLine(newText)) return
         if ((oldText.trim() === '') !== (newText.trim() === '')) return
 
         result = {

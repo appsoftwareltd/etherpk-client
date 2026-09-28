@@ -3,6 +3,7 @@
     import { onMount, type Snippet } from "svelte";
     import { dialogFocus } from "../ui/index.svelte";
     import { announceMenuOpened, onOtherMenuOpened } from "./dismissible-menu";
+    import { releaseStageBadge } from "./release-stage";
 
     export interface ApplicationNavigationItem {
         href: string;
@@ -106,21 +107,24 @@
             </svg>
             <span class="hidden text-base font-semibold tracking-tight min-[400px]:inline">EtherPK</span>
         </a>
-        <!-- EtherPK is advertised as live under alpha testing. The badge stays at every width,
-             including below 400px where the wordmark hides, because it is the one thing a
-             first-time visitor must not miss. `text-box: trim-both cap alphabetic` trims the line
-             box to the capitals themselves, so `items-center` centres the word rather than a box
-             that includes Inter's descender space; where a browser lacks it the word lands within
-             a pixel of centre either way, which is why there is no padding nudge here. -->
-        <span
-            data-testid="alpha-badge"
-            title="EtherPK is in alpha testing"
-            class="inline-flex h-5 items-center rounded-md border border-gray-950/15 px-1.5 text-sm font-semibold uppercase leading-none tracking-wider text-gray-600 select-none dark:border-white/15 dark:text-gray-400"
-        >
-            <!-- The trim goes on a flex item of its own: the property is not inherited, so on the
-                 badge itself it would never reach the anonymous box holding the text. -->
-            <span class="[text-box:trim-both_cap_alphabetic]">Alpha</span>
-        </span>
+        <!-- The release-stage badge, switched on and off in release-stage.ts. While it shows, it
+             stays at every width, including below 400px where the wordmark hides, because it is
+             the one thing a first-time visitor must not miss. `text-box: trim-both cap alphabetic`
+             trims the line box to the capitals themselves, so `items-center` centres the word
+             rather than a box that includes Inter's descender space; where a browser lacks it the
+             word lands within a pixel of centre either way, which is why there is no padding
+             nudge here. -->
+        {#if releaseStageBadge.visible}
+            <span
+                data-testid="release-stage-badge"
+                title="EtherPK is in {releaseStageBadge.label.toLowerCase()} testing"
+                class="inline-flex h-5 items-center rounded-md border border-gray-950/15 px-1.5 text-sm font-semibold uppercase leading-none tracking-wider text-gray-600 select-none dark:border-white/15 dark:text-gray-400"
+            >
+                <!-- The trim goes on a flex item of its own: the property is not inherited, so on
+                     the badge itself it would never reach the anonymous box holding the text. -->
+                <span class="[text-box:trim-both_cap_alphabetic]">{releaseStageBadge.label}</span>
+            </span>
+        {/if}
     </div>
 
     <nav aria-label="Primary" class="hidden items-center gap-1 lg:flex">

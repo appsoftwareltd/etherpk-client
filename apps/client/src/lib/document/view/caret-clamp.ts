@@ -1,8 +1,9 @@
 /**
  * Caret clamp (ADR 0021): an empty-selection caret may never rest left of a line's content column —
- * the bullet marker's end, a fenced-code line's fence column, or a continuation line's floor. One
- * selection-level filter enforces it for every placement path (arrow keys, mouse clicks, Home,
- * programmatic moves), so typing can never land in the structural margin and break the formatting.
+ * the bullet marker's end, a fenced-code line's fence column, or the content column a continuation
+ * line hangs at. One selection-level filter enforces it for every placement path (arrow keys, mouse
+ * clicks, Home, programmatic moves), so typing can never land in the structural margin and break the
+ * formatting.
  *
  * ArrowLeft AT the clamp (a one-position leftward move from it) jumps to the end of the previous
  * line instead — the caret flows block-to-block like Logseq — while any other placement into the
@@ -23,11 +24,16 @@ import { EditorSelection, EditorState, type Extension, type SelectionRange, type
 import { frontmatterLines } from '$lib/storage/fs/frontmatter-span'
 
 import { fencedBlocks } from '../fenced-code'
-import { continuationFloor, isBulletLine, lineIndent, markerLength } from '../outliner'
+import { type OutlineLine, outlineLines } from '../indent-unit'
+import { continuationColumn, isBulletLine, lineIndent, MARKER_WIDTH, markerLength } from '../outliner'
+import { editorAnalysisField, type EditorAnalysis } from './analysis/editor-analysis'
 import { isBlockRange } from './block-select'
 
-/** The leftmost column the caret may rest at on line `i` (0-based) of `lines`. */
-export function clampColumn(lines: string[], i: number): number {
+/**
+ * The leftmost column the caret may rest at on line `i` (0-based) of `lines`. `outline` is the
+ * outline walk over `lines`: the editor analysis holds it for the current document.
+ */
+export function clampColumn(lines: string[], i: number, outline?: readonly OutlineLine[]): number {
     const line = lines[i]
     // [[Frontmatter]] is unclamped YAML: a `  - alias` there is a list entry whose indentation
     // the caret must be able to reach, and the lines above the body own nothing below them.
@@ -37,9 +43,14 @@ export function clampColumn(lines: string[], i: number): number {
     const block = blocks.find((b) => i >= b.start && i <= b.end)
     if (block && i > block.start) return Math.min(block.fenceColumn, line.length) // code body/closer: the fence column
     if (isBulletLine(line)) return lineIndent(line) + markerLength(line) // after `- ` / `- [ ] ` (covers form-1 openers)
-    const floor = continuationFloor(lines.slice(frontmatter), i - frontmatter)
-    if (floor > 0) return Math.min(floor, line.length) // a continuation/soft line: its owning block's floor
-    return 0 // plain prose / headings / bare fences: unclamped
+    // A continuation or soft line sits at or past its owning bullet's content column, and is held
+    // there, a line the outline walk gives a bullet across a soft line or a `*` item included. A line
+    // short of the column is plain prose (continuationColumn is 0): a space typed at column 0 under a
+    // list stays where it was typed, and the caret with it, until the spaces reach the column and
+    // make the line the bullet's continuation. A line indented less than the marker reaches no
+    // bullet's column, so it skips the walk (after an edit there is no analysis of the new text yet).
+    if (lineIndent(line) < MARKER_WIDTH) return 0
+    return continuationColumn(lines, i, outline ?? outlineLines(lines, blocks)) // 0 for prose / headings / bare fences
 }
 
 /**
@@ -66,10 +77,10 @@ function clampedRange(range: SelectionRange, clamp: number): EditorSelection {
 }
 
 /** A text range across lines with each end moved right of its own line's clamp, its direction kept. */
-function clampedEnds(doc: Text, lines: string[], range: SelectionRange): EditorSelection {
+function clampedEnds(doc: Text, lines: string[], range: SelectionRange, outline?: readonly OutlineLine[]): EditorSelection {
     const clampAt = (pos: number) => {
         const line = doc.lineAt(pos)
-        return Math.max(pos, line.from + clampColumn(lines, line.number - 1))
+        return Math.max(pos, line.from + clampColumn(lines, line.number - 1, outline))
     }
     return EditorSelection.single(clampAt(range.anchor), clampAt(range.head))
 }
@@ -83,19 +94,21 @@ export function caretClamp(): Extension {
         const doc = tr.startState.doc
         const line = doc.lineAt(sel.head)
         const lines = doc.toString().split('\n')
+        // A pure selection move reads the start state's text, whose outline walk the analysis holds.
+        const outline = (tr.startState.field(editorAnalysisField, false) as EditorAnalysis | undefined)?.outline
         if (!sel.empty) {
             if (doc.lineAt(sel.anchor).number !== line.number) {
                 // Across lines: a text range inside one block keeps each end off its line's margin; a
                 // range reaching another block is the block snap's, which widens it to whole lines.
                 if (isBlockRange(tr.startState, sel)) return tr
-                const clamped = clampedEnds(doc, lines, sel)
+                const clamped = clampedEnds(doc, lines, sel, outline)
                 return clamped.main.eq(sel) ? tr : { selection: clamped }
             }
             // A range within one line: clamp its margin end.
-            const clamp = line.from + clampColumn(lines, line.number - 1)
+            const clamp = line.from + clampColumn(lines, line.number - 1, outline)
             return sel.from >= clamp ? tr : { selection: clampedRange(sel, clamp) }
         }
-        const clamp = line.from + clampColumn(lines, line.number - 1)
+        const clamp = line.from + clampColumn(lines, line.number - 1, outline)
         if (sel.head >= clamp) return tr
         // A single-position leftward move from exactly the clamp = ArrowLeft at the wall → flow to the
         // end of the previous line (which is always at/right of its own clamp).

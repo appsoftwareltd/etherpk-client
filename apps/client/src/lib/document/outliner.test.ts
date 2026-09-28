@@ -12,6 +12,7 @@ import {
     outdentTarget,
     computeMove,
     contentColumn,
+    continuationColumn,
     continuationFloor,
     cycleTask,
     groupBounds,
@@ -73,6 +74,28 @@ describe('content column and the Indent Unit (ADR 0020, ADR 0067)', () => {
         expect(continuationFloor(['- a', '  - b', '    cont'], 2)).toBe(4) // owned by the nearest shallower bullet
         expect(continuationFloor(['prose', '  more'], 1)).toBe(0) // under prose, not a bullet
         expect(continuationFloor(['  cont'], 0)).toBe(0) // nothing above
+    })
+    it('continuationColumn is the continued bullet’s content column once the line reaches it, and 0 for prose', () => {
+        expect(continuationColumn(['- a', '  cont'], 1)).toBe(2)
+        expect(continuationColumn(['- a', ' x'], 1)).toBe(0) // one space in: short of the column, prose
+        expect(continuationColumn(['- a', '  - b', '   x'], 2)).toBe(0) // past a's column, short of b's
+        expect(continuationColumn(['prose', '  more'], 1)).toBe(0)
+        // The outline walk looks past a soft line, a `*` item or a closer to the bullet above them.
+        expect(continuationColumn(['- a', '  cont', '    deeper'], 2)).toBe(2)
+        expect(continuationColumn(['- a', '  * one', '    * two'], 2)).toBe(2)
+        expect(continuationColumn(['- a', '  ```', '  code', '  ```', '    after'], 4)).toBe(2)
+        // The floor looks past a blank line, which the walk does not.
+        expect(continuationColumn(['- a', '  - b', '', '    x'], 3)).toBe(4)
+        // After a form-1 block (the fence on the bullet line), as after a form-2 one.
+        expect(continuationColumn(['- ```py', '  code', '  ```', '    after'], 3)).toBe(2)
+    })
+    it('continuationColumn reads a blank line as the line it becomes with text in it', () => {
+        // Under a prose line short of the column, text is prose nested under that line, so the blank
+        // line is prose too; under a soft line it is the bullet's, as the text below it is.
+        expect(continuationColumn(['- a', ' p', '   ', '- b'], 2)).toBe(0)
+        expect(continuationColumn(['- a', ' p', '   y', '- b'], 2)).toBe(0)
+        expect(continuationColumn(['- a', '  cont', '    ', '    deeper'], 2)).toBe(2)
+        expect(continuationColumn(['- a', '   '], 1)).toBe(2)
     })
 })
 
@@ -239,6 +262,16 @@ describe('Outliner Block Group boundaries (ADR 0021)', () => {
         const lines = L('- a\n  cont\n- b')
         expect(ownerBulletIndex(lines, 1)).toBe(0)
         expect(ownerBulletIndex(lines, 0)).toBe(0)
+    })
+
+    it('ownerBulletIndex gives a line after a form-1 block to that block’s bullet, as after a form-2 block', () => {
+        // The form-1 opener is the bullet itself, not fenced content: the keys measure against it.
+        expect(ownerBulletIndex(L('- ```py\n  code\n  ```\n  after'), 3)).toBe(0)
+        expect(ownerBulletIndex(L('- ```py\n  code\n  ```\n    after'), 3)).toBe(0)
+        expect(ownerBulletIndex(L('- p\n  - ```py\n    code\n    ```\n      after'), 4)).toBe(1)
+        expect(ownerBulletIndex(L('- a\n  ```py\n  code\n  ```\n    after'), 4)).toBe(0)
+        // Its code lines are still code, owned by nobody's continuation.
+        expect(ownerBulletIndex(L('- ```py\n  code\n  ```'), 1)).toBe(0)
     })
 })
 

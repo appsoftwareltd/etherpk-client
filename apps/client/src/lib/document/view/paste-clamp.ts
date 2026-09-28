@@ -358,11 +358,20 @@ export function pasteClamp(): Extension {
                 }
             }
         }
-        if (!multiLine) return tr
-        // Inside a fence the clamp is the fence column; on a bullet-shaped line (a form-1 opener) the
-        // content column; in prose and the frontmatter, 0.
-        const clamp = isBulletLine(line.text) ? contentColumn(line.text) : clampColumn(lines, index)
-        let insert = clampPastedText(text, clamp)
+        const block = blocks.find((b) => index > b.start && index < b.end)
+        // A code line short of its fence column (an empty line another tool wrote without the column's
+        // spaces) takes the fragment, one line or several, as a padded line would: the spaces it lacks go
+        // before the first line. Padded by the fence guard after the paste instead, the fragment's own
+        // indentation would fill the gap to the column and the code would lose it.
+        // Only a short line lacks spaces: inside a block a line left of the column is always blank (a
+        // non-blank one would have ended the block), so the caret on it is short of the column too.
+        const pad = block && text !== '' && lineIndent(line.text) < block.fenceColumn ? ' '.repeat(block.fenceColumn - (from - line.from)) : ''
+        if (!multiLine && !pad) return tr
+        // Inside a fence the clamp is the fence column (a code line's, not where the caret can rest: on
+        // an empty line that is column 0), whatever the code line looks like; on a bullet-shaped line
+        // outside one (a form-1 opener) the content column; in prose and the frontmatter, 0.
+        const clamp = block ? block.fenceColumn : isBulletLine(line.text) ? contentColumn(line.text) : clampColumn(lines, index)
+        let insert = pad + clampPastedText(text, clamp)
         if (clamp === 0 && !opaque[index] && line.text.slice(0, from - line.from).trim() === '') {
             // Starting a prose line (a clean line, or the start of one): the fragment's indentation is
             // where it was copied from, not where it lands. Code and YAML keep theirs.

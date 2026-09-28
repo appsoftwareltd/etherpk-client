@@ -1,5 +1,7 @@
 import { EditorState } from '@codemirror/state'
 import { describe, expect, it } from 'vitest'
+
+import { outlineLines } from '../../indent-unit'
 import {
     analysisFor,
     editorAnalysis,
@@ -224,6 +226,21 @@ describe('editor structural analysis', () => {
             fullAnalyses: 2,
             incrementalAnalyses: 0,
         })
+    })
+})
+
+describe('the outline follows a line that becomes a heading', () => {
+    // A heading is a node of the outline walk, never a continuation: typing `# ` into a soft line
+    // takes the lines nested under it away from the bullet, which the caret clamp and the highlight
+    // read from this outline. The line's indent and marker are unchanged, so only the heading check
+    // sends the edit down the full path.
+    it('re-reads the outline when a line becomes a heading, and when it stops being one', () => {
+        let state = EditorState.create({ doc: '- a\n  x\n    y', extensions: [editorAnalysis()] })
+        state = state.update({ changes: { from: 6, insert: '# ' } }).state
+        expect(state.doc.toString()).toBe('- a\n  # x\n    y')
+        expect(analysisFor(state).outline).toEqual(outlineLines(state.doc.toString().split('\n')))
+        state = state.update({ changes: { from: 6, to: 8 } }).state
+        expect(analysisFor(state).outline).toEqual(outlineLines(state.doc.toString().split('\n')))
     })
 })
 

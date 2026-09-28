@@ -51,6 +51,7 @@ import { wikilinkAugmentation } from './augmentations/wikilink'
 import { wikilinkCompletion } from './augmentations/wikilink-complete'
 import { blockSelection } from './block-select'
 import { caretClamp } from './caret-clamp'
+import { fencePad } from './fence-guard'
 import { type EditRefusal, editRefusalReporter } from './edit-refused'
 import { wrapSelectionInput } from './wrap-selection'
 
@@ -138,6 +139,9 @@ export function editorFeatures(services: EditorExtensionServices): EditorFeature
         // and an empty-selection caret can never rest left of a line's content column (ADR 0021).
         { name: 'block-selection', extension: blockSelection() },
         { name: 'caret-clamp', extension: caretClamp() },
+        // Registered after the caret clamp so it runs before it (filters run in reverse): a code line
+        // an edit leaves short of its fence column is padded first, and the clamp judges it as code.
+        { name: 'fence-pad', extension: fencePad() },
         // The Frontmatter block's edges: body text never joins onto its closer, and it never grows
         // past what was typed into it (ADR 0061).
         { name: 'frontmatter-boundary', extension: frontmatterBoundaryGuard() },

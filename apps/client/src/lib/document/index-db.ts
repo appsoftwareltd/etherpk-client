@@ -404,7 +404,7 @@ function insertDerived(db: SqlDb, pageId: number, doc: IndexDoc): string[] {
  * Derivation supplies the wikilinked half; the document's own concept is added HERE, as the
  * virtual root of every task's ancestry chain, because derivation reads text and never learns
  * the document's identity. Without that row, filtering to a project page returns nothing for
- * the tasks written directly on it — the case the "Use <active tab>" shortcut exists for.
+ * the tasks written directly on it — the case the "Filter to <active tab>" shortcut exists for.
  *
  * Only the document's own concept goes in, never its aliases: the query resolves a filtered
  * name to its page and matches on every name that page answers to, so an alias row here would
