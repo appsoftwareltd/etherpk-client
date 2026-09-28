@@ -17,6 +17,10 @@
  * Only lines between the delimiters are handled: the delimiter lines are the block's edges, and
  * the keys there behave as they do in the body. The bindings sit above the outliner keymap, which
  * otherwise consumes Tab in the block and treats a YAML list item as a bullet.
+ *
+ * Select all is bound here as well, at the same precedence, though it acts in the body too: it
+ * keeps to one side of the block's edge, so the command lives with the edge rules in
+ * `frontmatter-boundary.ts`.
  */
 
 import { EditorSelection, EditorState, type Extension, Prec, type StateCommand, Transaction, type TransactionSpec } from '@codemirror/state'
@@ -25,6 +29,7 @@ import { type KeyBinding, keymap } from '@codemirror/view'
 import { isFrontmatterDelimiter } from '$lib/storage/fs/frontmatter-span'
 
 import { analysisFor } from './analysis/editor-analysis'
+import { selectAllOnOneSideOfFrontmatter } from './frontmatter-boundary'
 import { isFrontmatterBodyLine } from './frontmatter-text'
 
 /** The YAML indent unit EtherPK writes (ADR 0108). */
@@ -184,6 +189,7 @@ export function frontmatterBindings(): KeyBinding[] {
         { key: 'Tab', run: indent as KeyBinding['run'] },
         { key: 'Shift-Tab', run: outdent as KeyBinding['run'] },
         { key: 'Backspace', run: backspace as KeyBinding['run'] },
+        { key: 'Mod-a', run: selectAllOnOneSideOfFrontmatter as KeyBinding['run'] },
     ]
 }
 

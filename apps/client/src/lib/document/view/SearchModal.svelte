@@ -7,6 +7,8 @@
      * group would push the slow one — the reason the modal exists — below the fold on every
      * keystroke. Two things stop that: the Names group is capped at five rows per page, and
      * the Text group reserves its first page's height as a skeleton before anything arrives.
+     * A query of Property Filters alone has no Text group, so its names are listed in full and
+     * the results scroll (`namesPaged`).
      *
      * [[Property Filter]]s (ADR 0107) add two things around the box: a row of chips, one per
      * filter the query holds, and a suggestion list while a key or a key's value is typed. The

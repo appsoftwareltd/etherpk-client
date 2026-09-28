@@ -21,11 +21,15 @@ describe('readMembership', () => {
         expect(m.issues.map((i) => i.code)).toEqual(['publications-invalid-id'])
     })
 
-    it('treats a scalar `publications` as one id, and anything else as none', () => {
-        expect(readMembership('---\npublications: docs\n---\n').publications).toEqual(['docs'])
-        const m = readMembership('---\npublications:\n  a: 1\n---\n')
-        expect(m.publications).toEqual([])
-        expect(m.issues.map((i) => i.code)).toEqual(['publications-not-a-list'])
+    it('reads only a list: a lone id or a mapping is reported and names none', () => {
+        // A list of one is still a list (`  - docs`). A key whose type changed with its count would
+        // read as text in one tool and a list in another.
+        for (const text of ['---\npublications: docs\n---\n', '---\npublications:\n  a: 1\n---\n']) {
+            const m = readMembership(text)
+            expect(m.publications).toEqual([])
+            expect(m.issues.map((i) => i.code)).toEqual(['publications-not-a-list'])
+        }
+        expect(readMembership('---\npublications:\n  - docs\n---\n').publications).toEqual(['docs'])
     })
 })
 

@@ -54,12 +54,13 @@ export function readMembership(text: string, concept?: string): Membership {
     const publications: string[] = []
     // An empty value means the key is not set (ADR 0108): `publications:` names none.
     const raw = isEmptyValue(data.publications) ? undefined : data.publications
-    const entries = raw === undefined ? [] : Array.isArray(raw) ? raw : typeof raw === 'string' ? [raw] : null
+    // A list only: a lone id (`publications: docs`) is not one, and a list of one is `  - docs`.
+    const entries = raw === undefined ? [] : Array.isArray(raw) ? raw : null
     if (entries === null) {
         issues.push({
             level: 'warning',
             code: 'publications-not-a-list',
-            message: '`publications` must be a list of publication ids, like `publications: [docs, blog]`.',
+            message: '`publications` must be a list of publication ids, each on its own line under the key as `- docs`, even when there is one.',
             concept,
         })
     } else {

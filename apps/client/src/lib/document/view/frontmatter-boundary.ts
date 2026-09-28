@@ -27,13 +27,14 @@
  * Cost: typing in the body reads one field. Only a change reaching the block materialises the
  * document, and the result once more.
  */
-import { EditorState, type Extension } from '@codemirror/state'
+import { EditorSelection, EditorState, type Extension, type StateCommand } from '@codemirror/state'
 
 import { type GuardedChange, crossesFrontmatterSeam, frontmatterWouldGrow } from '$lib/document/frontmatter/boundary'
 
 import { analysisFor } from './analysis/editor-analysis'
 import { EXTERNAL, collaborative } from './cm-document'
 import { refuseEdit } from './edit-refused'
+import { lineInFrontmatter } from './outliner-context'
 import { isOwnEditing } from './own-editing'
 
 export function frontmatterBoundaryGuard(): Extension {
@@ -54,4 +55,34 @@ export function frontmatterBoundaryGuard(): Extension {
         if (frontmatterWouldGrow(before, changes, after)) return refuseEdit('frontmatter-grow')
         return tr
     })
+}
+
+/**
+ * Select all, kept to the side of the block's edge the selection's head is on: in the block (its
+ * delimiter lines included) the lines between the delimiters, in the body everything after the
+ * block. Typing over or deleting what it selects then changes that side alone; CodeMirror's
+ * select-all took the title with the body. An empty side selects nothing and leaves the selection
+ * as it was, the key still consumed so the default cannot widen it. With no block there is no
+ * edge, and the command declines so CodeMirror's own select-all takes the key.
+ *
+ * The key only: the browser's own Select All (a context menu, a phone's selection toolbar) never
+ * reaches the keymap and still selects the whole document.
+ */
+export const selectAllOnOneSideOfFrontmatter: StateCommand = ({ state, dispatch }) => {
+    const end = analysisFor(state).frontmatterEnd
+    if (end < 0) return false
+    const closer = state.doc.lineAt(end)
+    let from: number
+    let to: number
+    if (lineInFrontmatter(state, state.selection.main.head)) {
+        if (closer.number <= 2) return true
+        from = state.doc.line(2).from
+        to = state.doc.line(closer.number - 1).to
+    } else {
+        from = closer.to + 1
+        to = state.doc.length
+        if (from >= to) return true
+    }
+    dispatch(state.update({ selection: EditorSelection.single(from, to), userEvent: 'select' }))
+    return true
 }

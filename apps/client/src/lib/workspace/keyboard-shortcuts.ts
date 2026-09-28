@@ -112,6 +112,7 @@ export const EDITOR_SHORTCUTS: ShortcutGroup[] = [
             { key: 'Mod+B', label: 'Bold the selection, or unbold it' },
             { key: 'Mod+I', label: 'Italicise the selection, or unitalicise it' },
             { key: 'Mod+Shift+H', label: 'Highlight the selection, or clear the highlight' },
+            { key: 'Mod+A', label: "Select all: the frontmatter's lines, or the text below them, never both" },
             { key: '```', label: 'Then Enter: complete a code fence' },
             { key: 'Mod+Z', label: 'Undo' },
             { key: 'Mod+Shift+Z', label: 'Redo' },

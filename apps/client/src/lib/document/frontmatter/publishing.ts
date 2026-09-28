@@ -1,11 +1,14 @@
 /**
  * The publishing keys of a document's [[Frontmatter]] (ADR 0082): `public: true` is the consent
- * switch, `publications: [docs, blog]` routes. A public document with an empty list keeps the
- * key as `publications: []`: public with nowhere to go is a state worth a prompt, and the empty
- * key is that prompt to whoever edits the file by hand. Not public, the empty key is removed. Rewritten the way `withFrontmatterIdentity`
- * rewrites identity: other keys keep their values and order, the same string comes back when
- * nothing would change, and a block whose YAML does not parse is left alone rather than
- * destroyed. Read through `readMembership` in `publish/publication.ts`; this file only writes.
+ * switch, and `publications`, a list of publication ids, routes. A public document with no
+ * publication keeps the key, written bare (`publications:`): public with nowhere to go is a state
+ * worth a prompt, and the empty key is that prompt to whoever edits the file by hand. Bare rather
+ * than `[]` because that is how the EtherPK style writes every empty value (ADR 0108), and because
+ * Enter after a bare key opens the next line one level in, ready for the first `- id`. Not public, the empty key is
+ * removed. Rewritten the way `withFrontmatterIdentity` rewrites identity: other keys keep their
+ * values and order, the same string comes back when nothing would change, and a block whose YAML
+ * does not parse is left alone rather than destroyed. Read through `readMembership` in
+ * `publish/publication.ts`, which reads a bare key and `[]` alike; this file only writes.
  */
 
 import { isPublicationId } from '../publish/publication'
@@ -15,7 +18,7 @@ import { editFrontmatter } from './frontmatter-yaml'
 export interface PublishingPatch {
     /** True or false sets the key; null removes it; undefined leaves it alone. */
     public?: boolean | null
-    /** A list sets the key (an empty list stays as `[]` only on a public document); null removes it; undefined leaves it alone. */
+    /** A list sets the key (an empty list stays, written bare, only on a public document); null removes it; undefined leaves it alone. */
     publications?: readonly string[] | null
 }
 
@@ -30,7 +33,7 @@ export function withPublishing(text: string, patch: PublishingPatch, options: { 
             if (publications === undefined) return
             const keepEmpty = (patch.public === undefined ? block.get('public') : patch.public) === true
             if (publications === null || (publications.length === 0 && !keepEmpty)) block.delete('publications')
-            else block.set('publications', publications)
+            else block.set('publications', publications.length === 0 ? null : publications)
         },
         options,
     )

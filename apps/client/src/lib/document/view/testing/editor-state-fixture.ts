@@ -25,6 +25,7 @@ import {
     moveLineDown,
     moveLineUp,
     redo,
+    selectAll,
     undo,
 } from '@codemirror/commands'
 import { EditorSelection, EditorState, type Extension, type StateCommand, type Transaction } from '@codemirror/state'
@@ -105,6 +106,8 @@ const DEFAULT_KEY_HANDLERS: Record<string, StateCommand> = {
     'Alt-ArrowDown': stateOnly(moveLineDown),
     'Mod-z': undo,
     'Mod-y': redo,
+    // CodeMirror's own, which the frontmatter's select-all declines to in a document with no block.
+    'Mod-a': selectAll,
 }
 
 /** Treat a view-typed command that only reads `state` and calls `dispatch` as a state command. */

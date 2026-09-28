@@ -94,17 +94,19 @@ AGENTS.md                                     this file
   user can find documents by it in Search (`status:draft`).
 - **Write the block the way EtherPK does**, so a later EtherPK write changes nothing but the key
   it is setting: two-space indentation, a list under its key with one item per line
-  (`aliases:` then `  - Board`), quotes only where a value needs them, no blank lines inside
-  the block. Never indent with a tab: YAML forbids it, and a block that does not parse is
+  (`aliases:` then `  - Board`), a list of one written the same way, an empty list on a key
+  EtherPK reads written as the bare key (`publications:`, not `[]`), quotes only where a value
+  needs them, no blank lines inside the block. Never indent with a tab: YAML forbids it, and a block that does not parse is
   ignored whole. Comments are kept.
 - **An empty value means the key is not set.** `slug:`, `date:`, `publications:` or a bare
   `publication:` with nothing after the colon change nothing, so leave a key empty rather than
   inventing a value.
 - **Publishing.** EtherPK can render a set of documents into a website. A document is published
   only when its frontmatter says `public: true` **and** it belongs to a publication:
-  `publications: [docs, blog]` names the publications by id, unless a publication takes every
-  public document; `publications: []` on a public document is EtherPK's prompt that it is in
-  none yet. A protected document is never published whatever its frontmatter says, and EtherPK
+  a `publications:` list names the publications by id, one per line (`  - docs`), unless a
+  publication takes every public document; `publications:` left empty on a public document is
+  EtherPK's prompt that it is in none yet. A list of one is still a list, never a bare value.
+  A protected document is never published whatever its frontmatter says, and EtherPK
   removes both keys before protecting a public document. A
   **publication** is defined by a page whose frontmatter carries a `publication:` mapping
   (`id`, and optionally `kind` of `docs` or `blog`, `selection` of `named` or `all-public`,

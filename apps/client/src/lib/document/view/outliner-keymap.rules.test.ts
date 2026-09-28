@@ -933,6 +933,57 @@ table('Frontmatter keeps its edges', [
     },
 ])
 
+// Select all selects the region the caret is in, the body or the frontmatter's lines, and never
+// crosses into the other: typing over a whole-document selection took the title with the body.
+// Neither Obsidian (whose Properties are a separate panel) nor Logseq (no such block) has the
+// case, so the rule is our own. With no block the key is CodeMirror's own select-all.
+table('Select all keeps to the body or the frontmatter', [
+    { rule: 'in the body it selects the body, from its first line to the end', precedent: 'EtherPK', before: '---\ntitle: K\n---\n- a|\n- b', key: 'Mod-a', after: '---\ntitle: K\n---\n«- a\n- b»' },
+    { rule: 'prose in the body the same', precedent: 'EtherPK', before: '---\ntitle: K\n---\nsome |text\nmore', key: 'Mod-a', after: '---\ntitle: K\n---\n«some text\nmore»' },
+    { rule: 'in the frontmatter it selects the lines between the delimiters', precedent: 'EtherPK', before: '---\nti|tle: K\ntags: x\n---\n- a', key: 'Mod-a', after: '---\n«title: K\ntags: x»\n---\n- a' },
+    { rule: 'on the opening delimiter too', precedent: 'EtherPK', before: '---|\ntitle: K\n---\n- a', key: 'Mod-a', after: '---\n«title: K»\n---\n- a' },
+    { rule: 'on the closing delimiter too', precedent: 'EtherPK', before: '---\ntitle: K\n---|\n- a', key: 'Mod-a', after: '---\n«title: K»\n---\n- a' },
+    { rule: 'pressed again it does not widen into the other region', precedent: 'EtherPK', before: '---\ntitle: K\n---\n«- a\n- b»', key: 'Mod-a', after: '---\ntitle: K\n---\n«- a\n- b»' },
+    { rule: 'a selection across the seam selects the region its head is in', precedent: 'EtherPK', before: '---\ntitle: «K\n---\n- a\n- b»', key: 'Mod-a', after: '---\ntitle: K\n---\n«- a\n- b»' },
+    { rule: 'a body of one bullet and no line after it selects its text, as any selection within a bullet line does', precedent: 'EtherPK', before: '---\ntitle: K\n---\n- a|', key: 'Mod-a', after: '---\ntitle: K\n---\n- «a»' },
+    { rule: 'a body of one bullet ending in a line break selects the whole block, as a selection across lines does', precedent: 'EtherPK', before: '---\ntitle: K\n---\n- a|\n', key: 'Mod-a', after: '---\ntitle: K\n---\n«- a\n»' },
+    { rule: 'a document with no frontmatter is selected whole', precedent: 'VS Code', before: '- a|\n- b', key: 'Mod-a', after: '«- a\n- b»' },
+    { rule: 'an empty frontmatter block has nothing to select: the caret stays', precedent: 'EtherPK', before: '---|\n---\n- a', key: 'Mod-a', after: '---|\n---\n- a' },
+    { rule: 'an empty body has nothing to select: the caret stays', precedent: 'EtherPK', before: '---\ntitle: K\n---\n|', key: 'Mod-a', after: '---\ntitle: K\n---\n|' },
+])
+
+// Select all is for what comes next: an edit over what it selects must change that region and
+// leave the other whole, the block's delimiters included.
+describe('an edit over what Select all selects changes that region alone', () => {
+    function afterSelectAll(before: string, act: (editor: ReturnType<typeof editorFixture>) => void): string {
+        const editor = editorFixture(before)
+        editor.key('Mod-a')
+        act(editor)
+        return editor.fixture()
+    }
+    for (const body of ['- a|\n- b', '- a|\n- b\n', 'some |text\nmore\n']) {
+        const before = `---\ntitle: K\n---\n${body}`
+        it(`Backspace empties the body and keeps the block (${JSON.stringify(body)})`, () => {
+            expect(afterSelectAll(before, (e) => e.key('Backspace'))).toBe('---\ntitle: K\n---\n|')
+        })
+        it(`Delete does the same (${JSON.stringify(body)})`, () => {
+            expect(afterSelectAll(before, (e) => e.key('Delete'))).toBe('---\ntitle: K\n---\n|')
+        })
+        it(`a cut, then typing, writes below the block (${JSON.stringify(body)})`, () => {
+            expect(afterSelectAll(before, (e) => (e.cut(), e.type('N')))).toBe('---\ntitle: K\n---\nN|')
+        })
+        it(`typing replaces the body (${JSON.stringify(body)})`, () => {
+            expect(afterSelectAll(before, (e) => e.type('N'))).toBe('---\ntitle: K\n---\nN|')
+        })
+    }
+    it('Backspace in the block empties its lines and keeps both delimiters and the body', () => {
+        expect(afterSelectAll('---\nti|tle: K\ntags: x\n---\n- a', (e) => e.key('Backspace'))).toBe('---\n|\n---\n- a')
+    })
+    it('typing in the block replaces its lines and keeps the body', () => {
+        expect(afterSelectAll('---\nti|tle: K\ntags: x\n---\n- a', (e) => e.type('title: N'))).toBe('---\ntitle: N|\n---\n- a')
+    })
+})
+
 describe('Frontmatter does not move', () => {
     // Verbatim metadata is opaque like a fence. Alt+Down used to carry `title:` past the closing
     // delimiter, leaving empty Frontmatter and a stray body line - silently changing which

@@ -20,7 +20,11 @@ import type { PropertyKeyInfo, PropertyMatch, PropertyValueInfo, SearchDocumentG
 import { rankQuickFind, type QuickFindRow } from './quick-find'
 import { isSearchableTextQuery, parseSearchQuery, type PropertyFilter, type PropertyFilterTerm } from './search-query'
 
-/** Rows of names per page. Five, because Names is a jump list, not something to page through. */
+/**
+ * Rows of names per page. Few, because Names is a jump list, not something to page through, and
+ * it sits above the Text group: a longer page pushes the slower group further down. A query of
+ * Property Filters alone has no Text group, so its names are not paged (`namesPaged`).
+ */
 export const NAME_PAGE_SIZE = 5
 
 /** Document groups per page of text results. */
@@ -68,6 +72,12 @@ export interface SearchState {
     nameRows: SearchNameRow[]
     namePage: number
     nameTotal: number
+    /**
+     * Whether the names are shown a page at a time. Not when the query is Property Filters and no
+     * words: the documents passing them are the whole answer, with no Text group below to keep in
+     * view, so every one is listed and the results scroll.
+     */
+    namesPaged: boolean
     /** True while the index is still building — names are as partial as text is. */
     nameBuilding: boolean
     textGroups: SearchDocumentGroup[]
@@ -139,6 +149,7 @@ const EMPTY: SearchState = {
     nameRows: [],
     namePage: 0,
     nameTotal: 0,
+    namesPaged: true,
     nameBuilding: false,
     textGroups: [],
     textPage: 0,
@@ -196,8 +207,9 @@ export function createSearchController(sources: SearchSources): SearchController
     function runNames() {
         const building = sources.building()
         const { words, filters, terms } = parsed()
+        const namesPaged = !(filters.length > 0 && words.trim() === '')
         if (filters.length > 0 && sources.propertyMatch) {
-            set({ filterTerms: terms, nameBuilding: building !== null })
+            set({ filterTerms: terms, nameBuilding: building !== null, namesPaged })
             runFilteredNames(words, filters)
             return
         }
@@ -208,6 +220,7 @@ export function createSearchController(sources: SearchSources): SearchController
             nameTotal: all.length,
             nameBuilding: building !== null,
             filterTerms: terms,
+            namesPaged,
         })
     }
 
@@ -448,14 +461,16 @@ export function createSearchController(sources: SearchSources): SearchController
     }
 }
 
-/** The slice of name rows the current page shows. */
+/** The slice of name rows the current page shows: every row when the names are not paged. */
 export function namePageRows(state: SearchState): SearchNameRow[] {
+    if (!state.namesPaged) return state.nameRows
     const from = state.namePage * NAME_PAGE_SIZE
     return state.nameRows.slice(from, from + NAME_PAGE_SIZE)
 }
 
 /** Total pages of names, at least one so the pager never reads "0 of 0". */
 export function namePageCount(state: SearchState): number {
+    if (!state.namesPaged) return 1
     return Math.max(1, Math.ceil(state.nameTotal / NAME_PAGE_SIZE))
 }
 

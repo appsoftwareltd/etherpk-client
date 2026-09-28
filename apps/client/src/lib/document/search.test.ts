@@ -310,19 +310,32 @@ describe('createSearchController', () => {
 })
 
 describe('name paging', () => {
+    const rows = Array.from({ length: 20 }, (_, n) => ({
+        label: `Row ${n}`,
+        target: `Row ${n}`,
+        detail: 'Page',
+        kind: 'page' as const,
+    }))
+
+    it('pages names five at a time', () => {
+        expect(NAME_PAGE_SIZE).toBe(5)
+    })
+
     it('slices the current page and counts at least one page', () => {
-        const rows = Array.from({ length: 12 }, (_, n) => ({
-            label: `Row ${n}`,
-            target: `Row ${n}`,
-            detail: 'Page',
-            kind: 'page' as const,
-        }))
-        const state = { nameRows: rows, nameTotal: rows.length, namePage: 1 } as never
+        const state = { nameRows: rows, nameTotal: rows.length, namePage: 1, namesPaged: true } as never
 
         expect(namePageRows(state)).toHaveLength(NAME_PAGE_SIZE)
         expect(namePageRows(state)[0].label).toBe('Row 5')
-        expect(namePageCount(state)).toBe(3)
-        expect(namePageCount({ nameTotal: 0, nameRows: [], namePage: 0 } as never)).toBe(1)
+        expect(namePageCount(state)).toBe(4)
+        expect(namePageCount({ nameTotal: 0, nameRows: [], namePage: 0, namesPaged: true } as never)).toBe(1)
+    })
+
+    it('shows every row on one page when the names are not paged', () => {
+        const state = { nameRows: rows, nameTotal: rows.length, namePage: 0, namesPaged: false } as never
+
+        expect(namePageRows(state)).toHaveLength(20)
+        expect(namePageCount(state)).toBe(1)
+        expect(pageTurnFor(state, 3, 1)).toBeNull()
     })
 })
 
@@ -483,6 +496,37 @@ describe('Property Filters (ADR 0107)', () => {
         expect(controller.getState().nameTotal).toBe(2)
         expect(controller.getState().textStatus.kind).toBe('hidden')
         expect(searchText).not.toHaveBeenCalledWith(expect.anything(), expect.anything(), expect.anything(), expect.arrayContaining([expect.anything()]))
+    })
+
+    /** Twenty documents that all pass `public:true`, each a page of its own. */
+    const many = Array.from({ length: 20 }, (_, n) => ({
+        concept: `Doc ${String(n + 1).padStart(2, '0')}`,
+        kind: 'page' as const,
+        properties: [{ key: 'public', value: 'true' }],
+    }))
+    const manySources = () =>
+        filterSources({ concepts: () => many.map((doc) => concept(doc.concept)), propertyMatch: async () => many })
+
+    it('with filters and no words, lists every matching document on one page, to scroll rather than page', async () => {
+        // Names is paged so it cannot push the Text group down; with no words there is no Text
+        // group, and the list of documents is the whole answer.
+        const controller = createSearchController(manySources())
+        controller.open('public:true')
+        await vi.waitFor(() => expect(controller.getState().nameTotal).toBe(20))
+        const state = controller.getState()
+        expect(namePageRows(state)).toHaveLength(20)
+        expect(namePageCount(state)).toBe(1)
+        expect(pageTurnFor(state, 10, 1)).toBeNull()
+    })
+
+    it('with filters and words, pages the names as a text search does', async () => {
+        const controller = createSearchController(manySources())
+        controller.open('public:true doc')
+        // Ranked names stop at Quick Find's limit (twelve), which is still more than a page.
+        await vi.waitFor(() => expect(controller.getState().nameTotal).toBeGreaterThan(NAME_PAGE_SIZE))
+        const state = controller.getState()
+        expect(namePageRows(state)).toHaveLength(NAME_PAGE_SIZE)
+        expect(namePageCount(state)).toBe(3)
     })
 
     it('keeps the names on screen until a filtered answer lands, and drops a superseded one', async () => {

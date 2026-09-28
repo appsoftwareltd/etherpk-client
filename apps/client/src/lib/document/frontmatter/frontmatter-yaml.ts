@@ -8,7 +8,8 @@
  * key the edit does not touch, survives. The block is then written in the EtherPK style:
  *
  * - two-space indentation, a list under its key as `  - item`, one item per line;
- * - an inline list (`[a, b]`) written as a block list, an empty `[]` kept;
+ * - an inline list (`[a, b]`) written as a block list; an empty `[]` written bare on a key EtherPK
+ *   reads (`publications:`), where empty means not set, and kept on any other key;
  * - quotes only where a value needs them (`"true"` stays quoted, `"hello"` does not);
  * - no line wrapping, no blank lines, key order as found, comments kept;
  * - an empty value written bare (`slug:`), which reads as "fill this in".
@@ -18,7 +19,7 @@
  *
  * Pure: no store, no editor. What counts as a block comes from `frontmatter-span.ts`.
  */
-import { Document, isMap, isScalar, parseDocument, visit, type ToStringOptions, YAMLMap } from 'yaml'
+import { Document, isMap, isScalar, isSeq, parseDocument, Scalar, visit, type ToStringOptions, YAMLMap } from 'yaml'
 
 import { frontmatterSpan } from '$lib/storage/fs/frontmatter-span'
 
@@ -54,9 +55,34 @@ export function frontmatterData(body: string): Record<string, unknown> | null {
     return doc === null ? null : (doc.toJS() as Record<string, unknown>)
 }
 
+/**
+ * The keys EtherPK reads, on which an empty value means the key is not set (ADR 0108, point 5).
+ * On these an empty `[]` and a bare key say the same thing, so the style writes it bare. Another
+ * key's `[]` is kept: to a tool that reads it, an empty list and no value may differ.
+ */
+const NOT_SET_WHEN_EMPTY: ReadonlySet<string> = new Set(['title', 'aliases', 'public', 'publications', 'slug', 'date', 'publication'])
+
+/**
+ * A block's parsed value as EtherPK reads it: a key it reads holding an empty value counts as not
+ * set, so restyling `publications: []` to `publications:` is not a change in what it says.
+ */
+function asRead(data: unknown): unknown {
+    if (data === null || typeof data !== 'object' || Array.isArray(data)) return data
+    return Object.fromEntries(Object.entries(data).map(([key, value]) => [key, NOT_SET_WHEN_EMPTY.has(key) && isEmptyValue(value) ? null : value]))
+}
+
 /** Apply the EtherPK style to a document in place. */
 function applyStyle(doc: Document): void {
     visit(doc, {
+        Pair(_, pair, path) {
+            // A top-level key only (the document, then its mapping): a nested `[]` is another
+            // key's value, whatever its name.
+            if (path.length !== 2) return
+            const key = isScalar(pair.key) ? pair.key.value : pair.key
+            if (typeof key === 'string' && NOT_SET_WHEN_EMPTY.has(key) && isSeq(pair.value) && pair.value.items.length === 0) {
+                pair.value = new Scalar(null)
+            }
+        },
         Scalar(_, node) {
             node.spaceBefore = false
             // A single-line quoted string goes back to plain; the serialiser quotes it again when
@@ -131,7 +157,7 @@ export function tidyFrontmatter(text: string): string {
     const tidied = closed + text.slice(span.end)
     if (tidied === text) return text
     const after = frontmatterSpan(tidied)
-    if (!after || !sameValue(frontmatterData(after.body), before)) return text
+    if (!after || !sameValue(asRead(frontmatterData(after.body)), asRead(before))) return text
     return tidied
 }
 

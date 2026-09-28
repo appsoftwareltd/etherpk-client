@@ -22,7 +22,7 @@ describe('renderFrontmatter', () => {
     })
 
     it('writes an empty value bare, and nothing at all for no keys', () => {
-        expect(renderFrontmatter({ slug: null, publications: [] })).toBe('---\nslug:\npublications: []\n---\n')
+        expect(renderFrontmatter({ slug: null, publications: [] })).toBe('---\nslug:\npublications:\n---\n')
         expect(renderFrontmatter({})).toBe('')
     })
 
@@ -88,6 +88,16 @@ describe('tidyFrontmatter', () => {
 
     it('keeps CRLF line endings in the block', () => {
         expect(tidyFrontmatter('---\r\ntags: [a]\r\n---\r\nbody\r\n')).toBe('---\r\ntags:\r\n  - a\r\n---\r\nbody\r\n')
+    })
+
+    it('writes an empty list bare on a key EtherPK reads, where empty means not set', () => {
+        // `publications: []` and `publications:` say the same thing to EtherPK (ADR 0108), and the
+        // style writes every empty value bare. A key EtherPK does not read keeps its `[]`: to
+        // another tool an empty list and no value may differ.
+        expect(tidyFrontmatter('---\ntitle: T\npublications: []\naliases: []\ntags: []\n---\nbody\n')).toBe(
+            '---\ntitle: T\npublications:\naliases:\ntags: []\n---\nbody\n',
+        )
+        expect(tidyFrontmatter('---\ntags: []\n---\n')).toBe('---\ntags: []\n---\n')
     })
 
     it('never changes what the block says', () => {

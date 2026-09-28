@@ -308,7 +308,7 @@ function agentFrontmatter(rawText: string): Record<string, unknown> {
 /**
  * The block after a patch. `public` and `publications` go through the publishing writer, so its
  * rules hold whoever writes them: an id is lower-case letters, digits and hyphens, and a public
- * document with an empty list keeps `publications: []` as the prompt it is. Everything else is a
+ * document with an empty list keeps the key, written bare, as the prompt it is. Everything else is a
  * plain key. An invalid publication id is refused rather than dropped, which is what the
  * writer would do: an agent that misspells an id must hear about it.
  */

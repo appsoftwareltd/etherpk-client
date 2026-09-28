@@ -11,7 +11,8 @@
  * editor's filters and may legitimately remove a terminator - the one it inserted a moment ago,
  * leaving the one that was there before. A crossing is a change that deletes the seam AND
  * leaves the document with no block, and is neither of the two deliberate shapes: a change from
- * the document start, which replaces or removes the block whole (select-all, a write-back), and
+ * the document start, which replaces or removes the block whole (a whole-document selection made
+ * with the mouse or Shift+Mod+Home, a write-back; the Select all key keeps to one side), and
  * a change to the document end, which deletes the rest. An edit inside the block that breaks a
  * delimiter mid-typing does not delete the seam and is plain text until it balances again, as a
  * half-typed opener is.

@@ -29,12 +29,14 @@ describe('withPublishing', () => {
         expect(withPublishing('---\ntitle: T\npublic: true\n---\n- b\n', { public: null })).toBe('---\ntitle: T\n---\n- b\n')
     })
 
-    it('writes an empty publications list on a public document, as the prompt to fill it', () => {
+    it('writes the publications key bare on a public document with none, as the prompt to fill it', () => {
         // Public with nowhere to go is the state the Publish dialog warns about; the key left in
-        // the block, empty, is the same prompt to whoever edits the file by hand.
-        expect(withPublishing('- body\n', { public: true, publications: [] }, { addBlock: true })).toBe('---\npublic: true\npublications: []\n---\n- body\n')
-        expect(withPublishing('---\ntitle: T\n---\n- b\n', { public: true, publications: [] })).toBe('---\ntitle: T\npublic: true\npublications: []\n---\n- b\n')
-        expect(withPublishing('---\ntitle: T\npublic: true\npublications:\n  - docs\n---\n- b\n', { publications: [] })).toBe('---\ntitle: T\npublic: true\npublications: []\n---\n- b\n')
+        // the block, empty, is the same prompt to whoever edits the file by hand. Bare rather than
+        // `[]` (ADR 0108): an empty value is how the block says "fill this in", and Enter after a
+        // bare key opens the next line one level in, ready for the first `- id`.
+        expect(withPublishing('- body\n', { public: true, publications: [] }, { addBlock: true })).toBe('---\npublic: true\npublications:\n---\n- body\n')
+        expect(withPublishing('---\ntitle: T\n---\n- b\n', { public: true, publications: [] })).toBe('---\ntitle: T\npublic: true\npublications:\n---\n- b\n')
+        expect(withPublishing('---\ntitle: T\npublic: true\npublications:\n  - docs\n---\n- b\n', { publications: [] })).toBe('---\ntitle: T\npublic: true\npublications:\n---\n- b\n')
         // Not public: an empty list is nothing to prompt for, so the key goes.
         expect(withPublishing('---\ntitle: T\npublications:\n  - docs\n---\n- b\n', { publications: [] })).toBe('---\ntitle: T\n---\n- b\n')
         expect(withPublishing('---\ntitle: T\n---\n- b\n', { publications: [] })).toBe('---\ntitle: T\n---\n- b\n')

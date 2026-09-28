@@ -406,7 +406,14 @@ export function healOrphanIndent(lines: string[], start: number, end: number, bl
 export function healAfterRangeDelete(lines: string[], caretLine: number): { lines: string[]; caretLine: number } {
     let out = lines.slice()
     let at = Math.min(caretLine, out.length - 1)
-    if (out[at]?.trim() === '' && out.length > 1) {
+    // A blank line against the [[Frontmatter]] is not an artifact. Inside the block it is YAML,
+    // which the outline never edits; as the whole of the body it is where the caret belongs.
+    // Removing either puts the caret at the start of the closing delimiter, where the next
+    // keystroke unmakes the block and its `title:` becomes body text. Select all in either region
+    // followed by Backspace, Delete or a cut is what leaves one.
+    const body = frontmatterLines(out)
+    const againstFrontmatter = at < body || (at === body && at === out.length - 1)
+    if (!againstFrontmatter && out[at]?.trim() === '' && out.length > 1) {
         out.splice(at, 1)
         if (at >= out.length) at = out.length - 1
     }

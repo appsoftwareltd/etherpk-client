@@ -400,8 +400,9 @@ describe('frontmatter', () => {
         await rejectsWith(setFrontmatter(g, { concept: 'Nope', patch: { public: true } }), 'not_found')
         expect((await readDocument(g, 'Post')).frontmatter).toEqual({})
 
-        // Public with nowhere to go keeps the empty list as the prompt it is (ADR 0082).
-        expect((await setFrontmatter(g, { concept: 'Post', patch: { public: true, publications: [] } })).frontmatter).toEqual({ public: true, publications: [] })
+        // Public with nowhere to go keeps the key, written bare, as the prompt it is (ADR 0082,
+        // ADR 0108): a bare key reads as null.
+        expect((await setFrontmatter(g, { concept: 'Post', patch: { public: true, publications: [] } })).frontmatter).toEqual({ public: true, publications: null })
         // Not public, the empty list is removed rather than kept as a prompt.
         expect((await setFrontmatter(g, { concept: 'Post', patch: { public: false, publications: [] } })).frontmatter).toEqual({ public: false })
     })
