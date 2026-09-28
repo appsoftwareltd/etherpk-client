@@ -507,9 +507,10 @@ it('Alt-ArrowUp: …nor when the fence sits in a block scalar (EtherPK)', () => 
 })
 
 // A `- item` in the frontmatter is a YAML list entry: Shift+Tab stripping its marker broke the list.
-table('Shift+Tab in the frontmatter is consumed', [
-    { rule: 'on a flush YAML list entry', precedent: 'EtherPK', before: '---\ntags:\n- fo|o\n---\nbody', key: 'Shift-Tab', after: '---\ntags:\n- fo|o\n---\nbody' },
-    { rule: 'on an indented one, as EtherPK writes them', precedent: 'EtherPK', before: '---\naliases:\n  - fo|o\n---\nbody', key: 'Shift-Tab', after: '---\naliases:\n  - fo|o\n---\nbody' },
+// The frontmatter's own keys take Shift+Tab there (frontmatter-keys.rules.test.ts): indentation only.
+table('Shift+Tab in the frontmatter never strips a list marker', [
+    { rule: 'on a flush YAML list entry it has nothing to take', precedent: 'EtherPK', before: '---\ntags:\n- fo|o\n---\nbody', key: 'Shift-Tab', after: '---\ntags:\n- fo|o\n---\nbody' },
+    { rule: 'on an indented one it takes two spaces of indent, the marker kept', precedent: 'EtherPK', before: '---\naliases:\n  - fo|o\n---\nbody', key: 'Shift-Tab', after: '---\naliases:\n- fo|o\n---\nbody' },
 ])
 
 // A blank line reads as the line it becomes with text typed in it. Under a prose line short of the

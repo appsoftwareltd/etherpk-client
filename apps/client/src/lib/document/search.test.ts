@@ -188,7 +188,7 @@ describe('createSearchController', () => {
         await settle()
 
         controller.setTextPage(1)
-        expect(searchText).toHaveBeenLastCalledWith('orphan', TEXT_PAGE_SIZE, TEXT_PAGE_SIZE)
+        expect(searchText).toHaveBeenLastCalledWith('orphan', TEXT_PAGE_SIZE, TEXT_PAGE_SIZE, [])
     })
 
     it('records which text page is on screen only once that page has landed', async () => {
@@ -417,5 +417,96 @@ describe('stepSearchHighlight', () => {
 
     it('stays in the box when there is nothing to highlight', () => {
         expect(stepSearchHighlight(null, 0, 1)).toBeNull()
+    })
+})
+
+describe('Property Filters (ADR 0107)', () => {
+    beforeEach(() => {
+        vi.useFakeTimers()
+    })
+
+    const keys = [
+        { key: 'public', documents: 2 },
+        { key: 'status', documents: 1 },
+    ]
+    const matches = [
+        { concept: 'Recipes', kind: 'page' as const, properties: [{ key: 'public', value: 'true' }] },
+        { concept: 'Launch Plan', kind: 'page' as const, properties: [{ key: 'public', value: 'true' }] },
+    ]
+
+    function filterSources(overrides: Partial<SearchSources> = {}): SearchSources {
+        return makeSources({
+            concepts: () => [concept('Launch Plan'), concept('Recipes'), concept('Meeting Notes'), concept('Go Live', 'alias')].map((c) =>
+                c.kind === 'alias' ? { ...c, canonical: 'Launch Plan' } : c,
+            ),
+            propertyKeys: async () => keys,
+            propertyMatch: async () => matches,
+            ...overrides,
+        })
+    }
+
+    it('reads x:y as words until the graph’s keys have arrived, then as a filter', async () => {
+        const searchText = vi.fn(async () => ({ groups: [], hasMore: false }))
+        let resolveKeys: (value: typeof keys) => void = () => {}
+        const controller = createSearchController(
+            filterSources({
+                searchText,
+                propertyKeys: () => new Promise((resolve) => (resolveKeys = resolve)),
+            }),
+        )
+        controller.open('public:true meeting')
+        expect(controller.getState().filterTerms).toEqual([])
+        expect(searchText).toHaveBeenLastCalledWith('public:true meeting', 0, TEXT_PAGE_SIZE, [])
+
+        resolveKeys(keys)
+        await vi.waitFor(() => expect(controller.getState().filterTerms).toHaveLength(1))
+        await vi.waitFor(() =>
+            expect(searchText).toHaveBeenLastCalledWith('meeting', 0, TEXT_PAGE_SIZE, [{ key: 'public', value: 'true', prefix: false, negated: false }]),
+        )
+    })
+
+    it('narrows the names to documents that pass the filters, an alias row included', async () => {
+        const controller = createSearchController(filterSources())
+        controller.open('public:true l')
+        await vi.waitFor(() => expect(controller.getState().filterTerms).toHaveLength(1))
+        await vi.waitFor(() => expect(controller.getState().nameRows.map((row) => row.label)).toEqual(['Launch Plan', 'Go Live']))
+        // No create row: a Draft cannot carry a Property.
+        expect(controller.getState().nameRows.some((row) => row.kind === 'draft')).toBe(false)
+    })
+
+    it('with filters and no words, lists every matching document by name with its values, and hides text', async () => {
+        const searchText = vi.fn(async () => ({ groups: [], hasMore: false }))
+        const controller = createSearchController(filterSources({ searchText }))
+        controller.open('public:true')
+        await vi.waitFor(() => expect(controller.getState().nameRows.map((row) => row.label)).toEqual(['Launch Plan', 'Recipes']))
+        expect(controller.getState().nameRows[0].properties).toEqual([{ key: 'public', value: 'true' }])
+        expect(controller.getState().nameTotal).toBe(2)
+        expect(controller.getState().textStatus.kind).toBe('hidden')
+        expect(searchText).not.toHaveBeenCalledWith(expect.anything(), expect.anything(), expect.anything(), expect.arrayContaining([expect.anything()]))
+    })
+
+    it('keeps the names on screen until a filtered answer lands, and drops a superseded one', async () => {
+        const answers: ((value: typeof matches) => void)[] = []
+        const controller = createSearchController(
+            filterSources({
+                propertyMatch: () => new Promise((resolve) => answers.push(resolve)),
+            }),
+        )
+        controller.open('public:true')
+        await vi.waitFor(() => expect(answers).toHaveLength(1))
+        controller.setQuery('status:done')
+        vi.runAllTimers()
+        await vi.waitFor(() => expect(answers).toHaveLength(2))
+        answers[1]([matches[0]])
+        await vi.waitFor(() => expect(controller.getState().nameRows.map((row) => row.label)).toEqual(['Recipes']))
+        answers[0](matches)
+        await Promise.resolve()
+        expect(controller.getState().nameRows.map((row) => row.label)).toEqual(['Recipes'])
+    })
+
+    it('hands out the keys it knows for the suggestion list', async () => {
+        const controller = createSearchController(filterSources())
+        controller.open('')
+        await vi.waitFor(() => expect(controller.getState().propertyKeys).toEqual(keys))
     })
 })

@@ -163,6 +163,13 @@ describe('publishPublication', () => {
         expect(report.warnings.find((w) => w.code === 'include-page-not-public')?.message).toContain('public: true')
     })
 
+    it('reads an empty `date:` as undated, with no warning (ADR 0108)', async () => {
+        const dated = source.documents.map((d) => (d.concept === 'Guide' ? { ...d, text: d.text.replace('date: 2026-06-01', 'date:') } : d))
+        expect(dated.find((d) => d.concept === 'Guide')?.text).toContain('\ndate:\n')
+        const { report } = await publishPublication({ ...source, documents: dated }, docs, environment())
+        expect(report.warnings.map((w) => w.code)).not.toContain('invalid-date')
+    })
+
     it('refuses an include page that does not name a named publication, and says which key it needs', async () => {
         const named = source.documents.map((d) => (d.concept === 'Site Footer' ? { ...d, text: d.text.replace('publications: [docs]', 'publications: [blog]') } : d))
         const { bundle, report } = await publishPublication({ ...source, documents: named }, docs, environment())

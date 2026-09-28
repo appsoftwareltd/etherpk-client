@@ -12,6 +12,7 @@
 
 import type { IndexIncludeFact } from '$lib/document/index-db'
 import { parseFrontmatter } from '$lib/storage/fs/frontmatter'
+import { isEmptyValue } from '../frontmatter/frontmatter-yaml'
 
 import type { Publication, PublicationKind, PublicationSelection, PublishDocument, PublishIssue } from './types'
 
@@ -40,8 +41,19 @@ export function readMembership(text: string, concept?: string): Membership {
     const { data } = parseFrontmatter(text)
     const issues: PublishIssue[] = []
     const isPublic = data.public === true
+    // Consent is the boolean `true` alone. A quoted "true" or a `yes` reads like consent and is not,
+    // so it is said rather than silently ignored.
+    if (!isEmptyValue(data.public) && typeof data.public !== 'boolean') {
+        issues.push({
+            level: 'warning',
+            code: 'public-not-a-boolean',
+            message: `\`public\` is the text "${String(data.public)}", not \`true\` or \`false\`, so the document is not public. Write \`public: true\` without quotes to publish it.`,
+            concept,
+        })
+    }
     const publications: string[] = []
-    const raw = data.publications
+    // An empty value means the key is not set (ADR 0108): `publications:` names none.
+    const raw = isEmptyValue(data.publications) ? undefined : data.publications
     const entries = raw === undefined ? [] : Array.isArray(raw) ? raw : typeof raw === 'string' ? [raw] : null
     if (entries === null) {
         issues.push({
@@ -67,6 +79,23 @@ export function readMembership(text: string, concept?: string): Membership {
     return { isPublic, publications, issues }
 }
 
+const DATE = /^\d{4}-\d{2}-\d{2}$/
+
+/**
+ * The day a page is dated on a blog, from its `date:` key, and a warning when the key holds
+ * something that is not a calendar day. A journal entry is dated by its name, never by this key.
+ */
+export function readPageDate(doc: PublishDocument): { date?: string; issues: PublishIssue[] } {
+    const date = parseFrontmatter(doc.text).data.date
+    // An empty `date:` is not set (ADR 0108): the page is undated, and that is no mistake.
+    if (isEmptyValue(date)) return { issues: [] }
+    const text = date instanceof Date ? date.toISOString().slice(0, 10) : String(date)
+    if (DATE.test(text)) return { date: text, issues: [] }
+    return {
+        issues: [{ level: 'warning', code: 'invalid-date', message: `"${doc.concept}" has \`date: ${String(date)}\`, which is not a calendar day (YYYY-MM-DD); the document is undated.`, concept: doc.concept }],
+    }
+}
+
 export interface PublicationDefinition {
     /** The publication, or null when the page defines none or the definition is invalid. */
     publication: Publication | null
@@ -82,7 +111,9 @@ const SELECTIONS: readonly PublicationSelection[] = ['named', 'all-public']
 export function readPublicationDefinition(doc: PublishDocument): PublicationDefinition {
     const { data, body } = parseFrontmatter(doc.text)
     const raw = data.publication
-    if (raw === undefined) return { publication: null, issues: [] }
+    // A bare `publication:`, or one whose values are all still empty, defines nothing yet: the
+    // outline Add frontmatter writes stays inert until the person fills it in (ADR 0108).
+    if (isEmptyValue(raw)) return { publication: null, issues: [] }
     const issues: PublishIssue[] = []
     const issue = (code: string, message: string) => issues.push({ level: 'error', code, message, concept: doc.concept })
 
@@ -99,7 +130,8 @@ export function readPublicationDefinition(doc: PublishDocument): PublicationDefi
         return { publication: null, issues }
     }
 
-    const def = raw as Record<string, unknown>
+    // Inside the mapping too, an empty setting is one the page has not made: its default applies.
+    const def = Object.fromEntries(Object.entries(raw as Record<string, unknown>).filter(([, value]) => !isEmptyValue(value)))
     const id = def.id
     if (id === undefined || id === null || id === '') {
         issue('publication-missing-id', '`publication` needs an `id`: lower-case letters, digits and hyphens, like `docs`.')
@@ -149,6 +181,7 @@ export function readPublicationDefinition(doc: PublishDocument): PublicationDefi
     if (def.includes !== undefined) {
         if (typeof def.includes === 'object' && def.includes !== null && !Array.isArray(def.includes)) {
             for (const [slot, value] of Object.entries(def.includes as Record<string, unknown>)) {
+                if (isEmptyValue(value)) continue
                 if (typeof value === 'string' && value.trim() !== '') {
                     includes[slot] = value.trim()
                 } else {

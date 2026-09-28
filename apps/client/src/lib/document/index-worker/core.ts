@@ -24,6 +24,7 @@ import {
     conceptFamilyKeys,
     createSchema,
     documentHash,
+    documentsMatchingProperties,
     existingConceptKeys,
     indexDocHash,
     indexDocumentFactKeys,
@@ -32,6 +33,8 @@ import {
     indexedDocumentFacts,
     ingestIndexRebuildChunk,
     isUsableIndex,
+    propertyKeys,
+    propertyValues,
     searchText,
     searchTextCount,
     tasksMatching,
@@ -392,7 +395,7 @@ export function createIndexCore(host: IndexDbHost): IndexCore {
 
                 case 'search-text': {
                     const page = db
-                        ? searchText(db, request.query, request.offset, request.limit)
+                        ? searchText(db, request.query, request.offset, request.limit, request.filters ?? [])
                         : { groups: [], hasMore: false }
                     return [
                         {
@@ -406,7 +409,7 @@ export function createIndexCore(host: IndexDbHost): IndexCore {
 
                 case 'search-count': {
                     const count = db
-                        ? searchTextCount(db, request.query)
+                        ? searchTextCount(db, request.query, request.filters ?? [])
                         : { total: 0, capped: false }
                     return [
                         {
@@ -417,6 +420,15 @@ export function createIndexCore(host: IndexDbHost): IndexCore {
                         },
                     ]
                 }
+
+                case 'property-keys':
+                    return [{ type: 'property-keys', id: request.id, keys: db ? propertyKeys(db) : [] }]
+
+                case 'property-values':
+                    return [{ type: 'property-values', id: request.id, values: db ? propertyValues(db, request.key) : [] }]
+
+                case 'property-match':
+                    return [{ type: 'property-match', id: request.id, documents: db ? documentsMatchingProperties(db, request.filters) : [] }]
 
                 case 'tasks': {
                     const page = db

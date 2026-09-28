@@ -76,6 +76,16 @@ describe('allocateSlugs', () => {
     })
 })
 
+describe('an empty slug (ADR 0108)', () => {
+    it('is not set: the document takes its derived slug and nothing is reported', () => {
+        const { slugs, ignored } = allocateSlugs.withReport([doc('Legal', 'page', '---\nslug:\n---\n'), doc('Terms', 'page', '---\nslug: ""\n---\n')])
+        expect(slugs.get('legal')).toBe('legal')
+        expect(slugs.get('terms')).toBe('terms')
+        expect(ignored).toEqual([])
+        expect(explicitSlugOf('---\nslug:\n---\n')).toBeNull()
+    })
+})
+
 describe('explicitSlugOf', () => {
     it('reads and normalises the key', () => {
         expect(explicitSlugOf('---\nslug: My Page\n---\n')).toBe('my-page')

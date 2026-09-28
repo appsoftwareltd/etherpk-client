@@ -15,7 +15,17 @@ describe('.env.example', () => {
         const result = compareEnvExample({
             exampleKeys: parseEnvExampleKeys(readFileSync(fromApp('.env.example'), 'utf8')),
             sourceNames: environmentNamesInTree([fromApp('src')]),
-            notEnvironment: {},
+            notEnvironment: {
+                BAD_INDENT: 'an error code of the yaml parser, read to word a frontmatter problem',
+                BLOCK_AS_IMPLICIT_KEY: 'an error code of the yaml parser, read to word a frontmatter problem',
+                DUPLICATE_KEY: 'an error code of the yaml parser, read to word a frontmatter problem',
+                MISSING_CHAR: 'an error code of the yaml parser, read to word a frontmatter problem',
+                MULTILINE_IMPLICIT_KEY: 'an error code of the yaml parser, read to word a frontmatter problem',
+                TAB_AS_INDENT: 'an error code of the yaml parser, read to word a frontmatter problem',
+                NOT_A_MAPPING: 'the frontmatter problem code for a block that is not key: value lines',
+                QUOTE_DOUBLE: 'a yaml scalar style, read when restyling frontmatter',
+                QUOTE_SINGLE: 'a yaml scalar style, read when restyling frontmatter',
+            },
             readOutsideSource: {
                 HOST: 'read by the SvelteKit Node adapter',
                 PORT: 'read by the SvelteKit Node adapter',

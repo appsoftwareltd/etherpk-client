@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { readLastPublication, readSettingsTab, writeLastPublication, writeSettingsTab } from './device-memory'
+import { readAddFrontmatterKeys, readLastPublication, readSettingsTab, writeAddFrontmatterKeys, writeLastPublication, writeSettingsTab } from './device-memory'
 
 function fakeStorage(): Storage {
     const map = new Map<string, string>()
@@ -51,5 +51,21 @@ describe('the last publication published from this device, per graph', () => {
         expect(readLastPublication('g1', storage)).toBe('docs')
         writeLastPublication('g1', '', storage)
         expect(readLastPublication('g1', storage)).toBeNull()
+    })
+})
+
+describe('the keys last chosen in the Add frontmatter dialog, per graph', () => {
+    it('defaults to the keys most documents use, and reads back the last choice', () => {
+        const storage = fakeStorage()
+        expect(readAddFrontmatterKeys('g1', storage)).toEqual(['title', 'aliases', 'public', 'publications'])
+        writeAddFrontmatterKeys('g1', ['slug', 'date'], storage)
+        expect(readAddFrontmatterKeys('g1', storage)).toEqual(['slug', 'date'])
+        expect(readAddFrontmatterKeys('g2', storage)).toEqual(['title', 'aliases', 'public', 'publications'])
+    })
+
+    it('keeps only keys the dialog knows', () => {
+        const storage = fakeStorage()
+        storage.setItem('etherpk-add-frontmatter-keys:g1', 'slug,nonsense,title')
+        expect(readAddFrontmatterKeys('g1', storage)).toEqual(['title', 'slug'])
     })
 })

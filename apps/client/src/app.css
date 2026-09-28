@@ -140,6 +140,8 @@ html.dark select {
     --gk-warning-surface: rgba(245, 158, 11, 0.15);
     /* Error text: 6.5:1 on surface-0, and at least 4.5:1 on the danger surface. */
     --gk-text-danger: #b91c1c;
+    /* Warning text (amber-800): 7.1:1 on surface-0, and at least 4.5:1 on the warning surface. */
+    --gk-text-warning: #92400e;
     /* Code tokens (code-token-styles.ts), each at least 4.5:1 on the code panel (a 10% grey wash
        over the surface): the hues of the original palette, deepened until they read as text. */
     --gk-code-keyword: #067a55;
@@ -176,6 +178,7 @@ html.dark {
     --gk-border-strong: rgba(161, 161, 170, 0.28);
     --gk-shadow: 0 18px 45px rgba(0, 0, 0, 0.45);
     --gk-text-danger: #fca5a5;
+    --gk-text-warning: #fcd34d;
     /* The same hues lifted for the dark code panel, each at least 4.5:1 on it. Without these the
        light-theme fallbacks applied here too, and numbers read at 2.1:1. */
     --gk-code-keyword: #3dc99a;

@@ -32,7 +32,7 @@ import { withDiagramId } from './diagram-id'
 import { highlightCode as defaultHighlight } from './highlight'
 import { type DocumentRenderer, type RenderedDocument, type TocItem, createDocumentRenderer } from './markdown/render'
 import { type NavNode, buildNav } from './nav'
-import { discoverPublications } from './publication'
+import { discoverPublications, readPageDate } from './publication'
 import { type PublicationResolver, createPublicationResolver, titleText } from './resolve'
 import { type ExcludedDocument, includeStatus, publicDocumentsInNoPublication, selectDocuments } from './selection'
 import { type SlugCollision, allocateSlugs, explicitSlugOf } from './slugs'
@@ -127,8 +127,6 @@ interface RenderedPage {
     titleHtml: string
     isHome: boolean
 }
-
-const DATE = /^\d{4}-\d{2}-\d{2}$/
 
 function assetHrefOf(name: string): string {
     return `assets/${encodeURIComponent(name)}`
@@ -333,12 +331,9 @@ export async function publishPublication(
         }
         if (doc.kind === 'journal') page.date = doc.concept
         else {
-            const date = parseFrontmatter(doc.text).data.date
-            if (date !== undefined) {
-                const text = date instanceof Date ? date.toISOString().slice(0, 10) : String(date)
-                if (DATE.test(text)) page.date = text
-                else warnings.push({ level: 'warning', code: 'invalid-date', message: `"${doc.concept}" has \`date: ${String(date)}\`, which is not a calendar day (YYYY-MM-DD); the document is undated.`, concept: doc.concept })
-            }
+            const dated = readPageDate(doc)
+            if (dated.date !== undefined) page.date = dated.date
+            take(dated.issues)
         }
         for (const link of linksOf(bodyOf(doc), resolver, doc)) report.missingLinks.push(link)
         pages.push(page)

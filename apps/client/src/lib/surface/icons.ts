@@ -54,6 +54,8 @@ export const ICON_PATHS: Record<string, string> = {
     'table-remove-column': '<rect x="2.5" y="3" width="6" height="10" rx="1"/><path d="M2.5 6.5h6M2.5 9.5h6"/><path d="M11 8h3"/>',
     'table-format': '<rect x="2.5" y="3" width="11" height="10" rx="1"/><path d="M2.5 6.5h11M2.5 9.5h11"/>',
     code: '<path d="M6 5.5 3 8l3 2.5M10 5.5 13 8l-3 2.5"/>',
+    // A page with its header band: the block of keys at the top of a document.
+    frontmatter: '<rect x="3" y="2.5" width="10" height="11" rx="1.5"/><path d="M3 6.5h10M5.2 4.5h3.3M5.2 9h5.6M5.2 11.3h3.6"/>',
     // Format Toggles (Command Menu → Format): a heavy B, a slanted I, and a marker pen's wash.
     bold: '<text x="8" y="12" text-anchor="middle" fill="currentColor" stroke="none" font-family="ui-sans-serif, system-ui, sans-serif" font-size="11" font-weight="800">B</text>',
     italic: '<text x="8" y="12" text-anchor="middle" fill="currentColor" stroke="none" font-family="ui-serif, Georgia, serif" font-size="12" font-style="italic" font-weight="600">I</text>',

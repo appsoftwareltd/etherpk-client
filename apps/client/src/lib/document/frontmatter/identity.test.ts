@@ -13,9 +13,9 @@ import { proposeFrontmatter } from './proposal'
 const DOC = '---\ntitle: Kanban\naliases:\n  - Board\ncolour: blue\n---\n\n- body\n'
 
 describe('the property table', () => {
-    it('knows title (confirm), aliases (silent) and the publishing keys (read by publish, no editor effect)', () => {
+    it('knows title (confirm), aliases (silent) and the publishing keys, date included (read by publish, no editor effect)', () => {
         const policies = Object.fromEntries(FRONTMATTER_PROPERTIES.map((p) => [p.key, p.policy]))
-        expect(policies).toEqual({ title: 'confirm', aliases: 'silent', public: 'none', publications: 'none', publication: 'none', includes: 'none', slug: 'none' })
+        expect(policies).toEqual({ title: 'confirm', aliases: 'silent', public: 'none', publications: 'none', publication: 'none', includes: 'none', slug: 'none', date: 'none' })
     })
 })
 
@@ -145,5 +145,17 @@ describe('syncedImportText', () => {
 
         const tagged = stored.replace('colour: blue\n', 'colour: blue\ntags: [work]\n')
         expect(proposeFrontmatter({ text: tagged, registry, backend: 'server' })).toEqual([])
+    })
+})
+
+describe('writing identity keeps the rest of the block', () => {
+    it('keeps comments and restyles the block it changes', () => {
+        const text = '---\n# mine\ntitle: Kanban\ntags: [a, b]\n---\nbody\n'
+        expect(withFrontmatterIdentity(text, { aliases: ['Board'] })).toBe('---\n# mine\ntitle: Kanban\ntags:\n  - a\n  - b\naliases:\n  - Board\n---\nbody\n')
+    })
+
+    it('leaves a block untouched when the identity already agrees, however it is formatted', () => {
+        const text = '---\ntitle: Kanban\naliases: [Board]   # other names\n---\nbody\n'
+        expect(withFrontmatterIdentity(text, { title: 'Kanban', aliases: ['board'] })).toBe(text)
     })
 })

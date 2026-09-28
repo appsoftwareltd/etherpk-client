@@ -72,6 +72,14 @@ const paneTooltips = tooltips({
     },
 })
 
+/**
+ * Recompute every open popover from the state as it is now. A popover normally recomputes only on
+ * a document or selection change; a caller whose rows come from somewhere asynchronous (the
+ * frontmatter completion's index lookups) sends this with the answer, so the rows appear when it
+ * lands rather than on the next keystroke.
+ */
+export const refreshPopovers = StateEffect.define<null>()
+
 export function popoverMenu<S extends PopoverBase>(opts: PopoverMenuOptions<S>): Extension {
     const { classPrefix: p } = opts
 
@@ -85,7 +93,7 @@ export function popoverMenu<S extends PopoverBase>(opts: PopoverMenuOptions<S>):
                 if (e.is(closeMenu)) return null
                 if (e.is(selectIndex) && value) value = { ...value, selected: e.value } as S
             }
-            if (tr.docChanged || tr.selection) return opts.compute(tr.state)
+            if (tr.docChanged || tr.selection || tr.effects.some((e) => e.is(refreshPopovers))) return opts.compute(tr.state)
             return value
         },
         provide: (f) =>

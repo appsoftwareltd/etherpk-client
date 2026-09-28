@@ -8,8 +8,10 @@
  * grammar (`"` `*` `-` `^` `:` `AND` `OR` `NOT` `NEAR`), so `C++`, `don't` and `orphan - asset`
  * would be a syntax error or, worse, a silent negation. In a live-as-you-type box a parse
  * error is not an edge case — it is the normal state halfway through typing a query. So we
- * tokenize ourselves and quote every term. No operator syntax is exposed, ever; structured
- * querying has a home already in [[Query]].
+ * tokenize ourselves and quote every term.
+ *
+ * The one syntax Search reads is its own: a [[Property Filter]] (`public:true`, ADR 0107), which
+ * `parseSearchQuery` takes out of the input before the remaining words reach FTS5 the same way.
  */
 
 /** Below this a query is not specific enough to be worth a round trip. Counts TYPED
@@ -135,4 +137,139 @@ export function snippetSegments(snippet: string): SearchSegment[] {
         rest = rest.slice(close + 1)
     }
     return segments.filter((s) => s.text !== '')
+}
+
+// ── Property Filters (ADR 0107) ─────────────────────────────────────────────
+
+/** One [[Property Filter]] as typed: `key:value`, `-key:value`, `key:*` or `key:prefix*`. */
+export interface PropertyFilter {
+    /** The key as typed: its spelling is what the chip shows. Matched ignoring case. */
+    key: string
+    /** The value, or null for `key:*` (the key is set, whatever its value). */
+    value: string | null
+    /** `key:va*`: the value starts with `value`. */
+    prefix: boolean
+    /** `-key:value`: the document must NOT carry it. */
+    negated: boolean
+}
+
+/** A filter and where it sits in the input, so the chip for it can take it back out. */
+export interface PropertyFilterTerm {
+    filter: PropertyFilter
+    from: number
+    to: number
+}
+
+export interface ParsedSearchQuery {
+    /** The input with every filter term removed: what name and text matching see. */
+    words: string
+    filters: PropertyFilter[]
+    terms: PropertyFilterTerm[]
+}
+
+/** Letters, digits, `_`, `.` and `-`: a key a person can type, dot paths included. */
+export const PROPERTY_KEY_PATTERN = /^[\p{L}\p{N}_][\p{L}\p{N}_.-]*$/u
+
+/** One whitespace-separated term of the input, and where it sits. */
+export interface SearchToken {
+    text: string
+    from: number
+    to: number
+}
+
+/**
+ * Whitespace-separated tokens. A quote opens a run that spaces do not end, whether it starts the
+ * token (`"a phrase"`) or follows a key (`status:"in progress"`); an unclosed one runs to the end.
+ */
+export function searchTokens(input: string): SearchToken[] {
+    const out: SearchToken[] = []
+    let index = 0
+    while (index < input.length) {
+        if (/\s/.test(input[index])) {
+            index++
+            continue
+        }
+        const from = index
+        while (index < input.length && !/\s/.test(input[index])) {
+            if (input[index] === '"') {
+                const close = input.indexOf('"', index + 1)
+                index = close === -1 ? input.length : close + 1
+                continue
+            }
+            index++
+        }
+        out.push({ text: input.slice(from, index), from, to: index })
+    }
+    return out
+}
+
+/**
+ * The filters in `input`, and the words left for name and text matching.
+ *
+ * A term is a filter only when its key is one at least one searchable document carries
+ * (`knownKeys`, lower-cased): anything else shaped like `x:y` stays words, which keeps a URL, a
+ * time or `note:` in prose as text. A fully quoted term is always words. A known key with no
+ * value yet (`status:` mid-typing) is dropped from both, so the key is never searched as a word
+ * a moment before the value arrives.
+ */
+export function parseSearchQuery(input: string, knownKeys: ReadonlySet<string>): ParsedSearchQuery {
+    const filters: PropertyFilter[] = []
+    const terms: PropertyFilterTerm[] = []
+    const cut: { from: number; to: number }[] = []
+    if (knownKeys.size > 0) {
+        for (const token of searchTokens(input)) {
+            if (token.text.startsWith('"')) continue
+            const colon = token.text.indexOf(':')
+            if (colon <= 0) continue
+            const negated = token.text.startsWith('-')
+            const key = token.text.slice(negated ? 1 : 0, colon)
+            if (!PROPERTY_KEY_PATTERN.test(key) || !knownKeys.has(key.toLowerCase())) continue
+            const filter = filterValue(key, token.text.slice(colon + 1), negated)
+            cut.push({ from: token.from, to: token.to })
+            if (filter === null) continue
+            filters.push(filter)
+            terms.push({ filter, from: token.from, to: token.to })
+        }
+    }
+    return { words: withoutRanges(input, cut), filters, terms }
+}
+
+/** The filter for a value as typed, or null when there is no value yet. */
+function filterValue(key: string, raw: string, negated: boolean): PropertyFilter | null {
+    if (raw === '*') return { key, value: null, prefix: false, negated }
+    if (raw.startsWith('"')) {
+        const close = raw.indexOf('"', 1)
+        const value = (close === -1 ? raw.slice(1) : raw.slice(1, close)).trim()
+        return value === '' ? null : { key, value, prefix: false, negated }
+    }
+    if (raw.length > 1 && raw.endsWith('*')) return { key, value: raw.slice(0, -1), prefix: true, negated }
+    return raw === '' ? null : { key, value: raw, prefix: false, negated }
+}
+
+/** `input` with the ranges removed and the gaps they leave closed to single spaces. */
+function withoutRanges(input: string, ranges: readonly { from: number; to: number }[]): string {
+    if (ranges.length === 0) return input
+    const parts: string[] = []
+    let at = 0
+    for (const range of ranges) {
+        parts.push(input.slice(at, range.from))
+        at = range.to
+    }
+    parts.push(input.slice(at))
+    return parts
+        .map((part) => part.trim())
+        .filter((part) => part !== '')
+        .join(' ')
+}
+
+/** The input with one filter term taken out: what a chip's × leaves in the box. */
+export function removeSearchTerm(input: string, term: Pick<PropertyFilterTerm, 'from' | 'to'>): string {
+    return withoutRanges(input, [term])
+}
+
+/** The chip text for a filter: `public = true`, `not status = done`, `status is set`. */
+export function describePropertyFilter(filter: PropertyFilter): string {
+    if (filter.value === null) return `${filter.key} ${filter.negated ? 'is not set' : 'is set'}`
+    const test = filter.prefix ? `${filter.key} starts with ${filter.value}` : `${filter.key} = ${filter.value}`
+    return filter.negated ? `not ${test}` : test
 }

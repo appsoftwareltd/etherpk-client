@@ -4,7 +4,7 @@
  * inline-code guard, the scoped-concept chain for hierarchies, and frontmatter assembly.
  */
 
-import { stringify as stringifyYaml } from 'yaml'
+import { renderFrontmatter } from '$lib/document/frontmatter/frontmatter-yaml'
 
 /**
  * Tracks fenced-code state across a line walk. Call once per line, in order; returns
@@ -49,7 +49,7 @@ export function scopedConceptName(segments: string[]): string {
 export function buildFrontmatter(data: Record<string, unknown>): string {
     const entries = Object.entries(data).filter(([, v]) => v !== undefined && v !== null)
     if (entries.length === 0) return ''
-    return `---\n${stringifyYaml(Object.fromEntries(entries))}---\n`
+    return renderFrontmatter(Object.fromEntries(entries))
 }
 
 /** Append ` (2)`, ` (3)`... to a concept until `taken` no longer contains its key. */

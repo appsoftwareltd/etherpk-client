@@ -15,10 +15,14 @@ import type {
     ConceptCandidate,
     DbBacklinkGroup,
     IndexDoc,
+    PropertyKeyInfo,
+    PropertyMatch,
+    PropertyValueInfo,
     SearchDocumentGroup,
     TaskHit,
     TaskQuery,
 } from '../index-db'
+import type { PropertyFilter } from '../search-query'
 import type { EmbeddingRow, PendingPassage, SemanticDocumentGroup, SemanticStatus } from '../semantic/embedding-db'
 
 export interface IndexDelta {
@@ -53,8 +57,16 @@ export type IndexRequest =
      * [[Search]]'s text group. Two requests rather than one because the count is capped and
      * can be slow on a prefix query — it runs in parallel and must never delay the rows.
      */
-    | { type: 'search-text'; id: number; query: string; offset: number; limit: number }
-    | { type: 'search-count'; id: number; query: string }
+    | { type: 'search-text'; id: number; query: string; offset: number; limit: number; filters?: PropertyFilter[] }
+    | { type: 'search-count'; id: number; query: string; filters?: PropertyFilter[] }
+    /**
+     * [[Property Filter]]s (ADR 0107): the keys the graph uses (what makes a typed `x:y` a
+     * filter, and the key suggestions), the values one key has (the value suggestions), and the
+     * documents passing a set of filters (Search's names group when filters narrow it).
+     */
+    | { type: 'property-keys'; id: number }
+    | { type: 'property-values'; id: number; key: string }
+    | { type: 'property-match'; id: number; filters: PropertyFilter[] }
     /**
      * The [[Tasks View]]'s page. ONE request, unlike Search's split pair: the total here is a
      * COUNT over the same indexed join the rows come from, not a capped scan of a text index,
@@ -141,6 +153,9 @@ export type IndexResponse =
     | { type: 'backlinks'; id: number; groups: DbBacklinkGroup[] }
     | { type: 'search-text'; id: number; groups: SearchDocumentGroup[]; hasMore: boolean }
     | { type: 'search-count'; id: number; total: number; capped: boolean }
+    | { type: 'property-keys'; id: number; keys: PropertyKeyInfo[] }
+    | { type: 'property-values'; id: number; values: PropertyValueInfo[] }
+    | { type: 'property-match'; id: number; documents: PropertyMatch[] }
     | { type: 'tasks'; id: number; hits: TaskHit[]; hasMore: boolean; total: number }
     | { type: 'asset-usage'; id: number; usage: AssetUsage }
     | { type: 'semantic-status'; id: number; status: SemanticStatus }

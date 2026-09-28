@@ -14,15 +14,17 @@ import type { DocumentKind } from '$lib/storage'
 import { conceptKey } from './backlinks'
 import { fencedBlocks } from './fenced-code'
 import { blockContent, type BlockRow, deriveDoc, deriveTitleLinks, type TaskConceptRow, type TaskRow } from './index-derive'
+import type { IndexProperty } from './properties'
 import { containsCipherFence } from './protection/fence-info'
 import { derivePassages } from './semantic/passages'
 
 /**
  * One snippet a publication page names under its `includes:` (ADR 0082): the page fills
  * `slot` of publication `publication` with the document called `concept`, as written.
- * Read from the publication page's frontmatter by whoever builds the IndexDoc, like aliases:
- * the worker never sees frontmatter, and the fact is about ANOTHER document than the one
- * carrying it, which is why the index holds it rather than the page's own row.
+ * Read from the publication page's frontmatter by whoever builds the IndexDoc, like aliases and
+ * properties: the worker is handed facts taken from Frontmatter, never the block itself, and this
+ * fact is about ANOTHER document than the one carrying it, which is why the index holds it
+ * rather than the page's own row.
  */
 export interface IndexIncludeFact {
     publication: string
@@ -38,6 +40,12 @@ export interface IndexDoc {
     text: string
     /** The includes this document declares as a publication page; absent or empty otherwise. */
     includes?: readonly IndexIncludeFact[]
+    /**
+     * The document's [[Property]]s, from its Frontmatter (`propertiesOf`), for [[Property
+     * Filter]]s (ADR 0107). `title` and `aliases` are not among them: the index adds those from
+     * `concept` and `aliases`, the graph's names. Absent or empty when the block has none.
+     */
+    properties?: readonly IndexProperty[]
 }
 
 /** One node of a block reference's rendered subtree (the matched block + descendants). */
@@ -118,9 +126,9 @@ export interface SqlDb {
  *
  * A bump can also rebuild files whose content is still right: 13 (ADR 0097) changed neither
  * schema nor derivation, and rebuilds every index so that each one has been through
- * `purgeDeletedText`.
+ * `purgeDeletedText`. 14 added the `properties` table (ADR 0107).
  */
-export const INDEX_SCHEMA_VERSION = 13
+export const INDEX_SCHEMA_VERSION = 14
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS index_metadata (
@@ -171,6 +179,15 @@ CREATE TABLE IF NOT EXISTS passages (
   page_id INTEGER NOT NULL, ord INTEGER NOT NULL, start_line INTEGER NOT NULL,
   end_line INTEGER NOT NULL, first_block_local_id INTEGER NOT NULL,
   content_hash TEXT NOT NULL, text TEXT NOT NULL);
+-- [[Property]] rows for [[Property Filter]]s (ADR 0107): one per value, keys as dot paths. key and
+-- value keep their spelling for display; key_lc and value_lc are lower-cased in JS, because
+-- SQLite's lower() folds ASCII only and a filter matches ignoring case in any script. value is
+-- NULL on a mapping's presence row. title and aliases rows come from the graph's names. A
+-- protected document has none.
+CREATE TABLE IF NOT EXISTS properties (
+  page_id INTEGER NOT NULL, key TEXT NOT NULL, key_lc TEXT NOT NULL,
+  value TEXT, value_lc TEXT);
+CREATE INDEX IF NOT EXISTS properties_key ON properties(key_lc, value_lc);
 CREATE INDEX IF NOT EXISTS passages_hash ON passages(content_hash);
 CREATE INDEX IF NOT EXISTS links_concept_key ON links(concept_key);
 CREATE INDEX IF NOT EXISTS blocks_page ON blocks(page_id);
@@ -287,8 +304,13 @@ export function documentHash(db: SqlDb, key: string): string | undefined {
  */
 export function indexDocHash(doc: IndexDoc): string {
     const includes = doc.includes ?? []
-    if (includes.length === 0) return hashText(doc.text)
-    return hashText(`${doc.text}\u0000${includes.map((i) => `${i.publication}\u0001${i.slot}\u0001${i.concept}`).join('\u0000')}`)
+    const properties = doc.properties ?? []
+    if (includes.length === 0 && properties.length === 0) return hashText(doc.text)
+    // Properties come from the Frontmatter the body does not carry either, so an edit that only
+    // sets `status: done` must still change the hash, or the index would keep the old value.
+    const includeText = includes.map((i) => `${i.publication}\u0001${i.slot}\u0001${i.concept}`).join('\u0000')
+    const propertyText = properties.map((p) => `${p.key}\u0001${p.value ?? '\u0002'}`).join('\u0000')
+    return hashText(`${doc.text}\u0000${includeText}\u0003${propertyText}`)
 }
 
 export function hashText(text: string): string {
@@ -330,6 +352,7 @@ function insertDerived(db: SqlDb, pageId: number, doc: IndexDoc): string[] {
     for (const alias of doc.aliases) {
         db.run('INSERT INTO aliases (page_id, alias_key, display) VALUES (?,?,?)', [pageId, conceptKey(alias), alias])
     }
+    insertProperties(db, pageId, doc)
     for (const include of doc.includes ?? []) {
         db.run('INSERT INTO publication_includes (page_id, publication_id, slot, concept_key, concept) VALUES (?,?,?,?,?)', [
             pageId,
@@ -399,6 +422,27 @@ function insertDerived(db: SqlDb, pageId: number, doc: IndexDoc): string[] {
 }
 
 /**
+ * Write one document's [[Property]] rows (ADR 0107): its name as `title`, each alias as
+ * `aliases`, then what its Frontmatter carries. A [[Protected Document]] writes none. Its
+ * Frontmatter is stored in plaintext, but no kind of matching in Search reaches protected
+ * content, and a document with no rows cannot match a filter, not even a negated one, because
+ * every filtered query also requires `protected = 0`.
+ */
+function insertProperties(db: SqlDb, pageId: number, doc: IndexDoc): void {
+    if (protectedFlag(doc) === 1) return
+    const rows: IndexProperty[] = [{ key: 'title', value: doc.concept }, ...doc.aliases.map((alias) => ({ key: 'aliases', value: alias })), ...(doc.properties ?? [])]
+    for (const row of rows) {
+        db.run('INSERT INTO properties (page_id, key, key_lc, value, value_lc) VALUES (?,?,?,?,?)', [
+            pageId,
+            row.key,
+            row.key.toLowerCase(),
+            row.value,
+            row.value === null ? null : row.value.toLowerCase(),
+        ])
+    }
+}
+
+/**
  * Write one document's [[Task Concept]] rows (ADR 0051).
  *
  * Derivation supplies the wikilinked half; the document's own concept is added HERE, as the
@@ -463,6 +507,7 @@ const MAINTENANCE_INDEXES = [
     'tasks_page',
     'task_concepts_page',
     'passages_page',
+    'properties_page',
 ]
 
 const CREATE_MAINTENANCE_INDEXES = `
@@ -473,7 +518,8 @@ CREATE INDEX IF NOT EXISTS publication_includes_page ON publication_includes(pag
 CREATE INDEX IF NOT EXISTS links_page ON links(page_id);
 CREATE INDEX IF NOT EXISTS tasks_page ON tasks(page_id);
 CREATE INDEX IF NOT EXISTS task_concepts_page ON task_concepts(page_id);
-CREATE INDEX IF NOT EXISTS passages_page ON passages(page_id);`
+CREATE INDEX IF NOT EXISTS passages_page ON passages(page_id);
+CREATE INDEX IF NOT EXISTS properties_page ON properties(page_id);`
 
 /**
  * Merge the text index into one segment, which is what removes the words of deleted rows from
@@ -511,7 +557,7 @@ function purgeIfProtected(db: SqlDb, generation: number): void {
 
 function clearForRebuild(db: SqlDb): void {
     db.exec(
-        'DELETE FROM pages; DELETE FROM aliases; DELETE FROM publication_includes; DELETE FROM blocks; DELETE FROM links; DELETE FROM tasks; DELETE FROM task_concepts; DELETE FROM passages; DELETE FROM block_fts;',
+        'DELETE FROM pages; DELETE FROM aliases; DELETE FROM publication_includes; DELETE FROM blocks; DELETE FROM links; DELETE FROM tasks; DELETE FROM task_concepts; DELETE FROM passages; DELETE FROM properties; DELETE FROM block_fts;',
     )
     for (const name of MAINTENANCE_INDEXES) db.exec(`DROP INDEX IF EXISTS ${name}`)
 }
@@ -594,7 +640,7 @@ function deleteGeneration(db: SqlDb, generation: number): void {
            JOIN pages p ON p.id = b.page_id WHERE p.generation = ?)`,
         [generation],
     )
-    for (const table of ['aliases', 'publication_includes', 'blocks', 'links', 'tasks', 'task_concepts', 'passages']) {
+    for (const table of ['aliases', 'publication_includes', 'blocks', 'links', 'tasks', 'task_concepts', 'passages', 'properties']) {
         db.run(
             `DELETE FROM ${table} WHERE page_id IN (SELECT id FROM pages WHERE generation = ?)`,
             [generation],
@@ -713,6 +759,7 @@ export function ingestOne(db: SqlDb, doc: IndexDoc): void {
             db.run('DELETE FROM tasks WHERE page_id = ?', [pageId])
             db.run('DELETE FROM task_concepts WHERE page_id = ?', [pageId])
             db.run('DELETE FROM passages WHERE page_id = ?', [pageId])
+            db.run('DELETE FROM properties WHERE page_id = ?', [pageId])
             db.run('UPDATE pages SET concept = ?, kind = ?, text_hash = ?, protected = ? WHERE id = ?', [
                 doc.concept,
                 doc.kind,
@@ -1296,6 +1343,7 @@ import {
     buildFtsMatch,
     MATCH_CLOSE,
     MATCH_OPEN,
+    type PropertyFilter,
     snippetSegments,
     type SearchSegment,
 } from './search-query'
@@ -1349,10 +1397,12 @@ export function searchText(
     query: string,
     offset: number,
     limit: number,
+    filters: readonly PropertyFilter[] = [],
 ): SearchTextPage {
     const match = buildFtsMatch(query)
     if (match === null) return { groups: [], hasMore: false }
     const generation = activeIndexGeneration(db)
+    const narrow = propertyFilterSql(filters)
 
     // One extra row decides `hasMore` without a second COUNT.
     const ranked = db.all<{ page_id: number; matches: number }>(
@@ -1365,11 +1415,11 @@ export function searchText(
          )
          SELECT h.page_id AS page_id, COUNT(*) AS matches, MIN(h.score) AS best
          FROM hits h
-         JOIN pages p ON p.id = h.page_id AND p.generation = ?
+         JOIN pages p ON p.id = h.page_id AND p.generation = ?${narrow.sql}
          GROUP BY h.page_id
          ORDER BY matches DESC, best ASC, h.page_id ASC
          LIMIT ? OFFSET ?`,
-        [match, generation, limit + 1, offset],
+        [match, generation, ...narrow.params, limit + 1, offset],
     )
     const hasMore = ranked.length > limit
     const page = hasMore ? ranked.slice(0, limit) : ranked
@@ -1462,21 +1512,149 @@ function searchBreadcrumb(
  * Capped rather than exact because a prefix query - which is every query, mid-typing - can
  * match most of the graph, and this runs beside the rows it must never delay.
  */
-export function searchTextCount(db: SqlDb, query: string): { total: number; capped: boolean } {
+export function searchTextCount(
+    db: SqlDb,
+    query: string,
+    filters: readonly PropertyFilter[] = [],
+): { total: number; capped: boolean } {
     const match = buildFtsMatch(query)
     if (match === null) return { total: 0, capped: false }
+    const narrow = propertyFilterSql(filters)
     const rows = db.all<{ n: number }>(
         `SELECT COUNT(*) AS n FROM (
            SELECT m.page_id FROM (
              SELECT DISTINCT rowid / ${BLOCK_FTS_STRIDE} AS page_id FROM block_fts
              WHERE block_fts MATCH ?
            ) m
-           JOIN pages p ON p.id = m.page_id AND p.generation = ?
+           JOIN pages p ON p.id = m.page_id AND p.generation = ?${narrow.sql}
            LIMIT ?)`,
-        [match, activeIndexGeneration(db), SEARCH_COUNT_CAP + 1],
+        [match, activeIndexGeneration(db), ...narrow.params, SEARCH_COUNT_CAP + 1],
     )
     const n = rows[0]?.n ?? 0
     return n > SEARCH_COUNT_CAP ? { total: SEARCH_COUNT_CAP, capped: true } : { total: n, capped: false }
+}
+
+// ── [[Property Filter]]s (ADR 0107) ─────────────────────────────────────────
+
+/** A [[Property]] key as some document spells it, and how many searchable documents carry it. */
+export interface PropertyKeyInfo {
+    key: string
+    documents: number
+}
+
+/** A value a key has, in its most common spelling, and how many documents carry it. */
+export interface PropertyValueInfo {
+    value: string
+    documents: number
+}
+
+/** A document that passes every filter, with the values of the keys the filters asked about. */
+export interface PropertyMatch {
+    concept: string
+    kind: DocumentKind
+    properties: { key: string; value: string }[]
+}
+
+/** Documents a filtered name listing returns at most: well past any graph Search serves. */
+export const PROPERTY_MATCH_CAP = 5000
+
+/** Values offered per key: a suggestion list, not an inventory. */
+export const PROPERTY_VALUE_LIMIT = 50
+
+/**
+ * The SQL that narrows a query over `pages AS p` to the documents passing every filter, as an
+ * `AND …` suffix, with its parameters in order. Empty when there are no filters. A filtered
+ * query never returns a [[Protected Document]], which has no property rows; the explicit
+ * `protected = 0` is what keeps a NEGATED filter from matching one.
+ */
+function propertyFilterSql(filters: readonly PropertyFilter[]): { sql: string; params: unknown[] } {
+    if (filters.length === 0) return { sql: '', params: [] }
+    const clauses = ['p.protected = 0']
+    const params: unknown[] = []
+    for (const filter of filters) {
+        let test = 'x.key_lc = ?'
+        params.push(filter.key.toLowerCase())
+        if (filter.value !== null) {
+            const value = filter.value.toLowerCase()
+            if (filter.prefix) {
+                // substr counts characters, so the length is in code points, not UTF-16 units.
+                test += ' AND substr(x.value_lc, 1, ?) = ?'
+                params.push(Array.from(value).length, value)
+            } else {
+                test += ' AND x.value_lc = ?'
+                params.push(value)
+            }
+        }
+        clauses.push(`${filter.negated ? 'NOT ' : ''}EXISTS (SELECT 1 FROM properties x WHERE x.page_id = p.id AND ${test})`)
+    }
+    return { sql: ` AND ${clauses.join(' AND ')}`, params }
+}
+
+/**
+ * Every key a searchable document carries, once per spelling, most used first: what decides
+ * whether a typed `x:y` is a filter, and what the key suggestions offer.
+ */
+export function propertyKeys(db: SqlDb): PropertyKeyInfo[] {
+    return db.all<PropertyKeyInfo>(
+        `SELECT pr.key AS key, COUNT(DISTINCT pr.page_id) AS documents
+         FROM properties pr JOIN pages p ON p.id = pr.page_id
+         WHERE p.generation = ?
+         GROUP BY pr.key
+         ORDER BY documents DESC, pr.key_lc, pr.key`,
+        [activeIndexGeneration(db)],
+    )
+}
+
+/** The values `key` has across the graph, grouped ignoring case, most used first. */
+export function propertyValues(db: SqlDb, key: string, limit = PROPERTY_VALUE_LIMIT): PropertyValueInfo[] {
+    return db.all<PropertyValueInfo>(
+        `SELECT MIN(pr.value) AS value, COUNT(DISTINCT pr.page_id) AS documents
+         FROM properties pr JOIN pages p ON p.id = pr.page_id
+         WHERE p.generation = ? AND pr.key_lc = ? AND pr.value IS NOT NULL
+         GROUP BY pr.value_lc
+         ORDER BY documents DESC, pr.value_lc
+         LIMIT ?`,
+        [activeIndexGeneration(db), key.toLowerCase(), limit],
+    )
+}
+
+/**
+ * Every document that passes all `filters`, in name order, with the values of the keys the
+ * positive filters name (not `title`, which the row already shows). Empty without a filter:
+ * listing the whole graph is [[All Documents]]' job.
+ */
+export function documentsMatchingProperties(db: SqlDb, filters: readonly PropertyFilter[], limit = PROPERTY_MATCH_CAP): PropertyMatch[] {
+    if (filters.length === 0) return []
+    const narrow = propertyFilterSql(filters)
+    const pages = db.all<{ id: number; concept: string; kind: DocumentKind }>(
+        `SELECT p.id AS id, p.concept AS concept, p.kind AS kind FROM pages p
+         WHERE p.generation = ?${narrow.sql}
+         ORDER BY p.concept_key
+         LIMIT ?`,
+        [activeIndexGeneration(db), ...narrow.params, limit],
+    )
+    if (pages.length === 0) return []
+    const shown = [...new Set(filters.filter((f) => !f.negated).map((f) => f.key.toLowerCase()))].filter((key) => key !== 'title')
+    const values = new Map<number, { key: string; value: string }[]>()
+    if (shown.length > 0) {
+        // Ids and keys as JSON arrays, so a match on thousands of documents binds two
+        // parameters rather than thousands.
+        const rows = db.all<{ page_id: number; key: string; value: string }>(
+            `SELECT page_id, key, value FROM properties
+             WHERE page_id IN (SELECT value FROM json_each(?))
+               AND key_lc IN (SELECT value FROM json_each(?))
+               AND value IS NOT NULL
+             ORDER BY rowid`,
+            [JSON.stringify(pages.map((page) => page.id)), JSON.stringify(shown)],
+        )
+        for (const row of rows) {
+            const list = values.get(row.page_id)
+            const entry = { key: row.key, value: row.value }
+            if (list) list.push(entry)
+            else values.set(row.page_id, [entry])
+        }
+    }
+    return pages.map((page) => ({ concept: page.concept, kind: page.kind, properties: values.get(page.id) ?? [] }))
 }
 
 // ── Asset usage ─────────────────────────────────────────────────────────────

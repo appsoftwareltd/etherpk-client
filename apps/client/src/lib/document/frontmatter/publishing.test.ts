@@ -49,3 +49,10 @@ describe('withPublishing', () => {
         expect(withPublishing(text, { public: true })).toBe(text)
     })
 })
+
+describe('withPublishing keeps the rest of the block', () => {
+    it('keeps a comment and a key it does not own', () => {
+        const text = '---\n# release notes\nstatus: draft\n---\nbody\n'
+        expect(withPublishing(text, { public: true, publications: ['docs'] })).toBe('---\n# release notes\nstatus: draft\npublic: true\npublications:\n  - docs\n---\nbody\n')
+    })
+})

@@ -21,6 +21,7 @@ import {
     type TextChange,
 } from '$lib/document/types'
 import { includeFactsOf } from '$lib/document/publish/publication'
+import { propertiesOf } from '$lib/document/properties'
 import type { IndexDocSnapshot } from '$lib/storage/fs/filesystem-store'
 import type {
     IndexChangeCheckpoint,
@@ -474,12 +475,16 @@ export function createServerDocumentStore(
     function indexSnapshotFor(entry: RegistryEntry, text: string): IndexDocSnapshot {
         const concept = conceptOf(entry)
         const includes = entry.kind === 'page' ? includeFactsOf({ concept, kind: entry.kind, text, aliases: [] }) : []
+        // Properties are read from the block like the include facts; title and aliases are not
+        // among them, since the index takes those from the registry (ADR 0107).
+        const properties = propertiesOf(parseFrontmatter(text).data)
         return {
             concept,
             kind: entry.kind,
             aliases: entry.aliases ?? [],
             text: bodyForIndex(text),
             ...(includes.length > 0 ? { includes } : {}),
+            ...(properties.length > 0 ? { properties } : {}),
         }
     }
 

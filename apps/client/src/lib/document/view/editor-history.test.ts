@@ -126,12 +126,19 @@ describe('a transaction that joins the previous undo step (ADR 0090)', () => {
     })
 
     it('on the collaborative history, joinNext opens the manager’s capture window for the dispatch and closes it after', () => {
-        const manager = { undoStack: [], redoStack: [], captureTimeout: 500 }
+        const manager = { undoStack: [], redoStack: [], captureTimeout: 500, stopCapturing: () => {} }
         const seen: number[] = []
         collabEditorHistory(manager).joinNext!(() => seen.push(manager.captureTimeout))
         expect(seen).toEqual([Number.POSITIVE_INFINITY])
         expect(manager.captureTimeout).toBe(500)
         expect(() => collabEditorHistory(manager).joinNext!(() => { throw new Error('boom') })).toThrow('boom')
         expect(manager.captureTimeout).toBe(500)
+    })
+
+    it('on the collaborative history, closeStep ends the step being captured', () => {
+        let stopped = 0
+        const manager = { undoStack: [], redoStack: [], captureTimeout: 500, stopCapturing: () => void stopped++ }
+        collabEditorHistory(manager).closeStep!()
+        expect(stopped).toBe(1)
     })
 })

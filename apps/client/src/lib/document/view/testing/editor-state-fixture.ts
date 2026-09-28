@@ -35,6 +35,7 @@ import { blockSelection } from '../block-select'
 import { caretClamp } from '../caret-clamp'
 import { fenceGuard, fencePad } from '../fence-guard'
 import { frontmatterBoundaryGuard } from '../frontmatter-boundary'
+import { frontmatterBindings, frontmatterKeys } from '../frontmatter-keys'
 import { deleteHeal } from '../delete-heal'
 import { leaveTidy } from '../leave-tidy'
 import { localHistoryExtension } from '../editor-history'
@@ -140,11 +141,12 @@ export class HeadlessEditor {
 
     /**
      * Press a key by CodeMirror name (`Enter`, `Shift-Tab`, `Alt-ArrowUp`, `Mod-Enter`, …): the
-     * outliner bindings for that key run in order until one handles it, exactly like the live keymap,
-     * then the default handler applies. Returns whether anything handled the key.
+     * frontmatter bindings first (they sit above the outliner's in the live keymap), then the outliner
+     * bindings for that key in order until one handles it, then the default handler. Returns whether
+     * anything handled the key.
      */
     key(name: string): boolean {
-        for (const binding of outlinerBindings()) {
+        for (const binding of [...frontmatterBindings(), ...outlinerBindings()]) {
             if (binding.key !== name || !binding.run) continue
             if (binding.run(this as never)) return true
         }
@@ -194,7 +196,7 @@ export function editorFixture(text: string, options: EditorFixtureOptions = {}):
             // pad runs before the clamp, the clamp before the delete heal, and the paste clamp sees the
             // raw paste before the guard re-pads what is left. A fixture in another order passes rows
             // the browser fails (the heal's caret).
-            ...(withoutFilters ? [] : [leaveTidy(), fenceGuard(), pasteClamp(), deleteHeal(), blockSelection(), caretClamp(), fencePad(), frontmatterBoundaryGuard()]),
+            ...(withoutFilters ? [] : [leaveTidy(), fenceGuard(), pasteClamp(), deleteHeal(), blockSelection(), caretClamp(), fencePad(), frontmatterBoundaryGuard(), frontmatterKeys()]),
             ...extensions,
         ],
     })

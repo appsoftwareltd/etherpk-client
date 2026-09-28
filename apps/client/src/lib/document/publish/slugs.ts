@@ -10,6 +10,7 @@
 
 import { parseFrontmatter } from '$lib/storage/fs/frontmatter'
 
+import { isEmptyValue } from '../frontmatter/frontmatter-yaml'
 import { conceptKey } from '../backlinks/backlink-index'
 import { publishSlug } from '../wikilink/derive'
 import type { PublishDocument } from './types'
@@ -73,7 +74,8 @@ function allocate(documents: readonly PublishDocument[]): SlugAllocation {
     const derived: PublishDocument[] = []
     for (const doc of documents) {
         const value = parseFrontmatter(doc.text).data.slug
-        if (value === undefined) {
+        // An empty `slug:` is not set (ADR 0108): the document takes its derived slug.
+        if (isEmptyValue(value)) {
             derived.push(doc)
             continue
         }

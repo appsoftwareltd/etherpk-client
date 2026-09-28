@@ -307,10 +307,11 @@ describe('index-db', () => {
         const measured = countDeleteStatements(db)
         commitIndexRebuild(measured.db, generation)
 
-        // Generation cleanup has one relation-sized job per derived table — eight of them
+        // Generation cleanup has one relation-sized job per derived table — nine of them
         // (aliases, publication_includes, blocks, links, tasks, task_concepts, passages,
-        // block_fts) plus pages. Its SQL work must not grow into a DELETE per page in a large graph.
-        expect(measured.count()).toBeLessThanOrEqual(9)
+        // properties, block_fts) plus pages. Its SQL work must not grow into a DELETE per page in
+        // a large graph.
+        expect(measured.count()).toBeLessThanOrEqual(10)
         expect(
             db.all<{ count: number }>(
                 'SELECT COUNT(*) AS count FROM pages WHERE generation <> ?',

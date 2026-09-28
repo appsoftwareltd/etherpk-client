@@ -90,7 +90,16 @@ AGENTS.md                                     this file
   text, that text's heading underline. Leave a blank line above a `---` meant as a rule.
 - Keys EtherPK reads: `title` (identity, pages only), `aliases` (a YAML list of other names
   a page answers to; a wikilink to an alias resolves to the page), and the publishing keys
-  below. Any other key is kept verbatim and ignored, so you may add your own.
+  below. Any other key is kept, so you may add your own; EtherPK gives it no meaning, and the
+  user can find documents by it in Search (`status:draft`).
+- **Write the block the way EtherPK does**, so a later EtherPK write changes nothing but the key
+  it is setting: two-space indentation, a list under its key with one item per line
+  (`aliases:` then `  - Board`), quotes only where a value needs them, no blank lines inside
+  the block. Never indent with a tab: YAML forbids it, and a block that does not parse is
+  ignored whole. Comments are kept.
+- **An empty value means the key is not set.** `slug:`, `date:`, `publications:` or a bare
+  `publication:` with nothing after the colon change nothing, so leave a key empty rather than
+  inventing a value.
 - **Publishing.** EtherPK can render a set of documents into a website. A document is published
   only when its frontmatter says `public: true` **and** it belongs to a publication:
   `publications: [docs, blog]` names the publications by id, unless a publication takes every
@@ -103,7 +112,9 @@ AGENTS.md                                     this file
   navigation; that page is itself never published. A page named under `includes` (a footer, a
   head snippet) needs the same two keys as any published document and is then a snippet: it
   fills its slot and is never published as a page of its own. A `slug: privacy-policy` key
-  chooses the document's address on the site instead of one derived from its name. To publish a document,
+  chooses the document's address on the site instead of one derived from its name, and a page's
+  `date: 2026-09-28` dates it on a blog. `public` is the boolean `true`, never the quoted text
+  `"true"`. To publish a document,
   add the two keys to its block; to make a publication, write such a page. The user runs the
   publish from EtherPK.
 - Keep the block intact: never join body text onto the closing `---` and never delete the

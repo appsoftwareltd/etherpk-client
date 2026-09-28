@@ -50,6 +50,7 @@ describe('editor feature stack', () => {
             'selection-layer',
             'markdown-table',
             'frontmatter',
+            'frontmatter-assist',
             'protected-fence',
             'fence-render',
             'math-inline',
@@ -64,8 +65,10 @@ describe('editor feature stack', () => {
             'wikilink-completion',
             'task-tag-completion',
             'slash-completion',
+            'frontmatter-completion',
             'date-calendar',
             'table-size-picker',
+            'frontmatter-keys',
             'placeholder',
             'edit-refusal',
             'view-hooks',
@@ -97,6 +100,12 @@ describe('editor feature stack', () => {
         // Both answer Shift+F10 and the Menu key at the caret; spell check excludes link text, so
         // they meet only at a caret between a misspelt word and a link, where the word wins.
         before('spell-check', 'wikilink')
+    })
+
+    it('gives every open popover Enter and Tab before the YAML typing keys', () => {
+        for (const popover of ['wikilink-completion', 'task-tag-completion', 'slash-completion', 'frontmatter-completion', 'date-calendar', 'table-size-picker']) {
+            before(popover, 'frontmatter-keys')
+        }
     })
 
     it('lets clipboard files claim a paste before the HTML route sees it', () => {

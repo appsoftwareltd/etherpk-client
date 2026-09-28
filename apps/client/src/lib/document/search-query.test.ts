@@ -2,10 +2,13 @@ import { describe, expect, it } from 'vitest'
 
 import {
     buildFtsMatch,
+    describePropertyFilter,
     isSearchableTextQuery,
     MATCH_CLOSE,
     MATCH_OPEN,
+    parseSearchQuery,
     parseSearchTerms,
+    removeSearchTerm,
     snippetSegments,
 } from './search-query'
 
@@ -110,5 +113,75 @@ describe('snippetSegments', () => {
 
     it('is empty for an empty snippet', () => {
         expect(snippetSegments('')).toEqual([])
+    })
+})
+
+describe('parseSearchQuery: Property Filters (ADR 0107)', () => {
+    const keys = new Set(['public', 'status', 'publication.id', 'tags', 'date', 'title'])
+
+    it('takes a filter on a key the graph uses out of the words', () => {
+        const parsed = parseSearchQuery('public:true meeting', keys)
+        expect(parsed.filters).toEqual([{ key: 'public', value: 'true', prefix: false, negated: false }])
+        expect(parsed.words).toBe('meeting')
+    })
+
+    it('leaves a key no document uses as words, so a URL or a time stays text', () => {
+        const parsed = parseSearchQuery('http://example.com at 10:30 note: this', keys)
+        expect(parsed.filters).toEqual([])
+        expect(parsed.words).toBe('http://example.com at 10:30 note: this')
+    })
+
+    it('matches a key ignoring case and keeps the spelling typed', () => {
+        expect(parseSearchQuery('Status:Done', keys).filters).toEqual([{ key: 'Status', value: 'Done', prefix: false, negated: false }])
+    })
+
+    it('reads a quoted value, a negation, presence, a dot path and a prefix', () => {
+        const parsed = parseSearchQuery('status:"in progress" -tags:old public:* publication.id:docs date:2026-09* words', keys)
+        expect(parsed.filters).toEqual([
+            { key: 'status', value: 'in progress', prefix: false, negated: false },
+            { key: 'tags', value: 'old', prefix: false, negated: true },
+            { key: 'public', value: null, prefix: false, negated: false },
+            { key: 'publication.id', value: 'docs', prefix: false, negated: false },
+            { key: 'date', value: '2026-09', prefix: true, negated: false },
+        ])
+        expect(parsed.words).toBe('words')
+    })
+
+    it('keeps a fully quoted term as words', () => {
+        const parsed = parseSearchQuery('"status:done" other', keys)
+        expect(parsed.filters).toEqual([])
+        expect(parsed.words).toBe('"status:done" other')
+    })
+
+    it('drops a filter with no value yet, rather than searching its key as a word', () => {
+        const parsed = parseSearchQuery('meeting status:', keys)
+        expect(parsed.filters).toEqual([])
+        expect(parsed.words).toBe('meeting')
+    })
+
+    it('reads an unclosed quoted value to the end, as the words do', () => {
+        expect(parseSearchQuery('status:"in prog', keys).filters).toEqual([{ key: 'status', value: 'in prog', prefix: false, negated: false }])
+    })
+
+    it('records where each filter sits, so a chip can remove it', () => {
+        const input = 'alpha public:true beta'
+        const { terms } = parseSearchQuery(input, keys)
+        expect(terms).toHaveLength(1)
+        expect(input.slice(terms[0].from, terms[0].to)).toBe('public:true')
+        expect(removeSearchTerm(input, terms[0])).toBe('alpha beta')
+    })
+
+    it('with no known keys, is exactly the words', () => {
+        expect(parseSearchQuery('public:true', new Set())).toEqual({ words: 'public:true', filters: [], terms: [] })
+    })
+})
+
+describe('describePropertyFilter', () => {
+    it('reads as the chip text', () => {
+        expect(describePropertyFilter({ key: 'public', value: 'true', prefix: false, negated: false })).toBe('public = true')
+        expect(describePropertyFilter({ key: 'status', value: 'done', prefix: false, negated: true })).toBe('not status = done')
+        expect(describePropertyFilter({ key: 'status', value: null, prefix: false, negated: false })).toBe('status is set')
+        expect(describePropertyFilter({ key: 'status', value: null, prefix: false, negated: true })).toBe('status is not set')
+        expect(describePropertyFilter({ key: 'date', value: '2026-09', prefix: true, negated: false })).toBe('date starts with 2026-09')
     })
 })

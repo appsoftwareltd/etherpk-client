@@ -664,3 +664,16 @@ describe('renamePage — onto another page\'s alias', () => {
         expect(text).toContain('- Agentic Software Development')
     })
 })
+
+describe('renamePage keeps the rest of the block', () => {
+    it('changes only the identity keys, keeping a comment and a key it does not own (ADR 0108)', async () => {
+        const text = '---\n# project page\ntitle: Physics\nstatus: [draft]\n---\n- content\n'
+        const { adapter, store } = await graph([{ subdir: 'pages', name: 'Physics.md', text }])
+
+        await store.renamePage('Physics', 'Physical Science', { strategy: 'alias' })
+
+        expect((await adapter.read('pages', 'Physical Science.md')).text).toBe(
+            '---\n# project page\ntitle: Physical Science\nstatus:\n  - draft\naliases:\n  - Physics\n---\n- content\n',
+        )
+    })
+})

@@ -38,6 +38,7 @@ import type { ProposalStep } from '$lib/document/frontmatter/proposal'
 import { analysisFor } from '../analysis/editor-analysis'
 import { EXTERNAL } from '../cm-document'
 import { isOwnEditing } from '../own-editing'
+import { frontmatterProblemsField, showFrontmatterProblems } from './frontmatter-assist'
 import { type EpisodeEnd, FrontmatterEpisode } from './frontmatter-episode'
 import { FRONTMATTER_MARK, FRONTMATTER_NODE } from './frontmatter-parse'
 
@@ -241,7 +242,8 @@ function mismatchPlugin(options: FrontmatterOptions, session: EditingSession): E
 
             update(update: ViewUpdate): void {
                 const ticked = update.transactions.some((tr) => tr.effects.some((e) => e.is(frontmatterIdentityTick)))
-                if (update.docChanged || ticked || session.editing !== this.hidden) {
+                const problems = update.transactions.some((tr) => tr.effects.some((e) => e.is(showFrontmatterProblems)))
+                if (update.docChanged || ticked || problems || session.editing !== this.hidden) {
                     this.refresh(update.state, update.docChanged || ticked)
                 }
             }
@@ -259,7 +261,9 @@ function mismatchPlugin(options: FrontmatterOptions, session: EditingSession): E
                     this.block = block
                     this.steps = options.proposal(block)
                 }
-                if (this.steps.length === 0 || session.editing) {
+                // Problems in the block are shown first: the name is worth settling once it reads.
+                const problemsShown = (state.field(frontmatterProblemsField, false)?.problems.length ?? 0) > 0
+                if (this.steps.length === 0 || session.editing || problemsShown) {
                     this.decorations = Decoration.none
                     return
                 }

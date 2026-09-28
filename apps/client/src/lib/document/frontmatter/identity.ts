@@ -12,10 +12,10 @@
  * Pure: no store, no editor. The YAML rules (what counts as a block, how it parses) come from
  * `storage/fs`, shared with the scan and the editor's analysis, so there is one rule.
  */
-import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
-
 import { frontmatterSpan } from '$lib/storage/fs/frontmatter-span'
 import { aliasesOf, conceptKey } from '$lib/storage/fs/identity'
+
+import { editFrontmatter, frontmatterData } from './frontmatter-yaml'
 
 /**
  * What an edit to a property does when the editing episode ends:
@@ -51,7 +51,7 @@ export const FRONTMATTER_PROPERTIES: readonly FrontmatterProperty[] = [
     {
         key: 'public',
         policy: 'none',
-        summary: 'Whether the document may be published at all (ADR 0082). `public: true` is required; a protected document is never published whatever it says.',
+        summary: 'Whether the document may be published at all. `public: true` is required; a protected document is never published whatever it says.',
     },
     {
         key: 'publications',
@@ -72,6 +72,11 @@ export const FRONTMATTER_PROPERTIES: readonly FrontmatterProperty[] = [
         key: 'slug',
         policy: 'none',
         summary: 'The address the document takes on a published site (`privacy-policy` → `privacy-policy.html`) instead of one derived from its name.',
+    },
+    {
+        key: 'date',
+        policy: 'none',
+        summary: 'The day a page is dated on a published blog, as `YYYY-MM-DD`. A journal entry is dated by its name.',
     },
 ]
 
@@ -99,7 +104,7 @@ export interface FrontmatterIdentity {
 /** What the block claims. An unterminated block is not a block, as everywhere else. */
 export function frontmatterIdentity(text: string): FrontmatterIdentity {
     const span = frontmatterSpan(text)
-    const data = span ? parseBlock(span.body) : {}
+    const data = span ? frontmatterData(span.body) : {}
     if (data === null) return { title: null, aliases: [], hasAliasesKey: false, hasBlock: true, readable: false }
     return { title: titleOf(data), aliases: aliasesOf({ data }), hasAliasesKey: 'aliases' in data, hasBlock: span !== null, readable: true }
 }
@@ -158,39 +163,28 @@ export interface WriteOptions {
  */
 export function withFrontmatterIdentity(text: string, patch: IdentityPatch, options: WriteOptions = {}): string {
     const span = frontmatterSpan(text)
-    if (!span) {
-        if (!options.addBlock) return text
-        const data: Record<string, unknown> = {}
-        if (typeof patch.title === 'string' && patch.title.trim() !== '') data.title = patch.title
-        const aliases = patch.aliases ? [...patch.aliases] : []
-        if (aliases.length > 0) data.aliases = aliases
-        if (Object.keys(data).length === 0) return text
-        return `---\n${stringifyYaml(data)}---\n${text}`
+    if (span) {
+        const data = frontmatterData(span.body)
+        if (data === null) return text
+        const wantTitle = patch.title === undefined ? titleOf(data) : patch.title
+        const wantAliases = patch.aliases === undefined ? aliasesOf({ data }) : patch.aliases
+        // Compared as identity: an alias list in another order or case claims the same names.
+        if (wantTitle === titleOf(data) && sameAliases(wantAliases, aliasesOf({ data }))) return text
     }
-
-    const data = parseBlock(span.body)
-    if (data === null) return text
-    const currentTitle = titleOf(data)
-    const currentAliases = aliasesOf({ data })
-    const wantTitle = patch.title === undefined ? currentTitle : patch.title
-    const wantAliases = patch.aliases === undefined ? currentAliases : [...patch.aliases]
-    if (wantTitle === currentTitle && sameAliases(wantAliases, currentAliases)) return text
-
-    const next: Record<string, unknown> = {}
-    if (wantTitle !== null && !('title' in data)) next.title = wantTitle
-    for (const [key, value] of Object.entries(data)) {
-        if (key === 'title') {
-            if (wantTitle !== null) next.title = wantTitle
-            continue
-        }
-        if (key === 'aliases') {
-            if (wantAliases.length > 0) next.aliases = wantAliases
-            continue
-        }
-        next[key] = value
-    }
-    if (wantAliases.length > 0 && !('aliases' in data)) next.aliases = wantAliases
-    return `---\n${serialise(next)}---\n${text.slice(span.end)}`
+    return editFrontmatter(
+        text,
+        (block) => {
+            if (patch.title !== undefined) {
+                if (patch.title === null || patch.title.trim() === '') block.delete('title')
+                else block.set('title', patch.title, 'first')
+            }
+            if (patch.aliases !== undefined) {
+                if (patch.aliases.length > 0) block.set('aliases', [...patch.aliases])
+                else block.delete('aliases')
+            }
+        },
+        options,
+    )
 }
 
 /**
@@ -218,31 +212,11 @@ export function withAliasesInAddedBlock(before: string, after: string, aliases: 
 export function syncedImportText(text: string): string {
     const span = frontmatterSpan(text)
     if (!span) return text
-    const data = parseBlock(span.body)
+    const data = frontmatterData(span.body)
     if (data === null) return text
     if (!('title' in data) && !('aliases' in data)) return text
-    const rest: Record<string, unknown> = {}
-    for (const [key, value] of Object.entries(data)) {
-        if (key !== 'title') rest[key] = value
-    }
-    if (Object.keys(rest).every((key) => key === 'aliases')) return text.slice(span.end)
+    if (Object.keys(data).every((key) => key === 'title' || key === 'aliases')) return text.slice(span.end)
     // Nothing to strip: keep the block as written rather than reformatting it.
     if (!('title' in data)) return text
-    return `---\n${serialise(rest)}---\n${text.slice(span.end)}`
-}
-
-/** The block's YAML as a plain object, or null when it is malformed or not an object. */
-function parseBlock(yaml: string): Record<string, unknown> | null {
-    try {
-        const parsed: unknown = parseYaml(yaml)
-        if (parsed === null || parsed === undefined) return {}
-        if (typeof parsed !== 'object' || Array.isArray(parsed)) return null
-        return parsed as Record<string, unknown>
-    } catch {
-        return null
-    }
-}
-
-function serialise(data: Record<string, unknown>): string {
-    return Object.keys(data).length === 0 ? '' : stringifyYaml(data)
+    return editFrontmatter(text, (block) => block.delete('title'))
 }

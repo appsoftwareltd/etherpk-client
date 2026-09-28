@@ -16,10 +16,14 @@ import type {
     ConceptCandidate,
     DbBacklinkGroup,
     IndexDoc,
+    PropertyKeyInfo,
+    PropertyMatch,
+    PropertyValueInfo,
     SearchDocumentGroup,
     TaskHit,
     TaskQuery,
 } from '../index-db'
+import type { PropertyFilter } from '../search-query'
 import type { EmbeddingRow, PendingPassage, SemanticDocumentGroup, SemanticStatus } from '../semantic/embedding-db'
 import { conceptKey } from '../backlinks/backlink-index'
 import type {
@@ -81,9 +85,16 @@ export interface RemoteGraphIndex {
      * `backlinks` — which is exactly why Search runs it separately from the name group,
      * whose answers come from the synchronous snapshot above and always land first.
      */
-    searchText(query: string, offset: number, limit: number): Promise<SearchTextResult>
+    searchText(query: string, offset: number, limit: number, filters?: readonly PropertyFilter[]): Promise<SearchTextResult>
     /** How many documents match, capped. Issued in parallel; never blocks the rows. */
-    searchTextCount(query: string): Promise<SearchCountResult>
+    searchTextCount(query: string, filters?: readonly PropertyFilter[]): Promise<SearchCountResult>
+    /**
+     * [[Property Filter]]s (ADR 0107), as round trips: the keys the graph's searchable documents
+     * carry, the values one key has, and every document passing a set of filters.
+     */
+    propertyKeys(): Promise<PropertyKeyInfo[]>
+    propertyValues(key: string): Promise<PropertyValueInfo[]>
+    propertyMatch(filters: readonly PropertyFilter[]): Promise<PropertyMatch[]>
     /**
      * Which documents reference an [[Asset]], and how many times. A round trip, issued once
      * when the user asks to delete one — never speculatively. See ADR 0054 for why the count
@@ -1002,17 +1013,29 @@ export function createRemoteGraphIndex(
             }))
             return response.usage
         },
-        async searchText(query, offset, limit) {
+        async searchText(query, offset, limit, filters) {
             const response = await request<Extract<IndexResponse, { type: 'search-text' }>>(
-                (id) => ({ type: 'search-text', id, query, offset, limit }),
+                (id) => ({ type: 'search-text', id, query, offset, limit, ...(filters?.length ? { filters: [...filters] } : {}) }),
             )
             return { groups: response.groups, hasMore: response.hasMore }
         },
-        async searchTextCount(query) {
+        async searchTextCount(query, filters) {
             const response = await request<Extract<IndexResponse, { type: 'search-count' }>>(
-                (id) => ({ type: 'search-count', id, query }),
+                (id) => ({ type: 'search-count', id, query, ...(filters?.length ? { filters: [...filters] } : {}) }),
             )
             return { total: response.total, capped: response.capped }
+        },
+        async propertyKeys() {
+            const response = await request<Extract<IndexResponse, { type: 'property-keys' }>>((id) => ({ type: 'property-keys', id }))
+            return response.keys
+        },
+        async propertyValues(key) {
+            const response = await request<Extract<IndexResponse, { type: 'property-values' }>>((id) => ({ type: 'property-values', id, key }))
+            return response.values
+        },
+        async propertyMatch(filters) {
+            const response = await request<Extract<IndexResponse, { type: 'property-match' }>>((id) => ({ type: 'property-match', id, filters: [...filters] }))
+            return response.documents
         },
         async tasks(query, offset, limit) {
             const response = await request<Extract<IndexResponse, { type: 'tasks' }>>((id) => ({

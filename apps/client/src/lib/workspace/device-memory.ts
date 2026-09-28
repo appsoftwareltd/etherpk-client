@@ -7,10 +7,15 @@
  *   General for every edit (2026-09-19).
  * - The publication last published from this device, so the Publish command can run it again
  *   without asking which.
+ * - The keys last chosen in the Add frontmatter dialog, so it opens ticked the way the person
+ *   works rather than at the defaults every time.
  */
+
+import { ADDABLE_KEYS, type AddableKey, DEFAULT_ADD_FRONTMATTER_KEYS } from '$lib/document/frontmatter/add-frontmatter'
 
 export const SETTINGS_TAB_KEY_PREFIX = 'etherpk-settings-tab:'
 export const LAST_PUBLICATION_KEY_PREFIX = 'etherpk-last-publication:'
+export const ADD_FRONTMATTER_KEYS_PREFIX = 'etherpk-add-frontmatter-keys:'
 
 export const SETTINGS_TABS = ['general', 'spelling', 'protection', 'mirror', 'agents', 'publish', 'maintenance'] as const
 export type SettingsTab = (typeof SETTINGS_TABS)[number]
@@ -52,4 +57,17 @@ export function readLastPublication(graphId: string, storage: Storage | undefine
 /** Remember the publication just published; blank forgets it. */
 export function writeLastPublication(graphId: string, publicationId: string, storage: Storage | undefined = globalThis.localStorage): void {
     write(`${LAST_PUBLICATION_KEY_PREFIX}${graphId}`, publicationId, storage)
+}
+
+/** The keys to tick when the Add frontmatter dialog opens: the last choice, or the usual ones. */
+export function readAddFrontmatterKeys(graphId: string, storage: Storage | undefined = globalThis.localStorage): AddableKey[] {
+    const raw = read(`${ADD_FRONTMATTER_KEYS_PREFIX}${graphId}`, storage)
+    if (raw === null) return [...DEFAULT_ADD_FRONTMATTER_KEYS]
+    const chosen = raw.split(',')
+    // Only keys the dialog knows, in its own order: a stale or edited value cannot tick nonsense.
+    return ADDABLE_KEYS.filter((key) => chosen.includes(key))
+}
+
+export function writeAddFrontmatterKeys(graphId: string, keys: readonly AddableKey[], storage: Storage | undefined = globalThis.localStorage): void {
+    write(`${ADD_FRONTMATTER_KEYS_PREFIX}${graphId}`, keys.join(','), storage)
 }

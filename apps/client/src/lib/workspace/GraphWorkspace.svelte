@@ -91,7 +91,7 @@
         setActiveDocument,
     } from "$lib/document";
     import { todayISO } from "$lib/document/calendar/month-grid-core";
-    import { canonicalConceptName, openConcept } from "$lib/document/open-concept";
+    import { canonicalConceptName, openConcept, openConceptAtLine } from "$lib/document/open-concept";
     import AllDocumentsView from "$lib/document/view/AllDocumentsView.svelte";
     import GraphSidebarView from "$lib/document/view/GraphSidebarView.svelte";
     import RenameDocumentDialog from "$lib/document/view/RenameDocumentDialog.svelte";
@@ -178,9 +178,19 @@
         setDocumentPublishing,
         summarisePublishing,
         updatePublicationPage,
+        registryAliases,
+        type FrontmatterStore,
         type NewPublicationInput,
     } from "$lib/workspace/publish-service";
-    import { readLastPublication, readSettingsTab, writeLastPublication, writeSettingsTab, type SettingsTab } from "$lib/workspace/device-memory";
+    import {
+        readAddFrontmatterKeys,
+        readLastPublication,
+        readSettingsTab,
+        writeAddFrontmatterKeys,
+        writeLastPublication,
+        writeSettingsTab,
+        type SettingsTab,
+    } from "$lib/workspace/device-memory";
     import { SETTINGS_PARAM, settingsTabFromUrl, withSettingsTab, withoutSettingsTab } from "$lib/workspace/settings-url";
     import { folderPublishReader, readPublishSource } from "$lib/document/publish/source";
     import { readMembership } from "$lib/document/publish/publication";
@@ -197,6 +207,17 @@
     } from "$lib/storage/publication-folder-idb";
     import { containsCipherFence } from "$lib/document/protection/fence-info";
     import { registerProtectionCommands } from "$lib/document/commands/protection-commands";
+    import { registerFrontmatterCommands } from "$lib/document/commands/frontmatter-commands";
+    import AddFrontmatterDialog from "$lib/document/ui/AddFrontmatterDialog.svelte";
+    import {
+        canAddFrontmatter,
+        planAddFrontmatter,
+        type AddableKey,
+        type AddFrontmatterChoice,
+    } from "$lib/document/frontmatter/add-frontmatter";
+    import { addFrontmatterThroughEditor, addFrontmatterThroughStore, readForAddFrontmatter } from "$lib/workspace/add-frontmatter-service";
+    import { frontmatterLineOffset } from "$lib/document/reveal";
+    import { canCreateDocuments } from "$lib/document/draft";
     import { ProtectionSession } from "$lib/document/protection/protection-session.svelte";
     import { DocumentNotFoundError } from "$lib/document/types";
     import {
@@ -1189,6 +1210,7 @@
     let detachQuickNotesCommands: (() => void) | undefined;
     let detachSpellingCommands: (() => void) | undefined;
     let detachProtectionCommands: (() => void) | undefined;
+    let detachFrontmatterCommands: (() => void) | undefined;
     let detachAssetCommands: (() => void) | undefined;
     let detachTabCommands: (() => void) | undefined;
     let detachAssetViewers: (() => void) | undefined;
@@ -2709,14 +2731,19 @@
             searchController?.dispose();
             searchController = createSearchController({
                 concepts: () => graphIndex?.allConcepts() ?? [],
-                searchText: (query, offset, limit) =>
+                searchText: (query, offset, limit, filters) =>
                     graphIndex
-                        ? graphIndex.searchText(query, offset, limit)
+                        ? graphIndex.searchText(query, offset, limit, filters)
                         : Promise.resolve({ groups: [], hasMore: false }),
-                searchTextCount: (query) =>
+                searchTextCount: (query, filters) =>
                     graphIndex
-                        ? graphIndex.searchTextCount(query)
+                        ? graphIndex.searchTextCount(query, filters)
                         : Promise.resolve({ total: 0, capped: false }),
+                // Property Filters (ADR 0107): the keys, values and matching documents are the
+                // index's answers, like text.
+                propertyKeys: () => graphIndex?.propertyKeys() ?? Promise.resolve([]),
+                propertyValues: (key) => graphIndex?.propertyValues(key) ?? Promise.resolve([]),
+                propertyMatch: (filters) => graphIndex?.propertyMatch(filters) ?? Promise.resolve([]),
                 // Refuse text results rather than showing partial ones: a user cannot tell
                 // "not found" from "not indexed yet", and a wrong "no" is this feature's one
                 // unacceptable failure.
@@ -3536,6 +3563,13 @@
             },
         );
 
+        detachFrontmatterCommands = registerFrontmatterCommands(commandRegistry, contributions, {
+            canAddFrontmatter: (concept) => canAddFrontmatterTo(concept, protectionSession.isUnlocked),
+            promptAddFrontmatter: (concept) => void startAddFrontmatter(concept),
+            activeConcept: () => getActiveDocument(),
+            onError: (text) => notify(text),
+        });
+
         // Reconciliation is a Filesystem-only concern (external edits under a dirty buffer).
         // A CRDT backend merges instead of conflicting, so reconcile() is a no-op — skip it.
         if (!useServer)
@@ -4215,6 +4249,82 @@
         isProtected: boolean;
         current: { isPublic: boolean; publications: string[] };
     } | null>(null);
+
+    /** The Add frontmatter dialog open for one document, or null. */
+    let addingFrontmatter = $state<{
+        concept: string;
+        choices: AddFrontmatterChoice[];
+        initial: AddableKey[];
+    } | null>(null);
+    /** What to do once the dialog has closed and handed focus back: land on the keys just added. */
+    let afterAddFrontmatter: (() => void) | null = null;
+
+    function frontmatterKindOf(concept: string): "page" | "journal" {
+        return isJournalConcept(concept) ? "journal" : "page";
+    }
+
+    /**
+     * Whether Add frontmatter has anything to do for a document, read from the text the store
+     * already holds, as the menu's other rows read theirs. A concept with no document yet (a
+     * Draft) can have one made; a locked Protected Document cannot be edited at all.
+     */
+    function canAddFrontmatterTo(concept: string, unlocked: boolean): boolean {
+        if (!store) return false;
+        try {
+            const text = store.open(concept).getText();
+            if (documentProtection(text).kind !== "none" && !unlocked) return false;
+            return canAddFrontmatter(text, frontmatterKindOf(concept));
+        } catch (error) {
+            return error instanceof DocumentNotFoundError && canCreateDocuments(store);
+        }
+    }
+
+    /** Open the dialog, or say where the block breaks when it does not parse. */
+    async function startAddFrontmatter(concept: string) {
+        if (!store) return;
+        const text = await readForAddFrontmatter(store as FrontmatterStore, concept);
+        const plan = planAddFrontmatter(text, frontmatterKindOf(concept));
+        if (plan.kind === "unreadable") {
+            // Nothing is written into a block that does not parse: whatever the person was typing
+            // would be lost. Say where it breaks and put the caret there instead.
+            notify(`Could not add frontmatter to ${concept}: line ${plan.line + 1} does not parse. ${plan.message}`);
+            openConceptAtLine(concept, plan.line - frontmatterLineOffset(text));
+            return;
+        }
+        addingFrontmatter = { concept, choices: plan.choices, initial: readAddFrontmatterKeys(graphId) };
+    }
+
+    /**
+     * Write the chosen keys. The document being edited takes them through its editor, so one
+     * undo removes them and the caret lands on the first value; any other document through the
+     * store, and it is then opened at that value.
+     */
+    async function addFrontmatter(concept: string, keys: AddableKey[]): Promise<void> {
+        if (!store) throw new Error("Could not add frontmatter: no graph is open.");
+        const frontmatterStore = store as FrontmatterStore;
+        writeAddFrontmatterKeys(graphId, keys);
+        const view = getActiveEditorView();
+        const active = getActiveDocument();
+        if (view && active !== null && conceptKey(active) === conceptKey(concept) && documentExists(concept)) {
+            addFrontmatterThroughEditor(view, concept, keys, registryAliases(frontmatterStore, concept));
+            afterAddFrontmatter = () => view.focus();
+            return;
+        }
+        const added = await addFrontmatterThroughStore(frontmatterStore, concept, keys);
+        afterAddFrontmatter = () => {
+            if (added.line === null) openConcept(concept);
+            else openConceptAtLine(concept, added.line - frontmatterLineOffset(added.text));
+        };
+    }
+
+    function closeAddFrontmatter() {
+        addingFrontmatter = null;
+        const then = afterAddFrontmatter;
+        afterAddFrontmatter = null;
+        // After the dialog has handed focus back to where it was opened from, or that would
+        // take it straight back from the editor.
+        if (then) requestAnimationFrame(then);
+    }
 
     /** Every document's materialised text, read the way the Local Mirror reads (never `open()`). */
     async function readGraphForPublishing(
@@ -5376,6 +5486,8 @@
         detachSpellingCommands = undefined;
         detachProtectionCommands?.();
         detachProtectionCommands = undefined;
+        detachFrontmatterCommands?.();
+        detachFrontmatterCommands = undefined;
         // Order matters: the session locks (committing pending plaintext) before the store drops
         // its projections, so a graph switch never strands unwritten protected work.
         setActiveProtectionStatus(null);
@@ -5806,6 +5918,16 @@
             openGraphSettings("publish");
         }}
         onclose={() => (publishingDocument = null)}
+    />
+{/if}
+
+{#if addingFrontmatter}
+    <AddFrontmatterDialog
+        concept={addingFrontmatter.concept}
+        choices={addingFrontmatter.choices}
+        initial={addingFrontmatter.initial}
+        onadd={(keys) => addFrontmatter(addingFrontmatter!.concept, keys)}
+        onclose={closeAddFrontmatter}
     />
 {/if}
 

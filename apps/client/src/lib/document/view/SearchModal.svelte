@@ -7,8 +7,13 @@
      * group would push the slow one — the reason the modal exists — below the fold on every
      * keystroke. Two things stop that: the Names group is capped at five rows per page, and
      * the Text group reserves its first page's height as a skeleton before anything arrives.
+     *
+     * [[Property Filter]]s (ADR 0107) add two things around the box: a row of chips, one per
+     * filter the query holds, and a suggestion list while a key or a key's value is typed. The
+     * text in the box stays the only source of truth; a chip is a readout with a way to remove
+     * its term, and a suggestion writes into the box.
      */
-    import { untrack } from "svelte";
+    import { tick, untrack } from "svelte";
 
     import LoadingSweep from "$lib/components/LoadingSweep.svelte";
     import { getActiveLayoutController } from "$lib/layout";
@@ -21,6 +26,15 @@
         type SearchState,
     } from "../search";
     import { revealLine } from "../reveal";
+    import type { PropertyValueInfo } from "../index-db";
+    import { describePropertyFilter, removeSearchTerm, type PropertyFilterTerm } from "../search-query";
+    import {
+        applySearchSuggestion,
+        keySuggestions,
+        suggestionContext,
+        valueSuggestions,
+        type SearchSuggestion,
+    } from "../search-suggest";
     import { tryGetActiveEventBus } from "$lib/surface";
     import { iconSvg } from "$lib/surface/icons";
 
@@ -134,6 +148,10 @@
     }
 
     function onKeydown(event: KeyboardEvent) {
+        if (suggestionKey(event)) {
+            event.preventDefault();
+            return;
+        }
         if (event.key === "Escape") {
             event.preventDefault();
             dismiss();
@@ -226,6 +244,10 @@
         }
         if (focusedForThisOpening || !input) return;
         focusedForThisOpening = true;
+        // A restored query does not open the suggestion list by itself; typing does.
+        suggestDismissed = true;
+        suggestIndex = null;
+        caret = search.query.length;
         // Read before the field takes focus. The body is not somewhere to go back to.
         const previous = document.activeElement;
         returnFocusTo =
@@ -239,6 +261,110 @@
     const countLabel = $derived(
         search.textCountCapped ? `${search.textCount}+` : `${search.textCount}`,
     );
+
+    // ── Property Filter suggestions ────────────────────────────────────────
+
+    /** Where the caret is in the box, which decides what the suggestion list offers. */
+    let caret = $state(0);
+    /**
+     * The suggestion the arrows have highlighted, or null: the list is showing, but Enter still
+     * opens the top result until Down moves into it, so typing a word that happens to start a key
+     * never changes what Enter does.
+     */
+    let suggestIndex = $state<number | null>(null);
+    /** Esc closes the list for the term being typed; the next keystroke in the box reopens it. */
+    let suggestDismissed = $state(true);
+    let values = $state.raw<readonly PropertyValueInfo[]>([]);
+    let valuesFor = $state<string | null>(null);
+
+    const knownKeys = $derived(new Set(search.propertyKeys.map((info) => info.key.toLowerCase())));
+    const suggestContext = $derived(search.open ? suggestionContext(search.query, caret, knownKeys) : null);
+    const valueKey = $derived(suggestContext?.kind === "value" ? suggestContext.key.toLowerCase() : null);
+
+    // The values a key has are a round trip, asked once per key per opening (the controller
+    // caches them); a late answer for a key no longer being typed is dropped.
+    $effect(() => {
+        const key = valueKey;
+        if (key === null) return;
+        let live = true;
+        void controller.propertyValues(key).then((list) => {
+            if (!live) return;
+            values = list;
+            valuesFor = key;
+        });
+        return () => {
+            live = false;
+        };
+    });
+
+    const suggestions = $derived.by<SearchSuggestion[]>(() => {
+        const context = suggestContext;
+        if (!context) return [];
+        if (context.kind === "key") return keySuggestions(context, search.propertyKeys);
+        return valuesFor === context.key.toLowerCase() ? valueSuggestions(context, values) : [];
+    });
+    const showSuggestions = $derived(!suggestDismissed && suggestions.length > 0);
+
+    function trackCaret(event: Event & { currentTarget: HTMLInputElement }) {
+        caret = event.currentTarget.selectionStart ?? event.currentTarget.value.length;
+    }
+
+    /** Write the suggestion into the box and put the caret where the next keystroke belongs. */
+    async function accept(suggestion: SearchSuggestion | undefined) {
+        const context = suggestContext;
+        if (!suggestion || !context) return;
+        const next = applySearchSuggestion(search.query, context, suggestion);
+        suggestIndex = null;
+        controller.setQuery(next.value);
+        await tick();
+        caret = next.caret;
+        input?.focus();
+        input?.setSelectionRange(next.caret, next.caret);
+    }
+
+    /** A chip's ×: take its term out of the box, and keep the caret in the box. */
+    async function removeFilter(term: PropertyFilterTerm) {
+        const next = removeSearchTerm(search.query, term);
+        controller.setQuery(next);
+        await tick();
+        caret = next.length;
+        input?.focus();
+        input?.setSelectionRange(next.length, next.length);
+    }
+
+    /**
+     * The suggestion list's keys, when it is showing. Returns true when the key was the list's.
+     * Down enters the list and walks it, Up walks back and leaves it at the top, Enter or Tab
+     * takes the highlighted row (Tab the first one when none is), and Esc closes the list
+     * without closing Search.
+     */
+    function suggestionKey(event: KeyboardEvent): boolean {
+        if (!showSuggestions || event.isComposing) return false;
+        if (event.key === "Escape") {
+            suggestDismissed = true;
+            suggestIndex = null;
+            return true;
+        }
+        if (event.key === "ArrowDown") {
+            suggestIndex = suggestIndex === null ? 0 : Math.min(suggestIndex + 1, suggestions.length - 1);
+            activeIndex = null;
+            return true;
+        }
+        if (event.key === "ArrowUp" && suggestIndex !== null) {
+            suggestIndex = suggestIndex === 0 ? null : suggestIndex - 1;
+            return true;
+        }
+        if ((event.key === "Enter" && suggestIndex !== null) || (event.key === "Tab" && !event.shiftKey)) {
+            void accept(suggestions[suggestIndex ?? 0]);
+            return true;
+        }
+        return false;
+    }
+
+    /** The values a name row matched, as `key: value`, once per pair. */
+    function propertyText(properties: { key: string; value: string }[]): string {
+        return [...new Set(properties.map((p) => `${p.key}: ${p.value}`))].join(" · ");
+    }
 </script>
 
 {#if search.open}
@@ -253,18 +379,86 @@
             aria-label="Search"
             onclick={(event) => event.stopPropagation()}
         >
-            <input
-                bind:this={input}
-                data-testid="search-input"
-                class="search__input"
-                placeholder="Search this graph…"
-                aria-label="Search this graph"
-                autocomplete="off"
-                value={search.query}
-                oninput={(event) => controller.setQuery(event.currentTarget.value)}
-                onkeydown={onKeydown}
-                onpointerdown={() => (activeIndex = null)}
-            />
+            <div class="search__box">
+                <input
+                    bind:this={input}
+                    data-testid="search-input"
+                    class="search__input"
+                    placeholder="Search this graph…"
+                    aria-label="Search this graph"
+                    autocomplete="off"
+                    role="combobox"
+                    aria-autocomplete="list"
+                    aria-expanded={showSuggestions}
+                    aria-controls="search-suggestions"
+                    aria-activedescendant={showSuggestions && suggestIndex !== null
+                        ? `search-suggestion-${suggestIndex}`
+                        : undefined}
+                    value={search.query}
+                    oninput={(event) => {
+                        trackCaret(event);
+                        suggestDismissed = false;
+                        suggestIndex = null;
+                        controller.setQuery(event.currentTarget.value);
+                    }}
+                    onkeydown={onKeydown}
+                    onkeyup={trackCaret}
+                    onclick={trackCaret}
+                    onpointerdown={() => (activeIndex = null)}
+                />
+                {#if showSuggestions}
+                    <!-- The combobox's list: keys go to the box (suggestionKey), so a row takes the
+                         pointer only. pointerdown is cancelled so the box keeps focus and caret. -->
+                    <ul
+                        id="search-suggestions"
+                        class="search__suggest"
+                        role="listbox"
+                        data-testid="search-suggestions"
+                        aria-label={suggestContext?.kind === "value"
+                            ? `Values of ${suggestContext.key}`
+                            : "Property keys"}
+                    >
+                        {#each suggestions as suggestion, index (suggestion.kind + suggestion.text)}
+                            <!-- svelte-ignore a11y_click_events_have_key_events -->
+                            <li
+                                id="search-suggestion-{index}"
+                                role="option"
+                                aria-selected={index === suggestIndex}
+                                data-testid="search-suggestion"
+                                class={["search__suggestion", index === suggestIndex && "search__suggestion--active"]}
+                                onpointerdown={(event) => event.preventDefault()}
+                                onclick={() => void accept(suggestion)}
+                            >
+                                <span class="search__suggestion-text"
+                                    >{suggestion.kind === "key" ? `${suggestion.text}:` : suggestion.text}</span
+                                >
+                                <span class="search__muted"
+                                    >{suggestion.documents}
+                                    {suggestion.documents === 1 ? "document" : "documents"}</span
+                                >
+                            </li>
+                        {/each}
+                    </ul>
+                {/if}
+            </div>
+
+            {#if search.filterTerms.length > 0}
+                <ul class="search__chips" aria-label="Property filters" data-testid="search-filter-chips">
+                    {#each search.filterTerms as term (term.from)}
+                        {@const label = describePropertyFilter(term.filter)}
+                        <li class="search__chip" data-testid="search-filter-chip">
+                            <span>{label}</span>
+                            <button
+                                type="button"
+                                class="search__chip-remove"
+                                data-testid="search-filter-chip-remove"
+                                aria-label="Remove filter {label}"
+                                onclick={() => void removeFilter(term)}>×</button
+                            >
+                        </li>
+                    {/each}
+                </ul>
+            {/if}
 
             <div class="search__results" bind:this={results}>
                 <!-- ── Names ──────────────────────────────────────────────── -->
@@ -327,6 +521,11 @@
                                             {@html iconSvg("lock", { size: 13, label: "Protected document" })}
                                         </span>
                                     {/if}
+                                    {#if row.properties && row.properties.length > 0}
+                                        <span class="search__props" data-testid="search-name-properties"
+                                            >{propertyText(row.properties)}</span
+                                        >
+                                    {/if}
                                     {#if row.kind === "draft"}
                                         <!--
                                             The row itself is the button, so the label is drawn as
@@ -355,13 +554,20 @@
                             </li>
                         {:else}
                             <li class="search__empty" data-testid="search-names-empty">
-                                {search.query.trim() === "" ? "Type to search." : "No names match."}
+                                {search.query.trim() === ""
+                                    ? "Type to search."
+                                    : search.filterTerms.length > 0
+                                      ? "No documents match these filters."
+                                      : "No names match."}
                             </li>
                         {/each}
                     </ul>
                 </section>
 
                 <!-- ── Text ───────────────────────────────────────────────── -->
+                <!-- Filters and no words: there is nothing to match text against, and the names
+                     group above is the whole answer. -->
+                {#if search.textStatus.kind !== "hidden"}
                 <section data-testid="search-text">
                     <header class="search__group-head">
                         <h2>Text</h2>
@@ -493,6 +699,7 @@
                         </p>
                     {/if}
                 </section>
+                {/if}
             </div>
         </div>
     </div>
@@ -530,6 +737,103 @@
     }
     .search__input:focus {
         outline: none;
+    }
+    .search__box {
+        position: relative;
+        display: flex;
+        flex-direction: column;
+    }
+    /* Over the results rather than above them, so the list opening and closing as keys are
+       typed never moves the results under the pointer. */
+    .search__suggest {
+        position: absolute;
+        top: 100%;
+        left: 0.75rem;
+        right: 0.75rem;
+        z-index: 2;
+        max-height: 18rem;
+        overflow-y: auto;
+        border: 1px solid var(--gk-border-soft);
+        border-radius: 0.375rem;
+        background: var(--gk-surface-1);
+        box-shadow: 0 0.75rem 1.5rem rgb(0 0 0 / 0.2);
+        padding: 0.25rem 0;
+    }
+    .search__suggestion {
+        display: flex;
+        align-items: baseline;
+        gap: 0.75rem;
+        padding: 0.375rem 0.75rem;
+        font-size: 0.875rem;
+        cursor: pointer;
+    }
+    .search__suggestion:hover,
+    .search__suggestion--active {
+        background: var(--gk-surface-2);
+    }
+    .search__suggestion-text {
+        min-width: 0;
+        flex: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-family: var(--gk-font-mono, ui-monospace, monospace);
+    }
+    .search__chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.375rem;
+        border-bottom: 1px solid var(--gk-border-soft);
+        padding: 0.5rem 1rem;
+    }
+    .search__chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.125rem;
+        border: 1px solid var(--gk-border-soft);
+        border-radius: 999px;
+        background: var(--gk-surface-2);
+        padding: 0 0.125rem 0 0.625rem;
+        font-size: 0.875rem;
+        color: var(--gk-text-default);
+    }
+    .search__chip-remove {
+        display: inline-flex;
+        min-width: 1.5rem;
+        min-height: 1.5rem;
+        align-items: center;
+        justify-content: center;
+        border-radius: 999px;
+        font-size: 1rem;
+        line-height: 1;
+        color: var(--gk-text-subtle);
+        cursor: pointer;
+    }
+    .search__chip-remove:hover,
+    .search__chip-remove:focus-visible {
+        background: var(--gk-surface-1);
+        color: var(--gk-text-strong);
+    }
+    @media (pointer: coarse) {
+        .search__chip-remove {
+            min-width: 2.75rem;
+            min-height: 2.75rem;
+        }
+        .search__suggestion {
+            min-height: 2.75rem;
+            align-items: center;
+        }
+    }
+    /* The values a filtered row matched: shown beside the name, and the first to give way. */
+    .search__props {
+        min-width: 0;
+        max-width: 50%;
+        flex-shrink: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: 0.875rem;
+        color: var(--gk-text-subtle);
     }
     .search__results {
         min-height: 0;

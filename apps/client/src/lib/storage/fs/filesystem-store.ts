@@ -16,11 +16,12 @@
  * onMount tick as its `getText()` seed, before the read resolves.
  */
 
-import { stringify as stringifyYaml } from 'yaml'
 
 import type { StoreChange, StoreChangeListener } from '$lib/document/backlinks/live-index'
 import { frontmatterIdentity, normaliseAliases, sameAliases, withFrontmatterIdentity } from '$lib/document/frontmatter/identity'
+import { renderFrontmatter } from '$lib/document/frontmatter/frontmatter-yaml'
 import type { IndexIncludeFact } from '$lib/document/index-db'
+import { type IndexProperty, propertiesOf } from '$lib/document/properties'
 import { includeFactsOf } from '$lib/document/publish/publication'
 import { dayIsNotAPageName, isJournalConcept } from '$lib/document/journal-concept'
 import { countWikilinkTargets, rewriteWikilinkScope, wikilinkScopeSplices } from '$lib/document/wikilink/rename'
@@ -61,6 +62,8 @@ export interface IndexDocSnapshot {
     text: string
     /** The includes this document declares as a publication page (ADR 0082); absent otherwise. */
     includes?: IndexIncludeFact[]
+    /** Its [[Property]]s for Property Filters (ADR 0107); absent when the block sets none. */
+    properties?: IndexProperty[]
 }
 
 /**
@@ -71,12 +74,14 @@ export interface IndexDocSnapshot {
 export function indexSnapshotOf(identity: { concept: string; kind: DocumentKind }, text: string): IndexDocSnapshot {
     const fm = parseFrontmatter(text)
     const includes = identity.kind === 'page' ? includeFactsOf({ concept: identity.concept, kind: identity.kind, text, aliases: [] }) : []
+    const properties = propertiesOf(fm.data)
     return {
         concept: identity.concept,
         kind: identity.kind,
         aliases: aliasesOf(fm),
         text: fm.body,
         ...(includes.length > 0 ? { includes } : {}),
+        ...(properties.length > 0 ? { properties } : {}),
     }
 }
 
@@ -451,7 +456,8 @@ export function createFilesystemDocumentStore(
         const fm = parseFrontmatter(text)
         let aliases = aliasesOf(fm)
         let body = fm.body
-        let data: Record<string, unknown> = { ...fm.data }
+        // The text whose block the written file keeps: this document's, or the survivor's on a merge.
+        let blockSource = text
 
         if (strategy === 'alias') {
             // Every renamed document keeps its old name (ADR 0038 §3), including cascaded
@@ -475,15 +481,16 @@ export function createFilesystemDocumentStore(
             body = merged.body
             aliases = merged.aliases
             // The survivor's other frontmatter is kept (ADR 0038 §4).
-            data = { ...existingFm.data }
+            blockSource = existing.text
         }
 
         // A page renamed onto one of its own aliases: the alias becomes the title and is no
         // longer an alias.
         aliases = normaliseAliases(aliases, step.into)
-        data.title = step.into
-        if (aliases.length > 0) data.aliases = aliases
-        else delete data.aliases
+        // Only the identity keys change: every other key, and any comment, stays as the block has it.
+        const blockSpan = frontmatterSpan(blockSource)
+        const block = blockSpan ? blockSource.slice(0, blockSpan.end) : ''
+        const content = withFrontmatterIdentity(block + body, { title: step.into, aliases }, { addBlock: true })
 
         // A merge writes the survivor's own file, which is not always the name its title derives
         // to: an importer stores a colliding document as `X (2).md`, and the derived name may be
@@ -491,7 +498,7 @@ export function createFilesystemDocumentStore(
         // keeps the file it has on a pure re-casing.
         const subdir = survivor?.subdir ?? entry.subdir
         const fileName = survivor?.fileName ?? (await allocateFileName(subdir, step.into, entry))
-        const written = await adapter.write(subdir, fileName, `---\n${stringifyYaml(data)}---\n${body}`)
+        const written = await adapter.write(subdir, fileName, content)
         if (!(subdir === entry.subdir && fileName === entry.fileName)) {
             await adapter.remove(entry.subdir, entry.fileName)
         }
@@ -971,7 +978,7 @@ export function createFilesystemDocumentStore(
             await adapter.ensureSkeleton()
             // The concept is free (checked above); its portable file name may not be.
             const fileName = await allocateFileName('pages', concept)
-            const content = `---\n${stringifyYaml({ title: concept })}---\n${body}`
+            const content = renderFrontmatter({ title: concept }) + body
             await adapter.write('pages', fileName, content)
             await refreshRegistry()
             return concept

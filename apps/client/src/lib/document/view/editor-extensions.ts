@@ -24,6 +24,9 @@ import { assetLinkAugmentation } from './augmentations/asset-link'
 import type { Backend } from '$lib/document/frontmatter/proposal'
 
 import { type FrontmatterOptions, frontmatterAugmentation } from './augmentations/frontmatter'
+import { frontmatterAssist } from './augmentations/frontmatter-assist'
+import { frontmatterCompletion } from './augmentations/frontmatter-complete'
+import { frontmatterKeys } from './frontmatter-keys'
 import { frontmatterBoundaryGuard } from './frontmatter-boundary'
 import { assetPasteAugmentation } from './augmentations/asset-paste'
 import { richPasteAugmentation } from './augmentations/rich-paste'
@@ -180,6 +183,8 @@ export function editorFeatures(services: EditorExtensionServices): EditorFeature
                 },
             ),
         },
+        // Help while editing the block: the tidy and the problem marks when an episode ends.
+        { name: 'frontmatter-assist', extension: frontmatterAssist({ documentName: () => services.frontmatter?.documentName() ?? null }) },
         // Protected fences come BEFORE fence-render: an `etherpk-cipher` fence dispatches to no
         // renderer, and its widget must be the only thing that ever draws over that range.
         {
@@ -227,6 +232,8 @@ export function editorFeatures(services: EditorExtensionServices): EditorFeature
         },
         { name: 'task-tag-completion', extension: taskTagCompletion() },
         { name: 'slash-completion', extension: slashCompletion() },
+        // Keys and values in the frontmatter, from EtherPK's list and the graph's index.
+        { name: 'frontmatter-completion', extension: frontmatterCompletion({ properties: () => services.graphIndex() }) },
         {
             name: 'date-calendar',
             extension: dateCalendar({
@@ -237,6 +244,10 @@ export function editorFeatures(services: EditorExtensionServices): EditorFeature
         },
         // The Table Size Picker: the insert-table Command's popover, a sibling of the calendar.
         { name: 'table-size-picker', extension: tableSizePicker() },
+        // The YAML typing keys. After every popover that binds Enter or Tab while open (the
+        // completions, the calendar, the size picker): all of them sit at the highest precedence,
+        // where the earlier-registered keymap wins, so an open popover's keys come first.
+        { name: 'frontmatter-keys', extension: frontmatterKeys() },
         // A line of guidance over an empty journal day or Draft, until the first keystroke.
         { name: 'placeholder', extension: placeholderAugmentation(services.placeholder) },
         // A refused edit reaches the user: after every filter that can refuse one.

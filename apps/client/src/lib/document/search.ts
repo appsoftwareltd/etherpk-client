@@ -9,11 +9,16 @@
  * no message boundary at all; text is a worker round trip. Names will always land first. The
  * design leans into that rather than trying to synchronise them, which is why they debounce
  * separately, page separately, and render as two independently-arriving groups.
+ *
+ * [[Property Filter]]s (ADR 0107) break the symmetry for names only while one is typed: the
+ * documents passing a filter are a round trip too, so a filtered names group keeps its previous
+ * rows until that answer lands, guarded the same way text is.
  */
 
-import type { SearchDocumentGroup } from './index-db'
+import { conceptKey } from './backlinks'
+import type { PropertyKeyInfo, PropertyMatch, PropertyValueInfo, SearchDocumentGroup } from './index-db'
 import { rankQuickFind, type QuickFindRow } from './quick-find'
-import { isSearchableTextQuery } from './search-query'
+import { isSearchableTextQuery, parseSearchQuery, type PropertyFilter, type PropertyFilterTerm } from './search-query'
 
 /** Rows of names per page. Five, because Names is a jump list, not something to page through. */
 export const NAME_PAGE_SIZE = 5
@@ -39,17 +44,28 @@ export const REFRESH_THROTTLE_MS = 250
 
 export type TextStatus =
     | { kind: 'idle' }
+    /** Filters and no words: the names group lists the matching documents, and text has none. */
+    | { kind: 'hidden' }
     | { kind: 'too-short' }
     | { kind: 'building'; done: number; total: number }
     | { kind: 'loading' }
     | { kind: 'ready' }
     | { kind: 'failed'; message: string }
 
+/** A names row, with the values that matched when Property Filters narrowed the group. */
+export interface SearchNameRow extends QuickFindRow {
+    properties?: { key: string; value: string }[]
+}
+
 export interface SearchState {
     open: boolean
     query: string
-    /** Names, already paged. Answered synchronously, so it has no loading state of its own. */
-    nameRows: QuickFindRow[]
+    /**
+     * Names, already paged. Answered synchronously, so it has no loading state of its own, unless
+     * a Property Filter is typed: then it is the round trip's answer, and the previous rows stay
+     * until it lands.
+     */
+    nameRows: SearchNameRow[]
     namePage: number
     nameTotal: number
     /** True while the index is still building — names are as partial as text is. */
@@ -70,16 +86,29 @@ export interface SearchState {
     textStatus: TextStatus
     /** True when the graph holds encrypted content, so the Text group can say it is skipped. */
     hasEncryptedContent: boolean
+    /** The Property Filters recognised in the query, in order, with where each sits: the chips. */
+    filterTerms: PropertyFilterTerm[]
+    /**
+     * The keys the graph's searchable documents carry, most used first. What makes a typed `x:y`
+     * a filter, and what the key suggestions offer. Empty until the first answer lands.
+     */
+    propertyKeys: PropertyKeyInfo[]
 }
 
 /** Everything the controller needs from the graph, injected so tests need no worker. */
 export interface SearchSources {
     concepts(): readonly import('./index-db').ConceptCandidate[]
-    searchText(query: string, offset: number, limit: number): Promise<{
+    searchText(query: string, offset: number, limit: number, filters?: readonly PropertyFilter[]): Promise<{
         groups: SearchDocumentGroup[]
         hasMore: boolean
     }>
-    searchTextCount(query: string): Promise<{ total: number; capped: boolean }>
+    searchTextCount(query: string, filters?: readonly PropertyFilter[]): Promise<{ total: number; capped: boolean }>
+    /** The keys the graph uses. Absent where there is no index to ask: nothing is then a filter. */
+    propertyKeys?(): Promise<readonly PropertyKeyInfo[]>
+    /** The values one key has, for the value suggestions. */
+    propertyValues?(key: string): Promise<readonly PropertyValueInfo[]>
+    /** Every document passing the filters, with the values they matched. */
+    propertyMatch?(filters: readonly PropertyFilter[]): Promise<readonly PropertyMatch[]>
     /** Non-null while the index is still deriving: `{ done, total }`. */
     building(): { done: number; total: number } | null
     hasEncryptedContent?(): boolean
@@ -99,6 +128,8 @@ export interface SearchController {
     setTextPage(page: number): void
     /** Re-run against a changed index (a document was edited while the modal was open). */
     refresh(): void
+    /** The values a key has, for the suggestion list. Asked once per key per opening. */
+    propertyValues(key: string): Promise<readonly PropertyValueInfo[]>
     dispose(): void
 }
 
@@ -117,6 +148,8 @@ const EMPTY: SearchState = {
     textCountCapped: false,
     textStatus: { kind: 'idle' },
     hasEncryptedContent: false,
+    filterTerms: [],
+    propertyKeys: [],
 }
 
 export function createSearchController(sources: SearchSources): SearchController {
@@ -136,6 +169,12 @@ export function createSearchController(sources: SearchSources): SearchController
      */
     let loadedQuery: string | null = null
     let refreshTimer: ReturnType<typeof setTimeout> | undefined
+    /** Supersedes a filtered names answer, as `textToken` does for text. */
+    let nameToken = 0
+    /** The keys a typed `x:y` may name, lower-cased: filters match keys ignoring case. */
+    let knownKeys: ReadonlySet<string> = new Set()
+    /** Value suggestions per lower-cased key, for this opening. */
+    let valueCache = new Map<string, Promise<readonly PropertyValueInfo[]>>()
 
     function emit() {
         for (const listener of listeners) listener(state)
@@ -145,21 +184,113 @@ export function createSearchController(sources: SearchSources): SearchController
         emit()
     }
 
-    /** Names: synchronous, from the pushed snapshot. Nothing here can fail or be slow. */
+    function parsed() {
+        return parseSearchQuery(state.query, knownKeys)
+    }
+
+    /**
+     * Names: synchronous, from the pushed snapshot, when no filter is typed. Nothing here can fail
+     * or be slow. With filters it is a round trip for the documents passing them; see
+     * {@link runFilteredNames}.
+     */
     function runNames() {
         const building = sources.building()
-        const all = state.query.trim() === '' ? [] : rankQuickFind(sources.concepts(), state.query)
+        const { words, filters, terms } = parsed()
+        if (filters.length > 0 && sources.propertyMatch) {
+            set({ filterTerms: terms, nameBuilding: building !== null })
+            runFilteredNames(words, filters)
+            return
+        }
+        nameToken++
+        const all = words.trim() === '' ? [] : rankQuickFind(sources.concepts(), words)
         set({
             nameRows: all,
             nameTotal: all.length,
             nameBuilding: building !== null,
+            filterTerms: terms,
         })
+    }
+
+    /**
+     * The names group narrowed to the documents passing `filters`. With words, the usual ranking
+     * over just those documents' names and aliases, without the create row: a Draft carries no
+     * Property. Without words, every matching document by name, each with the values it matched.
+     */
+    function runFilteredNames(words: string, filters: readonly PropertyFilter[]) {
+        const token = ++nameToken
+        void sources.propertyMatch!(filters)
+            .then((documents) => {
+                if (token !== nameToken) return
+                const byKey = new Map(documents.map((doc) => [conceptKey(doc.concept), doc]))
+                let rows: SearchNameRow[]
+                if (words.trim() === '') {
+                    rows = [...documents]
+                        .sort((a, b) => a.concept.localeCompare(b.concept))
+                        .map((doc) => ({
+                            label: doc.concept,
+                            target: doc.concept,
+                            detail: doc.kind === 'journal' ? 'Journal' : 'Page',
+                            kind: doc.kind,
+                            properties: doc.properties,
+                        }))
+                } else {
+                    const candidates = sources.concepts().filter((candidate) => {
+                        if (candidate.kind === 'page' || candidate.kind === 'journal') return byKey.has(candidate.key)
+                        if (candidate.kind === 'alias') return byKey.has(conceptKey(candidate.canonical ?? ''))
+                        return false
+                    })
+                    rows = rankQuickFind(candidates, words)
+                        .filter((row) => row.kind !== 'draft')
+                        .map((row) => {
+                            const properties = byKey.get(conceptKey(row.target))?.properties ?? []
+                            return properties.length > 0 ? { ...row, properties } : row
+                        })
+                }
+                set({ nameRows: rows, nameTotal: rows.length })
+            })
+            .catch(() => {
+                if (token !== nameToken) return
+                set({ nameRows: [], nameTotal: 0 })
+            })
+    }
+
+    /**
+     * Ask for the graph's keys, and re-run when they change what the query means: until they
+     * land, every `x:y` is words.
+     */
+    function loadKeys() {
+        if (!sources.propertyKeys) return
+        void sources
+            .propertyKeys()
+            .then((keys) => {
+                if (!state.open) return
+                const next = new Set(keys.map((info) => info.key.toLowerCase()))
+                const before = parsed()
+                knownKeys = next
+                set({ propertyKeys: [...keys] })
+                const after = parsed()
+                if (JSON.stringify(before.filters) !== JSON.stringify(after.filters) || before.words !== after.words) {
+                    runNames()
+                    runText()
+                }
+            })
+            .catch(() => undefined)
     }
 
     function runText() {
         const token = ++textToken
-        const query = state.query
+        const { words: query, filters } = parsed()
         const requestedPage = state.textPage
+        if (filters.length > 0 && query.trim() === '') {
+            set({
+                textGroups: [],
+                textHasMore: false,
+                textCount: 0,
+                textCountCapped: false,
+                textStatus: { kind: 'hidden' },
+            })
+            return
+        }
         if (!isSearchableTextQuery(query)) {
             set({
                 textGroups: [],
@@ -187,14 +318,15 @@ export function createSearchController(sources: SearchSources): SearchController
         // Only show the skeleton when there is nothing to show. Re-running for a query whose
         // results are already up means an index change, and blanking them would make a stream
         // of changes look like a search that never finishes.
-        if (loadedQuery !== query || state.textGroups.length === 0) {
+        const loadedKey = `${query}\u0000${JSON.stringify(filters)}`
+        if (loadedQuery !== loadedKey || state.textGroups.length === 0) {
             set({ textStatus: { kind: 'loading' } })
         }
         void sources
-            .searchText(query, requestedPage * TEXT_PAGE_SIZE, TEXT_PAGE_SIZE)
+            .searchText(query, requestedPage * TEXT_PAGE_SIZE, TEXT_PAGE_SIZE, filters)
             .then((page) => {
                 if (token !== textToken) return
-                loadedQuery = query
+                loadedQuery = loadedKey
                 set({
                     textGroups: page.groups,
                     textShownPage: requestedPage,
@@ -218,7 +350,7 @@ export function createSearchController(sources: SearchSources): SearchController
         // In parallel and never awaited together: a prefix query can make the count slow, and
         // it must not hold up the rows.
         void sources
-            .searchTextCount(query)
+            .searchTextCount(query, filters)
             .then((count) => {
                 if (token !== textToken) return
                 set({ textCount: count.total, textCountCapped: count.capped })
@@ -253,8 +385,12 @@ export function createSearchController(sources: SearchSources): SearchController
             // Reopening with nothing to say RESTORES the last query: closing on a result is
             // not abandoning the search, and starting blank would punish coming back.
             const next = query !== undefined && query.trim() !== '' ? query : state.query
-            state = { ...EMPTY, open: true, query: next }
+            // The keys from the last opening stand in until this one's answer lands, so a
+            // restored `public:true` does not flash as words first.
+            state = { ...EMPTY, open: true, query: next, propertyKeys: state.propertyKeys }
+            valueCache = new Map()
             emit()
+            loadKeys()
             // Immediately, not debounced: a handoff from Quick Find that sat blank for a beat
             // reads as broken.
             runNames()
@@ -266,6 +402,7 @@ export function createSearchController(sources: SearchSources): SearchController
             if (refreshTimer) clearTimeout(refreshTimer)
             nameTimer = textTimer = refreshTimer = undefined
             textToken++
+            nameToken++
             set({ open: false })
         },
         setQuery(query) {
@@ -286,9 +423,21 @@ export function createSearchController(sources: SearchSources): SearchController
             refreshTimer = setTimeout(() => {
                 refreshTimer = undefined
                 if (!state.open) return
+                // An edit may have added or removed a key, and the cached values are stale too.
+                valueCache = new Map()
+                loadKeys()
                 runNames()
                 runText()
             }, REFRESH_THROTTLE_MS)
+        },
+        propertyValues(key) {
+            const lower = key.toLowerCase()
+            let values = valueCache.get(lower)
+            if (!values) {
+                values = sources.propertyValues ? sources.propertyValues(key).catch(() => []) : Promise.resolve([])
+                valueCache.set(lower, values)
+            }
+            return values
         },
         dispose() {
             if (nameTimer) clearTimeout(nameTimer)
@@ -300,7 +449,7 @@ export function createSearchController(sources: SearchSources): SearchController
 }
 
 /** The slice of name rows the current page shows. */
-export function namePageRows(state: SearchState): QuickFindRow[] {
+export function namePageRows(state: SearchState): SearchNameRow[] {
     const from = state.namePage * NAME_PAGE_SIZE
     return state.nameRows.slice(from, from + NAME_PAGE_SIZE)
 }

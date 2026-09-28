@@ -29,6 +29,46 @@ describe('readMembership', () => {
     })
 })
 
+describe('an empty value means the key is not set (ADR 0108)', () => {
+    it('reads an empty `public` or `publications` as not set, with no warning', () => {
+        const m = readMembership('---\npublic:\npublications:\n---\n')
+        expect(m).toEqual({ isPublic: false, publications: [], issues: [] })
+    })
+
+    it('reads a bare `publication:`, or one whose values are all empty, as no publication', () => {
+        for (const block of ['publication:', 'publication: ""', 'publication:\n  id:\n  kind:\n  selection:\n  url:\n  home:\n  theme:\n  includes:']) {
+            expect(readPublicationDefinition(page('A', `---\n${block}\n---\n`))).toEqual({ publication: null, issues: [] })
+        }
+    })
+
+    it('still needs an id once any value is filled in', () => {
+        const { publication, issues } = readPublicationDefinition(page('A', '---\npublication:\n  id:\n  kind: blog\n---\n'))
+        expect(publication).toBeNull()
+        expect(issues.map((i) => i.code)).toEqual(['publication-missing-id'])
+    })
+
+    it('reads an empty setting inside a publication as the default', () => {
+        const { publication, issues } = readPublicationDefinition(
+            page('A', '---\npublication:\n  id: a\n  kind:\n  selection:\n  url:\n  home:\n  theme:\n  recent:\n  includes:\n    footer:\n---\n'),
+        )
+        expect(issues).toEqual([])
+        expect(publication).toMatchObject({ id: 'a', kind: 'docs', selection: 'named', theme: 'etherpk-docs', recent: 10, includes: {} })
+        expect(publication?.url).toBeUndefined()
+        expect(publication?.home).toBeUndefined()
+    })
+})
+
+describe('a `public` that is not true or false', () => {
+    it('is not public, and says why, so a quoted "true" is not mistaken for consent', () => {
+        const quoted = readMembership('---\npublic: "true"\n---\n', 'A')
+        expect(quoted.isPublic).toBe(false)
+        expect(quoted.issues).toEqual([expect.objectContaining({ level: 'warning', code: 'public-not-a-boolean', concept: 'A' })])
+        expect(quoted.issues[0].message).toContain('true')
+        expect(readMembership('---\npublic: yes\n---\n').issues.map((i) => i.code)).toEqual(['public-not-a-boolean'])
+        expect(readMembership('---\npublic: false\n---\n').issues).toEqual([])
+    })
+})
+
 describe('includeFactsOf', () => {
     it('lists the snippets a publication page names, one fact per slot, and nothing for other pages', () => {
         expect(includeFactsOf(page('Docs', '---\npublication:\n  id: docs\n  includes:\n    footer: Site Footer\n    head: Analytics\n---\n'))).toEqual([

@@ -248,6 +248,28 @@ describe('search and backlinks', () => {
         const g = await graph('g-search-empty')
         await rejectsWith(search(g, { query: '  ' }), 'invalid_argument')
     })
+    it('narrows text results by a Property Filter, and lists the matching documents on its own (ADR 0107)', async () => {
+        const g = await graph('g-search-properties')
+        await seed(g, 'Launch', '- the meeting plan')
+        await seed(g, 'Soup', '- a meeting about soup')
+        await setFrontmatter(g, { concept: 'Launch', patch: { status: 'Draft' } })
+        await setFrontmatter(g, { concept: 'Soup', patch: { status: 'done' } })
+        await indexed(g, async () => (await g.index.propertyKeys()).some((k) => k.key === 'status') && (await g.index.propertyMatch([{ key: 'status', value: 'done', prefix: false, negated: false }])).length === 1)
+
+        const both = await search(g, { query: 'meeting' })
+        expect(both.results.map((r) => r.concept).sort()).toEqual(['Launch', 'Soup'])
+
+        const filtered = await search(g, { query: 'status:draft meeting' })
+        expect(filtered.results.map((r) => r.concept)).toEqual(['Launch'])
+        expect(filtered.total).toBe(1)
+
+        const listed = await search(g, { query: '-status:draft' })
+        expect(listed.results).toEqual([{ concept: 'Soup', kind: 'page', matches: 0, hits: [], properties: [] }])
+        expect(listed.total).toBe(1)
+
+        // A key no document carries stays words, so a URL is still a text search.
+        expect((await search(g, { query: 'http://example.com' })).results).toEqual([])
+    })
 })
 
 describe('tasks', () => {

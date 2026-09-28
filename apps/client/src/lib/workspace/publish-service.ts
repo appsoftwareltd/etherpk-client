@@ -60,7 +60,7 @@ export async function rewriteFrontmatter(store: FrontmatterStore, concept: strin
 }
 
 /** The document's aliases as its store's registry holds them, found by its identity key. */
-function registryAliases(store: FrontmatterStore, concept: string): readonly string[] {
+export function registryAliases(store: FrontmatterStore, concept: string): readonly string[] {
     const key = conceptKey(concept)
     return store.listDocuments?.().find((entry) => entry.key === key)?.aliases ?? []
 }

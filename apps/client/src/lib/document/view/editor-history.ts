@@ -27,6 +27,12 @@ export interface EditorHistory {
      * history reads it); the collaborative history needs its capture window opened for the dispatch.
      */
     joinNext?: (dispatch: () => void) => void
+    /**
+     * End the step being captured, so the next change starts one of its own. Absent, an
+     * `isolateHistory` annotation on the transaction does it (the local history reads it); the
+     * collaborative history groups by time and needs telling.
+     */
+    closeStep?: () => void
 }
 
 /**
@@ -102,7 +108,7 @@ export const editorHistory = Facet.define<EditorHistory, EditorHistory>({
  * redo only through its keymap (v0.3.5), so they are taken from the bindings the editor installs -
  * which is also the guarantee that a button and Mod-z do the same thing.
  */
-export function collabEditorHistory(undoManager: Pick<Y.UndoManager, 'undoStack' | 'redoStack' | 'captureTimeout'>): EditorHistory {
+export function collabEditorHistory(undoManager: Pick<Y.UndoManager, 'undoStack' | 'redoStack' | 'captureTimeout' | 'stopCapturing'>): EditorHistory {
     const binding = (key: string): Command => {
         const found = yUndoManagerKeymap.find((b) => b.key === key)?.run
         if (!found) throw new Error(`y-codemirror.next binds no ${key}`)
@@ -118,6 +124,7 @@ export function collabEditorHistory(undoManager: Pick<Y.UndoManager, 'undoStack'
         // grouping plugin (undo-grouping.ts) leaves a marked transaction's capture running for the same
         // reason. The sync into the Y.Text is synchronous inside the dispatch, so the window closes again
         // before anything else can fall into it.
+        closeStep: () => undoManager.stopCapturing(),
         joinNext: (dispatch) => {
             const captureTimeout = undoManager.captureTimeout
             undoManager.captureTimeout = Number.POSITIVE_INFINITY

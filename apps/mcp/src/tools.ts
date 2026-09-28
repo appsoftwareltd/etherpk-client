@@ -33,6 +33,7 @@ import { withAliasesInAddedBlock } from '$lib/document/frontmatter/identity'
 import { withFrontmatterPatch } from '$lib/document/frontmatter/patch'
 import { withPublishing } from '$lib/document/frontmatter/publishing'
 import { isPublicationId } from '$lib/document/publish/publication'
+import { parseSearchQuery } from '$lib/document/search-query'
 import { parseFrontmatter } from '$lib/storage/fs/frontmatter'
 import { frontmatterSpan } from '$lib/storage/fs/frontmatter-span'
 import { conceptKey } from '$lib/storage/fs/identity'
@@ -186,6 +187,11 @@ export interface TextSearchOutput {
         kind: 'page' | 'journal'
         matches: number
         hits: Array<{ line: number; breadcrumb: string[]; snippet: string }>
+        /**
+         * Only when the query was Property Filters and no words (ADR 0107): each document the
+         * filters let through, with the values of the keys they named. It has no hits.
+         */
+        properties?: Array<{ key: string; value: string }>
     }>
     total: number
     totalCapped: boolean
@@ -503,9 +509,28 @@ function round(similarity: number): number {
 }
 
 async function searchText(graph: HeadlessGraph, query: string, offset: number, limit: number): Promise<TextSearchOutput> {
+    // Property Filters are read the way Search reads them: a `key:value` term whose key some
+    // unprotected document carries narrows the results, and anything else is words (ADR 0107).
+    const keys = await graph.index.propertyKeys()
+    const { words, filters } = parseSearchQuery(query, new Set(keys.map((info) => info.key.toLowerCase())))
+    if (filters.length > 0 && words.trim() === '') {
+        const documents = await graph.index.propertyMatch(filters)
+        return {
+            results: documents.slice(offset, offset + limit).map((doc) => ({
+                concept: doc.concept,
+                kind: doc.kind,
+                matches: 0,
+                hits: [],
+                properties: doc.properties,
+            })),
+            total: documents.length,
+            totalCapped: false,
+            hasMore: offset + limit < documents.length,
+        }
+    }
     const [result, count] = await Promise.all([
-        graph.index.searchText(query, offset, limit),
-        graph.index.searchTextCount(query),
+        graph.index.searchText(words, offset, limit, filters),
+        graph.index.searchTextCount(words, filters),
     ])
     return {
         results: result.groups.map((group) => ({
