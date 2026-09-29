@@ -1,11 +1,15 @@
 /**
- * Build-time half of the build stamp (see `./build-stamp`): resolves the commit once, when
- * `vite.config.ts` is loaded, so it can be frozen into each app's bundle by a Vite `define`.
+ * Build-time half of the build stamp (see `./build-stamp`): resolves the release version and the
+ * commit once, when `vite.config.ts` is loaded, so they can be frozen into each app's bundle by a
+ * Vite `define`.
  *
- * Node-only — it shells out to git — and therefore imported by config files rather than by
- * anything that ships to the runtime.
+ * Node-only — it reads the filesystem and shells out to git — and therefore imported by config
+ * files rather than by anything that ships to the runtime.
  *
- * Two sources, in order:
+ * The version is the app's own `package.json` version, read by `readPackageVersion`. Each app
+ * reads its own rather than the root's because a Public Repository replaces the root manifest.
+ *
+ * Two sources for the commit, in order:
  *
  * 1. `GIT_COMMIT`, the Docker build argument. Images are built from a context that excludes
  *    `.git` (see `.dockerignore`), so inside a container build this is the only source, and
@@ -17,6 +21,7 @@
  */
 
 import { execFileSync } from 'node:child_process'
+import { readFileSync } from 'node:fs'
 import type { BuildInfo } from './build-stamp'
 
 export interface BuildInfoSources {
@@ -38,7 +43,13 @@ export function gitCommitFromWorkingCopy(): string | null {
     }
 }
 
-export function resolveBuildInfo(sources: BuildInfoSources = {}): BuildInfo {
+/** The `version` of the `package.json` at `packageJson`, or `unknown` when it has none. */
+export function readPackageVersion(packageJson: URL): string {
+    const { version } = JSON.parse(readFileSync(packageJson, 'utf8')) as { version?: unknown }
+    return typeof version === 'string' && version.trim() ? version.trim() : 'unknown'
+}
+
+export function resolveBuildInfo(version: string, sources: BuildInfoSources = {}): BuildInfo {
     const {
         env = process.env,
         readGitCommit = gitCommitFromWorkingCopy,
@@ -46,6 +57,7 @@ export function resolveBuildInfo(sources: BuildInfoSources = {}): BuildInfo {
     } = sources
 
     return {
+        version: version.trim() || 'unknown',
         commit: env.GIT_COMMIT?.trim() || readGitCommit() || 'unknown',
         builtAt: now().toISOString(),
     }

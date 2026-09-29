@@ -29,9 +29,14 @@ export interface AccountAuthClient {
     sendVerificationEmail(input: { email: string; callbackURL: string }): Promise<AuthResult>
     revokeOtherSessions(): Promise<AuthResult>
     linkSocial(input: { provider: string; callbackURL: string }): Promise<AuthResult>
-    unlinkAccount(input: { providerId: string; accountId?: string }): Promise<AuthResult>
+    /** `accountId` is the account row's id, not the provider's account id. */
+    unlinkAccount(input: { accountId: string }): Promise<AuthResult>
     twoFactor: {
-        enable(input: { password: string }): Promise<AuthResult<{ totpURI: string; backupCodes: string[] }>>
+        /** Answers with the method it enrolled; only TOTP carries a URI and backup codes. */
+        enable(input: { password: string }): Promise<AuthResult<
+            | { method: 'totp'; totpURI: string; backupCodes: string[] }
+            | { method: 'otp' }
+        >>
         disable(input: { password: string }): Promise<AuthResult>
         verifyTotp(input: { code: string }): Promise<AuthResult>
     }

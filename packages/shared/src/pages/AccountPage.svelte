@@ -23,7 +23,7 @@
     }: {
         data: {
             hasPassword: boolean;
-            linkedProviders: Array<{ providerId: string; accountId: string; providerDisplayName: string | null }>;
+            linkedProviders: Array<{ id: string; providerId: string; accountId: string; providerDisplayName: string | null }>;
             passkeys: Array<{ id: string; name: string | null; deviceType: string; backedUp: boolean; createdAt: Date | null }>;
             emailVerificationLastSentAt: Date | string | null;
             /** The providers this deployment has credentials for: only those can be connected. */
@@ -174,15 +174,19 @@
     }
 
     async function unlinkProvider(providerId: string) {
+        const linked = linkedProviders.find((p: { providerId: string }) => p.providerId === providerId);
+        if (!linked || unlinkLoading) return;
         unlinkLoading = providerId;
         accountError = null;
         accountSuccess = null;
-        const result = await authClient.unlinkAccount({ providerId });
-        if (result.error) {
-            accountError = failureMessage(result.error, "Failed to unlink account.");
+        const label = PROVIDERS.find((provider) => provider.id === providerId)?.label ?? providerId;
+        // Better Auth unlinks by the account row's id, not by provider.
+        const result = await authClient.unlinkAccount({ accountId: linked.id }).catch(() => null);
+        if (!result || result.error) {
+            accountError = failureMessage(result?.error, `Could not disconnect ${label}. Try again.`);
         } else {
             linkedProviders = linkedProviders.filter((p: { providerId: string }) => p.providerId !== providerId);
-            accountSuccess = providerId.charAt(0).toUpperCase() + providerId.slice(1) + " account disconnected.";
+            accountSuccess = `${label} account disconnected.`;
         }
         unlinkLoading = null;
     }
@@ -250,9 +254,16 @@
             mfaLoading = false;
             return;
         }
-        const data = result.data as { totpURI: string; backupCodes: string[] };
-        const uri = data.totpURI;
-        mfaBackupCodes = data.backupCodes ?? [];
+        // The page enrols an authenticator app: TOTP, Better Auth's default method and the only
+        // one whose answer carries the URI and backup codes.
+        const enrolment = result.data;
+        if (enrolment?.method !== "totp") {
+            mfaError = "Failed to set up two-factor authentication.";
+            mfaLoading = false;
+            return;
+        }
+        const uri = enrolment.totpURI;
+        mfaBackupCodes = enrolment.backupCodes;
         mfaSecret = extractSecret(uri);
         try {
             mfaQrDataUrl = await QRCode.toDataURL(uri, { width: 200, margin: 2 });
@@ -905,8 +916,9 @@
         </div>
     </div>
 
-    <!-- Connected accounts: only when there is a provider to connect or a link to show. -->
-    {#if offeredProviders.length > 0}
+    <!-- Connected accounts: only when there is a provider to connect or a link to show, or while it
+         confirms a disconnect that removed the last one listed. -->
+    {#if offeredProviders.length > 0 || accountSuccess}
     <div data-testid="connected-accounts" class="mt-4 rounded-xl border border-gray-950/8 bg-white shadow-sm divide-y divide-gray-950/5">
         <div class="px-6 py-5">
             <h2 class="text-sm font-semibold text-gray-950">Connected accounts</h2>

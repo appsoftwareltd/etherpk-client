@@ -230,9 +230,9 @@ describe('POST /auth/token', () => {
         {
             // The refresh may have rotated the grant at Corporate before the reply was lost. The
             // retry is still the right call, since the reply may equally have been lost before
-            // Corporate acted. After a rotation it presents a revoked token, and better-auth 1.6.33
-            // then ends every Client grant the account holds (invalidateRefreshFamily): each of its
-            // devices has to sign in again.
+            // Corporate acted. After a rotation it presents the spent token: Corporate answers a
+            // retry inside its reuse window with the tokens it issued the first time (ADR 0110),
+            // and one after it by ending every Client grant the account holds.
             name: 'the refresh reply is lost to the deadline',
             fetch: () => corporate(async () => {
                 throw new DOMException('The operation was aborted due to timeout', 'TimeoutError')
@@ -262,7 +262,8 @@ describe('POST /auth/token', () => {
 })
 
 // A reply that never reached the browser leaves it holding the refresh token Corporate has just
-// replaced; presenting that again would make Corporate revoke the grant on every device.
+// replaced. Corporate replays its answer only inside a short reuse window and revokes the grant on
+// every device after it, so the Client keeps the rotated set and answers the replay itself.
 describe('a refresh reply the browser never received', () => {
     it('answers the replayed refresh token with the set already rotated, without asking Corporate again', async () => {
         const fetch = corporate(async () => issued())

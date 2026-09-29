@@ -37,7 +37,8 @@ const TOKEN_BUDGET_MS = 10_000
 /**
  * A refresh gets longer than a browser waits for it (refresh-once.ts). Corporate rotates the
  * refresh token before it answers, so abandoning a slow answer would leave the browser only the
- * spent token, and presenting that again ends the account's Client sign-ins on every device.
+ * spent token. A retry with it gets the first answer only for a short time after the rotation;
+ * a later one ends the account's Client sign-ins on every device.
  */
 const REFRESH_BUDGET_MS = 30_000
 

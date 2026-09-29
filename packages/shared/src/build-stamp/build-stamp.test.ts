@@ -1,12 +1,16 @@
 import { describe, expect, it } from 'vitest'
 import { buildStampComment, decorateHtmlWithBuildStamp } from './build-stamp'
 
-const info = { commit: '697f1cf5a1b2c3d4e5f60718293a4b5c6d7e8f90', builtAt: '2026-08-31T09:15:00.000Z' }
+const info = {
+    version: '0.8.2',
+    commit: '697f1cf5a1b2c3d4e5f60718293a4b5c6d7e8f90',
+    builtAt: '2026-08-31T09:15:00.000Z',
+}
 
 describe('buildStampComment', () => {
-    it('names the app, the commit and the build instant', () => {
+    it('names the app, the release version, the commit and the build instant', () => {
         expect(buildStampComment('etherpk-client', info)).toBe(
-            '<!-- etherpk-client commit 697f1cf5a1b2c3d4e5f60718293a4b5c6d7e8f90 built 2026-08-31T09:15:00.000Z -->',
+            '<!-- etherpk-client version 0.8.2 commit 697f1cf5a1b2c3d4e5f60718293a4b5c6d7e8f90 built 2026-08-31T09:15:00.000Z -->',
         )
     })
 
@@ -17,15 +21,22 @@ describe('buildStampComment', () => {
         expect(stamp.indexOf('-->')).toBe(stamp.length - 3)
     })
 
+    it('cannot be closed early by a hostile version either', () => {
+        const stamp = buildStampComment('etherpk-client', { ...info, version: '1.0.0--><script>' })
+
+        expect(stamp).not.toContain('<script>')
+        expect(stamp.indexOf('-->')).toBe(stamp.length - 3)
+    })
+
     it('reports unknown rather than an empty field', () => {
-        expect(buildStampComment('etherpk-client', { commit: '', builtAt: '' })).toBe(
-            '<!-- etherpk-client commit unknown built unknown -->',
+        expect(buildStampComment('etherpk-client', { version: '', commit: '', builtAt: '' })).toBe(
+            '<!-- etherpk-client version unknown commit unknown built unknown -->',
         )
     })
 })
 
 describe('decorateHtmlWithBuildStamp', () => {
-    const stamp = '<!-- etherpk-client commit abc built 2026-08-31T09:15:00.000Z -->'
+    const stamp = '<!-- etherpk-client version 0.8.2 commit abc built 2026-08-31T09:15:00.000Z -->'
 
     it('inserts the stamp immediately after the doctype', () => {
         expect(decorateHtmlWithBuildStamp('<!doctype html>\n<html lang="en">', stamp)).toBe(

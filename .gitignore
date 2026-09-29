@@ -59,6 +59,10 @@ pgdata/
 # Agent Kanban state
 .agentkanban/
 
+# Git worktrees Claude Code creates inside the repository. Without this, `git add -A` records one
+# as an embedded repository.
+.claude/worktrees/
+
 # Playwright reports / results
 
 playwright-report*/

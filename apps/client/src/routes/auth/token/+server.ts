@@ -54,10 +54,11 @@ export const POST: RequestHandler = async ({ cookies, fetch, request, url }) => 
     try {
         const metadata = await discoverOAuthMetadata(config, fetch)
         stage = 'refresh'
-        // Corporate treats a refresh token presented twice as stolen and revokes the grant on
-        // every device, so a replay (a reply the browser never received, or one that came after
-        // this request stopped waiting) gets the set already rotated. A request that stops
-        // waiting throws a TimeoutError, which is answered 503 below.
+        // Corporate revokes the grant on every device when a spent refresh token comes back after
+        // its short reuse window, so a replay (a reply the browser never received, or one that
+        // came after this request stopped waiting) gets the set already rotated instead of going
+        // to Corporate again. A request that stops waiting throws a TimeoutError, which is
+        // answered 503 below.
         const tokens = await refreshOnce(session.refreshToken, () =>
             refreshAccessToken(session.refreshToken, config, metadata, fetch, session.expiresAt))
         await setManagedSession(cookies, {

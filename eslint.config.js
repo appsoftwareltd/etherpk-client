@@ -37,6 +37,9 @@ export default tseslint.config(
             'resources/**',
             // The explainer video is its own pnpm root with its own checks (ADR 0105).
             'video/**',
+            // Git worktrees Claude Code creates inside the repository: whole checkouts, each
+            // linted by a run of its own. Relative to this file, so a run inside one still lints it.
+            '.claude/worktrees/**',
         ],
     },
     js.configs.recommended,

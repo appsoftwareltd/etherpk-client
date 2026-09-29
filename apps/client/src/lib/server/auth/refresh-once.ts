@@ -24,14 +24,16 @@ export interface RefreshOnceOptions {
 
 /**
  * One refresh per refresh token, and its answer kept briefly. Corporate rotates the refresh token
- * on every use, and on seeing a spent one again revokes the whole family for this client and user,
- * which signs the account out of the Client on every device. A browser can be left holding the
- * spent token in two ways: the reply never reached it (a tab closed mid-refresh), or Corporate
- * rotated the token and then answered after this server stopped waiting. So a request gives up
- * waiting after `waitMs` with a `TimeoutError` (the route answers 503) while the refresh runs on,
- * a request that arrives while it runs shares it, and one that presents the spent token within
- * the replay window gets the rotated set without asking Corporate again. In-process only: the
- * Client runs as one replica. Keyed by a hash, so no token is kept as a key.
+ * on every use. A repeat of the same refresh gets Corporate's first answer only for a short time
+ * after the rotation (ADR 0110); a spent token seen after that revokes the whole family for this
+ * client and user, which signs the account out of the Client on every device. A browser can be
+ * left holding the spent token in two ways: the reply never reached it (a tab closed
+ * mid-refresh), or Corporate rotated the token and then answered after this server stopped
+ * waiting. So a request gives up waiting after `waitMs` with a `TimeoutError` (the route answers
+ * 503) while the refresh runs on, a request that arrives while it runs shares it, and one that
+ * presents the spent token within the replay window gets the rotated set without asking Corporate
+ * again. In-process only: the Client runs as one replica. Keyed by a hash, so no token is kept as
+ * a key.
  */
 export function refreshOnce(
     refreshToken: string,

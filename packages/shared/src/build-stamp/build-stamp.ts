@@ -1,7 +1,8 @@
 /**
- * The build stamp: an HTML comment carrying the commit each app was built from, emitted at
- * the top of every server-rendered page so `view-source:` answers "which build is running
- * here?" against `git log`, without a shell on the box or a registry lookup.
+ * The build stamp: an HTML comment carrying the release version and the commit each app was
+ * built from, emitted at the top of every server-rendered page so `view-source:` answers "which
+ * build is running here?" against the release tags and `git log`, without a shell on the box or
+ * a registry lookup.
  *
  * The values are frozen into the bundle at build time (see `./resolve-build-info`), which is
  * the only moment the source commit is known — a running container has no `.git` directory.
@@ -12,6 +13,8 @@
  */
 
 export interface BuildInfo {
+    /** The app's `package.json` version, which `pnpm release:version` keeps in step across the repository. */
+    version: string
     /** Commit the bundle was built from, or `unknown` when the build had none to report. */
     commit: string
     /** ISO-8601 UTC instant the bundle was built. */
@@ -19,7 +22,7 @@ export interface BuildInfo {
 }
 
 /**
- * A commit SHA, an app name and an ISO timestamp need nothing outside this set, so anything
+ * A version, a commit SHA, an app name and an ISO timestamp need nothing outside this set, so anything
  * else is dropped rather than escaped. `--` is the one sequence that can close a comment
  * early, and hyphens are needed (`etherpk-client`, `2026-08-31`), so runs of them collapse to
  * one: the stamp cannot be broken out of, whatever the build passes in.
@@ -30,9 +33,12 @@ function commentSafe(value: string): string {
     return value.replace(COMMENT_SAFE, '').replace(/-{2,}/g, '-') || 'unknown'
 }
 
-/** `<!-- etherpk-client commit <sha> built <iso> -->`. */
+/** `<!-- etherpk-client version <x.y.z> commit <sha> built <iso> -->`. */
 export function buildStampComment(app: string, info: BuildInfo): string {
-    return `<!-- ${commentSafe(app)} commit ${commentSafe(info.commit)} built ${commentSafe(info.builtAt)} -->`
+    return (
+        `<!-- ${commentSafe(app)} version ${commentSafe(info.version)} commit ${commentSafe(info.commit)} ` +
+        `built ${commentSafe(info.builtAt)} -->`
+    )
 }
 
 const DOCTYPE = '<!doctype html>'
