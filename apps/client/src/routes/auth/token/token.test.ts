@@ -228,9 +228,11 @@ describe('POST /auth/token', () => {
             fetch: () => corporate(async () => new Response(null, { status: 429 })),
         },
         {
-            // The refresh may have rotated the grant at Corporate before the reply was lost.
-            // Retrying with the stored token is still safe: better-auth 1.6.15's refresh grant
-            // inserts the replacement row and does not delete the previous one.
+            // The refresh may have rotated the grant at Corporate before the reply was lost. The
+            // retry is still the right call, since the reply may equally have been lost before
+            // Corporate acted. After a rotation it presents a revoked token, and better-auth 1.6.33
+            // then ends every Client grant the account holds (invalidateRefreshFamily): each of its
+            // devices has to sign in again.
             name: 'the refresh reply is lost to the deadline',
             fetch: () => corporate(async () => {
                 throw new DOMException('The operation was aborted due to timeout', 'TimeoutError')

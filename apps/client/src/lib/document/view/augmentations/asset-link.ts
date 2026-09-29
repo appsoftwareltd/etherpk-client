@@ -25,6 +25,7 @@ import { type AssetStore, assetNameFromRef } from '$lib/storage/fs/asset-store'
 import { openContextMenu, tryGetActiveCommandRegistry } from '$lib/surface'
 
 import { assetTargetAt, attachAssetContextMenu, buildAssetActions } from './asset-actions'
+import { splitMarksAtLineText, treeChanged } from './base-renderer'
 import { actionClusterTheme } from './inline-actions'
 import { isImageTarget } from './image-target'
 import { analysisFor } from '../analysis/editor-analysis'
@@ -106,9 +107,11 @@ function buildDecorations(view: EditorView): DecorationSet {
         )
         decos.push(Decoration.widget({ widget: new AssetActionsWidget(target), side: 1 }).range(to))
     }
-    // Two decorations share the `to` offset of every link, so build the set from a sorted range
-    // list rather than a RangeSetBuilder, which requires strictly increasing starts.
-    return RangeSet.of(decos, true)
+    // A label can run over a soft line break: each later line's piece starts at its text, never over
+    // the indent the content clamp lifts out of the flow (base-renderer.ts). Two decorations share the
+    // `to` offset of every link, so build the set from a sorted range list rather than a
+    // RangeSetBuilder, which requires strictly increasing starts.
+    return RangeSet.of(splitMarksAtLineText(view.state, decos), true)
 }
 
 export function assetLinkAugmentation(options: AssetLinkOptions): Extension {
@@ -119,7 +122,8 @@ export function assetLinkAugmentation(options: AssetLinkOptions): Extension {
                 this.decorations = buildDecorations(view)
             }
             update(update: ViewUpdate) {
-                if (update.docChanged) this.decorations = buildDecorations(update.view)
+                // The split reads quote markers from the syntax tree, which the parser can finish later.
+                if (update.docChanged || treeChanged(update)) this.decorations = buildDecorations(update.view)
             }
         },
         { decorations: (v) => v.decorations },

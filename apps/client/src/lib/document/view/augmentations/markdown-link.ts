@@ -23,7 +23,7 @@ import { type Extension, type Range } from '@codemirror/state'
 import { Decoration, EditorView, WidgetType } from '@codemirror/view'
 
 import { fileLinkActions, LINK_COPY_PATH, runLinkCommand } from '../../link-affordances'
-import { hiddenSyntax, hiddenSyntaxPlugin } from './base-renderer'
+import { hiddenSyntax, hiddenSyntaxPlugin, type HiddenSyntaxSpec } from './base-renderer'
 import { actionClusterTheme, buildActionCluster, confirmClusterAction } from './inline-actions'
 import { linkPieces } from './markdown-link-core'
 
@@ -73,10 +73,12 @@ class FileLinkActionsWidget extends WidgetType {
     }
 }
 
-/** Line-kind reveal (reveal-policy.ts): a link's syntax shows raw while the caret is on its line. */
-const linkSyntax = hiddenSyntaxPlugin({
-    pieces(view, from, to, reveal) {
-        const { state } = view
+/**
+ * Links as a declaration over the base renderer (base-renderer.ts). Line-kind reveal
+ * (reveal-policy.ts): a link's syntax shows raw while the caret is on its line.
+ */
+export const markdownLinkSpec: HiddenSyntaxSpec = {
+    pieces(state, from, to, reveal) {
         const decos: Range<Decoration>[] = []
         for (const piece of linkPieces({
             tree: syntaxTree(state),
@@ -101,7 +103,9 @@ const linkSyntax = hiddenSyntaxPlugin({
         }
         return decos
     },
-})
+}
+
+const linkSyntax = hiddenSyntaxPlugin(markdownLinkSpec)
 
 /**
  * The copy cluster that follows a file link's span. CodeMirror splits a mark into several spans

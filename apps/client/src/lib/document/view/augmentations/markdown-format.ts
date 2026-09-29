@@ -29,8 +29,8 @@ import { isFrontmatterDelimiter } from '$lib/storage/fs/frontmatter-span'
 import { contentColumn } from '../../outliner'
 import type { InlineMark } from '../../inline-parts'
 import { analysisFor } from '../analysis/editor-analysis'
-import { fencedBlockAt } from '../outliner-context'
-import { hiddenSyntax, hiddenSyntaxPlugin, type RevealState } from './base-renderer'
+import { visibleFencedBlockAt } from '../outliner-context'
+import { hiddenSyntax, hiddenSyntaxPlugin, type HiddenSyntaxSpec, type RevealState } from './base-renderer'
 import { blockquoteLines } from './blockquote-core'
 import { CODE_FONT_SIZE } from './code-highlight'
 
@@ -94,16 +94,17 @@ const MARKERS_WITH_TRAILING_SPACE = new Set(['HeaderMark', 'QuoteMark'])
  * Whether a thematic break the parser found on `line`, starting at `ruleFrom`, is drawn as a rule.
  * Not when:
  *
- * - the editor's fence scan places the line inside a code block. It pairs fences by column and
- *   the parser can close a block earlier, and the editor's reading is the one every other
- *   augmentation (the code panel, the dots, the clamp) follows;
+ * - the editor's fence scan places the line inside a code block, as the code panel reads it
+ *   (`visibleFencedBlockAt`). It pairs fences by column and the parser can close a block earlier,
+ *   and the editor's reading is the one every other augmentation (the code panel, the dots, the
+ *   clamp) follows;
  * - it is the document's first line and a `---`: a Frontmatter opener still being typed (a closed
  *   one is its own node). Drawing it would flash a rule while the metadata is typed;
  * - something other than the outliner's lifted prefix or quote markers precedes it: after `* ` or
  *   `1. `, list markers the editor keeps as typed, the rule would be painted through the marker.
  */
 function drawsAsRule(state: EditorState, line: Line, ruleFrom: number): boolean {
-    if (fencedBlockAt(state, line.from)) return false
+    if (visibleFencedBlockAt(state, line.from)) return false
     if (line.number === 1 && isFrontmatterDelimiter(line.text)) return false
     const contentStart = line.from + contentColumn(line.text)
     const lead = ruleFrom > contentStart ? state.doc.sliceString(contentStart, ruleFrom) : ''
@@ -143,7 +144,7 @@ function hideFromOnLine(line: Line, markFrom: number): number {
  */
 function underlineReading(state: EditorState, heading: SyntaxNode, underline: SyntaxNode): 'heading' | 'rule' | 'text' {
     const line = state.doc.lineAt(underline.from)
-    if (underline.to - underline.from < 3 || fencedBlockAt(state, line.from)) return 'text'
+    if (underline.to - underline.from < 3 || visibleFencedBlockAt(state, line.from)) return 'text'
     const first = state.doc.lineAt(heading.from).number - 1
     const underTable = analysisFor(state).tables.some((t) => t.startLine <= first && first <= t.endLine && t.endLine < line.number - 1)
     if (underTable) return state.doc.sliceString(underline.from, underline.from + 1) === '-' ? 'rule' : 'text'
@@ -152,7 +153,8 @@ function underlineReading(state: EditorState, heading: SyntaxNode, underline: Sy
 
 /**
  * The marks and hidden markers in `[from, to]`; line-kind reveal (reveal-policy.ts) shows a line's
- * markers raw. Pure over the state, so the rule tables read it in Node (outliner-keymap.rules.test.ts).
+ * markers raw. Pure over the state, so the rule tables read what the plugin draws from it
+ * (`hiddenSyntaxPieces` over {@link markdownFormatSpec}) in Node (outliner-keymap.rules.test.ts).
  */
 export function formatDecorations(state: EditorState, from: number, to: number, reveal: RevealState): Range<Decoration>[] {
     const decos: Range<Decoration>[] = []
@@ -331,8 +333,10 @@ const theme = EditorView.baseTheme({
     [`.cm-line.${QUOTE_LAST_LINE_CLASS}::after`]: { bottom: QUOTE_GAP_BELOW, borderBottomRightRadius: '4px' },
 })
 
+/** The inline formatting as a declaration over the base renderer (base-renderer.ts). */
+export const markdownFormatSpec: HiddenSyntaxSpec = { pieces: formatDecorations }
+
 /** The inline markdown formatting augmentation (Dual Mode Editor.md). */
 export function markdownFormatAugmentation(): Extension {
-    const plugin = hiddenSyntaxPlugin({ pieces: (view, from, to, reveal) => formatDecorations(view.state, from, to, reveal) })
-    return [plugin, theme]
+    return [hiddenSyntaxPlugin(markdownFormatSpec), theme]
 }

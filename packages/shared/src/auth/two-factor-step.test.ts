@@ -23,4 +23,14 @@ describe('two-factor step copy', () => {
         expect(twoFactorFailureMessage('totp', { status: 429, message: 'Too many requests. Please try again later.' }))
             .toBe('Too many attempts. Wait a few seconds, then try again.')
     })
+
+    it('ends this sign-in after too many wrong codes, and sends the user back to the password step', () => {
+        expect(twoFactorFailureMessage('totp', { status: 400, code: 'TOO_MANY_ATTEMPTS_REQUEST_NEW_CODE' }))
+            .toBe('Too many wrong codes for this sign-in. Go back to sign in and enter your password again.')
+    })
+
+    it('says how long the account is locked after too many wrong codes across sign-ins', () => {
+        expect(twoFactorFailureMessage('backup', { status: 429, code: 'ACCOUNT_TEMPORARILY_LOCKED' }))
+            .toBe('Too many wrong codes, so this account cannot finish signing in for 15 minutes. Try again after that.')
+    })
 })

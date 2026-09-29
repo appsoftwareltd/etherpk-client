@@ -27,7 +27,6 @@ export interface AccountAuthClient {
         revokeOtherSessions?: boolean
     }): Promise<AuthResult>
     sendVerificationEmail(input: { email: string; callbackURL: string }): Promise<AuthResult>
-    revokeSession(input: { token: string }): Promise<AuthResult>
     revokeOtherSessions(): Promise<AuthResult>
     linkSocial(input: { provider: string; callbackURL: string }): Promise<AuthResult>
     unlinkAccount(input: { providerId: string; accountId?: string }): Promise<AuthResult>

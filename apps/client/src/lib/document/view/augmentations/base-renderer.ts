@@ -9,6 +9,8 @@
  *
  * - {@link hiddenSyntaxPlugin} — inline marks and hidden syntax over the **visible** ranges, from a
  *   ViewPlugin. Right for anything that does not change vertical layout (links, emphasis marks).
+ *   What a declaration returns is split at each later line's text and kept off the code blocks the
+ *   editor shows before it is drawn ({@link hiddenSyntaxPieces}).
  * - {@link blockWidgetField} — replace-widgets over whole lines, from a StateField; a block that is
  *   a bullet's content keeps its marker as text and takes the widget inline after it. CodeMirror
  *   needs block widgets in state, not a view plugin, before it can measure heights; the field
@@ -19,6 +21,9 @@ import { syntaxTree } from '@codemirror/language'
 import { type EditorState, type Extension, type Line, type Range, StateField, type Transaction } from '@codemirror/state'
 import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate, type WidgetType } from '@codemirror/view'
 
+import { contentStart } from '../../outliner'
+import { visibleFencedBlocks } from '../outliner-context'
+import { quoteMarkersLength } from './blockquote-core'
 import { lineRevealed, linesAllHidden, rangeRevealed, revealInputsChanged, revealedLines } from './reveal-policy'
 
 /** The reveal questions an augmentation may ask while building, already answered for this state. */
@@ -47,15 +52,98 @@ export function revealStateOf(state: EditorState): RevealState {
 
 export interface HiddenSyntaxSpec {
     /**
-     * The decorations for `[from, to]` (one visible range). Use `reveal` to decide whether a
-     * span's syntax is hidden or shown raw; return marks and `Decoration.replace({})` ranges
-     * in any order — they are sorted once here.
+     * The decorations for `[from, to]` (one visible range) of `state`. Use `reveal` to decide
+     * whether a span's syntax is hidden or shown raw; return marks and `Decoration.replace({})`
+     * ranges in any order: they are clipped and sorted once, by {@link hiddenSyntaxPieces}.
      */
-    pieces(view: EditorView, from: number, to: number, reveal: RevealState): Range<Decoration>[]
+    pieces(state: EditorState, from: number, to: number, reveal: RevealState): Range<Decoration>[]
 }
 
 /** The empty replace decoration that hides syntax characters. */
 export const hiddenSyntax = Decoration.replace({})
+
+/**
+ * Where the text of `line` starts: past the quote markers the parser reads on it
+ * ({@link quoteMarkersLength}), then past the indent and bullet marker the content clamp lifts out
+ * of the flow ({@link contentStart}).
+ */
+function lineTextStart(state: EditorState, line: Line): number {
+    const quote = quoteMarkersLength(syntaxTree(state), line)
+    return line.from + quote + contentStart(line.text.slice(quote))
+}
+
+/**
+ * The pieces with every mark over a line break split per line, each later line's piece starting at
+ * its text. The quote markers, indent and bullet marker before the text are the line's structure,
+ * not the construct's content (CommonMark strips a paragraph line's leading whitespace), and the
+ * content clamp lifts the indent out of the flow to the line's left edge: a mark over it would be
+ * drawn there, over the start of the text. Replace, widget and line decorations come back whole,
+ * and the order is kept. Reads the document and the syntax tree, never the caret, so an
+ * augmentation that rebuilds only on edits can apply it too (asset-link.ts).
+ */
+export function splitMarksAtLineText(state: EditorState, pieces: readonly Range<Decoration>[]): Range<Decoration>[] {
+    const { doc } = state
+    const split: Range<Decoration>[] = []
+    for (const piece of pieces) {
+        const line = doc.lineAt(piece.from)
+        if (piece.value.point || piece.to <= line.to) {
+            split.push(piece)
+            continue
+        }
+        for (let current = line; ; current = doc.line(current.number + 1)) {
+            const from = current === line ? piece.from : lineTextStart(state, current)
+            const to = Math.min(piece.to, current.to)
+            if (from < to) split.push(piece.value.range(from, to))
+            if (piece.to <= current.to) break
+        }
+    }
+    return split
+}
+
+/**
+ * The pieces less every one on a line of a code block the editor shows ({@link visibleFencedBlocks},
+ * the reading the panel is drawn from), opener and closer included. The markdown parser reads
+ * CommonMark, and on text off the Indent Unit grid the outline reads it otherwise (ADR 0067): a
+ * child bullet four columns or more past its parent's content column is, to CommonMark, a lazy
+ * continuation of the parent's paragraph and its fences the delimiters of a code span, whose marks
+ * and hidden backticks would land inside the panel. Caret-aware, as the panel is.
+ */
+export function dropPiecesOnCodeLines(state: EditorState, pieces: readonly Range<Decoration>[]): Range<Decoration>[] {
+    if (pieces.length === 0) return []
+    const { doc } = state
+    let low = doc.length
+    let high = 0
+    for (const piece of pieces) {
+        low = Math.min(low, piece.from)
+        high = Math.max(high, piece.to)
+    }
+    // Only the blocks the pieces reach: they are built over the visible ranges.
+    const first = doc.lineAt(low).number - 1
+    const last = doc.lineAt(high).number - 1
+    const blocks = visibleFencedBlocks(state).filter((b) => b.end >= first && b.start <= last)
+    if (blocks.length === 0) return [...pieces]
+    return pieces.filter((piece) => {
+        const from = doc.lineAt(piece.from).number - 1
+        const to = doc.lineAt(piece.to).number - 1
+        return !blocks.some((b) => b.start <= to && b.end >= from)
+    })
+}
+
+/**
+ * What {@link hiddenSyntaxPlugin} draws for `spec` over `ranges` of `state`: the declaration's
+ * pieces for every range, split at each later line's text and kept off the code blocks the editor
+ * shows. Pure over the state, so a Node test reads exactly what the editor draws.
+ */
+export function hiddenSyntaxPieces(
+    spec: HiddenSyntaxSpec,
+    state: EditorState,
+    ranges: readonly { from: number; to: number }[],
+): Range<Decoration>[] {
+    const reveal = revealStateOf(state)
+    const pieces: Range<Decoration>[] = []
+    for (const { from, to } of ranges) pieces.push(...spec.pieces(state, from, to, reveal))
+    return dropPiecesOnCodeLines(state, splitMarksAtLineText(state, pieces))
+}
 
 /**
  * A ViewPlugin that rebuilds `spec.pieces` over the visible ranges whenever the document, the
@@ -65,12 +153,7 @@ export const hiddenSyntax = Decoration.replace({})
  * next keystroke or scroll.
  */
 export function hiddenSyntaxPlugin(spec: HiddenSyntaxSpec): Extension {
-    function build(view: EditorView): DecorationSet {
-        const reveal = revealStateOf(view.state)
-        const decos: Range<Decoration>[] = []
-        for (const { from, to } of view.visibleRanges) decos.push(...spec.pieces(view, from, to, reveal))
-        return Decoration.set(decos, true)
-    }
+    const build = (view: EditorView): DecorationSet => Decoration.set(hiddenSyntaxPieces(spec, view.state, view.visibleRanges), true)
     return ViewPlugin.fromClass(
         class {
             decorations: DecorationSet

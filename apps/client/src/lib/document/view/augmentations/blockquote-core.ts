@@ -12,7 +12,7 @@
  * hidden marker.
  */
 
-import type { Text } from '@codemirror/state'
+import type { Line, Text } from '@codemirror/state'
 import type { Tree } from '@lezer/common'
 
 export interface QuoteLine {
@@ -45,6 +45,31 @@ export function blockquoteLines(tree: Tree, doc: Text, from = 0, to = doc.length
         },
     })
     return lines
+}
+
+/**
+ * How far into `line` its quote markers reach: past each `>` the parser reads as a quote marker,
+ * with the whitespace around it; 0 when it reads none. A `>` the parser takes for text (four spaces
+ * into a paragraph, say) is not a marker, so a mark over a line break starts at it, not past it.
+ */
+export function quoteMarkersLength(tree: Tree, line: Line): number {
+    const markers = new Map<number, number>()
+    tree.iterate({
+        from: line.from,
+        to: line.to,
+        enter(node) {
+            if (node.name === 'QuoteMark') markers.set(node.from, node.to)
+        },
+    })
+    const afterSpace = (pos: number) => {
+        while (pos < line.to && (line.text[pos - line.from] === ' ' || line.text[pos - line.from] === '\t')) pos++
+        return pos
+    }
+    let end = line.from
+    for (let pos = afterSpace(line.from); markers.has(pos); pos = afterSpace(markers.get(pos)!)) {
+        end = afterSpace(markers.get(pos)!)
+    }
+    return end - line.from
 }
 
 /**

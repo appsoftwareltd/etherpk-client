@@ -82,6 +82,9 @@ export function fencedBlockAtIn(
     return null
 }
 
+/** {@link visibleFencedBlocks} by state: a state never changes, so neither does its reading. */
+const visibleBlocksByState = new WeakMap<EditorState, readonly FencedBlockRange[]>()
+
 /**
  * Like {@link fencedBlocks} but for the VISUAL layer (shaded panel, monospace, clamp). A bare fence the
  * caret is sitting on may be a half-typed opener: on its own it would greedily pair with the next bare
@@ -91,8 +94,20 @@ export function fencedBlockAtIn(
  * means clicking onto an existing block's own fence (which would orphan its partner) never un-styles it;
  * only a genuinely surplus fence (one that, dropped, leaves the same or more blocks) is treated as
  * in-progress. Caret-aware → callers must rebuild on selection changes.
+ *
+ * Read once per state and shared: the panel, the clamp, the code scroll, inline maths, the
+ * selection layer and the inline clip all ask on every selection change, and with the caret on a
+ * bare fence the balance check reads every line.
  */
 export function visibleFencedBlocks(state: EditorState): readonly FencedBlockRange[] {
+    const cached = visibleBlocksByState.get(state)
+    if (cached) return cached
+    const blocks = readVisibleFencedBlocks(state)
+    visibleBlocksByState.set(state, blocks)
+    return blocks
+}
+
+function readVisibleFencedBlocks(state: EditorState): readonly FencedBlockRange[] {
     const analysis = state.field(editorAnalysisField, false) as EditorAnalysis | undefined
     const lines = analysis?.lines ?? state.doc.toString().split('\n')
     const blocks = analysis?.fencedBlocks ?? fencedBlocks(lines)
@@ -106,9 +121,10 @@ export function visibleFencedBlocks(state: EditorState): readonly FencedBlockRan
     // orphan), the tell-tale of an in-progress fence having knocked the pairing out of balance. When every
     // fence is already accounted for (a clean doc, or a nested ``` that is content of a ```` block) the
     // caret fence is legit and must not be second-guessed.
-    const inBlock = (i: number) => blocks.some((b) => i >= b.start && i <= b.end)
+    const inBlock = new Uint8Array(lines.length)
+    for (const b of blocks) inBlock.fill(1, b.start, b.end + 1)
     // The analysis's pending fence (a freshly typed, still unclosed opener) is text already.
-    const balanced = lines.every((l, i) => i === pending || !fenceLineInfo(l) || inBlock(i))
+    const balanced = lines.every((l, i) => i === pending || inBlock[i] === 1 || !fenceLineInfo(l))
     if (balanced) return blocks
     // Neutralise the caret fence (keep its indentation; just defang the backtick/tilde run) and re-pair;
     // adopt the result only if it doesn't lose blocks (never trade a real block away for the half-typed one).

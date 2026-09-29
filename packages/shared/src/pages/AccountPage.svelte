@@ -28,8 +28,8 @@
             emailVerificationLastSentAt: Date | string | null;
             /** The providers this deployment has credentials for: only those can be connected. */
             socialProviders: { github: boolean; google: boolean };
-            /** Where the account is signed in, this browser's session first. */
-            sessions: Array<{ id: string; token: string; userAgent: string | null; ipAddress: string | null; createdAt: Date | string; current: boolean }>;
+            /** Where the account is signed in, this browser's session first. Ids only: no session's token reaches the browser. */
+            sessions: Array<{ id: string; userAgent: string | null; ipAddress: string | null; createdAt: Date | string; current: boolean }>;
             /** How long an app open on another device keeps access after it is signed out, or null when it loses it at once. */
             openAppsKeepAccessMinutes: number | null;
             /** The Sync Server, whose Access tokens page lists what a sign-out leaves active. */
@@ -610,13 +610,21 @@
     let othersSignedOutIn = $state<"password" | "sessions" | null>(null);
     const accessTokensUrl = $derived(new URL("/account/tokens", data.syncServerUrl).href);
 
-    async function signOutSession(target: { id: string; token: string }) {
+    /**
+     * Signs a session out by id: each app's `/account/sessions/[sessionId]` finds its token on the
+     * server. Only a 401 has a message of its own; any other failure gets the retry wording, since
+     * the server's text for a 500 says nothing the user can act on.
+     */
+    async function signOutSession(target: { id: string }) {
         if (sessionsBusy) return;
         sessionsBusy = target.id;
         sessionsError = null;
-        const result = await authClient.revokeSession({ token: target.token }).catch(() => null);
-        if (!result || result.error) sessionsError = failureMessage(result?.error, "Could not sign that session out. Try again.");
-        else sessions = sessions.filter((session) => session.id !== target.id);
+        const response = await fetch(`/account/sessions/${encodeURIComponent(target.id)}`, {
+            method: "DELETE",
+            headers: { accept: "application/json" },
+        }).catch(() => null);
+        if (response?.ok) sessions = sessions.filter((session) => session.id !== target.id);
+        else sessionsError = failureMessage(response && { status: response.status }, "Could not sign that session out. Try again.");
         sessionsBusy = null;
     }
 

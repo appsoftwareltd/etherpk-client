@@ -17,9 +17,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { EditorView, keymap, showTooltip, type WidgetType } from '@codemirror/view'
 
-import { hiddenSyntax, revealStateOf } from './augmentations/base-renderer'
+import { hiddenSyntax, type HiddenSyntaxSpec, hiddenSyntaxPieces } from './augmentations/base-renderer'
 import { markdownWithCodeHighlight } from './augmentations/code-highlight'
-import { formatDecorations, RULE_LINE_CLASS } from './augmentations/markdown-format'
+import { markdownFormatSpec, RULE_LINE_CLASS } from './augmentations/markdown-format'
+import { markdownLinkSpec } from './augmentations/markdown-link'
 import { markdownTableAugmentation } from './augmentations/markdown-table'
 import { guideThreadsFor } from './augmentations/outline-guides'
 import { wikilinkCompletion } from './augmentations/wikilink-complete'
@@ -301,77 +302,146 @@ describe('prose is deliberately boring: leading spaces', () => {
 
 // ── Editor Content Rules → Standard prose → Rules and heading underlines ─────────────────────
 
+/** The tag a decoration's class is shown as in {@link presented}, or null for one it leaves out. */
+function shownAs(cls: string): string | null {
+    const heading = /cm-md-(h\d)/.exec(cls)
+    if (heading) return heading[1]
+    if (cls.includes('cm-md-code')) return 'code'
+    if (cls.includes('cm-md-strike')) return 's'
+    if (cls.includes('cm-md-highlight')) return 'mark'
+    if (cls.includes('cm-md-link')) return 'a'
+    return null
+}
+
 /**
- * A document as the formatting pass presents it, in text: hidden syntax removed, a line drawn as
- * a rule shown as `────` after whatever of the line stays visible (a bullet's marker), and heading
- * text wrapped in `<hN>…</hN>`. The caret in the fixture decides which lines reveal their source,
- * exactly as in the editor. Presentation, not a key: rows here have `shows` instead of `key`/`after`.
+ * A document as an inline augmentation presents it, in text: hidden syntax removed, a line drawn as
+ * a rule shown as `────` after whatever of the line stays visible (a bullet's marker), heading text
+ * wrapped in `<hN>…</hN>`, and inline code, strikethrough, highlight and links in `<code>`, `<s>`,
+ * `<mark>` and `<a>`. The pieces are the ones the plugin draws (`hiddenSyntaxPieces`, which clips
+ * them), from the inline formatting unless another declaration is named. The caret in the fixture
+ * decides which lines reveal their source, exactly as in the editor. Presentation, not a key: rows
+ * here have `shows` instead of `key`/`after`.
  */
-function presented(fixture: string, caret?: string): string {
+function presented(fixture: string, caret?: string, spec: HiddenSyntaxSpec = markdownFormatSpec): string {
     const { state } = editorFixture(fixture, { extensions: [markdownWithCodeHighlight()], caret })
-    const decorations = formatDecorations(state, 0, state.doc.length, revealStateOf(state))
+    const decorations = hiddenSyntaxPieces(spec, state, [{ from: 0, to: state.doc.length }])
     const hidden = decorations.filter((d) => d.value === hiddenSyntax)
     const classOf = (d: (typeof decorations)[number]) => (d.value.spec as { class?: string }).class ?? ''
     const ruleLines = new Set(decorations.filter((d) => d.from === d.to && classOf(d).includes(RULE_LINE_CLASS)).map((d) => state.doc.lineAt(d.from).number))
-    const headings = decorations
-        .filter((d) => d.from < d.to && /cm-md-h\d/.test(classOf(d)))
-        .map((d) => ({ from: d.from, to: d.to, tag: classOf(d).match(/h\d/)![0] }))
+    // In decoration order, which is the tree's: an outer construct's mark before an inner one's.
+    const marks = decorations.flatMap((d) => {
+        const tag = d.from < d.to ? shownAs(classOf(d)) : null
+        return tag ? [{ from: d.from, to: d.to, tag }] : []
+    })
     const out: string[] = []
     for (let n = 1; n <= state.doc.lines; n++) {
         const line = state.doc.line(n)
         let text = ''
-        let open: string | null = null
+        let open: string[] = []
         for (let pos = line.from; pos < line.to; pos++) {
             if (hidden.some((h) => h.from <= pos && pos < h.to)) continue
-            const tag = headings.find((h) => h.from <= pos && pos < h.to)?.tag ?? null
-            if (tag !== open) {
-                if (open) text += `</${open}>`
-                if (tag) text += `<${tag}>`
-                open = tag
-            }
+            const tags = marks.filter((m) => m.from <= pos && pos < m.to).map((m) => m.tag)
+            let kept = 0
+            while (kept < open.length && open[kept] === tags[kept]) kept++
+            for (let k = open.length - 1; k >= kept; k--) text += `</${open[k]}>`
+            for (let k = kept; k < tags.length; k++) text += `<${tags[k]}>`
+            open = tags
             text += state.doc.sliceString(pos, pos + 1)
         }
-        if (open) text += `</${open}>`
+        for (let k = open.length - 1; k >= 0; k--) text += `</${open[k]}>`
         out.push(ruleLines.has(n) ? `${text}────` : text)
     }
     return out.join('\n')
 }
 
-describe('a --- in the body is a rule, or a heading’s underline where markdown says so', () => {
-    const rows: { rule: string; precedent: Rule['precedent']; before: string; shows: string; caret?: string }[] = [
-        { rule: 'a --- on its own after a blank line is drawn as a rule', precedent: 'CommonMark', before: 'a\n\n---\n\nb|', shows: 'a\n\n────\n\nb' },
-        { rule: '*** and ___ are rules too', precedent: 'CommonMark', before: '***\n\n___\n\nx|', shows: '────\n\n────\n\nx' },
-        { rule: 'the caret’s line shows the rule’s source', precedent: 'Obsidian', before: 'a\n\n---|', shows: 'a\n\n---' },
-        { rule: 'a --- at column 0 under a bullet is a rule, not part of the bullet', precedent: 'CommonMark', before: '- a\n---\n- b|', shows: '- a\n────\n- b' },
-        { rule: 'a bullet whose text is --- keeps its marker and draws the rule after it', precedent: 'Logseq', before: '- a\n- ---\n- b|', shows: '- a\n- ────\n- b' },
-        { rule: 'a nested bullet’s rule starts at its content column', precedent: 'Logseq', before: '- a\n  - ---\n- b|', shows: '- a\n  - ────\n- b' },
-        { rule: 'a rule in a quote is drawn inside the quote', precedent: 'CommonMark', before: '> ---\n\nx|', shows: '────\n\nx' },
-        { rule: 'a --- after an ATX heading is a rule; the heading keeps its own level', precedent: 'CommonMark', before: '# H\n---\n\nx|', shows: '<h1>H</h1>\n────\n\nx' },
-        { rule: 'the frontmatter’s delimiters are never rules', precedent: 'EtherPK', before: '---\ntitle: A\n---\nbody|', shows: '---\ntitle: A\n---\nbody' },
-        { rule: 'a frontmatter opener still being typed is not a rule either', precedent: 'EtherPK', before: '---\ntitle: A|', shows: '---\ntitle: A' },
-        { rule: 'a --- directly under a line of text underlines it as a level-two heading', precedent: 'CommonMark', before: 'Title\n---\n\nx|', shows: '<h2>Title</h2>\n\n\nx' },
-        { rule: 'a === underline makes a level-one heading', precedent: 'CommonMark', before: 'Title\n===\n\nx|', shows: '<h1>Title</h1>\n\n\nx' },
-        { rule: 'the underline shows while the caret is on any line of its heading', precedent: 'EtherPK', before: 'Ti|tle\n---\n\nx', shows: '<h2>Title</h2>\n---\n\nx' },
-        { rule: 'a soft line of --- under a bullet’s text makes that text a heading', precedent: 'CommonMark', before: '- a\n  ---\n- b|', shows: '- <h2>a</h2>\n  \n- b' },
-        { rule: 'a quoted heading’s underline hides its > with the ---', precedent: 'EtherPK', before: '> Title\n> ---\n\nx|', shows: '<h2>Title</h2>\n\n\nx' },
-        // CommonMark also reads these as underlines, but the outliner reads them otherwise: an empty
-        // bullet (Tab on an empty line under prose makes one), and the first one or two keystrokes of
-        // a bullet, a rule or an ==highlight==. Styling the line above would move everything below.
-        { rule: 'an empty bullet under prose is a bullet, not an underline', precedent: 'EtherPK', before: 'Some text\n- |', shows: 'Some text\n- ' },
-        { rule: 'with the caret elsewhere the empty bullet stays visible and the text above stays prose', precedent: 'EtherPK', before: 'x|\n\nSome text\n- ', shows: 'x\n\nSome text\n- ' },
-        { rule: 'a lone - or -- typed under prose restyles nothing', precedent: 'EtherPK', before: 'Some text\n--|', shows: 'Some text\n--' },
-        { rule: 'a lone = typed under prose restyles nothing: the start of ==highlight==', precedent: 'EtherPK', before: 'Some text\n=|', shows: 'Some text\n=' },
-        { rule: 'a --- under a GFM table is a rule after the table, as GFM renderers draw it', precedent: 'CommonMark', before: '| a | b |\n| - | - |\n| 1 | 2 |\n---\n\nx§', caret: '§', shows: '| a | b |\n| - | - |\n| 1 | 2 |\n────\n\nx' },
-        { rule: 'a rule after another list marker is kept as typed, like the marker', precedent: 'EtherPK', before: '* ---\n\n1. ---\n\nx|', shows: '* ---\n\n1. ---\n\nx' },
-        { rule: 'a --- the editor’s fence scan places inside a code block stays code', precedent: 'EtherPK', before: '```\n ```\n---\n```\n\nx|', shows: '```\n ```\n---\n```\n\nx' },
-        { rule: 'the body keeps its formatting while a frontmatter opener is still being typed', precedent: 'EtherPK', before: '---\ntitle: A|\n\n# H', shows: '---\ntitle: A\n\n<h1>H</h1>' },
-    ]
-    for (const row of rows) {
-        it(`${row.rule} (${row.precedent})`, () => {
-            expect(presented(row.before, row.caret)).toBe(row.shows)
-        })
-    }
-})
+interface PresentationRow {
+    rule: string
+    precedent: Rule['precedent']
+    before: string
+    shows: string
+    /** Where the caret is written, when the fixture needs a `|` of its own. */
+    caret?: string
+    /** The declaration presented, when it is not the inline formatting. */
+    spec?: HiddenSyntaxSpec
+}
+
+function presentationTable(name: string, rows: PresentationRow[]) {
+    describe(name, () => {
+        for (const row of rows) {
+            it(`${row.rule} (${row.precedent})`, () => {
+                expect(presented(row.before, row.caret, row.spec)).toBe(row.shows)
+            })
+        }
+    })
+}
+
+presentationTable('a --- in the body is a rule, or a heading’s underline where markdown says so', [
+    { rule: 'a --- on its own after a blank line is drawn as a rule', precedent: 'CommonMark', before: 'a\n\n---\n\nb|', shows: 'a\n\n────\n\nb' },
+    { rule: '*** and ___ are rules too', precedent: 'CommonMark', before: '***\n\n___\n\nx|', shows: '────\n\n────\n\nx' },
+    { rule: 'the caret’s line shows the rule’s source', precedent: 'Obsidian', before: 'a\n\n---|', shows: 'a\n\n---' },
+    { rule: 'a --- at column 0 under a bullet is a rule, not part of the bullet', precedent: 'CommonMark', before: '- a\n---\n- b|', shows: '- a\n────\n- b' },
+    { rule: 'a bullet whose text is --- keeps its marker and draws the rule after it', precedent: 'Logseq', before: '- a\n- ---\n- b|', shows: '- a\n- ────\n- b' },
+    { rule: 'a nested bullet’s rule starts at its content column', precedent: 'Logseq', before: '- a\n  - ---\n- b|', shows: '- a\n  - ────\n- b' },
+    { rule: 'a rule in a quote is drawn inside the quote', precedent: 'CommonMark', before: '> ---\n\nx|', shows: '────\n\nx' },
+    { rule: 'a --- after an ATX heading is a rule; the heading keeps its own level', precedent: 'CommonMark', before: '# H\n---\n\nx|', shows: '<h1>H</h1>\n────\n\nx' },
+    { rule: 'the frontmatter’s delimiters are never rules', precedent: 'EtherPK', before: '---\ntitle: A\n---\nbody|', shows: '---\ntitle: A\n---\nbody' },
+    { rule: 'a frontmatter opener still being typed is not a rule either', precedent: 'EtherPK', before: '---\ntitle: A|', shows: '---\ntitle: A' },
+    { rule: 'a --- directly under a line of text underlines it as a level-two heading', precedent: 'CommonMark', before: 'Title\n---\n\nx|', shows: '<h2>Title</h2>\n\n\nx' },
+    { rule: 'a === underline makes a level-one heading', precedent: 'CommonMark', before: 'Title\n===\n\nx|', shows: '<h1>Title</h1>\n\n\nx' },
+    { rule: 'the underline shows while the caret is on any line of its heading', precedent: 'EtherPK', before: 'Ti|tle\n---\n\nx', shows: '<h2>Title</h2>\n---\n\nx' },
+    { rule: 'a soft line of --- under a bullet’s text makes that text a heading', precedent: 'CommonMark', before: '- a\n  ---\n- b|', shows: '- <h2>a</h2>\n  \n- b' },
+    { rule: 'a quoted heading’s underline hides its > with the ---', precedent: 'EtherPK', before: '> Title\n> ---\n\nx|', shows: '<h2>Title</h2>\n\n\nx' },
+    // CommonMark also reads these as underlines, but the outliner reads them otherwise: an empty
+    // bullet (Tab on an empty line under prose makes one), and the first one or two keystrokes of
+    // a bullet, a rule or an ==highlight==. Styling the line above would move everything below.
+    { rule: 'an empty bullet under prose is a bullet, not an underline', precedent: 'EtherPK', before: 'Some text\n- |', shows: 'Some text\n- ' },
+    { rule: 'with the caret elsewhere the empty bullet stays visible and the text above stays prose', precedent: 'EtherPK', before: 'x|\n\nSome text\n- ', shows: 'x\n\nSome text\n- ' },
+    { rule: 'a lone - or -- typed under prose restyles nothing', precedent: 'EtherPK', before: 'Some text\n--|', shows: 'Some text\n--' },
+    { rule: 'a lone = typed under prose restyles nothing: the start of ==highlight==', precedent: 'EtherPK', before: 'Some text\n=|', shows: 'Some text\n=' },
+    { rule: 'a --- under a GFM table is a rule after the table, as GFM renderers draw it', precedent: 'CommonMark', before: '| a | b |\n| - | - |\n| 1 | 2 |\n---\n\nx§', caret: '§', shows: '| a | b |\n| - | - |\n| 1 | 2 |\n────\n\nx' },
+    { rule: 'a rule after another list marker is kept as typed, like the marker', precedent: 'EtherPK', before: '* ---\n\n1. ---\n\nx|', shows: '* ---\n\n1. ---\n\nx' },
+    { rule: 'a --- the editor’s fence scan places inside a code block stays code', precedent: 'EtherPK', before: '```\n ```\n---\n```\n\nx|', shows: '```\n ```\n---\n```\n\nx' },
+    { rule: 'the body keeps its formatting while a frontmatter opener is still being typed', precedent: 'EtherPK', before: '---\ntitle: A|\n\n# H', shows: '---\ntitle: A\n\n<h1>H</h1>' },
+])
+
+// ── Editor Content Rules → Standard prose → A mark across a line break ───────────────────────
+
+// A paragraph's later lines lose their leading whitespace (CommonMark: the paragraph's raw content
+// is its lines with initial spaces removed), and a quote's `>` is its container, not its text. So a
+// mark over a soft line break starts the next line at its text. Over the indent it was drawn inside
+// the prefix the content clamp lifts out of the flow, painted over the start of the text.
+presentationTable('a mark that runs onto the next line starts that line at its text', [
+    { rule: 'inline code over a bullet’s soft line break starts the continuation at its text, not its indent', precedent: 'CommonMark', before: '- a `b\n  c` d\n- x|', shows: '- a <code>b</code>\n  <code>c</code> d\n- x' },
+    { rule: 'the same for a continuation indented past the content column', precedent: 'CommonMark', before: '   - a `b\n      c` d\n- x|', shows: '   - a <code>b</code>\n      <code>c</code> d\n- x' },
+    { rule: 'the same for an indented line of a prose paragraph', precedent: 'CommonMark', before: 'Some `code\n   more` text\n\nx|', shows: 'Some <code>code</code>\n   <code>more</code> text\n\nx' },
+    { rule: 'a line in the middle is covered from its text to its end', precedent: 'CommonMark', before: '- a `b\n  c\n  d` e\n- x|', shows: '- a <code>b</code>\n  <code>c</code>\n  <code>d</code> e\n- x' },
+    { rule: 'strikethrough does the same', precedent: 'CommonMark', before: '- a ~~b\n  c~~ d\n- x|', shows: '- a <s>b</s>\n  <s>c</s> d\n- x' },
+    { rule: 'highlight does the same', precedent: 'CommonMark', before: '- a ==b\n  c== d\n- x|', shows: '- a <mark>b</mark>\n  <mark>c</mark> d\n- x' },
+    { rule: 'a link’s label does the same', precedent: 'CommonMark', before: '- see [a long\n  label](https://example.com) here\n- x|', shows: '- see <a>a long</a>\n  <a>label</a> here\n- x', spec: markdownLinkSpec },
+    { rule: 'a quoted line starts after its >', precedent: 'CommonMark', before: '> a `b\n> c` d|', shows: 'a <code>b</code>\n> <code>c`</code> d' },
+    // Four spaces in, a `>` cannot open a quote inside a paragraph: it is the paragraph's text.
+    { rule: 'a > the parser reads as text is covered as text', precedent: 'CommonMark', before: 'Some `code\n    > more` text\n\nx|', shows: 'Some <code>code</code>\n    <code>> more</code> text\n\nx' },
+    // CommonMark reads the line as the paragraph's text; the outline reads a bullet, whose marker the
+    // content clamp lifts with its indent, so the mark starts after the marker.
+    { rule: 'a later line the outline reads as a bullet starts after its marker', precedent: 'EtherPK', before: '- a `b\n        - c` d\n- x|', shows: '- a <code>b</code>\n        - <code>c</code> d\n- x' },
+])
+
+// ── Editor Content Rules → Fenced Code Blocks → Presentation ─────────────────────────────────
+
+// The markdown parser reads the text as CommonMark, the outline and the fence scan read it as EtherPK
+// does (ADR 0067), and on foreign text they can disagree: a child bullet indented four columns or more
+// past its parent's content column is, to CommonMark, a lazy continuation of the parent's paragraph,
+// and its fences the delimiters of a code span. The editor shows the block, so the parser's inline
+// reading draws nothing inside it.
+presentationTable('a code block the editor shows takes no inline formatting from the parser', [
+    { rule: 'a bullet indented past its parent’s content column keeps its code block: fences shown, nothing inline code', precedent: 'EtherPK', before: '- a\n  - b\n        - ```\n          code\n          ```\n- x|', shows: '- a\n  - b\n        - ```\n          code\n          ```\n- x' },
+    // The parser pairs the opener with the run inside the line and reads what follows as prose.
+    { rule: 'a mark the parser finds after a backtick run inside such a block is code too', precedent: 'EtherPK', before: '- a\n        - ```\n          x ``` ~~y~~\n          ```\n- x|', shows: '- a\n        - ```\n          x ``` ~~y~~\n          ```\n- x' },
+    { rule: 'the same block on the grid, which the parser reads as a fence as well', precedent: 'CommonMark', before: '- a\n  - b\n    - ```\n      code\n      ```\n- x|', shows: '- a\n  - b\n    - ```\n      code\n      ```\n- x' },
+    // The panel's reading (outliner-context.ts, visibleFencedBlocks): a bare fence under the caret in an
+    // unbalanced document is a half-typed opener, so the lines after it pair among themselves.
+    { rule: 'a half-typed fence under the caret is text, and the block the panel draws below it takes no marks', precedent: 'EtherPK', before: '```|\na ~~b~~ c\n```\nd ~~e~~ f\n```', shows: '```\na ~~b~~ c\n```\nd ~~e~~ f\n```' },
+])
 
 // ── Editor Content Rules → Outliner Block Groups → Guide threads ─────────────────────────────
 

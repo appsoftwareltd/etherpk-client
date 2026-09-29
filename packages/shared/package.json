@@ -81,6 +81,10 @@
             "types": "./src/auth/two-factor-reset.ts",
             "default": "./src/auth/two-factor-reset.ts"
         },
+        "./signed-in-sessions": {
+            "types": "./src/auth/signed-in-sessions.ts",
+            "default": "./src/auth/signed-in-sessions.ts"
+        },
         "./verification-resend": {
             "types": "./src/auth/verification-resend.ts",
             "default": "./src/auth/verification-resend.ts"
