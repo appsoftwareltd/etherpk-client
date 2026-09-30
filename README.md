@@ -1,7 +1,6 @@
 # EtherPK Client
 
 [![Build and release](https://github.com/appsoftwareltd/etherpk-client/actions/workflows/build.yaml/badge.svg?branch=main)](https://github.com/appsoftwareltd/etherpk-client/actions/workflows/build.yaml)
-[![Unit tests](https://github.com/appsoftwareltd/etherpk-client/actions/workflows/unit-tests.yaml/badge.svg?branch=main)](https://github.com/appsoftwareltd/etherpk-client/actions/workflows/unit-tests.yaml)
 [![npm](https://img.shields.io/npm/v/@appsoftwareltd/etherpk-mcp?label=npm)](https://www.npmjs.com/package/@appsoftwareltd/etherpk-mcp)
 
 The source of the [EtherPK](https://etherpk.com) Client and Headless Client, available under the
