@@ -6,7 +6,7 @@
 
 import { fromBase64Url, openVault, type GraphKeyring, type KeyVault } from '$lib/crypto'
 import { createSyncApi, type ServerGraphRecord, type SyncApi } from '$lib/sync/sync-api'
-import { relayUrlFrom } from '$lib/sync/sync-config'
+import { relayUrlFrom } from '$lib/sync/sync-connections'
 import { createSyncTokenSource, type SyncTokenSource } from '$lib/sync/sync-token'
 
 import type { ServerCredentials } from './config'

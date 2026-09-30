@@ -1,6 +1,6 @@
 <script lang="ts">
     import { useHydrated } from "../forms/hydration.svelte";
-    import { focusFirstInvalid } from "../ui/index.svelte";
+    import { focusFirstInvalid, textFieldClass } from "../ui/index.svelte";
     import type { PasswordResetAuthClient } from "../auth/page-clients";
     import AlertBanner from "../components/AlertBanner.svelte";
 
@@ -22,10 +22,6 @@
     // This form submits in JavaScript, so the button must not be pressable before the
     // handler exists - a click landing then submits natively and silently reloads the page.
     const hydrated = useHydrated();
-
-    const inputBase = "block w-full rounded-lg border bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 transition-colors";
-    const inputNormal = "border-gray-300 text-gray-950 focus:border-gray-950 focus:ring-gray-950/10";
-    const inputError = "border-red-300 text-red-900 focus:border-red-500 focus:ring-red-500/10";
 
     function validate(): boolean {
         if (!email.trim()) {
@@ -120,7 +116,7 @@
         <form onsubmit={handleSubmit} novalidate class="mt-6 space-y-4">
             <div>
                 <label for="email" class="block text-sm font-medium text-gray-700 mb-1.5">Email</label>
-                <input id="email" type="email" bind:value={email} autocomplete="email" placeholder="you@example.com" onblur={blurEmail} oninput={inputEmail} aria-invalid={!!fieldError} aria-describedby={fieldError ? "email-error" : undefined} class="{inputBase} {fieldError ? inputError : inputNormal}" />
+                <input id="email" type="email" bind:value={email} autocomplete="email" placeholder="you@example.com" onblur={blurEmail} oninput={inputEmail} aria-invalid={!!fieldError} aria-describedby={fieldError ? "email-error" : undefined} class={textFieldClass(!!fieldError)} />
                 {#if fieldError}
                     <p id="email-error" class="mt-1 text-sm text-red-600">{fieldError}</p>
                 {/if}

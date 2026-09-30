@@ -1,17 +1,19 @@
 /**
  * Device-local vault unlock, partitioned by Sync Server origin and service-local Principal.
- * The scope prevents one signed-in account from reusing or observing another account's key.
- * It is a local privacy boundary only; the Server still authorises every remote operation.
+ * The scope prevents one signed-in account from reusing or observing another account's key, and
+ * keeps each server's keys apart on a device connected to several (ADR 0111): every call names
+ * the server whose keys it means, and the account confirmed there picks the partition. It is a
+ * local privacy boundary only; the Server still authorises every remote operation.
  */
 import { fromBase64Url, toBase64Url } from '$lib/crypto'
-import { readActiveSyncAccount } from './account-scope'
+import { readSyncAccount } from './account-scope'
 import { openVaultWithRecoveryCode } from './recovery-unlock'
 import type { SyncApi } from './sync-api'
 
 const LEGACY_KEY = 'etherpk:vault-wrap-key'
 
-function scopedKey(): string | null {
-    const account = readActiveSyncAccount()
+function scopedKey(serverOrigin: string): string | null {
+    const account = readSyncAccount(serverOrigin)
     return account
         ? `${LEGACY_KEY}:${encodeURIComponent(account.serverOrigin)}:${encodeURIComponent(account.principalId)}`
         : null
@@ -24,10 +26,10 @@ function removeUnsafeLegacyKey(): void {
     if (typeof sessionStorage !== 'undefined') sessionStorage.removeItem(LEGACY_KEY)
 }
 
-/** The active account's unlocked vault wrap key, or null if its vault is locked. */
-export function getVaultWrapKey(): Uint8Array | null {
+/** The vault wrap key of the account confirmed on `serverOrigin`, or null if its vault is locked here. */
+export function getVaultWrapKey(serverOrigin: string): Uint8Array | null {
     removeUnsafeLegacyKey()
-    const key = scopedKey()
+    const key = scopedKey(serverOrigin)
     if (!key || typeof localStorage === 'undefined') return null
     const raw = localStorage.getItem(key)
     if (!raw) return null
@@ -39,31 +41,36 @@ export function getVaultWrapKey(): Uint8Array | null {
     }
 }
 
-export function isVaultUnlocked(): boolean {
-    return getVaultWrapKey() !== null
+export function isVaultUnlocked(serverOrigin: string): boolean {
+    return getVaultWrapKey(serverOrigin) !== null
 }
 
-/** Cache a wrap key only after `/sync/me` has established the active local partition. */
-export function setVaultWrapKey(wrapKey: Uint8Array): void {
+/** Cache a wrap key only after `/sync/me` has confirmed the account on `serverOrigin`. */
+export function setVaultWrapKey(serverOrigin: string, wrapKey: Uint8Array): void {
     removeUnsafeLegacyKey()
-    const key = scopedKey()
+    const key = scopedKey(serverOrigin)
     if (!key) throw new Error('Authenticate with the Sync Server before unlocking keys')
     if (typeof localStorage !== 'undefined') localStorage.setItem(key, toBase64Url(wrapKey))
 }
 
 /**
- * Unlock with a Recovery Code, caching the vault key only once the code has opened the account's
- * vault (recovery-unlock.ts). A wrong code throws `RecoveryCodeError` and caches nothing.
+ * Unlock with a Recovery Code, caching the vault key only once the code has opened the vault of
+ * the account on `serverOrigin` (recovery-unlock.ts). A wrong code - including one for another
+ * server's account - throws `RecoveryCodeError` and caches nothing.
  */
-export async function unlockWithRecoveryCode(api: Pick<SyncApi, 'getVault'>, code: string): Promise<Uint8Array> {
+export async function unlockWithRecoveryCode(
+    api: Pick<SyncApi, 'getVault'>,
+    code: string,
+    serverOrigin: string,
+): Promise<Uint8Array> {
     const vaultKey = await openVaultWithRecoveryCode(api, code)
-    setVaultWrapKey(vaultKey)
+    setVaultWrapKey(serverOrigin, vaultKey)
     return vaultKey
 }
 
 /**
- * Lock every account whose keys this browser holds, not only the active one: removing this
- * browser's synced graphs, on a machine someone else will use, leaves no account's keys behind.
+ * Lock every account whose keys this browser holds, on every server: removing this browser's
+ * synced graphs, on a machine someone else will use, leaves no account's keys behind.
  */
 export function lockEveryVault(): void {
     removeUnsafeLegacyKey()
@@ -76,10 +83,10 @@ export function lockEveryVault(): void {
     for (const key of held) localStorage.removeItem(key)
 }
 
-/** Lock the active account without destroying keys cached for a different account. */
-export function lockVault(): void {
+/** Lock the account on `serverOrigin` without touching keys cached for any other account or server. */
+export function lockVault(serverOrigin: string): void {
     removeUnsafeLegacyKey()
-    const key = scopedKey()
+    const key = scopedKey(serverOrigin)
     if (key && typeof localStorage !== 'undefined') localStorage.removeItem(key)
 }
 

@@ -1,6 +1,6 @@
 <script lang="ts">
     import { onMount } from "svelte";
-    import { focusFirstInvalid } from "../ui/index.svelte";
+    import { focusFirstInvalid, textFieldClass } from "../ui/index.svelte";
     import { touchAll, visibleErrors } from "../forms/field-errors";
     import AlertBanner from "../components/AlertBanner.svelte";
 
@@ -49,10 +49,6 @@
     $effect(() => {
         token = btoa(Date.now().toString());
     });
-
-    const inputBase = "block w-full rounded-lg border bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 transition-colors";
-    const inputNormal = "border-gray-300 text-gray-950 focus:border-gray-950 focus:ring-gray-950/10";
-    const inputError = "border-red-300 text-red-900 focus:border-red-500 focus:ring-red-500/10";
 
     function validate(): boolean {
         const errors: typeof fieldErrors = {};
@@ -206,7 +202,7 @@
 
             <div>
                 <label for="contact-name" class="block text-sm font-medium text-gray-700 mb-1.5">Name</label>
-                <input id="contact-name" onblur={() => blurField("name")} oninput={() => inputField("name")} type="text" bind:value={name} autocomplete="name" placeholder="Your name" aria-invalid={!!fieldErrors.name} aria-describedby={fieldErrors.name ? "name-error" : undefined} class="{inputBase} {fieldErrors.name ? inputError : inputNormal}" />
+                <input id="contact-name" onblur={() => blurField("name")} oninput={() => inputField("name")} type="text" bind:value={name} autocomplete="name" placeholder="Your name" aria-invalid={!!fieldErrors.name} aria-describedby={fieldErrors.name ? "name-error" : undefined} class={textFieldClass(!!fieldErrors.name)} />
                 {#if fieldErrors.name}
                     <p id="name-error" class="mt-1 text-sm text-red-600">{fieldErrors.name}</p>
                 {/if}
@@ -214,7 +210,7 @@
 
             <div>
                 <label for="contact-email" class="block text-sm font-medium text-gray-700 mb-1.5">Email</label>
-                <input id="contact-email" onblur={() => blurField("email")} oninput={() => inputField("email")} type="email" bind:value={email} autocomplete="email" placeholder="you@example.com" aria-invalid={!!fieldErrors.email} aria-describedby={fieldErrors.email ? "email-error" : undefined} class="{inputBase} {fieldErrors.email ? inputError : inputNormal}" />
+                <input id="contact-email" onblur={() => blurField("email")} oninput={() => inputField("email")} type="email" bind:value={email} autocomplete="email" placeholder="you@example.com" aria-invalid={!!fieldErrors.email} aria-describedby={fieldErrors.email ? "email-error" : undefined} class={textFieldClass(!!fieldErrors.email)} />
                 {#if fieldErrors.email}
                     <p id="email-error" class="mt-1 text-sm text-red-600">{fieldErrors.email}</p>
                 {/if}
@@ -222,7 +218,7 @@
 
             <div>
                 <label for="contact-message" class="block text-sm font-medium text-gray-700 mb-1.5">Message</label>
-                <textarea id="contact-message" onblur={() => blurField("message")} oninput={() => inputField("message")} onkeydown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") e.currentTarget.form?.requestSubmit(); }} bind:value={message} rows="5" placeholder="How can we help?" aria-invalid={!!fieldErrors.message} aria-describedby={fieldErrors.message ? "message-error" : undefined} class="{inputBase} {fieldErrors.message ? inputError : inputNormal} resize-y"></textarea>
+                <textarea id="contact-message" onblur={() => blurField("message")} oninput={() => inputField("message")} onkeydown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") e.currentTarget.form?.requestSubmit(); }} bind:value={message} rows="5" placeholder="How can we help?" aria-invalid={!!fieldErrors.message} aria-describedby={fieldErrors.message ? "message-error" : undefined} class="{textFieldClass(!!fieldErrors.message)} resize-y"></textarea>
                 {#if fieldErrors.message}
                     <p id="message-error" class="mt-1 text-sm text-red-600">{fieldErrors.message}</p>
                 {/if}

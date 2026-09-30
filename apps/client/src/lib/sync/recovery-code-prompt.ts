@@ -23,6 +23,10 @@ export interface PendingRecoveryCode {
     arrival: 'first' | 'regenerate'
     /** Why this appeared now, shown above the code. */
     reason?: string
+    /** The Sync Server whose account the code unlocks: the dialog and the saved file name it. */
+    serverOrigin: string
+    /** That account's address, when it has one to name. */
+    account?: string | null
     /** Makes the code real: writes the vault (first) or re-wraps it under this code (regenerate). */
     commit: () => Promise<void>
     /** Runs after a successful commit; receives the commit's error instead if it threw. */

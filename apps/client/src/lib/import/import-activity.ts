@@ -10,7 +10,7 @@
 
 import { createBreather } from '$lib/activity/breathe'
 import { runActivity, type ActivityHandle, type ActivityOutcome } from '$lib/activity/store'
-import { importMarkers, type StartedImport } from './import-marker'
+import { importMarkers, type ImportMarker, type StartedImport } from './import-marker'
 import type { Activity, ActivityPhase } from '$lib/activity/types'
 import type { GraphRegistry } from '$lib/storage/graph-registry'
 
@@ -111,6 +111,20 @@ export interface StartImportOptions {
 }
 
 /**
+ * What an import's marker records before it starts: enough for the Knowledge graphs page to say
+ * what a cut-off import left and to clear it up - the folder written into, or the Sync Server the
+ * partial graph is on.
+ */
+export function importMarkerFields(
+    name: string,
+    destination: FilesystemImportRequest | ServerImportRequest,
+): Omit<ImportMarker, 'id' | 'startedAt'> {
+    return destination.kind === 'filesystem'
+        ? { name, destination: 'filesystem', folderName: destination.handle.name }
+        : { name, destination: 'server', serverOrigin: destination.deps.serverScope.serverOrigin }
+}
+
+/**
  * Start an import as a background Activity and resolve when it finishes. The caller does
  * NOT await this to keep a dialog open - the wizard closes immediately and the toast takes
  * over (ADR 0035 §1).
@@ -129,11 +143,7 @@ export function startImport(options: StartImportOptions): Promise<Activity> {
         run: async (handle) => {
             // Marked until it settles, so a tab closed or reloaded partway leaves a note the
             // Knowledge graphs page reads, with what to clear up.
-            const marker = (options.markers ?? importMarkers()).start({
-                name: options.name,
-                destination: options.destination.kind,
-                ...(options.destination.kind === 'filesystem' ? { folderName: options.destination.handle.name } : {}),
-            })
+            const marker = (options.markers ?? importMarkers()).start(importMarkerFields(options.name, options.destination))
             try {
                 return await runImport(options, phases, handle, marker)
             } finally {

@@ -10,6 +10,12 @@ import type { SyncAccountSummary } from '@appsoftwareltd/etherpk-shared'
 export interface SyncApiDeps {
     baseUrl: string
     token: string | (() => Promise<string>)
+    /**
+     * Which kind of Sync Connection this API speaks for. Carried on every refusal, so the copy for
+     * a refused credential can say "sign in again" or "add a new access token" without asking which
+     * connection is selected: on a device with several, the one that failed may not be it.
+     */
+    kind?: 'managed' | 'custom'
     fetch?: typeof fetch
 }
 
@@ -43,6 +49,8 @@ export class SyncApiError extends Error {
         readonly status: number,
         readonly code?: string,
         readonly retryable = false,
+        /** The kind of connection whose credential was presented, when the API was told. */
+        readonly connectionKind?: 'managed' | 'custom',
     ) {
         super(message)
     }
@@ -99,7 +107,7 @@ export function createSyncApi(deps: SyncApiDeps) {
             const nested = typeof body?.error === 'object' && body.error !== null ? body.error : null
             const code = nested?.code ?? body?.code
             const message = nested?.message ?? body?.code
-            throw new SyncApiError(message ?? `HTTP ${res.status}`, res.status, code, body?.retryable === true)
+            throw new SyncApiError(message ?? `HTTP ${res.status}`, res.status, code, body?.retryable === true, deps.kind)
         }
         return (await res.json()) as T
     }

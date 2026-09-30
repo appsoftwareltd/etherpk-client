@@ -5,11 +5,15 @@
      *   the same code and the vault key arrives sealed - the Recovery Code stays in the drawer.
      * - Enter the Recovery Code: the recovery route, and the only one on a first device.
      * Used before any action that needs decrypted keys (opening a synced graph, invites…).
+     *
+     * Keys belong to one Sync Server's account (ADR 0111): the dialog unlocks the keys of the server
+     * it is given, and says which, because a Recovery Code from another server cannot open them.
      */
     import { onDestroy, tick } from "svelte";
     import {
         beginDeviceApproval,
-        createConfiguredSyncApi,
+        createSyncApiFor,
+        serverHost,
         pollDeviceApproval,
         rejectDeviceApproval,
         setVaultWrapKey,
@@ -24,9 +28,12 @@
     const RECOVERING_ACCESS_URL = `${PUBLIC_DOCS_URL}/recovery-code-and-device-approval#recovering-access`;
 
     let {
+        serverOrigin,
         onunlocked,
         onclose,
     }: {
+        /** The Sync Server whose account's keys to unlock. */
+        serverOrigin: string;
         onunlocked: () => void;
         onclose: () => void;
     } = $props();
@@ -38,8 +45,12 @@
     let codeInput = $state<HTMLInputElement>();
     const errorId = $props.id();
 
-    // Approve-from-another-device mode. Only offered when the device has a sync config.
-    const api = createConfiguredSyncApi();
+    // The server is fixed for the dialog's life: a caller wanting another server's keys opens a
+    // new dialog. Approve-from-another-device is only offered while the connection is held.
+    // svelte-ignore state_referenced_locally
+    const origin = serverOrigin;
+    const host = serverHost(origin);
+    const api = createSyncApiFor(origin);
     let approval = $state<DeviceApprovalRequest | null>(null);
     let approvalError = $state<string | null>(null);
     let startingApproval = $state(false);
@@ -78,7 +89,7 @@
             const result = await pollDeviceApproval(api, approval);
             if (result.state === "waiting") return;
             if (result.state === "unlocked") {
-                setVaultWrapKey(result.deviceKey);
+                setVaultWrapKey(origin, result.deviceKey);
                 stopApproval(false);
                 open = false;
                 onunlocked();
@@ -117,12 +128,12 @@
         // The code is checked against this account's vault before anything is cached, so the
         // device must be able to reach its Sync Server to fetch it.
         if (!api) {
-            error = "This device is not connected to a sync server, so the code cannot be checked. Connect in Sync settings, then try again.";
+            error = `This device is not connected to ${host}, so the code cannot be checked. Connect to it in Sync settings, then try again.`;
             return;
         }
         busy = true;
         try {
-            await unlockWithRecoveryCode(api, code.trim());
+            await unlockWithRecoveryCode(api, code.trim(), origin);
             open = false;
             onunlocked();
         } catch (e) {
@@ -138,7 +149,7 @@
     }
 </script>
 
-<Modal {open} title="Unlock your keys" busy={busy} busyReason="Unlocking…" onclose={close} onsubmit={submit}>
+<Modal {open} title={`Unlock your keys on ${host}`} busy={busy} busyReason="Unlocking…" onclose={close} onsubmit={submit}>
     {#snippet body()}
         {#if approval}
             <p class="text-sm text-gray-600 dark:text-gray-400">
@@ -155,8 +166,9 @@
             </p>
         {:else}
             <p class="text-sm text-gray-600 dark:text-gray-400">
-                Enter your Recovery Code to unlock your encryption keys on this device. It never leaves
-                your browser and the sync server never sees it.
+                Enter the Recovery Code you saved for <span class="font-medium text-gray-950 dark:text-gray-100">{host}</span>
+                to unlock your encryption keys on this device. A code for another Sync Server does not
+                open them. It never leaves your browser and the sync server never sees it.
             </p>
             <div>
                 <label for="unlock-code" class="mb-1.5 block text-sm font-medium text-gray-500 dark:text-gray-400">Recovery Code</label>

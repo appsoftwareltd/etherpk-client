@@ -66,7 +66,11 @@ export function newGraphId(newId: () => string): string {
 }
 
 export interface GraphRegistry {
-    /** The graphs to show: filesystem graphs, and synced ones of the active account it still belongs to. */
+    /**
+     * The graphs to show: filesystem graphs, and synced ones of each server's confirmed account
+     * that the account still belongs to - on a device connected to several Sync Servers, all of
+     * them at once (ADR 0111).
+     */
     listGraphs(): Promise<GraphRecord[]>
     /**
      * The id of every record this device holds, whatever account scope or membership hides it
@@ -87,21 +91,20 @@ export interface GraphRegistry {
 }
 
 export interface GraphRegistryOptions {
-    activeServerScope: () => ServerGraphScope | null
+    /** The account confirmed on each Sync Server this device is connected to, one per server. */
+    serverScopes: () => readonly ServerGraphScope[]
 }
 
-const noActiveServer: GraphRegistryOptions = { activeServerScope: () => null }
+const noServers: GraphRegistryOptions = { serverScopes: () => [] }
 
 export function createGraphRegistry(
     port: GraphStoragePort,
-    options: GraphRegistryOptions = noActiveServer,
+    options: GraphRegistryOptions = noServers,
 ): GraphRegistry {
     const visible = (record: GraphRecord): boolean => {
         if (record.backend === 'filesystem') return true
-        const active = options.activeServerScope()
-        return active !== null
-            && sameScope(record.serverScope, active)
-            && record.membershipActive !== false
+        return record.membershipActive !== false
+            && options.serverScopes().some((scope) => sameScope(record.serverScope, scope))
     }
 
     return {

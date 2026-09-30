@@ -413,13 +413,13 @@
                 <select
                     value={activeTab}
                     onchange={(event) => selectTab(event.currentTarget.value as Tab)}
-                    class="block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-950 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+                    class="block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-950 dark:border-gray-700 dark:bg-white/10 dark:text-gray-100"
                     data-testid="settings-tab-select"
                 >
                     {#each tabs as entry (entry.id)}
                         <option
                             value={entry.id}
-                            class="bg-white text-gray-950 dark:bg-gray-900 dark:text-gray-100"
+                            class="bg-white text-gray-950 dark:bg-(--gk-surface-1) dark:text-gray-100"
                             >{entry.label}</option
                         >
                     {/each}
@@ -868,7 +868,7 @@
                                     for
                                     <select
                                         bind:value={agentTool}
-                                        class="rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2 text-sm text-gray-950 dark:text-gray-100"
+                                        class="rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-gray-950 dark:text-gray-100"
                                         data-testid="agents-tool"
                                     >
                                         {#each AGENT_TOOLS as toolOption (toolOption.id)}
@@ -887,7 +887,7 @@
                             </p>
                             <div class="flex items-start gap-2">
                                 <pre
-                                    class="min-w-0 flex-1 overflow-x-auto rounded-md border border-gray-900/10 dark:border-gray-100/15 bg-gray-50 dark:bg-gray-900 p-3 font-mono text-sm"
+                                    class="min-w-0 flex-1 overflow-x-auto rounded-md border border-gray-900/10 dark:border-gray-100/15 bg-gray-50 dark:bg-white/5 p-3 font-mono text-sm"
                                     data-testid="agents-register-folder-command">{registerFolderCommand(agentTool, agents.folderPath, agents.headlessClient)}</pre>
                                 <button
                                     type="button"
@@ -961,7 +961,7 @@
                             </p>
                             <div class="flex items-start gap-2">
                                 <pre
-                                    class="min-w-0 flex-1 overflow-x-auto rounded-md border border-gray-900/10 dark:border-gray-100/15 bg-gray-50 dark:bg-gray-900 p-3 font-mono text-sm"
+                                    class="min-w-0 flex-1 overflow-x-auto rounded-md border border-gray-900/10 dark:border-gray-100/15 bg-gray-50 dark:bg-white/5 p-3 font-mono text-sm"
                                     data-testid="agents-login-command">{loginCommand(agents.serverBaseUrl, agents.headlessClient)}</pre>
                                 <button
                                     type="button"
@@ -983,7 +983,7 @@
                                     for
                                     <select
                                         bind:value={agentTool}
-                                        class="rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2 text-sm text-gray-950 dark:text-gray-100"
+                                        class="rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-gray-950 dark:text-gray-100"
                                         data-testid="agents-tool"
                                     >
                                         {#each AGENT_TOOLS as toolOption (toolOption.id)}
@@ -994,7 +994,7 @@
                             </div>
                             <div class="flex items-start gap-2">
                                 <pre
-                                    class="min-w-0 flex-1 overflow-x-auto rounded-md border border-gray-900/10 dark:border-gray-100/15 bg-gray-50 dark:bg-gray-900 p-3 font-mono text-sm"
+                                    class="min-w-0 flex-1 overflow-x-auto rounded-md border border-gray-900/10 dark:border-gray-100/15 bg-gray-50 dark:bg-white/5 p-3 font-mono text-sm"
                                     data-testid="agents-register-command">{registerCommand(agentTool, agents.graphId, agents.serverBaseUrl, agents.headlessClient)}</pre>
                                 <button
                                     type="button"
@@ -1266,7 +1266,7 @@
                     <span class="text-sm font-medium">{extra.label}</span>
                     <div class="flex items-start gap-2">
                         <pre
-                            class="min-w-0 flex-1 overflow-x-auto rounded-md border border-gray-900/10 dark:border-gray-100/15 bg-gray-50 dark:bg-gray-900 p-3 font-mono text-sm"
+                            class="min-w-0 flex-1 overflow-x-auto rounded-md border border-gray-900/10 dark:border-gray-100/15 bg-gray-50 dark:bg-white/5 p-3 font-mono text-sm"
                             data-testid="agents-extra-{extra.key}">{extra.text}</pre>
                         <button
                             type="button"

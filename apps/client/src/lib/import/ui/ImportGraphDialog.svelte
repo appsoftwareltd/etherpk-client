@@ -1,3 +1,27 @@
+<script lang="ts" module>
+    import type { ServerGraphScope } from "$lib/storage/graph-registry";
+    import type { SyncApi } from "$lib/sync/sync-api";
+
+    /**
+     * One Sync Server a synced import can go to (ADR 0111): every server the device holds is
+     * offered, and one that cannot take a new graph now says why.
+     */
+    export interface ImportSyncTarget {
+        /** The server's origin: names it, and is what the dialog's callbacks are told. */
+        origin: string;
+        /** What the run needs of the server; null while the account there is not confirmed. */
+        deps: {
+            api: SyncApi;
+            serverBaseUrl: string;
+            serverScope: ServerGraphScope;
+        } | null;
+        /** Why a graph cannot be imported onto this server now, or null when it can. */
+        unavailableReason: string | null;
+        /** The account's per-asset allowance there, when known. Drives the pre-flight. */
+        assetLimits: { assetBytes: number; assetChunks: number } | null;
+    }
+</script>
+
 <script lang="ts">
     /**
      * The Import wizard (plan: 2026-07-16 Import New Graph Creation.md): pick a source
@@ -14,13 +38,10 @@
     import { tick } from "svelte";
     import { ActivityConflictError, isRunning } from "$lib/activity/store";
     import { isFsaSupported, pickGraphDirectory } from "$lib/storage";
-    import type {
-        GraphRegistry,
-        ServerGraphScope,
-    } from "$lib/storage/graph-registry";
+    import type { GraphRegistry } from "$lib/storage/graph-registry";
     import { getOpfsRoot } from "$lib/storage/fs/web-fs-adapter";
-    import type { SyncApi } from "$lib/sync/sync-api";
     import { describeSyncFailure } from "$lib/sync/sync-error-copy";
+    import { serverHost } from "$lib/sync/sync-connections";
     import { PUBLIC_DOCS_URL } from "@appsoftwareltd/etherpk-shared";
     import Modal from "@appsoftwareltd/etherpk-shared/dialog";
     import {
@@ -45,38 +66,59 @@
 
     let {
         registry,
-        syncTarget,
+        syncTargets,
+        defaultSyncOrigin = null,
         syncUnavailableReason = "Connect this device to a sync server first.",
         getWrapKey,
         ensureVaultReady,
-        assetLimits = null,
         opfsDestination = false,
         onclose,
         onimported,
         onsettled,
     }: {
         registry: GraphRegistry;
-        /** null when the device has no sync config - the synced destination is unavailable. */
-        syncTarget: {
-            api: SyncApi;
-            serverBaseUrl: string;
-            serverScope: ServerGraphScope;
-        } | null;
-        /** Why the synced destination is unavailable, shown beside it and if a run is attempted. */
+        /** Every Sync Server the device holds; empty when it holds none. */
+        syncTargets: ImportSyncTarget[];
+        /** The server offered first, when it can take the graph. */
+        defaultSyncOrigin?: string | null;
+        /** Why no server can take the graph, shown beside the synced choice and if a run is attempted. */
         syncUnavailableReason?: string;
-        getWrapKey: () => Promise<Uint8Array>;
-        /** Settles the account's encryption keys before a synced run creates anything. */
-        ensureVaultReady?: () => Promise<void>;
-        /** The account's per-asset allowance, when the device knows it. Drives the pre-flight. */
-        assetLimits?: { assetBytes: number; assetChunks: number } | null;
+        /** The vault key for the account on `origin`, asking for it when it is locked. */
+        getWrapKey: (origin: string) => Promise<Uint8Array>;
+        /** Settles the account's encryption keys on `origin` before a synced run creates anything. */
+        ensureVaultReady?: (origin: string) => Promise<void>;
         /** Dev/e2e gate (?fs=opfs): materialise into an OPFS folder instead of the FSA picker. */
         opfsDestination?: boolean;
         onclose: () => void;
         /** "Open" on the finished toast, or the fresh-account key ritual. Never fires on its own. */
         onimported: (result: { graphId: string } | ServerImportResult) => void;
-        /** Runs the instant the import succeeds: caches the device key, starts the code ritual. */
-        onsettled?: (result: { graphId: string } | ServerImportResult) => void;
+        /**
+         * Runs the instant the import succeeds: caches the device key, starts the code ritual.
+         * `origin` is the server a synced import went to, null for a folder.
+         */
+        onsettled?: (result: { graphId: string } | ServerImportResult, origin: string | null) => void;
     } = $props();
+
+    /** The servers that can take a new graph now. */
+    const usableTargets = $derived(
+        syncTargets.filter((target) => target.deps !== null && target.unavailableReason === null),
+    );
+    /** The server the person picked, once they pick one. */
+    let pickedOrigin = $state<string | null>(null);
+    /** The server a synced run goes to: the one picked, else the default, else the first that can. */
+    const syncTarget = $derived(
+        usableTargets.find((target) => target.origin === pickedOrigin) ??
+            usableTargets.find((target) => target.origin === defaultSyncOrigin) ??
+            usableTargets[0] ??
+            null,
+    );
+    /** Why the synced choice is unavailable: the one server's own reason, else the page's. */
+    const syncBlockedReason = $derived(
+        syncTargets.length === 1 && syncTargets[0].unavailableReason
+            ? syncTargets[0].unavailableReason
+            : syncUnavailableReason,
+    );
+    const assetLimits = $derived(syncTarget?.assetLimits ?? null);
 
     const FORMAT_LABELS: Array<[ImportFormat, string]> = [
         ["logseq", "Logseq"],
@@ -260,7 +302,6 @@
                 name: trimmed,
                 reportDate,
                 onOpen: onimported,
-                onSettled: onsettled,
             };
 
             if (destination === "folder") {
@@ -275,13 +316,17 @@
                 }
                 void startImport({
                     ...common,
+                    onSettled: (result) => onsettled?.(result, null),
                     destination: { kind: "filesystem", handle, registry },
                 });
             } else {
-                if (!syncTarget) {
-                    error = syncUnavailableReason;
+                // Fixed here: the run finishes on this server whatever the page shows afterwards.
+                const target = syncTarget;
+                if (!target?.deps) {
+                    error = syncBlockedReason;
                     return;
                 }
+                const { deps, origin } = target;
                 // Unwrapped here, in front of the person, so a mistyped passphrase is refused at
                 // the field rather than found in the report of a finished import.
                 let protectionKey: Uint8Array | null = null;
@@ -303,7 +348,7 @@
                 // Ask for the keys here, in front of the user, rather than failing a long
                 // background run - or creating a graph server-side it can never key.
                 try {
-                    await ensureVaultReady?.();
+                    await ensureVaultReady?.(origin);
                 } catch (e) {
                     // The run that would have overwritten the key will not start.
                     protectionKey?.fill(0);
@@ -311,14 +356,15 @@
                 }
                 void startImport({
                     ...common,
+                    onSettled: (result) => onsettled?.(result, origin),
                     destination: {
                         kind: "server",
                         deps: {
-                            api: syncTarget.api,
+                            api: deps.api,
                             registry,
-                            serverBaseUrl: syncTarget.serverBaseUrl,
-                            serverScope: syncTarget.serverScope,
-                            getWrapKey,
+                            serverBaseUrl: deps.serverBaseUrl,
+                            serverScope: deps.serverScope,
+                            getWrapKey: () => getWrapKey(origin),
                             protectionKey,
                         },
                     },
@@ -492,12 +538,42 @@
                         <span
                             ><span class="font-medium {syncTarget ? '' : 'text-gray-500 dark:text-gray-400'}"
                                 >Synced graph</span
-                            > - end-to-end encrypted on your sync server, available
-                            on all your devices.{#if !syncTarget}
+                            > - end-to-end encrypted on {syncTargets.length > 1
+                                ? "the Sync Server you choose"
+                                : syncTarget
+                                  ? serverHost(syncTarget.origin)
+                                  : "your sync server"},
+                            available on all your devices.{#if !syncTarget}
                                 <!-- Full contrast: the reason is what the reader needs from this line. -->
-                                <span id="import-dest-synced-reason" data-testid="import-dest-synced-reason" class="block text-gray-600 dark:text-gray-300">{syncUnavailableReason}</span>{/if}</span
+                                <span id="import-dest-synced-reason" data-testid="import-dest-synced-reason" class="block text-gray-600 dark:text-gray-300">{syncBlockedReason}</span>{/if}</span
                         >
                     </label>
+                    {#if destination === "synced" && syncTarget && syncTargets.length > 1}
+                        <!-- More than one server: the graph lives on the one chosen here, for good. A
+                             server that cannot take it says why in its option. -->
+                        <div class="pl-6">
+                            <label
+                                for="import-sync-server"
+                                class="mb-1.5 block text-sm font-medium text-gray-500 dark:text-gray-400"
+                                >Sync Server</label
+                            >
+                            <select
+                                id="import-sync-server"
+                                data-testid="import-sync-server"
+                                disabled={busy}
+                                value={syncTarget.origin}
+                                onchange={(event) => (pickedOrigin = event.currentTarget.value)}
+                                class="block w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-gray-950 dark:text-gray-100 focus:border-gray-950 dark:focus:border-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-950 dark:focus:ring-gray-400"
+                            >
+                                {#each syncTargets as target (target.origin)}
+                                    {@const reason = target.deps ? target.unavailableReason : (target.unavailableReason ?? "Not signed in")}
+                                    <option value={target.origin} disabled={reason !== null}
+                                        >{serverHost(target.origin)}{reason ? ` - ${reason}` : ""}</option
+                                    >
+                                {/each}
+                            </select>
+                        </div>
+                    {/if}
                 </div>
             </fieldset>
             {#if offerPassphrase}

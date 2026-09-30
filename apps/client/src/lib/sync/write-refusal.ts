@@ -45,6 +45,13 @@ export function describeWriteRefusal({ refusal, owner, plan, managed }: WriteRef
                 billing: null,
             }
         }
+        if (managed && plan === 'pending') {
+            return {
+                reason: 'EtherPK is still confirming your plan with the sync server.',
+                next: `${KEPT} on their own once it is confirmed, usually within seconds.`,
+                billing: null,
+            }
+        }
         if (managed && plan === 'unconfirmed') {
             return {
                 reason: 'The sync server cannot confirm your plan with EtherPK at the moment.',

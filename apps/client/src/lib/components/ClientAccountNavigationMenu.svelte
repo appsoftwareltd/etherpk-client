@@ -6,23 +6,22 @@
     import { currentReturnPath, managedSignInHref, syncConnectHref } from "$lib/auth/sign-in-links";
     import { ManagedTokenError, clearManagedAccessToken } from "$lib/auth/managed-token";
     import {
-        SYNC_CONFIG_CHANGED_EVENT,
-        SYNC_CONFIG_STORAGE_KEY,
+        SYNC_CONNECTIONS_CHANGED_EVENT,
+        SYNC_CONNECTIONS_STORAGE_KEY,
         SyncApiError,
-        clearActiveSyncAccount,
-        clearSyncConfig,
-        createSyncApi,
+        clearSyncAccount,
+        forgetSyncConnection,
         isManagedSyncConfigured,
+        listSyncConnections,
         lockVault,
         MANAGED_DEVICE_DISCONNECT_HELP,
-        normaliseServerOrigin,
-        readSyncConfig,
-        resolveSyncConnection,
-        setActiveSyncAccount,
+        primarySyncConnection,
+        saveManagedSyncConnection,
+        serverHost,
+        setSyncAccount,
         STANDALONE_DEVICE_DISCONNECT_HELP,
-        writeSyncConfig,
+        syncApiFor,
         type ResolvedSyncConnection,
-        type SyncConfig,
     } from "$lib/sync";
     import { announceAccountSignal, onAccountSignal } from "$lib/sync/account-signal";
     import { buildAccountMenu, dismissibleMenu, truncateNavigationEmail, type SyncAccountSummary } from "@appsoftwareltd/etherpk-shared";
@@ -44,8 +43,17 @@
 
     let accountState = $state<AccountState>("checking");
     let account = $state.raw<SyncAccountSummary | null>(null);
-    let connectionMode = $state<SyncConfig["mode"] | null>(null);
+    /**
+     * The primary Sync Connection's kind and origin (ADR 0111): Managed Sync, the EtherPK account,
+     * when the device holds it, else the first server added. The header speaks for that one.
+     */
+    let connectionMode = $state<ResolvedSyncConnection["kind"] | null>(null);
     let serverBaseUrl = $state<string | null>(null);
+    /**
+     * The other servers this device holds, by origin. The menu names the primary's server and lists
+     * these, each linking to its sub-tab on the Sync tab, where its account and keys are.
+     */
+    let otherServers = $state.raw<string[]>([]);
     let refreshGeneration = 0;
 
     const managedSyncAvailable = isManagedSyncConfigured(env);
@@ -81,61 +89,48 @@
     async function refreshAccount(options: { announce?: boolean } = {}): Promise<void> {
         const generation = ++refreshGeneration;
         const wasAuthenticated = accountState === "authenticated";
-        const config = readSyncConfig();
-        let connection: ResolvedSyncConnection | null;
+        // An unreadable stored connection never resolves, so it reads as none: the Graphs page's
+        // Sync tab replaces it with a validated server and credential.
+        const connection = primarySyncConnection();
 
-        connectionMode = config?.mode ?? null;
+        connectionMode = connection?.kind ?? null;
+        serverBaseUrl = connection?.origin ?? null;
+        otherServers = listSyncConnections()
+            .filter((held) => held.origin !== connection?.origin)
+            .map((held) => held.origin);
         account = null;
 
-        try {
-            connection = config ? resolveSyncConnection(config) : null;
-            serverBaseUrl = connection ? normaliseServerOrigin(connection.serverBaseUrl) : null;
-        } catch {
-            // Treat malformed browser-held configuration as disconnected. The Graphs connection
-            // form remains available to replace it with a validated Server origin and credential.
-            serverBaseUrl = null;
+        if (!connection) {
             accountState = "disconnected";
-            clearActiveSyncAccount();
-            return;
-        }
-
-        if (!config || !connection) {
-            accountState = "disconnected";
-            clearActiveSyncAccount();
             return;
         }
 
         accountState = "checking";
         try {
-            const confirmedAccount = await createSyncApi({
-                baseUrl: connection.serverBaseUrl,
-                token: connection.token,
-            }).me();
+            const confirmedAccount = await syncApiFor(connection).me();
             if (generation !== refreshGeneration) return;
 
             account = confirmedAccount;
             accountState = "authenticated";
-            setActiveSyncAccount({
-                serverOrigin: normaliseServerOrigin(connection.serverBaseUrl),
-                principalId: confirmedAccount.principal.id,
-            });
+            setSyncAccount({ serverOrigin: connection.origin, principalId: confirmedAccount.principal.id });
         } catch (error) {
             if (generation !== refreshGeneration) return;
             account = null;
             if ((error instanceof SyncApiError || error instanceof ManagedTokenError)
                 && error.status === 401) {
                 accountState = "signed-out";
-                // Signed out, or the token revoked, somewhere this tab could not see: the keys
-                // lock too, as a sign-out here locks them. Locking needs the account's scope, so
-                // it comes before the account is forgotten.
-                lockVault();
-                clearActiveSyncAccount();
+                // Signed out, or the token revoked, somewhere this tab could not see: that
+                // server's keys lock too, as a sign-out here locks them. Locking needs the
+                // account's scope, so it comes before the account is forgotten.
+                lockVault(connection.origin);
+                clearSyncAccount(connection.origin);
                 // Signed out somewhere this tab could not see (on the account site, or a revoked
-                // token): open graphs in every tab stop syncing and say so.
+                // token): open graphs on that server, in every tab, stop syncing and say so.
                 if (wasAuthenticated && options.announce !== false) {
                     announceAccountSignal({
                         type: "ended",
-                        reason: connectionMode === "managed" ? "signed-out" : "refused",
+                        reason: connection.kind === "managed" ? "signed-out" : "refused",
+                        serverOrigin: connection.origin,
                     });
                 }
             } else {
@@ -148,21 +143,23 @@
     }
 
     function connectManagedSync(): void {
-        clearActiveSyncAccount();
-        writeSyncConfig({ mode: "managed" });
+        // Added beside any custom server this device holds, and the header's account from then on.
+        saveManagedSyncConnection();
         // Back to this page once signed in: a document someone was about to open, not /graphs.
         window.location.href = managedSignInHref(currentReturnPath(window.location));
     }
 
     async function disconnectThisDevice(): Promise<void> {
         ++refreshGeneration;
-        clearManagedAccessToken();
-        lockVault();
-        clearActiveSyncAccount();
-        // Every other tab's open graph stops syncing now, not at its next reconnect.
-        announceAccountSignal({ type: "ended", reason: "disconnected" });
+        const origin = serverBaseUrl;
+        if (!origin) return;
+        lockVault(origin);
+        clearSyncAccount(origin);
+        // Every other tab's open graph on this server stops syncing now, not at its next reconnect.
+        announceAccountSignal({ type: "ended", reason: "disconnected", serverOrigin: origin });
 
         if (connectionMode === "managed") {
+            clearManagedAccessToken();
             // End only the Client-origin refresh session. Corporate and Server portal sessions
             // deliberately remain signed in for this narrower device action.
             await fetch("/auth/logout", { method: "POST" });
@@ -171,9 +168,9 @@
         }
 
         // A standalone Client authenticates with a device-local PAT, not the Server portal's
-        // browser session. Forgetting it disconnects this Client; token revocation remains an
-        // explicit action in the Server's Access tokens page.
-        clearSyncConfig();
+        // browser session. Forgetting it disconnects this Client from that server alone; token
+        // revocation remains an explicit action in the Server's Access tokens page.
+        forgetSyncConnection(origin);
         account = null;
         connectionMode = null;
         serverBaseUrl = null;
@@ -184,15 +181,19 @@
     function prepareManagedSignOut(): void {
         // The form continues through all three managed origins. Clear volatile Client state
         // before navigation so the current page cannot retain authenticated UI while it leaves.
+        // Only Managed Sync's keys lock: a custom server's account has nothing to do with it.
         ++refreshGeneration;
         clearManagedAccessToken();
-        lockVault();
-        clearActiveSyncAccount();
-        announceAccountSignal({ type: "ended", reason: "signed-out" });
+        const managed = listSyncConnections().find((held) => held.kind === "managed");
+        if (managed) {
+            lockVault(managed.origin);
+            clearSyncAccount(managed.origin);
+        }
+        announceAccountSignal({ type: "ended", reason: "signed-out", ...(managed ? { serverOrigin: managed.origin } : {}) });
     }
 
     function refreshFromStorage(event: StorageEvent): void {
-        if (event.key === SYNC_CONFIG_STORAGE_KEY || event.key === null) void refreshAccount();
+        if (event.key === SYNC_CONNECTIONS_STORAGE_KEY || event.key === null) void refreshAccount();
     }
 
     function refreshWhenVisible(): void {
@@ -202,21 +203,22 @@
     onMount(() => {
         const refresh = () => void refreshAccount();
 
-        window.addEventListener(SYNC_CONFIG_CHANGED_EVENT, refresh);
+        window.addEventListener(SYNC_CONNECTIONS_CHANGED_EVENT, refresh);
         // Another tab ended the account, or something saw a refusal and asks for a re-check.
         const stopAccountSignals = onAccountSignal((signal) =>
             void refreshAccount({ announce: signal.type === "check" }),
         );
         // The HTTP-only Client session is authoritative for managed mode. Restore the browser's
-        // non-secret connection choice after silent SSO or when local storage has been cleared.
-        if (managedSessionAvailable && managedSyncAvailable && readSyncConfig() === null) {
-            writeSyncConfig({ mode: "managed" });
+        // non-secret Managed Sync connection after silent SSO or when local storage has been
+        // cleared. Added beside any custom server the device already holds.
+        if (managedSessionAvailable && managedSyncAvailable && !listSyncConnections().some((held) => held.kind === "managed")) {
+            saveManagedSyncConnection();
         }
         refresh();
 
         return () => {
             ++refreshGeneration;
-            window.removeEventListener(SYNC_CONFIG_CHANGED_EVENT, refresh);
+            window.removeEventListener(SYNC_CONNECTIONS_CHANGED_EVENT, refresh);
             stopAccountSignals();
         };
     });
@@ -242,7 +244,25 @@
         <div class="absolute right-0 z-40 mt-2 w-64 overflow-hidden rounded-xl border border-gray-950/10 bg-white shadow-xl dark:border-white/10 dark:bg-[#202023]">
             <div class="border-b border-gray-950/5 px-4 py-3 dark:border-white/10">
                 <p class="break-all text-sm text-gray-500 dark:text-gray-400">{accountLabel}</p>
+                {#if otherServers.length > 0 && serverBaseUrl}
+                    <p data-testid="client-user-menu-server" class="break-all text-sm text-gray-500 dark:text-gray-400">
+                        on {serverHost(serverBaseUrl)}
+                    </p>
+                {/if}
             </div>
+            {#if otherServers.length > 0}
+                <!-- Each other server's account and keys are on its own sub-tab of the Sync tab. -->
+                <div data-testid="client-user-menu-other-servers" class="border-b border-gray-950/5 p-2 dark:border-white/10">
+                    <p class="px-3 pb-1 pt-1 text-sm text-gray-500 dark:text-gray-400">Also connected to</p>
+                    {#each otherServers as origin (origin)}
+                        <a
+                            href={`/graphs?tab=sync&server=${encodeURIComponent(serverHost(origin))}`}
+                            class="block break-all rounded-lg px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 hover:text-gray-950 dark:text-gray-300 dark:hover:bg-white/5 dark:hover:text-white"
+                            >{serverHost(origin)}</a
+                        >
+                    {/each}
+                </div>
+            {/if}
             <nav class="p-2" aria-label="Account navigation">
                 {#each menuItems as item (item.label)}
                     <a href={item.href} class="block rounded-lg px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 hover:text-gray-950 dark:text-gray-300 dark:hover:bg-white/5 dark:hover:text-white">{item.label}</a>

@@ -30,6 +30,7 @@ function record(id: string, createdAt: number): GraphRecord {
 
 const accountA = { serverOrigin: 'https://sync.example.com', principalId: 'principal-a' }
 const accountB = { serverOrigin: 'https://sync.example.com', principalId: 'principal-b' }
+const teamServer = { serverOrigin: 'https://team.example.org', principalId: 'principal-team' }
 
 function serverRecord(id: string, account = accountA): GraphRecord {
     return {
@@ -77,7 +78,7 @@ describe('createGraphRegistry', () => {
 
     it('shows filesystem graphs globally but Server graphs only for the active account', async () => {
         let active = accountA
-        const reg = createGraphRegistry(memoryPort(), { activeServerScope: () => active })
+        const reg = createGraphRegistry(memoryPort(), { serverScopes: () => (active ? [active] : []) })
         await reg.insertGraph(record('local', 1))
         await reg.insertGraph(serverRecord('a'))
         active = accountB
@@ -89,12 +90,22 @@ describe('createGraphRegistry', () => {
         expect((await reg.listGraphs()).map((graph) => graph.id)).toEqual(['local', 'a'])
     })
 
+    it("shows every connected server's graphs at once, each under the account confirmed there", async () => {
+        const reg = createGraphRegistry(memoryPort(), { serverScopes: () => [accountA, teamServer] })
+        await reg.insertGraph(serverRecord('managed'))
+        await reg.insertGraph(serverRecord('team', teamServer))
+        await reg.insertGraph(serverRecord('other-account', accountB))
+
+        expect((await reg.listGraphs()).map((graph) => graph.id)).toEqual(['managed', 'team'])
+        expect(await reg.getGraph('other-account')).toBeUndefined()
+    })
+
     // The index-pool sweep keeps the search index of every graph this DEVICE holds. A signed-out,
     // expired or other account hides synced records from listGraphs; sweeping against that list
     // would re-index every synced graph after each session expiry.
     it('lists every record the device holds, whatever account scope or membership hides it', async () => {
         let active: typeof accountA | null = accountA
-        const reg = createGraphRegistry(memoryPort(), { activeServerScope: () => active })
+        const reg = createGraphRegistry(memoryPort(), { serverScopes: () => (active ? [active] : []) })
         await reg.insertGraph(record('local', 1))
         await reg.insertGraph(serverRecord('a'))
         await reg.insertGraph(serverRecord('b', accountB))
@@ -106,7 +117,7 @@ describe('createGraphRegistry', () => {
     })
 
     it('requires every new Server graph to carry an account scope', async () => {
-        const reg = createGraphRegistry(memoryPort(), { activeServerScope: () => accountA })
+        const reg = createGraphRegistry(memoryPort(), { serverScopes: () => [accountA] })
 
         await expect(reg.insertGraph({
             id: 'unscoped',
@@ -119,7 +130,7 @@ describe('createGraphRegistry', () => {
 
     it('adopts legacy records only after the current account confirms membership', async () => {
         const port = memoryPort()
-        const reg = createGraphRegistry(port, { activeServerScope: () => accountA })
+        const reg = createGraphRegistry(port, { serverScopes: () => [accountA] })
         await port.put({
             id: 'member',
             name: 'Existing encrypted name',
@@ -146,7 +157,7 @@ describe('createGraphRegistry', () => {
     })
 
     it('hides a scoped Server record after a successful membership refresh removes it', async () => {
-        const reg = createGraphRegistry(memoryPort(), { activeServerScope: () => accountA })
+        const reg = createGraphRegistry(memoryPort(), { serverScopes: () => [accountA] })
         await reg.insertGraph(serverRecord('revoked'))
 
         await reg.reconcileServerMemberships(accountA, [])
@@ -159,7 +170,7 @@ describe('createGraphRegistry', () => {
     // by both reconcile branches and so stayed invisible on every load with no repair path.
     it('re-adopts a record stranded under a previous Sync Principal once the server confirms membership', async () => {
         const port = memoryPort()
-        const reg = createGraphRegistry(port, { activeServerScope: () => accountB })
+        const reg = createGraphRegistry(port, { serverScopes: () => [accountB] })
         await port.put(serverRecord('mine', accountA))
 
         expect(await reg.getGraph('mine')).toBeUndefined()
@@ -174,7 +185,7 @@ describe('createGraphRegistry', () => {
 
     it('leaves a record under another Sync Principal untouched when the server does not list it', async () => {
         const port = memoryPort()
-        const reg = createGraphRegistry(port, { activeServerScope: () => accountB })
+        const reg = createGraphRegistry(port, { serverScopes: () => [accountB] })
         await port.put(serverRecord('theirs', accountA))
 
         await reg.reconcileServerMemberships(accountB, [])
@@ -189,7 +200,7 @@ describe('createGraphRegistry', () => {
     it('never re-adopts across a different server origin, even for a matching graph id', async () => {
         const otherServer = { serverOrigin: 'https://other.example.com', principalId: 'principal-b' }
         const port = memoryPort()
-        const reg = createGraphRegistry(port, { activeServerScope: () => otherServer })
+        const reg = createGraphRegistry(port, { serverScopes: () => [otherServer] })
         await port.put(serverRecord('same-id', accountA))
 
         await reg.reconcileServerMemberships(otherServer, ['same-id'])

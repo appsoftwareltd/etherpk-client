@@ -3,6 +3,7 @@
     import { managedSignInHref, syncConnectHref } from '$lib/auth/sign-in-links'
 
     import type { AccessLossNotice } from '$lib/sync/access-loss'
+    import { serverHost } from '$lib/sync/sync-connections'
 
     import type { MissingGraphDiagnosis } from './graph-availability'
 
@@ -89,13 +90,7 @@
     } = $props()
 
     /** Where the graph's server is, for copy that names it. */
-    function hostOf(origin: string): string {
-        try {
-            return new URL(origin).host
-        } catch {
-            return origin
-        }
-    }
+    const hostOf = serverHost
 
     /**
      * The notice replaces an editor the person may have been typing in, so focus moves to its

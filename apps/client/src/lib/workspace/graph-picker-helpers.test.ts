@@ -5,7 +5,18 @@ import type { GraphRecord } from '$lib/storage'
 import { createGraphKeyring, toBase64Url } from '$lib/crypto'
 import { sealGraphName } from '$lib/sync/graph-name-envelope'
 
-import { loadSyncedGraphViews, persistableGraphRecord, unlabelledGraphsToRead, type SyncedGraphView } from './graph-picker-helpers'
+import type { SyncAccountSummary } from '@appsoftwareltd/etherpk-shared'
+
+import {
+    copyServer,
+    countCopiesByServer,
+    loadSyncedGraphViews,
+    persistableGraphRecord,
+    serverGroupVisible,
+    serverPlanGate,
+    unlabelledGraphsToRead,
+    type SyncedGraphView,
+} from './graph-picker-helpers'
 
 describe('graph picker helpers', () => {
     it('rebuilds server handles as clone-safe plain records', () => {
@@ -166,6 +177,128 @@ describe('graph picker helpers', () => {
             const { graphs } = await loadSyncedGraphViews(api, local, { keyrings: [createGraphKeyring(GRAPH)] })
 
             expect(graphs[0]).toMatchObject({ name: 'My graph', nameSource: 'device', hasNameEnvelope: false })
+        })
+    })
+})
+
+describe('the gate on a new synced graph, per Sync Server', () => {
+    const host = 'sync.example.com'
+    function account(plan: string, ownedGraphs: number, mode: 'managed' | 'standalone' = 'managed'): SyncAccountSummary {
+        return {
+            principal: { id: 'p1', email: 'you@example.com', name: null, image: null },
+            authentication: mode === 'managed' ? { mode: 'managed', method: 'oidc' } : { mode: 'standalone', method: 'pat' },
+            entitlement: {
+                plan,
+                status: 'active',
+                limits: { ownedGraphs, ownedStorageBytes: 0, playersPerGraph: 0, assetBytes: 0, assetChunks: 0 },
+                usage: { ownedGraphs: 0, ownedStorageBytes: 0 },
+            },
+        } as SyncAccountSummary
+    }
+    const signedIn = { authState: 'authenticated' as const, kind: 'managed' as const, host }
+
+    it('lets a Sync+ account, and any self-hosted one, create', () => {
+        expect(serverPlanGate({ ...signedIn, account: account('sync_plus', 25), planNotice: null, shownPlanNotice: null }))
+            .toEqual({ syncPlusRequired: false, createBlockedReason: null })
+        expect(serverPlanGate({ ...signedIn, kind: 'custom', account: account('unlimited', 1e9, 'standalone'), planNotice: null, shownPlanNotice: null }))
+            .toEqual({ syncPlusRequired: false, createBlockedReason: null })
+    })
+
+    it('offers Sync+ to a Free account, and restarting it to a lapsed one', () => {
+        expect(serverPlanGate({ ...signedIn, account: account('free', 0), planNotice: 'upsell', shownPlanNotice: 'upsell' }))
+            .toEqual({ syncPlusRequired: true, createBlockedReason: 'Synced graphs need Sync+. Start it from Billing to create one.' })
+        expect(serverPlanGate({ ...signedIn, account: account('free', 0), planNotice: 'ended', shownPlanNotice: 'ended' }).createBlockedReason)
+            .toBe('Synced graphs need Sync+. Restart it from Billing to create one.')
+    })
+
+    it('never sells Sync+ to a plan still being confirmed, or one that cannot be', () => {
+        const pending = serverPlanGate({ ...signedIn, account: account('remote-pending', 0), planNotice: 'pending', shownPlanNotice: 'pending' })
+        expect(pending.syncPlusRequired).toBe(false)
+        expect(pending.createBlockedReason).toContain('still confirming your plan')
+        const unconfirmed = serverPlanGate({ ...signedIn, account: account('remote-unavailable', 0), planNotice: 'unconfirmed', shownPlanNotice: 'unconfirmed' })
+        expect(unconfirmed.syncPlusRequired).toBe(false)
+        expect(unconfirmed.createBlockedReason).toContain('cannot be confirmed')
+    })
+
+    it('names the server that is signed out, refusing, or not answering', () => {
+        const base = { account: null, planNotice: null, shownPlanNotice: null }
+        expect(serverPlanGate({ ...base, authState: 'signed-out', kind: 'managed', host }).createBlockedReason)
+            .toBe('You are signed out of sync.example.com. Sign in to create a synced graph there.')
+        expect(serverPlanGate({ ...base, authState: 'signed-out', kind: 'custom', host }).createBlockedReason)
+            .toBe("sync.example.com did not accept this device's access token. Add a new one to create a synced graph there.")
+        expect(serverPlanGate({ ...base, authState: 'unavailable', kind: 'custom', host }).createBlockedReason)
+            .toBe('sync.example.com could not be reached. Try again when it answers.')
+    })
+
+    it('blocks nothing while the account check is still in flight', () => {
+        expect(serverPlanGate({ account: null, planNotice: null, shownPlanNotice: null, authState: 'checking', kind: 'managed', host }))
+            .toEqual({ syncPlusRequired: false, createBlockedReason: null })
+    })
+})
+
+describe('which Sync Server groups the Graphs tab shows', () => {
+    const quiet = {
+        firstRun: false,
+        rows: 0,
+        invites: 0,
+        failed: false,
+        authState: 'authenticated' as const,
+        kind: 'managed' as const,
+        planLine: false,
+    }
+
+    it('shows every server to a browser that already has graphs, empty or not', () => {
+        expect(serverGroupVisible(quiet)).toBe(true)
+        expect(serverGroupVisible({ ...quiet, authState: 'signed-out' })).toBe(true)
+    })
+
+    it('hides a server with nothing to show on a first visit: the first-run card offers the way in', () => {
+        expect(serverGroupVisible({ ...quiet, firstRun: true })).toBe(false)
+        expect(serverGroupVisible({ ...quiet, firstRun: true, authState: 'signed-out' })).toBe(false)
+    })
+
+    it('shows a server on a first visit when it has an invite, a problem, or a plan to explain', () => {
+        const first = { ...quiet, firstRun: true }
+        expect(serverGroupVisible({ ...first, invites: 1 })).toBe(true)
+        expect(serverGroupVisible({ ...first, failed: true })).toBe(true)
+        expect(serverGroupVisible({ ...first, planLine: true })).toBe(true)
+        expect(serverGroupVisible({ ...first, authState: 'unavailable' })).toBe(true)
+        // A custom server refusing its token: the first-run card cannot say how to fix that.
+        expect(serverGroupVisible({ ...first, authState: 'signed-out', kind: 'custom' })).toBe(true)
+    })
+})
+
+describe('which Sync Server a synced copy in this browser belongs to', () => {
+    const copy = (id: string, serverOrigin?: string): GraphRecord =>
+        ({
+            id,
+            name: id,
+            backend: 'server',
+            createdAt: 1,
+            handle: { rootDocId: `${id}-root` },
+            ...(serverOrigin ? { serverScope: { serverOrigin, principalId: 'p1' } } : {}),
+        }) as GraphRecord
+    const held = ['https://sync.etherpk.com', 'https://notes.example.org']
+
+    it('is the held server whose account it was written under', () => {
+        expect(copyServer(copy('a', 'https://notes.example.org'), held)).toBe('https://notes.example.org')
+    })
+
+    it('is none for a server this device has forgotten, or a copy that names no server', () => {
+        expect(copyServer(copy('b', 'https://gone.example.net'), held)).toBeNull()
+        expect(copyServer(copy('c'), held)).toBeNull()
+    })
+
+    it('counts the copies per held server, and the rest apart', () => {
+        const records = [
+            copy('a', 'https://notes.example.org'),
+            copy('b', 'https://notes.example.org'),
+            copy('c', 'https://gone.example.net'),
+            copy('d'),
+        ]
+        expect(countCopiesByServer(records, held)).toEqual({
+            perServer: { 'https://notes.example.org': 2 },
+            unheld: 2,
         })
     })
 })

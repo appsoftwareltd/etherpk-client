@@ -1,29 +1,31 @@
 <script lang="ts">
     /**
      * The approver half of device approval (ADR 0026 flows), hosted once in the app shell.
-     * While this device is unlocked (and sync-configured), it polls for pending requests
-     * from the account's OTHER devices; when one appears it shows the SAS derived from the
-     * key the server delivered. The user compares it with the code on the new device's
+     * For every Sync Server whose keys this device holds unlocked (ADR 0111), it polls for pending
+     * requests from that account's OTHER devices; when one appears it shows the SAS derived from
+     * the key the server delivered, and names the server the request came through. The user compares it with the code on the new device's
      * screen - a mismatch means the key was substituted in transit - and on approve the
      * vault key travels sealed to that key. Rejecting kills the request for good.
      */
     import {
         approvalSas,
         approveDevice,
-        createConfiguredSyncApi,
+        createSyncApiFor,
         getVaultWrapKey,
+        listSyncConnections,
         rejectDeviceApproval,
+        serverHost,
         setVaultWrapKey,
         SyncApiError,
-        SYNC_CONFIG_CHANGED_EVENT,
-        SYNC_CONFIG_STORAGE_KEY,
+        SYNC_CONNECTIONS_CHANGED_EVENT,
+        SYNC_CONNECTIONS_STORAGE_KEY,
         type PendingDeviceApproval,
     } from "$lib/sync";
     import { announceAccountSignal } from "$lib/sync/account-signal";
     import { describeSyncFailure } from "$lib/sync/sync-error-copy";
     import Modal from "@appsoftwareltd/etherpk-shared/dialog";
 
-    let current = $state<{ approval: PendingDeviceApproval; sas: string } | null>(null);
+    let current = $state<{ approval: PendingDeviceApproval; sas: string; origin: string } | null>(null);
     let open = $state(false);
     let busy = $state(false);
     let error = $state<string | null>(null);
@@ -32,76 +34,86 @@
     // Requests the user closed without deciding - do not nag about them again this session.
     const dismissed = new Set<string>();
     /**
-     * The Sync Server refused this device's credential (401). Polling stops until the connection
-     * changes, rather than asking every ten seconds for an answer that cannot change; the account
-     * menu is asked to re-check, and says the device is signed out.
+     * Servers that refused this device's credential (401). Polling them stops until the
+     * connections change, rather than asking every ten seconds for an answer that cannot change;
+     * the account menu is asked to re-check, and says the device is signed out.
      */
-    let refused = false;
+    const refused = new Set<string>();
 
     function connectionChanged(): void {
-        refused = false;
+        refused.clear();
     }
 
     function storageChanged(event: StorageEvent): void {
-        if (event.key === SYNC_CONFIG_STORAGE_KEY || event.key === null) connectionChanged();
+        if (event.key === SYNC_CONNECTIONS_STORAGE_KEY || event.key === null) connectionChanged();
     }
 
-    function api() {
-        return createConfiguredSyncApi();
+    /** Pending requests on one server, newest first; null when it could not be asked. */
+    async function pendingOn(origin: string): Promise<PendingDeviceApproval[] | null> {
+        const api = createSyncApiFor(origin);
+        // Locked keys can approve nothing, so a server whose vault is locked here is not asked.
+        if (!api || !getVaultWrapKey(origin) || refused.has(origin)) return null;
+        try {
+            return (await api.listDeviceApprovals()).filter((p) => !dismissed.has(p.id));
+        } catch (e) {
+            if (e instanceof SyncApiError && e.status === 401) {
+                refused.add(origin);
+                announceAccountSignal({ type: "check" });
+            }
+            // Otherwise the server is unreachable: stay quiet; the next tick retries.
+            return null;
+        }
     }
 
     async function check() {
         if (busy) return; // an approve or reject is in flight: leave the prompt as it is
         if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
-        const a = api();
-        if (!a || !getVaultWrapKey() || refused) return; // locked devices can approve nothing
-        try {
-            // Newest first, so a device that asks again after abandoning a request is the one shown.
-            const pending = (await a.listDeviceApprovals()).filter((p) => !dismissed.has(p.id));
-            if (busy) return;
-            // One prompt at a time, re-checked on every tick: a request withdrawn, answered
-            // elsewhere or expired has a code that matches nothing, so it goes.
-            if (current && pending.some((p) => p.id === current?.approval.id)) return;
-            const next = pending[0];
-            if (!next) {
-                open = false;
-                current = null;
-                replaced = false;
-                return;
-            }
-            replaced = current !== null;
-            current = { approval: next, sas: await approvalSas(next) };
-            error = null;
-            open = true;
-        } catch (e) {
-            if (e instanceof SyncApiError && e.status === 401) {
-                refused = true;
-                announceAccountSignal({ type: "check" });
-            }
-            // Otherwise the server is unreachable: stay quiet; the next tick retries.
+        const origins = listSyncConnections().map((connection) => connection.origin);
+        const answers = await Promise.all(origins.map(async (origin) => ({ origin, pending: await pendingOn(origin) })));
+        if (busy) return;
+        // One prompt at a time, re-checked on every tick: a request withdrawn, answered elsewhere or
+        // expired has a code that matches nothing, so it goes. A server that could not be asked
+        // this tick keeps its prompt on screen rather than flickering it away.
+        const shown = current;
+        if (shown) {
+            const answer = answers.find((a) => a.origin === shown.origin);
+            if (!answer || answer.pending === null || answer.pending.some((p) => p.id === shown.approval.id)) return;
         }
+        const next = answers.flatMap((a) => (a.pending ?? []).map((approval) => ({ approval, origin: a.origin })))[0];
+        if (!next) {
+            open = false;
+            current = null;
+            replaced = false;
+            return;
+        }
+        replaced = current !== null && current.origin === next.origin;
+        current = { approval: next.approval, sas: await approvalSas(next.approval), origin: next.origin };
+        error = null;
+        open = true;
     }
 
     $effect(() => {
         void check();
         const timer = setInterval(() => void check(), 10_000);
         // Same-tab connection changes (the Graphs page saving a new token) end a refusal too.
-        window.addEventListener(SYNC_CONFIG_CHANGED_EVENT, connectionChanged);
+        window.addEventListener(SYNC_CONNECTIONS_CHANGED_EVENT, connectionChanged);
         return () => {
             clearInterval(timer);
-            window.removeEventListener(SYNC_CONFIG_CHANGED_EVENT, connectionChanged);
+            window.removeEventListener(SYNC_CONNECTIONS_CHANGED_EVENT, connectionChanged);
         };
     });
 
     async function approve() {
-        const a = api();
-        const heldKey = getVaultWrapKey();
-        if (!a || !heldKey || !current) return;
+        if (!current) return;
+        const { origin } = current;
+        const a = createSyncApiFor(origin);
+        const heldKey = getVaultWrapKey(origin);
+        if (!a || !heldKey) return;
         busy = true;
         error = null;
         try {
             // Returns the true vault key (minting it if the vault was legacy) - re-cache it.
-            setVaultWrapKey(await approveDevice(a, current.approval, heldKey));
+            setVaultWrapKey(origin, await approveDevice(a, current.approval, heldKey));
             open = false;
             current = null;
             replaced = false;
@@ -113,7 +125,7 @@
     }
 
     async function reject() {
-        const a = api();
+        const a = current ? createSyncApiFor(current.origin) : null;
         if (!a || !current) return;
         busy = true;
         try {
@@ -141,7 +153,9 @@
         {#snippet body()}
             <div data-testid="device-approval-prompt" class="space-y-3">
                 <p class="text-sm text-gray-600 dark:text-gray-400">
-                    A device signed in to your account is asking for your encryption keys.
+                    A device signed in to your account on
+                    <span class="font-medium text-gray-950 dark:text-gray-100" data-testid="device-approval-server">{serverHost(current?.origin ?? "")}</span>
+                    is asking for your encryption keys there.
                     Approve <strong>only if you are setting that device up right now</strong> and
                     its screen shows this exact code:
                 </p>

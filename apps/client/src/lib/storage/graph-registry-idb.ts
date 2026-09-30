@@ -17,7 +17,7 @@ import { recoverableGraphRecord, withRegistrySafetyCopy } from './graph-registry
 import { isClosedConnectionError } from './idb-connection'
 import { createSafetyCopy } from './safety-copy'
 import { reportStorageRecovery } from './storage-recovery'
-import { readActiveSyncAccount } from '$lib/sync/account-scope'
+import { readSyncAccounts } from '$lib/sync/account-scope'
 
 const DB_NAME = 'etherpk'
 const DB_VERSION = 1
@@ -147,7 +147,7 @@ export function createIdbGraphStoragePort(): GraphStoragePort {
 /** The graph registry, persisted in IndexedDB. */
 export function createIdbGraphRegistry(): GraphRegistry {
     return createGraphRegistry(createIdbGraphStoragePort(), {
-        activeServerScope: readActiveSyncAccount,
+        serverScopes: readSyncAccounts,
     })
 }
 

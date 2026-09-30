@@ -15,7 +15,6 @@ import { NoVaultError } from './recovery-unlock'
 import { InviteForHeldGraphError } from './invites'
 import { SyncProtocolMismatchError } from './messages'
 import { SyncApiError } from './sync-api'
-import { readSyncConfig } from './sync-config'
 import { VaultLockedError } from './vault-session'
 
 /** What the server refused, and what the user can do about it. */
@@ -100,8 +99,8 @@ export function describeSyncFailure(error: unknown, action: string): string {
 
         switch (error.status) {
             case 401:
-                // A device on a custom server holds an access token and has no sign-in to renew.
-                return readSyncConfig()?.mode === 'custom'
+                // A custom server's connection holds an access token and has no sign-in to renew.
+                return error.connectionKind === 'custom'
                     ? `${opening} The sync server did not accept this device's access token. Add a new one in Sync settings, then retry.`
                     : `${opening} Your sign-in to the sync server has expired. Sign in again, then retry.`
             case 403:
@@ -153,8 +152,9 @@ export function describeSyncFailure(error: unknown, action: string): string {
     if (error instanceof EnvelopeError) {
         // A wrong Recovery Code is refused at the unlock (recovery-unlock.ts), so keys that open
         // nothing were unlocked correctly and have since gone stale: the account's keys were reset
-        // on another device. Saying so stops a person retyping the same code.
-        return `${opening} The keys unlocked on this device no longer open your account’s data, usually because your keys were reset on another device. In Sync settings, lock your keys, then unlock them again by approving from another device or with your current Recovery Code.`
+        // on another device. Saying so stops a person retyping the same code; unlocking with the
+        // code replaces the key held here.
+        return `${opening} The keys unlocked on this device no longer open your account’s data, usually because your keys were reset on another device. On the Sync tab, select Unlock Keys With Recovery Code.`
     }
     if (error instanceof NoVaultError) {
         return `${opening} This account has no encryption keys yet: they are created with your first synced graph.`

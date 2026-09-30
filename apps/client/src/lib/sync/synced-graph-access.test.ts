@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { createGraphKeyring, encryptVault, generateIdentityKeyPair, toBase64Url } from '$lib/crypto'
 
 import { heldGraphKeyring, openHeldVault, resolveSyncedGraphConnection } from './synced-graph-access'
-import { SYNC_CONFIG_STORAGE_KEY } from './sync-config'
+import { SYNC_CONNECTIONS_STORAGE_KEY } from './sync-connections'
 import type { SyncApi } from './sync-api'
 
 /** A `Storage` in memory, installed as the global the config and vault modules read. */
@@ -34,8 +34,10 @@ async function sealedVault(keyrings: ReturnType<typeof createGraphKeyring>[]) {
     return { envelope: toBase64Url(encrypted.envelope), wrapKey, vaultKey: encrypted.vaultKey }
 }
 
-function apiWithVault(envelope: string | null): Pick<SyncApi, 'getVault'> {
-    return { getVault: async () => (envelope ? { vault: envelope, version: 1 } : null) }
+const ORIGIN = 'https://sync.example.com'
+
+function apiWithVault(envelope: string | null): { api: Pick<SyncApi, 'getVault'>; origin: string } {
+    return { api: { getVault: async () => (envelope ? { vault: envelope, version: 1 } : null) }, origin: ORIGIN }
 }
 
 afterEach(() => {
@@ -43,16 +45,28 @@ afterEach(() => {
 })
 
 describe('resolveSyncedGraphConnection', () => {
-    it('is null on a device with no sync configuration', () => {
-        installLocalStorage()
-        expect(resolveSyncedGraphConnection('g1')).toBeNull()
+    it("is null on a device with no connection to the graph's server", () => {
+        const store = installLocalStorage()
+        expect(resolveSyncedGraphConnection('g1', ORIGIN)).toBeNull()
+        store.set(SYNC_CONNECTIONS_STORAGE_KEY, JSON.stringify({
+            connections: [{ kind: 'custom', serverBaseUrl: 'https://other.example/', token: 'epk_pat_x' }],
+            selected: 'https://other.example',
+        }))
+        expect(resolveSyncedGraphConnection('g1', ORIGIN)).toBeNull()
     })
 
-    it('derives the API, the relay URL and a refreshing token source from a custom connection', async () => {
+    it("derives the API, the relay URL and a refreshing token source from the connection to the graph's server", async () => {
         const store = installLocalStorage()
-        store.set(SYNC_CONFIG_STORAGE_KEY, JSON.stringify({ mode: 'custom', serverBaseUrl: 'https://sync.example.com/', token: 'epk_pat_x' }))
-        const connection = resolveSyncedGraphConnection('g1')
+        store.set(SYNC_CONNECTIONS_STORAGE_KEY, JSON.stringify({
+            connections: [
+                { kind: 'custom', serverBaseUrl: 'https://sync.example.com/', token: 'epk_pat_x' },
+                { kind: 'custom', serverBaseUrl: 'https://other.example/', token: 'epk_pat_y' },
+            ],
+            selected: 'https://other.example',
+        }))
+        const connection = resolveSyncedGraphConnection('g1', ORIGIN)
         expect(connection).not.toBeNull()
+        expect(connection!.origin).toBe(ORIGIN)
         expect(connection!.serverBaseUrl).toBe('https://sync.example.com/')
         expect(connection!.relayUrl).toBe('wss://sync.example.com/sync')
         expect(typeof connection!.token).toBe('function')
@@ -69,7 +83,7 @@ describe('openHeldVault', () => {
                 return null
             },
         }
-        expect(await openHeldVault(api, null)).toBeNull()
+        expect(await openHeldVault({ api, origin: ORIGIN }, null)).toBeNull()
         expect(asked).toBe(0)
     })
 
@@ -94,9 +108,9 @@ describe('heldGraphKeyring', () => {
     it("is the graph's keyring when the held vault carries one, else null", async () => {
         const keyring = createGraphKeyring('g1')
         const sealed = await sealedVault([keyring])
-        const api = apiWithVault(sealed.envelope)
-        expect((await heldGraphKeyring(api, 'g1', sealed.wrapKey))?.graphId).toBe('g1')
-        expect(await heldGraphKeyring(api, 'g2', sealed.wrapKey)).toBeNull()
-        expect(await heldGraphKeyring(api, 'g1', null)).toBeNull()
+        const access = apiWithVault(sealed.envelope)
+        expect((await heldGraphKeyring(access, 'g1', sealed.wrapKey))?.graphId).toBe('g1')
+        expect(await heldGraphKeyring(access, 'g2', sealed.wrapKey)).toBeNull()
+        expect(await heldGraphKeyring(access, 'g1', null)).toBeNull()
     })
 })

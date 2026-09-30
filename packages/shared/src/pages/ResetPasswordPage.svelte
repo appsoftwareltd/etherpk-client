@@ -1,6 +1,6 @@
 <script lang="ts">
     import { useHydrated } from "../forms/hydration.svelte";
-    import { focusFirstInvalid } from "../ui/index.svelte";
+    import { focusFirstInvalid, textFieldClass } from "../ui/index.svelte";
     import { touchAll, visibleErrors } from "../forms/field-errors";
     import type { PasswordResetAuthClient } from "../auth/page-clients";
     import { PASSWORD_HELP, WEAK_PASSWORD_CODE } from "../auth/password-strength";
@@ -37,10 +37,6 @@
         const timer = setTimeout(() => replaceState(withoutToken, page.state), 0);
         return () => clearTimeout(timer);
     });
-
-    const inputBase = "block w-full rounded-lg border bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 transition-colors";
-    const inputNormal = "border-gray-300 text-gray-950 focus:border-gray-950 focus:ring-gray-950/10";
-    const inputError = "border-red-300 text-red-900 focus:border-red-500 focus:ring-red-500/10";
 
     function validate(): boolean {
         const errors: typeof fieldErrors = {};
@@ -150,7 +146,7 @@
         <form onsubmit={handleSubmit} novalidate class="mt-6 space-y-4">
             <div>
                 <label for="password" class="block text-sm font-medium text-gray-700 mb-1.5">New password</label>
-                <input id="password" onblur={() => blurField("password")} oninput={() => inputField("password")} type="password" bind:value={password} autocomplete="new-password" aria-invalid={!!fieldErrors.password} aria-describedby={fieldErrors.password ? "pw-error pw-help" : "pw-help"} class="{inputBase} {fieldErrors.password ? inputError : inputNormal}" />
+                <input id="password" onblur={() => blurField("password")} oninput={() => inputField("password")} type="password" bind:value={password} autocomplete="new-password" aria-invalid={!!fieldErrors.password} aria-describedby={fieldErrors.password ? "pw-error pw-help" : "pw-help"} class={textFieldClass(!!fieldErrors.password)} />
                 {#if fieldErrors.password}
                     <p id="pw-error" class="mt-1 text-sm text-red-600">{fieldErrors.password}</p>
                 {/if}
@@ -159,7 +155,7 @@
 
             <div>
                 <label for="confirmPassword" class="block text-sm font-medium text-gray-700 mb-1.5">Confirm new password</label>
-                <input id="confirmPassword" onblur={() => blurField("confirm")} oninput={() => inputField("confirm")} type="password" bind:value={confirmPassword} autocomplete="new-password" placeholder="Repeat new password" aria-invalid={!!fieldErrors.confirm} aria-describedby={fieldErrors.confirm ? "confirm-error" : undefined} class="{inputBase} {fieldErrors.confirm ? inputError : inputNormal}" />
+                <input id="confirmPassword" onblur={() => blurField("confirm")} oninput={() => inputField("confirm")} type="password" bind:value={confirmPassword} autocomplete="new-password" placeholder="Repeat new password" aria-invalid={!!fieldErrors.confirm} aria-describedby={fieldErrors.confirm ? "confirm-error" : undefined} class={textFieldClass(!!fieldErrors.confirm)} />
                 {#if fieldErrors.confirm}
                     <p id="confirm-error" class="mt-1 text-sm text-red-600">{fieldErrors.confirm}</p>
                 {/if}

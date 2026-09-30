@@ -11,6 +11,7 @@ const note = { id: 'n1', text: 'Ring the dentist', createdAt: 1_700_000_000_000 
 const keyring: GraphKeyring = { graphId: 'g1', epochs: [{ epochId: 1, key: new Uint8Array(32) }] }
 const connection = {
     api: {} as SyncedGraphConnection['api'],
+    origin: 'https://sync.example.com',
     serverBaseUrl: 'https://sync.example.com',
     relayUrl: 'wss://sync.example.com/sync',
     token: async () => 't',

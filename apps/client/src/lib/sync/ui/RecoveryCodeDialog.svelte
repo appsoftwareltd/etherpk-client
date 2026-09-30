@@ -10,17 +10,29 @@
      * the current code keeps working until confirm retires it, which is why only that arrival
      * offers a way out - "Keep current code" - and why its confirm names the destructive half.
      * Neither arrival needs a tab-close guard: closing the tab on either changes nothing.
+     *
+     * Every code belongs to one Sync Server's account (ADR 0111), and a device connected to two
+     * servers is given two. The dialog, the download's name and the saved text all name the
+     * server, so a second code never reads as a replacement for the first.
      */
     import Modal from "@appsoftwareltd/etherpk-shared/dialog";
+    import { recoveryCodeFileName, recoveryCodeFileText } from "../recovery-code-file";
+    import { serverHost } from "../sync-connections";
 
     let {
         code,
         arrival,
         reason,
+        serverOrigin,
+        account = null,
         onconfirm,
         oncancel,
     }: {
         code: string;
+        /** The Sync Server whose account this code unlocks. */
+        serverOrigin: string;
+        /** The account's address on that server, when it has one to name. */
+        account?: string | null;
         /** A first mint has no code before it; a regenerate replaces one that still works. */
         arrival: "first" | "regenerate";
         /** Why the ritual appeared now, e.g. keys minted for an account that had none. */
@@ -36,9 +48,12 @@
     let acknowledged = $state(false);
 
     const regenerate = $derived(arrival === "regenerate");
+    const host = $derived(serverHost(serverOrigin));
     const title = $derived(regenerate ? "Save your new Recovery Code" : "Save your Recovery Code");
     const acknowledgement = $derived(
-        regenerate ? "I have saved my new Recovery Code somewhere safe." : "I have saved my Recovery Code somewhere safe.",
+        regenerate
+            ? `I have saved my new Recovery Code for ${host} somewhere safe.`
+            : `I have saved my Recovery Code for ${host} somewhere safe.`,
     );
     // The regenerate confirm names the destructive half first: it is the moment the current
     // code stops working, and a plain "Continue" would hide that.
@@ -61,14 +76,11 @@
     function download() {
         saveError = null;
         try {
-            const blob = new Blob(
-                [`EtherPK Recovery Code\n\n${code}\n\nKeep this safe. It is the only way to restore access to your encrypted notes.\n`],
-                { type: "text/plain" },
-            );
+            const blob = new Blob([recoveryCodeFileText({ code, serverOrigin, account })], { type: "text/plain" });
             const url = URL.createObjectURL(blob);
             const a = document.createElement("a");
             a.href = url;
-            a.download = "etherpk-recovery-code.txt";
+            a.download = recoveryCodeFileName(serverOrigin);
             // Attached before the click and revoked well after it: revoking in the same tick
             // cancels the transfer in some browsers, which then reported as a successful save.
             document.body.appendChild(a);
@@ -89,6 +101,11 @@
 
 <Modal {open} {title} closeOnBackdrop={false} onclose={oncancel ? cancel : undefined}>
     {#snippet body()}
+        <p data-testid="recovery-server" class="text-sm text-gray-700 dark:text-gray-200">
+            For your account on <span class="font-semibold text-gray-950 dark:text-white">{host}</span
+            >{#if account}&nbsp;({account}){/if}. It unlocks your keys on this Sync Server only. A code you
+            saved for another Sync Server stays valid and is not replaced by this one: keep each one.
+        </p>
         {#if reason}
             <p data-testid="recovery-reason" class="text-sm text-gray-600 dark:text-gray-300">{reason}</p>
         {/if}

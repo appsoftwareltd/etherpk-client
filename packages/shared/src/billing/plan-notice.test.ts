@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { SyncAccountSummary } from '../managed-service'
-import { ownerCanWrite, syncPlanNotice } from './plan-notice'
+import { PLAN_PENDING, PLAN_UNCONFIRMED } from './plan-display'
+import { PLAN_NOTICE_TEXT, ownerCanWrite, syncPlanNotice } from './plan-notice'
 
 const syncPlusLimits = { ownedGraphs: 25, ownedStorageBytes: 50_000, playersPerGraph: 10, assetBytes: 100, assetChunks: 10 }
 const freeLimits = { ownedGraphs: 0, ownedStorageBytes: 0, playersPerGraph: 0, assetBytes: 0, assetChunks: 0 }
@@ -41,6 +42,18 @@ describe('syncPlanNotice', () => {
             .toBe('unconfirmed')
     })
 
+    it('tells a plan still on its way from one that cannot be confirmed', () => {
+        // A new account whose first statement has not reached the Sync Server yet: a wait of
+        // seconds, not a fault, so it gets its own notice.
+        expect(syncPlanNotice(account({ plan: 'remote-pending', status: 'read_only', limits: freeLimits })))
+            .toBe('pending')
+    })
+
+    it('names the Sync Server\'s two stand-in plans by their wire ids', () => {
+        expect(PLAN_PENDING).toBe('remote-pending')
+        expect(PLAN_UNCONFIRMED).toBe('remote-unavailable')
+    })
+
     it('offers Sync+ to a Free account that owns nothing', () => {
         expect(syncPlanNotice(account({ plan: 'free', limits: freeLimits, usage: { ownedGraphs: 0, ownedStorageBytes: 0 } })))
             .toBe('upsell')
@@ -49,6 +62,19 @@ describe('syncPlanNotice', () => {
     it('says nothing on an active paid plan, or on a self-hosted Server', () => {
         expect(syncPlanNotice(account({}))).toBeNull()
         expect(syncPlanNotice(account({ status: 'read_only', limits: freeLimits }, 'standalone'))).toBeNull()
+    })
+})
+
+describe('PLAN_NOTICE_TEXT', () => {
+    it('says a pending plan is being confirmed, and nothing about read-only graphs', () => {
+        expect(PLAN_NOTICE_TEXT.pending).toMatch(/^Confirming your plan/)
+        expect(PLAN_NOTICE_TEXT.pending).not.toMatch(/read-only/i)
+    })
+
+    it('does not ask for a reload: both surfaces check again by themselves', () => {
+        expect(PLAN_NOTICE_TEXT.unconfirmed).not.toMatch(/reload/i)
+        expect(PLAN_NOTICE_TEXT.unconfirmed).toContain('Nothing is lost.')
+        expect(PLAN_NOTICE_TEXT.unconfirmed).toContain('keeps checking')
     })
 })
 

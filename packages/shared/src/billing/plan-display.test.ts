@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest'
 
-import { UNLIMITED_ALLOWANCE, entitlementStatusLabel, formatLimit, formatUsage, isServerAllowance, planLabel } from './plan-display'
+import {
+    UNLIMITED_ALLOWANCE,
+    entitlementStatusLabel,
+    formatLimit,
+    formatUsage,
+    isServerAllowance,
+    planLabel,
+    planStatusLine,
+} from './plan-display'
 
 const formatDate = (iso: string) => iso.slice(0, 10)
 
@@ -11,7 +19,22 @@ describe('plan display', () => {
         expect(planLabel('unlimited')).toBe('Unlimited')
         expect(planLabel('fixed')).toBe('Fixed limits')
         expect(planLabel('remote-unavailable')).toBe('Plan status unavailable')
+        expect(planLabel('remote-pending')).toBe('Confirming plan…')
         expect(planLabel('team')).toBe('team')
+    })
+
+    it('puts the plan and its status on one line', () => {
+        expect(planStatusLine({ plan: 'sync_plus', status: 'active' }, formatDate)).toBe('Sync+ · Active')
+        expect(planStatusLine({ plan: 'sync_plus', status: 'active', trialEndsAt: '2026-10-07T10:00:00.000Z' }, formatDate))
+            .toBe('Sync+ · Trial, ends 2026-10-07')
+        expect(planStatusLine({ plan: 'remote-unavailable', status: 'read_only' }, formatDate))
+            .toBe('Plan status unavailable · Read-only')
+    })
+
+    it('shows no Read-only status on a plan that is still being confirmed', () => {
+        // The Sync Server reports read_only until the first statement lands, a matter of seconds;
+        // saying "Read-only" to a new account in that window reads as a fault.
+        expect(planStatusLine({ plan: 'remote-pending', status: 'read_only' }, formatDate)).toBe('Confirming plan…')
     })
 
     it("tells a Sync Server's own allowance from a plan someone holds", () => {
@@ -20,6 +43,7 @@ describe('plan display', () => {
         expect(isServerAllowance('sync_plus')).toBe(false)
         expect(isServerAllowance('free')).toBe(false)
         expect(isServerAllowance('remote-unavailable')).toBe(false)
+        expect(isServerAllowance('remote-pending')).toBe(false)
     })
 
     it('says a trial with its end date, and a payment problem as one', () => {

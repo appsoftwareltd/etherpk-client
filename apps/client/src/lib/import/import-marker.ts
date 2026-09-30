@@ -15,6 +15,11 @@ export interface ImportMarker {
     destination: 'server' | 'filesystem'
     /** The synced graph the import created, once it has. */
     graphId?: string
+    /**
+     * The Sync Server a synced import writes to (ADR 0111), so a partial graph is deleted from the
+     * right one. Absent from markers written before a device could hold several servers.
+     */
+    serverOrigin?: string
     /** The folder a folder import writes into. */
     folderName?: string
     startedAt: number

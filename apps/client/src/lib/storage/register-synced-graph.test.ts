@@ -24,7 +24,7 @@ const scope = { serverOrigin: 'https://sync.example.com', principalId: 'principa
 describe('registerSyncedGraphOnDevice', () => {
     it('writes a visible Server record stamped with the current account scope', async () => {
         const port = memoryPort()
-        const registry = createGraphRegistry(port, { activeServerScope: () => scope })
+        const registry = createGraphRegistry(port, { serverScopes: () => [scope] })
 
         const record = await registerSyncedGraphOnDevice(
             { id: 'g1', rootDocId: 'root-g1' },
@@ -44,7 +44,7 @@ describe('registerSyncedGraphOnDevice', () => {
     })
 
     it('keeps a name the caller managed to read from the encrypted meta map', async () => {
-        const registry = createGraphRegistry(memoryPort(), { activeServerScope: () => scope })
+        const registry = createGraphRegistry(memoryPort(), { serverScopes: () => [scope] })
 
         const record = await registerSyncedGraphOnDevice(
             { id: 'g1', rootDocId: 'root-g1', name: 'Reading notes' },
@@ -65,7 +65,7 @@ describe('registerSyncedGraphOnDevice', () => {
             serverScope: { ...scope, principalId: 'principal-a' },
             membershipActive: true,
         })
-        const registry = createGraphRegistry(port, { activeServerScope: () => scope })
+        const registry = createGraphRegistry(port, { serverScopes: () => [scope] })
         expect(await registry.getGraph('g1')).toBeUndefined()
 
         await registerSyncedGraphOnDevice({ id: 'g1', rootDocId: 'root-g1' }, { registry, scope })

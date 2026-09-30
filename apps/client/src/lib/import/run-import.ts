@@ -17,7 +17,7 @@ import { vaultProtectionStore, type ProtectionRecordStore } from '$lib/document/
 import type { ProtectionRecord } from '$lib/crypto'
 import { openGraphCache } from '$lib/sync/local-cache'
 import type { SyncApi } from '$lib/sync/sync-api'
-import { relayUrlFrom } from '$lib/sync/sync-config'
+import { relayUrlFrom } from '$lib/sync/sync-connections'
 import { createSyncTokenSource } from '$lib/sync/sync-token'
 
 import { materializeToFilesystem } from './materialize-filesystem'

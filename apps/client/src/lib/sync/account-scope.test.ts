@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import {
-    clearActiveSyncAccount,
-    readActiveSyncAccount,
-    setActiveSyncAccount,
+    clearSyncAccount,
+    readSyncAccount,
+    readSyncAccounts,
+    setSyncAccount,
 } from './account-scope'
 
 function memoryStorage(): Storage {
@@ -21,33 +22,77 @@ beforeEach(() => {
     globalThis.localStorage = memoryStorage()
 })
 
-describe('active Sync account', () => {
+describe('Sync accounts, one per server', () => {
     it('stores only the normalised Server origin and service-local Principal id', () => {
-        setActiveSyncAccount({
+        setSyncAccount({
             serverOrigin: 'https://sync.example.com/',
             principalId: '019c9e42-0b89-7000-8000-000000000001',
         })
 
-        expect(readActiveSyncAccount()).toEqual({
+        expect(readSyncAccount('https://sync.example.com')).toEqual({
             serverOrigin: 'https://sync.example.com',
             principalId: '019c9e42-0b89-7000-8000-000000000001',
         })
-        expect(localStorage.getItem('etherpk:active-sync-account')).not.toContain('email')
+        expect(localStorage.getItem('etherpk:sync-accounts')).not.toContain('email')
     })
 
-    it('clears identity state on explicit sign-out', () => {
-        setActiveSyncAccount({ serverOrigin: 'https://sync.example.com', principalId: 'principal-a' })
-        clearActiveSyncAccount()
-        expect(readActiveSyncAccount()).toBeNull()
+    it('keeps the account confirmed on each server apart from the others', () => {
+        setSyncAccount({ serverOrigin: 'https://sync.example.com', principalId: 'principal-managed' })
+        setSyncAccount({ serverOrigin: 'https://team.example.org', principalId: 'principal-team' })
+
+        expect(readSyncAccount('https://team.example.org/')?.principalId).toBe('principal-team')
+        expect(readSyncAccounts()).toEqual([
+            { serverOrigin: 'https://sync.example.com', principalId: 'principal-managed' },
+            { serverOrigin: 'https://team.example.org', principalId: 'principal-team' },
+        ])
+    })
+
+    it('replaces the account on a server when another signs in there', () => {
+        setSyncAccount({ serverOrigin: 'https://sync.example.com', principalId: 'principal-a' })
+        setSyncAccount({ serverOrigin: 'https://sync.example.com', principalId: 'principal-b' })
+        expect(readSyncAccounts()).toEqual([{ serverOrigin: 'https://sync.example.com', principalId: 'principal-b' }])
+    })
+
+    it('clears one server on sign-out and leaves the others', () => {
+        setSyncAccount({ serverOrigin: 'https://sync.example.com', principalId: 'principal-a' })
+        setSyncAccount({ serverOrigin: 'https://team.example.org', principalId: 'principal-team' })
+
+        clearSyncAccount('https://sync.example.com')
+
+        expect(readSyncAccount('https://sync.example.com')).toBeNull()
+        expect(readSyncAccount('https://team.example.org')?.principalId).toBe('principal-team')
     })
 
     it('rejects corrupt and non-HTTP stored state', () => {
-        localStorage.setItem('etherpk:active-sync-account', '{bad')
-        expect(readActiveSyncAccount()).toBeNull()
+        localStorage.setItem('etherpk:sync-accounts', '{bad')
+        expect(readSyncAccounts()).toEqual([])
+        localStorage.setItem('etherpk:sync-accounts', JSON.stringify({
+            'javascript:alert(1)': 'principal-a',
+            'https://ok.example': 'principal-ok',
+            'https://empty.example': '',
+        }))
+        expect(readSyncAccounts()).toEqual([{ serverOrigin: 'https://ok.example', principalId: 'principal-ok' }])
+    })
+
+    it('answers null for a server address it cannot parse', () => {
+        expect(readSyncAccount('not a url')).toBeNull()
+    })
+})
+
+describe('a device that recorded one active account', () => {
+    it('keeps that account as the one confirmed on its server', () => {
         localStorage.setItem('etherpk:active-sync-account', JSON.stringify({
-            serverOrigin: 'javascript:alert(1)',
+            serverOrigin: 'https://sync.example.com',
             principalId: 'principal-a',
         }))
-        expect(readActiveSyncAccount()).toBeNull()
+
+        expect(readSyncAccount('https://sync.example.com')?.principalId).toBe('principal-a')
+        expect(localStorage.getItem('etherpk:active-sync-account')).toBeNull()
+    })
+
+    it('drops an unreadable record', () => {
+        localStorage.setItem('etherpk:active-sync-account', '{bad')
+        expect(readSyncAccounts()).toEqual([])
+        expect(localStorage.getItem('etherpk:active-sync-account')).toBeNull()
     })
 })

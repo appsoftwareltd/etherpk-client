@@ -10,7 +10,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { convertSource } from './convert'
-import { phasesFor, serverImportOutcome } from './import-activity'
+import { importMarkerFields, phasesFor, serverImportOutcome, type ServerImportRequest } from './import-activity'
 import { materializeToFilesystem } from './materialize-filesystem'
 import { createMemoryDirectoryAdapter } from '$lib/storage/fs/memory-adapter'
 import type { ImportFormat, ImportProgress, SourceFile } from './types'
@@ -123,6 +123,31 @@ describe('serverImportOutcome', () => {
         expect(serverImportOutcome({ ...syncing, missing: 1 }, 9, 2)).toEqual({
             state: 'partial',
             detail: 'Still syncing to the server - 3 of 10 confirmed. It will finish in the background. 1 file could not be uploaded and is listed in the import report.',
+        })
+    })
+})
+
+describe("an import's marker", () => {
+    // A device can hold several Sync Servers (ADR 0111): a cut-off synced import is cleared up on the
+    // server it was writing to, so the marker says which.
+    it('names the Sync Server a synced import writes to', () => {
+        const destination = {
+            kind: 'server',
+            deps: { serverScope: { serverOrigin: 'https://team.example.org', principalId: 'p1' } },
+        } as unknown as ServerImportRequest
+        expect(importMarkerFields('Notes', destination)).toEqual({
+            name: 'Notes',
+            destination: 'server',
+            serverOrigin: 'https://team.example.org',
+        })
+    })
+
+    it('names the folder a folder import writes into', () => {
+        const handle = { name: 'Imported' } as FileSystemDirectoryHandle
+        expect(importMarkerFields('Notes', { kind: 'filesystem', handle, registry: {} as never })).toEqual({
+            name: 'Notes',
+            destination: 'filesystem',
+            folderName: 'Imported',
         })
     })
 })

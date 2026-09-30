@@ -35,14 +35,18 @@ export type ShareLanding =
 
 /** The three seams, injectable so the decision is pinned down without a relay or a vault. */
 export interface ShareLandingDeps {
-    connection: (graphId: string) => SyncedGraphConnection | null
-    keyring: (api: SyncedGraphConnection['api'], graphId: string) => Promise<GraphKeyring | null>
+    /** The connection to the server the graph lives on (its record's scope), or null when none is held. */
+    connection: (graph: GraphRecord) => SyncedGraphConnection | null
+    keyring: (connection: SyncedGraphConnection, graphId: string) => Promise<GraphKeyring | null>
     session: (deps: QuickNoteSessionDeps, note: QuickNote, hooks?: QuickNoteSessionHooks) => Promise<QuickNoteDelivery>
 }
 
 const productionDeps: ShareLandingDeps = {
-    connection: resolveSyncedGraphConnection,
-    keyring: (api, graphId) => heldGraphKeyring(api, graphId),
+    connection: (graph) => {
+        const origin = graph.serverScope?.serverOrigin
+        return origin ? resolveSyncedGraphConnection(graph.id, origin) : null
+    },
+    keyring: (connection, graphId) => heldGraphKeyring(connection, graphId),
     session: addQuickNoteOverSession,
 }
 
@@ -58,13 +62,13 @@ export async function landShareDirectly(
     hooks: ShareLandingOptions = {},
 ): Promise<ShareLanding> {
     if (graph.backend !== 'server') return { kind: 'handoff', reason: 'folder' }
-    const connection = deps.connection(graph.id)
+    const connection = deps.connection(graph)
     if (!connection) return { kind: 'handoff', reason: 'no-sync' }
     let saved = false
     try {
         const rootDocId = (graph.handle as { rootDocId?: unknown } | null)?.rootDocId
         if (typeof rootDocId !== 'string' || rootDocId === '') throw new Error('The graph record names no root document.')
-        const keyring = await deps.keyring(connection.api, graph.id)
+        const keyring = await deps.keyring(connection, graph.id)
         if (!keyring) return { kind: 'handoff', reason: 'locked' }
         const delivery = await deps.session(
             { graphId: graph.id, rootDocId, keyring, relayUrl: connection.relayUrl, token: connection.token, signal: hooks.signal },

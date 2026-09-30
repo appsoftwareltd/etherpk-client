@@ -1,6 +1,12 @@
 <script lang="ts">
+    /**
+     * A local graph's row on the Knowledge graphs page: a folder on this computer, or the demo. Open
+     * is its one primary action; the name beside it is a label, not a second way in. Synced graphs
+     * have a row of their own (SyncedGraphRow).
+     */
     import { isDemoGraph } from '$lib/demo/demo-graph'
     import type { GraphRecord } from '$lib/storage'
+    import { OPEN_BUTTON, OPEN_ICON, RESET_ICON } from './graphs-page-icons'
 
     let {
         graph,
@@ -43,11 +49,7 @@
         >{message.text}</p>
     {/if}
     <div class="flex items-center gap-2">
-    <button
-        class="flex min-w-0 flex-1 flex-col gap-0.5 text-left"
-        data-testid="graphs-open"
-        onclick={onopen}
-    >
+    <div class="flex min-w-0 flex-1 flex-col gap-0.5">
         <span class="flex items-center gap-3">
             <span class="truncate text-sm font-medium text-gray-950 dark:text-white">{graph.name}</span>
             <span class="rounded-full bg-gray-100 px-2 py-0.5 text-sm text-gray-600 dark:bg-white/10 dark:text-gray-400" data-testid="graphs-backend-tag">
@@ -55,11 +57,22 @@
             </span>
         </span>
         {#if demo}
-            <span
-                class="truncate text-sm text-gray-500 dark:text-gray-400"
-                data-testid="graphs-demo-hint"
-                title="The demo graph lives in this browser's storage and is not backed up anywhere"
-            >In this browser only</span>
+            <!-- The demo's reset is the only thing that can undo a visitor's edits, and it sits with
+                 what says the demo is disposable rather than where an ordinary row's Forget goes. -->
+            <span class="text-sm text-gray-500 dark:text-gray-400">
+                <span
+                    data-testid="graphs-demo-hint"
+                    title="The demo graph lives in this browser's storage and is not backed up anywhere"
+                >In this browser only</span>
+                ·
+                <button
+                    type="button"
+                    data-testid="graphs-demo-reset"
+                    title="Reset the demo (puts every page back as it shipped)"
+                    onclick={onreset}
+                    class="font-medium text-gray-700 underline underline-offset-2 hover:text-gray-950 pointer-coarse:min-h-11 dark:text-gray-300 dark:hover:text-white"
+                >Reset the demo</button>
+            </span>
         {:else if graph.backend !== 'server'}
             {#if folderName}
                 <span
@@ -75,6 +88,12 @@
                 title="A synced graph's local copy lives in browser storage, not a folder"
             >Local browser cache</span>
         {/if}
+    </div>
+    <button data-testid="graphs-open" aria-label={`Open ${graph.name}`} onclick={onopen} class={OPEN_BUTTON}>
+        <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" d={OPEN_ICON} />
+        </svg>
+        Open
     </button>
     <button
         data-testid="graphs-rename"
@@ -103,14 +122,7 @@
             <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
         </svg>
     </button>
-    {#if demo}
-    <button
-        data-testid="graphs-demo-reset"
-        title="Reset the demo (puts every page back as it shipped)"
-        onclick={onreset}
-        class="shrink-0 rounded-lg border border-gray-300 px-2 py-1 text-sm font-medium pointer-coarse:min-h-11 text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-white/5"
-    >Reset</button>
-    {:else}
+    {#if !demo}
     <button
         data-testid="graphs-remove"
         title={graph.backend === 'server'
@@ -122,6 +134,21 @@
     >
         <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75">
             <path d="M6 18 18 6M6 6l12 12" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+    </button>
+    {:else}
+    <!-- The demo cannot be forgotten, so its last slot resets it: the same as the link beside its
+         hint, and it keeps the row's icons in line with every other row's. -->
+    <button
+        type="button"
+        data-testid="graphs-demo-reset-icon"
+        title="Reset the demo (puts every page back as it shipped)"
+        aria-label="Reset the demo"
+        onclick={onreset}
+        class="shrink-0 rounded-lg p-1.5 pointer-coarse:p-3.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-white/10 dark:hover:text-gray-300"
+    >
+        <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" d={RESET_ICON} />
         </svg>
     </button>
     {/if}

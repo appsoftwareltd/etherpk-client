@@ -22,6 +22,14 @@ describe('describeWriteRefusal', () => {
         expect(copy.billing).toBeNull()
     })
 
+    // A new account's first statement is on its way: never "your subscription has ended".
+    it('says a plan still being confirmed is on its way and offers nothing to buy', () => {
+        const copy = describeWriteRefusal({ refusal: { quotaCode: 'entitlement_inactive' }, owner: true, plan: 'pending', managed: true })
+        expect(copy.reason).toBe('EtherPK is still confirming your plan with the sync server.')
+        expect(copy.next).toBe('Your changes are kept on this device and sync on their own once it is confirmed, usually within seconds.')
+        expect(copy.billing).toBeNull()
+    })
+
     it("tells a Player it is the owner's plan, and offers them no billing link", () => {
         const copy = describeWriteRefusal({ refusal: { quotaCode: 'entitlement_inactive' }, owner: false, plan: null, managed: true })
         expect(copy.reason).toBe("The owner's plan does not allow changes to this graph at the moment.")

@@ -1,5 +1,5 @@
 /**
- * Tells every open tab of this Client when the device's Sync account stops being usable.
+ * Tells every open tab of this Client when one of the device's Sync accounts stops being usable.
  * Without it, signing out or disconnecting would reach one tab only: another tab with a graph
  * open would keep its socket and go on sending edits as the account, with a green dot, until the
  * socket happened to drop.
@@ -21,7 +21,12 @@ const CHANNEL = 'etherpk-sync-account'
 export type AccountEndReason = 'signed-out' | 'disconnected' | 'refused'
 
 export type AccountSignal =
-    | { type: 'ended'; reason: AccountEndReason }
+    /**
+     * The account on `serverOrigin` stopped being usable. Only graphs on that server stop syncing:
+     * a device can be connected to several servers (ADR 0111), and signing out of one leaves the
+     * others alone. A signal with no origin (from a tab running an older build) ends them all.
+     */
+    | { type: 'ended'; reason: AccountEndReason; serverOrigin?: string }
     /** Something saw a refusal it cannot interpret alone; the account menu re-checks. */
     | { type: 'check' }
 
@@ -52,7 +57,11 @@ export function onAccountSignal(listener: (signal: AccountSignal) => void): () =
         const data = event.data as Partial<AccountSignal> | null
         if (data?.type === 'check') listener({ type: 'check' })
         else if (data?.type === 'ended' && (data.reason === 'signed-out' || data.reason === 'disconnected' || data.reason === 'refused')) {
-            listener({ type: 'ended', reason: data.reason })
+            listener({
+                type: 'ended',
+                reason: data.reason,
+                ...(typeof data.serverOrigin === 'string' ? { serverOrigin: data.serverOrigin } : {}),
+            })
         }
     }
     return () => receiver.close()

@@ -454,25 +454,25 @@
         createGraphSync,
         openGraphCache,
         browserTransport,
-        createConfiguredSyncApi,
+        createSyncApiFor,
         createGraphNamePublisher,
-        createSyncApi,
         describeSyncFailure,
         ensureGraphKeys,
+        listSyncConnections,
         managedSyncOrigin,
-        normaliseServerOrigin,
-        readActiveSyncAccount,
-        readSyncConfig,
-        resolveSyncConnection,
+        primarySyncConnection,
         resolveSyncedGraphConnection,
-        setActiveSyncAccount,
+        serverHost,
+        setSyncAccount,
+        syncApiFor,
+        syncConnectionFor,
         getVaultWrapKey,
         vaultProtectionAccess,
         setVaultWrapKey,
         VaultLockedError,
         fixedSyncToken,
         presenceIdentity,
-        SYNC_CONFIG_STORAGE_KEY,
+        SYNC_CONNECTIONS_STORAGE_KEY,
         type GraphCache,
         type GraphSync,
         type SyncAccessLoss,
@@ -1025,11 +1025,17 @@
     let serverCache: GraphCache | undefined;
     let serverRootDocId: string | undefined;
     /**
-     * The device's Sync connection when this graph opened from the registry, as stored. Another
-     * tab clearing or replacing it means this tab's connection is gone; null on the dev
-     * gate's graphs, which have no device connection to lose.
+     * The origin of the Sync Server this graph lives on, from its registry record (ADR 0111): the
+     * connection it syncs over, whose vault holds its key, and whose sign-out ends its sync. Null
+     * for a folder graph and on the dev gate's graphs.
      */
-    let syncConfigAtOpen: string | null = null;
+    let graphServerOrigin = $state<string | null>(null);
+    /**
+     * The connection to that server when this graph opened, as stored. Another tab forgetting it or
+     * replacing its access token means this tab's connection is gone; null on the dev gate's graphs,
+     * which have no device connection to lose.
+     */
+    let connectionAtOpen: string | null = null;
     let serverAtOpen: { managed: boolean; server: string } | null = null;
     /** The account API behind a registry graph, to word a write refusal; null under the dev gate. */
     let serverApi: SyncApi | null = null;
@@ -2263,41 +2269,32 @@
     });
 
     /**
-     * What the missing-graph diagnosis needs, read from this device's Sync connection when it
-     * asks. Confirming the account records it as the active one, as the account menu does, so the
-     * registry's visibility filter and the diagnosis agree on who is signed in.
+     * What the missing-graph diagnosis needs: every Sync Connection this device holds, the primary
+     * one (Managed Sync, else the first added) first. Confirming an account records it for its
+     * server, as the account menu does, so the registry's visibility filter and the diagnosis agree
+     * on who is signed in where.
      */
     function missingGraphDeps(): MissingGraphDeps {
-        const config = readSyncConfig();
-        let connection: { managed: boolean; serverOrigin: string; api: SyncApi } | null = null;
-        try {
-            const resolved = config ? resolveSyncConnection(config) : null;
-            if (config && resolved) {
-                connection = {
-                    managed: config.mode === "managed",
-                    serverOrigin: normaliseServerOrigin(resolved.serverBaseUrl),
-                    api: createSyncApi({ baseUrl: resolved.serverBaseUrl, token: resolved.token }),
-                };
-            }
-        } catch {
-            // A malformed stored connection is no connection; Sync settings replaces it.
-            connection = null;
-        }
-        const connected = () => {
-            if (!connection) throw new Error("This device has no Sync connection");
-            return connection;
-        };
+        const primary = primarySyncConnection()?.origin;
+        const connections = listSyncConnections().sort(
+            (a, b) => Number(b.origin === primary) - Number(a.origin === primary),
+        );
         return {
             allRecords: () => createIdbGraphStoragePort().getAll(),
-            connection: connection && { managed: connection.managed, serverOrigin: connection.serverOrigin },
+            connections: connections.map((connection) => {
+                const api = syncApiFor(connection);
+                return {
+                    managed: connection.kind === "managed",
+                    serverOrigin: connection.origin,
+                    currentAccount: async () => {
+                        const scope = { serverOrigin: connection.origin, principalId: (await api.me()).principal.id };
+                        setSyncAccount(scope);
+                        return scope;
+                    },
+                    listServerGraphs: async () => (await api.graphsOverview()).graphs,
+                };
+            }),
             managedServerOrigin: managedSyncOrigin(env),
-            currentAccount: async () => {
-                const { api, serverOrigin } = connected();
-                const scope = { serverOrigin, principalId: (await api.me()).principal.id };
-                setActiveSyncAccount(scope);
-                return scope;
-            },
-            listServerGraphs: async () => (await connected().api.graphsOverview()).graphs,
         };
     }
 
@@ -2422,37 +2419,39 @@
     }
 
     /**
-     * Real path (ADR 0026): a Server-backed graph in the registry. The device's sync config
-     * (server URL + PAT) mints a short-lived sync token and unlocks the Graph Keyring from the
-     * vault; the root doc id is stored on the graph record. `getWrapKey` prompts the user only
-     * when the vault must be unlocked (device-approval / Recovery Code — Phase 4 UI).
+     * Real path (ADR 0026): a Server-backed graph in the registry. The connection to the graph's
+     * own server (ADR 0111) mints a short-lived sync token and unlocks the Graph Keyring from that
+     * server's vault; the root doc id is stored on the graph record. `getWrapKey` prompts the user
+     * only when the vault must be unlocked (device-approval / Recovery Code — Phase 4 UI).
      */
     async function paramsFromRegistry(
         record: { rootDocId: string },
+        serverOrigin: string,
         attempt: GraphOpenAttempt,
     ): Promise<ResolvedServerParams> {
-        const connection = resolveSyncedGraphConnection(graphId);
+        graphServerOrigin = serverOrigin;
+        const connection = resolveSyncedGraphConnection(graphId, serverOrigin);
         if (!connection)
             throw new Error(
-                "This device is not configured for sync. Connect Managed Sync or add a custom server in Sync settings.",
+                `This device is not connected to ${serverHost(serverOrigin)}, the Sync Server this graph lives on. Connect to it in Sync settings.`,
             );
-        const config = readSyncConfig();
-        syncConfigAtOpen = JSON.stringify(config);
+        const stored = syncConnectionFor(serverOrigin);
+        connectionAtOpen = describeConnection(stored);
         serverAtOpen = {
-            managed: config?.mode === "managed",
+            managed: stored?.kind === "managed",
             server: connection.serverBaseUrl,
         };
         const { api, token } = connection;
         serverApi = api;
         const result = await attempt.wait(
             ensureGraphKeys(api, graphId, async () => {
-                const cached = getVaultWrapKey();
+                const cached = getVaultWrapKey(serverOrigin);
                 if (!cached) throw new VaultLockedError();
                 return cached;
             }),
         );
         // Cache the wrap key for the session (fresh account, or a first successful unlock).
-        setVaultWrapKey(result.deviceKey);
+        setVaultWrapKey(serverOrigin, result.deviceKey);
         // Opening a registry graph on a vault-less account is an edge case; commit immediately
         // (the primary prevention path is the create-graph flow on /graphs).
         await attempt.wait(result.commit());
@@ -2485,8 +2484,11 @@
         // its own release, so its agents keep matching the Sync Server released with it.
         const headlessClient = headlessClientPackage(managedSyncOrigin(env) ? null : RELEASE_VERSION);
         if (isServerStore) {
-            const config = readSyncConfig();
-            const connection = config ? resolveSyncConnection(config) : null;
+            // A registry graph names its own server. The dev gate's graphs have no record, so they
+            // take the primary connection, as they took the device's one connection before.
+            const connection = graphServerOrigin
+                ? syncConnectionFor(graphServerOrigin)
+                : primarySyncConnection();
             if (!connection) return null;
             return { kind: "synced", graphId, serverBaseUrl: connection.serverBaseUrl, headlessClient };
         }
@@ -2635,13 +2637,19 @@
     async function resolveServerParams(
         attempt: GraphOpenAttempt,
     ): Promise<ResolvedServerParams | null> {
+        // Nothing from a graph opened before this one in the same workspace carries over.
+        graphServerOrigin = null;
+        connectionAtOpen = null;
         if (dev && server) return paramsFromGate(server);
         const record = await attempt.wait(
             createIdbGraphRegistry().getGraph(graphId),
         );
         if (record?.backend === "server") {
+            // Every Server record carries its account scope (graph-registry.ts), and the registry
+            // shows none without one, so the origin is always there.
             return paramsFromRegistry(
                 record.handle as { rootDocId: string },
+                record.serverScope!.serverOrigin,
                 attempt,
             );
         }
@@ -3450,7 +3458,8 @@
         // harness — keeps a device-local record instead: the passphrase-wrapped key, exactly what a
         // graph folder holds, so nothing ADR 0057 protects is given up; only portability is, as on
         // a Filesystem Backend. An in-memory store here lost the passphrase on every reload.
-        const protectionApi = useServer ? createConfiguredSyncApi() : null;
+        const protectionOrigin = graphServerOrigin;
+        const protectionApi = useServer && protectionOrigin ? createSyncApiFor(protectionOrigin) : null;
         const protectionRecords = !useServer
             ? fsAdapter
                 ? filesystemProtectionStore(fsAdapter)
@@ -3459,7 +3468,7 @@
               ? vaultProtectionStore(
                     graphId,
                     vaultProtectionAccess(protectionApi, async () => {
-                        const cached = getVaultWrapKey();
+                        const cached = getVaultWrapKey(protectionOrigin!);
                         if (!cached) throw new VaultLockedError();
                         return cached;
                     }),
@@ -4003,11 +4012,9 @@
     async function setUpHere() {
         const diagnosis = missing;
         if (diagnosis?.kind !== "available" || settingUp) return;
-        const scope = readActiveSyncAccount();
-        if (!scope) {
-            missing = { kind: "unknown", reason: "no-sync-config" };
-            return;
-        }
+        // The account the listing server confirmed: the record goes under that server and account.
+        // Copied out of the diagnosis, which is reactive state: IndexedDB cannot clone a proxy.
+        const scope = { serverOrigin: diagnosis.scope.serverOrigin, principalId: diagnosis.scope.principalId };
         settingUp = true;
         setupError = null;
         try {
@@ -4146,21 +4153,38 @@
         phase = "access-lost";
     }
 
-    /** Another tab (or this tab's account menu) ended the device's Sync account. */
-    function endSyncFromElsewhere(reason: AccountEndReason): void {
-        if (syncConfigAtOpen === null || !serverGraph) return;
+    /**
+     * Another tab (or this tab's account menu) ended the account on `serverOrigin`. A graph on
+     * another server carries on: signing out of one server says nothing about the others. A
+     * signal that names no server ends every graph.
+     */
+    function endSyncFromElsewhere(reason: AccountEndReason, serverOrigin?: string): void {
+        if (connectionAtOpen === null || !serverGraph) return;
+        if (serverOrigin !== undefined && serverOrigin !== graphServerOrigin) return;
         serverGraph.endAccess({ kind: "credentials", cause: new AccountEnded(reason) });
     }
 
     /**
-     * A standalone Disconnect in another tab clears the stored connection; replacing it with
-     * another server or token ends this one too. The `storage` event is the backstop for a
-     * browser without BroadcastChannel.
+     * Forgetting this graph's server in another tab removes its connection; replacing its access
+     * token ends this session too. Other servers' connections changing leaves it alone. The
+     * `storage` event is the backstop for a browser without BroadcastChannel.
      */
-    function watchSyncConfig(event: StorageEvent): void {
-        if (event.key !== SYNC_CONFIG_STORAGE_KEY && event.key !== null) return;
-        if (syncConfigAtOpen === null) return;
-        if (JSON.stringify(readSyncConfig()) !== syncConfigAtOpen) endSyncFromElsewhere("disconnected");
+    function watchSyncConnections(event: StorageEvent): void {
+        if (event.key !== SYNC_CONNECTIONS_STORAGE_KEY && event.key !== null) return;
+        if (connectionAtOpen === null || !graphServerOrigin) return;
+        if (describeConnection(syncConnectionFor(graphServerOrigin)) !== connectionAtOpen) {
+            endSyncFromElsewhere("disconnected", graphServerOrigin);
+        }
+    }
+
+    /** A connection as compared across tabs: which kind, where, and a custom server's token. */
+    function describeConnection(connection: ReturnType<typeof syncConnectionFor>): string {
+        if (!connection) return "none";
+        return JSON.stringify({
+            kind: connection.kind,
+            origin: connection.origin,
+            token: typeof connection.token === "string" ? connection.token : null,
+        });
     }
 
     /**
@@ -5552,12 +5576,12 @@
         const stopRecoveries = subscribeStorageRecoveries((all) => (storageRecovery = all));
         // Sign-out and Disconnect in any tab of this Client end this graph's sync too.
         const stopAccountSignals = onAccountSignal((signal) => {
-            if (signal.type === "ended") endSyncFromElsewhere(signal.reason);
+            if (signal.type === "ended") endSyncFromElsewhere(signal.reason, signal.serverOrigin);
         });
-        window.addEventListener("storage", watchSyncConfig);
+        window.addEventListener("storage", watchSyncConnections);
         session.own(() => {
             stopAccountSignals();
-            window.removeEventListener("storage", watchSyncConfig);
+            window.removeEventListener("storage", watchSyncConnections);
         });
         // The sync status reads the browser's online flag; a refused write is tried again when the
         // connection returns and when the person comes back to the tab, which is when a plan
@@ -5625,14 +5649,15 @@
     onkeepheldcopy={keepHeldCopy}
 />
 
-{#if phase === "needs-unlock"}
-    <UnlockDialog onunlocked={afterUnlock} onclose={() => goto("/graphs")} />
+{#if phase === "needs-unlock" && graphServerOrigin}
+    <UnlockDialog serverOrigin={graphServerOrigin} onunlocked={afterUnlock} onclose={() => goto("/graphs")} />
 {/if}
 
-{#if pendingRecoveryCode}
+{#if pendingRecoveryCode && graphServerOrigin}
     <RecoveryCodeDialog
         code={pendingRecoveryCode}
         arrival="first"
+        serverOrigin={graphServerOrigin}
         onconfirm={() => (pendingRecoveryCode = null)}
     />
 {/if}

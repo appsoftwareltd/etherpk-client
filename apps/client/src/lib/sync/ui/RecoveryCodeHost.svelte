@@ -28,6 +28,8 @@
         code={prompt.code}
         arrival={prompt.arrival}
         reason={prompt.reason}
+        serverOrigin={prompt.serverOrigin}
+        account={prompt.account ?? null}
         onconfirm={() => void confirmRecoveryCode()}
         oncancel={prompt.cancel ? cancelRecoveryCode : undefined}
     />

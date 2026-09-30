@@ -2,7 +2,7 @@
     import { flushSync, tick } from "svelte";
     import { uuidv7 } from "uuidv7";
     import QRCode from "qrcode";
-    import { focusFirstInvalid } from "../ui/index.svelte";
+    import { focusFirstInvalid, textFieldClass } from "../ui/index.svelte";
     import AlertBanner from "../components/AlertBanner.svelte";
     import type { AccountAuthClient } from "../auth/page-clients";
     import { verificationResendWaitSeconds } from "../auth/verification-resend";
@@ -511,10 +511,6 @@
     // Checked by default: a password is most often changed because someone else may know it.
     let signOutOthers = $state(true);
 
-    const inputBase = "block w-full rounded-lg border bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 transition-colors";
-    const inputNormal = "border-gray-300 text-gray-950 focus:border-gray-950 focus:ring-gray-950/10";
-    const inputErr = "border-red-300 text-red-900 focus:border-red-500 focus:ring-red-500/10";
-
     function validatePw(): boolean {
         const errors: typeof pwFieldErrors = {};
         if (!pwCurrent) errors.current = "Current password is required";
@@ -750,7 +746,7 @@
         autocomplete="current-password"
         aria-invalid={mfaFieldError !== null}
         aria-describedby={mfaFieldError ? `${id}-error` : undefined}
-        class="{inputBase} {mfaFieldError ? inputErr : inputNormal}"
+        class={textFieldClass(!!mfaFieldError)}
     />
     {#if mfaFieldError}
         <p id="{id}-error" class="text-sm text-red-600">{mfaFieldError}</p>
@@ -881,7 +877,7 @@
             <form onsubmit={handleChangeEmail} novalidate class="space-y-3">
                 <div>
                     <label for="new-email" class="block text-sm font-medium text-gray-700 mb-1">New email address</label>
-                    <input id="new-email" type="email" bind:value={newEmail} autocomplete="email" placeholder="new@example.com" aria-invalid={!!emailFieldError} aria-describedby={emailFieldError ? "new-email-error" : undefined} class="{inputBase} {emailFieldError ? inputErr : inputNormal}" />
+                    <input id="new-email" type="email" bind:value={newEmail} autocomplete="email" placeholder="new@example.com" aria-invalid={!!emailFieldError} aria-describedby={emailFieldError ? "new-email-error" : undefined} class={textFieldClass(!!emailFieldError)} />
                     {#if emailFieldError}
                         <p id="new-email-error" class="mt-1 text-sm text-red-600">{emailFieldError}</p>
                     {/if}
@@ -900,7 +896,7 @@
                             autocomplete="current-password"
                             aria-invalid={!!emailPasswordError}
                             aria-describedby={emailPasswordError ? "email-password-error" : undefined}
-                            class="{inputBase} {emailPasswordError ? inputErr : inputNormal}"
+                            class={textFieldClass(!!emailPasswordError)}
                         />
                         {#if emailPasswordError}
                             <p id="email-password-error" class="mt-1 text-sm text-red-600">{emailPasswordError}</p>
@@ -1105,7 +1101,7 @@
                             autocomplete="one-time-code"
                             aria-invalid={mfaFieldError !== null}
                             aria-describedby={mfaFieldError ? "account-mfa-code-error" : undefined}
-                            class="{inputBase} {mfaFieldError ? inputErr : inputNormal} font-mono tracking-widest"
+                            class="{textFieldClass(!!mfaFieldError)} font-mono tracking-widest"
                         />
                         {#if mfaFieldError}
                             <p id="account-mfa-code-error" class="mt-1 text-sm text-red-600">{mfaFieldError}</p>
@@ -1182,7 +1178,7 @@
                         maxlength="100"
                         aria-invalid={passkeyFieldError !== null}
                         aria-describedby={passkeyFieldError ? "account-passkey-name-error" : "account-passkey-name-hint"}
-                        class="{inputBase} {passkeyFieldError ? inputErr : inputNormal}"
+                        class={textFieldClass(!!passkeyFieldError)}
                     />
                     {#if passkeyFieldError}
                         <p id="account-passkey-name-error" class="text-sm text-red-600">{passkeyFieldError}</p>
@@ -1215,7 +1211,7 @@
                         maxlength="100"
                         aria-invalid={passkeyFieldError !== null}
                         aria-describedby={passkeyFieldError ? "account-passkey-rename-error" : undefined}
-                        class="{inputBase} {passkeyFieldError ? inputErr : inputNormal}"
+                        class={textFieldClass(!!passkeyFieldError)}
                     />
                     {#if passkeyFieldError}
                         <p id="account-passkey-rename-error" class="text-sm text-red-600">{passkeyFieldError}</p>
@@ -1300,7 +1296,7 @@
                 <form onsubmit={handleChangePassword} novalidate class="space-y-3">
                     <div>
                         <label for="pw-current" class="block text-sm font-medium text-gray-700 mb-1">Current password</label>
-                        <input id="pw-current" type="password" bind:value={pwCurrent} autocomplete="current-password" placeholder="&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;" aria-invalid={!!pwFieldErrors.current} aria-describedby={pwFieldErrors.current ? "pw-current-error" : undefined} class="{inputBase} {pwFieldErrors.current ? inputErr : inputNormal}" />
+                        <input id="pw-current" type="password" bind:value={pwCurrent} autocomplete="current-password" placeholder="&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;" aria-invalid={!!pwFieldErrors.current} aria-describedby={pwFieldErrors.current ? "pw-current-error" : undefined} class={textFieldClass(!!pwFieldErrors.current)} />
                         {#if pwFieldErrors.current}
                             <p id="pw-current-error" class="mt-1 text-sm text-red-600">{pwFieldErrors.current}</p>
                         {/if}
@@ -1308,7 +1304,7 @@
 
                     <div>
                         <label for="pw-new" class="block text-sm font-medium text-gray-700 mb-1">New password</label>
-                        <input id="pw-new" type="password" bind:value={pwNew} autocomplete="new-password" aria-invalid={!!pwFieldErrors.new} aria-describedby={pwFieldErrors.new ? "pw-new-error pw-new-help" : "pw-new-help"} class="{inputBase} {pwFieldErrors.new ? inputErr : inputNormal}" />
+                        <input id="pw-new" type="password" bind:value={pwNew} autocomplete="new-password" aria-invalid={!!pwFieldErrors.new} aria-describedby={pwFieldErrors.new ? "pw-new-error pw-new-help" : "pw-new-help"} class={textFieldClass(!!pwFieldErrors.new)} />
                         {#if pwFieldErrors.new}
                             <p id="pw-new-error" class="mt-1 text-sm text-red-600">{pwFieldErrors.new}</p>
                         {/if}
@@ -1317,7 +1313,7 @@
 
                     <div>
                         <label for="pw-confirm" class="block text-sm font-medium text-gray-700 mb-1">Confirm new password</label>
-                        <input id="pw-confirm" type="password" bind:value={pwConfirm} autocomplete="new-password" placeholder="Repeat new password" aria-invalid={!!pwFieldErrors.confirm} aria-describedby={pwFieldErrors.confirm ? "pw-confirm-error" : undefined} class="{inputBase} {pwFieldErrors.confirm ? inputErr : inputNormal}" />
+                        <input id="pw-confirm" type="password" bind:value={pwConfirm} autocomplete="new-password" placeholder="Repeat new password" aria-invalid={!!pwFieldErrors.confirm} aria-describedby={pwFieldErrors.confirm ? "pw-confirm-error" : undefined} class={textFieldClass(!!pwFieldErrors.confirm)} />
                         {#if pwFieldErrors.confirm}
                             <p id="pw-confirm-error" class="mt-1 text-sm text-red-600">{pwFieldErrors.confirm}</p>
                         {/if}
@@ -1336,7 +1332,7 @@
                 <form onsubmit={handleSetPassword} novalidate class="space-y-3">
                     <div>
                         <label for="pw-new" class="block text-sm font-medium text-gray-700 mb-1">New password</label>
-                        <input id="pw-new" type="password" bind:value={pwNew} autocomplete="new-password" aria-invalid={!!pwFieldErrors.new} aria-describedby={pwFieldErrors.new ? "pw-new-error pw-new-help" : "pw-new-help"} class="{inputBase} {pwFieldErrors.new ? inputErr : inputNormal}" />
+                        <input id="pw-new" type="password" bind:value={pwNew} autocomplete="new-password" aria-invalid={!!pwFieldErrors.new} aria-describedby={pwFieldErrors.new ? "pw-new-error pw-new-help" : "pw-new-help"} class={textFieldClass(!!pwFieldErrors.new)} />
                         {#if pwFieldErrors.new}
                             <p id="pw-new-error" class="mt-1 text-sm text-red-600">{pwFieldErrors.new}</p>
                         {/if}
@@ -1345,7 +1341,7 @@
 
                     <div>
                         <label for="pw-confirm" class="block text-sm font-medium text-gray-700 mb-1">Confirm password</label>
-                        <input id="pw-confirm" type="password" bind:value={pwConfirm} autocomplete="new-password" placeholder="Repeat password" aria-invalid={!!pwFieldErrors.confirm} aria-describedby={pwFieldErrors.confirm ? "pw-confirm-error" : undefined} class="{inputBase} {pwFieldErrors.confirm ? inputErr : inputNormal}" />
+                        <input id="pw-confirm" type="password" bind:value={pwConfirm} autocomplete="new-password" placeholder="Repeat password" aria-invalid={!!pwFieldErrors.confirm} aria-describedby={pwFieldErrors.confirm ? "pw-confirm-error" : undefined} class={textFieldClass(!!pwFieldErrors.confirm)} />
                         {#if pwFieldErrors.confirm}
                             <p id="pw-confirm-error" class="mt-1 text-sm text-red-600">{pwFieldErrors.confirm}</p>
                         {/if}
