@@ -51,7 +51,7 @@ export const FRONTMATTER_PROPERTIES: readonly FrontmatterProperty[] = [
     {
         key: 'public',
         policy: 'none',
-        summary: 'Whether the document may be published at all. `public: true` is required; a protected document is never published whatever it says.',
+        summary: 'Whether the document may be published at all. `public: true` is required - a protected document is never published whatever it says.',
     },
     {
         key: 'publications',

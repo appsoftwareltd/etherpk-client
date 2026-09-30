@@ -69,7 +69,7 @@ export async function setupDiagrams(env: NodeJS.ProcessEnv, say: (line: string) 
     }
     const cli = require.resolve('playwright-core/cli.js')
     const dir = env.PLAYWRIGHT_BROWSERS_PATH?.trim() || browsersDir(env)
-    say(`Installing Chromium into ${dir} (about 170 MB, once per computer; a diagram is rendered by a browser, and this is the one etherpk-mcp drives)…`)
+    say(`Installing Chromium into ${dir} (about 170 MB, once per computer - a diagram is rendered by a browser, and this is the one etherpk-mcp drives)…`)
     await new Promise<void>((resolve, reject) => {
         const child = spawn(process.execPath, [cli, 'install', 'chromium'], {
             env: { ...process.env, PLAYWRIGHT_BROWSERS_PATH: dir },
@@ -84,7 +84,7 @@ export async function setupDiagrams(env: NodeJS.ProcessEnv, say: (line: string) 
         child.on('close', (code) => (code === 0 ? resolve() : reject(new Error(`Playwright's installer exited with code ${code}.`))))
     })
     const after = await chromiumStatus(env)
-    if (!after.executable) throw new Error('The installer finished but no Chromium executable was found; set ETHERPK_CHROMIUM to a browser on this machine instead.')
+    if (!after.executable) throw new Error('The installer finished but no Chromium executable was found - set ETHERPK_CHROMIUM to a browser on this machine instead.')
     say(`Chromium is set up: ${after.executable}`)
     return after
 }

@@ -78,10 +78,10 @@ describe('workspace document mutations', () => {
             '"Notes" will be removed. Nothing links to it. This cannot be undone.',
         )
         expect(deleteDocumentMessage('Notes', 1)).toBe(
-            '"Notes" will be removed. 1 document links to it; those links will show as not-yet-created. This cannot be undone.',
+            '"Notes" will be removed. 1 document links to it - those links will show as not-yet-created. This cannot be undone.',
         )
         expect(deleteDocumentMessage('Notes', 3)).toBe(
-            '"Notes" will be removed. 3 documents link to it; those links will show as not-yet-created. This cannot be undone.',
+            '"Notes" will be removed. 3 documents link to it - those links will show as not-yet-created. This cannot be undone.',
         )
     })
 

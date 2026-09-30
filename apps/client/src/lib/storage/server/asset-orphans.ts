@@ -129,7 +129,7 @@ export async function scanOrphanedServerAssets(deps: ServerAssetOrphanDeps): Pro
             engine.caughtUp().then(() => true),
             new Promise<boolean>((resolve) => setTimeout(() => resolve(false), deps.timeoutMs ?? 8000)),
         ])
-        if (!caught) throw new Error('A document has not finished syncing; try again once the graph is fully synced')
+        if (!caught) throw new Error('A document has not finished syncing - try again once the graph is fully synced')
         if (contentBlocked(engine.health())) {
             unreadableOther += 1
             continue

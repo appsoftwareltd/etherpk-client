@@ -138,7 +138,7 @@ async function openCacheDb(): Promise<IDBDatabase> {
     for (const store of CACHE_STORES) {
         if (!db.objectStoreNames.contains(store)) {
             db.close()
-            throw new Error(`Local Cache database has no "${store}" store; open the graph cache before restoring it.`)
+            throw new Error(`Local Cache database has no "${store}" store - open the graph cache before restoring it.`)
         }
     }
     return db
@@ -472,7 +472,7 @@ export function describeGraphStore(store: GraphStoreStatus, now = Date.now()): s
     const percent = Math.floor((embedded / total) * 100)
     return ageMs < 90_000
         ? `building - ${count} (${percent}%) embedded, snapshot ${age}, refreshed every 30 s while it builds`
-        : `paused - ${count} (${percent}%) embedded, last snapshot ${age}; nothing is building it now, it continues when serve next runs`
+        : `paused - ${count} (${percent}%) embedded, last snapshot ${age}. Nothing is building it now, it continues when serve next runs`
 }
 
 /** Remove every persisted graph under the cache root (logout of the last server). */

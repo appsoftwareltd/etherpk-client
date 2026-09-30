@@ -234,7 +234,7 @@
                 role={landing ? "status" : undefined}
             >
                 {#if graphs !== null && graphs.length === 0}
-                    Quick notes live with a graph, and this device has none yet. Copy the text for now,
+                    Quick notes are saved to a graph, and this device has none yet. Copy the text for now,
                     or open a graph from the Graphs page and share again.
                 {:else if landing?.state === "adding"}
                     Saving what you shared to {landing.graph.name} on this device…
@@ -248,11 +248,11 @@
                     so it will sync the next time this graph opens here.
                 {:else if opening}
                     This is what will be captured. Opening {opening.name}, where it goes into Quick
-                    notes; you can move it into your journal from there later.
+                    notes - you can move it into your journal from there later.
                 {:else if graphs === null}
                     This is what will be captured.
                 {:else}
-                    This is what will be captured. Choose the graph whose quick notes it goes to; you
+                    This is what will be captured. Choose the graph whose quick notes it goes to - you
                     can move it into your journal from there later.
                 {/if}
             </p>

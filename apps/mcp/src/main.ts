@@ -92,20 +92,20 @@ const USAGE = `etherpk-mcp - EtherPK Headless Client (an MCP server over one syn
       Serve one synced graph to an agent over stdio. For Claude Code:
         claude mcp add etherpk -- npx @appsoftwareltd/etherpk-mcp serve --sync-server <url> --graph <id>
       Once "semantic setup" has run on this computer, serve also keeps a search-by-meaning
-      store of the graph current (the agent's search tool gains mode: semantic); pass
+      store of the graph current (the agent's search tool gains mode: semantic) - pass
       --no-semantic to leave it off for this registration.
   ${CMD} serve --folder <path> [--no-semantic]
       Serve a local graph folder the same way: no sign-in, no server. The agent gets search,
       backlinks, tasks and format-safe edits over the folder's markdown, alongside the files
       themselves. Edits made in an editor or by the agent directly are picked up as they land.
-      The folder must already be a graph (open it in EtherPK once); its index is kept under
+      The folder must already be a graph (open it in EtherPK once) - its index is kept under
       the cache directory, never in the folder.
   ${CMD} logout [--sync-server <url> | --all]
       Forget that server's token, keys and cached graphs on this machine.
   ${CMD} semantic setup
       Let the agent search by meaning. Installs a ~300 MB native runtime (onnxruntime-node,
       with your npm) and downloads a 23 MB embedding model into the cache directory, once
-      per computer. Nothing leaves this computer when the model runs; notes are never sent
+      per computer. Nothing leaves this computer when the model runs - notes are never sent
       to a service to be embedded.
   ${CMD} semantic status | remove
       Whether it is set up here, or delete it (logout --all deletes it too).
@@ -115,20 +115,20 @@ const USAGE = `etherpk-mcp - EtherPK Headless Client (an MCP server over one syn
       then on this command without --out, and the agent's publish tool, write to the same
       folder (the agent cannot choose one). The folder's owned files (.html at the top,
       assets/, theme/, the search, feed and report files) are rewritten and their strays
-      removed; everything else in it is left alone. Publishing writes files; deploying them
+      removed - everything else in it is left alone. Publishing writes files - deploying them
       (a git push, say) is yours. Run it from cron for a site that republishes itself.
   ${CMD} diagrams setup
       Let a publish draw Mermaid diagrams. Downloads a Chromium (about 170 MB) into the cache
-      directory with Playwright's installer, once per computer; a publish whose pages hold
+      directory with Playwright's installer, once per computer - a publish whose pages hold
       diagrams refuses until this has run. Set ETHERPK_CHROMIUM=<path> to use a browser
       already on this machine instead (NixOS needs this).
   ${CMD} diagrams status
       Which browser a publish would use, if any.
 
-This machine can hold logins for several Sync Servers at once; --sync-server says which one
-a command means, and can be left out while there is only one. The config file is
+This machine can hold logins for several Sync Servers at once. The --sync-server flag says
+which one a command means, and can be left out while there is only one. The config file is
 ${defaultConfigPath()} (override with
-ETHERPK_MCP_CONFIG); cached graphs live under ~/.cache/etherpk/mcp (override with
+ETHERPK_MCP_CONFIG) - cached graphs live under ~/.cache/etherpk/mcp (override with
 ETHERPK_MCP_CACHE_DIR).
 Docs: https://docs.etherpk.com/using-ai-agents-with-your-notes
 `
@@ -143,7 +143,7 @@ function fail(message: string): never {
  * an agent starting the process), since each question has its own option or variable.
  */
 async function ask(question: string, { secret = false, hint }: { secret?: boolean; hint: string }): Promise<string> {
-    if (!process.stdin.isTTY) fail(`${question.replace(/:\s*$/, '')}: no terminal to ask on; ${hint}.`)
+    if (!process.stdin.isTTY) fail(`${question.replace(/:\s*$/, '')}: no terminal to ask on - ${hint}.`)
     if (!secret) {
         const rl = createInterface({ input: process.stdin, output: process.stderr, terminal: true })
         try {
@@ -181,7 +181,7 @@ async function ask(question: string, { secret = false, hint }: { secret?: boolea
 
 async function loadConfig(path: string): Promise<HeadlessConfig> {
     const config = await readConfig(path)
-    if (!config) fail(`${path} is not a config file this version understands. Run: ${CMD} login --sync-server <url> (it will be rewritten; nothing else is affected).`)
+    if (!config) fail(`${path} is not a config file this version understands. Run: ${CMD} login --sync-server <url> (it will be rewritten - nothing else is affected).`)
     return config
 }
 
@@ -222,7 +222,7 @@ async function login(args: { 'sync-server'?: string; pat?: string; 'recovery-cod
     await writeConfig(path, config)
     console.log(`Keys unlocked and cached in ${path} (owner-only). Anyone who can read your files on this machine can read this account, as with a signed-in browser.`)
     const others = Object.keys(config.servers).filter((server) => server !== syncServer)
-    if (others.length > 0) console.log(`Also logged in to ${others.join(', ')}; commands now need --sync-server <url> to say which.`)
+    if (others.length > 0) console.log(`Also logged in to ${others.join(', ')} - commands now need --sync-server <url> to say which.`)
 
     await listGraphs({ syncServer, pat, vaultKey: toBase64Url(vaultKey) }, others.length > 0)
 }
@@ -279,7 +279,7 @@ async function approveOrFallBack(
         process.exit(controls.exitCode)
     }
     if (!abandoned) throw new Error('unreachable')
-    console.log('Approval cancelled; unlocking with your Recovery Code instead.')
+    console.log('Approval cancelled - unlocking with your Recovery Code instead.')
     return byRecoveryCode()
 }
 
@@ -349,7 +349,7 @@ async function semanticCommand(what: string | undefined): Promise<void> {
             const status = await semanticSetupStatus(process.env)
             console.log(`Runtime: ${status.runtime ? 'installed' : 'missing'} (${status.runtimeDir})`)
             console.log(`Model:   ${status.model ? 'present' : 'missing'} (${status.modelDir})`)
-            console.log(status.runtime && status.model ? 'Semantic search is set up; serve uses it unless started with --no-semantic.' : `Not set up. Run: ${CMD} semantic setup`)
+            console.log(status.runtime && status.model ? 'Semantic search is set up - serve uses it unless started with --no-semantic.' : `Not set up. Run: ${CMD} semantic setup`)
             const stores = await listGraphStores(process.env, MODEL.id)
             if (stores.length === 0) return
             console.log('')
@@ -407,7 +407,7 @@ async function publishCommand(args: ServeArgs & { publication?: string; out?: st
             await writePublishFolders(configPath, withPublishFolder(await readPublishFolders(configPath), key, publication, out))
             console.error(`etherpk-mcp: publish folder for "${publication}" of "${graphName}" set to ${out} (remembered in ${configPath}).`)
         } else if (!publishFolderOf(await readPublishFolders(configPath), key, publication)) {
-            fail(`No publish folder is set for "${publication}" of "${graphName}" on this machine. Pass --out <dir> once; it is remembered.`)
+            fail(`No publish folder is set for "${publication}" of "${graphName}" on this machine. Pass --out <dir> once - it is remembered.`)
         }
         const result = await publishTool(graph, { id: publication }, host)
         // Names nothing the site leaves out: this output often lands in a scheduled job's log.
@@ -497,7 +497,7 @@ async function openFolderForServe(folder: string, args: ServeArgs): Promise<{ gr
         onSemanticProgress: reportSemanticProgress,
         onError: (error) => console.error(`etherpk-mcp: ${error.message}`),
         onWarning: (line) => console.error(`etherpk-mcp: ${line}`),
-        watch: watchFolder(path, (error) => console.error(`etherpk-mcp: not watching the folder for changes (${error.message}); edits made outside are still picked up before each tool call.`)),
+        watch: watchFolder(path, (error) => console.error(`etherpk-mcp: not watching the folder for changes (${error.message}) - edits made outside are still picked up before each tool call.`)),
     })
     return { graph, graphName: name }
 }
@@ -586,7 +586,7 @@ async function serveGraph(graph: HeadlessGraph, graphName: string, args: ServeAr
             transport.onclose = listener
         },
         async shutdown(end) {
-            console.error(`etherpk-mcp: ${end}; flushing and exiting.`)
+            console.error(`etherpk-mcp: ${end} - flushing and exiting.`)
             await graph.settle().catch(() => {})
             await graph.dispose().catch(() => {})
             process.exit(0)
@@ -599,7 +599,7 @@ async function serveGraph(graph: HeadlessGraph, graphName: string, args: ServeAr
     // without one (ADR 0084). Off the agent's path; the tools check again when they need it.
     void chromiumStatus(process.env, CMD).then((chromium) => {
         if (chromium.executable) return
-        console.error(`etherpk-mcp: no browser for diagrams (run: ${chromium.setupCommand}, or set ETHERPK_CHROMIUM); a publish or theme preview with Mermaid diagrams refuses until then.`)
+        console.error(`etherpk-mcp: no browser for diagrams (run: ${chromium.setupCommand}, or set ETHERPK_CHROMIUM) - a publish or theme preview with Mermaid diagrams refuses until then.`)
     })
     // Off the agent's path: the model loads and the store catches up in the background, and a
     // semantic search meanwhile answers from what is built so far, marked incomplete.
@@ -608,17 +608,17 @@ async function serveGraph(graph: HeadlessGraph, graphName: string, args: ServeAr
             .semantic()
             .then(async (semantic) => {
                 const status = await semantic.status()
-                console.error(`etherpk-mcp: semantic search on (${semantic.model.id}); ${status.embedded} of ${status.total} passages embedded, building the rest in the background.`)
+                console.error(`etherpk-mcp: semantic search on (${semantic.model.id}) - ${status.embedded} of ${status.total} passages embedded, building the rest in the background.`)
             })
             .catch((error: unknown) => console.error(`etherpk-mcp: semantic search unavailable: ${error instanceof Error ? error.message : String(error)}`))
     if (semanticOn) {
         void startSemantic()
     } else if (!args['no-semantic']) {
-        console.error(`etherpk-mcp: semantic search is not set up on this computer (run: ${CMD} semantic setup; this process will notice within half a minute, no restart needed); search answers by text only until then.`)
+        console.error(`etherpk-mcp: semantic search is not set up on this computer (run: ${CMD} semantic setup - this process will notice within half a minute, no restart needed). Search answers by text only until then.`)
         // Setup run while this process serves is noticed and acted on, so the store is building
         // by the time the agent first asks by meaning - and a search before then loads it anyway.
         whenSemanticSetUp(process.env, () => {
-            console.error('etherpk-mcp: semantic setup found; loading the model and building the store.')
+            console.error('etherpk-mcp: semantic setup found - loading the model and building the store.')
             void startSemantic()
         })
     }

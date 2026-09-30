@@ -517,7 +517,7 @@
                             data-testid="mirror-held-elsewhere"
                         >
                             Another tab of this browser is mirroring this graph.
-                            Only one tab writes to the folder at a time; this
+                            Only one tab writes to the folder at a time - this
                             one takes over by itself if that tab closes.
                         </p>
                         <div class="flex flex-wrap gap-2">
@@ -592,7 +592,7 @@
                             >
                                 Could not ask the server for edits made on other
                                 devices, so some may not be in the folder yet. It
-                                asks again shortly; Mirror now asks at once.
+                                asks again shortly - Mirror now asks at once.
                             </p>
                         {/if}
                         <!-- Each of these can name thousands of files on a real graph, so the count
@@ -617,7 +617,7 @@
                         {#if mirror.status.danglingLinks.length > 0}
                             {@render mirrorList(
                                 "mirror-dangling-links",
-                                `${mirror.status.danglingLinks.length} ${mirror.status.danglingLinks.length === 1 ? "link points" : "links point"} at an attachment this graph does not hold, usually from an import that could not bring the file across. No pass can resolve ${mirror.status.danglingLinks.length === 1 ? "it" : "them"}; the documents holding ${mirror.status.danglingLinks.length === 1 ? "it" : "them"} are named below.`,
+                                `${mirror.status.danglingLinks.length} ${mirror.status.danglingLinks.length === 1 ? "link points" : "links point"} at an attachment this graph does not hold, usually from an import that could not bring the file across. No pass can resolve ${mirror.status.danglingLinks.length === 1 ? "it" : "them"} - the documents holding ${mirror.status.danglingLinks.length === 1 ? "it" : "them"} are named below.`,
                                 mirror.status.danglingLinks.map(
                                     (link) => `${link.concept} → ${link.name}`,
                                 ),
@@ -675,7 +675,7 @@
                         >
                             This browser can't give EtherPK a folder to write
                             to. Mirroring needs the File System Access API,
-                            which Chrome and Edge on a desktop provide; phones
+                            which Chrome and Edge on a desktop provide - phones
                             and Firefox don't yet.
                         </p>
                     {:else}
@@ -849,7 +849,7 @@
                         outside the part between the
                         <code class="font-mono">&lt;!-- BEGIN ETHERPK --&gt;</code>
                         and <code class="font-mono">&lt;!-- END ETHERPK --&gt;</code>
-                        lines is kept; that part is rewritten each time the
+                        lines is kept - that part is rewritten each time the
                         graph opens so it always matches this version.
                     </p>
                     {#if agents.folderPath}
@@ -1068,7 +1068,7 @@
                     <p class="mt-1.5 text-sm text-gray-500 dark:text-gray-400">
                         Uploaded images get this added to their description, e.g.
                         <code>![photo|{DEFAULT_IMAGE_DISPLAY_SIZE}]</code>. A width like
-                        800 or width×height like 800x600; 0 for natural size.
+                        800 or width×height like 800x600, or 0 for natural size.
                     </p>
                 </div>
                 <div>
@@ -1101,7 +1101,7 @@
                         class="block w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-gray-950 dark:text-gray-100 focus:border-gray-950 dark:focus:border-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-950 dark:focus:ring-gray-400"
                     />
                     <p class="mt-1.5 text-sm text-gray-500 dark:text-gray-400">
-                        Which documents are recent is remembered per device; how
+                        Which documents are recent is remembered per device - how
                         many are listed is shared.
                     </p>
                 </div>
@@ -1176,7 +1176,7 @@
                     <p class="mt-3 text-sm text-gray-500 dark:text-gray-400">
                         Colours the bar of buttons above the panes (the tab strip on
                         a phone), so this graph is easy to tell apart. Pick one of
-                        the ready-made colours or any colour of your own; one colour
+                        the ready-made colours or any colour of your own - one colour
                         for light and dark themes.
                     </p>
                 </div>
@@ -1199,7 +1199,7 @@
                         <p class="mt-1.5 text-sm text-gray-500 dark:text-gray-400">
                             Where the <strong class="font-medium">{folderPath.folderName}</strong> folder is on this
                             computer. Used by "Copy full file path" on a document tab, and
-                            remembered here only; the browser cannot see it for itself.
+                            remembered here only - the browser cannot see it for itself.
                         </p>
                     </div>
                 {/if}
@@ -1254,9 +1254,9 @@
      tools name in a refusal, spelled here so a person can copy them to the agent's machine. -->
 {#snippet agentExtras(props: AgentsTabProps)}
     {@const extras = [
-        { key: "semantic" as const, label: "Search by meaning", text: semanticSetupCommand(props.headlessClient), note: "Installs the embedding model once per computer; the agent's search gains mode: semantic." },
-        { key: "diagrams" as const, label: "Publish diagrams", text: diagramsSetupCommand(props.headlessClient), note: "Installs the browser a publish draws Mermaid diagrams with; a publish with diagrams refuses until it has run." },
-        ...(publishCommand(props) ? [{ key: "publish" as const, label: "Publish from the agent's machine", text: publishCommand(props)!, note: "Publishes once and remembers the folder; the agent's publish tool then writes there and cannot choose another folder." }] : []),
+        { key: "semantic" as const, label: "Search by meaning", text: semanticSetupCommand(props.headlessClient), note: "Installs the embedding model once per computer - the agent's search gains mode: semantic." },
+        { key: "diagrams" as const, label: "Publish diagrams", text: diagramsSetupCommand(props.headlessClient), note: "Installs the browser a publish draws Mermaid diagrams with - a publish with diagrams refuses until it has run." },
+        ...(publishCommand(props) ? [{ key: "publish" as const, label: "Publish from the agent's machine", text: publishCommand(props)!, note: "Publishes once and remembers the folder - the agent's publish tool then writes there and cannot choose another folder." }] : []),
     ]}
     <div class="space-y-3" data-testid="agents-extras">
         <p class="text-sm font-medium text-gray-950 dark:text-gray-100">Optional, on the agent's machine</p>

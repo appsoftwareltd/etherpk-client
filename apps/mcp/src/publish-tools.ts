@@ -157,7 +157,7 @@ export async function createPublication(graph: HeadlessGraph, args: CreatePublic
     const before = summarisePublishing((await graph.publishing.readSource()).source)
     if (before.publications.some((p) => p.id === id)) throw new ToolError('already_exists', `A publication with the id "${id}" already exists (page "${before.publications.find((p) => p.id === id)!.concept}").`)
     if (graph.store.listDocuments().some((d) => d.key === title.toLowerCase() || d.aliases.some((a) => a.toLowerCase() === title.toLowerCase()))) {
-        throw new ToolError('already_exists', `A document already answers to "${title}"; choose another title for the publication page.`)
+        throw new ToolError('already_exists', `A document already answers to "${title}" - choose another title for the publication page.`)
     }
     if (args.theme) await requireTheme(graph, args.theme)
     const store = frontmatterStore(graph)

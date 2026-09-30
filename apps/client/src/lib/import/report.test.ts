@@ -13,7 +13,7 @@ describe('buildReportPage', () => {
             { category: 'not-stored', detail: '"b.png" (1 MiB) was not uploaded: too large. Documents that reference it still point at the original file.' },
             { category: 'degradation', concept: 'Note', detail: 'Callout became a quote' },
         ]), 'obsidian', '2026-09-27')
-        expect(page.text).toContain('2 files could not be uploaded; they are listed first.')
+        expect(page.text).toContain('2 files could not be uploaded - they are listed first.')
         expect(page.text).toContain('1 conversion could not be performed losslessly')
         expect(page.text).not.toContain('3 conversions')
     })
@@ -26,7 +26,7 @@ describe('buildReportPage', () => {
 
     it('says the conversion was clean when only uploads failed', () => {
         const page = buildReportPage(graph([{ category: 'not-stored', detail: '"a.png" was not uploaded: too large.' }]), 'logseq', '2026-09-27')
-        expect(page.text).toContain('1 file could not be uploaded; it is listed first.')
+        expect(page.text).toContain('1 file could not be uploaded - it is listed first.')
         expect(page.text).toContain('Every document converted cleanly')
     })
 })

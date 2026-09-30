@@ -25,7 +25,7 @@ server and graph filled in:
 # unlocked. The same step as adding a phone.
 npx @appsoftwareltd/etherpk-mcp login --sync-server https://sync.etherpk.com
 
-# Tell the agent about the graph (Claude Code shown; the Agents tab has the others).
+# Tell the agent about the graph (Claude Code shown - the Agents tab has the others).
 claude mcp add etherpk -- npx @appsoftwareltd/etherpk-mcp serve --sync-server https://sync.etherpk.com --graph <graph id>
 ```
 
@@ -46,7 +46,7 @@ The server describes its tools and the graph to the agent, so no skill or extra 
 about something you've written down and the agent uses the tools. To make that a rule rather than
 the agent's judgement, add a line to your `CLAUDE.md`, or your agent's equivalent:
 
-> My notes live in EtherPK; use the etherpk MCP tools for anything I've written down, and `search`
+> My notes are stored in EtherPK - use the etherpk MCP tools for anything I've written down, and `search`
 > in semantic mode for questions.
 
 ## What the agent can do
@@ -57,22 +57,22 @@ and every tool refuses a protected document.
 | Group | Tools | Notes |
 | --- | --- | --- |
 | Find and read | `graph_info`, `list_documents`, `read_document`, `read_documents`, `search`, `backlinks`, `tasks` | `list_documents` can narrow to a range of journal days. `read_document` returns the body as text and the frontmatter as data. |
-| Edit | `edit_document`, `append_document`, `create_page`, `set_task`, `set_frontmatter`, `set_aliases` | `edit_document` replaces one exact, unique piece of text; on a synced graph it merges with edits made elsewhere at the same time. `append_document` creates a day's journal entry when there is none. `set_frontmatter` sets any key except `title`, `aliases` and `publication`, which have tools of their own. |
+| Edit | `edit_document`, `append_document`, `create_page`, `set_task`, `set_frontmatter`, `set_aliases` | `edit_document` replaces one exact, unique piece of text - on a synced graph it merges with edits made elsewhere at the same time. `append_document` creates a day's journal entry when there is none. `set_frontmatter` sets any key except `title`, `aliases` and `publication`, which have tools of their own. |
 | Rename | `plan_rename`, `rename` | Links to the old name are rewritten by default and scoped concepts move with it. Renaming onto a name that is taken merges two documents and needs confirming. |
 | Images and files | `upload_asset`, `read_asset`, `list_assets` | `upload_asset` returns the markdown to paste into a document. It refuses hidden files and folders (`.ssh`, `.env`), the Headless Client's own config and cache, and files over 100 MiB. `read_asset` writes an asset to a local file. |
-| Publishing | `list_publications`, `create_publication`, `update_publication`, `publish` | `publish` writes into the folder you set with the `publish` command; the agent can't choose one. |
-| Themes | `list_themes`, `read_theme`, `read_theme_file`, `create_theme`, `customise_publication_theme`, `write_theme_file`, `delete_theme_file`, `import_theme_folder`, `delete_theme`, `preview_theme` | Bundled themes are read-only; customising one copies it into the graph. `preview_theme` renders a site to inspect, with screenshots when a browser is set up. |
+| Publishing | `list_publications`, `create_publication`, `update_publication`, `publish` | `publish` writes into the folder you set with the `publish` command - the agent can't choose one. |
+| Themes | `list_themes`, `read_theme`, `read_theme_file`, `create_theme`, `customise_publication_theme`, `write_theme_file`, `delete_theme_file`, `import_theme_folder`, `delete_theme`, `preview_theme` | Bundled themes are read-only - customising one copies it into the graph. `preview_theme` renders a site to inspect, with screenshots when a browser is set up. |
 
 `read_asset`, `read_theme` and `preview_theme` write only under the graph's **downloads directory**,
 `downloads` inside the graph's folder in the cache directory, and `import_theme_folder` reads only
-from there. An agent names a folder relative to it and gets the full path back; a folder outside it
+from there. An agent names a folder relative to it and gets the full path back - a folder outside it
 is refused, so a prompt hidden in a note cannot steer the agent into writing or reading elsewhere.
 Copy a file out with your own tools when you want it somewhere else.
 
 ## Search by meaning
 
 `search` matches words. After one setup step it also matches **meaning**: "when do I pay my taxes"
-finds the note that says "due 31 January". A small embedding model runs on this computer; nothing is
+finds the note that says "due 31 January". A small embedding model runs on this computer - nothing is
 sent anywhere, and protected documents are never embedded.
 
 ```sh
@@ -89,14 +89,14 @@ directory, once per computer.
   Each result carries the document, its breadcrumb of headings and parent bullets, the passage's
   lines and text, and a similarity score. Passage text has bullet markers and `[[ ]]` removed, so
   quote it, but take the `old` text for `edit_document` from `read_document`.
-- **Progress.** The first pass over a large graph takes minutes and runs in the background; after
+- **Progress.** The first pass over a large graph takes minutes and runs in the background - after
   that only changed documents are embedded. Every semantic result reports `embedded`, `total` and
   `complete`, and `semantic status` shows each cached graph.
 - **Only while `serve` runs.** `serve` builds and updates the store, and runs only while an agent
   session has it open. To keep a graph current without an agent, run
   `npx @appsoftwareltd/etherpk-mcp serve --graph <id> </dev/null &` (or `--folder <path>`).
 - **Load.** The model uses a quarter of the cores, at most four, and pauses for a tenth of a second
-  between batches. `ETHERPK_MCP_SEMANTIC_THREADS` changes the thread count; set it in the agent
+  between batches. `ETHERPK_MCP_SEMANTIC_THREADS` changes the thread count - set it in the agent
   registration's `env`.
 - **Per agent.** `serve --no-semantic` keeps one registration text-only.
 
@@ -120,7 +120,7 @@ give its address to `login`.
 
 `graphs` lists the synced graphs each signed-in account can reach, with the name, the id and your
 role. `serve --graph` takes the id or the name. A graph nobody has opened since names were first
-stored on the server is opened once to read its name; `(unnamed)` means it has none.
+stored on the server is opened once to read its name - `(unnamed)` means it has none.
 
 ### Several Sync Servers
 
@@ -136,7 +136,7 @@ and the commands the Agents tab shows always include it.
   tool call, and the index follows within a second or so.
 - A tool's write is in the file when the tool returns. If a write fails, the agent is told why and
   the edit is retried on the next write.
-- The index lives under the cache directory, never in the folder. Moving or renaming the folder
+- The index is stored under the cache directory, never in the folder. Moving or renaming the folder
   starts the index again.
 
 ## Publishing a site
@@ -155,13 +155,13 @@ npx @appsoftwareltd/etherpk-mcp publish --graph <id or name> --publication <id> 
   republishes itself.
 - Mermaid diagrams need a browser. `diagrams setup` installs a Chromium of about 170 MB into the
   cache directory, once per computer, and a publish whose pages hold diagrams refuses until then.
-  `ETHERPK_CHROMIUM` names a Chromium already on the computer instead; NixOS needs this.
+  `ETHERPK_CHROMIUM` names a Chromium already on the computer instead - NixOS needs this.
 - `list_publications`, or **Settings → Publish** in EtherPK, shows the publication ids.
 
 ## Reference
 
 Every command is `npx @appsoftwareltd/etherpk-mcp <command>`. `npx` never puts `etherpk-mcp` on
-your PATH; for the short form, install the package globally once:
+your PATH - for the short form, install the package globally once:
 
 ```sh
 npm install -g @appsoftwareltd/etherpk-mcp
@@ -189,7 +189,7 @@ npm install -g @appsoftwareltd/etherpk-mcp
 
 | Flag | Applies to | Meaning |
 | --- | --- | --- |
-| `--sync-server <url>` | `login`, `graphs`, `serve --graph`, `publish --graph`, `logout` | Which Sync Server the command means. Required for `login`; elsewhere optional while only one server is signed in. `serve` and `logout` refuse to guess when several are. |
+| `--sync-server <url>` | `login`, `graphs`, `serve --graph`, `publish --graph`, `logout` | Which Sync Server the command means. Required for `login` - elsewhere optional while only one server is signed in. `serve` and `logout` refuse to guess when several are. |
 | `--pat <token>` | `login` | The Personal Access Token, instead of the prompt. |
 | `--recovery-code` | `login` | Unlock with your Recovery Code instead of waiting for Device Approval. Pressing `r` while `login` waits does the same. |
 | `--graph <id or name>` | `serve`, `publish` | The synced graph. Not with `--folder`. |
@@ -234,7 +234,7 @@ and keys on this computer and deletes that server's cached graphs.
 
 ## Build from source
 
-The package lives at `apps/mcp` in the etherpk-client repository. It compiles the Client's sync,
+The package's source is `apps/mcp` in the etherpk-client repository. It compiles the Client's sync,
 crypto and index code in through a `$lib` alias, so it builds from the repository root, not from
 this folder alone:
 
@@ -242,7 +242,7 @@ this folder alone:
 pnpm install --frozen-lockfile
 pnpm --filter @appsoftwareltd/etherpk-mcp check   # type check
 pnpm --filter @appsoftwareltd/etherpk-mcp test    # unit tests, no server needed
-pnpm --filter @appsoftwareltd/etherpk-mcp build   # dist/main.js; run it with node dist/main.js
+pnpm --filter @appsoftwareltd/etherpk-mcp build   # dist/main.js - run it with node dist/main.js
 ```
 
 Releases are published to npm by the repository's CI, at the same version as the Client. To check

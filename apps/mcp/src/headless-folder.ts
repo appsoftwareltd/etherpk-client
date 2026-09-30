@@ -148,7 +148,7 @@ export async function openHeadlessFolder(deps: HeadlessFolderDeps): Promise<Head
                 for (const conflict of raised) {
                     await store.resolveConflict(conflict.target, 'take-disk')
                     saveErrors.delete(conceptKey(conflict.target))
-                    warn(`"${conflict.target}" changed on disk while an edit to it could not be written; took the file on disk and discarded the edit.`)
+                    warn(`"${conflict.target}" changed on disk while an edit to it could not be written - took the file on disk and discarded the edit.`)
                 }
             })()
             const pass = reconciling

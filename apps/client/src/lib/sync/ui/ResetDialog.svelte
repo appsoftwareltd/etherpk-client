@@ -204,7 +204,7 @@
                     deleted.
                 </p>
                 <p class="mt-1 text-sm text-red-700/80 dark:text-red-300/80">
-                    These are yours alone; no one else holds their keys, so they
+                    These are yours alone - no one else holds their keys, so they
                     cannot be recovered.
                 </p>
             </div>

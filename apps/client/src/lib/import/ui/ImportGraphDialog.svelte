@@ -408,7 +408,7 @@
                     target="_blank"
                     rel="noopener noreferrer"
                     data-testid="import-guide"
-                    class="font-medium underline">What import converts</a
+                    class="font-medium underline">Importing an existing knowledge base</a
                 >
             </p>
             <input
@@ -500,7 +500,7 @@
             <fieldset>
                 <legend
                     class="mb-1.5 block text-sm font-medium text-gray-500 dark:text-gray-400"
-                    >Where the new graph lives</legend
+                    >Where to store the new graph</legend
                 >
                 <div class="space-y-2">
                     <label
@@ -627,7 +627,7 @@
                     ? `, and ${oversize.length - 3} more`
                     : ""}. Importing continues without {oversize.length === 1
                     ? "it"
-                    : "them"}; the import report lists {oversize.length === 1
+                    : "them"} - the import report lists {oversize.length === 1
                     ? "it"
                     : "them"} in the new graph.
             </p>

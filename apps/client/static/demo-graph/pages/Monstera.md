@@ -12,13 +12,13 @@ That image carries a size hint - the `|420` after the alt text caps how wide it 
 
 ![A wild monstera climbing a tree](../assets/monstera-wild.681f3c24.webp)
 
-Click either to open it in its own tab. Uploads land in the graph's own `assets/` folder; drop a file onto this page or paste one from the clipboard to see.
+Click either to open it in its own tab. Uploads land in the graph's own `assets/` folder - drop a file onto this page or paste one from the clipboard to see.
 
 ## Care
 
 The short version is on the [care sheet](../assets/monstera-care-sheet.e2e78af3.pdf) - a PDF, which opens in a tab of its own too. The long version:
 
-- Bright, indirect light. Direct sun scorches; deep shade means small, unsplit leaves.
+- Bright, indirect light. Direct sun scorches - deep shade means small, unsplit leaves.
 - [[Watering]] when the top few centimetres of [[Soil]] are dry. In winter that might be every three weeks.
 - Feed monthly in the growing season with any balanced [[[[Plant]] Foods]].
 - Give it a moss pole. It will climb it, slowly, and the leaves get bigger when it does.

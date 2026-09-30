@@ -385,7 +385,7 @@ function refuseIfProtected(concept: string, text: string): void {
     if (documentProtection(text).kind === 'document') {
         throw new ToolError(
             'protected_document',
-            `"${concept}" is a protected document. Its content is encrypted under a key this client never holds, so it cannot be read or changed here; the user can unlock it in EtherPK.`,
+            `"${concept}" is a protected document. Its content is encrypted under a key this client never holds, so it cannot be read or changed here - the user can unlock it in EtherPK.`,
         )
     }
 }
@@ -626,7 +626,7 @@ export async function editDocument(graph: HeadlessGraph, args: EditDocumentArgs)
     refuseIfProtected(identity.concept, text)
     const first = text.indexOf(args.old)
     if (first === -1) {
-        throw new ToolError('no_match', `"${identity.concept}" does not contain the text to replace. Read the document again; it may have changed.`)
+        throw new ToolError('no_match', `"${identity.concept}" does not contain the text to replace. Read the document again - it may have changed.`)
     }
     if (text.indexOf(args.old, first + 1) !== -1) {
         throw new ToolError('ambiguous_match', `The text to replace occurs more than once in "${identity.concept}". Include more surrounding text so it matches exactly once.`)
@@ -667,7 +667,7 @@ export async function createPage(graph: HeadlessGraph, args: CreatePageArgs) {
     const title = args.title.trim()
     if (title === '') throw new ToolError('invalid_argument', 'title must not be empty.')
     if (isJournalConcept(title)) {
-        throw new ToolError('invalid_argument', `"${title}" is a calendar day, so it names a journal entry; use append_document to write to it.`)
+        throw new ToolError('invalid_argument', `"${title}" is a calendar day, so it names a journal entry - use append_document to write to it.`)
     }
     await graph.store.refresh()
     if (resolveIdentity(graph, title)) {
@@ -1002,7 +1002,7 @@ export async function listAssets(graph: HeadlessGraph, args: ListAssetsArgs = {}
  */
 export async function readDocuments(graph: HeadlessGraph, args: { concepts: string[] }) {
     if (!Array.isArray(args.concepts) || args.concepts.length === 0) throw new ToolError('invalid_argument', 'concepts must be a non-empty list of names.')
-    if (args.concepts.length > READ_MANY_LIMIT) throw new ToolError('too_many', `At most ${READ_MANY_LIMIT} documents per call; ask again for the rest.`)
+    if (args.concepts.length > READ_MANY_LIMIT) throw new ToolError('too_many', `At most ${READ_MANY_LIMIT} documents per call - ask again for the rest.`)
     await graph.store.refresh()
     let budget = READ_MANY_TEXT_CAP
     const documents: Array<ReadDocumentResult | { concept: string; error: ToolErrorCode; message: string }> = []
@@ -1062,11 +1062,11 @@ export async function setTask(graph: HeadlessGraph, args: SetTaskArgs) {
     const lines = text.split('\n')
     const current = lines[args.line]
     const parsed = current === undefined ? null : parseTaskLine(current)
-    if (!parsed) throw new ToolError('task_moved', `Line ${args.line} of "${identity.concept}" is not a task now; read the document or list tasks again.`)
+    if (!parsed) throw new ToolError('task_moved', `Line ${args.line} of "${identity.concept}" is not a task now - read the document or list tasks again.`)
     // `tasks` reports the text with its tag run; a caller may also pass the bare text.
     const afterCheckbox = current!.replace(/^\s*-\s+\[[ xX]\]\s?/, '').trim()
     if (args.expect !== undefined && args.expect.trim() !== afterCheckbox && args.expect.trim() !== parsed.text.trim()) {
-        throw new ToolError('task_moved', `Line ${args.line} of "${identity.concept}" now reads "${parsed.text}", not "${args.expect}"; list tasks again before changing it.`)
+        throw new ToolError('task_moved', `Line ${args.line} of "${identity.concept}" now reads "${parsed.text}", not "${args.expect}" - list tasks again before changing it.`)
     }
     const tags = { ...parsed }
     let done = parsed.done
@@ -1128,7 +1128,7 @@ export async function graphInfo(graph: HeadlessGraph) {
         },
         semantic: status
             ? { state: 'open' as const, embedded: status.embedded, total: status.total, complete: status.embedded >= status.total }
-            : { state: 'not-opened' as const, note: 'The first search with mode "semantic" loads the model; if it is not set up on this computer, that search says so and names the command.' },
+            : { state: 'not-opened' as const, note: 'The first search with mode "semantic" loads the model - if it is not set up on this computer, that search says so and names the command.' },
         assets: { available: graph.assets !== undefined },
     }
 }

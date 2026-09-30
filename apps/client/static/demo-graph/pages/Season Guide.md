@@ -15,7 +15,7 @@ Everything wakes up. This is your busiest season.
 - Resume [[Watering]] more often - check the [[Soil]] weekly
 - Resume feeding with [[[[Plant]] Foods]] - monthly for most things
 - The time for [[Repotting]] - plants bounce back fastest when they're growing
-- Take cuttings; they root quickly in warmth and light
+- Take cuttings - they root quickly in warmth and light
 - Check for [[Pests]] - they wake up too
 
 ## ☀️ Summer
@@ -24,7 +24,7 @@ Peak growing season. Your job is to keep up.
 
 - [[Watering]] weekly or more in a hot, dry spell - always check first
 - Keep feeding, every two to four weeks
-- Shade from harsh afternoon sun; even a [[Succulent]] can burn against glass
+- Shade from harsh afternoon sun - even a [[Succulent]] can burn against glass
 - Open a window. Airflow keeps fungal problems away
 
 ## 🍂 Autumn

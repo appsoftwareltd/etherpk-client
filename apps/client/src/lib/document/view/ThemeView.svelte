@@ -232,7 +232,7 @@
         if (!theme) return;
         const path = newPath.trim();
         if (!isThemeFilePath(path)) {
-            error = "A theme file lives under layouts/, partials/ or assets/, with no `..` in its path.";
+            error = "A theme file must be under layouts/, partials/ or assets/, with no `..` in its path.";
             return;
         }
         if (theme.files[path] !== undefined) {
@@ -254,7 +254,7 @@
         if (!theme || selected === null) return;
         const path = selected;
         if (path === "theme.json" || path === "layouts/page.html") {
-            error = `${path} is required; a theme cannot render without it.`;
+            error = `${path} is required - a theme cannot render without it.`;
             return;
         }
         try {
@@ -489,7 +489,7 @@
                 <div class="flex flex-wrap items-center gap-2 border-b border-gray-200 dark:border-gray-800 px-3 py-1.5 text-sm">
                     <span class="font-medium text-gray-950 dark:text-gray-100" data-testid="theme-view-selected">{selected ?? "No file selected"}</span>
                     {#if selected !== null && changedElsewhere.has(selected)}
-                        <span class="text-red-700 dark:text-red-300" data-testid="theme-view-conflict">Changed elsewhere since you started editing. Save keeps yours; Revert takes theirs.</span>
+                        <span class="text-red-700 dark:text-red-300" data-testid="theme-view-conflict">Changed elsewhere since you started editing. Save keeps yours - Revert takes theirs.</span>
                     {:else if selectedDirty}
                         <span class="text-amber-700 dark:text-amber-300" data-testid="theme-view-unsaved">Unsaved changes</span>
                     {:else if selected !== null}

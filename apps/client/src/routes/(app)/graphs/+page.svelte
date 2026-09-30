@@ -529,8 +529,8 @@
     );
     /**
      * A browser with nothing of its own yet: no graphs but the demo, no synced graph held for any
-     * server (signed in or not), and none on any server's account. The page then leads with the
-     * choices this browser has (the first-run card) rather than empty lists.
+     * server (signed in or not), and none on any server's account. The page then says so in one card
+     * (the first-run card) rather than showing empty lists.
      */
     const firstRun = $derived(
         firstRunKnown &&
@@ -538,14 +538,6 @@
             localGraphs.length === 0 &&
             heldCopies.length === 0 &&
             servers.every((server) => server.graphs.length === 0),
-    );
-    /** A server whose account can take a new synced graph now. */
-    const canCreateSomewhere = $derived(
-        servers.some(
-            (server) =>
-                server.authState === "authenticated" &&
-                server.createBlockedReason === null,
-        ),
     );
     /**
      * Every server's plan stands in the way of a new graph, so New synced graph is disabled; the
@@ -568,19 +560,6 @@
               ? servers[0].createBlockedReason
               : "None of your Sync Servers can take a new graph now. Each one's group below says why.",
     );
-    /** What the first-run card's synced line offers: create, sign in, connect, or Sync+. */
-    const syncedFirstStep = $derived.by(() => {
-        const signedIn = servers.filter(
-            (server) => server.authState === "authenticated",
-        );
-        if (signedIn.length > 0) {
-            return !canCreateSomewhere &&
-                signedIn.every((server) => server.syncPlusRequired)
-                ? "upgrade"
-                : "create";
-        }
-        return signsInToManagedSync() ? "sign-in" : "connect";
-    });
     const SECONDARY_BUTTON =
         "inline-flex items-center justify-center rounded-lg border border-gray-300 dark:border-gray-700 px-3 py-1.5 pointer-coarse:min-h-11 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5";
 
@@ -1733,7 +1712,7 @@
         const server = serverFor(createOrigin);
         if (createBusy || !name) return;
         if (!server) {
-            createError = "Choose the Sync Server the graph lives on.";
+            createError = "Choose the Sync Server to store the graph on.";
             return;
         }
         createBusy = true;
@@ -2110,7 +2089,7 @@
             removeSynced = null;
             await refresh();
             setStatus(
-                `${describeSyncFailure(err, `remove the synced graphs from ${where} from this browser`)} ${removed} of ${pending.held.length} were removed; try again for the rest.`,
+                `${describeSyncFailure(err, `remove the synced graphs from ${where} from this browser`)} ${removed} of ${pending.held.length} were removed - try again for the rest.`,
                 "error",
             );
         } finally {
@@ -2176,7 +2155,7 @@
         if (!server) {
             setRowStatus(
                 graph.id,
-                "This device is not connected to the Sync Server this graph lives on. Add it on the Sync tab.",
+                "This device is not connected to the Sync Server that stores this graph. Add it on the Sync tab.",
                 "error",
             );
         }
@@ -3184,22 +3163,16 @@
         </h1>
         <!-- Offered once the page knows what this browser holds: before then, which actions apply
              (the demo, a folder) is not known. All four share one style: none of them is the right
-             first step for everyone. -->
+             first step for everyone. The ones that create a graph of your own come first, the demo
+             last. -->
         {#if listReady}
-            <div class="flex flex-wrap gap-2">
+            <div data-testid="graphs-actions" class="flex flex-wrap gap-2">
                 {#if supported}
                     <button
                         data-testid="graphs-open-folder"
                         onclick={openFolder}
                         class={SECONDARY_BUTTON}
                         >Open folder (Local Graph)</button
-                    >
-                {/if}
-                {#if demoAvailable}
-                    <a
-                        data-testid="graphs-try-demo"
-                        href="/demo"
-                        class={SECONDARY_BUTTON}>Try the demo</a
                     >
                 {/if}
                 <button
@@ -3222,6 +3195,13 @@
                     onclick={() => (importDialog = true)}
                     class={SECONDARY_BUTTON}>Import</button
                 >
+                {#if demoAvailable}
+                    <a
+                        data-testid="graphs-try-demo"
+                        href="/demo"
+                        class={SECONDARY_BUTTON}>Try the demo</a
+                    >
+                {/if}
             </div>
         {/if}
     </header>
@@ -3284,8 +3264,9 @@
 
     <!--
         A browser that cannot open a folder, said next to the buttons. A first visit gets the
-        first-run card instead, which lists only what this browser can do; this notice is for a
-        browser that already has graphs, with the way to a synced graph when none is set up.
+        first-run card instead, which names only the actions this browser has and says the same;
+        this notice is for a browser that already has graphs, with the way to a synced graph when
+        none is set up.
     -->
     {#if !supported && firstRunKnown && !firstRun}
         <div
@@ -3484,133 +3465,44 @@
                 {@render loadingSkeleton("Loading your graphs…")}
             {:else}
                 {#if firstRun}
+                    <!-- A browser with nothing of its own yet. The header carries every way to a
+                         graph, so the card names those actions rather than repeating them. -->
                     <div
                         data-testid="graphs-first-run"
-                        class="rounded-xl border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5 p-5 space-y-4"
+                        class="rounded-xl border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5 p-5 space-y-3"
                     >
-                        <div>
-                            <h2
-                                class="text-sm font-semibold text-gray-950 dark:text-white"
+                        <p
+                            data-testid="first-run-summary"
+                            class="text-sm text-gray-700 dark:text-gray-300"
+                        >
+                            You don't have any graphs yet. Choose
+                            {#if supported}<span class="font-medium text-gray-950 dark:text-white"
+                                    >Open folder</span
+                                >,{/if}
+                            <span class="font-medium text-gray-950 dark:text-white"
+                                >New synced graph</span
                             >
-                                Where will your notes live?
-                            </h2>
-                            <p
-                                class="mt-1 text-sm text-gray-500 dark:text-gray-400"
-                            >
-                                A graph's home is fixed when it is created.
-                            </p>
-                        </div>
-                        <ul class="space-y-3">
-                            {#if supported}
-                                <li
-                                    data-testid="first-run-folder"
-                                    class="flex flex-wrap items-center justify-between gap-2"
-                                >
-                                    <p
-                                        class="min-w-0 flex-1 text-sm text-gray-700 dark:text-gray-300"
-                                    >
-                                        <span
-                                            class="font-medium text-gray-950 dark:text-white"
-                                            >A folder on this computer.</span
-                                        >
-                                        Free, in plain Markdown files any editor
-                                        can open.
-                                    </p>
-                                    <button
-                                        type="button"
-                                        onclick={openFolder}
-                                        class={SECONDARY_BUTTON}
-                                        >Open folder</button
-                                    >
-                                </li>
-                            {/if}
-                            <li
-                                data-testid="first-run-synced"
-                                class="flex flex-wrap items-center justify-between gap-2"
-                            >
-                                <p
-                                    class="min-w-0 flex-1 text-sm text-gray-700 dark:text-gray-300"
-                                >
-                                    <span
-                                        class="font-medium text-gray-950 dark:text-white"
-                                        >A synced graph.</span
-                                    >
-                                    On all your devices and in any browser, end-to-end
-                                    encrypted, {signsInToManagedSync()
-                                        ? "with an EtherPK account that has Sync+."
-                                        : "through your team's Sync Server."}
-                                </p>
-                                {#if syncedFirstStep === "create"}
-                                    <button
-                                        type="button"
-                                        onclick={startCreateServerGraph}
-                                        disabled={createDisabled}
-                                        class={SECONDARY_BUTTON}
-                                        >New synced graph</button
-                                    >
-                                {:else if syncedFirstStep === "sign-in"}
-                                    <button
-                                        type="button"
-                                        onclick={connectManagedSync}
-                                        class={SECONDARY_BUTTON}>Sign in</button
-                                    >
-                                {:else if syncedFirstStep === "connect"}
-                                    <button
-                                        type="button"
-                                        onclick={() =>
-                                            void openSyncPanel("add")}
-                                        class={SECONDARY_BUTTON}
-                                        >Connect to a Sync Server</button
-                                    >
-                                {:else if corporateBillingUrl}
-                                    <a
-                                        href={corporateBillingUrl}
-                                        data-sveltekit-reload
-                                        class={SECONDARY_BUTTON}>See Sync+</a
-                                    >
-                                {/if}
-                            </li>
-                            {#if demoAvailable}
-                                <li
-                                    data-testid="first-run-demo"
-                                    class="flex flex-wrap items-center justify-between gap-2"
-                                >
-                                    <p
-                                        class="min-w-0 flex-1 text-sm text-gray-700 dark:text-gray-300"
-                                    >
-                                        <span
-                                            class="font-medium text-gray-950 dark:text-white"
-                                            >The demo.</span
-                                        >
-                                        A sample graph to explore. It stays in this
-                                        browser.
-                                    </p>
-                                    <a href="/demo" class={SECONDARY_BUTTON}
-                                        >Try the demo</a
-                                    >
-                                </li>
-                            {/if}
-                        </ul>
+                            or <span class="font-medium text-gray-950 dark:text-white">Import</span> to
+                            create a graph.
+                        </p>
                         {#if !supported}
                             <p class="text-sm text-gray-500 dark:text-gray-400">
                                 Folders need a Chromium-based desktop browser:
                                 Chrome, Edge or Brave.
                             </p>
                         {/if}
-                        <p class="text-sm text-gray-500 dark:text-gray-400">
-                            Coming from Logseq or Obsidian?
-                            <button
-                                type="button"
-                                onclick={() => (importDialog = true)}
-                                class="font-medium text-gray-700 underline dark:text-gray-200"
-                                >Import your notes</button
-                            >.
+                        <p
+                            data-testid="first-run-import"
+                            class="text-sm text-gray-500 dark:text-gray-400"
+                        >
+                            You can import graphs from Logseq, Obsidian and
+                            EtherPK.
                             <a
-                                href="{PUBLIC_DOCS_URL}/choosing-where-your-notes-live"
+                                href="{PUBLIC_DOCS_URL}/importing-from-logseq-obsidian-or-etherpk"
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 class="font-medium text-gray-700 underline dark:text-gray-200"
-                                >Choosing where your notes live</a
+                                >Importing an existing knowledge base</a
                             >
                         </p>
                     </div>
@@ -3746,7 +3638,7 @@
                         >
                             <p class="text-sm text-gray-700 dark:text-gray-300">
                                 {signsInToManagedSync()
-                                    ? "Sign in with your EtherPK account to see and create synced graphs. Graphs of your own need Sync+; graphs others share with you work on any plan."
+                                    ? "Sign in with your EtherPK account to see and create synced graphs. Graphs of your own need Sync+. Graphs others share with you work on any plan."
                                     : "Connect this device to a Sync Server to see and create synced graphs."}
                             </p>
                             <button
@@ -3943,7 +3835,7 @@
 
                                 {#if addOffersManaged && connectionMode === "managed"}
                                     <div
-                                        class="rounded-lg border border-indigo-200 bg-indigo-50/70 p-4 dark:border-indigo-400/20 dark:bg-indigo-950/20"
+                                        class="rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-white/10 dark:bg-white/5"
                                     >
                                         <p
                                             class="text-sm font-medium text-gray-950 dark:text-white"
@@ -3958,7 +3850,7 @@
                                             server address or access token to
                                             copy, and your graph content stays
                                             end-to-end encrypted. Graphs of your
-                                            own need Sync+; graphs others share
+                                            own need Sync+. Graphs others share
                                             with you work on any plan.
                                         </p>
                                         <div class="mt-3 flex flex-wrap gap-2">
@@ -4547,7 +4439,7 @@
                     class="text-sm text-gray-500 dark:text-gray-400"
                     data-testid="create-graph-server-note"
                 >
-                    It lives on {chosenServer.host}, end-to-end encrypted.
+                    It is stored on {chosenServer.host}, end-to-end encrypted.
                 </p>
             {/if}
             {#if createError}
@@ -4587,7 +4479,7 @@
         name={localSettings.record.name}
         settings={localSettings.settings}
         assetTools={localSettings.assetTools}
-        nameHelp="Changes the display name only; the folder on disk keeps its name."
+        nameHelp="Changes the display name only - the folder on disk keeps its name."
         onsave={(result) => void saveLocalSettings(result)}
         onclose={() => (localSettings = null)}
     />
@@ -4614,7 +4506,7 @@
         name={renameDialog.name}
         help={renameDialog.backend === "server"
             ? "Changes the graph name for all members."
-            : "Changes the display name only; the folder on disk retains its name."}
+            : "Changes the display name only - the folder on disk retains its name."}
         onsave={(newName) => performRename(renameDialog!, newName)}
         onclose={() => (renameDialog = null)}
     />
@@ -4641,7 +4533,7 @@
             </p>
             {#if discardUnsent.grew}
                 <p role="status" data-testid="discard-unsent-grew">
-                    More changes arrived since this opened; the count is
+                    More changes arrived since this opened - the count is
                     current.
                 </p>
             {/if}
@@ -4930,7 +4822,7 @@
                         data-testid="invite-unsent-grew"
                         class="text-sm text-gray-600 dark:text-gray-400"
                     >
-                        More changes arrived since this opened; the count is
+                        More changes arrived since this opened - the count is
                         current.
                     </p>
                 {/if}

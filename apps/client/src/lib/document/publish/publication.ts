@@ -93,7 +93,7 @@ export function readPageDate(doc: PublishDocument): { date?: string; issues: Pub
     const text = date instanceof Date ? date.toISOString().slice(0, 10) : String(date)
     if (DATE.test(text)) return { date: text, issues: [] }
     return {
-        issues: [{ level: 'warning', code: 'invalid-date', message: `"${doc.concept}" has \`date: ${String(date)}\`, which is not a calendar day (YYYY-MM-DD); the document is undated.`, concept: doc.concept }],
+        issues: [{ level: 'warning', code: 'invalid-date', message: `"${doc.concept}" has \`date: ${String(date)}\`, which is not a calendar day (YYYY-MM-DD) - the document is undated.`, concept: doc.concept }],
     }
 }
 
@@ -127,7 +127,7 @@ export function readPublicationDefinition(doc: PublishDocument): PublicationDefi
         return { publication: null, issues }
     }
     if (doc.kind === 'journal') {
-        issue('publication-on-journal', 'A journal entry cannot define a publication; use a page.')
+        issue('publication-on-journal', 'A journal entry cannot define a publication - use a page.')
         return { publication: null, issues }
     }
 
@@ -189,7 +189,7 @@ export function readPublicationDefinition(doc: PublishDocument): PublicationDefi
                     issues.push({
                         level: 'warning',
                         code: 'publication-invalid-include',
-                        message: `Include \`${slot}\` must name the page that fills it; it is ignored.`,
+                        message: `Include \`${slot}\` must name the page that fills it - it is ignored.`,
                         concept: doc.concept,
                     })
                 }
@@ -256,7 +256,7 @@ export function discoverPublications(documents: readonly PublishDocument[]): Dis
             issues.push({
                 level: 'error',
                 code: 'publication-duplicate-id',
-                message: `Two pages define the publication "${id}" (${list.map((p) => `"${p.concept}"`).join(' and ')}); neither is published until one is changed.`,
+                message: `Two pages define the publication "${id}" (${list.map((p) => `"${p.concept}"`).join(' and ')}) - neither is published until one is changed.`,
                 concept: publication.concept,
             })
         }

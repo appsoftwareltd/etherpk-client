@@ -97,7 +97,7 @@ describe('describeSyncFailure', () => {
         // /auth/token answers 503 when Corporate is briefly unavailable. The connection is fine,
         // so the copy must not send the person to check it.
         const message = describeSyncFailure(new ManagedTokenError('Managed Sync sign-in is temporarily unavailable', 503), 'open the graph')
-        expect(message).toBe('Could not open the graph. EtherPK sign-in is busy at the moment. You are still signed in; try again in a minute.')
+        expect(message).toBe('Could not open the graph. EtherPK sign-in is busy at the moment. You are still signed in - try again in a minute.')
         expect(message).not.toMatch(/connection/i)
     })
 

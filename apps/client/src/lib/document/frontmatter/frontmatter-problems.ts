@@ -30,7 +30,7 @@ function parseMessage(code: string, message: string): string {
         case 'TAB_AS_INDENT':
             return 'A tab indents this line, and YAML needs spaces.'
         case 'DUPLICATE_KEY':
-            return 'This key appears twice; a key can appear only once.'
+            return 'This key appears twice - a key can appear only once.'
         case 'BAD_INDENT':
         case 'BLOCK_AS_IMPLICIT_KEY':
         case 'MISSING_CHAR':
@@ -108,7 +108,7 @@ export function frontmatterProblems(text: string, kind: 'page' | 'journal', conc
         add('slug', 'warning', '`slug` has no letters or digits to make an address from, so the document keeps the address its name gives it.')
     }
     if (!isEmptyValue(data.aliases) && !Array.isArray(data.aliases)) {
-        add('aliases', 'warning', '`aliases` must be a list, one name per line (`  - Name`); a single value is ignored.')
+        add('aliases', 'warning', '`aliases` must be a list, one name per line (`  - Name`). A single value is ignored.')
     }
     if (kind === 'journal' && !isEmptyValue(data.title)) {
         add('title', 'warning', 'A journal entry is named by its date, so `title` changes nothing here.')

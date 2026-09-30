@@ -75,7 +75,7 @@ export function deleteDocumentMessage(concept: string, references: number | null
     const links =
         references === null || references === 0
             ? 'Nothing links to it.'
-            : `${references} ${references === 1 ? 'document links' : 'documents link'} to it; those links will show as not-yet-created.`
+            : `${references} ${references === 1 ? 'document links' : 'documents link'} to it - those links will show as not-yet-created.`
     return `"${concept}" will be removed. ${links} This cannot be undone.`
 }
 

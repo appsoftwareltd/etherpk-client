@@ -96,7 +96,7 @@ export async function unlockByDeviceApproval(api: SyncApi, io: LoginIo): Promise
     const where = io.clientUrl ? `open EtherPK at ${io.clientUrl}` : 'open EtherPK in a browser'
     io.say('')
     io.say(`To approve this device, ${where} (any page - it need not be a note), connected to this account`)
-    io.say('with its keys unlocked. A prompt will show a code; confirm it matches this one:')
+    io.say('with its keys unlocked. A prompt will show a code - confirm it matches this one:')
     io.say('')
     io.say(`    ${request.sas}`)
     io.say('')

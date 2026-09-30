@@ -135,7 +135,7 @@ export async function convertObsidian(files: SourceFile[], control?: ImportContr
             report.push({
                 category: 'collision',
                 concept: iso,
-                detail: `More than one note maps to the ${iso} journal; "${file.path}" imported as a page`,
+                detail: `More than one note maps to the ${iso} journal - "${file.path}" imported as a page`,
             })
         }
         pendingPages.push({ stem, dir, segments: dir === '' ? [] : dir.split('/'), body: fm.body, frontmatter: fm.data, aliases, pathKey })
@@ -170,7 +170,7 @@ export async function convertObsidian(files: SourceFile[], control?: ImportContr
                 report.push({
                     category: 'collision',
                     concept,
-                    detail: `"${page.stem}" exists in more than one folder; "${page.dir}/${page.stem}" became the scoped concept "${concept}"`,
+                    detail: `"${page.stem}" exists in more than one folder - "${page.dir}/${page.stem}" became the scoped concept "${concept}"`,
                 })
             }
             concept = dedupeConcept(concept, (key) => takenConcepts.has(key))
@@ -218,7 +218,7 @@ export async function convertObsidian(files: SourceFile[], control?: ImportContr
             report.push({
                 category: 'unresolved',
                 concept: fromConcept,
-                detail: `Links to \`${target}\` are ambiguous (${matches.length} notes share the name); resolved to [[${matches[0].concept}]]`,
+                detail: `Links to \`${target}\` are ambiguous (${matches.length} notes share the name) - resolved to [[${matches[0].concept}]]`,
             })
         }
         return matches[0]

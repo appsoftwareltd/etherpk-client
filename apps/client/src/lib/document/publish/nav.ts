@@ -80,7 +80,7 @@ export function buildNav(outline: string, resolver: PublicationResolver): NavRes
                         issues.push({
                             level: 'warning',
                             code: 'nav-entry-not-published',
-                            message: `The navigation names "${whole.concept}", which is not in this publication; the entry is left out.`,
+                            message: `The navigation names "${whole.concept}", which is not in this publication - the entry is left out.`,
                         })
                         continue
                     }
@@ -101,7 +101,7 @@ export function buildNav(outline: string, resolver: PublicationResolver): NavRes
                         issues.push({
                             level: 'warning',
                             code: 'nav-link-unsafe',
-                            message: `The navigation links "${label}" to a target a published page does not carry (only http, https, mailto and site paths); the entry is shown without its link.`,
+                            message: `The navigation links "${label}" to a target a published page does not carry (only http, https, mailto and site paths) - the entry is shown without its link.`,
                         })
                         out.push({ label, labelHtml: escapeHtml(label), children })
                         continue

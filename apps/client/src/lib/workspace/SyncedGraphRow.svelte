@@ -126,7 +126,7 @@
                 <span
                     class="truncate text-sm text-gray-500 dark:text-gray-400"
                     data-testid="graphs-cache-hint"
-                    title="A synced graph's copy lives in browser storage, not a folder">On this device</span
+                    title="A synced graph's copy is stored in the browser, not in a folder">On this device</span
                 >
             </div>
             <button data-testid="graphs-open" aria-label={`Open ${name}`} onclick={onopen} class={OPEN_BUTTON}>
@@ -234,7 +234,7 @@
             {#if onDevice}
                 <button
                     data-testid="graphs-remove"
-                    title="Deletes this browser's copy; the graph stays on the sync server"
+                    title="Deletes this browser's copy - the graph stays on the sync server"
                     onclick={onforget}
                     class={TEXT_BUTTON}>Remove from this device</button
                 >

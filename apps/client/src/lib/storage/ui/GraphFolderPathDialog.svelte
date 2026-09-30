@@ -67,7 +67,7 @@
             Browser restrictions mean that the graph's location on your file system is not
             known. Enter the full path of the
             <strong class="font-medium text-gray-900 dark:text-gray-100">{folderName}</strong>
-            folder; it is remembered on this device.
+            folder - it is remembered on this device.
         </p>
         <div>
             <label
@@ -91,7 +91,7 @@
                 {#if leafDiffers}
                     <span data-testid="folder-path-mismatch" class="text-amber-700 dark:text-amber-400">
                         This ends in <code>{typedLeaf}</code>, but the folder is called <code>{folderName}</code>.
-                        Fine if you have renamed it; otherwise check the path.
+                        Fine if you have renamed it - otherwise check the path.
                     </span>
                 {:else}
                     Change it later under Settings → General.

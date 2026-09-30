@@ -248,7 +248,7 @@
             spellcheck="false"
             class="w-full resize-y rounded-md border border-(--gk-border-soft) bg-(--gk-surface-1) px-2 py-1.5 text-sm text-(--gk-text-strong) placeholder:text-(--gk-text-subtle) focus:border-(--gk-border-strong) focus:outline-none"
         ></textarea>
-        <span id="quick-notes-hint" class="sr-only">Enter adds the note; Shift+Enter starts a new line.</span>
+        <span id="quick-notes-hint" class="sr-only">Enter adds the note, Shift+Enter starts a new line.</span>
         {#if nearCap}
             <p class="text-sm text-(--gk-text-muted)" data-testid="quick-notes-length" role="status">
                 {text.length.toLocaleString()} / {MAX_QUICK_NOTE_LENGTH.toLocaleString()} characters

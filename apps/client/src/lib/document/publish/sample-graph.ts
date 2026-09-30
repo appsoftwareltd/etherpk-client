@@ -70,8 +70,8 @@ export const SAMPLE_DOCUMENTS: PublishDocument[] = [
         ].join('\n'),
     ),
     page('[[Getting Started]] Installing', '---\npublic: true\n---\n- A scoped concept: its heading links to its scope. Back to [[Getting Started]].\n'),
-    page('Wikilinks', '---\npublic: true\naliases: [Links]\n---\n- `[[Concept]]` links to a page; an alias like [[Links]] resolves to this one.\n', ['Links']),
-    page('Private Notes', '- Not public, so never on the site; links to it are styled as missing.\n'),
+    page('Wikilinks', '---\npublic: true\naliases: [Links]\n---\n- `[[Concept]]` links to a page - an alias like [[Links]] resolves to this one.\n', ['Links']),
+    page('Private Notes', '- Not public, so never on the site - links to it are styled as missing.\n'),
     { concept: '2026-06-02', kind: 'journal', text: '---\npublic: true\n---\n- Wrote the [[Getting Started]] guide.\n', aliases: [] },
 ]
 

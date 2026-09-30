@@ -72,7 +72,7 @@
         },
         {
             title: "Link what matters",
-            text: "Wrap a name in `[[double brackets]]` and it is a concept with a page behind it. The concept exists the moment something links to it; the page is written the moment you type into it.",
+            text: "Wrap a name in `[[double brackets]]` and it is a concept with a page behind it. The concept exists the moment something links to it - the page is written the moment you type into it.",
         },
         {
             title: "Find it in October",
@@ -100,7 +100,7 @@
             items: [
                 { lead: "A journal entry a day", text: ", one file per day, and pages for the things that outlive a day." },
                 { lead: "Wikilinks that nest", text: ": `[[[[Physics]] Quantum Mechanics]]` names a topic within a topic and is a page in its own right." },
-                { lead: "Aliases", text: ", so a page answers to more than one name; names are case-insensitive, so `[[physics]]` and `[[Physics]]` are one page." },
+                { lead: "Aliases", text: ", so a page answers to more than one name - names are case-insensitive, so `[[physics]]` and `[[Physics]]` are one page." },
                 { lead: "Backlinks on every page", text: ", grouped by the heading and bullet the link sits under, with the linking line shown in place." },
                 { lead: "Drafts", text: ": follow a link to a page that does not exist and you get an editable surface. Nothing is written until the first keystroke." },
                 { lead: "Rename", text: " rewrites every link, or keeps the old name as an alias. Renaming onto an existing name merges the two." },
@@ -120,8 +120,8 @@
         {
             id: "files",
             label: "Files and images",
-            heading: "Paste it in; the bytes are stored once",
-            intro: "Images and files live beside the markdown as ordinary files, referenced from the text like any other link.",
+            heading: "Paste it in - the bytes are stored once",
+            intro: "Images and files are stored beside the markdown as ordinary files, referenced from the text like any other link.",
             items: [
                 { lead: "Images and files", text: " by paste, drag and drop or a slash command, embedded inline with a display-size hint." },
                 { lead: "Identical bytes stored once", text: ", however often they are added." },
@@ -138,7 +138,7 @@
             id: "tasks",
             label: "Tasks and quick notes",
             heading: "Tasks stay in the note that gave rise to them",
-            intro: "A task is a markdown checkbox where you wrote it. The Tasks view collects them across the graph and ticks one off in the document it lives in.",
+            intro: "A task is a markdown checkbox where you wrote it. The Tasks view collects them across the graph and ticks one off in the document that contains it.",
             items: [
                 { lead: "Ordinary checkboxes", text: ", with priority, due, scheduled, waiting, doing and done carried as tags in the text." },
                 { lead: "A Tasks view across the whole graph", text: ", filtered by concept and state." },
@@ -169,7 +169,7 @@
             id: "workspace",
             label: "Workspace",
             heading: "Lay the screen out once per graph, per device",
-            intro: "A desktop gets tabs and panes; a phone gets a presenter with a command bar above the keyboard. Both are the same editor over the same files.",
+            intro: "A desktop gets tabs and panes - a phone gets a presenter with a command bar above the keyboard. Both are the same editor over the same files.",
             items: [
                 { lead: "Tabs and panes", text: ": split, resize, dock, float and pin. Sidebars collapse rather than close." },
                 { lead: "A layout per graph and per device", text: ", and a keyboard shortcut per sidebar view." },
@@ -193,7 +193,7 @@
             docs: [
                 { title: "Local Graphs", slug: "local-graphs" },
                 { title: "Importing", slug: "importing-from-logseq-obsidian-or-etherpk" },
-                { title: "Where Your Data Lives", slug: "where-your-data-lives" },
+                { title: "Where Your Data Is Stored", slug: "where-your-data-is-stored" },
             ],
         },
         {
@@ -259,7 +259,7 @@
             id: "running",
             label: "Running it",
             heading: "Managed sync, or just your own machine",
-            intro: "The same Client in each case. What changes is where the graph lives and who keeps it in sync.",
+            intro: "The same Client in each case. What changes is where the graph is stored and who keeps it in sync.",
             items: [
                 { lead: "Managed Sync", text: " with an EtherPK Account: sign in once and every managed app follows, with passkeys, two-factor and social sign-in, and a plan page that shows exact limits and usage." },
                 { lead: "The Client on your own machine", text: ", as a plain Node bundle or a Docker image, for a folder graph with no server and no account." },
@@ -274,7 +274,7 @@
     const honest = [
         "Folder graphs need the File System Access API, which today means a Chromium desktop browser (Chrome, Edge, Brave). Phones, Safari and Firefox work with synced graphs.",
         "End-to-end encryption cuts both ways. Lose every signed-in device and your Recovery Code and nobody can decrypt your synced notes, us included. Keep the code, and keep a local copy if you like belt and braces.",
-        "The editor is one text surface. No separate reading mode, no blocks as UI widgets, no rich-text layer hiding the markdown. Some people love that; some don't.",
+        "The editor is one text surface. No separate reading mode, no blocks as UI widgets, no rich-text layer hiding the markdown. Some people love that - some don't.",
         "EtherPK changes often. The docs say what is built and what is only planned: queries and saved views, kanban boards over tasks, D2 and Excalidraw diagrams, block drag and drop, and working with no network at all are on the second list. Today the app needs a connection to load, and then a synced graph works through a dropped connection.",
     ];
 
@@ -304,7 +304,7 @@
 
 <svelte:head>
     <title>EtherPK - A personal knowledge base in plain markdown</title>
-    <meta name="description" content="EtherPK is a personal knowledge base in plain markdown files you own: a daily journal, wikilinks and backlinks, tasks, an outliner, code, diagrams and maths. Free on your own machine; {managed ? 'Sync+ keeps it' : 'a Sync Server keeps it'} end-to-end encrypted across your devices, with live collaboration, protected documents, publishing to a static site and access for AI agents. Imports from Logseq and Obsidian." />
+    <meta name="description" content="EtherPK is a personal knowledge base in plain markdown files you own: a daily journal, wikilinks and backlinks, tasks, an outliner, code, diagrams and maths. Free on your own machine - {managed ? 'Sync+ keeps it' : 'a Sync Server keeps it'} end-to-end encrypted across your devices, with live collaboration, protected documents, publishing to a static site and access for AI agents. Imports from Logseq and Obsidian." />
     {#if canonicalUrl}
         <link rel="canonical" href={canonicalUrl} />
         <meta property="og:url" content={canonicalUrl} />
@@ -315,7 +315,7 @@
     <meta property="og:site_name" content="EtherPK" />
     <meta property="og:type" content="website" />
     <meta property="og:title" content="EtherPK - A personal knowledge base in plain markdown" />
-    <meta property="og:description" content="A journal a day, pages for what outlives it and wikilinks between them, as plain markdown files you own. Free on your own machine; {managed ? 'Sync+ keeps it' : 'a Sync Server keeps it'} end-to-end encrypted across your devices." />
+    <meta property="og:description" content="A journal a day, pages for what outlives it and wikilinks between them, as plain markdown files you own. Free on your own machine - {managed ? 'Sync+ keeps it' : 'a Sync Server keeps it'} end-to-end encrypted across your devices." />
     <meta property="og:image" content={socialImageUrl} />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
@@ -473,7 +473,7 @@
 <section class="mx-auto max-w-7xl px-4 pt-24 sm:px-6 sm:pt-32" aria-labelledby="run-heading">
     <div class="mb-10 text-center">
         <h2 id="run-heading" class="text-3xl font-semibold tracking-tight text-gray-950 sm:text-4xl dark:text-white">Two ways to run it</h2>
-        <p class="mx-auto mt-4 max-w-xl text-pretty text-base leading-7 text-gray-600 dark:text-gray-300">Same editor, same files. The difference is where the graph lives and who keeps it in sync.</p>
+        <p class="mx-auto mt-4 max-w-xl text-pretty text-base leading-7 text-gray-600 dark:text-gray-300">Same editor, same files. The difference is where the graph is stored and who keeps it in sync.</p>
     </div>
     <div class="grid gap-6 lg:grid-cols-2">
         <article class="flex flex-col rounded-3xl border border-gray-200/80 bg-white p-8 shadow-sm dark:border-white/10 dark:bg-zinc-900/85">

@@ -109,7 +109,7 @@
         {#if scanResult.dedupBackfill && (scanResult.dedupBackfill.tokened > 0 || scanResult.dedupBackfill.failed > 0)}
             <!-- TEMPORARY (ADR 0053): reports the ride-along dedup-token backfill; delete with asset-dedup-backfill.ts. -->
             <p class="text-sm text-gray-500 dark:text-gray-400" data-testid="orphan-dedup-backfill">
-                Indexed {scanResult.dedupBackfill.tokened} existing {scanResult.dedupBackfill.tokened === 1 ? "asset" : "assets"} for reuse{scanResult.dedupBackfill.failed > 0 ? `; ${scanResult.dedupBackfill.failed} could not be indexed and will be retried on the next scan` : ""}.
+                Indexed {scanResult.dedupBackfill.tokened} existing {scanResult.dedupBackfill.tokened === 1 ? "asset" : "assets"} for reuse{scanResult.dedupBackfill.failed > 0 ? ` - ${scanResult.dedupBackfill.failed} could not be indexed and will be retried on the next scan` : ""}.
             </p>
         {/if}
         {#if scanResult.orphans.length > 0}

@@ -188,7 +188,7 @@ describe('startRemoteImageUpload', () => {
             { pasteId: 1, fetch: fakeFetch({ 'https://x.test/a.png': { type: 'image/png' }, 'https://cors.test/b.png': 'refused' }), optimizer: passthrough, now: () => NOW },
         )
         expect(activity.state).toBe('done')
-        expect(activity.detail).toBe('1 asset uploaded; 1 stays on the web')
+        expect(activity.detail).toBe('1 asset uploaded - 1 stays on the web')
         expect(saved).toEqual(['a.png'])
         expect(text()).toBe('- x\n  - ![A](../assets/a.deadbeef.png)\n    ![B](https://cors.test/b.png)\n  - ![A again](../assets/a.deadbeef.png)')
         expect(effects.filter((e) => e.uploading).map((e) => e.src)).toEqual(['https://x.test/a.png', 'https://cors.test/b.png'])

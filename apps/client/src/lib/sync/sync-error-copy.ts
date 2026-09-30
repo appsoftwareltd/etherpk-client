@@ -79,7 +79,7 @@ function describeStorageFault(error: unknown): string | null {
         return 'This browser has run out of storage for your notes. Free up space on the device, or forget a graph you no longer need here, then try again.'
     }
     if (isStorageConnectionFault(error)) {
-        return 'This tab lost its connection to the browser’s storage. Reload the page; work already saved on this device is still here.'
+        return 'This tab lost its connection to the browser’s storage. Reload the page - work already saved on this device is still here.'
     }
     return null
 }
@@ -115,7 +115,7 @@ export function describeSyncFailure(error: unknown, action: string): string {
                 return `${opening} The sync server is temporarily unavailable. Try again in a moment.`
         }
         if (error.status >= 500) {
-            return `${opening} The sync server failed while handling it. Nothing was changed; try again in a moment.`
+            return `${opening} The sync server failed while handling it. Nothing was changed - try again in a moment.`
         }
         // A code or message the map does not know: still say what to do next.
         return `${opening} The sync server said: ${error.message}. Try again, and check your connection if it persists.`
@@ -127,7 +127,7 @@ export function describeSyncFailure(error: unknown, action: string): string {
     if (error instanceof ManagedTokenError) {
         if (error.status === 401) return `${opening} Your EtherPK sign-in has ended. Sign in again, then retry.`
         if (error.status === 503 || error.status === 429) {
-            return `${opening} EtherPK sign-in is busy at the moment. You are still signed in; try again in a minute.`
+            return `${opening} EtherPK sign-in is busy at the moment. You are still signed in - try again in a minute.`
         }
     }
 
@@ -140,7 +140,7 @@ export function describeSyncFailure(error: unknown, action: string): string {
     // cache, so saying the changes are kept is true in both cases.
     if (error instanceof SyncProtocolMismatchError) {
         return error.serverIsOlder
-            ? `${opening} The Sync Server runs sync protocol ${error.serverVersion} and this Client needs ${error.clientVersion}. Its operator needs to upgrade the server; until then your changes are kept on this device.`
+            ? `${opening} The Sync Server runs sync protocol ${error.serverVersion} and this Client needs ${error.clientVersion}. Its operator needs to upgrade the server - until then your changes are kept on this device.`
             : `${opening} This Client runs sync protocol ${error.clientVersion} and the Sync Server runs ${error.serverVersion}. Reload the page to get the latest Client, or ask whoever runs this Client to upgrade it. Your changes are kept on this device.`
     }
 
@@ -161,7 +161,7 @@ export function describeSyncFailure(error: unknown, action: string): string {
     }
     if (error instanceof RecoveryCodeError) {
         // Never echo the offending character: it is one keystroke away from the real code.
-        return `${opening} That Recovery Code was not accepted. Check it character by character; only the most recently issued code is valid.`
+        return `${opening} That Recovery Code was not accepted. Check it character by character - only the most recently issued code is valid.`
     }
 
     const storage = describeStorageFault(error)

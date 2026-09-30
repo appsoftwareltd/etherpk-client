@@ -28,7 +28,7 @@
         "Go to": "From anywhere in the graph.",
         Sidebars: "A letter per view brings it to the front, and back if it was closed. L and R show or hide a whole sidebar.",
         Editor: "Spell check is set per device and applies to every graph. Its languages are in Settings, Spelling. In an underlined word, Shift+F10 opens its corrections.",
-        Publish: "Publishing again needs a publication published from this device before, or the graph's only one, with a folder chosen; otherwise the Publish tab opens.",
+        Publish: "Publishing again needs a publication published from this device before, or the graph's only one, with a folder chosen - otherwise the Publish tab opens.",
         Help: "",
     };
 

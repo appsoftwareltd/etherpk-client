@@ -68,7 +68,7 @@ export function validateThemeManifest(raw: unknown): ManifestValidation {
     const contract = typeof data.contract === 'number' && Number.isInteger(data.contract) ? data.contract : null
     if (contract === null) errors.push('theme.json needs an integer `contract`, the view version the theme was written for.')
     else if (contract > THEME_CONTRACT) {
-        errors.push(`The theme was written for view contract ${contract}; this EtherPK writes contract ${THEME_CONTRACT}. Update EtherPK, or use an older theme.`)
+        errors.push(`The theme was written for view contract ${contract} - this EtherPK writes contract ${THEME_CONTRACT}. Update EtherPK, or use an older theme.`)
     }
     const kinds: PublicationKind[] = []
     if (Array.isArray(data.kinds)) {

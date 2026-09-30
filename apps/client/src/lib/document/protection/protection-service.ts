@@ -175,7 +175,7 @@ export class ProtectionService {
     get recordProblem(): RecordProblem | null {
         switch (this.#read.kind) {
             case 'unreadable':
-                return { kind: 'unreadable', message: 'could not read this graph’s protection record; check your connection and try again' }
+                return { kind: 'unreadable', message: 'could not read this graph’s protection record - check your connection and try again' }
             case 'invalid':
                 return { kind: 'invalid', message: invalidRecordMessage(this.#read) }
             default:
@@ -433,8 +433,8 @@ export class ProtectionService {
  */
 function invalidRecordMessage(read: Extract<ProtectionRecordRead, { kind: 'invalid' }>): string {
     return read.problem === 'newer-version'
-        ? `${read.location} was written by a newer version of EtherPK; update EtherPK to use it`
-        : `${read.location} is damaged; restore it from a backup`
+        ? `${read.location} was written by a newer version of EtherPK - update EtherPK to use it`
+        : `${read.location} is damaged - restore it from a backup`
 }
 
 /** A document's body, refusing to double-protect something that already holds a fence. */

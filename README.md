@@ -49,7 +49,7 @@ Every tag is listed on the image's
 Open <http://localhost:3000>. With no settings the Client works with graph folders on your
 computer and offers a **Custom server** form for connecting to a Sync Server by its address. The
 settings it reads are listed, with their defaults, in
-[`apps/client/.env.example`](apps/client/.env.example); pass them with `--env-file`.
+[`apps/client/.env.example`](apps/client/.env.example) - pass them with `--env-file`.
 
 ### Node bundle
 
@@ -78,7 +78,7 @@ Setup for each kind of graph is in [`apps/mcp/README.md`](apps/mcp/README.md).
 
 ## Build from source
 
-You need Node.js 22 or later and pnpm; `corepack enable` provides the pnpm version that
+You need Node.js 22 or later and pnpm - `corepack enable` provides the pnpm version that
 `package.json` names.
 
 ```bash
@@ -106,9 +106,9 @@ Copy `apps/client/.env.example` to `apps/client/.env` to change the development 
 ## How this repository is maintained
 
 This repository is a one-way copy of App Software's private EtherPK repository, exported on every
-change there. Each commit here is one export; its `GitOrigin-RevId` trailer names the private
+change there. Each commit here is one export - its `GitOrigin-RevId` trailer names the private
 commit it came from. Code comments cite design records (`ADR 0072`) and glossary terms
 (`[[Knowledge Graph]]`) that live in the private repository and are not published here.
 
-Issues are welcome. Pull requests are not merged here; [CONTRIBUTING.md](CONTRIBUTING.md) explains
+Issues are welcome. Pull requests are not merged here - [CONTRIBUTING.md](CONTRIBUTING.md) explains
 why and what happens instead. Report security issues as [SECURITY.md](SECURITY.md) describes.

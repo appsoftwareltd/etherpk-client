@@ -134,7 +134,7 @@ function transformInline(text: string, ctx: InlineContext): string {
                 ctx.report.push({
                     category: 'unresolved',
                     concept: ctx.concept,
-                    detail: `Block reference \`${all}\` could not be resolved; left as-is`,
+                    detail: `Block reference \`${all}\` could not be resolved - left as-is`,
                 })
                 return all
             }
@@ -225,7 +225,7 @@ function transformInline(text: string, ctx: InlineContext): string {
                 ctx.report.push({
                     category: 'degradation',
                     concept: ctx.concept,
-                    detail: `Image dimensions converted to display-size hints (\`|${spec}\`); EtherPK treats these as a maximum, so a smaller image is shown at its natural size rather than enlarged`,
+                    detail: `Image dimensions converted to display-size hints (\`|${spec}\`) - EtherPK treats these as a maximum, so a smaller image is shown at its natural size rather than enlarged`,
                 })
             }
             // The alt may already carry a hint (an earlier conversion, or hand-authored);
@@ -351,7 +351,7 @@ export async function convertLogseq(files: SourceFile[], control?: ImportControl
             report.push({
                 category: 'collision',
                 concept,
-                detail: `Concept "${doc.concept}" already exists; this document was renamed to "${concept}"`,
+                detail: `Concept "${doc.concept}" already exists - this document was renamed to "${concept}"`,
             })
             doc.concept = concept
             if (doc.kind === 'page') doc.fileName = `${portableFileStem(concept)}.md`
@@ -365,7 +365,7 @@ export async function convertLogseq(files: SourceFile[], control?: ImportControl
             report.push({
                 category: 'collision',
                 concept: doc.concept,
-                detail: `File name "${doc.fileName}" already taken; stored as "${fileName}" (frontmatter title keeps the concept)`,
+                detail: `File name "${doc.fileName}" already taken - stored as "${fileName}" (frontmatter title keeps the concept)`,
             })
             doc.fileName = fileName
         }
@@ -393,7 +393,7 @@ export async function convertLogseq(files: SourceFile[], control?: ImportControl
             report.push({
                 category: 'rename',
                 concept: stem,
-                detail: `Journal file "${stem}.md" does not match the journal date format; imported as a page`,
+                detail: `Journal file "${stem}.md" does not match the journal date format - imported as a page`,
             })
             claim({ kind: 'page', concept: stem, fileName: `${portableFileStem(stem)}.md`, lines: body, props, sourcePath: file.path })
             continue

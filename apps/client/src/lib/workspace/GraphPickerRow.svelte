@@ -62,7 +62,7 @@
             <span class="text-sm text-gray-500 dark:text-gray-400">
                 <span
                     data-testid="graphs-demo-hint"
-                    title="The demo graph lives in this browser's storage and is not backed up anywhere"
+                    title="The demo graph is stored in this browser only and is not backed up anywhere"
                 >In this browser only</span>
                 ·
                 <button
@@ -85,7 +85,7 @@
             <span
                 class="truncate text-sm text-gray-500 dark:text-gray-400"
                 data-testid="graphs-cache-hint"
-                title="A synced graph's local copy lives in browser storage, not a folder"
+                title="A synced graph's local copy is stored in the browser, not in a folder"
             >Local browser cache</span>
         {/if}
     </div>
@@ -99,7 +99,7 @@
         data-testid="graphs-rename"
         title={graph.backend === 'server'
             ? 'Rename (changes graph name for all members)'
-            : 'Rename (changes display name only; folder on disk retains its name)'}
+            : 'Rename (changes display name only - folder on disk retains its name)'}
         aria-label="Rename graph"
         onclick={onrename}
         class="shrink-0 rounded-lg p-1.5 pointer-coarse:p-3.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-white/10 dark:hover:text-gray-300"
@@ -126,7 +126,7 @@
     <button
         data-testid="graphs-remove"
         title={graph.backend === 'server'
-            ? 'Forget this graph (deletes the local browser cache; does not delete the remote synced graph)'
+            ? 'Forget this graph (deletes the local browser cache - does not delete the remote synced graph)'
             : 'Forget this graph (does not delete files)'}
         onclick={onforget}
         class="shrink-0 rounded-lg p-1.5 pointer-coarse:p-3.5 text-gray-400 hover:bg-gray-100 hover:text-red-600 dark:hover:bg-white/10"

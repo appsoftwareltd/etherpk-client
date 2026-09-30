@@ -227,7 +227,7 @@ export async function customisePublicationTheme(graph: HeadlessGraph, args: Cust
     await graph.store.refresh()
     const { source } = await graph.publishing.readSource()
     const publication = summarisePublishing(source).publications.find((p) => p.id === args.publication.trim())
-    if (!publication) throw new ToolError('publication_not_found', `No publication has the id "${args.publication}"; list_publications shows them.`)
+    if (!publication) throw new ToolError('publication_not_found', `No publication has the id "${args.publication}" - list_publications shows them.`)
     const current = await graph.themes.get(publication.theme)
     if (current) return { created: false, publication: publication.id, theme: await themeView(graph, current) }
     const existing = (await graph.themes.list()).map((theme) => theme.id)
@@ -255,7 +255,7 @@ async function requireEditable(graph: HeadlessGraph, id: string): Promise<GraphT
     const own = await graph.themes.get(id)
     if (own) return own
     if (bundledTheme(id)) throw new ToolError('theme_not_editable', `"${id}" is a bundled theme and cannot be edited in place. create_theme (or customise_publication_theme for the publication that uses it) makes a copy in the graph that can be.`)
-    throw new ToolError('theme_not_found', `No theme in this graph is called "${id}"; list_themes shows them.`)
+    throw new ToolError('theme_not_found', `No theme in this graph is called "${id}" - list_themes shows them.`)
 }
 
 function requireThemePath(path: string): string {
@@ -357,7 +357,7 @@ export async function importThemeFolder(graph: HeadlessGraph, args: ImportThemeF
     } catch (error) {
         throw new ToolError('invalid_argument', `Cannot read "${args.dir}": ${error instanceof Error ? error.message : String(error)}`)
     }
-    if (!files.has('theme.json')) throw new ToolError('invalid_argument', `"${args.dir}" has no theme.json; a theme folder has one at its top.`)
+    if (!files.has('theme.json')) throw new ToolError('invalid_argument', `"${args.dir}" has no theme.json - a theme folder has one at its top.`)
     const next: GraphTheme = { ...theme, files: Object.fromEntries(files), updatedAt: new Date().toISOString() }
     await graph.themes.put(next)
     await settle(graph)
@@ -381,7 +381,7 @@ export async function deleteTheme(graph: HeadlessGraph, args: DeleteThemeArgs) {
     const theme = await requireEditable(graph, args.id.trim())
     const users = await publicationsUsing(graph, theme.id)
     if (users.length > 0) {
-        throw new ToolError('theme_in_use', `"${theme.id}" is the theme of ${users.map((p) => `"${p.name}"`).join(', ')}; point ${users.length === 1 ? 'that publication' : 'those publications'} at another theme (update_publication) first.`)
+        throw new ToolError('theme_in_use', `"${theme.id}" is the theme of ${users.map((p) => `"${p.name}"`).join(', ')} - point ${users.length === 1 ? 'that publication' : 'those publications'} at another theme (update_publication) first.`)
     }
     await graph.themes.remove(theme.id)
     await settle(graph)
@@ -416,7 +416,7 @@ export async function previewTheme(graph: HeadlessGraph, args: PreviewThemeArgs,
     if (args.publication?.trim()) {
         const read = await graph.publishing.readSource()
         const found = summarisePublishing(read.source).publications.find((p) => p.id === args.publication!.trim())
-        if (!found) throw new ToolError('publication_not_found', `No publication has the id "${args.publication}"; list_publications shows them.`)
+        if (!found) throw new ToolError('publication_not_found', `No publication has the id "${args.publication}" - list_publications shows them.`)
         publication = found
         source = read.source
         unsettled = read.unsettled
@@ -451,7 +451,7 @@ export async function previewTheme(graph: HeadlessGraph, args: PreviewThemeArgs,
             missingLinks: report.missingLinks.slice(0, 20),
             ...(unsettled.length > 0 ? { unsettled } : {}),
             ...(screenshots ? { screenshots } : {}),
-            ...(chromium ? { screenshots: null, note: `No browser to photograph with; run ${chromium.setupCommand} or set ETHERPK_CHROMIUM.` } : {}),
+            ...(chromium ? { screenshots: null, note: `No browser to photograph with - run ${chromium.setupCommand} or set ETHERPK_CHROMIUM.` } : {}),
         }
     } finally {
         await renderer?.dispose()

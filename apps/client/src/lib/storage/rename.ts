@@ -60,7 +60,7 @@ export class RenameUnconfirmedError extends Error {
     constructor(readonly concepts: readonly string[]) {
         const list = concepts.slice(0, 5).join(', ') + (concepts.length > 5 ? '…' : '')
         super(
-            `${concepts.length === 1 ? 'A document' : `${concepts.length} documents`} the rename would change ${concepts.length === 1 ? 'has' : 'have'} not finished syncing to this device: ${list}. Nothing was renamed; try again once sync has caught up.`,
+            `${concepts.length === 1 ? 'A document' : `${concepts.length} documents`} the rename would change ${concepts.length === 1 ? 'has' : 'have'} not finished syncing to this device: ${list}. Nothing was renamed - try again once sync has caught up.`,
         )
     }
 }

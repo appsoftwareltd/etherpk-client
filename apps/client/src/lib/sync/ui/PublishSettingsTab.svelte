@@ -258,7 +258,7 @@
             ...(newUrl.trim() ? { url: newUrl.trim() } : {}),
         };
         if (input.title === "") {
-            createError = "Give the publication a name; it becomes the page's title.";
+            createError = "Give the publication a name - it becomes the page's title.";
             return;
         }
         createBusy = true;
@@ -522,7 +522,7 @@
                             placeholder="docs"
                             data-testid="publish-new-id"
                         />
-                        <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">What documents name in <code>publications: [{effectiveId || "docs"}]</code>. Lower-case letters, digits and hyphens; fixed once documents use it.</p>
+                        <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">What documents name in <code>publications: [{effectiveId || "docs"}]</code>. Lower-case letters, digits and hyphens - fixed once documents use it.</p>
                     </div>
                     <div class="grid gap-3 sm:grid-cols-2">
                         <div>
@@ -650,7 +650,7 @@
                                     data-testid="publication-{p.id}-home"
                                 />
                                 <p id="publication-{p.id}-home-help" class={helpClass} data-testid="publication-{p.id}-home-help">
-                                    The document whose content is the front page; without one the front page lists the pages.
+                                    The document whose content is the front page - without one the front page lists the pages.
                                     {#if home}<span class={warnClass} data-testid="publication-{p.id}-home-problem" data-problem={home}>{problemText(home, p)}</span>{/if}
                                 </p>
                             </div>
@@ -696,7 +696,7 @@
                                         data-testid="publication-{p.id}-recent"
                                     />
                                     <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                                        The latest posts, newest first. Every post is on <code>posts.html</code>, by year; add <code>[All posts](posts.html)</code> to the outline to put it in the menu.
+                                        The latest posts, newest first. Every post is on <code>posts.html</code>, by year - add <code>[All posts](posts.html)</code> to the outline to put it in the menu.
                                     </p>
                                 </div>
                             {/if}
@@ -705,7 +705,7 @@
                         {#if themeSlots && themeSlots.length > 0}
                             <details class="text-sm">
                                 <summary class="cursor-pointer font-medium text-gray-700 dark:text-gray-300">Includes ({Object.keys(p.includes).length} of {themeSlots.length} set)</summary>
-                                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Names of pages whose markdown or HTML body fills each slot. A page's wikilinks resolve like any other; the <code>styles</code> slot takes the page's first <code>css</code> fenced code block. A page named here has to be public and in this publication like any other content, and is then a snippet: it fills its slot and is not published as a page of its own.</p>
+                                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Names of pages whose markdown or HTML body fills each slot. A page's wikilinks resolve like any other - the <code>styles</code> slot takes the page's first <code>css</code> fenced code block. A page named here has to be public and in this publication like any other content, and is then a snippet: it fills its slot and is not published as a page of its own.</p>
                                 <div class="mt-2 grid gap-2 sm:grid-cols-2">
                                     {#each themeSlots as slot (slot.name)}
                                         {@const named = (draft.includes[slot.name] ?? "").trim()}
@@ -758,10 +758,10 @@
                                     <p>A page that does not exist yet: check the spelling here, or type the name into <strong>Quick find</strong> in the sidebar and choose its <strong>New page</strong> row.</p>
                                 {/if}
                                 {#if problems.some((i) => i.problem === "protected")}
-                                    <p>A protected page can never be published; name a different page.</p>
+                                    <p>A protected page can never be published - name a different page.</p>
                                 {/if}
                                 {#if problems.some((i) => i.problem === "publication-page")}
-                                    <p>A publication page holds settings and the navigation and is never published; name a content page.</p>
+                                    <p>A publication page holds settings and the navigation and is never published - name a content page.</p>
                                 {/if}
                             </div>
                         {/if}
@@ -791,7 +791,7 @@
                                 {/if}
                             </p>
                         {:else}
-                            <p class="text-sm text-gray-600 dark:text-gray-400">This browser cannot write a folder; download the site as a zip instead, or use Chrome or Edge on a desktop to publish straight into a folder.</p>
+                            <p class="text-sm text-gray-600 dark:text-gray-400">This browser cannot write a folder - download the site as a zip instead, or use Chrome or Edge on a desktop to publish straight into a folder.</p>
                         {/if}
                         <div class="flex flex-wrap gap-2">
                             {#if folderSupported}
@@ -801,7 +801,7 @@
                             <button type="button" class={folderSupported ? secondaryButton : primaryButton} onclick={() => void publish(p, "zip")} disabled={!!working} data-testid="publication-{p.id}-zip">{working === "Building the zip" ? "Building…" : "Download zip"}</button>
                         </div>
                         {#if folderSupported && !folder}
-                            <p class="text-sm text-gray-500 dark:text-gray-400">Choose a folder to publish into; the same folder is reused on this device each time.</p>
+                            <p class="text-sm text-gray-500 dark:text-gray-400">Choose a folder to publish into - the same folder is reused on this device each time.</p>
                         {/if}
                         {#if changes}
                             <p class="text-sm text-gray-500 dark:text-gray-400">A publish uses the saved settings, not the unsaved edits above.</p>
@@ -838,7 +838,7 @@
                                             {#each r.excluded as e (e.concept)}
                                                 <li>
                                                     <button type="button" class={linkButton} onclick={() => onopenpage(e.concept)}>{e.concept}</button>
-                                                    {#if e.reason === "protected"}(protected, never published){:else if e.reason === "not-public"}(not public){:else if e.reason === "publication-page"}(a publication page){:else if e.reason === "include-page"}(fills the {(e.includes ?? []).map((u) => `${u.slot} include of ${u.publication}`).join(", ")}; not a page of its own){:else}(public, but not in this publication{#if e.publishedIn}; published in {e.publishedIn.join(", ")}{/if}){/if}
+                                                    {#if e.reason === "protected"}(protected, never published){:else if e.reason === "not-public"}(not public){:else if e.reason === "publication-page"}(a publication page){:else if e.reason === "include-page"}(fills the {(e.includes ?? []).map((u) => `${u.slot} include of ${u.publication}`).join(", ")} - not a page of its own){:else}(public, but not in this publication{#if e.publishedIn} - published in {e.publishedIn.join(", ")}{/if}){/if}
                                                 </li>
                                             {/each}
                                         </ul>
@@ -894,7 +894,7 @@
                 {/if}
             </div>
             <p class="text-sm text-gray-600 dark:text-gray-400">
-                A theme is templates, a stylesheet and a search script, never code that runs in EtherPK. The bundled themes ship with the app; a copy in the graph can be edited in the Theme editor and travels with the graph.
+                A theme is templates, a stylesheet and a search script, never code that runs in EtherPK. The bundled themes ship with the app - a copy in the graph can be edited in the Theme editor and travels with the graph.
             </p>
 
             {#if addingTheme}
@@ -949,7 +949,7 @@
             {/if}
 
             {#if themes.length === 0 && !addingTheme}
-                <p class="text-sm text-gray-500 dark:text-gray-400" data-testid="themes-empty">No theme has been copied into this graph; the publications use the bundled ones.</p>
+                <p class="text-sm text-gray-500 dark:text-gray-400" data-testid="themes-empty">No theme has been copied into this graph - the publications use the bundled ones.</p>
             {/if}
             <ul class="space-y-2">
                 {#each themes as t (t.id)}
@@ -981,9 +981,9 @@
                         </div>
                         {#if deleteThemeArmed !== t.id}
                             {#if users.length > 0}
-                                <p class="w-full text-sm text-gray-500 dark:text-gray-400" data-testid="theme-{t.id}-in-use">In use by {listNames(users)}, so it cannot be deleted; point {users.length === 1 ? "that publication" : "those publications"} at another theme and save first.</p>
+                                <p class="w-full text-sm text-gray-500 dark:text-gray-400" data-testid="theme-{t.id}-in-use">In use by {listNames(users)}, so it cannot be deleted - point {users.length === 1 ? "that publication" : "those publications"} at another theme and save first.</p>
                             {:else if drafted.length > 0}
-                                <p class="w-full text-sm text-gray-500 dark:text-gray-400" data-testid="theme-{t.id}-in-draft">Selected in the unsaved changes of {listNames(drafted)}; save or discard them first.</p>
+                                <p class="w-full text-sm text-gray-500 dark:text-gray-400" data-testid="theme-{t.id}-in-draft">Selected in the unsaved changes of {listNames(drafted)} - save or discard them first.</p>
                             {/if}
                         {/if}
                     </li>

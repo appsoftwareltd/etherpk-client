@@ -53,7 +53,7 @@ export async function convertEtherpk(files: SourceFile[], control?: ImportContro
             report.push({
                 category: 'collision',
                 concept,
-                detail: `Concept "${doc.concept}" already exists; this document was imported as "${concept}"`,
+                detail: `Concept "${doc.concept}" already exists - this document was imported as "${concept}"`,
             })
             doc.fileName = `${portableFileStem(concept)}.md`
             doc.concept = concept
@@ -74,7 +74,7 @@ export async function convertEtherpk(files: SourceFile[], control?: ImportContro
             report.push({
                 category: 'collision',
                 concept: doc.concept,
-                detail: `File name "${doc.fileName}" already taken; stored as "${fileName}" (frontmatter title keeps the concept)`,
+                detail: `File name "${doc.fileName}" already taken - stored as "${fileName}" (frontmatter title keeps the concept)`,
             })
             doc.fileName = fileName
         }
@@ -127,7 +127,7 @@ export async function convertEtherpk(files: SourceFile[], control?: ImportContro
         report.push({
             category: 'rename',
             concept: stem,
-            detail: `"${file.path}" is outside journals/ and pages/; imported as a page`,
+            detail: `"${file.path}" is outside journals/ and pages/ - imported as a page`,
         })
         claim({ kind: 'page', concept: stem, fileName: baseName(file.path), text: await readText(file) })
     }
@@ -202,7 +202,7 @@ export async function convertEtherpk(files: SourceFile[], control?: ImportContro
         } catch {
             report.push({
                 category: 'unsupported',
-                detail: 'etherpk/settings.json is malformed; Graph Settings were not carried over',
+                detail: 'etherpk/settings.json is malformed - Graph Settings were not carried over',
             })
         }
     }
@@ -218,7 +218,7 @@ export async function convertEtherpk(files: SourceFile[], control?: ImportContro
         } catch {
             report.push({
                 category: 'unsupported',
-                detail: 'etherpk/quick-notes.json is malformed; Quick Notes were not carried over',
+                detail: 'etherpk/quick-notes.json is malformed - Quick Notes were not carried over',
             })
         }
     }
@@ -237,7 +237,7 @@ export async function convertEtherpk(files: SourceFile[], control?: ImportContro
         if (id === null) continue
         const theme = parseGraphThemeFile(await readText(file), id)
         if (theme) themes.push(theme)
-        else report.push({ category: 'unsupported', detail: `${file.path} is malformed or does not hold the theme its name says; it was not carried over` })
+        else report.push({ category: 'unsupported', detail: `${file.path} is malformed or does not hold the theme its name says - it was not carried over` })
     }
 
     return {

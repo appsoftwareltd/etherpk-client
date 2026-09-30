@@ -46,7 +46,7 @@ export function buildReportPage(
     const notStored = graph.report.filter((r) => r.category === 'not-stored').length
     const conversions = graph.report.length - notStored
     if (notStored > 0) {
-        lines.push(`${notStored === 1 ? '1 file could not be uploaded; it is' : `${notStored} files could not be uploaded; they are`} listed first.`)
+        lines.push(`${notStored === 1 ? '1 file could not be uploaded - it is' : `${notStored} files could not be uploaded - they are`} listed first.`)
     }
     if (conversions === 0) {
         lines.push('Every document converted cleanly - nothing was degraded or dropped.')
@@ -54,7 +54,7 @@ export function buildReportPage(
     if (graph.report.length > 0) {
         if (conversions > 0) {
             lines.push(
-                `${conversions === 1 ? '1 conversion' : `${conversions} conversions`} could not be performed losslessly; they are listed below. This page is an ordinary page - delete it once read.`,
+                `${conversions === 1 ? '1 conversion' : `${conversions} conversions`} could not be performed losslessly - they are listed below. This page is an ordinary page - delete it once read.`,
             )
         }
         for (const [category, heading] of SECTIONS) {

@@ -259,7 +259,7 @@ function mergedProtection(
     for (const [graphId, record] of Object.entries(ours ?? {})) {
         const existing = theirs?.[graphId]
         if (existing && existing.fingerprint !== record.fingerprint) {
-            throw new Error('another device protected this graph first; reload, then unlock with the passphrase chosen there')
+            throw new Error('another device protected this graph first - reload, then unlock with the passphrase chosen there')
         }
     }
     const merged = { ...(theirs ?? {}), ...(ours ?? {}) }

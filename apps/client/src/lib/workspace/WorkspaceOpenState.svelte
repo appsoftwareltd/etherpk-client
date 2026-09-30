@@ -157,7 +157,7 @@
                 The sync server lists you as {missing.role === 'owner' ? 'its owner' : 'a member'}.
                 Setting it up here registers it in this browser and your notes sync down as usual.
                 Nothing is deleted{missing.staleRecord
-                    ? '; the details this browser held for it under another sign-in are replaced.'
+                    ? ' - the details this browser held for it under another sign-in are replaced.'
                     : '.'}
             </p>
             {#if setupError}
@@ -211,7 +211,7 @@
             <h2>You no longer have access to this graph</h2>
             <p>
                 Its owner deleted it, or you left it or were removed. This browser still holds a
-                copy; remove it to free the space. If you are invited again, accept the invite on
+                copy - remove it to free the space. If you are invited again, accept the invite on
                 the Graphs page.
             </p>
             {#if heldCopyUnsent}

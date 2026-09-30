@@ -8,7 +8,7 @@
     "includes": [
         { "name": "head", "description": "Extra markup inside <head>: analytics, fonts, meta tags. Raw HTML in the page body." },
         { "name": "logo", "description": "The avatar above the site title in the sidebar: an image or inline SVG. Replaces the EtherPK icon." },
-        { "name": "header", "description": "The left sidebar's identity block (avatar, title, description). Replaces the theme's; the menu stays." },
+        { "name": "header", "description": "The left sidebar's identity block (avatar, title, description). Replaces the theme's - the menu stays." },
         { "name": "before-content", "description": "Rendered above every page's content: a banner, a notice." },
         { "name": "after-content", "description": "Rendered below every page's content, above the linked references: an author bio, a comments widget." },
         { "name": "footer", "description": "The footer under the article column." },

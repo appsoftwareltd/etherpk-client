@@ -335,7 +335,7 @@ describe('describing a graph store', () => {
         const at = (secondsAgo: number, embedded: number, total: number) =>
             describeGraphStore({ host: 'h', graphId: 'g', dir: '/d', status: { available: true, embedded, total }, updatedAt: new Date(1_000_000 - secondsAgo * 1000) }, 1_000_000)
         expect(at(14, 1408, 13286)).toBe('building - 1,408 of 13,286 passages (10%) embedded, snapshot 14 s ago, refreshed every 30 s while it builds')
-        expect(at(2700, 128, 13286)).toBe('paused - 128 of 13,286 passages (0%) embedded, last snapshot 45 min ago; nothing is building it now, it continues when serve next runs')
+        expect(at(2700, 128, 13286)).toBe('paused - 128 of 13,286 passages (0%) embedded, last snapshot 45 min ago. Nothing is building it now, it continues when serve next runs')
         expect(at(7200, 13286, 13286)).toBe('up to date - 13,286 of 13,286 passages embedded (snapshot 2 h ago)')
         expect(at(5, 0, 0)).toBe('empty - no passages indexed here yet (snapshot 5 s ago)')
     })

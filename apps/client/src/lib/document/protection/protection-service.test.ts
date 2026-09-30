@@ -444,7 +444,7 @@ describe('a record that is present but not usable', () => {
         await service.load()
 
         await expect(service.enable('passphrase')).rejects.toThrow(ProtectionUnavailableError)
-        await expect(service.enable('passphrase')).rejects.toThrow('etherpk/protection.json is damaged; restore it from a backup')
+        await expect(service.enable('passphrase')).rejects.toThrow('etherpk/protection.json is damaged - restore it from a backup')
 
         expect((await adapter.read('etherpk', PROTECTION_FILE)).text).toBe(GARBAGE)
         expect(service.isConfigured).toBe(false)

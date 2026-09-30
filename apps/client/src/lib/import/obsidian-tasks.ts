@@ -39,7 +39,7 @@ export function convertObsidianTaskLine(
         report.push({
             category: 'degradation',
             concept,
-            detail: `Checkbox state \`[${state}]\` has no EtherPK equivalent; converted to an open task`,
+            detail: `Checkbox state \`[${state}]\` has no EtherPK equivalent - converted to an open task`,
         })
     }
 

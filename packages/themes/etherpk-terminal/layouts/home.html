@@ -11,7 +11,7 @@
         <h1 class="post-title index-title">{{site.title}}</h1>
         {{/page.isGeneratedIndex}}
         <div class="posts">
-            {{#site.isBlog}}{{#site.recentPosts}}{{> post-entry}}{{/site.recentPosts}}{{^site.hasPosts}}<p class="post-list-empty">No dated documents are published yet. A journal entry is dated by its day; a page by a <code>date:</code> line in its frontmatter.</p>{{/site.hasPosts}}{{/site.isBlog}}
+            {{#site.isBlog}}{{#site.recentPosts}}{{> post-entry}}{{/site.recentPosts}}{{^site.hasPosts}}<p class="post-list-empty">No dated documents are published yet. A journal entry is dated by its day, a page by a <code>date:</code> line in its frontmatter.</p>{{/site.hasPosts}}{{/site.isBlog}}
             {{^site.isBlog}}{{#page.isGeneratedIndex}}<div class="post-content">{{{page.content}}}</div>{{/page.isGeneratedIndex}}{{/site.isBlog}}
         </div>
         {{#site.isBlog}}{{#site.hasPosts}}

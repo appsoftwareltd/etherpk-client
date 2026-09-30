@@ -198,7 +198,7 @@ export async function publishPublication(
         warnings.push({
             level: 'warning',
             code: 'home-not-published',
-            message: `The home page "${publication.home}" is not in this publication; the front page lists the published pages instead.`,
+            message: `The home page "${publication.home}" is not in this publication - the front page lists the published pages instead.`,
         })
     }
     const allocation = allocateSlugs.withReport(included.filter((d) => d !== homeDoc))
@@ -209,14 +209,14 @@ export async function publishPublication(
         // A document that asked for an address and did not get it is worth a warning; a derived
         // collision is the normal suffix rule and only information.
         if (c.explicit) {
-            warnings.push({ level: 'warning', code: 'slug-taken', message: `"${c.concept}" asks for the address ${c.wanted}.html in its frontmatter, but another document has it; it is at ${c.slug}.html.`, concept: c.concept })
+            warnings.push({ level: 'warning', code: 'slug-taken', message: `"${c.concept}" asks for the address ${c.wanted}.html in its frontmatter, but another document has it - it is at ${c.slug}.html.`, concept: c.concept })
         } else {
-            info.push({ level: 'info', code: 'slug-collision', message: `"${c.concept}" wanted the address ${c.wanted}.html, which another document has; it is at ${c.slug}.html.`, concept: c.concept })
+            info.push({ level: 'info', code: 'slug-collision', message: `"${c.concept}" wanted the address ${c.wanted}.html, which another document has - it is at ${c.slug}.html.`, concept: c.concept })
         }
     }
     for (const ignoredSlug of allocation.ignored) {
         const why = ignoredSlug.reason === 'reserved' ? 'is a name the site uses for a generated page' : ignoredSlug.reason === 'empty' ? 'leaves nothing once made into an address' : 'is not text'
-        warnings.push({ level: 'warning', code: 'slug-ignored', message: `"${ignoredSlug.concept}" has \`slug: ${ignoredSlug.value}\`, which ${why}; its address is derived from its name instead.`, concept: ignoredSlug.concept })
+        warnings.push({ level: 'warning', code: 'slug-ignored', message: `"${ignoredSlug.concept}" has \`slug: ${ignoredSlug.value}\`, which ${why} - its address is derived from its name instead.`, concept: ignoredSlug.concept })
     }
     if (homeDoc && explicitSlugOf(homeDoc.text) !== null) {
         info.push({ level: 'info', code: 'home-slug-ignored', message: `"${homeDoc.concept}" is the home page, so it is index.html whatever its \`slug:\` says.`, concept: homeDoc.concept })
@@ -238,10 +238,10 @@ export async function publishPublication(
     for (const message of themeFileErrors(theme)) errors.push({ level: 'error', code: 'theme-invalid', message })
     if (errors.length > 0) return { bundle, report }
     if (theme.manifest.contract < THEME_CONTRACT) {
-        warnings.push({ level: 'warning', code: 'theme-older-contract', message: `The theme "${theme.manifest.name}" was written for view contract ${theme.manifest.contract}; this EtherPK writes contract ${THEME_CONTRACT}. It is rendered as is; newer view fields are simply absent to it.` })
+        warnings.push({ level: 'warning', code: 'theme-older-contract', message: `The theme "${theme.manifest.name}" was written for view contract ${theme.manifest.contract} - this EtherPK writes contract ${THEME_CONTRACT}. It is rendered as is - newer view fields are simply absent to it.` })
     }
     if (!theme.manifest.kinds.includes(publication.kind)) {
-        warnings.push({ level: 'warning', code: 'theme-kind-mismatch', message: `The theme "${theme.manifest.name}" is made for ${theme.manifest.kinds.join(' and ')} publications; this one is ${publication.kind}.` })
+        warnings.push({ level: 'warning', code: 'theme-kind-mismatch', message: `The theme "${theme.manifest.name}" is made for ${theme.manifest.kinds.join(' and ')} publications - this one is ${publication.kind}.` })
     }
 
     // 4. The pre-render pass: diagrams and code, over every body that will be rendered.
@@ -250,7 +250,7 @@ export async function publishPublication(
         const key = conceptKey(concept)
         const doc = source.documents.find((d) => conceptKey(d.concept) === key || d.aliases.some((a) => conceptKey(a) === key))
         if (!doc) {
-            warnings.push({ level: 'warning', code: 'include-page-missing', message: `The include "${slot}" names "${concept}", which is not a document in this graph; the theme's own ${slot} is used.` })
+            warnings.push({ level: 'warning', code: 'include-page-missing', message: `The include "${slot}" names "${concept}", which is not a document in this graph - the theme's own ${slot} is used.` })
             continue
         }
         // The same consent rule as for a page: an include's body reaches the site, so the page
@@ -264,7 +264,7 @@ export async function publishPublication(
                 'not-public': 'is not public (its frontmatter needs `public: true`)',
                 'not-named': `does not name this publication (its frontmatter needs \`publications: [${publication.id}]\`)`,
             }[status]
-            warnings.push({ level: 'warning', code: `include-page-${status}`, message: `The include "${slot}" names "${concept}", which ${why}; the theme's own ${slot} is used.` })
+            warnings.push({ level: 'warning', code: `include-page-${status}`, message: `The include "${slot}" names "${concept}", which ${why} - the theme's own ${slot} is used.` })
             continue
         }
         includeDocs.set(slot, doc)
@@ -364,14 +364,14 @@ export async function publishPublication(
     const knownSlots = new Set(theme.manifest.includes.map((s) => s.name))
     for (const [slot, doc] of includeDocs) {
         if (!knownSlots.has(slot)) {
-            warnings.push({ level: 'warning', code: 'include-unknown-slot', message: `The theme "${theme.manifest.name}" has no include slot "${slot}"; the page "${doc.concept}" is not used.` })
+            warnings.push({ level: 'warning', code: 'include-unknown-slot', message: `The theme "${theme.manifest.name}" has no include slot "${slot}" - the page "${doc.concept}" is not used.` })
             continue
         }
         const body = bodyOf(doc)
         if (cssSlots.has(slot)) {
             const fence = renderer.fences(body).find((f) => f.lang === 'css')
             if (!fence) {
-                warnings.push({ level: 'warning', code: 'include-no-css', message: `The include "${slot}" names "${doc.concept}", which has no \`css\` fence; nothing is appended to the stylesheet.` })
+                warnings.push({ level: 'warning', code: 'include-no-css', message: `The include "${slot}" names "${doc.concept}", which has no \`css\` fence - nothing is appended to the stylesheet.` })
                 continue
             }
             customCss += (customCss ? '\n' : '') + fence.code
@@ -512,7 +512,7 @@ export async function publishPublication(
         const asset = await source.readAsset(`../assets/${encodeURIComponent(name)}`)
         if (!asset) {
             report.assets.missing.push({ name, from })
-            warnings.push({ level: 'warning', code: 'asset-missing', message: `"${from}" references ${name}, which the graph does not hold; the link is left as it is.`, concept: from })
+            warnings.push({ level: 'warning', code: 'asset-missing', message: `"${from}" references ${name}, which the graph does not hold - the link is left as it is.`, concept: from })
             continue
         }
         bundle.set(`assets/${name}`, asset.bytes)
@@ -525,7 +525,7 @@ export async function publishPublication(
     if (hasMath) {
         const katex = env.katexAssets ? await env.katexAssets() : null
         if (katex) for (const [path, content] of katex) bundle.set(`theme/katex/${path}`, content)
-        else warnings.push({ level: 'warning', code: 'katex-assets-unavailable', message: 'The publication has maths but this host has no KaTeX stylesheet to copy in; formulas will render unstyled.' })
+        else warnings.push({ level: 'warning', code: 'katex-assets-unavailable', message: 'The publication has maths but this host has no KaTeX stylesheet to copy in - formulas will render unstyled.' })
     }
 
     // 9. Derived files, from the included documents alone.
@@ -550,7 +550,7 @@ export async function publishPublication(
             bundle.set('feed.xml', feedXml(publication.url, publication.name, items))
         }
     } else {
-        info.push({ level: 'info', code: 'no-site-url', message: 'The publication has no `url`, so no sitemap or feed is written; add one to the publication page to get both.' })
+        info.push({ level: 'info', code: 'no-site-url', message: 'The publication has no `url`, so no sitemap or feed is written - add one to the publication page to get both.' })
     }
     bundle.set('.nojekyll', '')
 
@@ -561,7 +561,7 @@ export async function publishPublication(
     if (customCss) for (const r of externalResources(customCss)) external.add(r)
     report.external = [...external]
     if (pages.some((p) => p.rendered.mermaidFallback)) {
-        warnings.push({ level: 'warning', code: 'mermaid-not-prerendered', message: 'A diagram was not pre-rendered on this host and is left as its source; publish from the browser, or run `etherpk-mcp publish setup`, to get inline SVG.' })
+        warnings.push({ level: 'warning', code: 'mermaid-not-prerendered', message: 'A diagram was not pre-rendered on this host and is left as its source - publish from the browser, or run `etherpk-mcp diagrams setup`, to get inline SVG.' })
     }
 
     progress('writing', pages.length + 3, pages.length + 3)

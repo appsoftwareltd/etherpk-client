@@ -151,7 +151,7 @@ export async function setupSemantic(io: SemanticSetupIo): Promise<SemanticSetupS
     const files = io.files ?? MODEL.files
     const status = await semanticSetupStatus(io.env, files)
     if (!status.runtime) {
-        io.say(`Installing ${RUNTIME.name} ${RUNTIME.version} into ${status.runtimeDir} (about 300 MB; native, so it is not part of the etherpk-mcp package)…`)
+        io.say(`Installing ${RUNTIME.name} ${RUNTIME.version} into ${status.runtimeDir} (about 300 MB - native, so it is not part of the etherpk-mcp package)…`)
         await mkdir(status.runtimeDir, { recursive: true, mode: 0o700 })
         const manifest = join(status.runtimeDir, 'package.json')
         if (!(await exists(manifest))) await writeFile(manifest, JSON.stringify({ name: 'etherpk-mcp-runtime', private: true }, null, 2))
@@ -208,7 +208,7 @@ async function download(fetchFn: typeof fetch, file: ModelFile, path: string): P
     const digest = hash.digest('hex')
     if (digest !== file.sha256) {
         await rm(temp, { force: true })
-        throw new Error(`${file.name} downloaded with sha256 ${digest}, expected ${file.sha256}; not kept.`)
+        throw new Error(`${file.name} downloaded with sha256 ${digest}, expected ${file.sha256} - not kept.`)
     }
     await rename(temp, path)
 }
@@ -228,7 +228,7 @@ export class SemanticUnavailable extends Error {
     }
 }
 
-export const SETUP_HINT = 'run `npx @appsoftwareltd/etherpk-mcp semantic setup` on this computer once (it installs a ~300 MB runtime and a 23 MB model into the cache directory); the next semantic search will use it, no restart needed.'
+export const SETUP_HINT = 'run `npx @appsoftwareltd/etherpk-mcp semantic setup` on this computer once (it installs a ~300 MB runtime and a 23 MB model into the cache directory) - the next semantic search will use it, no restart needed.'
 
 // The runtime's surface, typed as narrowly as this module uses it: the package is loaded from
 // a path outside the bundle, so its own types are not on hand.
@@ -276,7 +276,7 @@ export async function loadEmbeddingModel(env: NodeJS.ProcessEnv, options: LoadOp
         const loaded = (await import(pathToFileURL(require.resolve(RUNTIME.name)).href)) as { default?: OrtRuntime } & OrtRuntime
         ort = loaded.default?.InferenceSession ? loaded.default : loaded
     } catch (error) {
-        throw new SemanticUnavailable(`The embedding runtime in ${status.runtimeDir} failed to load (${error instanceof Error ? error.message : String(error)}); ${SETUP_HINT}`)
+        throw new SemanticUnavailable(`The embedding runtime in ${status.runtimeDir} failed to load (${error instanceof Error ? error.message : String(error)}): ${SETUP_HINT}`)
     }
     const tokenizer = new Tokenizer(
         JSON.parse(await readFile(join(status.modelDir, 'tokenizer.json'), 'utf8')),

@@ -15,7 +15,7 @@
 <div class="demo-bar" data-testid="demo-bar" role="note" style:--demo-bar-top={top}>
     <p class="copy">
         <strong>Demo graph.</strong>
-        It lives in this browser's storage only, so edit freely. It is not backed up anywhere.
+        It is stored in this browser only, so edit freely. It is not backed up anywhere.
     </p>
     <span class="actions">
         <a href="/demo?reset=1" data-testid="demo-bar-reset">Reset demo</a>

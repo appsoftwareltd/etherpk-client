@@ -1,7 +1,7 @@
 ---
 title: "[[Plant]] Foods"
 ---
-Feeding is the bit people skip, then wonder why the [[Monstera]] has produced one leaf since 2024. Soil runs out of nutrients; the plant can't pop to the shops.
+Feeding is the bit people skip, then wonder why the [[Monstera]] has produced one leaf since 2024. Soil runs out of nutrients - the plant can't pop to the shops.
 
 ## The three numbers
 

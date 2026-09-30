@@ -253,9 +253,9 @@ export function startRemoteImageUpload(view: EditorView, store: AssetStore, imag
                     },
                 })
                 if (result.cancelled) {
-                    return { state: 'partial', detail: `Cancelled after ${result.uploaded} of ${readable.length}. What uploaded was kept; the rest stay on the web.` }
+                    return { state: 'partial', detail: `Cancelled after ${result.uploaded} of ${readable.length}. What uploaded was kept - the rest stay on the web.` }
                 }
-                return { detail: [uploadDetail(result), stays].filter(Boolean).join('; ') }
+                return { detail: [uploadDetail(result), stays].filter(Boolean).join(' - ') }
             } finally {
                 // Whatever the exit, no picture is left saying it is uploading, and the paste's range is let go.
                 for (const src of [...marked]) mark(src, false)

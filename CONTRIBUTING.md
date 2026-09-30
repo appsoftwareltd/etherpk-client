@@ -21,4 +21,4 @@ or link a fork that shows it.
 
 ## Licence
 
-The code is available under the Elastic License 2.0; see [LICENSE](LICENSE).
+The code is available under the Elastic License 2.0 - see [LICENSE](LICENSE).

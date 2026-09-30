@@ -723,7 +723,7 @@
     /** What a tab that followed a rename made outside this tab says happened. */
     function renamedElsewhereMessage(from: string, to: string): string {
         const where = isServerStore ? "elsewhere" : "outside EtherPK";
-        return `"${from}" was renamed to "${to}" ${where}; it now answers to that name.`;
+        return `"${from}" was renamed to "${to}" ${where} - it now answers to that name.`;
     }
 
     /**
@@ -1760,7 +1760,7 @@
      * it again.
      */
     function noteResurrection(concept: string) {
-        notify(`"${concept}" had been deleted; your edit restored it.`);
+        notify(`"${concept}" had been deleted - your edit restored it.`);
     }
 
     /** Open the rename dialog. The plan is recomputed as the typed name changes. */
@@ -2433,7 +2433,7 @@
         const connection = resolveSyncedGraphConnection(graphId, serverOrigin);
         if (!connection)
             throw new Error(
-                `This device is not connected to ${serverHost(serverOrigin)}, the Sync Server this graph lives on. Connect to it in Sync settings.`,
+                `This device is not connected to ${serverHost(serverOrigin)}, the Sync Server that stores this graph. Connect to it in Sync settings.`,
             );
         const stored = syncConnectionFor(serverOrigin);
         connectionAtOpen = describeConnection(stored);
@@ -4495,7 +4495,7 @@
         }
         const record = await readPublicationFolder(graphId, candidate.id);
         if (!record) {
-            notify(`No folder is chosen for ${candidate.name} on this device; choose one to publish from the keyboard.`);
+            notify(`No folder is chosen for ${candidate.name} on this device - choose one to publish from the keyboard.`);
             openGraphSettings("publish");
             return;
         }
@@ -5838,7 +5838,7 @@
         tab={graphSettingsDialog.tab}
         nameHelp={isServerStore
             ? "Changes the graph name for all members."
-            : "Changes the display name only; the folder on disk keeps its name."}
+            : "Changes the display name only - the folder on disk keeps its name."}
         folderPath={!isServerStore && fsFolderName !== undefined
             ? {
                   path: readGraphFolderPath(graphId) ?? "",

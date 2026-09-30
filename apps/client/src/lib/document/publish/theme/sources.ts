@@ -47,7 +47,7 @@ export async function fetchTheme(url: string, fetchText: (url: string) => Promis
     if (!manifest) throw new Error(`The theme at ${url} cannot be used: ${errors.join(' ')}`)
     if (manifest.files.length === 0) throw new Error(`The theme at ${url} lists no files in its manifest, so nothing can be fetched.`)
     if (manifest.files.length > MAX_URL_THEME_FILES) {
-        throw new Error(`The theme at ${url} lists ${manifest.files.length} files; a theme may list at most ${MAX_URL_THEME_FILES}.`)
+        throw new Error(`The theme at ${url} lists ${manifest.files.length} files - a theme may list at most ${MAX_URL_THEME_FILES}.`)
     }
     const base = new URL(url)
     const files = new Map<string, string>()

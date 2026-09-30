@@ -234,7 +234,7 @@
             </div>
             {#if notice === "upsell"}
                 <div
-                    class="mt-3 rounded-lg border border-indigo-200 bg-indigo-50/70 p-3 dark:border-indigo-400/20 dark:bg-indigo-950/20"
+                    class="mt-3 rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-white/10 dark:bg-white/5"
                     data-testid="sync-plus-required"
                 >
                     <p
