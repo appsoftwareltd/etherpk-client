@@ -31,6 +31,7 @@ import { outlinerKeymap } from './outliner-keymap'
 import { NEW_GROUP_DELAY, undoGrouping } from './undo-grouping'
 import { editorAnalysis } from './analysis/editor-analysis'
 import { minimalReplacement } from './minimal-replacement'
+import { createSendAndHear } from './send-and-hear'
 import { sequentialTextChanges } from './sequential-text-changes'
 
 /** Marks a transaction as externally-originated so it is not echoed back out. */
@@ -88,6 +89,11 @@ export interface DocumentEditorOptions {
     doc: string
     /** Fired for every editor-originated change. */
     onChange: (change: TextChange) => void
+    /**
+     * The document's text in the store now. Read when text arrives while this editor is still
+     * sending a transaction's changes (send-and-hear.ts).
+     */
+    currentText: () => string
     /** Extra extensions (e.g. augmentation decorations). */
     extensions?: Extension[]
     /**
@@ -101,7 +107,10 @@ export interface DocumentEditorOptions {
 
 export interface DocumentEditor {
     readonly view: EditorView
-    /** Reflect an external change (git reload / remote update) without firing onChange. */
+    /**
+     * Reflect an external change (git reload, remote update, another editor on the document)
+     * without firing onChange. Held while this editor is sending its own changes (send-and-hear.ts).
+     */
     setExternalText(text: string): void
     /**
      * Forget every undo step. For a lock transition on a [[Protected Document]]: the swap between
@@ -134,8 +143,11 @@ function collabHistory(collab: NonNullable<DocumentEditorOptions['collab']>): Ex
 }
 
 export function createDocumentEditor(options: DocumentEditorOptions): DocumentEditor {
-    const { parent, doc, onChange, extensions = [], collab } = options
+    const { parent, doc, onChange, currentText, extensions = [], collab } = options
     const historyCompartment = new Compartment()
+    // Declared by the time a listener or the store calls either; `view` and `applyExternalText`
+    // are defined below.
+    const exchange = createSendAndHear((text) => applyExternalText(text), currentText)
 
     // Collab mode: suppresses the onChange echo while setExternalText routes a replace
     // through the Y.Text. y-codemirror.next does NOT export its ySyncAnnotation (v0.3.5),
@@ -151,7 +163,7 @@ export function createDocumentEditor(options: DocumentEditorOptions): DocumentEd
         // A single transaction can carry several changes (a wrap key, a format toggle, a
         // multi-caret edit). `applyChange` takes one at a time and every store splices as it goes, so
         // each change is expressed against the text the ones before it leave (sequential-text-changes.ts).
-        for (const change of sequentialTextChanges(update.changes)) onChange(change)
+        exchange.send(sequentialTextChanges(update.changes), onChange)
     })
 
     const view = new EditorView({
@@ -259,41 +271,45 @@ export function createDocumentEditor(options: DocumentEditorOptions): DocumentEd
         }),
     })
 
+    function applyExternalText(text: string): void {
+        // The change and nothing more (ADR 0066): a whole-document replace threw the caret
+        // to the end for a rewrite that touched one link, and on a synced graph it did not
+        // cover anything typed concurrently, which then survived at the wrong place.
+        const change = minimalReplacement(view.state.doc.toString(), text)
+        if (!change) return
+        if (collab) {
+            // Through the Y.Text; the binding delivers it to CM synchronously, inside the
+            // flag window, so onChange stays silent. Origin EXTERNAL keeps it OUT of
+            // Y.UndoManager (default trackedOrigins is {null}): external content must not
+            // be locally undoable — without this, captureTimeout merges the replace with
+            // subsequent typing and one Ctrl+Z rewinds through it.
+            const ytext = collab.ytext
+            applyingExternal = true
+            try {
+                ytext.doc!.transact(() => {
+                    ytext.delete(change.from, change.to - change.from)
+                    ytext.insert(change.from, change.insert)
+                }, EXTERNAL)
+            } finally {
+                applyingExternal = false
+            }
+            return
+        }
+        // Out of the undo history, as the collab branch keeps its swap out of the undo
+        // manager: external content must not be locally undoable. For a Protected Document
+        // the swap is the fence replacing the plaintext on lock, and its inverse would hand
+        // the plaintext back to anyone pressing Mod-z at the locked document - and on past
+        // every transaction filter, which undo skips.
+        view.dispatch({
+            changes: change,
+            annotations: [EXTERNAL.of(true), Transaction.addToHistory.of(false)],
+        })
+    }
+
     return {
         view,
         setExternalText(text) {
-            // The change and nothing more (ADR 0066): a whole-document replace threw the caret
-            // to the end for a rewrite that touched one link, and on a synced graph it did not
-            // cover anything typed concurrently, which then survived at the wrong place.
-            const change = minimalReplacement(view.state.doc.toString(), text)
-            if (!change) return
-            if (collab) {
-                // Through the Y.Text; the binding delivers it to CM synchronously, inside the
-                // flag window, so onChange stays silent. Origin EXTERNAL keeps it OUT of
-                // Y.UndoManager (default trackedOrigins is {null}): external content must not
-                // be locally undoable — without this, captureTimeout merges the replace with
-                // subsequent typing and one Ctrl+Z rewinds through it.
-                const ytext = collab.ytext
-                applyingExternal = true
-                try {
-                    ytext.doc!.transact(() => {
-                        ytext.delete(change.from, change.to - change.from)
-                        ytext.insert(change.from, change.insert)
-                    }, EXTERNAL)
-                } finally {
-                    applyingExternal = false
-                }
-                return
-            }
-            // Out of the undo history, as the collab branch keeps its swap out of the undo
-            // manager: external content must not be locally undoable. For a Protected Document
-            // the swap is the fence replacing the plaintext on lock, and its inverse would hand
-            // the plaintext back to anyone pressing Mod-z at the locked document - and on past
-            // every transaction filter, which undo skips.
-            view.dispatch({
-                changes: change,
-                annotations: [EXTERNAL.of(true), Transaction.addToHistory.of(false)],
-            })
+            exchange.hear(text)
         },
         clearHistory() {
             if (collab) return

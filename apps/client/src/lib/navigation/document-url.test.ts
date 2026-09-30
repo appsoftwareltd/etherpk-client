@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { assetUrl, documentUrl, encodeConceptPath, graphUrl, themeUrl, viewUrl } from './document-url'
+import { assetUrl, documentUrl, encodeConceptPath, graphUrl, kanbanUrl, themeUrl, viewUrl } from './document-url'
 
 describe('encodeConceptPath', () => {
     it('encodes each segment but preserves slashes as path separators', () => {
@@ -67,5 +67,22 @@ describe('themeUrl', () => {
 
     it('is what viewUrl gives a theme View', () => {
         expect(viewUrl('g1', { kind: 'theme', target: 'docs-theme' })).toBe('/g/g1/t/docs-theme')
+    })
+})
+
+describe('kanbanUrl', () => {
+    // A Kanban Board is a place you go, so it is a Visit with an address (ADR 0113). It is keyed
+    // by its concept like a document, under its own segment, so a concept's page and its board
+    // are two addresses.
+    it('addresses a board by its concept', () => {
+        expect(kanbanUrl('g1', 'Acme Rebuild')).toBe('/g/g1/k/Acme%20Rebuild')
+    })
+
+    it('keeps a slash in the concept as a path separator, as a Document URL does', () => {
+        expect(kanbanUrl('g1', 'a/b c')).toBe('/g/g1/k/a/b%20c')
+    })
+
+    it('is what viewUrl gives a kanban View', () => {
+        expect(viewUrl('g1', { kind: 'kanban', target: 'Acme' })).toBe('/g/g1/k/Acme')
     })
 })

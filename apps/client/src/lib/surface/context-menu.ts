@@ -35,6 +35,25 @@ export type ContextMenuTarget =
     | TabContextMenuTarget
     | WikilinkContextMenuTarget
     | MisspellingContextMenuTarget
+    | KanbanCardContextMenuTarget
+
+/**
+ * A card on a [[Kanban Board]] (ADR 0113). The board that raised the menu keeps the moves the
+ * index has not confirmed yet, so a row acts through that board, named by `board`, rather than
+ * writing to the document itself.
+ */
+export interface KanbanCardContextMenuTarget {
+    kind: 'kanban-card'
+    /** The board's own id, as it registered itself. */
+    board: string
+    /** The card's key on that board: its document and line. */
+    card: string
+    /** What the card says, for a row that names it. */
+    label: string
+    /** The lane and section the card is in, so the rows leave out where it already is. */
+    status: 'open' | 'doing' | 'waiting' | 'done' | 'cancelled'
+    priority: 1 | 2 | 3 | null
+}
 
 /**
  * A [[Wikilink]] someone right-clicked or long-pressed in an editor (ADR 0065). Deliberately
@@ -128,8 +147,16 @@ export interface AssetContextMenuTarget {
 export type EditableAssetTarget = AssetContextMenuTarget & { line: number; occurrence: number }
 
 /** Narrowing for a row that acts on a document. */
+export function isKanbanCardTarget(target: ContextMenuTarget): target is KanbanCardContextMenuTarget {
+    return target.kind === 'kanban-card'
+}
+
+/**
+ * The document kinds, named rather than inferred from what is left: a guard that excluded the
+ * other kinds took every kind added after it for a document.
+ */
 export function isDocumentTarget(target: ContextMenuTarget): target is DocumentContextMenuTarget {
-    return target.kind !== 'asset' && target.kind !== 'tab' && target.kind !== 'wikilink' && target.kind !== 'misspelling'
+    return target.kind === 'document-tab' || target.kind === 'favourite' || target.kind === 'recent' || target.kind === 'document-row'
 }
 
 /** Narrowing for a row that acts on a misspelt word. */
@@ -165,8 +192,17 @@ export interface ContextMenuItem {
     order?: number
     /** The Command id this row executes, with the target as its argument. */
     command: string
-    /** Rendered with a separator above it — groups destructive or unrelated actions. */
-    separatorBefore?: boolean
+    /**
+     * An icon from the app's table (`icons.ts`), drawn left of the label. A menu with any icon
+     * keeps the icon's column on every row, so the labels stay in line.
+     */
+    icon?: string
+    /**
+     * Rendered with a separator above it — groups destructive or unrelated actions. A function
+     * when which row heads its group depends on the target, as with a Kanban card's "Move to"
+     * rows, which leave out the lane the card is in.
+     */
+    separatorBefore?: boolean | ((target: ContextMenuTarget) => boolean)
     /** Applicability; absent ⇒ shown for every target. */
     when?: (target: ContextMenuTarget) => boolean
 }
@@ -180,7 +216,7 @@ export function registerContextMenuItem(registry: ContributionRegistry, item: Co
 export function listContextMenuItems(
     registry: ContributionRegistry,
     target: ContextMenuTarget,
-): { id: string; label: string; command: string; separatorBefore: boolean }[] {
+): { id: string; label: string; command: string; icon?: string; separatorBefore: boolean }[] {
     return registry
         .list(CONTEXT_MENU_KIND)
         .map((e) => e.value as ContextMenuItem)
@@ -190,6 +226,7 @@ export function listContextMenuItems(
             id: item.id,
             label: typeof item.label === 'function' ? item.label(target) : item.label,
             command: item.command,
-            separatorBefore: item.separatorBefore ?? false,
+            ...(item.icon === undefined ? {} : { icon: item.icon }),
+            separatorBefore: typeof item.separatorBefore === 'function' ? item.separatorBefore(target) : (item.separatorBefore ?? false),
         }))
 }

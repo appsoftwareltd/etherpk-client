@@ -16,6 +16,7 @@ import {
     READ_MANY_LIMIT,
     TASK_PAGE_LIMIT,
     ToolError,
+    addTaskNote,
     appendDocument,
     backlinks,
     createPage,
@@ -27,6 +28,7 @@ import {
     readAsset,
     readDocument,
     readDocuments,
+    readTask,
     rename,
     search,
     setAliases,
@@ -102,6 +104,7 @@ export function createMcpServer(graph: HeadlessGraph, info: McpServerInfo): McpS
                 'To rename a page or concept use plan_rename then rename, never a frontmatter edit: rename carries scoped concepts ("[[Old]] Notes") along and by default rewrites every [[Old]] link in the graph to the new name (strategy "rewrite") - strategy "alias" keeps the old name resolving instead. A rename onto a name that is taken merges two documents and needs confirm_merge: true. References inside protected documents cannot be seen or rewritten.',
                 'search has two kinds of matching: mode "text" (default) matches words and quoted phrases, and mode "semantic" finds passages about what a question or description means even when no words match. Use semantic for questions and descriptions, text for names, identifiers and exact phrases. "hybrid" returns both groups. When you answer from a search result, cite the document and where in it (its breadcrumb or lines). Semantic mode needs a one-time "semantic setup" on this computer - if it is not set up, search says so and names the command.',
                 'Start with graph_info to see what you are connected to. read_documents reads several documents in one call. tasks lists tasks and set_task changes one (status, priority, due and scheduled dates) by document and line.',
+                'A task reference is how a person hands you one task: its words, then an EtherPK address ending in #task=<line>-<fingerprint>. Pass the whole reference, or the address, to read_task for the task and its detail, to set_task (as reference) to change it, and to add_task_note to write what you did under it. It finds the task after lines are added above it or its tags change; if its words were edited it answers task_not_found, and you should ask the user for a fresh one.',
                 'Publishing: list_publications shows the publications this graph defines (a publication is a page whose frontmatter defines it - its outline is the site navigation) and the public documents none takes. A document is on a site when its frontmatter has public: true and names the publication in publications. create_publication and update_publication change the settings, and publish writes the site into the publish folder the user set for it on this machine with the etherpk-mcp publish command (the tool cannot choose a folder) and returns the report. Diagrams need a browser the user installs once with "diagrams setup".',
                 "Themes: a publication's look is a theme - Mustache templates, a stylesheet, a script and a manifest. list_themes shows the bundled ones (read-only) and the graph's own. read_theme writes a theme's files to a folder on this machine to read and edit. customise_publication_theme copies a publication's bundled theme into the graph and points the publication at the copy (create_theme copies any theme). write_theme_file, delete_theme_file and import_theme_folder change a graph theme. preview_theme renders a theme to a folder (with screenshots when a browser is set up) to check before publish. For a snippet such as an analytics script, an include slot (update_publication includes, e.g. head) filled by a page may be lighter than a theme copy.",
                 'Images and files are assets: upload_asset adds a file from this machine and returns the markdown to paste into a document. read_asset writes an asset to a local file you can open, and list_assets shows the assets documents reference. An asset is available only where a document you can read references it (or you uploaded it this session). read_asset, read_theme and preview_theme write under the graph\'s downloads directory and return the path - name a folder relative to it, never elsewhere.',
@@ -176,7 +179,7 @@ export function createMcpServer(graph: HeadlessGraph, info: McpServerInfo): McpS
         'tasks',
         {
             title: 'Tasks',
-            description: `Tasks ("- [ ]" bullets) across the graph with their tags. Defaults to every unfinished task. A concept filter matches tasks written on that page, linking it, or nested under a block or heading that links it. At most ${TASK_PAGE_LIMIT} per call.`,
+            description: `Tasks ("- [ ]" bullets) across the graph with their tags. Defaults to every unfinished task. A concept filter matches tasks written on that page or on a page named for it ("[[Concept]] Notes"), linking it, or nested under a block or heading that links it. At most ${TASK_PAGE_LIMIT} per call.`,
             inputSchema: {
                 concept: concept.optional(),
                 statuses: z.array(z.enum(['open', 'doing', 'waiting', 'done', 'cancelled'])).optional(),
@@ -190,13 +193,37 @@ export function createMcpServer(graph: HeadlessGraph, info: McpServerInfo): McpS
     )
 
     server.registerTool(
+        'read_task',
+        {
+            title: 'Read a task',
+            description: 'The task a task reference names: its text, status, priority, due and scheduled days, its document and current 0-based line, its breadcrumb (the headings and bullets above it), its detail (its continuation lines and everything nested under it), foundBy (at_line, moved or other_document) and its current reference. Errors: task_not_found (its words were edited or it was deleted), task_ambiguous (two tasks have its words; the message names them), other_graph (the reference is from another graph).',
+            inputSchema: { reference: z.string().min(1).describe('The task reference as the user gave it: the two lines, or the address alone.') },
+        },
+        async (args) => run(() => readTask(graph, args)),
+    )
+
+    server.registerTool(
+        'add_task_note',
+        {
+            title: 'Add a note under a task',
+            description: 'Add text under the task a task reference names, one level in, after what is already nested there: a line of text becomes a bullet, and bullets are nested as written. Use it to record what you did about the task. Refuses as read_task does when the reference finds no single task.',
+            inputSchema: {
+                reference: z.string().min(1).describe('The task reference as the user gave it.'),
+                text: z.string().min(1).describe('Markdown: a line, or "- " bullets.'),
+            },
+        },
+        async (args) => run(() => addTaskNote(graph, args)),
+    )
+
+    server.registerTool(
         'set_task',
         {
             title: 'Set a task',
-            description: 'Change one task by document and 0-based line (as tasks and read_document count lines): its status (open, doing, waiting, done, cancelled - exclusive), priority (1, 2, 3 or null), due and scheduled days (YYYY-MM-DD or null). Pass expect with the task\'s text from tasks - if the line no longer holds that task the change is refused with error "task_moved" and nothing is edited.',
+            description: 'Change one task, named by a task reference or by document and 0-based line (as tasks and read_document count lines): its status (open, doing, waiting, done, cancelled - exclusive), priority (1, 2, 3 or null), due and scheduled days (YYYY-MM-DD or null). By line, pass expect with the task\'s text from tasks - if the line no longer holds that task the change is refused with error "task_moved" and nothing is edited. A reference finds the task wherever it is now.',
             inputSchema: {
-                concept,
-                line: z.number().int().nonnegative(),
+                reference: z.string().min(1).optional().describe('A task reference, in place of concept, line and expect.'),
+                concept: concept.optional(),
+                line: z.number().int().nonnegative().optional(),
                 changes: z.object({
                     status: z.enum(['open', 'doing', 'waiting', 'done', 'cancelled']).optional(),
                     priority: z.union([z.literal(1), z.literal(2), z.literal(3), z.null()]).optional(),

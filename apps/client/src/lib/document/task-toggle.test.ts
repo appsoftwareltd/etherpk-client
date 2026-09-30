@@ -35,17 +35,30 @@ describe('toggling an indexed task', () => {
         expect(text()).toBe('- [ ] done')
     })
 
-    it('refuses when the line has become a different task', async () => {
+    it('ticks the task where it moved when its text is unique, never the task now at its old line', async () => {
         // A line inserted above shifts every line number down: line 1 is still a valid task,
-        // just not this one. Only the text comparison catches it.
+        // just not this one. The text comparison catches it, and the finder follows the task.
         const { store, text } = storeOf('inserted\n- [ ] a different task\n- [ ] the real one')
+
+        expect(await toggleIndexedTask(store, task(1, 'the real one'), true)).toEqual({ ok: true, done: true })
+        expect(text()).toBe('inserted\n- [ ] a different task\n- [x] the real one')
+    })
+
+    it('refuses when the moved task cannot be told apart from another with the same text', async () => {
+        const { store, text } = storeOf('inserted\n- [ ] a different task\n- [ ] the same\n- [ ] the same')
         const before = text()
 
-        expect(await toggleIndexedTask(store, task(1, 'the real one'), true)).toEqual({
-            ok: false,
-            reason: 'stale',
-        })
+        expect(await toggleIndexedTask(store, task(1, 'the same'), true)).toEqual({ ok: false, reason: 'stale' })
         expect(text()).toBe(before)
+    })
+
+    it('reports a document that is gone, rather than throwing', async () => {
+        const gone: DocumentStore = {
+            open: () => {
+                throw new Error('No document for "Doc"')
+            },
+        }
+        expect(await toggleIndexedTask(gone, task(0, 'anything'), true)).toEqual({ ok: false, reason: 'missing' })
     })
 
     it('refuses when the line is no longer a task at all', async () => {
@@ -106,11 +119,12 @@ describe('toggleIndexedTask on a page with frontmatter', () => {
         expect(store.open('Kanban').getText()).toBe('---\ntitle: Kanban\n---\n- [x] #P1 TEst task\n- [ ] second')
     })
 
-    it('still refuses a line that is genuinely not that task any more', async () => {
+    it('follows the task to its real line when the indexed line holds another', async () => {
         const store = createInMemoryDocumentStore({ Kanban: text })
 
         const result = await toggleIndexedTask(store, { concept: 'Kanban', line: 1, text: '#P1 TEst task' }, true)
 
-        expect(result).toEqual({ ok: false, reason: 'stale' })
+        expect(result).toEqual({ ok: true, done: true })
+        expect(store.open('Kanban').getText()).toBe('---\ntitle: Kanban\n---\n- [x] #P1 TEst task\n- [ ] second')
     })
 })

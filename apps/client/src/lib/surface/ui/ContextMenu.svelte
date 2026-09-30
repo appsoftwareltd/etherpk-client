@@ -14,6 +14,7 @@
     import { tick } from "svelte";
 
     import { getActiveCommandRegistry, listContextMenuItems, tryGetActiveContributionRegistry } from "$lib/surface";
+    import { iconSvg } from "$lib/surface/icons";
 
     import { closeContextMenu, getContextMenuState, subscribeContextMenu, type ContextMenuState } from "../context-menu-store";
 
@@ -30,6 +31,8 @@
         const contributions = tryGetActiveContributionRegistry();
         return contributions ? listContextMenuItems(contributions, menu.target) : [];
     });
+    /** Whether any row has an icon: then every row keeps the icon's column, so the labels line up. */
+    const withIcons = $derived(rows.some((row) => row.icon !== undefined));
 
     /**
      * What had focus when the menu opened: an editor after Shift+F10, a tab after a right-click.
@@ -130,12 +133,18 @@
                 role="menuitem"
                 data-testid="context-menu-item"
                 data-command={row.command}
-                class="flex w-full items-center px-3 py-1.5 text-left text-sm text-gray-700 pointer-coarse:min-h-11 dark:text-gray-200 {index === active
+                class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-gray-700 pointer-coarse:min-h-11 dark:text-gray-200 {index === active
                     ? 'bg-gray-100 dark:bg-white/10'
                     : ''} hover:bg-gray-100 dark:hover:bg-white/10"
                 onpointerenter={() => (active = index)}
                 onclick={() => void run(index)}
-            >{row.label}</button>
+            >
+                <!-- On one line, with nothing between the icon and the label: the row's text is its
+                     label alone, which an anchored text match reads. The icon is in-repo constant
+                     markup from the icon table, never user content. -->
+                <!-- eslint-disable-next-line svelte/no-at-html-tags -->
+                {#if withIcons}<span class="grid size-4 shrink-0 place-items-center text-gray-500 dark:text-gray-400" aria-hidden="true" data-icon={row.icon}>{#if row.icon}{@html iconSvg(row.icon)}{/if}</span>{/if}<span>{row.label}</span>
+            </button>
         {/each}
     </div>
 {/if}

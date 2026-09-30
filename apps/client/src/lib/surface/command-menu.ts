@@ -29,6 +29,8 @@ export interface CommandMenuContext {
     bodyWritable: boolean
     /** The caret's line holds a [[File Link]] (gates Copy file path; `/` only opens at a word boundary, so "inside" would be unreachable). Absent reads as false. */
     fileLinkOnLine?: boolean
+    /** The caret's line is a [[Task]] outside a [[Protected Document]] (gates Copy task reference). Absent reads as false. */
+    taskOnLine?: boolean
 }
 
 /** One Command Menu row. `command` is the Command id selecting the row executes. */

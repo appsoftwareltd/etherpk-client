@@ -91,12 +91,19 @@
         setActiveDocument,
     } from "$lib/document";
     import { todayISO } from "$lib/document/calendar/month-grid-core";
-    import { canonicalConceptName, openConcept, openConceptAtLine } from "$lib/document/open-concept";
+    import { canonicalConceptName, openConcept, openConceptAtLine, openViewInPaneOf } from "$lib/document/open-concept";
     import AllDocumentsView from "$lib/document/view/AllDocumentsView.svelte";
     import GraphSidebarView from "$lib/document/view/GraphSidebarView.svelte";
     import RenameDocumentDialog from "$lib/document/view/RenameDocumentDialog.svelte";
     import SearchModal from "$lib/document/view/SearchModal.svelte";
     import TasksView from "$lib/document/view/TasksView.svelte";
+    import KanbanView from "$lib/kanban/KanbanView.svelte";
+    import { documentRemoved } from "$lib/kanban/board-actions";
+    import { KANBAN_TITLE_PREFIX, KANBAN_VIEW_KIND } from "$lib/kanban/board-model";
+    import { registerKanbanCommands } from "$lib/kanban/kanban-commands";
+    import { registerTaskReferenceCommands } from "$lib/document/commands/task-reference-commands";
+    import { everyIndexedTask, parseTaskReference, resolveTaskReference, type TaskReference } from "$lib/document/task-reference";
+    import { taskDateKey } from "$lib/document/index-db";
     import QuickNotesView from "$lib/document/view/QuickNotesView.svelte";
     import {
         createTaskFilterStore,
@@ -270,6 +277,12 @@
         protectedUsageReader,
         serverStoredTexts,
     } from "$lib/workspace/protected-asset-usage";
+    import {
+        filesystemFormattingSource,
+        serverFormattingSource,
+    } from "$lib/workspace/formatting-sources";
+    import { FormattingScanSession } from "$lib/document/formatting/ui/formatting-session.svelte";
+    import { revealLine } from "$lib/document/reveal";
     import { protectedTextReader } from "$lib/document/protection/protected-text-reader";
     import { registerAssetViewers } from "$lib/document/view/viewers/register";
     import { canCopyImageAsset, canOpenAsset } from "$lib/document/asset-affordances";
@@ -548,7 +561,7 @@
     }
 
     let {
-        graphId,
+        graphId: routeGraphId,
         opfs,
         autosaveMs,
         server,
@@ -558,6 +571,16 @@
         autosaveMs?: number;
         server?: ServerGate;
     } = $props();
+
+    // A workspace serves one graph for its whole life, because the route mounts a new one for
+    // another graph (`{#key data.graphId}` in the (workspace) layout). So the id is read once,
+    // here. The prop is a live read of the route's data, and after a move to another graph
+    // through the header's Graphs menu it names the next graph while this workspace is still
+    // closing. Svelte returns a prop's old value only until teardown's first `await`, and the
+    // closing layout save runs after one, so a save that read the prop would file this graph's
+    // tabs under the next graph.
+    // svelte-ignore state_referenced_locally
+    const graphId = routeGraphId;
 
     let session: ReturnType<typeof createGraphSession>;
     const health = createWorkspaceHealth();
@@ -1054,6 +1077,11 @@
     let isServerStore = $state(false);
     // Orphaned-asset scan/cleanup for the Graph Settings dialog, built per backend at open.
     let assetTools = $state<GraphAssetTools | null>(null);
+    /**
+     * The Formatting Scan's session (ADR 0109), built per backend at open. Its results last while
+     * this graph is open, across closing and reopening Settings, and go with the graph.
+     */
+    let formattingScan = $state<FormattingScanSession | null>(null);
     /** Enumerates the graph's assets for the [[Local Mirror]]; server graphs with storage only. */
     let listMirrorAssetIds: (() => Promise<string[]>) | null = null;
     // Storage Footprint fetch (ADR 0033) - real server path only; null elsewhere.
@@ -1213,6 +1241,8 @@
     let detachEditorCommands: (() => void) | undefined;
     let detachLinkCommands: (() => void) | undefined;
     let detachDocumentCommands: (() => void) | undefined;
+    let detachKanbanCommands: (() => void) | undefined;
+    let detachTaskReferenceCommands: (() => void) | undefined;
     let detachQuickNotesCommands: (() => void) | undefined;
     let detachSpellingCommands: (() => void) | undefined;
     let detachProtectionCommands: (() => void) | undefined;
@@ -1320,6 +1350,8 @@
             (target) => protectionKindOf(target) === "document",
         );
         for (const id of ids) controller.closePanel(id);
+        // A Kanban Board's Task Detail is no tab, so it closes itself when it shows one.
+        bus?.emit("protection:locked-now", {});
     }
 
     /**
@@ -2046,6 +2078,9 @@
     // focus/collapse) and the dockview renderer's onGeometryChange (drag/resize),
     // so every user layout change is saved per graph. Suppressed during restore /
     // the presenter swap so transitional events don't overwrite good state.
+    // `saveTimer` is set only while a save is waiting, so a flush after the save
+    // has run writes nothing. A tab that closes with nothing unsaved must not put
+    // its older Layout back over a newer one that another tab of this graph saved.
     let saveTimer: ReturnType<typeof setTimeout> | undefined;
     let suppressSave = false;
 
@@ -2057,7 +2092,10 @@
     function scheduleSave() {
         if (suppressSave) return;
         if (saveTimer) clearTimeout(saveTimer);
-        saveTimer = setTimeout(saveLayout, 300);
+        saveTimer = setTimeout(() => {
+            saveTimer = undefined;
+            saveLayout();
+        }, 300);
     }
 
     // A browser-level unload (tab close, reload, address-bar navigation) never
@@ -2067,6 +2105,7 @@
     function flushPersistence() {
         if (saveTimer) {
             clearTimeout(saveTimer);
+            saveTimer = undefined;
             saveLayout();
         }
         readingPositions?.flush();
@@ -2209,6 +2248,7 @@
         // pinned, it stays on the pinned one, and only the View knows that.
         title: () => "Backlinks",
         titlePrefix: BACKLINKS_TITLE_PREFIX,
+        icon: "backlinks",
     });
     // The Tasks View joins the right Sidebar as a SECOND tab beside Backlinks
     // rather than replacing it: a Pane holds many Views as tabs, and "replace" would be a
@@ -2220,6 +2260,16 @@
         component: TasksView,
         naturalRegion: "right-sidebar",
         title: () => "Tasks",
+    });
+    // A [[Kanban Board]] in the main region, one per concept (ADR 0113). The target is the
+    // concept, canonical when opened, so the title needs nothing the View has to look up.
+    registry.register({
+        kind: KANBAN_VIEW_KIND,
+        component: KanbanView,
+        naturalRegion: "main",
+        title: (view) => `${KANBAN_TITLE_PREFIX}${view.target}`,
+        titlePrefix: KANBAN_TITLE_PREFIX,
+        icon: "kanban",
     });
 
     // Browser Back/Forward over shallow entries: the popped entry's Visit arrives
@@ -2265,8 +2315,61 @@
         // Any addressable kind: a Document URL, an [[Asset]]'s own tab URL, a [[Theme]]'s.
         const view = viewFromParams();
         if (view) navEngine?.visitFromUrl(view);
+        const reference = view?.kind === "document" ? parseTaskReference(page.url.href) : null;
+        if (reference) void revealReferencedTask(reference);
         adoptSettingsFromUrl();
     });
+
+    /**
+     * A [[Task Reference]]'s address (ADR 0114): its document is open, and the task is found by the
+     * reference's position and words and shown, at its line now. When it cannot be found the
+     * document stays where it opened, and a notice says why rather than showing another task.
+     */
+    async function revealReferencedTask(reference: TaskReference): Promise<void> {
+        const documents = store;
+        const index = graphIndex;
+        if (!documents || !index) return;
+        const found = await resolveTaskReference(reference, {
+            // The address chose this graph already.
+            graphId: null,
+            resolveDocument: (name) => canonicalConceptName(name),
+            async readBody(document) {
+                try {
+                    await documents.whenReady?.(document);
+                    const text = documents.open(document).getText();
+                    // A protected document's tasks are never the subject of a reference.
+                    if (documentProtection(text).kind === "document") return null;
+                    const span = frontmatterSpan(text);
+                    return span ? text.slice(span.end) : text;
+                } catch {
+                    // Renamed or deleted since: the graph is searched instead.
+                    return null;
+                }
+            },
+            async allTasks() {
+                // The rest of the graph is the index's to answer, once it has been built.
+                if (index.isBuilding()) {
+                    await new Promise<void>((resolve) => {
+                        const off = index.onUpdated(() => {
+                            if (index.isBuilding()) return;
+                            off();
+                            resolve();
+                        });
+                    });
+                }
+                return everyIndexedTask(index, taskDateKey(new Date()));
+            },
+        });
+        if (found.ok) {
+            openConceptAtLine(found.document, found.line);
+            return;
+        }
+        notify(
+            found.code === "task_ambiguous"
+                ? `Could not tell which task the address names: ${found.candidates.length} tasks have its words.`
+                : `Could not find the task the address names in "${reference.document}": its words were edited, or it was deleted.`,
+        );
+    }
 
     /**
      * What the missing-graph diagnosis needs: every Sync Connection this device holds, the primary
@@ -3014,6 +3117,13 @@
         const s = store!;
         currentGraphIndex ??= startGraphIndex(s);
         const storeReadyAt = performance.now();
+        formattingScan = new FormattingScanSession({
+            source: isServerStore
+                ? serverFormattingSource(s as ServerDocumentStore)
+                : filesystemFormattingSource(s as FilesystemDocumentStore),
+            graphName: () => graphDisplayName || "this graph",
+            review: () => openGraphSettings("maintenance"),
+        });
 
         // The graph-scoped Event bus (extension surface, Phase 1). Created here so
         // it is active before the Views mount in restore(); torn down on leave. The
@@ -3078,6 +3188,9 @@
             },
         );
         detachDocRemoved = s.onDocumentRemoved((target) => {
+            // A Kanban Board's Task Detail over the document closes on the same terms, judged
+            // by the board, which knows whether it is being typed in (board-actions.ts).
+            documentRemoved(target);
             // The document the user is IN stays put. A removal that arrives from elsewhere is
             // a proposal, not a fact: ADR 0039 §4 gives their next keystroke the last word,
             // and a View that has already been closed can no longer be typed in — which made
@@ -3334,6 +3447,23 @@
                 copyFilePath: (concept) => void copyDocumentFilePath(concept),
             },
         );
+        // Open Kanban board on a document tab (ADR 0113): a board for the tab's concept, in the
+        // tab's Pane, under the name the concept resolves to. Desktop only.
+        detachKanbanCommands = registerKanbanCommands(commandRegistry, contributions, {
+            openBoard: (concept, sourcePanelId) =>
+                void openViewInPaneOf({ kind: KANBAN_VIEW_KIND, target: canonicalConceptName(concept) }, sourcePanelId),
+            openPage: (concept, sourcePanelId) => openConcept(concept, sourcePanelId),
+            isDesktop: () => !useMobile,
+        });
+        // Copy task reference (ADR 0114): the task on the caret's line, or a card's, on the
+        // clipboard as its words and an address, to hand to an agent. Said, since a clipboard
+        // shows nothing of its own.
+        detachTaskReferenceCommands = registerTaskReferenceCommands(commandRegistry, contributions, {
+            graphId: () => graphId,
+            origin: () => location.origin,
+            writeClipboard: (text) => navigator.clipboard.writeText(text),
+            notify: (text) => notify(text),
+        });
         // The Quick Notes move and its Command Menu row (ADR 0078). The raw store, not the
         // protection decorator: a journal cannot be protected, and a bare open through the
         // decorator would leave a wrapper retained for nothing.
@@ -3831,7 +3961,9 @@
         // swap carries live state and keeps its current Visit.
         if (!seeded) {
             const view = viewFromParams();
+            const reference = view?.kind === "document" ? parseTaskReference(location.href) : null;
             if (view) controller.openView(view);
+            if (reference) void revealReferencedTask(reference);
             suppressNav = false;
             navEngine?.seed();
             adoptSettingsFromUrl();
@@ -3856,6 +3988,9 @@
         if (assetId) return { kind: "asset", target: assetId };
         const themeId = page.params.themeId;
         if (themeId) return { kind: "theme", target: themeId };
+        // A [[Kanban Board]]'s address carries its concept, resolved like a document's.
+        const board = page.params.board;
+        if (board) return { kind: KANBAN_VIEW_KIND, target: canonicalConceptName(board) };
         return null;
     }
 
@@ -5488,6 +5623,8 @@
             workspaceGeneration = undefined;
         }
         assetTools = null;
+        formattingScan?.dispose();
+        formattingScan = null;
         fetchGraphStorage = null;
         fsAdapter = undefined;
         fsFolderName = undefined;
@@ -5504,6 +5641,10 @@
         backlinksPreferences = undefined;
         detachDocumentCommands?.();
         detachDocumentCommands = undefined;
+        detachKanbanCommands?.();
+        detachKanbanCommands = undefined;
+        detachTaskReferenceCommands?.();
+        detachTaskReferenceCommands = undefined;
         detachQuickNotesCommands?.();
         detachQuickNotesCommands = undefined;
         detachSpellingCommands?.();
@@ -5601,9 +5742,20 @@
         window.addEventListener("online", followOnline);
         window.addEventListener("offline", followOnline);
         document.addEventListener("visibilitychange", retryWhenVisible);
+        // A Task Reference pasted into the address bar of a tab already showing its document
+        // changes only the fragment, which is no navigation: the task is found from here. The
+        // address itself names the document; the route's params would not, since the Visit
+        // engine moves between documents by shallow history entries.
+        const followTaskFragment = () => {
+            if (phase !== "ready") return;
+            const reference = parseTaskReference(location.href);
+            if (reference) void revealReferencedTask(reference);
+        };
+        window.addEventListener("hashchange", followTaskFragment);
         session.own(() => {
             window.removeEventListener("online", followOnline);
             window.removeEventListener("offline", followOnline);
+            window.removeEventListener("hashchange", followTaskFragment);
             document.removeEventListener("visibilitychange", retryWhenVisible);
             syncIndicatorSettle?.dispose();
             syncIndicatorSettle = null;
@@ -5887,6 +6039,22 @@
             : null}
         agents={agentsTabProps()}
         publish={publishTabProps()}
+        formatting={formattingScan && !useMobile
+            ? {
+                  session: formattingScan,
+                  backup: isServerStore
+                      ? "export"
+                      : fsFolderName !== undefined
+                        ? "folder"
+                        : "none",
+                  // Settings closes and the page opens; its View's address drops the settings
+                  // param, so Back returns to Maintenance with the results intact.
+                  onopenpage: (concept, line) => {
+                      openViewFromSettings({ kind: "document", target: concept });
+                      revealLine(concept, line);
+                  },
+              }
+            : null}
         spelling={{
             service: getBrowserSpellService(),
             dictionaryHost: dictionaryHostLabel(dictionaryBaseUrl()),

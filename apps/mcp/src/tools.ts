@@ -27,6 +27,7 @@
 
 import { todayISO } from '$lib/document/calendar/month-grid-core'
 import { normaliseIndentUnit } from '$lib/document/indent-unit'
+import { lineFeedsOnly } from '$lib/document/line-endings'
 import { isJournalConcept } from '$lib/document/journal-concept'
 import { documentProtection } from '$lib/document/protection/cipher-fence'
 import { withAliasesInAddedBlock } from '$lib/document/frontmatter/identity'
@@ -44,7 +45,19 @@ import { AssetRefusedError, assetIdFromRef } from '$lib/storage/server/server-as
 
 import { readLocalFile, writeDownload } from './headless-assets'
 import { FolderRefused, folderUnder } from './local-folders'
-import { parseTaskLine, serialiseTags, type TaskPriority } from '$lib/document/task-tags'
+import { parseTaskLine, type TaskPriority } from '$lib/document/task-tags'
+import {
+    everyIndexedTask,
+    parseTaskReference,
+    type ResolvedTaskReference,
+    resolveTaskReference,
+    type TaskReferenceSources,
+    taskFingerprint,
+    taskReferenceUrl,
+} from '$lib/document/task-reference'
+import { ancestorChain, bulletLabel, deriveDoc } from '$lib/document/index-derive'
+import { taskLineWith } from '$lib/document/task-write'
+import { minimalReplacement } from '$lib/document/view/minimal-replacement'
 
 import type { HeadlessDocument } from './headless-documents'
 import type { HeadlessGraph } from './headless-graph'
@@ -81,6 +94,12 @@ export type ToolErrorCode =
     | 'asset_not_found'
     /** The line `set_task` was given is no longer that task: the document moved on. */
     | 'task_moved'
+    /** No task in the graph has the words a Task Reference names: edited or deleted since. */
+    | 'task_not_found'
+    /** More than one task has the words a Task Reference names, so none is chosen. */
+    | 'task_ambiguous'
+    /** A Task Reference to another synced graph than the one served. */
+    | 'other_graph'
     /** More documents were asked for in one call than the cap allows. */
     | 'too_many'
     /** No publication has that id. */
@@ -140,9 +159,12 @@ export const READ_MANY_LIMIT = 20
 export const READ_MANY_TEXT_CAP = 400_000
 
 export interface SetTaskArgs {
-    concept: string
+    /** The task by document and line, or by `reference`. */
+    concept?: string
     /** The task's 0-based line in the document's text, as `tasks` and `read_document` count lines. */
-    line: number
+    line?: number
+    /** A [[Task Reference]] as a person copied it, in place of `concept`, `line` and `expect`. */
+    reference?: string
     changes: {
         status?: TaskStatus
         priority?: TaskPriority | null
@@ -598,24 +620,36 @@ export async function tasks(graph: HeadlessGraph, args: TasksArgs = {}) {
         limit,
     )
     return {
-        tasks: result.hits.map((hit) => ({
-            concept: hit.concept,
-            kind: hit.kind,
-            line: hit.line,
-            text: hit.text,
-            done: hit.done,
-            priority: hit.priority,
-            waiting: hit.waiting,
-            doing: hit.doing,
-            cancelled: hit.cancelled,
-            due: hit.due,
-            scheduled: hit.scheduled,
-            completion: hit.completion,
-            breadcrumb: hit.breadcrumb,
-        })),
+        tasks: await Promise.all(
+            result.hits.map(async (hit) => ({
+                concept: hit.concept,
+                kind: hit.kind,
+                line: hit.line,
+                text: hit.text,
+                done: hit.done,
+                priority: hit.priority,
+                waiting: hit.waiting,
+                doing: hit.doing,
+                cancelled: hit.cancelled,
+                due: hit.due,
+                scheduled: hit.scheduled,
+                completion: hit.completion,
+                breadcrumb: hit.breadcrumb,
+                // So an agent can hand the task back to a person, who can open it.
+                reference: await referenceFor(graph, hit.concept, hit.line, hit.text),
+            })),
+        ),
         total: result.total,
         hasMore: result.hasMore,
     }
+}
+
+/**
+ * Text an agent sent, in the form EtherPK writes: line feeds only (ADR 0112), then the
+ * two-space Indent Unit (ADR 0067). Line endings go first so the normaliser reads whole lines.
+ */
+function asWritten(text: string): string {
+    return normaliseIndentUnit(lineFeedsOnly(text))
 }
 
 export async function editDocument(graph: HeadlessGraph, args: EditDocumentArgs) {
@@ -633,14 +667,14 @@ export async function editDocument(graph: HeadlessGraph, args: EditDocumentArgs)
     }
     // Only the replacement is normalised: the surrounding document is someone else's to keep,
     // and a normaliser pass over the whole text would be a whole-page write in disguise.
-    const insert = normaliseIndentUnit(args.new)
+    const insert = asWritten(args.new)
     graph.store.open(identity.concept).applyChange({ from: first, to: first + args.old.length, insert }, 'external')
     await settle(graph)
     return { concept: identity.concept, replaced: args.old.length, inserted: insert.length }
 }
 
 export async function appendDocument(graph: HeadlessGraph, args: AppendDocumentArgs) {
-    const text = normaliseIndentUnit(args.text)
+    const text = asWritten(args.text)
     if (text.trim() === '') throw new ToolError('invalid_argument', 'text must not be empty.')
     const target = args.concept.trim() === 'today' ? todayISO() : args.concept.trim()
     await graph.store.refresh()
@@ -676,7 +710,7 @@ export async function createPage(graph: HeadlessGraph, args: CreatePageArgs) {
     // No frontmatter block: on a Server Backend identity is the encrypted registry (ADR 0024),
     // and the app seeds a new page with its body alone - a block the text carries is a mirror the
     // store writes back when the registry changes (ADR 0061), never the source of the name.
-    await graph.store.createPage(title, normaliseIndentUnit(args.text ?? ''))
+    await graph.store.createPage(title, asWritten(args.text ?? ''))
     if (args.frontmatter && Object.keys(args.frontmatter).length > 0) {
         await graph.store.whenReady(title)
         const raw = graph.store.openRaw(title).getText()
@@ -1032,23 +1066,22 @@ export async function readDocuments(graph: HeadlessGraph, args: { concepts: stri
     return { documents }
 }
 
-/** The task line rebuilt with these tags and checkbox: indent and marker kept, the tag run in the fixed order. */
-function taskLineWith(line: string, done: boolean, tags: Parameters<typeof serialiseTags>[0]): string {
-    const marker = /^(\s*-\s+\[)[ xX](\])\s?/.exec(line)
-    if (!marker) throw new Error('not a task line')
-    const run = serialiseTags(tags)
-    return `${marker[1]}${done ? 'x' : ' '}${marker[2]} ${[...run, tags.text].join(' ')}`.replace(/\s+$/, '')
-}
-
 /**
  * Change one task's status, priority or dates, by document and line (ADR 0032's grammar).
- * Status is exclusive and means what the index's own derivation means: `waiting` and `doing`
- * are unchecked states, `done` and `cancelled` checked ones, `open` none of them. The Client's
- * checkbox writes no completion date, so neither does this. `expect` is the stale-line guard:
- * the same one the Tasks View applies, made explicit for a caller working from a list.
+ * The line is rewritten by the writer a Kanban Board move uses (`task-write.ts`), so a status
+ * here means exactly what a lane means: exclusive, `waiting` and `doing` unchecked states, `done`
+ * and `cancelled` checked ones, `open` none of them, and no completion date written. `expect` is
+ * the stale-line guard, made explicit for a caller working from a list.
  */
 export async function setTask(graph: HeadlessGraph, args: SetTaskArgs) {
-    if (!Number.isInteger(args.line) || args.line < 0) throw new ToolError('invalid_argument', 'line must be a non-negative integer.')
+    if (args.reference !== undefined) {
+        // Found by position and words, so the line and the expected text come from the reference.
+        const found = await requireReferencedTask(graph, args.reference)
+        return setTask(graph, { concept: found.document, line: found.line, changes: args.changes })
+    }
+    if (args.concept === undefined) throw new ToolError('invalid_argument', 'Name the task by reference, or by concept and line.')
+    if (args.line === undefined || !Number.isInteger(args.line) || args.line < 0) throw new ToolError('invalid_argument', 'line must be a non-negative integer.')
+    const line = args.line
     const changes = args.changes ?? {}
     if (changes.status !== undefined && !TASK_STATUSES.includes(changes.status)) throw new ToolError('invalid_argument', `Unknown task status "${String(changes.status)}".`)
     if (changes.priority !== undefined && changes.priority !== null && ![1, 2, 3].includes(changes.priority)) throw new ToolError('invalid_argument', 'priority must be 1, 2, 3 or null.')
@@ -1060,55 +1093,169 @@ export async function setTask(graph: HeadlessGraph, args: SetTaskArgs) {
     const text = await liveText(graph, identity)
     refuseIfProtected(identity.concept, text)
     const lines = text.split('\n')
-    const current = lines[args.line]
+    const current = lines[line]
     const parsed = current === undefined ? null : parseTaskLine(current)
-    if (!parsed) throw new ToolError('task_moved', `Line ${args.line} of "${identity.concept}" is not a task now - read the document or list tasks again.`)
+    if (!parsed) throw new ToolError('task_moved', `Line ${line} of "${identity.concept}" is not a task now - read the document or list tasks again.`)
     // `tasks` reports the text with its tag run; a caller may also pass the bare text.
     const afterCheckbox = current!.replace(/^\s*-\s+\[[ xX]\]\s?/, '').trim()
     if (args.expect !== undefined && args.expect.trim() !== afterCheckbox && args.expect.trim() !== parsed.text.trim()) {
-        throw new ToolError('task_moved', `Line ${args.line} of "${identity.concept}" now reads "${parsed.text}", not "${args.expect}" - list tasks again before changing it.`)
+        throw new ToolError('task_moved', `Line ${line} of "${identity.concept}" now reads "${parsed.text}", not "${args.expect}" - list tasks again before changing it.`)
     }
-    const tags = { ...parsed }
-    let done = parsed.done
-    switch (changes.status) {
-        case 'open':
-            done = false
-            tags.waiting = tags.doing = tags.cancelled = false
-            break
-        case 'doing':
-            done = false
-            tags.doing = true
-            tags.waiting = tags.cancelled = false
-            break
-        case 'waiting':
-            done = false
-            tags.waiting = true
-            tags.doing = tags.cancelled = false
-            break
-        case 'done':
-            done = true
-            tags.waiting = tags.doing = tags.cancelled = false
-            break
-        case 'cancelled':
-            done = true
-            tags.cancelled = true
-            tags.waiting = tags.doing = false
-            break
-        case undefined:
-            break
-    }
-    if (changes.priority !== undefined) tags.priority = changes.priority
-    if (changes.due !== undefined) tags.due = changes.due
-    if (changes.scheduled !== undefined) tags.scheduled = changes.scheduled
-    const next = taskLineWith(current!, done, tags)
-    if (next !== current) {
-        const from = lines.slice(0, args.line).reduce((n, l) => n + l.length + 1, 0)
-        graph.store.open(identity.concept).applyChange({ from, to: from + current!.length, insert: next }, 'external')
+    // A task line, since `parsed` is not null; a task already as asked comes back unchanged.
+    const next = taskLineWith(current!, changes) ?? current!
+    const edit = minimalReplacement(current!, next)
+    if (edit) {
+        // The smallest edit over the line, so on a synced graph it merges with anyone typing
+        // elsewhere in the same line rather than replacing it whole.
+        const from = lines.slice(0, line).reduce((n, l) => n + l.length + 1, 0)
+        graph.store.open(identity.concept).applyChange({ from: from + edit.from, to: from + edit.to, insert: edit.insert }, 'external')
         await settle(graph)
     }
     const after = parseTaskLine(next)!
     const status: TaskStatus = after.done ? (after.cancelled ? 'cancelled' : 'done') : after.waiting ? 'waiting' : after.doing ? 'doing' : 'open'
-    return { concept: identity.concept, line: args.line, text: after.text, status, priority: after.priority, due: after.due, scheduled: after.scheduled, changed: next !== current }
+    return {
+        concept: identity.concept,
+        line,
+        text: after.text,
+        status,
+        priority: after.priority,
+        due: after.due,
+        scheduled: after.scheduled,
+        changed: next !== current,
+        reference: await referenceFor(graph, identity.concept, line, bulletLabel(next)),
+    }
+}
+
+/** A task's status from its parsed line, as the index derives it (`STATUS_SQL`). */
+function statusOf(task: { done: boolean; cancelled: boolean; waiting: boolean; doing: boolean }): TaskStatus {
+    return task.done ? (task.cancelled ? 'cancelled' : 'done') : task.waiting ? 'waiting' : task.doing ? 'doing' : 'open'
+}
+
+/** Where a Task Reference is resolved in this graph: its documents, read live, and its index. */
+function referenceSources(graph: HeadlessGraph): TaskReferenceSources {
+    return {
+        // A folder graph's id is its own on each computer, so a reference is not checked against it.
+        graphId: graph.backend.kind === 'synced' ? graph.graphId : null,
+        resolveDocument: (name) => resolveIdentity(graph, name)?.concept ?? null,
+        async readBody(document) {
+            const identity = resolveIdentity(graph, document)
+            if (!identity) return null
+            const text = await liveText(graph, identity)
+            // A protected document's tasks cannot be read here, so it holds none to find.
+            return documentProtection(text).kind === 'document' ? null : text
+        },
+        allTasks: () => everyIndexedTask(graph.index, todayISO()),
+    }
+}
+
+/** The Task Reference to the task at `line` of `concept`, whose label is `label`. */
+async function referenceFor(graph: HeadlessGraph, concept: string, line: number, label: string): Promise<string> {
+    const fingerprint = await taskFingerprint(label)
+    return taskReferenceUrl({ graphId: graph.graphId, document: concept, line, fingerprint }, graph.clientUrl ?? '')
+}
+
+/** The task a Task Reference names in this graph, or the error that says why there is none. */
+async function requireReferencedTask(graph: HeadlessGraph, reference: string): Promise<ResolvedTaskReference> {
+    const parsed = parseTaskReference(reference)
+    if (!parsed) {
+        throw new ToolError('invalid_argument', 'That is not a task reference: one ends in #task=<line>-<fingerprint>, as Copy task reference in EtherPK writes it.')
+    }
+    await graph.store.refresh()
+    const found = await resolveTaskReference(parsed, referenceSources(graph))
+    if (found.ok) return found
+    if (found.code === 'other_graph') {
+        throw new ToolError('other_graph', `That task reference is for another graph. This server serves "${graph.name}" (${found.servedGraphId}); ask the user to connect the graph the reference is from.`)
+    }
+    if (found.code === 'task_ambiguous') {
+        const where = found.candidates.map((candidate) => `"${candidate.document}" line ${candidate.line}`).join(', ')
+        throw new ToolError('task_ambiguous', `More than one task has those words (${where}), so none was chosen. Ask the user which one, or name it by concept and line.`)
+    }
+    throw new ToolError('task_not_found', 'No task in the graph has those words now: it was edited or deleted. Ask the user for a fresh reference.')
+}
+
+/**
+ * The block's own lines and everything nested under it: in the index's rows, which run in
+ * document order, the rows after it until one that is not its descendant.
+ */
+function subtreeEnd(blocks: ReturnType<typeof deriveDoc>['blocks'], localId: number): number {
+    let end = blocks[localId].endLine
+    const inside = new Set([localId])
+    for (let i = localId + 1; i < blocks.length; i++) {
+        const parent = blocks[i].parentId
+        if (parent === null || !inside.has(parent)) break
+        inside.add(i)
+        end = Math.max(end, blocks[i].endLine)
+    }
+    return end
+}
+
+export interface ReadTaskArgs {
+    reference: string
+}
+
+/**
+ * The task a Task Reference names: its words and tags, where it is now, what is above it (the
+ * headings and bullets its breadcrumb names) and its detail (its continuation lines and
+ * everything nested under it), and how it was found. For the text around it, read the document.
+ */
+export async function readTask(graph: HeadlessGraph, args: ReadTaskArgs) {
+    const found = await requireReferencedTask(graph, args.reference)
+    const lines = found.body.split('\n')
+    const line = lines[found.line]
+    const task = parseTaskLine(line)!
+    const { blocks } = deriveDoc(found.body)
+    const block = blocks.find((candidate) => candidate.startLine === found.line)
+    const end = block ? subtreeEnd(blocks, block.localId) : found.line
+    return {
+        concept: found.document,
+        line: found.line,
+        text: task.text,
+        status: statusOf(task),
+        priority: task.priority,
+        due: task.due,
+        scheduled: task.scheduled,
+        breadcrumb: block ? ancestorChain(blocks, block.parentId) : [],
+        detail: lines.slice(found.line + 1, end + 1).join('\n'),
+        foundBy: found.foundBy,
+        reference: await referenceFor(graph, found.document, found.line, bulletLabel(line)),
+    }
+}
+
+export interface AddTaskNoteArgs {
+    reference: string
+    /** Markdown: a line, or bullets of its own, nested under the task after what is already there. */
+    text: string
+}
+
+/**
+ * Add a note under the task a Task Reference names: the text as a bullet one level under the
+ * task, after its existing detail, so a Kanban Board's Task Detail shows it with the task. Text
+ * that is already bullets is nested as it is.
+ */
+export async function addTaskNote(graph: HeadlessGraph, args: AddTaskNoteArgs) {
+    if (typeof args.text !== 'string' || args.text.trim() === '') throw new ToolError('invalid_argument', 'text must not be empty.')
+    const found = await requireReferencedTask(graph, args.reference)
+    const lines = found.body.split('\n')
+    const { blocks } = deriveDoc(found.body)
+    const block = blocks.find((candidate) => candidate.startLine === found.line)
+    const end = block ? subtreeEnd(blocks, block.localId) : found.line
+    const childIndent = `${/^\s*/.exec(lines[found.line])![0]}  `
+    const written = asWritten(args.text.trim())
+    // A line of prose becomes a bullet whose later lines continue it; bullets are nested as they are.
+    const note = written.startsWith('- ') ? written : `- ${written.replace(/\n/g, '\n  ')}`
+    const insert = note
+        .split('\n')
+        .map((noteLine) => (noteLine === '' ? noteLine : childIndent + noteLine))
+        .join('\n')
+    const at = lines.slice(0, end + 1).reduce((n, l) => n + l.length + 1, 0) - 1
+    graph.store.open(found.document).applyChange({ from: at, to: at, insert: `\n${insert}` }, 'external')
+    await settle(graph)
+    return {
+        concept: found.document,
+        line: found.line,
+        noteLine: end + 1,
+        reference: await referenceFor(graph, found.document, found.line, bulletLabel(lines[found.line])),
+    }
 }
 
 /** What an agent should know before it starts: where it is, what is here, what is set up. */

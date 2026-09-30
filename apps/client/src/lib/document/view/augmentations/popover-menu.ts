@@ -45,6 +45,8 @@ export interface PopoverMenuOptions<S extends PopoverBase> {
     rows(menu: S): PopoverRow[]
     /** Accept the row at `index`: mutate the doc / run side effects. Returns whether handled. */
     accept(view: EditorView, menu: S, index: number): boolean
+    /** The list's accessible name, for a list whose rows do not say what picking one does. */
+    label?(menu: S): string
 }
 
 const TAILWIND_MENU =
@@ -115,7 +117,12 @@ export function popoverMenu<S extends PopoverBase>(opts: PopoverMenuOptions<S>):
     function accept(view: EditorView, index?: number): boolean {
         const menu = view.state.field(menuField)
         if (!menu) return false
-        return opts.accept(view, menu, index ?? menu.selected)
+        const accepted = opts.accept(view, menu, index ?? menu.selected)
+        // An accept that edits the text recomputes the menu, closing it or offering the next
+        // step. One that leaves the text alone (a pick that runs a Command) would leave the very
+        // same menu open, so it is closed here.
+        if (accepted && view.state.field(menuField, false) === menu) view.dispatch({ effects: closeMenu.of(null) })
+        return accepted
     }
 
     function move(view: EditorView, delta: number): boolean {
@@ -148,6 +155,8 @@ export function popoverMenu<S extends PopoverBase>(opts: PopoverMenuOptions<S>):
 
         function render(menu: S | null): void {
             if (!menu) return
+            const label = opts.label?.(menu)
+            if (label) menuEl.setAttribute('aria-label', label)
             menuEl.replaceChildren()
             const rows = opts.rows(menu)
             rows.forEach((row, i) => {

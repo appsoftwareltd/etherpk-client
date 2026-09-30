@@ -11,6 +11,9 @@ export const MANAGED_SERVICE_OPERATOR = {
     // LEGAL REVIEW: the one address the Terms, the Privacy Policy and the Contact page give for
     // support, privacy requests and account deletion. Confirm this is the address to publish.
     contactEmail: 'mail@etherpk.com',
+    // The address the landing page gives under "Need support?", as does the user docs' Help And
+    // Community page. The Terms, the Privacy Policy and the Contact page give contactEmail above.
+    supportEmail: 'mail@appsoftware.com',
     // LEGAL REVIEW: a service commitment printed on the Contact page. Confirm it can be met.
     responseTime: 'We aim to reply within two working days.',
 } as const

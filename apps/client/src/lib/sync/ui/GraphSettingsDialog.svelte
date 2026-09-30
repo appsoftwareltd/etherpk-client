@@ -14,7 +14,8 @@
      *   no room for and which showed "Mirroring" with nothing to say where or what that meant.
      * - **Publish** — the graph's [[Publication]]s, their themes and includes, and where each is
      *   published on this device (ADR 0082).
-     * - **Maintenance** — rebuild the index, scan for orphaned assets, read the storage footprint.
+     * - **Maintenance** — rebuild the index, scan for orphaned assets, read the storage footprint,
+     *   and scan for formatting issues (ADR 0109), with a diff to approve for each fix.
      *
      * The last tab is deliberately NOT called "Graph": nothing in it is graph content. The
      * [[Derived Index]] is browser-private and never synced, and both controls are actions rather
@@ -40,6 +41,8 @@
     } from "$lib/storage/fs/graph-settings";
     import type { GraphAssetTools } from "$lib/storage/fs/asset-orphans";
     import OrphanAssetsSection from "$lib/storage/ui/OrphanAssetsSection.svelte";
+    import FormattingSection from "$lib/document/formatting/ui/FormattingSection.svelte";
+    import type { FormattingSectionProps } from "$lib/document/formatting/ui/formatting-section";
     import Modal from "@appsoftwareltd/etherpk-shared/dialog";
     import ProtectionSettingsTab from "$lib/document/protection/ui/ProtectionSettingsTab.svelte";
     import SpellingSettingsTab from "$lib/document/spelling/ui/SpellingSettingsTab.svelte";
@@ -80,6 +83,7 @@
         agents = null,
         publish = null,
         folderPath = null,
+        formatting = null,
         tab = undefined,
         onchangetab = undefined,
         onsave,
@@ -127,6 +131,11 @@
          */
         folderPath?: { path: string; folderName: string } | null;
         /**
+         * The Formatting Scan (ADR 0109) in the Maintenance tab. Null hides it: the dialog opened
+         * outside an open graph, or the phone layout, where the section is not offered.
+         */
+        formatting?: FormattingSectionProps | null;
+        /**
          * The tab to be on: the one the address names while the workspace hosts this dialog
          * (ADR 0023, 2026-09-20), which is the tab an entry point asked for, else the one this
          * graph's Settings was last on (remembered per device, 2026-09-19). Followed while open,
@@ -145,9 +154,10 @@
     } = $props();
 
     /** The Storage tools exist only inside an open graph; the /graphs picker opens this dialog too. */
-    const showTools = $derived(
+    const showStorage = $derived(
         assetTools !== null || storageInfo !== null || indexPersisted !== null,
     );
+    const showTools = $derived(showStorage || formatting !== null);
 
     let rebuilding = $state(false);
     let rebuilt = $state(false);
@@ -393,11 +403,7 @@
     placement="top"
     onclose={close}
     onsubmit={save}
-    tools={activeTab === "maintenance"
-        ? storageTools
-        : activeTab === "general"
-          ? installTools
-          : undefined}
+    tools={activeTab === "general" ? installTools : undefined}
 >
     {#snippet body()}
         {#if tabs.length > 1}
@@ -1027,13 +1033,25 @@
                     </p>
                 </div>
             {:else if activeTab === "maintenance"}
-                <!-- The controls themselves render below the footer, through the shell's `tools`
-                 snippet: each acts the moment it is pressed, so none of them may sit between the
-                 inputs and the Save that does not apply to them. -->
+                <!-- The tools sit in the body, above the footer: this tab has no Save for them to be
+                 mistaken for, only Done, and below the footer they read as an empty tab until
+                 scrolled to. Each acts the moment it is pressed, and every button in them is
+                 `type="button"`, so none submits the form. -->
                 <p class="text-sm text-gray-600 dark:text-gray-400">
                     Housekeeping for this graph. Nothing here is a setting -
                     each control acts as soon as you press it.
                 </p>
+                {#if showStorage}
+                    {@render storageTools()}
+                {/if}
+                {#if formatting}
+                    <div class="border-t border-gray-100 dark:border-gray-800 pt-4">
+                        <FormattingSection
+                            {...formatting}
+                            onexport={mirror ? () => selectTab("mirror") : null}
+                        />
+                    </div>
+                {/if}
             {:else}
                 <div>
                     <label
@@ -1246,10 +1264,8 @@
     {/snippet}
 </Modal>
 
-<!-- Outside the form and below Save / Cancel: nothing here is something Save applies - each
-     acts the moment it is pressed - so it must not sit between the inputs and their buttons. -->
-<!-- Below Save for the same reason as the Storage tools: installing acts at once and is per
-     device, so it must not read as one of the shared settings the form commits. -->
+<!-- Below Save, outside the form: installing acts at once and is per device, so it must not read
+     as one of the shared settings the General tab's Save commits. -->
 <!-- The once-per-computer setups and the publish command, for either backend: what an agent's
      tools name in a refusal, spelled here so a person can copy them to the agent's machine. -->
 {#snippet agentExtras(props: AgentsTabProps)}

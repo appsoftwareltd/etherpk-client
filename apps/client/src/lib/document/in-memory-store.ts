@@ -4,13 +4,14 @@
  *
  * The split that matters (and that real backends must preserve): a local
  * {@link EditorDocument.applyChange} mutates the text *without* notifying
- * subscribers (the editor that made the edit already has it), while
- * {@link InMemoryDocumentStore.setText} simulates an EXTERNAL change and DOES
- * notify, so the editor reflects it. This is exactly where a git reload or a
- * Yjs remote update will hook in later.
+ * the editor that made it (it already has the edit), while an `external` change, and
+ * {@link InMemoryDocumentStore.setText}, which simulates one, notify every subscriber, so
+ * the editor reflects it. An editor's edit reaches the document's other editors. This is
+ * exactly where a git reload or a Yjs remote update will hook in later.
  */
 
-import type { DocumentStore, EditorDocument, TextChange } from './types'
+import { lineFeedsOnly } from './line-endings'
+import type { DocumentListener, DocumentStore, EditorDocument, TextChange } from './types'
 
 export interface InMemoryDocumentStore extends DocumentStore {
     /** Simulate an external change (git reload, remote update). Notifies subscribers. */
@@ -24,22 +25,26 @@ function applyTextChange(text: string, change: TextChange): string {
 export function createInMemoryDocumentStore(
     seed: Record<string, string> = {},
 ): InMemoryDocumentStore {
-    const texts = new Map<string, string>(Object.entries(seed))
+    // Line feeds only, as every editor buffer holds (ADR 0112).
+    const texts = new Map<string, string>(Object.entries(seed).map(([target, text]) => [target, lineFeedsOnly(text)]))
     const listeners = new Map<string, Set<(text: string) => void>>()
     const docs = new Map<string, EditorDocument>()
 
-    function notify(target: string): void {
+    /** Tell the document's subscribers its text, all but `except` (the editor that made the edit). */
+    function notify(target: string, except?: DocumentListener): void {
         const text = texts.get(target) ?? ''
-        for (const listener of listeners.get(target) ?? []) listener(text)
+        for (const listener of listeners.get(target) ?? []) if (listener !== except) listener(text)
     }
 
     function makeDoc(target: string): EditorDocument {
         return {
             id: target,
             getText: () => texts.get(target) ?? '',
-            applyChange(change) {
+            applyChange(change, origin = 'editor', editor) {
                 texts.set(target, applyTextChange(texts.get(target) ?? '', change))
-                // No notify: the originating editor already reflects this edit.
+                // The originating editor already reflects this edit; any other editor must hear it.
+                if (origin === 'external') notify(target)
+                else if (editor) notify(target, editor)
             },
             subscribe(listener) {
                 let set = listeners.get(target)
@@ -60,7 +65,7 @@ export function createInMemoryDocumentStore(
             return doc
         },
         setText(target, text) {
-            texts.set(target, text)
+            texts.set(target, lineFeedsOnly(text))
             notify(target)
         },
     }

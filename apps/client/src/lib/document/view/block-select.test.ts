@@ -1,4 +1,4 @@
-import { EditorSelection, EditorState } from '@codemirror/state'
+import { EditorSelection, EditorState, Transaction } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
 import { describe, expect, it } from 'vitest'
 
@@ -39,6 +39,18 @@ describe('block-granular selection hides the caret', () => {
 
     it('builds without a DOM', () => {
         expect(EditorState.create({ doc: '- a', extensions: [blockSelection()] }).doc.length).toBe(3)
+    })
+
+    it('snaps only the selection: the transaction keeps its user event and history flag', () => {
+        const editor = editorFixture('- a|\n- b\n- c')
+        const tr = editor.state.update({
+            selection: EditorSelection.single(2, 6), // from "a" into "b": snapped to the two whole blocks
+            userEvent: 'select.pointer',
+            annotations: Transaction.addToHistory.of(false),
+        })
+        expect([tr.selection?.main.anchor, tr.selection?.main.head]).toEqual([0, 7])
+        expect(tr.isUserEvent('select.pointer')).toBe(true)
+        expect(tr.annotation(Transaction.addToHistory)).toBe(false)
     })
 })
 

@@ -33,6 +33,7 @@ import { richPasteAugmentation } from './augmentations/rich-paste'
 import { bulletMarkerAugmentation } from './augmentations/bullet-marker'
 import { codeScrollAugmentation } from './augmentations/code-scroll'
 import { contentClampAugmentation } from './augmentations/content-clamp'
+import { conceptPicker } from './augmentations/concept-picker'
 import { dateCalendar } from './augmentations/date-calendar'
 import { tableSizePicker } from './augmentations/table-size-picker'
 import { fenceRenderAugmentation } from './augmentations/fence-render'
@@ -56,6 +57,8 @@ import { blockSelection } from './block-select'
 import { caretClamp } from './caret-clamp'
 import { fencePad } from './fence-guard'
 import { type EditRefusal, editRefusalReporter } from './edit-refused'
+import { type EditorDocumentInfo, editorDocument } from './editor-document'
+import { lineAnchor } from './line-anchor'
 import { wrapSelectionInput } from './wrap-selection'
 
 export interface EditorExtensionServices {
@@ -103,6 +106,8 @@ export interface EditorExtensionServices {
      * a [[Draft]], and when the content has arrived (placeholder.ts). Absent, no hint is shown.
      */
     placeholder?: PlaceholderSource
+    /** Which document the editor shows and the panel it sits in (editor-document.ts). Absent outside a workspace. */
+    document?: EditorDocumentInfo
 }
 
 /** One named feature of the stack: the name is what the order test asserts on. */
@@ -244,14 +249,20 @@ export function editorFeatures(services: EditorExtensionServices): EditorFeature
         },
         // The Table Size Picker: the insert-table Command's popover, a sibling of the calendar.
         { name: 'table-size-picker', extension: tableSizePicker() },
+        // The concept picker: a Command's choice of concept at the caret (`/kanban`'s, ADR 0113).
+        { name: 'concept-picker', extension: conceptPicker() },
         // The YAML typing keys. After every popover that binds Enter or Tab while open (the
-        // completions, the calendar, the size picker): all of them sit at the highest precedence,
+        // completions, the calendar, the size picker, the concept picker): all of them sit at the highest precedence,
         // where the earlier-registered keymap wins, so an open popover's keys come first.
         { name: 'frontmatter-keys', extension: frontmatterKeys() },
         // A line of guidance over an empty journal day or Draft, until the first keystroke.
         { name: 'placeholder', extension: placeholderAugmentation(services.placeholder) },
         // A refused edit reaches the user: after every filter that can refuse one.
         { name: 'edit-refusal', extension: editRefusalReporter(services.editRefused ?? (() => {})) },
+        // Which document this editor shows and where, for a Command holding only the view
+        // (`/kanban`), and the line a Task Detail was asked to show, followed through edits.
+        { name: 'editor-document', extension: services.document ? editorDocument.of(services.document) : [] },
+        { name: 'line-anchor', extension: lineAnchor() },
         // The View's own hooks last: focus makes this editor the active one; updates keep the
         // Command Bar context, reading position and pending reveals in step.
         {

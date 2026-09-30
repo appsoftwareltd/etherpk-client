@@ -36,6 +36,12 @@ export interface EventPayloads {
      * sidebar's lock control.
      */
     'protection:changed': { graphId: string }
+    /**
+     * The user locked on purpose (a [[Lock Now]]) with closing protected documents turned on, and
+     * the workspace has closed their tabs. Consumer: a [[Kanban Board]]'s [[Task Detail]], which is
+     * no tab, and closes over a [[Protected Document]] as the document's tab did (ADR 0113).
+     */
+    'protection:locked-now': { graphId: string }
     /** The set of documents in the graph changed (create / delete). Consumer: the document tree. */
     'documents:changed': { graphId: string }
     /**

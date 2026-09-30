@@ -2,6 +2,7 @@
 
 [![Build and release](https://github.com/appsoftwareltd/etherpk-client/actions/workflows/build.yaml/badge.svg?branch=main)](https://github.com/appsoftwareltd/etherpk-client/actions/workflows/build.yaml)
 [![npm](https://img.shields.io/npm/v/@appsoftwareltd/etherpk-mcp?label=npm)](https://www.npmjs.com/package/@appsoftwareltd/etherpk-mcp)
+[![Discord](https://img.shields.io/badge/Discord-join%20the%20community-5865F2?logo=discord&logoColor=white)](https://discord.gg/m9vScxQzvp)
 
 The source of the [EtherPK](https://etherpk.com) Client and Headless Client, available under the
 [Elastic License 2.0](LICENSE).

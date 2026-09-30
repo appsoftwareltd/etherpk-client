@@ -13,7 +13,7 @@
  * required a document) rather than of anything they intended.
  */
 
-import { getActiveLayoutController, type LayoutController } from '$lib/layout'
+import { getActiveLayoutController, type LayoutController, type ViewRef } from '$lib/layout'
 
 import { getActiveGraphIndex } from './backlinks'
 import { conceptKey } from './backlinks/backlink-index'
@@ -87,10 +87,20 @@ export function openConceptAtLine(concept: string, line: number, sourcePanelId?:
 
 /** Open `target` (already canonical) in the source panel's pane; false when there is no layout. */
 function tryOpen(target: string, sourcePanelId?: string): boolean {
+    return openViewInPaneOf({ kind: 'document', target }, sourcePanelId)
+}
+
+/**
+ * Open `view` in the Pane holding `sourcePanelId`, the panel a menu or click came from, so it
+ * lands beside what the user was looking at rather than in whichever Pane was last active.
+ * Without a source, or once that panel has closed, the Layout places it. False when there is no
+ * layout to open into (the /dev harnesses).
+ */
+export function openViewInPaneOf(view: ViewRef, sourcePanelId?: string): boolean {
     try {
         const controller = getActiveLayoutController()
         const paneId = sourcePanelId ? paneIdFor(controller, sourcePanelId) : undefined
-        controller.openView({ kind: 'document', target }, paneId ? { paneId } : {})
+        controller.openView(view, paneId ? { paneId } : {})
         return true
     } catch {
         /* no active layout controller (dev harness): nothing to navigate */

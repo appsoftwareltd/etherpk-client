@@ -23,6 +23,7 @@ import { isInCode } from '../../wikilink/code-ranges'
 import { fileLinkForCaret } from '../file-link-context'
 import { analysisFor } from '../analysis/editor-analysis'
 import { bodyWritable } from '../body-writable'
+import { caretTask } from '../caret-task'
 import { tableAtCaret, tableInsertable } from '../table-context'
 import { type PopoverBase, type PopoverRow, popoverMenu } from './popover-menu'
 import { iconSvg } from '$lib/surface/icons'
@@ -60,6 +61,7 @@ export function slashCompletion(): Extension {
             tableInsertable: tableInsertable(state),
             bodyWritable: bodyWritable(state),
             fileLinkOnLine: fileLinkForCaret(state) !== null,
+            taskOnLine: caretTask(state) !== null,
         })
         const items = rankCommandMenu(applicable, ctx.query)
         if (items.length === 0) return null

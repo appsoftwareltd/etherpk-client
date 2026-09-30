@@ -5,8 +5,10 @@
 
 import { describe, expect, it } from 'vitest'
 
+import { collaborative } from './cm-document'
 import { tidiedAfterChildren, tidiedBlock, tidiedProse, tidyTargetAt } from './leave-tidy'
 import { editorFixture } from './testing/editor-state-fixture'
+import { placeSelection } from './view-position'
 
 const L = (s: string) => s.split('\n')
 
@@ -159,5 +161,29 @@ describe('leave-tidy filter', () => {
         expect(editor.text()).toBe('- a\n- b')
         editor.key('Mod-z')
         expect(editor.fixture()).toBe('- a  |\n- b')
+    })
+
+    it('leaves a synced editor’s remote changes alone, which the caret clamp gives a selection', () => {
+        // Another member deletes the continuation the caret was on. y-codemirror dispatches that with
+        // no user event, the clamp moves the caret it mapped, and a trim riding that transaction never
+        // reaches the shared text: the editor and the Y.Text would disagree from then on.
+        const editor = editorFixture('- a \n  cont|\n- c', { extensions: [collaborative.of(true)] })
+        const from = editor.text().indexOf('  cont')
+        editor.dispatch(editor.state.update({ changes: { from, to: from + '  cont\n'.length } }))
+        expect(editor.text()).toBe('- a \n- c')
+        // The user's own move in a synced editor still tidies.
+        const own = editorFixture('- a  |\n- b', { extensions: [collaborative.of(true)] })
+        own.select(8)
+        expect(own.fixture()).toBe('- a\n- |b')
+    })
+
+    it('leaves the line alone when the app places the caret: a reveal or a restored Reading Position is not the user leaving', () => {
+        // A second editor on the document places its caret when the first one's edits arrive; a
+        // tidy there would be a write nobody typed, sent back while the first is still sending its own.
+        const editor = editorFixture('- a  |\n- b  ')
+        editor.dispatch(editor.state.update(placeSelection(8)))
+        expect(editor.fixture()).toBe('- a  \n- |b  ')
+        editor.dispatch(editor.state.update(placeSelection(0, 3)))
+        expect(editor.text()).toBe('- a  \n- b  ')
     })
 })

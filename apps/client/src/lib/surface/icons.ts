@@ -15,6 +15,10 @@
  *
  * The markup here is in-repo constant text, never user or document content, which is what
  * makes rendering it with `{@html}` (and `innerHTML` in the CodeMirror widgets) safe.
+ *
+ * A few icons are Heroicons (MIT) instead, kept on their own 24-unit grid with their paths copied
+ * verbatim from the package's `24/outline/<name>.svg` (`HEROICON_PATHS`), so either can be
+ * checked against the other.
  */
 
 /** Inner markup for each named icon; `default` is the fallback for an unknown name. */
@@ -30,6 +34,12 @@ export const ICON_PATHS: Record<string, string> = {
     'move-up': '<path d="M8 12.5V3.5M4.5 7 8 3.5 11.5 7"/>',
     'move-down': '<path d="M8 3.5v9M4.5 9 8 12.5 11.5 9"/>',
     task: '<rect x="2.5" y="2.5" width="11" height="11" rx="2"/><path d="M5.5 8 7.3 10 10.5 5.8"/>',
+    /** Three columns of different depths: a [[Kanban Board]]'s lanes, on its tab. */
+    kanban: '<rect x="2.5" y="2.5" width="3" height="11" rx="1"/><rect x="6.5" y="2.5" width="3" height="7" rx="1"/><rect x="10.5" y="2.5" width="3" height="9" rx="1"/>',
+    /** Two arrows closing on a line: fold a board's lane down to a narrow strip. */
+    'collapse-lane': '<path d="M8 3v10"/><path d="M2.5 8H6M4.3 6.2 6 8 4.3 9.8M13.5 8H10M11.7 6.2 10 8l1.7 1.8"/>',
+    /** The same arrows pointing away from the line: open a folded lane out again. */
+    'expand-lane': '<path d="M8 3v10"/><path d="M6 8H2.5M4.2 6.2 2.5 8l1.7 1.8M10 8h3.5M11.8 6.2 13.5 8l-1.7 1.8"/>',
     /** Two arrows chasing round a circle: put it back the way it started (Reset workspace). */
     reset: '<path d="M13 8a5 5 0 0 1-8.7 3.4M3 8a5 5 0 0 1 8.7-3.4"/><path d="M11.7 2v2.6H9.1M4.3 14v-2.6h2.6"/>',
     /** "abc" over a tick: the spell check preference (its Command Menu rows). */
@@ -112,6 +122,16 @@ export const ICON_PATHS: Record<string, string> = {
     default: '<circle cx="8" cy="8" r="2" fill="currentColor" stroke="none"/>',
 }
 
+/** Icons drawn on Heroicons' 24-unit grid: Heroicons 2.2.0 outline, each path copied verbatim. */
+const HEROICON_PATHS: Record<string, string> = {
+    /**
+     * heroicons/outline `link`, a chain: the documents that link to this one. On the Backlinks
+     * View's tab and the Show backlinks row.
+     */
+    backlinks:
+        '<path d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244"/>',
+}
+
 export interface IconOptions {
     /** Rendered size in px, square. Defaults to 16. */
     size?: number
@@ -125,9 +145,14 @@ export interface IconOptions {
 export function iconSvg(name: string, options: IconOptions = {}): string {
     const { size = 16, strokeWidth = 1.4, label } = options
     const a11y = label ? `role="img" aria-label="${label}"` : 'aria-hidden="true"'
+    // A Heroicon keeps its own grid; its stroke is scaled up with it, so it draws as heavy as the
+    // table's 16-unit icons beside it rather than at Heroicons' lighter 1.5 of 24.
+    const hero = HEROICON_PATHS[name]
+    const grid = hero === undefined ? 16 : 24
+    const stroke = Math.round(((strokeWidth * grid) / 16) * 1000) / 1000
     return (
-        `<svg viewBox="0 0 16 16" width="${size}" height="${size}" fill="none" stroke="currentColor" ` +
-        `stroke-width="${strokeWidth}" stroke-linecap="round" stroke-linejoin="round" ${a11y}>` +
-        `${ICON_PATHS[name] ?? ICON_PATHS.default}</svg>`
+        `<svg viewBox="0 0 ${grid} ${grid}" width="${size}" height="${size}" fill="none" stroke="currentColor" ` +
+        `stroke-width="${stroke}" stroke-linecap="round" stroke-linejoin="round" ${a11y}>` +
+        `${hero ?? ICON_PATHS[name] ?? ICON_PATHS.default}</svg>`
     )
 }

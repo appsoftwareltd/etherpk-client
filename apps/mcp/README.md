@@ -1,5 +1,7 @@
 # @appsoftwareltd/etherpk-mcp
 
+[![Discord](https://img.shields.io/badge/Discord-join%20the%20community-5865F2?logo=discord&logoColor=white)](https://discord.gg/m9vScxQzvp)
+
 An [MCP](https://modelcontextprotocol.io) server that gives an AI agent (Claude Code, Codex, Cursor
 and others) one of your [EtherPK](https://etherpk.com) knowledge graphs. It runs on the same
 computer as the agent, which can then search your notes by words or by meaning, follow links, list
@@ -58,6 +60,7 @@ and every tool refuses a protected document.
 | --- | --- | --- |
 | Find and read | `graph_info`, `list_documents`, `read_document`, `read_documents`, `search`, `backlinks`, `tasks` | `list_documents` can narrow to a range of journal days. `read_document` returns the body as text and the frontmatter as data. |
 | Edit | `edit_document`, `append_document`, `create_page`, `set_task`, `set_frontmatter`, `set_aliases` | `edit_document` replaces one exact, unique piece of text - on a synced graph it merges with edits made elsewhere at the same time. `append_document` creates a day's journal entry when there is none. `set_frontmatter` sets any key except `title`, `aliases` and `publication`, which have tools of their own. |
+| Tasks handed over | `read_task`, `add_task_note`, `set_task` | A person copies a task reference in EtherPK and pastes it to the agent. `read_task` returns the task and what is nested under it, `set_task` takes the reference in place of a document and line, and `add_task_note` writes a note under the task. The reference finds the task after lines are added above it or its tags change, and refuses once its words change. |
 | Rename | `plan_rename`, `rename` | Links to the old name are rewritten by default and scoped concepts move with it. Renaming onto a name that is taken merges two documents and needs confirming. |
 | Images and files | `upload_asset`, `read_asset`, `list_assets` | `upload_asset` returns the markdown to paste into a document. It refuses hidden files and folders (`.ssh`, `.env`), the Headless Client's own config and cache, and files over 100 MiB. `read_asset` writes an asset to a local file. |
 | Publishing | `list_publications`, `create_publication`, `update_publication`, `publish` | `publish` writes into the folder you set with the `publish` command - the agent can't choose one. |

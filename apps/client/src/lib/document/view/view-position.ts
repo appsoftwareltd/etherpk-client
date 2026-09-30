@@ -5,7 +5,7 @@
  * than trusted (ADR 0023: approximate restoration is accepted).
  */
 
-import { EditorSelection } from '@codemirror/state'
+import { EditorSelection, Transaction, type TransactionSpec } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
 
 import type { ViewPosition } from '$lib/navigation'
@@ -16,6 +16,17 @@ export function clampSelection(
 ): { anchor: number; head: number } {
     const clamp = (n: number) => Math.max(0, Math.min(n, docLength))
     return { anchor: clamp(position.anchor), head: clamp(position.head) }
+}
+
+/**
+ * A selection the app sets, rather than one the user made: a reveal, a restored [[Reading
+ * Position]]. Kept out of the undo history, which is also how tidy on leave (leave-tidy.ts) knows
+ * not to trim the line the caret left: the user did not walk away from it. A tidy there would be a
+ * write nobody typed, and in a second editor on the same document, placing its caret as the first
+ * one's edits arrived, it went back to the store while the first was still sending its own.
+ */
+export function placeSelection(anchor: number, head = anchor): TransactionSpec {
+    return { selection: EditorSelection.range(anchor, head), annotations: Transaction.addToHistory.of(false) }
 }
 
 /** The live position of an editor (capture side of the adapter). */
@@ -38,7 +49,7 @@ const applyEpoch = new WeakMap<EditorView, number>()
 
 export function applyEditorPosition(view: EditorView, position: ViewPosition): void {
     const { anchor, head } = clampSelection(position, view.state.doc.length)
-    view.dispatch({ selection: EditorSelection.range(anchor, head) })
+    view.dispatch(placeSelection(anchor, head))
 
     const epoch = (applyEpoch.get(view) ?? 0) + 1
     applyEpoch.set(view, epoch)
@@ -70,9 +81,16 @@ export function applyEditorPosition(view: EditorView, position: ViewPosition): v
  * It still bumps the same epoch, so an `applyEditorPosition` assert loop already in flight
  * (a [[Layout]] activation restoring a position at the same moment) gives up rather than
  * dragging the view back off the result.
+ *
+ * `align` is where the caret's line lands: centred, for a result someone is looking for, or at
+ * the top, for a task opened in a [[Kanban Board]]'s [[Task Detail]] with what is written under
+ * it in view below (ADR 0113). `scrollTo` is the position put there when it is not the caret's:
+ * the start of a line whose end the caret goes to, so a line that wraps shows from its first row.
  */
-export function revealEditorPosition(view: EditorView, head: number): void {
-    const clamped = Math.max(0, Math.min(head, view.state.doc.length))
+export function revealEditorPosition(view: EditorView, head: number, align: RevealAlign = 'center', scrollTo = head): void {
+    const clamp = (pos: number) => Math.max(0, Math.min(pos, view.state.doc.length))
+    const clamped = clamp(head)
+    const target = clamp(scrollTo)
     const epoch = (applyEpoch.get(view) ?? 0) + 1
     applyEpoch.set(view, epoch)
     // Note that CodeMirror scrolls the ANCESTORS of the editor too, walking up until it meets a
@@ -82,11 +100,11 @@ export function revealEditorPosition(view: EditorView, head: number): void {
     // scrolled at all. See GraphWorkspace's `.layout`.
     const scroll = () =>
         view.dispatch({
-            // Centred, not 'nearest': the caret is the answer to "where is my result", and a
-            // result flush against the bottom edge reads as an accident.
-            effects: EditorView.scrollIntoView(clamped, { y: 'center' }),
+            // Where `align` says, never 'nearest': the caret is the answer to "where is my
+            // result", and a result flush against the bottom edge reads as an accident.
+            effects: EditorView.scrollIntoView(target, { y: align }),
         })
-    view.dispatch({ selection: EditorSelection.cursor(clamped) })
+    view.dispatch(placeSelection(clamped))
     scroll()
 
     // Re-asserted, for the same reason {@link applyEditorPosition} re-asserts its scrollTop: a
@@ -95,7 +113,7 @@ export function revealEditorPosition(view: EditorView, head: number): void {
     // result for a CLOSED document hits this every time — the caret was right and the view
     // stayed at the top.
     //
-    // Asserted on the CARET being visible rather than on a scroll offset, because the offset
+    // Asserted on the target being visible rather than on a scroll offset, because the offset
     // that puts it in view is not knowable until the editor has been laid out.
     const STABLE_FRAMES = 3
     let attempts = 60 // ~1s at 60fps
@@ -103,11 +121,11 @@ export function revealEditorPosition(view: EditorView, head: number): void {
     const assertVisible = () => {
         if (!view.dom.isConnected) return // unmounted mid-reveal
         if (applyEpoch.get(view) !== epoch) return // superseded by a newer apply
-        const caret = view.coordsAtPos(clamped)
+        const caret = view.coordsAtPos(target)
         const box = view.scrollDOM.getBoundingClientRect()
         // `coordsAtPos` is null when the position is outside the rendered range, which itself
         // means it is not on screen.
-        if (caret && caret.top >= box.top && caret.bottom <= box.bottom) {
+        if (caret && caret.top >= box.top && caret.bottom <= box.bottom && (align === 'center' || atTop(caret.top, box.top))) {
             stable += 1
         } else {
             stable = 0
@@ -116,4 +134,17 @@ export function revealEditorPosition(view: EditorView, head: number): void {
         if (stable < STABLE_FRAMES && --attempts > 0) requestAnimationFrame(assertVisible)
     }
     requestAnimationFrame(assertVisible)
+
+    /**
+     * The line is at the top, or as near it as the document scrolls: a line near the end of a
+     * short document cannot reach it, and asking again would never settle.
+     */
+    function atTop(caretTop: number, boxTop: number): boolean {
+        const scroller = view.scrollDOM
+        const scrolledToEnd = scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 1
+        return scrolledToEnd || caretTop - boxTop <= view.defaultLineHeight * 2
+    }
 }
+
+/** Where a revealed line lands in the editor. */
+export type RevealAlign = 'center' | 'start'

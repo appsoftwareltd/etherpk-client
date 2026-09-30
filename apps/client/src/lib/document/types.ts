@@ -48,6 +48,14 @@ export interface TextChange {
 }
 
 /**
+ * What a compare-and-set write did (a [[Formatting Scan]]'s fix, ADR 0109): `written`; `changed`,
+ * the document no longer held the text the write expected, so nothing was written; `gone`, no
+ * document by that key; `unconfirmed`, a synced document this device could not bring current;
+ * `protected`, it holds a Protected Document's cipher fence, which no fix may touch.
+ */
+export type SpliceOutcome = 'written' | 'changed' | 'gone' | 'unconfirmed' | 'protected'
+
+/**
  * Who made an edit — which decides whether the document's subscribers hear about it.
  *
  * `editor` is the default and the historical behaviour: the editor that called
@@ -57,8 +65,15 @@ export interface TextChange {
  * `external` is an edit made by anything that is NOT the editor — the [[Tasks View]] ticking a
  * checkbox, for one. Those MUST notify, or an open editor keeps rendering text the buffer no
  * longer holds, and its next keystroke applies an offset against a document it disagrees with.
+ *
+ * One document can have two editors (a document tab and a [[Kanban Board]]'s [[Task Detail]],
+ * ADR 0113). An `editor` edit then names the subscriber it came from, and every other subscriber
+ * hears it, for the reason an `external` edit is heard; the editor that made it still does not.
  */
 export type ChangeOrigin = 'editor' | 'external'
+
+/** Hears a document's text after an edit that it did not make. */
+export type DocumentListener = (text: string) => void
 
 /**
  * A live handle to one document's text. The editor reads {@link getText} once to
@@ -68,14 +83,24 @@ export type ChangeOrigin = 'editor' | 'external'
 export interface EditorDocument {
     readonly id: string
     getText(): string
-    /** Apply an edit. Defaults to `editor` origin — see {@link ChangeOrigin}. */
-    applyChange(change: TextChange, origin?: ChangeOrigin): void
+    /**
+     * Apply an edit. Defaults to `editor` origin — see {@link ChangeOrigin}. An editor passes
+     * the listener it subscribed with as `editor`, so the document's other editors hear the
+     * edit and it does not; an `editor` edit that names no subscriber is heard by none.
+     *
+     * Two callers name none. A [[Draft]]'s promotion writes what was typed into the page it
+     * creates or adopts (draft.ts), so another editor already open on an adopted page does not
+     * hear it. And the Headless Client's body view (apps/mcp, headless-documents.ts) wraps each
+     * listener and does not pass `editor` on, so telling editors apart by their listener does not
+     * work through it; it has one editor per document.
+     */
+    applyChange(change: TextChange, origin?: ChangeOrigin, editor?: DocumentListener): void
     /**
      * Observe changes that did NOT originate from this editor's own
-     * {@link applyChange} call — i.e. external/remote edits the editor must
-     * reflect. Returns an unsubscribe function.
+     * {@link applyChange} call — external and remote edits, and another editor's — which the
+     * editor must reflect. Returns an unsubscribe function.
      */
-    subscribe(listener: (text: string) => void): () => void
+    subscribe(listener: DocumentListener): () => void
 }
 
 /** Opens documents by id. One store backs one knowledge graph. */
@@ -85,6 +110,11 @@ export interface DocumentStore {
      * Resolves when the document's backing content has actually loaded (e.g. a Server
      * Backend's cache seed). Absent on stores whose `open` returns real text synchronously;
      * the editor shows a loading state only while this is pending.
+     *
+     * It settles only after an editor already subscribed has heard the loaded text. A View counts
+     * a change it hears before this settles as the content it opened to show, and places a held
+     * reveal on it (held-reveal.ts); a store that settled first would land every reveal into a
+     * document it just opened on the first line.
      */
     whenReady?(target: string): Promise<void>
 }

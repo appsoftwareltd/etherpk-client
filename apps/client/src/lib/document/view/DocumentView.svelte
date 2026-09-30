@@ -12,6 +12,7 @@
      * for this ViewRef's target. Mounted by the Layout (and the /dev/editor
      * harness). CodeMirror is bound to the backend, which owns the text.
      */
+    import { Transaction } from '@codemirror/state'
     import { onDestroy, onMount, untrack } from 'svelte'
 
     import LoadingSweep from '$lib/components/LoadingSweep.svelte'
@@ -29,7 +30,7 @@
         type DraftDocument,
     } from '../draft'
     import { tryGetActiveAssetStore } from '../active-asset-store'
-    import { clearActiveEditorView, setActiveEditorView } from '../active-editor'
+    import { clearActiveEditorView, getActiveEditorView, setActiveEditorView } from '../active-editor'
     import { markEditorTornDown, recordEditorSuccessor } from './editor-succession'
     import { refreshEditorContext } from '../editor-context.svelte'
     import { initEditorFont, zoomEditorFont } from '../editor-font'
@@ -48,9 +49,11 @@
     import { frontmatterIdentityTick } from './augmentations/frontmatter'
     import { carrySpellCheck, spellCheckChanged } from './augmentations/spell-check'
     import { analysisFor } from './analysis/editor-analysis'
+    import { anchoredLine, anchorLine } from './line-anchor'
     import { editorExtensions } from './editor-extensions'
     import { EDIT_REFUSAL_MESSAGE, EDIT_REFUSAL_TITLE, type EditRefusal } from './edit-refused'
-    import { applyEditorPosition, editorPosition, revealEditorPosition } from './view-position'
+    import { applyEditorPosition, editorPosition, type RevealAlign, revealEditorPosition } from './view-position'
+    import { createHeldReveal } from './held-reveal'
     import type * as Y from 'yjs'
 
     // `ytext` opts the editor into the collaborative buffer (Server engine / ADR 0010
@@ -59,7 +62,27 @@
         view: viewProp,
         ytext,
         panelId,
-    }: { view: ViewRef; ytext?: Y.Text; panelId?: string } = $props()
+        embedded: embeddedProp = false,
+        revealAt,
+    }: {
+        view: ViewRef
+        ytext?: Y.Text
+        panelId?: string
+        /**
+         * Shown inside another View rather than as a Pane's own tab: a [[Kanban Board]]'s
+         * [[Task Detail]] (ADR 0113), beside which the document's own tab may be open. It keeps
+         * none of a tab's bookkeeping: no [[Reading Position]], no position adapter, no share of
+         * the reveals addressed to its document, and it becomes the active editor only on focus.
+         */
+        embedded?: boolean
+        /** Embedded only: the body line (0-based) put at the top when it opens. */
+        revealAt?: number
+    } = $props()
+
+    /** Fixed for the View's life, as its ref is. */
+    const embedded = untrack(() => embeddedProp)
+    /** Embedded: the line last shown, which a remount (protection changing) shows again. */
+    let embeddedLine = untrack(() => revealAt)
 
     /**
      * This View's ViewRef, **captured at construction**.
@@ -92,6 +115,11 @@
      * Set by the seed that belongs to the current mount only (`seedToken`).
      */
     let contentReady = false
+    /**
+     * True from mounting until the store's `whenReady` settles, whether the content arrived or
+     * failed to: a change heard meanwhile is that content arriving, not an edit (held-reveal.ts).
+     */
+    let contentArriving = false
     let seedToken: object | undefined
     /** Pushes the hint's words into the mounted editor (placeholder.ts). */
     let showPlaceholder: ((text: string | null) => void) | undefined
@@ -154,7 +182,7 @@
     /** Whether the live editor is bound to a `Y.Text` — decided once, at mount. */
     let collabBound = false
     let unsubscribe: (() => void) | undefined
-    let detachWheelZoom: (() => void) | undefined
+    let detachEditorListeners: (() => void) | undefined
     let detachPositionAdapter: (() => void) | undefined
     let detachScrollReport: (() => void) | undefined
     let reportTimer: ReturnType<typeof setTimeout> | undefined
@@ -198,14 +226,11 @@
     let pendingCaret: number | undefined
     let detachReveal: (() => void) | undefined
     /**
-     * A [[Search]] result asked for a specific line. Held briefly rather than applied and
-     * forgotten, because opening a result ALSO activates this View, and activation delivers
-     * the remembered Reading Position a moment later — which would put the caret back at the
-     * top of the document. While this is set it outranks that restore. It expires so a stale
-     * reveal can never hijack an unrelated activation later.
+     * The line a [[Search]] result, a card or a reference asked this editor to show, held for a
+     * moment so the activation that follows does not restore the Reading Position over it, and
+     * placed again as late content arrives (held-reveal.ts).
      */
-    let pendingRevealLine: number | undefined
-    let revealExpiry: ReturnType<typeof setTimeout> | undefined
+    const heldReveal = createHeldReveal({ reveal: revealLine, focus: focusEditor, focusIsFree })
 
     onMount(() => {
         mountIndex = ++mountCount
@@ -260,12 +285,16 @@
         }
         // Already open: a reveal for this document moves the live caret rather than waiting
         // for a mount that will never happen.
-        detachReveal = subscribeReveal((request) => {
-            if (request.target !== view.target || !editor) return
-            takeReveal(view.target)
-            holdReveal(request.line)
-        })
-        if (tryMountDocument()) return
+        // Not while embedded: a reveal names a document, and it is the document's own tab's to
+        // take. The Board tells a Task Detail where to look itself (`showLine`).
+        if (!embedded) {
+            detachReveal = subscribeReveal((request) => {
+                if (request.target !== view.target || !editor) return
+                takeReveal(view.target)
+                heldReveal.hold(request.line)
+            })
+        }
+        if (tryMountDocument() || embeddedDocumentGone()) return
         // The concept isn't in the registry YET — a deep link that landed before the
         // graph's registry hydrated (cold cache, catchup still streaming). This pane sat
         // BLANK forever (live, 2026-07-28); show the loading state and retry as
@@ -273,7 +302,8 @@
         seeding = true
         const withDocs = getActiveDocumentStore() as { onDocumentsChanged?: (l: () => void) => () => void }
         const retry = () => {
-            if (editor || !tryMountDocument()) return
+            if (editor) return
+            if (!tryMountDocument() && !embeddedDocumentGone()) return
             seeding = false
             detachRetry?.()
             detachRetry = undefined
@@ -294,6 +324,20 @@
     })
 
     /**
+     * Embedded: whether the document is gone, saying so when it is. A Task Detail shows a task the
+     * index read in a document, so a document the built index no longer has was renamed or
+     * deleted, and waiting for it would show "Loading document…" for ever. While the index is
+     * still building, "gone" and "not indexed yet" look alike, so this waits.
+     */
+    function embeddedDocumentGone(): boolean {
+        if (!embedded) return false
+        const index = getActiveGraphIndex()
+        if (!index || index.isBuilding() || index.conceptExists(view.target)) return false
+        mountError = `"${view.target}" is no longer in the graph. It was renamed or deleted.`
+        return true
+    }
+
+    /**
      * Whether a missing concept should open as a [[Draft]] rather than wait for the registry.
      *
      * The index is the authority on what exists, and it is the same signal the editor's
@@ -302,6 +346,9 @@
      * that may be seconds from arriving.
      */
     function draftAllowed(): boolean {
+        // A Task Detail shows a task that is written somewhere: with its document gone there is
+        // nothing to show, and a Draft would offer to write a page nobody asked for.
+        if (embedded) return false
         if (!canCreateDocuments(getActiveDocumentStore())) return false
         const index = getActiveGraphIndex()
         if (!index || index.isBuilding()) return false
@@ -345,38 +392,87 @@
      * The line is converted here because only the editor knows where a line starts, and it is
      * clamped because the document may have changed since the index recorded it.
      */
-    function revealLine(line: number): void {
+    function revealLine(line: number, align: RevealAlign = 'center'): void {
         const cm = editor?.view
         if (!cm) return
-        // The index derives from the BODY, so its line numbers sit below any frontmatter the
-        // editor is also showing. Clamped as well: the document may have changed since.
-        const offset = frontmatterLineOffset(cm.state.doc.toString())
-        const clamped = Math.min(Math.max(line + offset + 1, 1), cm.state.doc.lines)
         // The line's START; `caretClamp` (a transaction filter, so programmatic moves go
         // through it too) then nudges it right to the content column, past a bullet marker.
         // Scrolled into view rather than to a remembered offset — see revealEditorPosition.
-        revealEditorPosition(cm, cm.state.doc.line(clamped).from)
+        revealEditorPosition(cm, cm.state.doc.line(documentLine(cm, line)).from, align)
     }
 
     /**
-     * Apply a held reveal, if there is one. True when it took the place of a restore.
-     *
-     * Applying does NOT consume it, and that is the whole point. Opening a [[Search]] result
-     * for an ALREADY-OPEN document reveals first and *then* activates the View — and
-     * activation delivers the remembered [[Reading Position]], which would put the caret
-     * straight back where the user last was. The reveal has to outrank that restore, so it
-     * stays held (and re-appliable, which also covers content arriving late) until its window
-     * expires. Every apply is idempotent.
+     * The editor's 1-based line for a body line as the index counts it. The index derives from
+     * the BODY, so its line numbers sit below any frontmatter the editor is also showing. Clamped
+     * as well: the document may have changed since.
      */
-    function applyPendingReveal(): boolean {
-        if (pendingRevealLine === undefined || !editor) return false
-        revealLine(pendingRevealLine)
-        // Take the focus as well. "Show me this result" means the caret it just placed should
-        // be usable — and when the result lives in the document the user is ALREADY in,
-        // nothing else will do it: the View never changes, so the Layout sees no activation to
-        // focus, and the closing modal leaves the focus on nothing at all.
+    function documentLine(cm: NonNullable<DocumentEditor['view']>, line: number): number {
+        const offset = frontmatterLineOffset(cm.state.doc.toString())
+        return Math.min(Math.max(line + offset + 1, 1), cm.state.doc.lines)
+    }
+
+    /**
+     * Embedded: put `line` (0-based, as the index counts body lines) at the top, the caret at
+     * its start, and leave the focus where it is. Held like any reveal, so content still on its
+     * way is revealed when it lands. The line is followed through every edit from then on
+     * (`shownLine`).
+     */
+    export function showLine(line: number): void {
+        embeddedLine = line
+        anchorShownLine()
+        heldReveal.hold(line, { align: 'start', focus: false })
+    }
+
+    /**
+     * Embedded: follow the shown line through edits from here (line-anchor.ts). Anchored again on
+     * each change while the content is still arriving, since until then the line it names is not
+     * there to anchor.
+     */
+    function anchorShownLine(): void {
+        const cm = editor?.view
+        if (!embedded || !cm || embeddedLine === undefined) return
+        cm.dispatch({ effects: anchorLine.of(cm.state.doc.line(documentLine(cm, embeddedLine)).from) })
+    }
+
+    /**
+     * Embedded: the line `showLine` asked for, followed through every edit since (line-anchor.ts):
+     * where it is now, 0-based as the index counts body lines, and what it says. The board reads
+     * it to keep a task whose words or place have changed since the index last read them. Null
+     * before a line is shown.
+     */
+    export function shownLine(): { line: number; text: string } | null {
+        const cm = editor?.view
+        const number = cm ? anchoredLine(cm.state) : null
+        if (!cm || number === null) return null
+        const line = number - 1 - frontmatterLineOffset(cm.state.doc.toString())
+        return line < 0 ? null : { line, text: cm.state.doc.line(number).text }
+    }
+
+    /** Whether the document shown is a [[Protected Document]], asked live: protection comes and goes. */
+    export function isProtected(): boolean {
+        return isProtectedNow()
+    }
+
+    /**
+     * Embedded: the caret at the end of the shown line, where it is now, and the focus in the
+     * editor, to write there. The line's start goes to the top, so a task that wraps shows from
+     * its first row.
+     */
+    export function editShownLine(): void {
+        const cm = editor?.view
+        if (!cm) return
+        heldReveal.release()
+        const number = anchoredLine(cm.state) ?? (embeddedLine === undefined ? null : documentLine(cm, embeddedLine))
+        if (number === null) return
+        const at = cm.state.doc.line(number)
+        revealEditorPosition(cm, at.to, 'start', at.from)
         focusEditor()
-        return true
+    }
+
+    /** Whether the focus is free for this editor to take: on nothing, on the page itself, or already here. */
+    function focusIsFree(): boolean {
+        const active = document.activeElement
+        return !active || active === document.body || (editor?.view.dom.contains(active) ?? false)
     }
 
     /**
@@ -444,22 +540,6 @@
         }
         if (documentBody(editor.view.state.doc.toString()).trim() !== '') return
         focusEditor()
-    }
-
-    function clearHeldReveal(): void {
-        pendingRevealLine = undefined
-        if (revealExpiry) clearTimeout(revealExpiry)
-        revealExpiry = undefined
-    }
-
-    function holdReveal(line: number): void {
-        pendingRevealLine = line
-        if (revealExpiry) clearTimeout(revealExpiry)
-        // The reveal outranks any Reading Position restore for this long: enough to span
-        // mounting, a backend hydrating its content, and the Layout activating the panel.
-        // Bounded so a reveal can never hijack an unrelated activation later in the session.
-        revealExpiry = setTimeout(clearHeldReveal, 3000)
-        applyPendingReveal()
     }
 
     /**
@@ -585,19 +665,24 @@
         // but saying so keeps the loading overlay off a surface that is already complete.
         const pendingSeed = draft ? undefined : activeStore.whenReady?.(view.target)
         contentReady = !pendingSeed
+        contentArriving = Boolean(pendingSeed)
         seedToken = undefined
         if (pendingSeed) {
             seedPending = true
             const token = (seedToken = {})
             // Only a seed that ARRIVED lifts the hint's hold: one that failed leaves the pane
-            // showing its error, not an invitation to start typing.
+            // showing its error, not an invitation to start typing. Either way nothing more is
+            // on its way, so from here a change is an edit, not the content a reveal waits for.
             void pendingSeed.then(
                 () => {
                     if (seedToken !== token) return
                     contentReady = true
+                    contentArriving = false
                     pushPlaceholder()
                 },
-                () => {},
+                () => {
+                    if (seedToken === token) contentArriving = false
+                },
             )
             seedShowTimer = setTimeout(() => (seeding = true), 150)
             void pendingSeed
@@ -639,10 +724,20 @@
         const awareness = isCollab
             ? (activeStore as { getAwareness?: (t: string) => import('y-protocols/awareness').Awareness | undefined }).getAwareness?.(view.target)
             : undefined
+        /**
+         * This editor's ear on the document: external and remote changes, and the edits of another
+         * editor on the same document (a Kanban Board's Task Detail beside its tab, ADR 0113). The
+         * editor names it on its own edits, so the store tells every other editor and not this one.
+         */
+        // A fence arriving or leaving by [[Sync]] or an external write changes the answer without
+        // a remount; the Lock button must follow it. Content arriving for a held reveal is seen
+        // in `onUpdate`, which covers this path and the collaborative one.
+        const hear = (text: string) => editor!.setExternalText(text)
         editor = createDocumentEditor({
             parent: host!,
             doc: doc.getText(),
-            onChange: isCollab ? () => {} : (change) => doc!.applyChange(change),
+            onChange: isCollab ? () => {} : (change) => doc!.applyChange(change, 'editor', hear),
+            currentText: () => doc!.getText(),
             ...(collabYText ? { collab: { ytext: collabYText, awareness } } : {}),
             // The feature stack lives in editor-extensions.ts (order-tested); the View supplies
             // only the services the features need and its own focus / update hooks.
@@ -696,6 +791,9 @@
                     refreshEditorContext(cmView)
                 },
                 onUpdate(update) {
+                    // A keystroke, a click or a caret move here means the user has taken over
+                    // from a held reveal, which must not put the caret back under them.
+                    if (update.transactions.some((tr) => tr.annotation(Transaction.userEvent) !== undefined)) heldReveal.release()
                     // An accepted edit means the user has moved past the refused one.
                     if (update.docChanged && editRefusal) clearRefusal()
                     // Keep the Command Bar's outliner-block context in step with the caret.
@@ -708,16 +806,26 @@
                     else if (update.view.hasFocus && update.transactions.some((tr) => tr.effects.some((e) => e.is(spellCheckChanged)))) {
                         refreshEditorContext(update.view)
                     }
-                    // Content arriving is what a held reveal is waiting for. This covers the
-                    // COLLAB path, where yCollab reflects remote text directly and the
-                    // store's `subscribe` is deliberately never wired up.
-                    if (update.docChanged) applyPendingReveal()
+                    // Content arriving is what a held reveal is waiting for: the store's text
+                    // through `hear`, and on the COLLAB path yCollab reflecting the Y.Text, where
+                    // `subscribe` is deliberately never wired up. Embedded, the shown line is
+                    // anchored again on it too, whether or not the reveal is still held: anchored
+                    // on the empty buffer it mounted over, it would follow the text to its end.
+                    if (update.docChanged) {
+                        heldReveal.contentChanged({ arriving: contentArriving })
+                        if (contentArriving) anchorShownLine()
+                    }
                 },
+                // Which document this editor shows, and where, for a Command holding only the view.
+                document: { concept: view.target, panelId },
             }),
         })
-        // Command Menu handlers reach this editor through the active-view accessor.
-        setActiveEditorView(editor.view)
-        refreshEditorContext(editor.view)
+        // Command Menu handlers reach this editor through the active-view accessor. An embedded
+        // editor opens beside the one being worked in, and takes over only when focused (onFocus).
+        if (!embedded) {
+            setActiveEditorView(editor.view)
+            refreshEditorContext(editor.view)
+        }
         // Desktop zoom: Ctrl+wheel over the editor changes the (shared) editor font size.
         // A manual non-passive listener so preventDefault stops the browser page-zoom.
         const dom = editor.view.dom
@@ -727,25 +835,31 @@
             zoomEditorFont(event.deltaY < 0 ? 1 : -1)
         }
         dom.addEventListener('wheel', onWheelZoom, { passive: false })
-        detachWheelZoom = () => dom.removeEventListener('wheel', onWheelZoom)
+        // A key or a press in this editor is the user taking over from a held reveal. The
+        // transactions say so too (`onUpdate`), but not all of them: on a synced graph Mod-z
+        // reaches the editor with no user event, and the reveal put the caret back after it.
+        const letGoOfReveal = () => heldReveal.release()
+        const takeover = ['keydown', 'pointerdown', 'touchstart'] as const
+        for (const type of takeover) dom.addEventListener(type, letGoOfReveal, { capture: true, passive: true })
+        detachEditorListeners = () => {
+            dom.removeEventListener('wheel', onWheelZoom)
+            for (const type of takeover) dom.removeEventListener(type, letGoOfReveal, { capture: true })
+        }
         observeScrollbar(editor.view.scrollDOM)
         // Reflect external/remote changes into the editor — but NOT in collab mode, where
         // yCollab already reflects remote Y.Text updates; a setExternalText whole-buffer
         // rewrite would be seen as a local edit and echo-storm the sync engine.
-        if (!isCollab) {
-            unsubscribe = doc.subscribe((text) => {
-                // A fence arriving or leaving by [[Sync]] or an external write changes the
-                // answer without a remount; the Lock button must follow it.
-                editor!.setExternalText(text)
-                // The content this View was opened to show may only have arrived now; a held
-                // reveal could not be honoured against the empty buffer it mounted over.
-                applyPendingReveal()
-            })
-        }
+        if (!isCollab) unsubscribe = doc.subscribe(hear)
 
         // Navigation History (ADR 0023): expose capture/restore for Visits, apply
         // this View's Reading Position, and keep it fresh (debounced) as the user
         // scrolls or moves the caret. All of it no-ops outside a graph workspace.
+        // An embedded editor has no position of its own to keep or restore: the document's tab
+        // owns its Reading Position, and the Board says what to show (ADR 0113).
+        if (embedded) {
+            if (embeddedLine !== undefined) showLine(embeddedLine)
+            return
+        }
         const positionKey = viewKey(view)
         const readingPositions = tryGetActiveReadingPositions()
         // Reading Position FIRST, adapter registration SECOND: registering
@@ -756,7 +870,7 @@
         // Reading Position, which describes the Draft that no longer exists.
         const reveal = takeReveal(view.target)
         if (reveal) {
-            holdReveal(reveal.line)
+            heldReveal.hold(reveal.line)
         } else if (pendingCaret !== undefined) {
             const head = pendingCaret
             pendingCaret = undefined
@@ -776,7 +890,7 @@
             // A pending reveal outranks a remembered position: the user asked for a specific
             // block, and this callback is exactly what would otherwise undo that.
             restore: (position) => {
-                if (applyPendingReveal()) return
+                if (heldReveal.restore()) return
                 if (editor) applyEditorPosition(editor.view, position)
             },
             // Called when this View becomes the active document (tab click, open,
@@ -809,8 +923,8 @@
     function teardownEditor({ capturePosition }: { capturePosition: boolean }): void {
         unsubscribe?.()
         unsubscribe = undefined
-        detachWheelZoom?.()
-        detachWheelZoom = undefined
+        detachEditorListeners?.()
+        detachEditorListeners = undefined
         scrollbarObserver?.disconnect()
         scrollbarObserver = undefined
         scrollbarInset = 0
@@ -821,11 +935,13 @@
         // A remount asks its own seed question; the previous mount's answer, still in flight,
         // is not an answer about the document this View is about to open.
         seedPending = false
+        contentArriving = false
         focusWhenSeeded = false
         if (reportTimer) clearTimeout(reportTimer)
         reportTimer = undefined
-        if (revealExpiry) clearTimeout(revealExpiry)
-        revealExpiry = undefined
+        // A reveal was for the editor going away. Kept, it would outlive its window: nothing else
+        // lets go of it on a remount that takes no user action.
+        heldReveal.release()
         // Final capture: the debounce would otherwise drop the last ≤200ms of
         // scroll/caret movement from the Reading Position on unmount.
         if (editor && capturePosition) {
@@ -835,13 +951,18 @@
         detachScrollReport = undefined
         detachPositionAdapter?.()
         detachPositionAdapter = undefined
+        // Embedded, a remount shows the line followed until now, not the one first asked for.
+        if (embedded) embeddedLine = shownLine()?.line ?? embeddedLine
         if (editor) {
+            // The Command Bar's context describes the active editor, so it is cleared only when
+            // that was this one: a Task Detail closing beside a tab must not blank the tab's.
+            const wasActive = getActiveEditorView() === editor.view
             clearActiveEditorView(editor.view)
             // A dead end for anything still holding this view - an upload in flight - unless a
             // remount records its successor over this mark next (editor-succession.ts).
             markEditorTornDown(editor.view)
+            if (wasActive) refreshEditorContext(null)
         }
-        refreshEditorContext(null)
         editor?.destroy()
         editor = undefined
         releaseDocument?.()
@@ -853,7 +974,7 @@
         detachRetry?.()
         detachDraftWatch?.()
         detachReveal?.()
-        teardownEditor({ capturePosition: true })
+        teardownEditor({ capturePosition: !embedded })
     })
 </script>
 
@@ -861,6 +982,7 @@
     class={['document-view', showLock && 'document-view--lock']}
     data-testid="document-view"
     data-doc-target={view.target}
+    data-embedded={embedded || undefined}
     style:--gk-scrollbar-inset="{scrollbarInset}px"
 >
     <div class="document-view__mounts" data-testid="document-mounts">{mountIndex}</div>

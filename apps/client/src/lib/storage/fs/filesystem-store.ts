@@ -24,15 +24,18 @@ import type { IndexIncludeFact } from '$lib/document/index-db'
 import { type IndexProperty, propertiesOf } from '$lib/document/properties'
 import { includeFactsOf } from '$lib/document/publish/publication'
 import { dayIsNotAPageName, isJournalConcept } from '$lib/document/journal-concept'
-import { countWikilinkTargets, rewriteWikilinkScope, wikilinkScopeSplices } from '$lib/document/wikilink/rename'
+import { lineFeedsOnly } from '$lib/document/line-endings'
+import { type TextSplice, countWikilinkTargets, rewriteWikilinkScope, wikilinkScopeSplices } from '$lib/document/wikilink/rename'
 import { frontmatterSpan } from './frontmatter-span'
 import {
     DocumentNotFoundError,
     type DocumentStore,
     type EditorDocument,
+    type SpliceOutcome,
     type TextChange,
 } from '$lib/document/types'
 import { documentProtection } from '$lib/document/protection/cipher-fence'
+import { containsCipherFence } from '$lib/document/protection/fence-info'
 import { portableFileName, suffixedFileName } from '../file-names'
 import { mergeDocuments } from '../merge'
 import { planRename, refuseProtectedMerges, refuseUnreadableBlocks, unreadableBlockRefusal } from '../rename-plan'
@@ -162,6 +165,21 @@ export interface FilesystemDocumentStore extends DocumentStore {
      * than at the next scan. Normalised: trimmed, unique, never the document's own name.
      */
     setAliases(target: string, aliases: readonly string[]): Promise<void>
+    /**
+     * A document's whole text as this store holds it, frontmatter included: an open document's
+     * buffer (line feeds only, ADR 0112), else its file. Null when no document has that name.
+     * What a [[Formatting Scan]] reads, since a fix to an open document goes through its buffer.
+     */
+    documentText(target: string): Promise<string | null>
+    /**
+     * Write `splices` into a document only if it holds exactly `expected`, the text
+     * {@link documentText} gave a [[Formatting Scan]] (ADR 0109). The splices are in `expected`'s
+     * offsets. An open document is fixed through its buffer, as external changes its editor is
+     * told of, and saved before this resolves; its file is read first, so an edit made outside
+     * the app is followed rather than saved over. A closed document is read, compared and
+     * written. A failed save is reported through `onSaveError`, as for any edit.
+     */
+    spliceIfUnchanged(target: string, expected: string, splices: readonly TextSplice[]): Promise<SpliceOutcome>
     /**
      * Subscribe to any change that could affect derived state — registry changes
      * *and* content saves / reloads (a superset of {@link onDocumentsChanged}).
@@ -377,8 +395,9 @@ export function createFilesystemDocumentStore(
         return entries
     }
 
-    function notify(doc: OpenDoc, text: string): void {
-        for (const listener of doc.listeners) listener(text)
+    /** Tell an open document's subscribers its text, all but `except` (the editor that made the edit). */
+    function notify(doc: OpenDoc, text: string, except?: (text: string) => void): void {
+        for (const listener of doc.listeners) if (listener !== except) listener(text)
     }
 
     /** The frontmatter block of `text`, given its parsed body (`''` when there is none). */
@@ -689,7 +708,7 @@ export function createFilesystemDocumentStore(
                 return doc.target
             },
             getText: () => doc.buffer,
-            applyChange(change, origin = 'editor') {
+            applyChange(change, origin = 'editor', editor) {
                 doc.buffer = applyTextChange(doc.buffer, change)
                 doc.dirty = true
                 // An edit outranks a delete (ADR 0039 §4). Without this, a file that vanished
@@ -704,9 +723,11 @@ export function createFilesystemDocumentStore(
                 // An editor's own edit needs no echo — it already shows it. An edit from
                 // anywhere else does: without this an open editor renders text the buffer no
                 // longer holds, and its next keystroke lands at an offset computed against a
-                // document it disagrees with. (Server-backed documents need no equivalent:
-                // the editor binds the Y.Text directly, so any write reaches it already.)
+                // document it disagrees with. A second editor on the document (ADR 0113) is in
+                // the same place, so it hears the first one's edits. (Server-backed documents need
+                // no equivalent: each editor binds the Y.Text directly, so any write reaches it.)
                 if (origin === 'external') notify(doc, doc.buffer)
+                else if (editor) notify(doc, doc.buffer, editor)
             },
             subscribe(listener) {
                 doc.listeners.add(listener)
@@ -720,12 +741,16 @@ export function createFilesystemDocumentStore(
         doc.ready = adapter
             .read(doc.subdir, doc.fileName)
             .then((content) => {
-                doc.buffer = content.text
+                // The editor's buffer holds line feeds only (ADR 0112): CodeMirror joins its lines
+                // with `\n`, and a `\r` kept here put every edit one character early per line ending
+                // above it. `baseText` keeps the file's own bytes, so reconcile never takes the
+                // file's line endings for an external edit, and nothing is written until an edit is.
+                doc.buffer = lineFeedsOnly(content.text)
                 doc.baseText = content.text
                 doc.lastModified = content.lastModified
                 doc.size = content.size
                 doc.loaded = true
-                notify(doc, content.text)
+                notify(doc, doc.buffer)
             })
             .catch(async (error: unknown) => {
                 // Absent (removed between the scan and this open): an empty buffer IS the
@@ -770,7 +795,15 @@ export function createFilesystemDocumentStore(
         // compare, so it is always read here - that is how an unreadable-at-open file recovers.
         if (doc.loaded && entry.lastModified === doc.lastModified && entry.size === doc.size) return
 
-        const { text: diskText, lastModified, size } = await adapter.read(doc.subdir, doc.fileName)
+        followDisk(doc, await adapter.read(doc.subdir, doc.fileName))
+    }
+
+    /**
+     * Bring an open document in line with its file as just read (`reconcileDecision`): nothing
+     * but the stamps when the file is what the buffer last synced with, a reload of a clean buffer,
+     * a conflict over a dirty one.
+     */
+    function followDisk(doc: OpenDoc, { text: diskText, lastModified, size }: { text: string; lastModified: number; size: number }): void {
         const decision = reconcileDecision({
             dirty: doc.dirty,
             baseText: doc.baseText,
@@ -785,14 +818,14 @@ export function createFilesystemDocumentStore(
             return
         }
         if (decision === 'reload') {
-            doc.buffer = diskText
+            doc.buffer = lineFeedsOnly(diskText) // as at open: the buffer is line feeds, baseText the file (ADR 0112)
             doc.baseText = diskText
             doc.lastModified = lastModified
             doc.size = size
             doc.loaded = true
             doc.loadError = null
             doc.dirty = false
-            notify(doc, diskText)
+            notify(doc, doc.buffer)
             emitChange({ concept: conceptOf(doc) })
             return
         }
@@ -800,6 +833,59 @@ export function createFilesystemDocumentStore(
         doc.conflict = { target: doc.target, diskText, bufferText: doc.buffer }
         doc.save.cancel()
         onConflict?.(doc.conflict)
+    }
+
+    /** A file's content, or null when it does not exist; any other failure rejects. */
+    async function readIfPresent(subdir: Subdir, fileName: string): Promise<{ text: string; lastModified: number; size: number } | null> {
+        try {
+            return await adapter.read(subdir, fileName)
+        } catch (error) {
+            if (await adapter.exists(subdir, fileName).catch(() => true)) throw error
+            return null
+        }
+    }
+
+    /**
+     * A Formatting Scan's fix to an open document (ADR 0109): through the buffer, so the editor
+     * showing it is told, then saved now. The file is read first: an edit made outside the app
+     * since the buffer last synced is followed, a reload or a conflict over unsaved typing, and
+     * the fix is refused rather than saved over it.
+     */
+    async function spliceOpenDocument(doc: OpenDoc, expected: string, splices: readonly TextSplice[]): Promise<SpliceOutcome> {
+        await doc.ready
+        await settled(doc)
+        if (doc.removed) return 'gone'
+        if (doc.conflict) return 'changed' // raised already: the person resolves it first
+        const disk = await readIfPresent(doc.subdir, doc.fileName)
+        if (disk === null || doc.removed) return 'gone'
+        // A save that began during the read is typing landing: the file cannot be judged against it.
+        if (doc.saving || doc.conflict) return 'changed'
+        followDisk(doc, disk)
+        if (doc.conflict || !doc.loaded) return 'changed'
+        if (containsCipherFence(doc.buffer)) return 'protected'
+        if (doc.buffer !== expected) return 'changed'
+        for (let i = splices.length - 1; i >= 0; i--) doc.handle.applyChange(splices[i], 'external')
+        await saveNow(doc)
+        return 'written'
+    }
+
+    /** A Formatting Scan's fix to a document nobody has open: read, compare, write (ADR 0109). */
+    async function spliceClosedDocument(entry: DocumentEntry, expected: string, splices: readonly TextSplice[]): Promise<SpliceOutcome> {
+        const read = await readIfPresent(entry.subdir, entry.fileName)
+        if (read === null) return 'gone'
+        const opened = open.get(entry.key)
+        if (opened) return spliceOpenDocument(opened, expected, splices) // opened while the file was read
+        if (containsCipherFence(read.text)) return 'protected'
+        if (read.text !== expected) return 'changed'
+        let text = read.text
+        for (let i = splices.length - 1; i >= 0; i--) text = applyTextChange(text, splices[i])
+        const written = await adapter.write(entry.subdir, entry.fileName, text)
+        // As a save does: the registry keeps the stamps, so reconcile's fast path does not re-read
+        // this write, and the index re-derives the one document.
+        entry.lastModified = written.lastModified
+        entry.size = written.size
+        emitChange({ concept: entry.concept })
+        return 'written'
     }
 
     return {
@@ -860,6 +946,25 @@ export function createFilesystemDocumentStore(
                 entry.aliases = next
                 emitRegistryOnly()
             }
+        },
+
+        async documentText(target) {
+            const entry = registry.get(conceptKey(target))
+            if (!entry) return null
+            const doc = open.get(entry.key)
+            if (doc) {
+                await doc.ready
+                // A buffer whose file could not be read stands in for content never seen.
+                if (doc.loaded) return doc.buffer
+            }
+            return (await readIfPresent(entry.subdir, entry.fileName))?.text ?? null
+        },
+
+        async spliceIfUnchanged(target, expected, splices) {
+            const entry = registry.get(conceptKey(target))
+            if (!entry) return 'gone'
+            const doc = open.get(entry.key)
+            return doc ? spliceOpenDocument(doc, expected, splices) : spliceClosedDocument(entry, expected, splices)
         },
 
         onChange(listener) {
@@ -930,13 +1035,13 @@ export function createFilesystemDocumentStore(
             doc.loadError = null
             if (choice === 'take-disk') {
                 const { text, lastModified, size } = await adapter.read(doc.subdir, doc.fileName)
-                doc.buffer = text
+                doc.buffer = lineFeedsOnly(text) // as at open (ADR 0112)
                 doc.baseText = text
                 doc.lastModified = lastModified
                 doc.size = size
                 doc.dirty = false
                 doc.conflict = null
-                notify(doc, text)
+                notify(doc, doc.buffer)
             } else {
                 const res = await adapter.write(doc.subdir, doc.fileName, doc.buffer)
                 doc.baseText = doc.buffer

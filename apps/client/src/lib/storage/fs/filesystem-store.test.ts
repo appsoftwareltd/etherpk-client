@@ -1,4 +1,7 @@
+import { EditorState } from '@codemirror/state'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+import { sequentialTextChanges } from '../../document/view/sequential-text-changes'
 
 import type { DirectoryAdapter } from './directory-adapter'
 import { createMemoryDirectoryAdapter } from './memory-adapter'
@@ -432,6 +435,25 @@ describe('external edits', () => {
         doc.applyChange({ from: 2, to: 2, insert: 'Y' }, 'external')
         expect(seen).toEqual(['aXY'])
     })
+
+    it("hands an editor's edit to the document's other editors, and not back to the one that made it", async () => {
+        const fs = createMemoryDirectoryAdapter({ now: clock(), seed: { pages: { 'A.md': 'a' } } })
+        const store = createFilesystemDocumentStore(fs)
+        await store.scan()
+        const doc = store.open('A')
+        await flushMicrotasks()
+
+        // Two editors on one document: a document tab and a Kanban Board's Task Detail.
+        const first: string[] = []
+        const second: string[] = []
+        const firstListener = (text: string) => first.push(text)
+        doc.subscribe(firstListener)
+        doc.subscribe((text) => second.push(text))
+
+        doc.applyChange({ from: 1, to: 1, insert: 'X' }, 'editor', firstListener)
+        expect(first).toEqual([])
+        expect(second).toEqual(['aX'])
+    })
 })
 
 describe('FilesystemDocumentStore — whenReady', () => {
@@ -450,6 +472,22 @@ describe('FilesystemDocumentStore — whenReady', () => {
         await store.whenReady('Kanban')
 
         expect(store.open('Kanban').getText()).toBe('- [ ] #P1 TEst task')
+    })
+
+    it('resolves after an editor already subscribed has heard the text it read', async () => {
+        // An editor that opened the document before the read landed is told the text, and only
+        // then does whenReady settle: a View waiting on it treats a change heard before it as
+        // the content it opened to show (held-reveal.ts).
+        const fs = createMemoryDirectoryAdapter({ now: clock(), seed: { pages: { 'Kanban.md': '- [ ] #P1 Send the quote' } } })
+        const store = createFilesystemDocumentStore(fs)
+        await store.scan()
+        const heard: string[] = []
+        store.open('Kanban').subscribe((text) => heard.push(text))
+
+        let heardWhenReady: string[] | null = null
+        await store.whenReady('Kanban').then(() => (heardWhenReady = [...heard]))
+
+        expect(heardWhenReady).toEqual(['- [ ] #P1 Send the quote'])
     })
 
     it('is immediate for a document already hydrated', async () => {
@@ -1123,5 +1161,185 @@ describe('FilesystemDocumentStore - the registry rescan reads only what moved', 
         await fs.write('pages', 'Plan.md', '---\ntitle: Play\n---\n')
         await store.reconcile()
         expect(store.listDocuments().map((e) => e.concept)).toEqual(['Play'])
+    })
+})
+
+describe('FilesystemDocumentStore — line endings (ADR 0112)', () => {
+    beforeEach(() => vi.useFakeTimers())
+    afterEach(() => vi.useRealTimers())
+
+    /** A file another program saved with Windows line endings. */
+    const CRLF = '- one\r\n- two\r\n- three'
+
+    async function openCrlf(opts?: { onConflict?: (c: DocumentConflict) => void }) {
+        const fs = createMemoryDirectoryAdapter({ now: clock(), seed: { pages: { 'Win.md': CRLF } } })
+        const store = createFilesystemDocumentStore(fs, { autosaveMs: 400, onConflict: opts?.onConflict })
+        await store.scan()
+        const doc = store.open('Win')
+        await flushMicrotasks()
+        return { fs, store, doc }
+    }
+
+    it('gives the editor line feeds only, and writes nothing on open', async () => {
+        const { fs, store, doc } = await openCrlf()
+        expect(doc.getText()).toBe('- one\n- two\n- three')
+        await store.flushAll()
+        expect((await fs.read('pages', 'Win.md')).text).toBe(CRLF)
+    })
+
+    it('saves an edit where the editor typed it, and the file with line feeds', async () => {
+        const { fs, store, doc } = await openCrlf()
+        // Exactly what DocumentView forwards: CodeMirror's own offsets, over the text it was seeded with.
+        const state = EditorState.create({ doc: doc.getText() })
+        const tr = state.update({ changes: { from: state.doc.line(3).from + 2, insert: 'X' } })
+        for (const change of sequentialTextChanges(tr.changes)) doc.applyChange(change)
+        await store.flushAll()
+        expect((await fs.read('pages', 'Win.md')).text).toBe('- one\n- two\n- Xthree')
+    })
+
+    it('never takes its own file for an external edit, clean or dirty', async () => {
+        const conflicts: DocumentConflict[] = []
+        const { fs, store, doc } = await openCrlf({ onConflict: (c) => conflicts.push(c) })
+        const seen: string[] = []
+        doc.subscribe((t) => seen.push(t))
+
+        await fs.write('pages', 'Win.md', CRLF) // the same bytes under a new mtime, so reconcile reads it
+        await store.reconcile()
+        expect(seen).toEqual([])
+
+        doc.applyChange({ from: 0, to: 0, insert: 'Z' }) // dirty, the autosave still pending
+        await fs.write('pages', 'Win.md', CRLF)
+        await store.reconcile()
+        expect(conflicts).toEqual([])
+    })
+
+    it('reloads an external edit with line feeds only', async () => {
+        const { fs, store, doc } = await openCrlf()
+        const seen: string[] = []
+        doc.subscribe((t) => seen.push(t))
+        await fs.write('pages', 'Win.md', '- one\r\n- 2\r\n')
+        await store.reconcile()
+        expect(seen).toEqual(['- one\n- 2\n'])
+        expect(doc.getText()).toBe('- one\n- 2\n')
+    })
+
+    it('takes the disk side of a conflict with line feeds only', async () => {
+        const { fs, store, doc } = await openCrlf({ onConflict: () => {} })
+        doc.applyChange({ from: 0, to: 0, insert: 'Z' })
+        await fs.write('pages', 'Win.md', '- theirs\r\n')
+        await store.reconcile()
+        await store.resolveConflict('Win', 'take-disk')
+        expect(doc.getText()).toBe('- theirs\n')
+    })
+})
+
+describe('FilesystemDocumentStore — a Formatting Scan reads and fixes (ADR 0109)', () => {
+    beforeEach(() => vi.useFakeTimers())
+    afterEach(() => vi.useRealTimers())
+
+    /** A tab-indented page, and the splice that puts its second bullet on the grid. */
+    const TABS = '- a\n\t- b'
+    const FIXED = '- a\n  - b'
+    const REGRID = [{ from: 4, to: 5, insert: '  ' }]
+
+    async function graphWith(pages: Record<string, string>, opts?: { onConflict?: (c: DocumentConflict) => void }) {
+        const fs = createMemoryDirectoryAdapter({ now: clock(), seed: { pages } })
+        const store = createFilesystemDocumentStore(fs, { autosaveMs: 400, onConflict: opts?.onConflict })
+        await store.scan()
+        const changes: unknown[] = []
+        store.onChange((change) => changes.push(change))
+        return { fs, store, changes }
+    }
+
+    it('reads a closed document from its file, whole', async () => {
+        const { store } = await graphWith({ 'Tabs.md': `---\ntitle: Tabs\n---\n${TABS}` })
+        expect(await store.documentText('Tabs')).toBe(`---\ntitle: Tabs\n---\n${TABS}`)
+        expect(await store.documentText('Nowhere')).toBeNull()
+    })
+
+    it('reads an open document from its buffer, unsaved typing included', async () => {
+        const { store } = await graphWith({ 'Win.md': '- one\r\n- two' })
+        const doc = store.open('Win')
+        await flushMicrotasks()
+        doc.applyChange({ from: 0, to: 0, insert: 'X' })
+        expect(await store.documentText('Win')).toBe('X- one\n- two') // line feeds only, as the editor holds it
+    })
+
+    it('writes the fix to a closed document when its file holds the scanned text, and names the change', async () => {
+        const { fs, store, changes } = await graphWith({ 'Tabs.md': TABS })
+        expect(await store.spliceIfUnchanged('Tabs', TABS, REGRID)).toBe('written')
+        const written = await fs.read('pages', 'Tabs.md')
+        expect(written.text).toBe(FIXED)
+        expect(changes).toContainEqual({ concept: 'Tabs' })
+        // The registry follows the write, so reconcile's fast path does not re-read it.
+        expect(store.listDocuments().find((d) => d.concept === 'Tabs')?.lastModified).toBe(written.lastModified)
+    })
+
+    it('writes nothing to a closed document whose file changed after the scan', async () => {
+        const { fs, store } = await graphWith({ 'Tabs.md': TABS })
+        await fs.write('pages', 'Tabs.md', `${TABS}\n- edited elsewhere`)
+        expect(await store.spliceIfUnchanged('Tabs', TABS, REGRID)).toBe('changed')
+        expect((await fs.read('pages', 'Tabs.md')).text).toBe(`${TABS}\n- edited elsewhere`)
+    })
+
+    it('says a document deleted or renamed after the scan is gone', async () => {
+        const { fs, store } = await graphWith({ 'Tabs.md': TABS })
+        expect(await store.spliceIfUnchanged('Nowhere', TABS, REGRID)).toBe('gone')
+        await fs.remove('pages', 'Tabs.md') // gone from the folder, still in the registry until the next scan
+        expect(await store.spliceIfUnchanged('Tabs', TABS, REGRID)).toBe('gone')
+    })
+
+    it('refuses a document protected after the scan', async () => {
+        const sealed = '```etherpk-cipher\nciphertext\n```'
+        const { fs, store } = await graphWith({ 'Secret.md': sealed })
+        expect(await store.spliceIfUnchanged('Secret', sealed, [{ from: 0, to: 0, insert: 'x' }])).toBe('protected')
+        expect((await fs.read('pages', 'Secret.md')).text).toBe(sealed)
+    })
+
+    it('fixes an open document through its buffer: the editor is told, and the file saved before it resolves', async () => {
+        const { fs, store, changes } = await graphWith({ 'Tabs.md': TABS })
+        const doc = store.open('Tabs')
+        await flushMicrotasks()
+        const seen: string[] = []
+        doc.subscribe((text) => seen.push(text))
+
+        expect(await store.spliceIfUnchanged('Tabs', TABS, REGRID)).toBe('written')
+        expect(doc.getText()).toBe(FIXED)
+        expect(seen.at(-1)).toBe(FIXED)
+        expect((await fs.read('pages', 'Tabs.md')).text).toBe(FIXED)
+        expect(changes).toContainEqual({ concept: 'Tabs' })
+    })
+
+    it('writes nothing to an open document typed into after the scan, and keeps the typing', async () => {
+        const { fs, store } = await graphWith({ 'Tabs.md': TABS })
+        const doc = store.open('Tabs')
+        await flushMicrotasks()
+        doc.applyChange({ from: 0, to: 0, insert: 'X' })
+
+        expect(await store.spliceIfUnchanged('Tabs', TABS, REGRID)).toBe('changed')
+        expect(doc.getText()).toBe(`X${TABS}`)
+        expect((await fs.read('pages', 'Tabs.md')).text).toBe(TABS)
+    })
+
+    it('follows a file edited elsewhere under a clean open document rather than saving over it', async () => {
+        const { fs, store } = await graphWith({ 'Tabs.md': TABS })
+        const doc = store.open('Tabs')
+        await flushMicrotasks()
+        await fs.write('pages', 'Tabs.md', `${TABS}\n- edited elsewhere`)
+
+        expect(await store.spliceIfUnchanged('Tabs', TABS, REGRID)).toBe('changed')
+        expect(doc.getText()).toBe(`${TABS}\n- edited elsewhere`) // so a re-check reads what is really there
+        expect((await fs.read('pages', 'Tabs.md')).text).toBe(`${TABS}\n- edited elsewhere`)
+    })
+
+    it('fixes an open document read from a Windows file, whose file is then written with line feeds', async () => {
+        const { fs, store } = await graphWith({ 'Win.md': '- a\r\n\t- b\r\n' })
+        store.open('Win')
+        await flushMicrotasks()
+        const scanned = (await store.documentText('Win'))!
+        expect(scanned).toBe('- a\n\t- b\n')
+
+        expect(await store.spliceIfUnchanged('Win', scanned, REGRID)).toBe('written')
+        expect((await fs.read('pages', 'Win.md')).text).toBe('- a\n  - b\n')
     })
 })

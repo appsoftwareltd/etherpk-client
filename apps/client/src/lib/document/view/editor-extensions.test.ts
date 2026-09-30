@@ -8,6 +8,7 @@ import { EditorState } from '@codemirror/state'
 import { describe, expect, it } from 'vitest'
 
 import { editorAnalysis } from './analysis/editor-analysis'
+import { editorDocument } from './editor-document'
 import { editorExtensions, editorFeatures, type EditorExtensionServices } from './editor-extensions'
 
 const services: EditorExtensionServices = {
@@ -68,11 +69,20 @@ describe('editor feature stack', () => {
             'frontmatter-completion',
             'date-calendar',
             'table-size-picker',
+            'concept-picker',
             'frontmatter-keys',
             'placeholder',
             'edit-refusal',
+            'editor-document',
+            'line-anchor',
             'view-hooks',
         ])
+    })
+
+    it('names the document the editor shows, when the host says which', () => {
+        const build = (host: EditorExtensionServices) => EditorState.create({ extensions: [editorAnalysis(), ...editorExtensions(host)] })
+        expect(build({ ...services, document: { concept: 'Acme', panelId: 'p1' } }).facet(editorDocument)).toEqual({ concept: 'Acme', panelId: 'p1' })
+        expect(build(services).facet(editorDocument)).toBeNull()
     })
 
     it('runs the transaction filters before anything that decorates', () => {
@@ -103,7 +113,7 @@ describe('editor feature stack', () => {
     })
 
     it('gives every open popover Enter and Tab before the YAML typing keys', () => {
-        for (const popover of ['wikilink-completion', 'task-tag-completion', 'slash-completion', 'frontmatter-completion', 'date-calendar', 'table-size-picker']) {
+        for (const popover of ['wikilink-completion', 'task-tag-completion', 'slash-completion', 'frontmatter-completion', 'date-calendar', 'table-size-picker', 'concept-picker']) {
             before(popover, 'frontmatter-keys')
         }
     })

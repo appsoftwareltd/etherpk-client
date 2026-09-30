@@ -12,6 +12,13 @@ export const PUBLIC_DOCS_URL = 'https://docs.etherpk.com'
  */
 export const CLIENT_REPOSITORY_URL = 'https://github.com/appsoftwareltd/etherpk-client'
 
+/**
+ * EtherPK's community server on Discord, linked beneath the Client's repository on the landing
+ * page. The invite never expires. The user docs and every README carry the same link, the npm
+ * package's included, so a new invite means changing each of them.
+ */
+export const COMMUNITY_DISCORD_URL = 'https://discord.gg/m9vScxQzvp'
+
 export interface ApplicationNavigationItem {
     href: string
     label: 'Account' | 'Sync Server' | 'Graphs' | 'Docs'

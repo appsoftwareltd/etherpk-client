@@ -251,6 +251,43 @@ describe('editing the projected body', () => {
         expect(wrapped.isDirty).toBe(false)
     })
 
+    it("hands one editor's body edit to the document's other editors, and not back to it", async () => {
+        const { wrapped } = build(stored)
+        await wrapped.unlock()
+        const first: string[] = []
+        const second: string[] = []
+        const firstListener = (text: string) => first.push(text)
+        wrapped.subscribe(firstListener)
+        wrapped.subscribe((text) => second.push(text))
+
+        wrapped.applyChange({ from: FRONTMATTER.length, to: FRONTMATTER.length, insert: 'my ' }, 'editor', firstListener)
+        expect(first).toEqual([])
+        expect(second).toEqual([projected('my secret')])
+
+        retitle(wrapped, 'Savings')
+        // An edit that names no editor is heard by none, as before.
+        expect(second).toHaveLength(1)
+    })
+
+    it("hands one editor's frontmatter edit to the others, locked or not", async () => {
+        const unlocked = build(stored)
+        await unlocked.wrapped.unlock()
+        const heard: string[] = []
+        const editor = () => {}
+        unlocked.wrapped.subscribe(editor)
+        unlocked.wrapped.subscribe((text) => heard.push(text))
+        const from = '---\ntitle: '.length
+        unlocked.wrapped.applyChange({ from, to: from + 'Bank'.length, insert: 'Savings' }, 'editor', editor)
+        expect(heard).toEqual(['---\ntitle: Savings\n---\nsecret'])
+
+        const locked = build(stored, { locked: true })
+        const heardLocked: string[] = []
+        locked.wrapped.subscribe(editor)
+        locked.wrapped.subscribe((text) => heardLocked.push(text))
+        locked.wrapped.applyChange({ from, to: from + 'Bank'.length, insert: 'Savings' }, 'editor', editor)
+        expect(heardLocked).toEqual([locked.inner.text])
+    })
+
     it('echoes a frontmatter write-back from outside the editor to its listeners', async () => {
         const { wrapped } = build(stored)
         await wrapped.unlock()
@@ -723,5 +760,14 @@ describe('masking (ADR 0058)', () => {
         wrapped.mask()
         expect(wrapped.isMasked).toBe(false)
         expect(wrapped.getText()).toBe(stored)
+    })
+})
+
+describe('line endings (ADR 0112)', () => {
+    it('projects line feeds only, whatever the stored text held', async () => {
+        const crlfFrontmatter = '---\r\ntitle: Bank\r\n---\r\n'
+        const { wrapped } = build(protectedDoc('one\r\ntwo\rthree', crlfFrontmatter))
+        await wrapped.unlock()
+        expect(wrapped.getText()).toBe('---\ntitle: Bank\n---\none\ntwo\nthree')
     })
 })

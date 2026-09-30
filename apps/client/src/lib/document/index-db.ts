@@ -13,7 +13,7 @@ import type { DocumentKind } from '$lib/storage'
 
 import { conceptKey } from './backlinks'
 import { fencedBlocks } from './fenced-code'
-import { blockContent, type BlockRow, deriveDoc, deriveTitleLinks, type TaskConceptRow, type TaskRow } from './index-derive'
+import { blockContent, type BlockRow, deriveDoc, deriveTitleLinks, documentTaskConcepts, type TaskConceptRow, type TaskRow } from './index-derive'
 import type { IndexProperty } from './properties'
 import { containsCipherFence } from './protection/fence-info'
 import { derivePassages } from './semantic/passages'
@@ -126,9 +126,10 @@ export interface SqlDb {
  *
  * A bump can also rebuild files whose content is still right: 13 (ADR 0097) changed neither
  * schema nor derivation, and rebuilds every index so that each one has been through
- * `purgeDeletedText`. 14 added the `properties` table (ADR 0107).
+ * `purgeDeletedText`. 14 added the `properties` table (ADR 0107). 15 puts the [[Scope]]s in a
+ * document's name among its tasks' `task_concepts` (ADR 0051, amended 2026-09-29).
  */
-export const INDEX_SCHEMA_VERSION = 14
+export const INDEX_SCHEMA_VERSION = 15
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS index_metadata (
@@ -450,9 +451,14 @@ function insertProperties(db: SqlDb, pageId: number, doc: IndexDoc): void {
  * the document's identity. Without that row, filtering to a project page returns nothing for
  * the tasks written directly on it — the case the "Filter to <active tab>" shortcut exists for.
  *
- * Only the document's own concept goes in, never its aliases: the query resolves a filtered
- * name to its page and matches on every name that page answers to, so an alias row here would
- * be redundant now and stale after a rename.
+ * The [[Scope]]s in the document's name sit on that root too (ADR 0051, amended 2026-09-29), so
+ * the tasks on `[[Acme]] Website` answer to Acme. They come from the same scan that makes such a
+ * page a Backlink of its scope (ADR 0083), so a page gives its tasks to exactly the concepts it
+ * is a title reference of.
+ *
+ * Only the names the document is written with go in, never an alias of them: the query resolves
+ * a filtered name to its page and matches on every name that page answers to, so an alias row
+ * here would be redundant now and stale after a rename.
  */
 function insertTaskConcepts(
     db: SqlDb,
@@ -462,7 +468,6 @@ function insertTaskConcepts(
     taskConcepts: readonly TaskConceptRow[],
 ): void {
     if (tasks.length === 0) return
-    const ownKey = conceptKey(doc.concept)
     const written = new Set<string>()
     const write = (blockLocalId: number, key: string) => {
         const seen = `${blockLocalId} ${key}`
@@ -474,7 +479,8 @@ function insertTaskConcepts(
             key,
         ])
     }
-    for (const t of tasks) write(t.blockLocalId, ownKey)
+    const rootKeys = documentTaskConcepts(doc.concept).map(conceptKey)
+    for (const t of tasks) for (const key of rootKeys) write(t.blockLocalId, key)
     for (const tc of taskConcepts) write(tc.blockLocalId, conceptKey(tc.concept))
 }
 
@@ -1799,6 +1805,11 @@ export interface TaskHit {
     scheduled: string | null
     /** Ancestor labels, root-first - why this task matched, when it matched via an ancestor. */
     breadcrumb: string[]
+    /**
+     * The label of the nearest ancestor that is itself a [[Task]], its tag run included, or null
+     * when no task is above this one: a subtask's parent, which a [[Kanban Board]] card names.
+     */
+    parentTask: string | null
 }
 
 export interface TaskPage {
@@ -1831,7 +1842,7 @@ const STATUS_SQL: Record<TaskStatus, string> = {
  *
  * Within a group the order is due-date then priority (AS Notes' behaviour), with NULLs last
  * both times: an undated task is not urgent, and SQLite would otherwise sort NULL first.
- * `page_id, block_local_id` finally makes the order total, so paging cannot repeat or skip.
+ * A tie left after that falls to {@link TIE_BREAK_SQL}.
  */
 const WITHIN_GROUP = '(t.due IS NULL), t.due ASC, (t.priority IS NULL), t.priority ASC'
 const ORDER_SQL: Record<TaskGroupBy, string> = {
@@ -1839,6 +1850,16 @@ const ORDER_SQL: Record<TaskGroupBy, string> = {
     priority: `(t.priority IS NULL), t.priority ASC, (t.due IS NULL), t.due ASC`,
     due: `(t.due IS NULL), t.due ASC, (t.priority IS NULL), t.priority ASC`,
 }
+
+/**
+ * What decides a tie the grouping leaves: the document's name, then the task's line, which a
+ * person can see and which survive a rebuild. A folder graph re-derives the whole graph with
+ * fresh page ids on any file change, so ordering by page id let equal tasks swap places in the
+ * [[Tasks View]] and on a [[Kanban Board]] (ADR 0113) between one refresh and the next.
+ * `page_id, block_local_id` come last only to keep the order total, so paging cannot repeat or
+ * skip.
+ */
+const TIE_BREAK_SQL = 'p.concept_key ASC, t.line ASC, t.page_id ASC, t.block_local_id ASC'
 
 interface TaskRowResult {
     page_id: number
@@ -1956,7 +1977,7 @@ export function tasksMatching(db: SqlDb, query: TaskQuery, offset: number, limit
                 t.priority, t.waiting, t.doing, t.cancelled, t.due, t.completion, t.scheduled
          FROM tasks t JOIN pages p ON p.id = t.page_id
          WHERE ${predicate.where}
-         ORDER BY ${ORDER_SQL[query.groupBy]}, t.page_id ASC, t.block_local_id ASC
+         ORDER BY ${ORDER_SQL[query.groupBy]}, ${TIE_BREAK_SQL}
          LIMIT ? OFFSET ?`,
         [...predicate.params, limit + 1, offset],
     )
@@ -1964,48 +1985,65 @@ export function tasksMatching(db: SqlDb, query: TaskQuery, offset: number, limit
     const page = hasMore ? rows.slice(0, limit) : rows
     if (page.length === 0) return { hits: [], hasMore: false }
 
-    const breadcrumbs = breadcrumbsFor(db, page)
+    const ancestry = ancestryFor(db, page)
     return {
-        hits: page.map((row) => ({
-            ...toHit(row),
-            breadcrumb: breadcrumbs.get(row.page_id)?.get(row.block_local_id) ?? [],
-        })),
+        hits: page.map((row) => {
+            const found = ancestry.get(row.page_id)?.get(row.block_local_id)
+            return { ...toHit(row), breadcrumb: found?.breadcrumb ?? [], parentTask: found?.parentTask ?? null }
+        }),
         hasMore,
     }
 }
 
 /**
- * Ancestor labels for a whole page of tasks: one read for every document involved, then the
- * chains walked in JS. The same shape searchText uses, and for the same reason - a recursive
- * SQL walk per row would be one query per task.
+ * Ancestor labels for a whole page of tasks, and each task's nearest task ancestor: one read for
+ * every document involved, then the chains walked in JS. The same shape searchText uses, and for
+ * the same reason - a recursive SQL walk per row would be one query per task.
  */
-function breadcrumbsFor(db: SqlDb, rows: readonly TaskRowResult[]): Map<number, Map<number, string[]>> {
+function ancestryFor(
+    db: SqlDb,
+    rows: readonly TaskRowResult[],
+): Map<number, Map<number, { breadcrumb: string[]; parentTask: string | null }>> {
     const ids = [...new Set(rows.map((row) => row.page_id))]
     const placeholders = ids.map(() => '?').join(',')
     const blocks = db.all<{
         page_id: number
         local_id: number
         parent_local_id: number | null
+        kind: string
         label: string
     }>(
-        `SELECT page_id, local_id, parent_local_id, label FROM blocks WHERE page_id IN (${placeholders})`,
+        `SELECT page_id, local_id, parent_local_id, kind, label FROM blocks WHERE page_id IN (${placeholders})`,
         ids,
     )
-    const byPage = new Map<number, Map<number, { parent_local_id: number | null; label: string }>>()
+    const byPage = new Map<number, Map<number, { parent_local_id: number | null; kind: string; label: string }>>()
     for (const block of blocks) {
         let page = byPage.get(block.page_id)
         if (!page) byPage.set(block.page_id, (page = new Map()))
-        page.set(block.local_id, { parent_local_id: block.parent_local_id, label: block.label })
+        page.set(block.local_id, { parent_local_id: block.parent_local_id, kind: block.kind, label: block.label })
     }
-    const out = new Map<number, Map<number, string[]>>()
+    const out = new Map<number, Map<number, { breadcrumb: string[]; parentTask: string | null }>>()
     for (const row of rows) {
         const page = byPage.get(row.page_id)
         if (!page) continue
         let chains = out.get(row.page_id)
         if (!chains) out.set(row.page_id, (chains = new Map()))
-        chains.set(row.block_local_id, searchBreadcrumb(page, row.block_local_id))
+        chains.set(row.block_local_id, { breadcrumb: searchBreadcrumb(page, row.block_local_id), parentTask: nearestTask(page, row.block_local_id) })
     }
     return out
+}
+
+/** The label of the nearest ancestor of `localId` that is a task, or null. */
+function nearestTask(blocks: Map<number, { parent_local_id: number | null; kind: string; label: string }>, localId: number): string | null {
+    let parent = blocks.get(localId)?.parent_local_id ?? null
+    // Bounded by the map size, as the breadcrumb walk is: a corrupt parent cycle must not hang.
+    for (let guard = 0; parent !== null && guard <= blocks.size; guard++) {
+        const block = blocks.get(parent)
+        if (!block) break
+        if (block.kind === 'task') return block.label
+        parent = block.parent_local_id
+    }
+    return null
 }
 
 /** How many tasks match. Uncapped: this counts an indexed join, not a text index. */
@@ -2025,7 +2063,7 @@ function addDays(day: string, days: number): string {
     return taskDateKey(new Date(year, month - 1, date), days)
 }
 
-function toHit(row: TaskRowResult): Omit<TaskHit, 'breadcrumb'> {
+function toHit(row: TaskRowResult): Omit<TaskHit, 'breadcrumb' | 'parentTask'> {
     return {
         pageId: row.page_id,
         blockLocalId: row.block_local_id,

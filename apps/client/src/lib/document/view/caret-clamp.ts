@@ -28,6 +28,7 @@ import { type OutlineLine, outlineLines } from '../indent-unit'
 import { continuationColumn, isBulletLine, lineIndent, MARKER_WIDTH, markerLength } from '../outliner'
 import { editorAnalysisField, type EditorAnalysis } from './analysis/editor-analysis'
 import { isBlockRange } from './block-select'
+import { withSelection } from './with-selection'
 
 /**
  * The leftmost column the caret may rest at on line `i` (0-based) of `lines`. `outline` is the
@@ -102,11 +103,11 @@ export function caretClamp(): Extension {
                 // range reaching another block is the block snap's, which widens it to whole lines.
                 if (isBlockRange(tr.startState, sel)) return tr
                 const clamped = clampedEnds(doc, lines, sel, outline)
-                return clamped.main.eq(sel) ? tr : { selection: clamped }
+                return clamped.main.eq(sel) ? tr : withSelection(tr, clamped)
             }
             // A range within one line: clamp its margin end.
             const clamp = line.from + clampColumn(lines, line.number - 1, outline)
-            return sel.from >= clamp ? tr : { selection: clampedRange(sel, clamp) }
+            return sel.from >= clamp ? tr : withSelection(tr, clampedRange(sel, clamp))
         }
         const clamp = line.from + clampColumn(lines, line.number - 1, outline)
         if (sel.head >= clamp) return tr
@@ -115,9 +116,9 @@ export function caretClamp(): Extension {
         const old = tr.startState.selection.main
         const leftFromClamp = old.empty && old.head === clamp && sel.head === clamp - 1
         if (leftFromClamp && line.number > 1) {
-            return { selection: EditorSelection.cursor(doc.line(line.number - 1).to) }
+            return withSelection(tr, EditorSelection.cursor(doc.line(line.number - 1).to))
         }
-        if (leftFromClamp) return { selection: EditorSelection.cursor(clamp) } // first line: nowhere to flow
-        return { selection: EditorSelection.cursor(clamp) } // click/Home/vertical into the margin → snap right
+        if (leftFromClamp) return withSelection(tr, EditorSelection.cursor(clamp)) // first line: nowhere to flow
+        return withSelection(tr, EditorSelection.cursor(clamp)) // click/Home/vertical into the margin → snap right
     })
 }

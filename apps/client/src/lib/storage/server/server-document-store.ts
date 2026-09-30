@@ -8,6 +8,7 @@
 import * as Y from 'yjs'
 import type { Awareness } from 'y-protocols/awareness'
 import { dayIsNotAPageName, isJournalConcept } from '$lib/document/journal-concept'
+import { lineFeedChanges } from '$lib/document/line-endings'
 import { normaliseAliases, withFrontmatterIdentity } from '$lib/document/frontmatter/identity'
 import { parseFrontmatter } from '$lib/storage/fs/frontmatter'
 import { frontmatterSpan } from '$lib/storage/fs/frontmatter-span'
@@ -18,6 +19,7 @@ import {
     DocumentNotFoundError,
     DocumentSyncDegradedError,
     type EditorDocument,
+    type SpliceOutcome,
     type TextChange,
 } from '$lib/document/types'
 import { includeFactsOf } from '$lib/document/publish/publication'
@@ -33,6 +35,7 @@ import type { GraphSync, RegistryEntry } from '$lib/sync/graph-sync'
 import { CACHE_SEED, REMOTE, SUPPRESSED, contentBlocked } from '$lib/sync/doc-sync'
 import { type TextSplice, countWikilinkTargets, wikilinkScopeSplices } from '$lib/document/wikilink/rename'
 import { documentProtection } from '$lib/document/protection/cipher-fence'
+import { containsCipherFence } from '$lib/document/protection/fence-info'
 import { mergeDocuments } from '../merge'
 import { planRename, refuseProtectedMerges } from '../rename-plan'
 import { type RenameOptions, type RenamePlan, type RenameResult, RenameUnconfirmedError, mergeCount, renameSteps } from '../rename'
@@ -182,6 +185,14 @@ export interface ServerDocumentStore {
      * one. Normalised: trimmed, unique, never the document's own name.
      */
     setAliases(target: string, aliases: readonly string[]): Promise<void>
+    /**
+     * Write `splices` into a document only if it holds exactly `expected`, the text a
+     * [[Formatting Scan]] read (ADR 0109). The splices are in `expected`'s offsets and go in one
+     * store-origin transaction, applied from the last back, which no undo manager tracks and every
+     * device receives. Keyed by docId, so a document renamed since the scan is still the one
+     * fixed. `timeoutMs` bounds the wait to bring a document current (default 15 s).
+     */
+    spliceIfUnchanged(docId: string, expected: string, splices: readonly TextSplice[], options?: { timeoutMs?: number }): Promise<SpliceOutcome>
     dispose(): Promise<void>
 }
 
@@ -608,7 +619,24 @@ export function createServerDocumentStore(
         },
         getYText(target: string): Y.Text | undefined {
             const docId = docIdFor(target)
-            return docId ? graph.docSync(docId).doc.getText('content') : undefined
+            if (!docId) return undefined
+            const ytext = graph.docSync(docId).doc.getText('content')
+            // The editor binds to this Y.Text and CodeMirror holds line feeds only, so a `\r` here
+            // would put every edit, and every remote edit shown, one character off per line ending
+            // above it (ADR 0112). A synced document has no buffer of its own: the shared text is
+            // the buffer, so it is given line feeds before the binding, in one store-origin
+            // transaction that no undo manager tracks. Only a document holding a `\r` is written.
+            const changes = lineFeedChanges(ytext.toString())
+            if (changes.length > 0) {
+                ytext.doc!.transact(() => {
+                    for (let i = changes.length - 1; i >= 0; i--) {
+                        const change = changes[i]
+                        ytext.delete(change.from, change.to - change.from)
+                        if (change.insert) ytext.insert(change.from, change.insert)
+                    }
+                }, STORE)
+            }
+            return ytext
         },
         async whenReady(target: string): Promise<void> {
             const docId = docIdFor(target)
@@ -1002,6 +1030,32 @@ export function createServerDocumentStore(
             else delete updated.aliases
             registry.set(docId, updated)
             writeBackIdentity(docId)
+        },
+        async spliceIfUnchanged(docId, expected, splices, spliceOptions): Promise<SpliceOutcome> {
+            if (!registry.has(docId)) return 'gone'
+            // Held live until the write is done, as a rename holds its documents: an engine read
+            // and retired seeds again asynchronously, and would compare as empty in between.
+            const materialised = await materialise([docId], spliceOptions?.timeoutMs ?? COLD_CONTENT_TIMEOUT_MS)
+            try {
+                if (!registry.has(docId)) return 'gone' // deleted while it was brought current
+                if (materialised.unconfirmed.length > 0) return 'unconfirmed'
+                const ytext = graph.docSync(docId).doc.getText('content')
+                // The comparison and the transaction share one synchronous turn, so no remote
+                // update can land between them.
+                const text = ytext.toString()
+                if (containsCipherFence(text)) return 'protected'
+                if (text !== expected) return 'changed'
+                ytext.doc!.transact(() => {
+                    for (let i = splices.length - 1; i >= 0; i--) {
+                        const splice = splices[i]
+                        if (splice.to > splice.from) ytext.delete(splice.from, splice.to - splice.from)
+                        if (splice.insert) ytext.insert(splice.from, splice.insert)
+                    }
+                }, STORE)
+                return 'written'
+            } finally {
+                materialised.release()
+            }
         },
         // CRDTs merge — there is nothing to reconcile or resolve.
         async reconcile() {},

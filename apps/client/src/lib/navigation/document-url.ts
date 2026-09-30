@@ -7,7 +7,8 @@
  * each). Pure string helpers; no router imports.
  *
  * An [[Asset]] opened in its own tab is addressable the same way, at
- * `/g/[graphId]/a/[assetId]`, and a graph [[Theme]] in its editor at `/g/[graphId]/t/[themeId]`.
+ * `/g/[graphId]/a/[assetId]`, a graph [[Theme]] in its editor at `/g/[graphId]/t/[themeId]`, and
+ * a [[Kanban Board]] at `/g/[graphId]/k/[...board]`, the board's concept in the rest param.
  * ADR 0023 made the main region's active [[View]] the thing the address bar names and the Back
  * button walks; both are main-region Views like any other, and leaving either unaddressed meant
  * opening it changed no URL and pushed no history entry - so Back skipped straight past it to
@@ -37,6 +38,14 @@ export function themeUrl(graphId: string, themeId: string): string {
     return `${graphUrl(graphId)}/t/${encodeURIComponent(themeId)}`
 }
 
+/**
+ * The URL for a [[Kanban Board]], keyed by its concept like a Document URL but under its own
+ * segment, so a concept's page and its board are two places (ADR 0113).
+ */
+export function kanbanUrl(graphId: string, concept: string): string {
+    return `${graphUrl(graphId)}/k/${encodeConceptPath(concept)}`
+}
+
 /** The bare workspace URL for a graph. */
 export function graphUrl(graphId: string): string {
     return `/g/${encodeURIComponent(graphId)}`
@@ -54,5 +63,6 @@ export function viewUrl(graphId: string, view: ViewRef): string | null {
     if (view.kind === 'document') return documentUrl(graphId, view.target)
     if (view.kind === 'asset') return assetUrl(graphId, view.target)
     if (view.kind === 'theme') return themeUrl(graphId, view.target)
+    if (view.kind === 'kanban') return kanbanUrl(graphId, view.target)
     return null
 }

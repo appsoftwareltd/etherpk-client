@@ -26,7 +26,7 @@ const HOSTS = [
     'src/lib/document/view/RenameDocumentDialog.svelte',
     'src/lib/workspace/KeyboardShortcutsDialog.svelte',
 ]
-const CONTENTS = ['src/lib/storage/ui', 'src/lib/components']
+const CONTENTS = ['src/lib/storage/ui', 'src/lib/components', 'src/lib/document/formatting/ui']
 
 function surfaces(): Surface[] {
     const appRoot = new URL('../../../../', import.meta.url).pathname

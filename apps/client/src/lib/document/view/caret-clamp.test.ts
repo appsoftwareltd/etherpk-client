@@ -4,6 +4,7 @@
  * real arrow-key and click paths.
  */
 
+import { EditorSelection, StateEffect, Transaction } from '@codemirror/state'
 import fc from 'fast-check'
 import { describe, expect, it } from 'vitest'
 
@@ -103,6 +104,29 @@ describe('caret clamp filter', () => {
         const editor = editorFixture('- abc\n- def|')
         editor.select(0, 8)
         expect(editor.state.selection.main.from).toBe(0)
+    })
+
+    it('moves only the selection: a snapped transaction keeps its user event, history flag and effects', () => {
+        // What the transaction was stays true after the snap: a click is still a pointer selection, and
+        // a caret the app placed is still not the user's own move (tidy on leave reads that).
+        const nudge = StateEffect.define<number>()
+        for (const [anchor, head] of [
+            [0, 0], // a caret in the marker
+            [0, 3], // a range starting in it
+            [7, 7], // ArrowLeft at the clamp, flowing to the line above
+        ]) {
+            const editor = editorFixture('- abc\n- |def')
+            const tr = editor.state.update({
+                selection: EditorSelection.single(anchor, head),
+                userEvent: 'select.pointer',
+                annotations: Transaction.addToHistory.of(false),
+                effects: nudge.of(1),
+            })
+            expect(tr.selection?.main.eq(EditorSelection.single(anchor, head).main)).toBe(false) // it was snapped
+            expect(tr.isUserEvent('select.pointer')).toBe(true)
+            expect(tr.annotation(Transaction.addToHistory)).toBe(false)
+            expect(tr.effects.some((e) => e.is(nudge))).toBe(true)
+        }
     })
 
     it('snaps a caret in the indent of a line the outline gives to a bullet to that bullet’s column', () => {

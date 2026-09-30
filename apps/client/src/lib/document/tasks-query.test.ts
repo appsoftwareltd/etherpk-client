@@ -117,6 +117,49 @@ describe('Task Concept relatedness (ADR 0051)', () => {
     })
 })
 
+describe("the scopes in a document's name (ADR 0051, amended 2026-09-29)", () => {
+    // A project split across pages named for it - `[[Acme]] Website`, `[[Acme]] Hiring` - is the
+    // project's work, and those pages are already Backlinks of Acme (ADR 0083). The scopes in a
+    // document's name sit on the virtual root beside the document's own concept.
+    beforeEach(() => {
+        ingest(db, [
+            page('Acme', '- [ ] Ship v2', ['ACME Corp']),
+            page('[[Acme]] Website', '- [ ] Launch the new site'),
+            page('[[[[Acme]] Website]] Launch', '- [ ] Book the photographer'),
+            page('[[ACME Corp]] Hiring', '- [ ] Post the role'),
+            page('Planning', ['- Work on [[[[Acme]] Website]]', '  - [ ] Draft the copy', '- Notes on [[ACME Corp]]', '  - [ ] Call the recruiter'].join('\n')),
+            page('Unrelated', '- [ ] Not about Acme'),
+        ])
+    })
+
+    it('lets a page named for a scope of the concept give it its tasks', () => {
+        expect(texts(query({ concept: 'Acme' }))).toContain('Launch the new site')
+    })
+
+    it('counts a scope at every depth of the name', () => {
+        expect(texts(query({ concept: 'Acme' }))).toContain('Book the photographer')
+        expect(texts(query({ concept: '[[Acme]] Website' }))).toEqual(
+            expect.arrayContaining(['Launch the new site', 'Book the photographer', 'Draft the copy']),
+        )
+    })
+
+    it('counts a scope written as an alias for the page the alias names', () => {
+        expect(texts(query({ concept: 'Acme' }))).toContain('Post the role')
+    })
+
+    it('counts the scope of a nested link on an ancestor, as it always has', () => {
+        expect(texts(query({ concept: 'Acme' }))).toContain('Draft the copy')
+    })
+
+    it('finds a task written under an alias when the filter names the page', () => {
+        expect(texts(query({ concept: 'Acme' }))).toContain('Call the recruiter')
+    })
+
+    it('still leaves out a page that names nothing of the concept', () => {
+        expect(texts(query({ concept: 'Acme' }))).not.toContain('Not about Acme')
+    })
+})
+
 describe('task status partition', () => {
     beforeEach(() => {
         ingest(db, [
@@ -242,6 +285,30 @@ describe('ordering, grouping and paging', () => {
     })
 })
 
+describe('ties the sort keys leave', () => {
+    // A Kanban Board section is one status and one priority, ordered by due date (ADR 0113).
+    // Whatever the date leaves tied must be something a person can see: the document's name,
+    // then the task's place in it. The index's page ids decided it before, and a folder graph
+    // re-derives with fresh page ids on any file change, so equal cards could swap places.
+    beforeEach(() => {
+        // Zulu is ingested first, so it has the lower page id.
+        ingest(db, [
+            page('Zulu', '- [ ] zulu undated\n- [ ] #D-2026-09-05 zulu due'),
+            page('Alpha', '- [ ] alpha undated first\n- [ ] alpha undated second\n- [ ] #D-2026-09-05 alpha due'),
+        ])
+    })
+
+    it('breaks a tie by document name, then by line, never by the order documents were indexed', () => {
+        expect(texts(query({ groupBy: 'due' }))).toEqual([
+            '#D-2026-09-05 alpha due',
+            '#D-2026-09-05 zulu due',
+            'alpha undated first',
+            'alpha undated second',
+            'zulu undated',
+        ])
+    })
+})
+
 describe('the task row', () => {
     it('carries the ancestry breadcrumb that explains why it matched', () => {
         ingest(db, [
@@ -255,6 +322,17 @@ describe('the task row', () => {
         expect(hit.concept).toBe('2026-09-01')
         expect(hit.line).toBe(2)
         expect(hit.priority).toBe(1)
+    })
+
+    it('names the nearest task above a subtask, tag run and all, and nothing for a task under no task', () => {
+        ingest(db, [
+            page('Acme', ['- [ ] #P1 Launch site', '  - Notes', '    - [ ] Hear back on the API', '- Call with Bob', '  - [ ] Send the quote'].join('\n')),
+        ])
+        const hits = tasksMatching(db, query({ concept: 'Acme' }), 0, 10).hits
+        const parentOf = (text: string) => hits.find((hit) => hit.text === text)?.parentTask
+        expect(parentOf('Hear back on the API')).toBe('#P1 Launch site')
+        expect(parentOf('Send the quote')).toBeNull()
+        expect(parentOf('#P1 Launch site')).toBeNull()
     })
 
     it('omits tasks inside an encrypted block entirely', () => {

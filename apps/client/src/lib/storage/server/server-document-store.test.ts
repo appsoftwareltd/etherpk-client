@@ -678,6 +678,32 @@ describe('ServerDocumentStore', () => {
         await b.dispose()
     })
 
+    it('hands an editor a Y.Text with line feeds only, and every device gets the change (ADR 0112)', async () => {
+        const keyring = createGraphKeyring('g1')
+        const relay = createLoopbackRelay()
+        const a = await store(relay, keyring)
+        const b = await store(relay, keyring)
+        await a.createPage('Win')
+        await vi.waitFor(() => expect(b.listDocuments().length).toBe(1), { timeout: 2000 })
+
+        // Text written verbatim with Windows line endings, as an import from a CRLF source does.
+        const docA = a.open('Win')
+        const releaseA = a.retainDocument('Win')
+        docA.applyChange({ from: 0, to: 0, insert: '- one\r\n- two\rthree\r\n' }, 'external')
+        const docB = b.open('Win')
+        const releaseB = b.retainDocument('Win')
+        await vi.waitFor(() => expect(docB.getText()).toBe('- one\r\n- two\rthree\r\n'), { timeout: 2000 })
+
+        // The editor on B binds to this Y.Text: CodeMirror holds line feeds only, so it must too.
+        expect(b.getYText('Win')!.toString()).toBe('- one\n- two\nthree\n')
+        await vi.waitFor(() => expect(docA.getText()).toBe('- one\n- two\nthree\n'), { timeout: 2000 })
+
+        releaseA()
+        releaseB()
+        await a.dispose()
+        await b.dispose()
+    })
+
     it('an untouched peer stays deleted, while a later real edit explicitly restores it', async () => {
         const keyring = createGraphKeyring('g1')
         const relay = createLoopbackRelay()

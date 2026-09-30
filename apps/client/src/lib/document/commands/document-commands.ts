@@ -175,6 +175,8 @@ export function registerDocumentCommands(
             id: BACKLINKS_SHOW,
             label: 'Show backlinks',
             command: BACKLINKS_SHOW,
+            // The Backlinks View's own icon, on its tab too.
+            icon: 'backlinks',
             // First: a read, and the one row that changes nothing. On a tab it acts on the tab's
             // document whether or not that tab is in front; on a wikilink, on the concept the
             // link names - the innermost link under the pointer, as a click resolves it. The

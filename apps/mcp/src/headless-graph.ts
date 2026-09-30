@@ -78,6 +78,11 @@ export interface HeadlessGraphDeps {
     /** Bounded wait for the first relay connection; a serve that cannot reach the relay fails loudly. */
     readyTimeoutMs?: number
     /**
+     * Where the account's EtherPK Client is, as the Sync Server reports it, so a [[Task Reference]]
+     * handed back to a person is a link they can open. Absent, a reference is the address's path.
+     */
+    clientUrl?: string | null
+    /**
      * Where the Local Cache and the index are kept between launches (`persistence.ts`). Absent,
      * both live in memory and are rebuilt from the relay on every open - the test tier's mode.
      */
@@ -177,6 +182,8 @@ export function followIndex(index: RemoteGraphIndex, source: { onChange(listener
 
 export interface HeadlessGraph {
     readonly graphId: string
+    /** The EtherPK Client a synced graph opens in, for the links in a Task Reference; null for a folder. */
+    readonly clientUrl: string | null
     /** What the agent is told it is connected to: the graph's name, or the folder's. */
     readonly name: string
     readonly store: HeadlessDocuments
@@ -237,6 +244,7 @@ export interface HeadlessThemes {
 /** What a backend hands the shared assembly once its store and index are open. */
 export interface HeadlessGraphParts {
     graphId: string
+    clientUrl?: string | null
     name: string
     /** A synced graph's session reports why access ended; a folder has no such thing. */
     accessLoss?: () => SyncAccessLoss | null
@@ -328,6 +336,7 @@ export function assembleHeadlessGraph(parts: HeadlessGraphParts): HeadlessGraph 
 
     return {
         graphId: parts.graphId,
+        clientUrl: parts.clientUrl ?? null,
         name: parts.name,
         store: parts.store,
         index,
@@ -464,6 +473,7 @@ export async function openHeadlessGraph(deps: HeadlessGraphDeps): Promise<Headle
 
         return assembleHeadlessGraph({
             graphId: deps.graphId,
+            clientUrl: deps.clientUrl ?? null,
             name: sync.getMeta().name ?? deps.graphId,
             accessLoss: () => sync.accessLoss(),
             store: documents,

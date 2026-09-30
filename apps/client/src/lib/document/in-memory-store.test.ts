@@ -34,6 +34,27 @@ describe('in-memory document store', () => {
         expect(listener).not.toHaveBeenCalled()
     })
 
+    it("hands an editor's edit to the document's other editors, and not back to the one that made it", () => {
+        const store = createInMemoryDocumentStore({ d: 'ab' })
+        const doc = store.open('d')
+        const first = vi.fn()
+        const second = vi.fn()
+        doc.subscribe(first)
+        doc.subscribe(second)
+        doc.applyChange({ from: 2, to: 2, insert: 'c' }, 'editor', first)
+        expect(first).not.toHaveBeenCalled()
+        expect(second).toHaveBeenCalledWith('abc')
+    })
+
+    it('notifies every subscriber of an external applyChange', () => {
+        const store = createInMemoryDocumentStore({ d: 'ab' })
+        const doc = store.open('d')
+        const listener = vi.fn()
+        doc.subscribe(listener)
+        doc.applyChange({ from: 0, to: 0, insert: '>' }, 'external')
+        expect(listener).toHaveBeenCalledWith('>ab')
+    })
+
     it('notifies subscribers of an external setText, with the new text', () => {
         const store = createInMemoryDocumentStore({ d: 'old' })
         const doc = store.open('d')
@@ -45,5 +66,16 @@ describe('in-memory document store', () => {
         off()
         store.setText('d', 'newer')
         expect(listener).toHaveBeenCalledTimes(1) // unsubscribed
+    })
+
+    it('holds line feeds only, whatever it is seeded or set with (ADR 0112)', () => {
+        const store = createInMemoryDocumentStore({ a: 'x\r\ny' })
+        const doc = store.open('a')
+        expect(doc.getText()).toBe('x\ny')
+        const seen: string[] = []
+        doc.subscribe((text) => seen.push(text))
+        store.setText('a', 'p\rq')
+        expect(doc.getText()).toBe('p\nq')
+        expect(seen).toEqual(['p\nq'])
     })
 })

@@ -59,8 +59,9 @@ export interface TaskRow {
 
 /**
  * One [[Task Concept]] a task answers to (ADR 0051), from a wikilink on the task's own line
- * or on any ancestor [[Block]]. The document's own concept — the virtual root of that chain —
- * is added by the index when it writes these, because derivation sees text and not identity.
+ * or on any ancestor [[Block]]. The document's own concept and the [[Scope]]s in its name — the
+ * virtual root of that chain — are added by the index when it writes these, because derivation
+ * sees text and not identity.
  */
 export interface TaskConceptRow {
     blockLocalId: number
@@ -174,16 +175,17 @@ function flatten(roots: Block[]): BlockRow[] {
     return rows
 }
 
-/** Derive the index rows for a single document's text. Pure. */
-export function deriveDoc(text: string): DerivedRows {
+/**
+ * A document's blocks and links, each link tagged with the block holding it, and which block
+ * each source line belongs to (the deepest whose own range covers it). The one reading of a
+ * document's outline that the index rows and {@link blockConceptChain} share.
+ */
+function blocksAndLinks(text: string): { blocks: BlockRow[]; links: LinkRow[]; lineToBlock: Map<number, number> } {
     const blocks = flatten(parseBlocks(text))
-
-    // Map each source line to the deepest block whose own range covers it.
     const lineToBlock = new Map<number, number>()
     for (const b of blocks) {
         for (let line = b.startLine; line <= b.endLine; line++) lineToBlock.set(line, b.localId)
     }
-
     const links: LinkRow[] = wikilinkOccurrencesInSource(text).map((occ) => ({
         concept: occ.concept,
         line: occ.line,
@@ -192,6 +194,12 @@ export function deriveDoc(text: string): DerivedRows {
         matchEnd: occ.matchEnd,
         blockLocalId: lineToBlock.get(occ.line) ?? null,
     }))
+    return { blocks, links, lineToBlock }
+}
+
+/** Derive the index rows for a single document's text. Pure. */
+export function deriveDoc(text: string): DerivedRows {
+    const { blocks, links } = blocksAndLinks(text)
 
     // Scanning for fences costs a regex per line of the document, so it is worth deciding
     // whether there is anything to exclude first. Most documents hold no tasks at all, and on
@@ -230,6 +238,20 @@ export function deriveDoc(text: string): DerivedRows {
  */
 function deriveTaskConcepts(blocks: BlockRow[], links: LinkRow[], taskBlocks: BlockRow[]): TaskConceptRow[] {
     if (taskBlocks.length === 0) return []
+    const byBlock = linksByBlock(links)
+    // Nothing is linked anywhere, so every task's only Task Concept is its document's —
+    // which the index adds. Skipping the walk keeps the common journal page free.
+    if (byBlock.size === 0) return []
+
+    const rows: TaskConceptRow[] = []
+    for (const task of taskBlocks) {
+        for (const { concept } of conceptChain(blocks, byBlock, task.localId)) rows.push({ blockLocalId: task.localId, concept })
+    }
+    return rows
+}
+
+/** The concepts linked on each block, in the order they are written, by block. */
+function linksByBlock(links: readonly LinkRow[]): Map<number, string[]> {
     const byBlock = new Map<number, string[]>()
     for (const link of links) {
         if (link.blockLocalId === null) continue
@@ -237,23 +259,45 @@ function deriveTaskConcepts(blocks: BlockRow[], links: LinkRow[], taskBlocks: Bl
         if (existing) existing.push(link.concept)
         else byBlock.set(link.blockLocalId, [link.concept])
     }
-    // Nothing is linked anywhere, so every task's only Task Concept is its document's —
-    // which the index adds. Skipping the walk keeps the common journal page free.
-    if (byBlock.size === 0) return []
+    return byBlock
+}
 
-    const rows: TaskConceptRow[] = []
-    for (const task of taskBlocks) {
-        const seen = new Set<string>()
-        for (let id: number | null = task.localId; id !== null; id = blocks[id]?.parentId ?? null) {
-            for (const concept of byBlock.get(id) ?? []) {
-                const key = conceptKey(concept)
-                if (seen.has(key)) continue
-                seen.add(key)
-                rows.push({ blockLocalId: task.localId, concept })
-            }
+/** A concept linked on a block or on one of its ancestors, and how many levels out it was found. */
+export interface BlockConcept {
+    concept: string
+    /** 0 on the block itself, 1 on its parent, and so on up to the root. */
+    depth: number
+}
+
+/**
+ * The walk under a [[Task Concept]] (ADR 0051): the concepts linked on block `from`, then on each
+ * ancestor up to the root, each named once where it is nearest, whatever its case.
+ */
+function conceptChain(blocks: readonly BlockRow[], byBlock: ReadonlyMap<number, string[]>, from: number): BlockConcept[] {
+    const out: BlockConcept[] = []
+    const seen = new Set<string>()
+    let depth = 0
+    for (let id: number | null = from; id !== null; id = blocks[id]?.parentId ?? null, depth++) {
+        for (const concept of byBlock.get(id) ?? []) {
+            const key = conceptKey(concept)
+            if (seen.has(key)) continue
+            seen.add(key)
+            out.push({ concept, depth })
         }
     }
-    return rows
+    return out
+}
+
+/**
+ * The concepts the block holding `line` (0-based, in `text`) answers to through its outline,
+ * nearest first: exactly the Task Concepts the index derives for a task on that line, less the
+ * document's own concept and its [[Scope]]s, which the caller knows by the document's name. What
+ * a [[Kanban Board]] offers to open from the caret (ADR 0113). Empty on a line no block covers.
+ */
+export function blockConceptChain(text: string, line: number): BlockConcept[] {
+    const { blocks, links, lineToBlock } = blocksAndLinks(text)
+    const block = lineToBlock.get(line)
+    return block === undefined ? [] : conceptChain(blocks, linksByBlock(links), block)
 }
 
 /**
@@ -278,6 +322,15 @@ export function deriveTitleLinks(concept: string): TitleLinkRow[] {
         matchStart: occ.matchStart,
         matchEnd: occ.matchEnd,
     }))
+}
+
+/**
+ * The [[Task Concept]]s every task in a document has, whatever its outline (ADR 0051): the
+ * document's own concept, then the [[Scope]]s in its name, outermost first. The index writes these
+ * for every task, and `/kanban` offers them after the block's own (ADR 0113).
+ */
+export function documentTaskConcepts(concept: string): string[] {
+    return [concept, ...deriveTitleLinks(concept).map((link) => link.concept)]
 }
 
 /** The ancestor labels of a block, root-first (the outline-chain breadcrumb). */

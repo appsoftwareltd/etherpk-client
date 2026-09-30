@@ -144,6 +144,12 @@ describe('Show backlinks', () => {
         expect(showBacklinks).toHaveBeenLastCalledWith('Physics')
     })
 
+    it('carries the backlinks icon, the one on the Backlinks View’s tab', () => {
+        const { contributions } = setup({ showBacklinks: vi.fn() })
+        const row = listContextMenuItems(contributions, tab('Alpha')).find((r) => r.label === 'Show backlinks')
+        expect(row?.icon).toBe('backlinks')
+    })
+
     it('is a tab and link row: the Sidebar rows of the same document do not carry it', () => {
         const { labels } = setup({ showBacklinks: vi.fn() })
         expect(labels({ kind: 'favourite', concept: 'Alpha' })).not.toContain('Show backlinks')

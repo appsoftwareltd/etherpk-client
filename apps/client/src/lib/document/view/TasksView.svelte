@@ -438,7 +438,13 @@
         const done = !isDone(hit);
         const result = await toggleIndexedTask(documents, { concept: hit.concept, line: hit.line, text: hit.text }, done);
         if (!result.ok) {
-            staleNotice = "That task has moved since it was indexed — opening it instead.";
+            // A document that is gone has nothing to open. A task that changed under the list is
+            // shown instead, so the user sees what is there now rather than a tick that went nowhere.
+            if (result.reason === "missing") {
+                staleNotice = `"${hit.concept}" was renamed or deleted after the list was read, so nothing was ticked.`;
+                return;
+            }
+            staleNotice = "That task changed after the list was read, so it was not ticked. Opening it instead.";
             open(hit);
             return;
         }
@@ -764,7 +770,10 @@
                                         onclick={() => open(hit)}
                                         class="min-w-0 flex-1 text-left pointer-coarse:pt-3"
                                     >
-                                        <span class="text-sm" class:line-through={isDone(hit)} class:opacity-60={isDone(hit)}>
+                                        <!-- A finished task recedes by colour and the strike, never by
+                                             opacity, which dims its text below the contrast floor
+                                             (ADR 0106). -->
+                                        <span class={["text-sm", isDone(hit) && "line-through text-(--gk-text-muted)"]}>
                                             <!-- A wikilink in the text opens ITS document, as it does in
                                                  the editor and the Backlinks View. It used to pin the Name
                                                  Filter to that concept instead, which read as a link that

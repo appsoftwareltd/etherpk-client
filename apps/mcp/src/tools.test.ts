@@ -17,6 +17,7 @@ import { openHeadlessFolder } from './headless-folder'
 import { openHeadlessGraph, type HeadlessGraph, type HeadlessGraphDeps } from './headless-graph'
 import {
     ToolError,
+    addTaskNote,
     appendDocument,
     backlinks,
     createPage,
@@ -28,6 +29,7 @@ import {
     readAsset,
     readDocument,
     readDocuments,
+    readTask,
     rename,
     search,
     setAliases,
@@ -356,6 +358,18 @@ describe('create_page', () => {
         await rejectsWith(createPage(g, { title: 'Roadmap' }), 'already_exists')
         await rejectsWith(createPage(g, { title: '2026-06-02' }), 'invalid_argument')
         await rejectsWith(createPage(g, { title: '  ' }), 'invalid_argument')
+    })
+})
+
+describe('line endings (ADR 0112)', () => {
+    it('writes line feeds only, whatever line endings the agent sent', async () => {
+        const g = await graph('g-line-endings')
+        await seed(g, 'Log', '- one')
+        await editDocument(g, { concept: 'Log', old: '- one', new: '- one\r\n- two' })
+        await appendDocument(g, { concept: 'Log', text: '- three\r- four' })
+        expect(await text(g, 'Log')).toBe('- one\n- two\n- three\n- four\n')
+        await createPage(g, { title: 'Win', text: '- a\r\n  - b' })
+        expect(await text(g, 'Win')).toBe('- a\n  - b')
     })
 })
 
@@ -722,6 +736,79 @@ describe('set_task', () => {
         expect((await readDocument(g, 'Plan')).text.split('\n')[1]).toBe('- [ ] #P2 write the plan')
         await seed(g, 'Bank', PROTECTED)
         await rejectsWith(setTask(g, { concept: 'Bank', line: 0, changes: { status: 'done' } }), 'protected_document')
+    })
+})
+
+// A Task Reference (ADR 0114): a task handed to an agent by position and words, found again after
+// lines are added above it and its tags change, and never acted on when its words no longer match.
+describe('task references', () => {
+    async function withTask(id: string): Promise<{ g: HeadlessGraph; reference: string }> {
+        const g = await graph(id)
+        await seed(g, 'Plan', '# Launch\n- Call with [[Acme]]\n  - [ ] #P1 Send the quote\n    - pricing from March\n- [ ] Book the train')
+        await indexed(g, async () => (await tasks(g, { concept: 'Plan' })).total === 2)
+        const listed = await tasks(g, { concept: 'Plan' })
+        const reference = listed.tasks.find((t) => t.text.endsWith('Send the quote'))!.reference
+        return { g, reference }
+    }
+
+    it('comes with every task listed, as an address naming its document, line and words', async () => {
+        const { g, reference } = await withTask('g-ref-list')
+        expect(reference).toMatch(new RegExp(`^/g/${g.graphId}/d/Plan#task=2-[0-9a-f]{12}$`))
+    })
+
+    it('reads the task with what is above it and what is nested under it', async () => {
+        const { g, reference } = await withTask('g-ref-read')
+        expect(await readTask(g, { reference: `Send the quote\n${reference}` })).toMatchObject({
+            concept: 'Plan',
+            line: 2,
+            text: 'Send the quote',
+            status: 'open',
+            priority: 1,
+            breadcrumb: ['Launch', 'Call with [[Acme]]'],
+            detail: '    - pricing from March',
+            foundBy: 'at_line',
+            reference,
+        })
+    })
+
+    it('finds the task after lines are added above it and its tags change, and moves it', async () => {
+        const { g, reference } = await withTask('g-ref-moved')
+        await editDocument(g, { concept: 'Plan', old: '# Launch', new: '# Launch\n- A new line' })
+        expect(await setTask(g, { reference, changes: { status: 'doing' } })).toMatchObject({ line: 3, status: 'doing', changed: true })
+        expect((await readDocument(g, 'Plan')).text.split('\n')[3]).toBe('  - [ ] #P1 #D Send the quote')
+        expect(await readTask(g, { reference })).toMatchObject({ line: 3, status: 'doing', foundBy: 'moved' })
+    })
+
+    it('writes a note under the task, after what is already nested there', async () => {
+        const { g, reference } = await withTask('g-ref-note')
+        await addTaskNote(g, { reference, text: 'Sent it by email' })
+        await addTaskNote(g, { reference, text: '- Attached the price list\n  - v2' })
+        expect((await readDocument(g, 'Plan')).text.split('\n')).toEqual([
+            '# Launch',
+            '- Call with [[Acme]]',
+            '  - [ ] #P1 Send the quote',
+            '    - pricing from March',
+            '    - Sent it by email',
+            '    - Attached the price list',
+            '      - v2',
+            '- [ ] Book the train',
+        ])
+    })
+
+    it('refuses once the words are edited, and refuses what is not a reference', async () => {
+        const { g, reference } = await withTask('g-ref-edited')
+        await editDocument(g, { concept: 'Plan', old: 'Send the quote', new: 'Send the new quote' })
+        await rejectsWith(readTask(g, { reference }), 'task_not_found')
+        await rejectsWith(setTask(g, { reference, changes: { status: 'done' } }), 'task_not_found')
+        expect((await readDocument(g, 'Plan')).text).toContain('- [ ] #P1 Send the new quote')
+        await rejectsWith(readTask(g, { reference: 'Send the quote' }), 'invalid_argument')
+    })
+
+    it("checks a synced graph's reference against the graph served, and a folder's not at all", async () => {
+        const { g, reference } = await withTask('g-ref-graph')
+        const elsewhere = reference.replace(`/g/${g.graphId}/`, '/g/another-graph/')
+        if (g.backend.kind === 'synced') await rejectsWith(readTask(g, { reference: elsewhere }), 'other_graph')
+        else expect(await readTask(g, { reference: elsewhere })).toMatchObject({ line: 2, foundBy: 'at_line' })
     })
 })
 

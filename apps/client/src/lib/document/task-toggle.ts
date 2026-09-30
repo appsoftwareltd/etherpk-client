@@ -7,40 +7,30 @@
  * only true for the parse it came from. Writing blind to `line` would mean flipping whatever
  * happens to sit there now — a different task, or a line of prose.
  *
- * So every write is guarded: the line must still parse as a [[Task]] AND still carry the exact
- * text the index recorded. If either fails the write is refused and the caller reveals the
- * task instead, which shows the user reality rather than quietly acting on a stale row. The
- * guard is cheap, and it is the only thing standing between a lagging index and a wrong edit —
- * it must not be "simplified" away.
+ * So every write finds the task first, with the line finder a [[Kanban Board]] move uses
+ * (`task-write.ts`): the indexed line when it still holds a task with the same text, otherwise
+ * the one task line in the document with that text. When neither finds it the write is refused
+ * and the caller reveals the task instead, which shows the user reality rather than quietly
+ * acting on a stale row. The finder is the only thing standing between a lagging index and a
+ * wrong edit — it must not be "simplified" away.
+ *
+ * A tick flips the checkbox and nothing else. Unlike a move to a lane, it leaves any state tag
+ * where it is: the checkbox decides a ticked task's status whatever `#W` or `#D` says.
  */
 
-import { bulletLabel } from './index-derive'
-import { frontmatterLineOffset } from './reveal'
-import type { DocumentStore } from './types'
+import { findIndexedTask, type IndexedTask } from './task-write'
 import { parseTaskLine } from './task-tags'
+import type { DocumentStore } from './types'
 
-/** Where a task sits, as the index reported it. */
-export interface IndexedTask {
-    /** The document's concept — the store's document id. */
-    concept: string
-    /** 0-based source line. */
-    line: number
-    /** The block label as indexed, [[Task Tag]] run included. */
-    text: string
-}
+export type { IndexedTask }
 
 export type TaskToggleOutcome =
     | { ok: true; done: boolean }
-    /** The line moved or changed since it was indexed; nothing was written. */
-    | { ok: false; reason: 'stale' }
-
-/** The UTF-16 offset at which `line` starts, or null when the document has no such line. */
-function offsetOfLine(lines: readonly string[], line: number): number | null {
-    if (line < 0 || line >= lines.length) return null
-    let offset = 0
-    for (let i = 0; i < line; i++) offset += lines[i].length + 1 // +1 for the newline
-    return offset
-}
+    /**
+     * `stale`: no task line, or more than one, has the task's text. `missing`: its document is
+     * gone. Nothing was written either way.
+     */
+    | { ok: false; reason: 'stale' | 'missing' }
 
 /**
  * Flip one indexed task's checkbox in its document.
@@ -50,42 +40,19 @@ function offsetOfLine(lines: readonly string[], line: number): number | null {
  * untouched byte for byte, so this cannot reformat what someone wrote, and it is the smallest
  * possible operation to hand a CRDT.
  */
-export async function toggleIndexedTask(
-    store: DocumentStore,
-    task: IndexedTask,
-    done: boolean,
-): Promise<TaskToggleOutcome> {
-    await store.whenReady?.(task.concept)
-    const document = store.open(task.concept)
-    const text = document.getText()
-    const lines = text.split('\n')
-
-    // The index derives over the BODY - frontmatter stripped - so its line numbers are
-    // body-relative, while the store hands back the whole file. On a page (which carries
-    // frontmatter; a journal and a synced document do not) the two disagree by the fence's
-    // height, and without this every tick on a page was refused: line 0 of the file is `---`.
-    // The same rule the editor's reveal uses, measured from the text in hand.
-    const lineIndex = task.line + frontmatterLineOffset(text)
-    const start = offsetOfLine(lines, lineIndex)
-    if (start === null) return { ok: false, reason: 'stale' }
-
-    const line = lines[lineIndex]
-    const parsed = parseTaskLine(line)
-    // Two questions, both necessary: is it still a task at all, and is it still THIS task?
-    // The second is what catches a line inserted above, which shifts every line number down
-    // while leaving a perfectly valid — and entirely different — task where this one was.
-    if (!parsed) return { ok: false, reason: 'stale' }
+export async function toggleIndexedTask(store: DocumentStore, task: IndexedTask, done: boolean): Promise<TaskToggleOutcome> {
+    const found = await findIndexedTask(store, task)
+    if ('reason' in found) return { ok: false, reason: found.reason }
+    const line = found.lines[found.index]
     const marker = /^(\s*-\s+\[)([ xX])(\])/.exec(line)
     if (!marker) return { ok: false, reason: 'stale' }
-    // Compared with the SAME function that produced the indexed label, never a lookalike.
-    if (bulletLabel(line) !== task.text) return { ok: false, reason: 'stale' }
 
     // Already in the requested state: report success without writing, so a double click or a
     // second tab having got there first is not an error the user has to think about.
-    if (parsed.done === done) return { ok: true, done }
+    if (parseTaskLine(line)?.done === done) return { ok: true, done }
 
-    const at = start + marker[1].length
+    const at = found.offset + marker[1].length
     // 'external': this is not the editor typing, so an open editor must be told.
-    document.applyChange({ from: at, to: at + 1, insert: done ? 'x' : ' ' }, 'external')
+    found.document.applyChange({ from: at, to: at + 1, insert: done ? 'x' : ' ' }, 'external')
     return { ok: true, done }
 }

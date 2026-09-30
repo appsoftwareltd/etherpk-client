@@ -67,8 +67,11 @@ export interface Activity {
      * `mirror` is reported only for a [[Local Mirror]]'s full pass over a graph big enough for
      * that pass to take noticeable time - the first one of a session, and every resume. A toast
      * per debounced write would be noise, and the Mirror tab carries the steady state instead.
+     *
+     * `formatting-scan` is a [[Formatting Scan]] read of every document (ADR 0109); its fixes are
+     * approved one by one afterwards, outside the Activity.
      */
-    kind: 'import' | 'asset-upload' | 'mirror' | 'publish' | 'export'
+    kind: 'import' | 'asset-upload' | 'mirror' | 'publish' | 'export' | 'formatting-scan'
     /** The headline, e.g. `Importing "My Graph"`. */
     title: string
     phases: ActivityPhase[]

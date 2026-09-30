@@ -26,7 +26,9 @@
  * Implemented as a transaction filter over transactions that set the selection (a click, an arrow,
  * a key that creates the next block): the trim rides in the same transaction as the move, so a
  * single undo reverses both. Remote and external transactions never set a selection and are never
- * tidied; undo and redo are left alone. It is registered FIRST among the base filters, which
+ * tidied; undo and redo are left alone, and so is a caret the app places (a reveal, a restored
+ * Reading Position), which goes in out of the history (`placeSelection`, view-position.ts) because
+ * the user did not walk away from anything. It is registered FIRST among the base filters, which
  * CodeMirror runs in reverse order, so it judges the transaction after the paste clamp, the fence
  * guard, the delete heal and the caret clamp have shaped it — tidying the raw paste of a newline,
  * before the clamp had indented it, removed the very soft line the clamp was about to create.
@@ -38,7 +40,8 @@ import { frontmatterLines } from '$lib/storage/fs/frontmatter-span'
 
 import { fencedBlocks } from '../fenced-code'
 import { blockBodyEnd, branchRange, bulletContent, contentColumn, formOneOpeners, isBulletLine, lineIndent, markerLength, opaqueLineFlags, ownerBulletIndex } from '../outliner'
-import { EXTERNAL } from './cm-document'
+import { collaborative, EXTERNAL } from './cm-document'
+import { isOwnEditing } from './own-editing'
 
 /** Where a caret is, as far as tidying is concerned: an outliner block (by its bullet line), a prose line, or nothing tidyable. */
 export type TidyTarget = { kind: 'block'; owner: number } | { kind: 'prose'; line: number } | null
@@ -146,6 +149,11 @@ export function leaveTidy(): Extension {
     return EditorState.transactionFilter.of((tr): TransactionSpec | readonly TransactionSpec[] => {
         if (!tr.selection) return tr // no caret motion of the user's
         if (tr.annotation(EXTERNAL)) return tr
+        // A synced editor's change that is not the user's own editing came from the shared text:
+        // another member's edit, or the undo manager's. It carries a selection when the caret clamp
+        // moved the caret it mapped, but nobody left anything, and y-codemirror never sends what
+        // rides that transaction to the Y.Text: a trim here would part the editor from it.
+        if (tr.docChanged && tr.startState.facet(collaborative) && !isOwnEditing(tr)) return tr
         if (tr.annotation(Transaction.addToHistory) === false || tr.isUserEvent('undo') || tr.isUserEvent('redo')) return tr
         const oldHead = tr.startState.selection.main.head
         const oldLines = tr.startState.doc.toString().split('\n')

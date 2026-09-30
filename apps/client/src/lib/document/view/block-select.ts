@@ -20,6 +20,7 @@ import { EditorView } from '@codemirror/view'
 
 import { outlineLines, type OutlineLine } from '../indent-unit'
 import { editorAnalysisField } from './analysis/editor-analysis'
+import { withSelection } from './with-selection'
 
 /** The editor class carried while the selection is block-granular; the caret is hidden under it. */
 export const BLOCK_SELECTED_CLASS = 'gk-block-selected'
@@ -124,7 +125,7 @@ function blockSelectionFilter(): Extension {
     return EditorState.transactionFilter.of((tr) => {
         if (!tr.selection || !tr.changes.empty) return tr // only pure selection moves (no doc edit)
         const snapped = snappedBlockSelection(tr.startState, tr.newSelection.main) // doc unchanged (no doc edit)
-        return snapped ? { selection: snapped } : tr
+        return snapped ? withSelection(tr, snapped) : tr
     })
 }
 

@@ -30,7 +30,8 @@
  *   page nobody edited churns no envelope — which is what stops a re-save broadcasting a fresh
  *   ciphertext to other [[Player]]s for nothing.
  */
-import type { ChangeOrigin, EditorDocument, TextChange } from '../types'
+import { lineFeedsOnly } from '../line-endings'
+import type { ChangeOrigin, DocumentListener, EditorDocument, TextChange } from '../types'
 import {
     type CipherFence,
     type DocumentProtectionKind,
@@ -165,11 +166,15 @@ export class ProtectedEditorDocument implements EditorDocument {
         if (this.#body === null) return
         // The frontmatter may have been edited through the store while the fence was showing;
         // the body could not have been, so adopting the stored block is enough.
-        if (!this.#prefixPending) this.#prefix = frontmatterPrefix(this.#inner.getText())
+        if (!this.#prefixPending) this.#prefix = lineFeedsOnly(frontmatterPrefix(this.#inner.getText()))
         this.#notify(this.getText())
     }
 
-    applyChange(change: TextChange, origin: ChangeOrigin = 'editor'): void {
+    /**
+     * `editor` is the listener of the editor that made an `editor` edit: the document's other
+     * editors hear the text it leaves, as they would from a store (ADR 0113).
+     */
+    applyChange(change: TextChange, origin: ChangeOrigin = 'editor', editor?: DocumentListener): void {
         if (this.#body === null || this.#masked) {
             // The editor's guard refuses these first; this is the invariant the guard cannot
             // hold on its own, because undo is dispatched past every filter. While nothing is
@@ -177,10 +182,11 @@ export class ProtectedEditorDocument implements EditorDocument {
             // its interior, and may not turn the document into something that is not protected.
             if (origin === 'editor' && !lockedEditAllowed(this.#inner.getText(), change)) return
             this.#inner.applyChange(change, origin)
+            if (origin === 'editor' && editor) this.#notify(this.#inner.getText(), editor)
             return
         }
         if (change.from < this.#prefix.length) {
-            this.#applyToPrefix(change, origin)
+            this.#applyToPrefix(change, origin, editor)
             return
         }
         const offset = this.#prefix.length
@@ -207,6 +213,7 @@ export class ProtectedEditorDocument implements EditorDocument {
         this.#dirty = true
         this.#epoch++
         this.#schedule()
+        if (editor) this.#notify(this.getText(), editor)
     }
 
     /**
@@ -217,7 +224,7 @@ export class ProtectedEditorDocument implements EditorDocument {
      * other body edit. An `external` origin is a write-back from outside the editor — the workspace
      * restoring a cancelled title — and is echoed to listeners, exactly as a store would.
      */
-    #applyToPrefix(change: TextChange, origin: ChangeOrigin): void {
+    #applyToPrefix(change: TextChange, origin: ChangeOrigin, editor?: DocumentListener): void {
         const next = applyTextChange(this.#prefix + this.#body!, change)
         const prefix = frontmatterPrefix(next)
         // The block may hold only text typed into it. Deleting its closing delimiter above a
@@ -237,6 +244,7 @@ export class ProtectedEditorDocument implements EditorDocument {
             this.#schedule()
         }
         if (origin === 'external') this.#notify(this.getText())
+        else if (editor) this.#notify(this.getText(), editor)
     }
 
     /**
@@ -349,8 +357,8 @@ export class ProtectedEditorDocument implements EditorDocument {
         if (documentProtection(stored).kind !== 'none') return false
         const next = protectDocumentText(stored, armoured)
         this.#clearTimer()
-        this.#body = body
-        this.#prefix = frontmatterPrefix(next)
+        this.#body = lineFeedsOnly(body)
+        this.#prefix = lineFeedsOnly(frontmatterPrefix(next))
         this.#armoured = armoured
         this.#dirty = false
         this.#prefixPending = false
@@ -386,7 +394,10 @@ export class ProtectedEditorDocument implements EditorDocument {
         if (protection.kind !== 'document') return this.#stopProjecting(seq)
         const [fence] = protection.fences
         const armoured = bodyOf(stored.slice(fence.from, fence.to), fence)
-        const prefix = frontmatterPrefix(stored)
+        // The projection is the editor's buffer for a Protected Document, so it holds line feeds
+        // only, as every buffer does (ADR 0112). The stored text keeps what it has until an edit
+        // writes the frontmatter or the next seal writes the body.
+        const prefix = lineFeedsOnly(frontmatterPrefix(stored))
         if (this.#body !== null && armoured === this.#armoured) {
             // The fence is the one we already opened: only the frontmatter moved — a rename
             // landing underneath. Carry the new frontmatter and KEEP the body, edits and all;
@@ -409,7 +420,7 @@ export class ProtectedEditorDocument implements EditorDocument {
         }
         if (seq !== this.#projectSeq) return 'superseded'
 
-        this.#body = plaintext
+        this.#body = lineFeedsOnly(plaintext)
         this.#prefix = prefix
         this.#armoured = armoured
         this.#dirty = false
@@ -600,8 +611,9 @@ export class ProtectedEditorDocument implements EditorDocument {
         if ((await this.#project(++this.#projectSeq)) === 'nothing') this.#notify(text)
     }
 
-    #notify(text: string): void {
-        for (const listener of this.#listeners) listener(text)
+    /** Tell the listeners the text, all but `except` (the editor that made the edit). */
+    #notify(text: string, except?: DocumentListener): void {
+        for (const listener of this.#listeners) if (listener !== except) listener(text)
     }
 }
 

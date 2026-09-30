@@ -171,7 +171,8 @@ since a browser page cannot open a local file - nothing checks that the file exi
 
 A bare letter is a state, a dated letter is a date. `#` text anywhere else in the line is plain text.
 Example: `- [ ] #P1 #D-2026-07-01 Ship the release [[Acme]]`. A task is *about* every
-concept linked on its own line, on any ancestor block or heading, and the document it is in.
+concept linked on its own line, on any ancestor block or heading, and the document it is in,
+the scopes in that document's name included: the tasks on `[[Acme]] Website` are about Acme too.
 
 **Fenced code.** Three or more backticks (tildes are not recognised), closed by a bare fence of
 **the same length at the same column**. Inside a bullet the fence and every line of it sit at

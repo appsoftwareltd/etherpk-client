@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { ancestorChain, deriveDoc, deriveTitleLinks } from './index-derive'
+import { ancestorChain, blockConceptChain, deriveDoc, deriveTitleLinks } from './index-derive'
 import { isScopedBy } from './wikilink/rename'
 
 describe('deriveDoc', () => {
@@ -227,5 +227,40 @@ describe('deriveTitleLinks', () => {
             expect(derived, title).toBe(isScopedBy(title, 'Physics'))
         }
         expect(deriveTitleLinks('`[[Physics]]` notes')).toEqual([])
+    })
+})
+
+// The concepts a line answers to through its outline, nearest first: what a Kanban Board offers
+// for the caret's block (ADR 0113), by the rule the index files a task's Task Concepts under.
+describe('blockConceptChain', () => {
+    const text = ['# Work on [[Acme]]', '- Call with [[Bob]] about [[Hiring]]', '  - [ ] Send [[Bob]] the quote', '    continued', '- Unlinked']
+        .join('\n')
+
+    it("walks out from the line: its own links, then each ancestor's, headings included", () => {
+        expect(blockConceptChain(text, 2)).toEqual([
+            { concept: 'Bob', depth: 0 },
+            { concept: 'Hiring', depth: 1 },
+            { concept: 'Acme', depth: 2 },
+        ])
+    })
+
+    it('reads a continuation line as part of the block it continues', () => {
+        expect(blockConceptChain(text, 3).map((c) => c.concept)).toEqual(['Bob', 'Hiring', 'Acme'])
+    })
+
+    it('names each concept once, where it is nearest, whatever its case', () => {
+        expect(blockConceptChain('- [[acme]]\n  - [[Acme]] and [[ACME]]', 1)).toEqual([{ concept: 'Acme', depth: 0 }])
+    })
+
+    it('agrees with the Task Concepts the index derives for a task on that line', () => {
+        const { tasks, taskConcepts } = deriveDoc(text)
+        const task = tasks.find((t) => t.line === 2)!
+        const indexed = taskConcepts.filter((row) => row.blockLocalId === task.blockLocalId).map((row) => row.concept)
+        expect(blockConceptChain(text, 2).map((c) => c.concept)).toEqual(indexed)
+    })
+
+    it('finds nothing on a line outside every block, and only the ancestors\' links on a block with none of its own', () => {
+        expect(blockConceptChain('- a\n\n- b', 1)).toEqual([])
+        expect(blockConceptChain(text, 4)).toEqual([{ concept: 'Acme', depth: 1 }])
     })
 })

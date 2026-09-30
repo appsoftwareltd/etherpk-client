@@ -56,6 +56,7 @@ describe('the MCP server', () => {
         const { client } = await connected()
         const { tools } = await client.listTools()
         expect(tools.map((tool) => tool.name).sort()).toEqual([
+            'add_task_note',
             'append_document',
             'backlinks',
             'create_page',
@@ -77,6 +78,7 @@ describe('the MCP server', () => {
             'read_asset',
             'read_document',
             'read_documents',
+            'read_task',
             'read_theme',
             'read_theme_file',
             'rename',
