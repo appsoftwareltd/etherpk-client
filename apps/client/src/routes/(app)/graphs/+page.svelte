@@ -486,7 +486,7 @@
     let createError = $state<string | null>(null);
     /** "New synced graph" was pressed and is waiting on the account checks. */
     let createPending = $state(false);
-    // Import a graph from a Logseq / Obsidian / EtherPK source folder.
+    // Import a graph from a Logseq / Obsidian / EtherPK / AS Notes source folder.
     let importDialog = $state(false);
     /** The graph list could not be read at all, which is not the same as there being none. */
     let registryUnreadable = $state(false);
@@ -3495,10 +3495,10 @@
                             data-testid="first-run-import"
                             class="text-sm text-gray-500 dark:text-gray-400"
                         >
-                            You can import graphs from Logseq, Obsidian and
-                            EtherPK.
+                            You can import graphs from Logseq, Obsidian, EtherPK
+                            and AS Notes.
                             <a
-                                href="{PUBLIC_DOCS_URL}/importing-from-logseq-obsidian-or-etherpk"
+                                href="{PUBLIC_DOCS_URL}/importing-a-knowledge-base"
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 class="font-medium text-gray-700 underline dark:text-gray-200"

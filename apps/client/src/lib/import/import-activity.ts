@@ -43,6 +43,7 @@ const CONVERT_PHASES: Record<ImportFormat, ActivityPhase[]> = {
     obsidian: [PREPARING_ASSETS, READING, CONVERTING],
     markdown: [PREPARING_ASSETS, READING, CONVERTING], // the Obsidian pipeline
     etherpk: [CONVERTING, PREPARING_ASSETS],
+    asnotes: [PREPARING_ASSETS, READING, CONVERTING],
 }
 
 const FILESYSTEM_TAIL: ActivityPhase[] = [

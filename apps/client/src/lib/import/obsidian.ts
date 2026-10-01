@@ -9,13 +9,12 @@
  * ISO-named files. Files are otherwise native GFM and pass through untouched.
  */
 
-import { portableFileStem } from '$lib/document/wikilink'
 import { MARKDOWN_LINK } from '$lib/document/markdown-link-target'
-import { parseFrontmatter } from '$lib/storage/fs/frontmatter'
 import { normaliseAliases } from '$lib/document/frontmatter/identity'
 
 import { type PlannedAsset, normaliseRef, planAssets } from './assets'
-import { buildFrontmatter, createFenceTracker, dedupeConcept, outsideInlineCode, scopedConceptName } from './convert-shared'
+import { buildFrontmatter, createFenceTracker, outsideInlineCode, readSourceFrontmatter, UNREADABLE_FRONTMATTER_DETAIL } from './convert-shared'
+import { placeFolderPages, type TakenNames } from './folder-pages'
 import { logseqDateToIso } from './logseq-dates'
 import { calloutHeading, obsidianComments, unsupportedConstructs, withoutComments } from './obsidian-constructs'
 import { convertObsidianTaskLine } from './obsidian-tasks'
@@ -33,6 +32,8 @@ interface ObsidianNote {
     dir: string
     body: string
     frontmatter: Record<string, unknown>
+    /** A block YAML rejects, carried over as written in place of a rebuilt one (see `readSourceFrontmatter`). */
+    keptBlock?: string
     aliases: string[]
 }
 
@@ -96,6 +97,7 @@ export async function convertObsidian(files: SourceFile[], control?: ImportContr
         segments: string[]
         body: string
         frontmatter: Record<string, unknown>
+        keptBlock?: string
         aliases: string[]
         pathKey: string
     }
@@ -108,7 +110,8 @@ export async function convertObsidian(files: SourceFile[], control?: ImportContr
         onProgress?.({ label: 'Reading files', done: ++read, total: mdFiles.length })
         const stem = baseName(file.path).replace(/\.md$/i, '')
         const dir = dirName(file.path)
-        const fm = parseFrontmatter(await readText(file))
+        const fm = readSourceFrontmatter(await readText(file))
+        const keptBlock = fm.kind === 'unreadable' ? fm.block : undefined
         const aliases = obsidianAliases(fm.data)
         const pathKey = file.path.replace(/\.md$/i, '').toLowerCase()
 
@@ -127,6 +130,7 @@ export async function convertObsidian(files: SourceFile[], control?: ImportContr
                 dir,
                 body: fm.body,
                 frontmatter: fm.data,
+                keptBlock,
                 aliases,
             })
             continue
@@ -138,60 +142,27 @@ export async function convertObsidian(files: SourceFile[], control?: ImportContr
                 detail: `More than one note maps to the ${iso} journal - "${file.path}" imported as a page`,
             })
         }
-        pendingPages.push({ stem, dir, segments: dir === '' ? [] : dir.split('/'), body: fm.body, frontmatter: fm.data, aliases, pathKey })
+        pendingPages.push({ stem, dir, segments: dir === '' ? [] : dir.split('/'), body: fm.body, frontmatter: fm.data, keptBlock, aliases, pathKey })
     }
 
-    // Collision groups by base-name stem: singletons keep the bare concept; a colliding
-    // note takes its nearest distinguishing folders as a scope chain.
-    const byStem = new Map<string, PendingPage[]>()
-    for (const page of pendingPages) {
-        const key = page.stem.toLowerCase()
-        byStem.set(key, [...(byStem.get(key) ?? []), page])
+    // Pages flatten: a colliding name takes its nearest distinguishing folders as a scope chain.
+    const taken: TakenNames = {
+        concepts: new Set(notes.map((n) => n.concept.toLowerCase())),
+        fileNames: new Set(notes.map((n) => n.fileName.toLowerCase())),
     }
-
-    const takenConcepts = new Set<string>(notes.map((n) => n.concept.toLowerCase()))
-    const takenFileNames = new Set<string>(notes.map((n) => n.fileName.toLowerCase()))
-
-    for (const [, group] of byStem) {
-        for (const page of group) {
-            let concept = page.stem
-            if (group.length > 1 && page.segments.length > 0) {
-                for (let depth = 1; depth <= page.segments.length; depth++) {
-                    const chain = page.segments.slice(-depth)
-                    concept = scopedConceptName([...chain, page.stem])
-                    const clashes = group.some(
-                        (other) =>
-                            other !== page &&
-                            scopedConceptName([...other.segments.slice(-depth), other.stem]).toLowerCase() ===
-                                concept.toLowerCase(),
-                    )
-                    if (!clashes) break
-                }
-                report.push({
-                    category: 'collision',
-                    concept,
-                    detail: `"${page.stem}" exists in more than one folder - "${page.dir}/${page.stem}" became the scoped concept "${concept}"`,
-                })
-            }
-            concept = dedupeConcept(concept, (key) => takenConcepts.has(key))
-            takenConcepts.add(concept.toLowerCase())
-            let fileName = `${portableFileStem(concept)}.md`
-            for (let n = 2; takenFileNames.has(fileName.toLowerCase()); n++) {
-                fileName = `${portableFileStem(concept)} (${n}).md`
-            }
-            takenFileNames.add(fileName.toLowerCase())
-            notes.push({
-                kind: 'page',
-                concept,
-                fileName,
-                pathKey: page.pathKey,
-                stemKey: page.stem.toLowerCase(),
-                dir: page.dir,
-                body: page.body,
-                frontmatter: page.frontmatter,
-                aliases: page.aliases,
-            })
-        }
+    for (const { page, concept, fileName } of placeFolderPages(pendingPages, taken, report)) {
+        notes.push({
+            kind: 'page',
+            concept,
+            fileName,
+            pathKey: page.pathKey,
+            stemKey: page.stem.toLowerCase(),
+            dir: page.dir,
+            body: page.body,
+            frontmatter: page.frontmatter,
+            keptBlock: page.keptBlock,
+            aliases: page.aliases,
+        })
     }
 
     // ---- Link resolution.
@@ -375,6 +346,13 @@ export async function convertObsidian(files: SourceFile[], control?: ImportContr
             })
         }
         const body = convertBody(note, uncommented)
+        if (note.keptBlock !== undefined) {
+            // Nothing is rebuilt from a block nothing could read, so no `title:` either: the page's
+            // name is its file name, which is already written from the concept.
+            report.push({ category: 'unsupported', concept: note.concept, detail: UNREADABLE_FRONTMATTER_DETAIL })
+            documents.push({ kind: note.kind, concept: note.concept, fileName: note.fileName, text: `${note.keptBlock}${body}` })
+            continue
+        }
         const { title, ...rest } = withAliasesList(note.frontmatter, note.aliases)
         if (typeof title === 'string' && title.trim() !== '' && title !== note.concept) {
             report.push({

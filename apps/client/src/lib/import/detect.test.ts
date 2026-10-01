@@ -28,6 +28,20 @@ describe('detectFormat', () => {
         expect(detectFormat(['journals/2026_07_16.md', 'pages/foo.md'])).toBe('logseq')
     })
 
+    it('detects AS Notes by .asnotes/, in the folder or one folder down', () => {
+        expect(detectFormat(['.asnotes/index.db', 'journals/2026-09-30.md', 'notes/Foo.md'])).toBe('asnotes')
+        expect(detectFormat(['docs-src/.asnotes/.gitignore', 'docs-src/docs/Foo.md', 'README.md'])).toBe('asnotes')
+    })
+
+    it('prefers AS Notes over the Obsidian vault it was set up in', () => {
+        expect(detectFormat(['.obsidian/app.json', '.asnotes/index.db', 'Foo.md'])).toBe('asnotes')
+    })
+
+    it('keeps a Logseq graph or an EtherPK folder with AS Notes on top in its own format', () => {
+        expect(detectFormat(['logseq/config.edn', '.asnotes/index.db', 'pages/foo.md'])).toBe('logseq')
+        expect(detectFormat(['etherpk/settings.json', '.asnotes/index.db', 'pages/Foo.md'])).toBe('etherpk')
+    })
+
     it('falls back to plain markdown', () => {
         expect(detectFormat(['README.md', 'notes/one.md'])).toBe('markdown')
     })

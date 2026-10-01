@@ -193,14 +193,14 @@
             heading: "A folder of markdown is a complete graph",
             intro: "Journals, pages, assets and a small settings folder, and nothing else. Back it up, put it in git, edit it with other tools while EtherPK has it open.",
             items: [
-                { lead: "Import", text: " from Logseq, Obsidian or another EtherPK graph into a new graph, with a report of anything that could not be carried." },
+                { lead: "Import", text: " from Logseq, Obsidian, another EtherPK graph or AS Notes into a new graph, with a report of anything that could not be carried." },
                 { lead: "A local copy of a synced graph", text: ", kept up to date on disk as the same plain files." },
                 { lead: "Export", text: " any graph as a folder of markdown, any time." },
                 { lead: "A plain statement of what is stored where", text: ", and what ever leaves your device." },
             ],
             docs: [
                 { title: "Local Graphs", slug: "local-graphs" },
-                { title: "Importing", slug: "importing-from-logseq-obsidian-or-etherpk" },
+                { title: "Importing", slug: "importing-a-knowledge-base" },
                 { title: "Where Your Data Is Stored", slug: "where-your-data-is-stored" },
             ],
         },
@@ -318,7 +318,7 @@
 
 <svelte:head>
     <title>EtherPK - A personal knowledge base in plain markdown</title>
-    <meta name="description" content="EtherPK is a personal knowledge base in plain markdown files you own: a daily journal, wikilinks and backlinks, tasks, an outliner, code, diagrams and maths. Free on your own machine - {managed ? 'Sync+ keeps it' : 'a Sync Server keeps it'} end-to-end encrypted across your devices, with live collaboration, protected documents, publishing to a static site and access for AI agents. Imports from Logseq and Obsidian." />
+    <meta name="description" content="EtherPK is a personal knowledge base in plain markdown files you own: a daily journal, wikilinks and backlinks, tasks, an outliner, code, diagrams and maths. Free on your own machine - {managed ? 'Sync+ keeps it' : 'a Sync Server keeps it'} end-to-end encrypted across your devices, with live collaboration, protected documents, publishing to a static site and access for AI agents. Imports from Logseq, Obsidian and AS Notes." />
     {#if canonicalUrl}
         <link rel="canonical" href={canonicalUrl} />
         <meta property="og:url" content={canonicalUrl} />

@@ -18,6 +18,7 @@
 import { normaliseIndentUnit } from '$lib/document/indent-unit'
 import { containsCipherFence } from '$lib/document/protection/fence-info'
 
+import { convertAsNotes } from './asnotes'
 import { convertEtherpk } from './etherpk'
 import { convertLogseq } from './logseq'
 import { convertObsidian } from './obsidian'
@@ -39,5 +40,6 @@ export async function convertSource(
 function convert(files: SourceFile[], format: ImportFormat, control?: ImportControl): Promise<ConvertedGraph> {
     if (format === 'logseq') return convertLogseq(files, control)
     if (format === 'etherpk') return convertEtherpk(files, control)
+    if (format === 'asnotes') return convertAsNotes(files, control)
     return convertObsidian(files, control) // 'obsidian' and the 'markdown' fallback
 }

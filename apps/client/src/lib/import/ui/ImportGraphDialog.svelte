@@ -61,6 +61,7 @@
         type ServerImportResult,
     } from "../run-import";
     import { prepareZipSource } from "../zip-source";
+    import { encryptedNotePaths } from "../asnotes-layout";
     import { findFile, isJunkPath, isMarkdownPath } from "../source";
     import type { ImportFormat } from "../types";
 
@@ -125,6 +126,8 @@
         ["obsidian", "Obsidian"],
         ["etherpk", "EtherPK"],
         ["markdown", "Plain markdown"],
+        // AS Notes is always listed last.
+        ["asnotes", "AS Notes"],
     ];
 
     const folderAvailable = $derived(isFsaSupported() || opfsDestination);
@@ -170,6 +173,14 @@
         await tick();
         target()?.focus();
     }
+
+    /**
+     * AS Notes encrypted notes are never imported (ADR 0115): the passphrase lives in VS Code, not
+     * in the folder. The person is told how many before the run, not only in the report after it.
+     */
+    const encryptedNotes = $derived(
+        format === "asnotes" && prepared ? encryptedNotePaths(prepared.files).length : 0,
+    );
 
     /**
      * Files this account cannot store, known before anything uploads. Only meaningful for the
@@ -400,11 +411,12 @@
     {#snippet body()}
         {#if !prepared}
             <p class="text-sm text-gray-600 dark:text-gray-300">
-                Bring an existing EtherPK graph, Logseq graph or Obsidian vault
-                export in as a new knowledge graph, from a folder or from a zip
-                of one. The source is only read - your original stays untouched.
+                Bring an existing EtherPK graph, Logseq graph, Obsidian vault
+                export or AS Notes workspace in as a new knowledge graph, from a
+                folder or from a zip of one. The source is only read - your
+                original stays untouched.
                 <a
-                    href="{PUBLIC_DOCS_URL}/importing-from-logseq-obsidian-or-etherpk"
+                    href="{PUBLIC_DOCS_URL}/importing-a-knowledge-base"
                     target="_blank"
                     rel="noopener noreferrer"
                     data-testid="import-guide"
@@ -470,6 +482,7 @@
                     id="import-format"
                     data-testid="import-format"
                     disabled={busy}
+                    aria-describedby={encryptedNotes > 0 ? "import-encrypted-notes" : undefined}
                     bind:value={format}
                     class="block w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-gray-950 dark:text-gray-100 focus:border-gray-950 dark:focus:border-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-950 dark:focus:ring-gray-400"
                 >
@@ -477,6 +490,20 @@
                         <option {value}>{label}</option>
                     {/each}
                 </select>
+                {#if encryptedNotes > 0}
+                    <p
+                        id="import-encrypted-notes"
+                        data-testid="import-encrypted-notes"
+                        class="mt-1.5 text-sm text-gray-600 dark:text-gray-300"
+                    >
+                        {encryptedNotes === 1
+                            ? "1 encrypted note"
+                            : `${encryptedNotes} encrypted notes`} (<code>.enc.md</code>)
+                        will not be imported, because EtherPK cannot open AS Notes
+                        encryption. They stay in the source folder, and the Import
+                        Report lists each one.
+                    </p>
+                {/if}
             </div>
             <div>
                 <label

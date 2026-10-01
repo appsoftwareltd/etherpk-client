@@ -12,7 +12,7 @@ import type { GraphTheme } from '$lib/document/publish/theme/graph-theme'
 import type { ProtectionRecord } from '$lib/crypto'
 
 /** The recognised source formats. `markdown` is an arbitrary folder routed through the Obsidian pipeline. */
-export type ImportFormat = 'logseq' | 'obsidian' | 'etherpk' | 'markdown'
+export type ImportFormat = 'logseq' | 'obsidian' | 'etherpk' | 'markdown' | 'asnotes'
 
 /**
  * One file from the picked source folder. `path` is relative to the source root,

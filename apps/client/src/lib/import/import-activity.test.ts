@@ -29,7 +29,7 @@ function source(): SourceFile[] {
     ]
 }
 
-const FORMATS: ImportFormat[] = ['logseq', 'obsidian', 'markdown', 'etherpk']
+const FORMATS: ImportFormat[] = ['logseq', 'obsidian', 'markdown', 'etherpk', 'asnotes']
 
 describe.each(FORMATS)('phase contract: %s', (format) => {
     it('emits only declared labels, in declared order, never moving backwards', async () => {

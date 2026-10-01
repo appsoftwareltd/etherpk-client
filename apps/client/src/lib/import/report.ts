@@ -21,11 +21,13 @@ const SECTIONS: Array<[ReportEntry['category'], string]> = [
     ['unreferenced', 'Unreferenced assets'],
 ]
 
-const FORMAT_LABEL: Record<ImportFormat, string> = {
-    logseq: 'Logseq',
-    obsidian: 'Obsidian',
-    etherpk: 'EtherPK',
-    markdown: 'plain markdown',
+/** Each source as the report's first line names it, with the article the name takes when read aloud. */
+const SOURCE_PHRASE: Record<ImportFormat, string> = {
+    logseq: 'a Logseq',
+    obsidian: 'an Obsidian',
+    etherpk: 'an EtherPK',
+    markdown: 'a plain markdown',
+    asnotes: 'an AS Notes',
 }
 
 /** Build the report page and return it (concept deduped against the converted set). */
@@ -38,7 +40,7 @@ export function buildReportPage(
     const concept = dedupeConcept(`Import Report ${isoDate}`, (key) => taken.has(key))
 
     const lines: string[] = [
-        `Imported ${graph.documents.length} documents and ${graph.assets.length} assets from a ${FORMAT_LABEL[format]} source on ${isoDate}.`,
+        `Imported ${graph.documents.length} documents and ${graph.assets.length} assets from ${SOURCE_PHRASE[format]} source on ${isoDate}.`,
         '',
     ]
     // Files the server would not store are a storage outcome, not a conversion one, and the only

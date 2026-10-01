@@ -85,7 +85,7 @@ describe('materializeToFilesystem', () => {
         // The Graph Dictionary too, as a union (ADR 0095): a word already held is not doubled.
         expect((await adapter.read('etherpk', 'dictionary.txt')).text).toBe('Kubernetes\n')
         const report = (await adapter.read('pages', 'Import Report 2026-07-16.md')).text
-        expect(report).toContain('from a EtherPK source')
+        expect(report).toContain('from an EtherPK source')
     })
 })
 

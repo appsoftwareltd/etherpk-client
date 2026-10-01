@@ -1,10 +1,44 @@
 /**
- * Line-walk helpers shared by the Logseq and Obsidian converters: fence tracking (fence
- * interiors pass through verbatim - the degradation policy never rewrites code), an
- * inline-code guard, the scoped-concept chain for hierarchies, and frontmatter assembly.
+ * Line-walk helpers shared by the Logseq, Obsidian and AS Notes converters: fence tracking
+ * (fence interiors pass through verbatim - the degradation policy never rewrites code), an
+ * inline-code guard, the scoped-concept chain for hierarchies, and reading and assembling
+ * frontmatter.
  */
 
-import { renderFrontmatter } from '$lib/document/frontmatter/frontmatter-yaml'
+import { frontmatterData, renderFrontmatter } from '$lib/document/frontmatter/frontmatter-yaml'
+import { frontmatterSpan } from '$lib/storage/fs/frontmatter-span'
+
+/**
+ * A source document's Frontmatter as a converter must see it. `parseFrontmatter` answers "no
+ * properties" both for a document without a block and for one whose block YAML rejects, and a
+ * converter that rebuilt the block from that answer deleted the second kind. `unreadable` keeps
+ * the block's text so the converter can carry it over as written.
+ */
+export type SourceFrontmatter =
+    | { kind: 'none'; data: Record<string, unknown>; body: string }
+    | { kind: 'yaml'; data: Record<string, unknown>; body: string }
+    | {
+          kind: 'unreadable'
+          data: Record<string, unknown>
+          body: string
+          /** The whole block, both delimiters and the closing line break included. */
+          block: string
+          /** The lines between the delimiters. */
+          yaml: string
+      }
+
+export function readSourceFrontmatter(text: string): SourceFrontmatter {
+    const span = frontmatterSpan(text)
+    if (!span) return { kind: 'none', data: {}, body: text }
+    const body = text.slice(span.end)
+    const data = frontmatterData(span.body)
+    if (data === null) return { kind: 'unreadable', data: {}, body, block: text.slice(0, span.end), yaml: span.body }
+    return { kind: 'yaml', data, body }
+}
+
+/** The report line for a block kept as written (see {@link SourceFrontmatter}). */
+export const UNREADABLE_FRONTMATTER_DETAIL =
+    'Frontmatter is not valid YAML, so it was kept exactly as written. EtherPK reads none of its properties until it is corrected.'
 
 /**
  * Tracks fenced-code state across a line walk. Call once per line, in order; returns

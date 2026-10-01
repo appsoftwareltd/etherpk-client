@@ -24,6 +24,15 @@ describe('buildReportPage', () => {
         expect(page.text).not.toContain('could not be uploaded')
     })
 
+    it('names the source with the article its name takes', () => {
+        const opening = (format: Parameters<typeof buildReportPage>[1]) => buildReportPage(graph([]), format, '2026-09-30').text
+        expect(opening('logseq')).toContain('from a Logseq source on 2026-09-30.')
+        expect(opening('obsidian')).toContain('from an Obsidian source on 2026-09-30.')
+        expect(opening('etherpk')).toContain('from an EtherPK source on 2026-09-30.')
+        expect(opening('markdown')).toContain('from a plain markdown source on 2026-09-30.')
+        expect(opening('asnotes')).toContain('from an AS Notes source on 2026-09-30.')
+    })
+
     it('says the conversion was clean when only uploads failed', () => {
         const page = buildReportPage(graph([{ category: 'not-stored', detail: '"a.png" was not uploaded: too large.' }]), 'logseq', '2026-09-27')
         expect(page.text).toContain('1 file could not be uploaded - it is listed first.')

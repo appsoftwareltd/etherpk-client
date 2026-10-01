@@ -195,4 +195,20 @@ describe('convertObsidian', () => {
         expect(text).toContain('tags:')
         expect(graph.report.some((r) => r.detail.includes('Something Else'))).toBe(true)
     })
+
+    // Obsidian reads properties as YAML, so a block YAML rejects was unreadable there too. It used
+    // to vanish here: the parse failed, the body began after the block, and only a new `title:`
+    // was written above it.
+    it('keeps a frontmatter block YAML cannot read exactly as written, and reports it', async () => {
+        const block = '---\ntitle: Plans: 2026\ntags: [a\n---\n'
+        const graph = await convertObsidian([
+            src('Note.md', `${block}body links [[Other]]`),
+            src('2026-07-16.md', `${block}today`),
+            src('Other.md', 'x'),
+        ])
+        expect(doc(graph, 'Note').text).toBe(`${block}body links [[Other]]`)
+        expect(doc(graph, '2026-07-16').text).toBe(`${block}today`)
+        const unreadable = graph.report.filter((r) => r.category === 'unsupported' && r.detail.includes('not valid YAML'))
+        expect(unreadable.map((r) => r.concept).sort()).toEqual(['2026-07-16', 'Note'])
+    })
 })
