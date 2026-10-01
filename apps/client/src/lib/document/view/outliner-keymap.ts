@@ -14,7 +14,7 @@ import { frontmatterLines } from '$lib/storage/fs/frontmatter-span'
 
 import { getActiveGraphSettings } from '../active-graph-settings'
 import {
-    applyLineCuts,
+    applyLeaveListCuts,
     blockBodyEnd,
     branchRange,
     branchRootsWithin,
@@ -1104,7 +1104,7 @@ const rangeDeleteHeal: StateCommand = (view) => {
     // with its text and its children come up a level, as the bullet button leaves the list.
     const toLine = state.doc.lineAt(sel.to)
     const first = state.doc.lineAt(from).number - 1
-    lines = applyLineCuts(lines, cutsAfterBulletIntoProse(text.split('\n'), first, toLine.number - 1, sel.to - toLine.from), first - (toLine.number - 1))
+    lines = applyLeaveListCuts(lines, cutsAfterBulletIntoProse(text.split('\n'), first, toLine.number - 1, sel.to - toLine.from), first - (toLine.number - 1))
     // Drop the blank artifact at the join and heal orphans across the caret's group (shared with cut).
     ;({ lines, caretLine } = healAfterRangeDelete(lines, caretLine))
 
@@ -1452,6 +1452,14 @@ export function outlinerBindings(): readonly KeyBinding[] {
         // single-line selections, so the caret-specific commands and the defaults still run.
         { key: 'Backspace', run: rangeDeleteHeal },
         { key: 'Delete', run: rangeDeleteHeal },
+        // Over a multi-line selection Shift+Backspace and the word and line deletes delete the selection,
+        // so they heal as Backspace does and land the caret where it does. A caret falls through to their
+        // own delete, which the fence delete guard holds to the fence rules.
+        { key: 'Shift-Backspace', run: rangeDeleteHeal },
+        { key: 'Mod-Backspace', mac: 'Alt-Backspace', run: rangeDeleteHeal },
+        { key: 'Mod-Delete', mac: 'Alt-Delete', run: rangeDeleteHeal },
+        { mac: 'Mod-Backspace', run: rangeDeleteHeal },
+        { mac: 'Mod-Delete', run: rangeDeleteHeal },
         // A join across a fence edge is consumed before any merge can dissolve the block.
         { key: 'Backspace', run: backspaceAtFenceEdge },
         { key: 'Delete', run: deleteAtFenceEdge },

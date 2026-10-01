@@ -4,12 +4,13 @@
  * bypass it and used to leave a block's surviving descendants floating at their old depth with no
  * parent:
  *
- * - **Ctrl+X** goes through CodeMirror's own cut handler, and a **multi-line selection deleted some
- *   other way** (Shift+Backspace, a word delete over a selection) through CodeMirror's own delete.
- *   One that removed more than one line gets the same heal ({@link healAfterRangeDelete}): the blank
- *   artifact at the join goes, and every orphaned block is pulled up to one level under its nearest
- *   surviving ancestor (indent 0 when the whole top of the tree went), its subtree and fenced blocks
- *   moving with it.
+ * - **Ctrl+X** goes through CodeMirror's own cut handler. A cut that removed more than one line gets
+ *   the same heal ({@link healAfterRangeDelete}): the blank artifact at the join goes, and every
+ *   orphaned block is pulled up to one level under its nearest surviving ancestor (indent 0 when the
+ *   whole top of the tree went), its subtree and fenced blocks moving with it. A cut from prose over a
+ *   bullet's marker makes that bullet prose first, as the keymap's range delete does
+ *   ({@link cutsAfterBulletIntoProse}). Shift+Backspace and the word deletes over a selection go
+ *   through the keymap's range delete, as Backspace does.
  * - A **within-line selection that takes a bullet's marker** (a drag from the line's left margin over
  *   the dot, then Backspace, Delete or Ctrl+X) is character-precise, so the default delete runs and
  *   the line stops being a bullet while its children keep their depth — under a blank line, or under
@@ -23,23 +24,24 @@
  *   ({@link cutsAfterBulletIntoProse}). The bullet's text joins the prose line, as with Delete, so the
  *   bullet leaves the list: its own lines come to the margin and its children up a level. Only the
  *   selection's own replacement counts: a plain Enter on a continuation line also dispatches a
- *   replace, and every other typed-over selection is left as typed.
+ *   replace, and every other typed-over selection is left as typed. A composition (an IME, which on
+ *   Android is every word typed with GBoard) is left whole.
  *
  * Fenced-code interiors and the [[Frontmatter]] are opaque: a `- x` there is code or YAML, and a
  * filter never changes the document beyond the edit made in it.
  *
  * The caret: in the live editor the caret clamp runs BEFORE this filter (it is registered later, in
  * editor-extensions.ts), so a caret the heal's replacement span swallows would collapse to the span's
- * start — column 0 of the next line. After a delete, when the caret falls inside the span it is placed
- * explicitly at the healed line's content column; otherwise it maps through the change as usual. After
- * typing the caret sits after the new text, so that heal goes in as a change per re-indented line and
- * the caret maps through it.
+ * start — column 0 of the next line. After a cut or a within-line delete, when the caret falls inside
+ * the span it is placed explicitly at the healed line's content column; otherwise it maps through the
+ * change as usual. After typing the caret sits after the new text, so that heal goes in as a change per
+ * re-indented line and the caret maps through it.
  */
 
 import { type ChangeSpec, EditorState, type Extension, type Text, Transaction } from '@codemirror/state'
 
 import { fencedBlocks } from '../fenced-code'
-import { applyLineCuts, cutsAfterBulletIntoProse, formOneOpeners, healAfterRangeDelete, healAroundMasked, healSpan, isBulletLine, lineIndent, opaqueLineFlags } from '../outliner'
+import { applyLeaveListCuts, cutsAfterBulletIntoProse, formOneOpeners, healAfterRangeDelete, healAroundMasked, healSpan, isBulletLine, lineIndent, opaqueLineFlags } from '../outliner'
 import { clampColumn } from './caret-clamp'
 import { minimalReplacement } from './minimal-replacement'
 
@@ -51,6 +53,12 @@ export function deleteHeal(): Extension {
         // is left whole, as the source guard leaves it.
         const typed = tr.annotation(Transaction.userEvent) === 'input' || (tr.isUserEvent('input.type') && !tr.isUserEvent('input.type.compose'))
         if (!tr.docChanged || !(cut || deleted || typed)) return tr
+        // Typing is every keystroke: unless it replaced a selection reaching past one line, nothing here
+        // applies, and the document is not read at all.
+        if (typed) {
+            const sel = tr.startState.selection.main
+            if (sel.empty || tr.startState.doc.lineAt(sel.from).number === tr.startState.doc.lineAt(sel.to).number) return tr
+        }
         let count = 0
         let fromA = -1
         let toA = -1
@@ -84,12 +92,13 @@ export function deleteHeal(): Extension {
             // Only the selection's own replacement, and only one that took a bullet into prose.
             const sel = tr.startState.selection.main
             if (sel.empty || sel.from !== fromA || sel.to !== toA || cuts.length === 0) return tr
-            return [tr, { changes: reindents(tr.newDoc, lines, applyLineCuts(lines, cuts, shift)), sequential: true }]
+            const changes = reindents(tr.newDoc, lines, applyLeaveListCuts(lines, cuts, shift))
+            return changes.length ? [tr, { changes, sequential: true }] : tr
         }
         let healed: string[]
         let healedCaretLine = caretLine
-        if ((cut || deleted) && removedLines >= 2) {
-            ;({ lines: healed, caretLine: healedCaretLine } = healAfterRangeDelete(applyLineCuts(lines, cuts, shift), caretLine))
+        if (cut && removedLines >= 2) {
+            ;({ lines: healed, caretLine: healedCaretLine } = healAfterRangeDelete(applyLeaveListCuts(lines, cuts, shift), caretLine))
         } else if (removedLines === 1 && isBulletLine(startLines[firstA]) && !isBulletLine(lines[caretLine])) {
             if (lines[caretLine].trim() === '') {
                 ;({ lines: healed, caretLine: healedCaretLine } = healAfterRangeDelete(lines, caretLine))

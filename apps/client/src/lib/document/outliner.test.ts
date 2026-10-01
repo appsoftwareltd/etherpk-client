@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { fencedBlocks } from './fenced-code'
 
 import {
+    applyLeaveListCuts,
     applyLineCuts,
     blockBodyEnd,
     branchRange,
@@ -492,9 +493,20 @@ describe('a deletion from prose that takes a bullet into it', () => {
         expect(applyLineCuts(L('proa\n  cont\n  - b\n    - c'), cuts, -1)).toEqual(L('proa\ncont\n- b\n  - c'))
     })
 
-    it('cuts nothing for an indented bullet, or where its code at the margin would pair another fence', () => {
+    it('cuts nothing for an indented bullet', () => {
         expect(cutsAfterBulletIntoProse(L('prose\n  - a\n    - b'), 0, 1, 4)).toEqual([])
-        expect(cutsAfterBulletIntoProse(L('```js\ntext\nprose\n- a\n  ```\n  x\n  ```'), 2, 3, 2)).toEqual([])
+    })
+
+    it('applies the cuts only where the edited text keeps every fence paired', () => {
+        // The bullet's own code, at the margin, would close the open fence above it.
+        const before = L('```js\ntext\nprose\n- a\n  ```\n  x\n  ```')
+        const after = L('```js\ntext\nprosea\n  ```\n  x\n  ```')
+        expect(applyLeaveListCuts(after, cutsAfterBulletIntoProse(before, 2, 3, 2), -1)).toEqual(after)
+        // A form-1 bullet's fence went into the prose line with its marker: its old closer at the margin
+        // would pair with the next block's opener.
+        const form1 = L('prose\n- ```py\n  code\n  ```\n\n```\nz\n```')
+        const joined = L('pro`py\n  code\n  ```\n\n```\nz\n```')
+        expect(applyLeaveListCuts(joined, cutsAfterBulletIntoProse(form1, 0, 1, 4), -1)).toEqual(joined)
     })
 })
 

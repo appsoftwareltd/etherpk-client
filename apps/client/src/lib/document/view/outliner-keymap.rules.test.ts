@@ -773,6 +773,13 @@ table('Backspace and Delete merge Logseq-style', [
     { rule: '…the bullet’s own code block going to the margin with it, as the bullet button takes it', precedent: 'EtherPK', before: 'pro«se\n- »a\n  ```\n  x\n  ```\n  - b', key: 'Delete', after: 'pro|a\n```\nx\n```\n- b' },
     { rule: '…and only that bullet’s lines: a list nested under prose above keeps its place', precedent: 'EtherPK', before: 'Todo:\n  - t\npro«se\n- »a\n  - b', key: 'Enter', after: 'Todo:\n  - t\npro\n|a\n- b' },
     { rule: 'Shift+Backspace over such a selection does the same as Backspace', precedent: 'EtherPK', before: 'pro«se\n- »a\n  - b', key: 'Shift-Backspace', after: 'pro|a\n- b' },
+    // The deletion that takes a form-1 bullet's marker takes its fence's backticks too, so the block is
+    // already gone: its code moved to the margin would pair its old closer with a later block's opener.
+    { rule: '…unless its lines at the margin would pair a fence differently: a form-1 bullet’s code stays where it was', precedent: 'EtherPK', before: 'pro«se\n- ``»`py\n  code\n  ```\n\n```\nz\n```', key: 'Delete', after: 'pro|`py\n  code\n  ```\n\n```\nz\n```' },
+    { rule: 'Shift+Backspace over a range of blocks deletes them as Backspace does, the caret where Backspace leaves it', precedent: 'EtherPK', before: '- a\n«  - b\n    - c»', key: 'Shift-Backspace', after: '- a|' },
+    { rule: '…and Ctrl+Backspace', precedent: 'EtherPK', before: '- a\n«  - b\n    - c»', key: 'Mod-Backspace', after: '- a|' },
+    { rule: '…and Ctrl+Delete', precedent: 'EtherPK', before: '- a\n«  - b\n    - c»', key: 'Mod-Delete', after: '- a|' },
+    { rule: 'Shift+Backspace over prose lines deletes them as Backspace does', precedent: 'EtherPK', before: 'p\n«q\nr»', key: 'Shift-Backspace', after: 'p|' },
     // A prose line is a node a deeper line may nest under (`Shopping:` over `  - eggs`), so a selection
     // that takes no bullet into prose leaves the lists around it as they are.
     { rule: 'a selection across prose lines leaves a list nested under the prose below as it is', precedent: 'EtherPK', before: 'te«xt\nmo»re\nShopping:\n  - eggs', key: 'Backspace', after: 'te|re\nShopping:\n  - eggs' },

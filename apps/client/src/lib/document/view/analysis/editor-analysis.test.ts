@@ -2,6 +2,7 @@ import { EditorState } from '@codemirror/state'
 import { describe, expect, it } from 'vitest'
 
 import { outlineLines } from '../../indent-unit'
+import { editorFixture } from '../testing/editor-state-fixture'
 import {
     analysisFor,
     editorAnalysis,
@@ -288,5 +289,36 @@ describe('a freshly typed opener stays pending until the document balances', () 
         expect(analysisFor(s2).pendingFence).toBe(1)
         s2 = s2.update({ changes: { from: s2.doc.line(2).from + 2, to: s2.doc.line(2).from + 5, insert: 'gone' } }).state
         expect(analysisFor(s2).pendingFence).toBeNull()
+    })
+
+    // A stray fence anywhere keeps the document from ever balancing. Held until then, the opener a
+    // person had just closed stayed text for the rest of the session: its block drawn unstyled, and
+    // every block typed after it styled, since only one fence is held at a time.
+    it('releases the opener once its own closer pairs it, though a stray fence elsewhere keeps the document unbalanced', () => {
+        let state = EditorState.create({ doc: '- a\n- b\n  ```\n  y\n  ```\n  ```', extensions: [editorAnalysis()] })
+        state = insertLine(state, 2, '  ```') // an opener under `- a`
+        expect(analysisFor(state).pendingFence).toBe(1)
+        state = insertLine(state, 3, '  ```') // its closer
+        const facts = analysisFor(state)
+        expect(facts.pendingFence).toBeNull()
+        expect(facts.fencedBlocks).toEqual(expect.arrayContaining([{ start: 1, end: 2, fenceColumn: 2 }, { start: 4, end: 6, fenceColumn: 2 }]))
+    })
+
+    it('still holds an opener that would take a block’s fence below, with a stray fence elsewhere', () => {
+        let state = EditorState.create({ doc: '- a\n  x\n  ```\n  y\n  ```\n\n```', extensions: [editorAnalysis()] })
+        state = insertLine(state, 2, '  ```') // above `x`: it would pair with the block's opener
+        const facts = analysisFor(state)
+        expect(facts.pendingFence).toBe(1)
+        expect(facts.fencedBlocks).toEqual([{ start: 3, end: 5, fenceColumn: 2 }])
+    })
+
+    it('styles a block typed and completed with Enter on a page whose other fence pairs with nothing', () => {
+        const editor = editorFixture('- a\n  - b|\n- c\n  ```\n  y\n  ```\n  ```')
+        editor.key('Enter') // a new sibling bullet
+        for (const ch of '```') editor.type(ch)
+        editor.key('Enter') // completes the fence
+        const facts = analysisFor(editor.state)
+        expect(facts.pendingFence).toBeNull()
+        expect(facts.fencedBlocks.some((b) => b.start === 2)).toBe(true)
     })
 })

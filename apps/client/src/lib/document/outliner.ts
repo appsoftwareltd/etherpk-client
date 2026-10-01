@@ -539,11 +539,10 @@ export function joinsBulletIntoProse(lines: string[], first: number, last: numbe
  * button makes it prose, so its own continuation lines and code block come to the margin with its text,
  * and its children come up a level ({@link leaveListCuts}) rather than hang under the prose line. The
  * deletion itself takes the marker, so the bullet's own line is not cut here. Empty for any other
- * deletion, and where the lines at the margin would pair a fence differently ({@link canLeaveList}).
+ * deletion. Whether the cuts may stand is judged on the edited text ({@link applyLeaveListCuts}).
  */
 export function cutsAfterBulletIntoProse(lines: string[], first: number, last: number, toCol: number, blocks: FencedBlockRange[] = fencedBlocks(lines)): LineCut[] {
     if (!joinsBulletIntoProse(lines, first, last, toCol, blocks) || lineIndent(lines[last]) > 0) return []
-    if (!canLeaveList(lines, last, blocks)) return []
     return leaveListCuts(lines, last, blocks).filter((cut) => cut.line > last)
 }
 
@@ -552,6 +551,20 @@ export function applyLineCuts(lines: string[], cuts: readonly LineCut[], shift: 
     const out = lines.slice()
     for (const { line, count } of cuts) out[line + shift] = out[line + shift].slice(count)
     return out
+}
+
+/**
+ * `after`, the text once a deletion took a bullet into a prose line, with that bullet's cuts
+ * ({@link cutsAfterBulletIntoProse}) applied `shift` lines on, or as it is where they would pair a fence
+ * differently or move the frontmatter's end. Judged on the edited text, not the text before it: the
+ * deletion that takes a form-1 bullet's marker takes its fence's backticks too, so its block is already
+ * gone, and its old closer moved to the margin would pair with a later block's opener there.
+ */
+export function applyLeaveListCuts(after: string[], cuts: readonly LineCut[], shift: number): string[] {
+    if (cuts.length === 0) return after
+    const cut = applyLineCuts(after, cuts, shift)
+    const pairs = (lines: string[]) => fencedBlocks(lines).map((b) => `${b.start}:${b.end}`).join(' ')
+    return pairs(cut) === pairs(after) && frontmatterLines(cut) === frontmatterLines(after) ? cut : after
 }
 
 /** The span a delete heal covers around line `at`: the run of lines bounded by a blank line or a

@@ -196,9 +196,10 @@ export function createDocumentEditor(options: DocumentEditorOptions): DocumentEd
                 leaveTidy(),
                 fenceGuard(),
                 pasteClamp(),
-                // A cut, or a within-line delete that takes a bullet's marker, heals the survivors. The
-                // caret clamp (in `extensions`, registered later) runs BEFORE it, so the heal places
-                // its own caret when its change would swallow it (delete-heal.ts).
+                // A cut, a within-line delete that takes a bullet's marker, or Enter or typing over a
+                // selection from prose that takes one, heals the survivors. The caret clamp (in
+                // `extensions`, registered later) runs BEFORE it, so the heal places its own caret
+                // when its change would swallow it (delete-heal.ts).
                 deleteHeal(),
                 editorAnalysis(),
                 EditorView.lineWrapping,

@@ -36,7 +36,8 @@ export interface EditorAnalysis {
      * unbalanced, or null. While pending it is treated as plain text by every fence consumer:
      * otherwise a freshly typed opener pairs with the next bare fence below, which is some
      * existing block's opener, and everything between is restyled as code until the closer is
-     * typed. It stays pending, mapped through edits, until the document balances with it.
+     * typed. It stays pending, mapped through edits, until the document balances with it, or until it
+     * pairs without taking any block's fence: its own closer written, a stray fence elsewhere notwithstanding.
      */
     pendingFence: number | null
     wikilinks: ReturnType<typeof wikilinkSegmentsInSource>
@@ -111,9 +112,25 @@ function withoutPending(lines: string[], pending: number | null): string[] {
 }
 
 /**
+ * Whether the fence at `line` pairs without taking any block's fence: the scan with it holds every
+ * block the scan without it holds, unchanged, and one more, which it opens. That is a held opener once
+ * its own closer is written (Enter completes one). Waiting for the whole document to balance kept it
+ * held, its block drawn as text, wherever a stray fence elsewhere left the document unbalanced.
+ */
+function pairsOnItsOwn(lines: string[], line: number): boolean {
+    const raw = fencedBlocks(lines)
+    const without = fencedBlocks(withoutPending(lines, line))
+    if (raw.length !== without.length + 1 || !raw.some((b) => b.start === line)) return false
+    const key = (b: FencedBlockRange) => `${b.start}:${b.end}`
+    const rawKeys = new Set(raw.map(key))
+    return without.every((b) => rawKeys.has(key(b)))
+}
+
+/**
  * Which fence line, if any, to hold pending (see {@link EditorAnalysis.pendingFence}): the one
- * carried from the previous analysis if its line is still a bare fence, else the single bare
- * fence line this transaction introduced, and only while the document is unbalanced.
+ * carried from the previous analysis if its line is still a bare fence that does not yet pair on its
+ * own, else the single bare fence line this transaction introduced, and only while the document is
+ * unbalanced.
  */
 function resolvePending(lines: string[], previous: EditorAnalysis | undefined, tr: Transaction | undefined): number | null {
     if (balanced(lines, fencedBlocks(lines), null)) return null
@@ -125,7 +142,7 @@ function resolvePending(lines: string[], previous: EditorAnalysis | undefined, t
     }
     if (previous.pendingFence !== null) {
         const carried = mapLine(previous.pendingFence)
-        if (carried !== null && isBareFence(lines[carried])) return carried
+        if (carried !== null && isBareFence(lines[carried])) return pairsOnItsOwn(lines, carried) ? null : carried
     }
     const before = new Set<number>()
     previous.lines.forEach((l, i) => {
