@@ -25,13 +25,16 @@ export interface RequestLogContext {
  * server failed": 5xx only. A 429 stays at warn because a burst of them is how a shared
  * rate-limit key shows itself. Every other refusal (401, 403, 404) is routine and goes in at
  * info, still visible under the default `LOG_LEVEL`. The health probe runs every few seconds and
- * would otherwise be most of the log, so a passing one drops to debug.
+ * would otherwise be most of the log, so a passing one drops to debug. So does a passing
+ * Kubernetes probe on any path: a probe that checks `/` every few seconds would otherwise
+ * outnumber the page loads the log is read for.
  */
-export function requestLogLevel(method: string, path: string, status: number): RequestLogLevel {
+export function requestLogLevel(method: string, path: string, status: number, userAgent?: string | null): RequestLogLevel {
     if (status >= 500) return 'error'
     if (status === 429) return 'warn'
     if (status >= 400) return 'info'
     if (method === 'GET' && path === '/health') return 'debug'
+    if (userAgent?.startsWith('kube-probe/')) return 'debug'
     return 'info'
 }
 
@@ -87,7 +90,7 @@ export async function logRequest(
     if (response.status >= 400 && shouldCaptureErrorResponseBody(path)) {
         Object.assign(line, await errorBodyFields(response))
     }
-    context.logger[requestLogLevel(event.request.method, path, response.status)]('HTTP request', line)
+    context.logger[requestLogLevel(event.request.method, path, response.status, event.request.headers.get('user-agent'))]('HTTP request', line)
 }
 
 /**

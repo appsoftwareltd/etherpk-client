@@ -11,6 +11,8 @@
         contactUrl?: string | null;
         termsUrl?: string | null;
         privacyUrl?: string | null;
+        /** Where a visitor changes a choice about cookies or visit counting, where the app has one. */
+        privacyChoicesUrl?: string | null;
     }
 </script>
 
@@ -42,6 +44,7 @@
             { label: "Contact", href: links.contactUrl },
             { label: "Terms", href: links.termsUrl },
             { label: "Privacy", href: links.privacyUrl },
+            { label: "Privacy choices", href: links.privacyChoicesUrl },
         ].filter((entry): entry is { label: string; href: string } => Boolean(entry.href)),
     );
 </script>

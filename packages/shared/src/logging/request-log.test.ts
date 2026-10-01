@@ -37,6 +37,15 @@ describe('requestLogLevel', () => {
         expect(requestLogLevel('GET', '/health', 503)).toBe('error')
         expect(requestLogLevel('GET', '/account', 200)).toBe('info')
     })
+
+    it('drops a passing Kubernetes probe to debug whatever path it checks', () => {
+        // The Client's probe checks `/`, which is also every real visitor's first request, so
+        // the path alone cannot tell the two apart; the kubelet's user agent can.
+        expect(requestLogLevel('GET', '/', 200, 'kube-probe/1.34')).toBe('debug')
+        expect(requestLogLevel('GET', '/', 500, 'kube-probe/1.34')).toBe('error')
+        expect(requestLogLevel('GET', '/', 200, 'Mozilla/5.0 (X11; Linux x86_64)')).toBe('info')
+        expect(requestLogLevel('GET', '/', 200)).toBe('info')
+    })
 })
 
 describe('logRequest', () => {
