@@ -125,6 +125,7 @@ export function registerQuickNotesCommands(
             detail: 'Under the day each was written',
             icon: 'today',
             group: 'Journal',
+            order: 160,
             keywords: ['quick', 'notes', 'capture', 'journal', 'move'],
             // Not gated on `bodyWritable`: the write goes to today's entry, not the document
             // the menu was opened in.

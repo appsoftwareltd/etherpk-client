@@ -61,6 +61,7 @@ export function registerTaskReferenceCommands(commands: CommandRegistry, contrib
             detail: 'To hand this task to an agent',
             icon: 'copy',
             group: 'Tasks',
+            order: 150,
             keywords: ['reference', 'link', 'agent', 'task', 'copy'],
             // Not gated on `bodyWritable`: copying writes nothing to the page.
             when: (ctx) => ctx.taskOnLine === true,

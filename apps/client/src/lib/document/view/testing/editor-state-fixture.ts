@@ -13,6 +13,8 @@
  *
  *   `- item|`            a caret after "item"
  *   `- «one\n- two»`     a selection from "one" to the end of "two" (anchor « … head »)
+ *   `- »one\n- two«`     the same selection with its head first, as dragged upwards; a result
+ *                        always prints as `«…»`
  *
  * Pass `{ caret: '¦' }` when a fixture needs a literal `|` (a table row, an image size hint).
  */
@@ -20,6 +22,8 @@
 import {
     deleteCharBackward,
     deleteCharForward,
+    deleteGroupBackward,
+    deleteGroupForward,
     insertBlankLine,
     insertNewlineAndIndent,
     moveLineDown,
@@ -34,7 +38,7 @@ import type { Command } from '@codemirror/view'
 import { editorAnalysis } from '../analysis/editor-analysis'
 import { blockSelection } from '../block-select'
 import { caretClamp } from '../caret-clamp'
-import { fenceGuard, fencePad } from '../fence-guard'
+import { fenceDeleteGuard, fenceGuard, fencePad } from '../fence-guard'
 import { frontmatterBoundaryGuard } from '../frontmatter-boundary'
 import { frontmatterBindings, frontmatterKeys } from '../frontmatter-keys'
 import { deleteHeal } from '../delete-heal'
@@ -55,15 +59,23 @@ export interface ParsedFixture {
     head: number
 }
 
-/** Strip the caret / selection markers out of `text`, returning the plain doc and the selection. */
+/**
+ * Strip the caret / selection markers out of `text`, returning the plain doc and the selection.
+ * `«…»` is a range with its anchor at `«` and its head at `»`. Written the other way round, `»…«`,
+ * it is the same range with the head first: a selection dragged upwards, where the keys that read
+ * the head's line act on another line than they would for the range forwards.
+ */
 export function parseFixture(text: string, options: FixtureOptions = {}): ParsedFixture {
     const caret = options.caret ?? '|'
     const open = text.indexOf('«')
     const close = text.indexOf('»')
     if (open >= 0 || close >= 0) {
-        if (open < 0 || close < 0 || close < open) throw new Error(`Unbalanced selection markers in fixture: ${text}`)
-        const doc = text.slice(0, open) + text.slice(open + 1, close) + text.slice(close + 1)
-        return { doc, anchor: open, head: close - 1 }
+        if (open < 0 || close < 0 || text.indexOf('«', open + 1) >= 0 || text.indexOf('»', close + 1) >= 0) {
+            throw new Error(`Unbalanced selection markers in fixture: ${text}`)
+        }
+        const [from, to] = open < close ? [open, close] : [close, open]
+        const doc = text.slice(0, from) + text.slice(from + 1, to) + text.slice(to + 1)
+        return open < close ? { doc, anchor: open, head: close - 1 } : { doc, anchor: open - 1, head: close }
     }
     const at = text.indexOf(caret)
     if (at < 0) throw new Error(`Fixture has no caret marker (${caret}): ${text}`)
@@ -101,7 +113,13 @@ const DEFAULT_KEY_HANDLERS: Record<string, StateCommand> = {
     'Mod-Enter': insertBlankLine,
     // Typed as `Command` upstream but implemented over `{ state, dispatch }` only.
     Backspace: stateOnly(deleteCharBackward),
+    // CodeMirror binds Shift+Backspace to the same delete, past the outliner's Backspace keys.
+    'Shift-Backspace': stateOnly(deleteCharBackward),
     Delete: stateOnly(deleteCharForward),
+    // The word deletes (Alt on a Mac). A Mac's Cmd+Backspace deletes to the line boundary, which
+    // needs a view to find, so no row presses it; the fence delete guard judges it all the same.
+    'Mod-Backspace': stateOnly(deleteGroupBackward),
+    'Mod-Delete': stateOnly(deleteGroupForward),
     'Alt-ArrowUp': stateOnly(moveLineUp),
     'Alt-ArrowDown': stateOnly(moveLineDown),
     'Mod-z': undo,
@@ -199,7 +217,7 @@ export function editorFixture(text: string, options: EditorFixtureOptions = {}):
             // pad runs before the clamp, the clamp before the delete heal, and the paste clamp sees the
             // raw paste before the guard re-pads what is left. A fixture in another order passes rows
             // the browser fails (the heal's caret).
-            ...(withoutFilters ? [] : [leaveTidy(), fenceGuard(), pasteClamp(), deleteHeal(), blockSelection(), caretClamp(), fencePad(), frontmatterBoundaryGuard(), frontmatterKeys()]),
+            ...(withoutFilters ? [] : [leaveTidy(), fenceGuard(), pasteClamp(), deleteHeal(), blockSelection(), caretClamp(), fencePad(), fenceDeleteGuard(), frontmatterBoundaryGuard(), frontmatterKeys()]),
             ...extensions,
         ],
     })

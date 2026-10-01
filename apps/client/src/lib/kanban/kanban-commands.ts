@@ -126,6 +126,7 @@ export function registerKanbanCommands(commands: CommandRegistry, contributions:
             detail: 'For a concept here',
             icon: 'kanban',
             group: 'Tasks',
+            order: 140,
             keywords: ['board', 'lanes', 'tasks', 'status'],
             // Not gated on `bodyWritable`: opening a board writes nothing to the page.
             when: () => deps.isDesktop(),

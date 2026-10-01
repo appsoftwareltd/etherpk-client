@@ -55,7 +55,7 @@ import { wikilinkAugmentation } from './augmentations/wikilink'
 import { wikilinkCompletion } from './augmentations/wikilink-complete'
 import { blockSelection } from './block-select'
 import { caretClamp } from './caret-clamp'
-import { fencePad } from './fence-guard'
+import { fenceDeleteGuard, fencePad } from './fence-guard'
 import { type EditRefusal, editRefusalReporter } from './edit-refused'
 import { type EditorDocumentInfo, editorDocument } from './editor-document'
 import { lineAnchor } from './line-anchor'
@@ -150,6 +150,11 @@ export function editorFeatures(services: EditorExtensionServices): EditorFeature
         // Registered after the caret clamp so it runs before it (filters run in reverse): a code line
         // an edit leaves short of its fence column is padded first, and the clamp judges it as code.
         { name: 'fence-pad', extension: fencePad() },
+        // A delete never moves a fence line on its own or joins text onto one (fence-guard.ts): the
+        // word and line deletes and a selection reach past the keymap's fence-edge keys. Registered
+        // after the pad so it runs before it, and judges the delete as typed; before the frontmatter
+        // boundary so that one runs first, and a delete at the closing delimiter still says why.
+        { name: 'fence-deletes', extension: fenceDeleteGuard() },
         // The Frontmatter block's edges: body text never joins onto its closer, and it never grows
         // past what was typed into it (ADR 0061).
         { name: 'frontmatter-boundary', extension: frontmatterBoundaryGuard() },

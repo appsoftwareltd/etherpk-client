@@ -39,6 +39,7 @@ describe('editor feature stack', () => {
             'block-selection',
             'caret-clamp',
             'fence-pad',
+            'fence-deletes',
             'frontmatter-boundary',
             'wrap-selection',
             'spell-check',
@@ -90,6 +91,20 @@ describe('editor feature stack', () => {
         before('caret-clamp', 'markdown-format')
         before('fence-pad', 'markdown-format')
         before('frontmatter-boundary', 'markdown-format')
+        before('fence-deletes', 'markdown-format')
+    })
+
+    it('judges a delete against the fences before the pad changes anything', () => {
+        // Registered after the pad, the fence delete guard runs before it, so it sees the delete as
+        // typed: a refused delete changes nothing, padding included (fence-guard.ts, fenceDeleteGuard).
+        before('fence-pad', 'fence-deletes')
+    })
+
+    it('lets the frontmatter boundary refuse first, so a delete at the closing delimiter says why', () => {
+        // Filters run last-registered first: the boundary, registered after the fence delete guard, sees
+        // the delete before it and refuses with its notice (edit-refused.ts); the guard's own refusal is
+        // silent, as a consumed key is.
+        before('fence-deletes', 'frontmatter-boundary')
     })
 
     it('pads a code line short of its fence column before the caret clamp judges the caret', () => {

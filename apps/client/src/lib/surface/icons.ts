@@ -33,6 +33,8 @@ export const ICON_PATHS: Record<string, string> = {
     outdent: '<path d="M2.5 4h11M2.5 8h6.5M2.5 12h6.5M6.3 7.2 4 8l2.3 0.8z" fill="currentColor" stroke="none"/><path d="M2.5 4h11"/><path d="M2.5 8h6.5M2.5 12h6.5"/>',
     'move-up': '<path d="M8 12.5V3.5M4.5 7 8 3.5 11.5 7"/>',
     'move-down': '<path d="M8 3.5v9M4.5 9 8 12.5 11.5 9"/>',
+    /** A filled dot, as the editor draws a bullet: the bullet toggle. Larger than the `default` dot. */
+    bullet: '<circle cx="8" cy="8" r="3" fill="currentColor" stroke="none"/>',
     task: '<rect x="2.5" y="2.5" width="11" height="11" rx="2"/><path d="M5.5 8 7.3 10 10.5 5.8"/>',
     /** Three columns of different depths: a [[Kanban Board]]'s lanes, on its tab. */
     kanban: '<rect x="2.5" y="2.5" width="3" height="11" rx="1"/><rect x="6.5" y="2.5" width="3" height="7" rx="1"/><rect x="10.5" y="2.5" width="3" height="9" rx="1"/>',

@@ -77,12 +77,13 @@ describe('registerEditorCommands — mobile wikilink shortcuts', () => {
 
         expect(commands.has('editor.insertWikilinkOpen')).toBe(true)
         expect(commands.has('editor.insertWikilinkClose')).toBe(true)
-        // The task toggle sits right after the wikilink pair, then undo and redo: the strip
-        // scrolls on a phone, and buried among the block ops these were off-screen exactly when
-        // someone was on a task, or had just made a mistake.
+        // The bullet toggle comes first after the slash, then the wikilink pair, the task toggle, and
+        // undo and redo: the strip scrolls on a phone, and buried among the block ops these were
+        // off-screen exactly when someone was on a task, or had just made a mistake.
         const fixed = listCommandBarItems(contributions).filter((b) => !b.contextualGroup)
-        expect(fixed.slice(0, 7)).toMatchObject([
+        expect(fixed.slice(0, 8)).toMatchObject([
             { command: 'editor.openCommandMenu' },
+            { command: 'editor.toggleBullet', icon: 'bullet', label: 'Bullet', bulletToggleOnly: true, pressed: 'bullet' },
             { command: 'editor.insertWikilinkOpen', label: 'Insert [[' },
             { command: 'editor.insertWikilinkClose', label: 'Insert ]]' },
             { command: 'editor.toggleTask', taskToggleOnly: true },
@@ -267,7 +268,7 @@ describe('registerEditorCommands — table.insert', () => {
         const contributions = createContributionRegistry()
         const teardown = registerEditorCommands(createCommandRegistry(), contributions)
         const bar = listCommandBarItems(contributions)
-        expect(bar.find((b) => b.id === 'table.insert')).toMatchObject({ tableInsertOnly: true, writableOnly: true, order: 6 })
+        expect(bar.find((b) => b.id === 'table.insert')).toMatchObject({ tableInsertOnly: true, writableOnly: true, order: 7 })
         expect(bar.filter((b) => b.contextualGroup === 'table').map((b) => b.id)).toEqual([
             'table.addRow',
             'table.addColumn',
@@ -333,6 +334,7 @@ describe('registerEditorCommands — a locked Protected Document', () => {
             'table.insert',
             // Would make the frontmatter line a bullet.
             'editor.indent',
+            'editor.toggleBullet',
             'editor.toggleTask',
             'editor.undo',
             'editor.redo',
@@ -343,6 +345,12 @@ describe('registerEditorCommands — a locked Protected Document', () => {
 
     it('the same Commands run once the document is readable again', async () => {
         expect(await run('editor.insertWikilinkOpen', true)).toBe('---\ntitle: x[[\n---\n')
+    })
+
+    it('the bullet toggle leaves a body line alone while locked, and makes it a bullet once readable', async () => {
+        // On a body line, so it is the lock and not the frontmatter that refuses.
+        expect(await run('editor.toggleBullet', false, '---\ntitle: x\n---\nbody^')).toBe('---\ntitle: x\n---\nbody')
+        expect(await run('editor.toggleBullet', true, '---\ntitle: x\n---\nbody^')).toBe('---\ntitle: x\n---\n- body')
     })
 
     it('the bracket buttons leave a selected word alone while locked, and wrap it once readable', async () => {
@@ -365,6 +373,7 @@ describe('registerEditorCommands — a locked Protected Document', () => {
             'table.addColumn',
             'table.removeRow',
             'table.removeColumn',
+            'editor.toggleBullet',
             'editor.insertWikilinkOpen',
             'editor.insertWikilinkClose',
             'editor.toggleTask',
@@ -389,8 +398,8 @@ describe('registerEditorCommands — a locked Protected Document', () => {
         // None of them writes into the locked body.
         expect(ids({ inTable: true, tableInsertable: false, bodyWritable: false })).toEqual([
             'search.open',
-            'workspace.reset',
             'editor.spellCheckOff',
+            'workspace.reset',
         ])
         expect(ids({ inTable: false, tableInsertable: true, bodyWritable: true })).toContain('asset.upload')
         teardown()

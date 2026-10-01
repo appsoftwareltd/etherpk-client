@@ -28,7 +28,7 @@ export { default as BacklinksView } from './view/BacklinksView.svelte'
  */
 export { setActiveDocument, getActiveDocument } from './active-document'
 export { setActiveEditorView, getActiveEditorView, clearActiveEditorView } from './active-editor'
-export { editorContext, refreshEditorContext } from './editor-context.svelte'
+export { editorContext, refreshEditorContext, registerCommandBar } from './editor-context.svelte'
 export {
     initEditorFont,
     getEditorFontSize,

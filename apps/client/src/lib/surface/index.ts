@@ -37,6 +37,7 @@ export {
     type CommandMenuContext,
     COMMAND_MENU_KIND,
     registerCommandMenuItem,
+    commandMenuItemsInOrder,
     listCommandMenuItems,
 } from './command-menu'
 export {

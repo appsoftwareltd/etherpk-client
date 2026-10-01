@@ -14,7 +14,7 @@
 
 import { frontmatterLines } from '$lib/storage/fs/frontmatter-span'
 
-import { type FencedBlockRange, fencedBlocks } from './fenced-code'
+import { type FencedBlockRange, fencedBlocks, fencedBlocksAtLine, fencedBlockTree } from './fenced-code'
 import { INDENT_UNIT, type OutlineLine, outlineLines } from './indent-unit'
 
 /**
@@ -99,8 +99,8 @@ export function opaqueLineFlags(lines: string[], blocks: FencedBlockRange[]): bo
  */
 export function formOneOpeners(lines: readonly string[], blocks: readonly FencedBlockRange[]): Set<number> {
     const body = frontmatterLines(lines)
-    const outermost = (b: FencedBlockRange) => !blocks.some((o) => o.start < b.start && b.start <= o.end)
-    return new Set(blocks.filter((b) => b.start >= body && isBulletLine(lines[b.start]) && outermost(b)).map((b) => b.start))
+    const { sorted, parent } = fencedBlockTree(blocks) // an outermost block has no block around it
+    return new Set(sorted.filter((b, i) => parent[i] < 0 && b.start >= body && isBulletLine(lines[b.start])).map((b) => b.start))
 }
 
 /** Map from a fenced block's opener line index to the block, for O(1) "does a fence start here?". */
@@ -189,6 +189,66 @@ export function outdentTarget(lines: string[], i: number, blocks: FencedBlockRan
     return parent === null ? 0 : lineIndent(lines[parent])
 }
 
+/** A number of leading characters to remove from one line. */
+export interface LineCut {
+    line: number
+    count: number
+}
+
+/**
+ * Leaving the list from the bullet at column 0 on line `root` (Shift+Tab past the root, and the bullet
+ * toggle): how many leading characters each line of its branch loses. The root loses its marker and
+ * any checkbox. Its own continuation lines and code block lose up to the marker's width, so they come
+ * to column 0 with it. Each child loses its own indent, its subtree with it, so it comes up one level
+ * and none is left under a prose line: a four-space child lands at column 0 too, and on a ragged grid
+ * a later, shallower child keeps its own lines under it. A line after the children that is no deeper
+ * than the child before it (a paragraph after the sublist) is the root's own, and goes to the margin
+ * with it. A fenced block moves as a unit with the line it belongs to. No line is added or removed,
+ * so every line keeps its index.
+ */
+export function leaveListCuts(lines: string[], root: number, blocks: FencedBlockRange[] = fencedBlocks(lines)): LineCut[] {
+    const { end } = branchRange(lines, root, blocks)
+    const bodyEnd = blockBodyEnd(lines, root, blocks)
+    const starts = fenceStartMap(blocks)
+    const cuts: LineCut[] = [{ line: root, count: lineIndent(lines[root]) + markerLength(lines[root]) }]
+    const cut = (j: number, columns: number) => {
+        const count = Math.min(lineIndent(lines[j]), columns)
+        if (count > 0) cuts.push({ line: j, count })
+    }
+    for (let j = root + 1; j <= bodyEnd; j++) cut(j, MARKER_WIDTH)
+    // One pass over the children, read as branchRange reads a branch: a bullet no deeper than the
+    // current child starts the next child, a deeper line belongs to the current child, and a line no
+    // deeper than it that is not a bullet is the root's own.
+    let child = -1 // the indent of the child whose subtree is being cut, or -1 between children
+    for (let j = bodyEnd + 1; j <= end; ) {
+        const indent = lineIndent(lines[j])
+        if (isBulletLine(lines[j]) && (child < 0 || indent <= child)) child = indent
+        else if (indent <= child) child = -1
+        const last = starts.get(j)?.end ?? j
+        for (let k = j; k <= last; k++) cut(k, child < 0 ? MARKER_WIDTH : child)
+        j = last + 1
+    }
+    return cuts
+}
+
+/**
+ * Whether the bullet at column 0 on line `root` may leave the list: whether every fenced block keeps
+ * the pairing it has, and the frontmatter keeps its extent, once the lines move. The bullet's text can
+ * be a fence or a `---`, and its own code block moves to the margin with it. At the margin a fence
+ * pairs with another fence there and a `---` can close a frontmatter block, which would turn prose
+ * into code, code into prose, or body text into metadata (Editor Content Rules → Shift+Tab past the
+ * root). A form-1 bullet may leave, since its fences move to column 0 together and stay paired.
+ * `blocks` is the pairing of `lines` when the caller already holds it, to spare a scan: the editor
+ * analysis's, while it holds no pending fence. The lines after the cuts are always scanned afresh,
+ * because a line can stop closing a fence anywhere above it (an empty root becomes a blank line).
+ */
+export function canLeaveList(lines: string[], root: number, blocks: FencedBlockRange[] = fencedBlocks(lines)): boolean {
+    const after = lines.slice()
+    for (const { line, count } of leaveListCuts(lines, root, blocks)) after[line] = after[line].slice(count)
+    const pairs = (bs: readonly FencedBlockRange[]) => bs.map((b) => `${b.start}:${b.end}`).join(' ')
+    return pairs(fencedBlocks(after)) === pairs(blocks) && frontmatterLines(after) === frontmatterLines(lines)
+}
+
 /**
  * The minimum indent a non-bullet line may outdent to: if it is a continuation line under a bullet
  * (the nearest shallower line above is a bullet), its owning bullet's content column
@@ -231,6 +291,12 @@ export function cycleTask(line: string): string {
  * [[Outliner Block Group]]. A heading, a bare blank line, the parent itself, or prose at the root's
  * indent all end the sibling list — they bound the group (ADR 0021). Fence-internal blanks are skipped.
  * On text on the grid this is exactly "the nearest earlier bullet at the same indent".
+ *
+ * A fenced block reads as one line at its opener's indent, as prose does: deeper than the root it is
+ * inside a branch above, and at or left of the root it ends the list. A code block at the margin is
+ * prose that ends the group, and a parent's own block between two children closes the one above, as
+ * the outline walk reads both. Read across, Tab nested a bullet the boundary normaliser then took for
+ * an orphan, and Alt+Up rebuilt the two branches without the block between them.
  */
 export function prevSiblingRange(
     lines: string[],
@@ -251,7 +317,23 @@ export function prevSiblingRange(
         }
         // Fenced content is opaque: a `# comment` or `- item` in code is neither a heading nor a bullet.
         // A form-1 opener is a bullet, a sibling like any other, and its code block moves with it.
-        if (inFence[j] && !bulletOpeners.has(j)) continue
+        if (inFence[j] && !bulletOpeners.has(j)) {
+            // The block as a whole (the outermost, for a code sample) is a line at its opener's indent.
+            // The frontmatter has no block: it bounds the group, as it always sits above the body.
+            const around = fencedBlocksAtLine(blocks, j)
+            if (!around) return null
+            const opener = around.outer.start
+            if (bulletOpeners.has(opener)) {
+                j = opener + 1 // a form-1 block: its opener, next up, is the bullet itself
+                continue
+            }
+            const ind = lineIndent(lines[opener])
+            if (ind > root || (ind < root && isContinuationLine(lines, opener))) {
+                j = opener // deeper, or a soft line of a bullet further up: step over the block
+                continue
+            }
+            return null
+        }
         if (isHeadingLine(line)) return null
         const ind = lineIndent(line)
         if (!isBulletLine(line)) {
@@ -421,6 +503,55 @@ export function healAfterRangeDelete(lines: string[], caretLine: number): { line
     const { start, end } = healSpan(out, at, blocks)
     out = healOrphanIndent(out, start, end, blocks)
     return { lines: out, caretLine: at }
+}
+
+/**
+ * {@link healOrphanIndent} over `[start, end]` with line `masked` read as blank, so it is nobody's parent,
+ * then put back as it was. A prose line is a node the walk lets a deeper line nest under (`Shopping:` over
+ * `  - eggs`), so only the line a deletion just made prose is masked, never the prose around it.
+ */
+export function healAroundMasked(lines: string[], masked: number, start: number, end: number, blocks: FencedBlockRange[] = fencedBlocks(lines)): string[] {
+    const input = lines.slice()
+    input[masked] = ''
+    const out = healOrphanIndent(input, start, end, blocks)
+    out[masked] = lines[masked]
+    return out
+}
+
+/**
+ * Whether deleting from line `first` to column `toCol` of line `last` takes a bullet's marker into a
+ * prose line: the range starts on a line that is neither a bullet nor a continuation, and ends on a
+ * bullet past its indent. The bullet's text joins that line, so the bullet leaves the list as the bullet
+ * button makes one prose ({@link cutsAfterBulletIntoProse}). A range starting in another bullet's text
+ * merges the two blocks instead, and is not one of these.
+ */
+export function joinsBulletIntoProse(lines: string[], first: number, last: number, toCol: number, blocks: FencedBlockRange[] = fencedBlocks(lines)): boolean {
+    if (last <= first) return false
+    const inFence = opaqueLineFlags(lines, blocks)
+    if (inFence[first] || (inFence[last] && !formOneOpeners(lines, blocks).has(last))) return false
+    if (!isBulletLine(lines[last]) || toCol <= lineIndent(lines[last])) return false
+    return !isBulletLine(lines[first]) && !isContinuationLine(lines, first)
+}
+
+/**
+ * What a deletion that takes a bullet at column 0 into a prose line ({@link joinsBulletIntoProse}) does
+ * to the lines after it, read on the text before the deletion: the bullet leaves the list as the bullet
+ * button makes it prose, so its own continuation lines and code block come to the margin with its text,
+ * and its children come up a level ({@link leaveListCuts}) rather than hang under the prose line. The
+ * deletion itself takes the marker, so the bullet's own line is not cut here. Empty for any other
+ * deletion, and where the lines at the margin would pair a fence differently ({@link canLeaveList}).
+ */
+export function cutsAfterBulletIntoProse(lines: string[], first: number, last: number, toCol: number, blocks: FencedBlockRange[] = fencedBlocks(lines)): LineCut[] {
+    if (!joinsBulletIntoProse(lines, first, last, toCol, blocks) || lineIndent(lines[last]) > 0) return []
+    if (!canLeaveList(lines, last, blocks)) return []
+    return leaveListCuts(lines, last, blocks).filter((cut) => cut.line > last)
+}
+
+/** `lines` with each cut applied `shift` lines from where it was read (lines before it removed or added). */
+export function applyLineCuts(lines: string[], cuts: readonly LineCut[], shift: number): string[] {
+    const out = lines.slice()
+    for (const { line, count } of cuts) out[line + shift] = out[line + shift].slice(count)
+    return out
 }
 
 /** The span a delete heal covers around line `at`: the run of lines bounded by a blank line or a
@@ -673,6 +804,9 @@ export function computeMove(
         }
     } else {
         const sib = prevSiblingRange(lines, bulletIndex, blocks)
+        // The jump rebuilds the two branches, so a line between them would be lost. Siblings are
+        // adjacent; where a scan ever finds one that is not, the key moves nothing.
+        if (sib && sib.end + 1 !== br.start) return null
         if (sib) {
             // Jump the branch over the previous sibling's whole subtree, same depth.
             indentDelta = onto(sib.start)

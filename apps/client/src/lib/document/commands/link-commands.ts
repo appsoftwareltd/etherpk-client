@@ -62,6 +62,7 @@ export function registerLinkCommands(
             detail: 'Put the path of the file link on this line on the clipboard',
             icon: 'copy',
             group: 'Link',
+            order: 130,
             keywords: ['file', 'path', 'clipboard', 'link', 'copy'],
             when: (ctx) => ctx.fileLinkOnLine === true,
             command: LINK_COPY_PATH,

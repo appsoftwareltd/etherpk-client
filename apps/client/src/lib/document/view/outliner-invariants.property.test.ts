@@ -13,10 +13,13 @@ import { describe, expect, it } from 'vitest'
 
 import { frontmatterLines } from '$lib/storage/fs/frontmatter-span'
 
-import { fencedBlocks } from '../fenced-code'
+import { fencedBlocks, fenceLineInfo } from '../fenced-code'
 import { normaliseIndentUnit, outlineLines } from '../indent-unit'
-import { isBulletLine, lineIndent, markerLength, opaqueLineFlags, parentIndex } from '../outliner'
+import { bulletContent, contentStart, formOneOpeners, isBulletLine, lineIndent, markerLength, opaqueLineFlags, parentIndex } from '../outliner'
+import { analysisFor } from './analysis/editor-analysis'
 import { clampColumn } from './caret-clamp'
+import { toggleBullet } from './outliner-keymap'
+import { bulletToggleable } from './task-toggleable'
 import { editorFixture, type HeadlessEditor } from './testing/editor-state-fixture'
 
 const INDENT = 2
@@ -101,8 +104,34 @@ const formOneArb = fc.array(fc.constantFrom<FenceForm>('below', 'on', 'on-info',
  *  scalar, not `|`, since `|` is the fixture's caret marker. */
 const frontmatterArb = fc.constantFrom<string[]>([], ['---', 'title: T', 'tags:', '  - x', '---'], ['---', 'snippet: >', '  - ```js', '    x', '    ```', '---'])
 
-function render(outline: Bullet[], grid: Grid = 'unit', extras: number[] = [], afterChildren: (string | null)[] = [], bareBlanks: boolean[] = [], formOne: FenceForm[] = [], frontmatter: string[] = []): string {
-    const lines: string[] = [...frontmatter]
+/** Bullet text that is a `---`, one per bullet, in place of the word on a bullet with no code block of
+ *  its own: leaving the list takes it to the margin, where it can close a frontmatter block. Beside the
+ *  outline, like the extras. */
+const ruleTextArb = fc.array(fc.option(fc.constant('---'), { nil: null }), { minLength: 7, maxLength: 7 })
+
+/** The same with fence text too, which at the margin pairs with another fence there. Only the check of
+ *  leaving the list uses it: Delete at the end of a bullet whose text is an unterminated fence joins the
+ *  next bullet's text onto it, and the joined opener takes the next block's opening fence for its
+ *  closer, a gap of the joins, not of leaving the list. */
+const edgeTextArb = fc.array(fc.option(fc.constantFrom('```', '```py', '---'), { nil: null }), { minLength: 7, maxLength: 7 })
+
+/** Text at the margin around the outline that a bullet's text could pair with once its marker goes: an
+ *  unclosed `---` with a key under it or a closed frontmatter block above, a rule below. Beside the
+ *  outline, like the extras. */
+interface Margin {
+    above: string[]
+    below: string[]
+}
+/** The same with fences too: an unterminated prose fence above, a prose code block below. An open fence
+ *  above with a fence below makes the whole outline the code of one prose block, its own blocks nested in
+ *  it. A prose code block directly under a bullet ends its group, which Tab once nested across. */
+const marginArb: fc.Arbitrary<Margin> = fc.record({
+    above: fc.constantFrom<string[]>([], ['---', 'title: T'], ['---', 'title: T', '---'], ['```js', 'text']),
+    below: fc.constantFrom<string[]>([], ['```', 'code', '```'], ['', '```', 'code', '```'], ['', '---', 'more']),
+})
+
+function render(outline: Bullet[], grid: Grid = 'unit', extras: number[] = [], afterChildren: (string | null)[] = [], bareBlanks: boolean[] = [], formOne: FenceForm[] = [], frontmatter: string[] = [], edgeText: (string | null)[] = [], margin: Margin = { above: [], below: [] }): string {
+    const lines: string[] = [...frontmatter, ...margin.above]
     const step = grid === 'tab' ? '\t' : ' '.repeat(grid === 'four' || grid === 'ragged' ? 4 : INDENT)
     /** Paragraphs waiting for their block's subtree to close, innermost last. */
     const pending: { level: number; line: string }[] = []
@@ -117,7 +146,8 @@ function render(outline: Bullet[], grid: Grid = 'unit', extras: number[] = [], a
         // no closer at the column pairs with them.
         const form = formOne[n] ?? 'below'
         const onBulletLine = b.fence !== null && b.task === 'none' && form !== 'below'
-        lines.push(onBulletLine ? `${indent}${marker}\`\`\`${form === 'on-info' ? 'py' : ''}` : `${indent}${marker}${b.text}`)
+        const text = b.fence === null ? (edgeText[n] ?? b.text) : b.text
+        lines.push(onBulletLine ? `${indent}${marker}\`\`\`${form === 'on-info' ? 'py' : ''}` : `${indent}${marker}${text}`)
         // The content column is indent + the fixed marker width (ADR 0020), for tasks too - a
         // continuation typed with Shift+Enter lands there, not after the checkbox.
         const column = indent + '  '
@@ -138,6 +168,7 @@ function render(outline: Bullet[], grid: Grid = 'unit', extras: number[] = [], a
         if (paragraph !== null && (outline[n + 1]?.level ?? 0) > b.level) pending.push({ level: b.level, line: `${column}${paragraph}` })
     }
     closeTo(0)
+    lines.push(...margin.below)
     return lines.join('\n')
 }
 
@@ -152,8 +183,8 @@ const scenarioArb = fc.record({
     keys: fc.array(fc.constantFrom(...STRUCTURAL_KEYS), { minLength: 1, maxLength: 6 }),
 })
 
-function editorFor(outline: Bullet[], caretAt: number, selectTo?: number, grid: Grid = 'unit', extras: number[] = [], afterChildren: (string | null)[] = [], bareBlanks: boolean[] = [], formOne: FenceForm[] = [], frontmatter: string[] = []): HeadlessEditor {
-    const doc = render(outline, grid, extras, afterChildren, bareBlanks, formOne, frontmatter)
+function editorFor(outline: Bullet[], caretAt: number, selectTo?: number, grid: Grid = 'unit', extras: number[] = [], afterChildren: (string | null)[] = [], bareBlanks: boolean[] = [], formOne: FenceForm[] = [], frontmatter: string[] = [], edgeText: (string | null)[] = [], margin?: Margin): HeadlessEditor {
+    const doc = render(outline, grid, extras, afterChildren, bareBlanks, formOne, frontmatter, edgeText, margin)
     const pos = Math.round(caretAt * doc.length)
     const editor = editorFixture(doc.slice(0, pos) + '|' + doc.slice(pos))
     // Re-place the caret through a selection transaction so the caret clamp applies, exactly as a
@@ -218,6 +249,19 @@ function fencesBalanced(lines: string[]): number {
     return fencedBlocks(lines).filter((b) => b.start >= body).length
 }
 
+/**
+ * The code a document holds, as an oracle independent of the keymap's own guard (which compares which
+ * lines are code, line by line through the change): each fenced block as its opener's info string and
+ * the text of its code lines, sorted, so a block may move or re-indent but not pair differently, and the
+ * frontmatter's text.
+ */
+function codeHeld(lines: string[]): string {
+    const blocks = fencedBlocks(lines)
+        .map((b) => [fenceLineInfo(lines[b.start])?.info ?? '', ...lines.slice(b.start + 1, b.end).map((l) => l.trim())].join('\n'))
+        .sort()
+    return [lines.slice(0, frontmatterLines(lines)).join('\n'), ...blocks].join('\u0000')
+}
+
 /** Backspace or Delete with the caret inside a fence line's own text (right of the fence column). */
 function editsFenceText(editor: HeadlessEditor, key: string): boolean {
     const { state } = editor
@@ -227,17 +271,43 @@ function editsFenceText(editor: HeadlessEditor, key: string): boolean {
         // The deleting keys, and the keys whose default replaces a selection (Enter, Mod-Enter), remove
         // a selected fence line by the user's own hand: the block is dissolved on purpose, like editing
         // the fence's own characters.
-        if (!['Backspace', 'Delete', 'Enter', 'Mod-Enter'].includes(key)) return false
+        if (!['Backspace', 'Delete', 'Mod-Backspace', 'Mod-Delete', 'Enter', 'Mod-Enter'].includes(key)) return false
         const first = state.doc.lineAt(sel.from).number - 1
         const last = state.doc.lineAt(sel.to).number - 1
         return fencedBlocks(lines).some((b) => (b.start >= first && b.start <= last) || (b.end >= first && b.end <= last))
     }
-    if (key !== 'Backspace' && key !== 'Delete') return false
+    // The word deletes take a fence's text from where the character deletes would take a character of it.
+    const forward = key === 'Delete' || key === 'Mod-Delete'
+    if (!forward && key !== 'Backspace' && key !== 'Mod-Backspace') return false
     const line = state.doc.lineAt(sel.head)
     const onFence = fencedBlocks(lines).some((b) => line.number - 1 === b.start || line.number - 1 === b.end)
     const margin = lineIndent(line.text) + (isBulletLine(line.text) ? markerLength(line.text) : 0)
     // Backspace right of the margin removes a fence character; Delete at the margin removes the first one.
-    return onFence && (key === 'Delete' ? sel.head - line.from >= margin : sel.head - line.from > margin)
+    return onFence && (forward ? sel.head - line.from >= margin : sel.head - line.from > margin)
+}
+
+/** A deleting or splitting key on a rule (`---`, at the margin or as a bullet's text): an edit of the
+ *  person's own dashes, as of a fence's own characters. Deleted down to, or split around, a lone `-`, a
+ *  rule looks like a broken marker to the marker check, which judges bullets, not a person's text. */
+function editsRule(editor: HeadlessEditor, key: string): boolean {
+    if (!['Backspace', 'Delete', 'Enter', 'Shift-Enter', 'Mod-Enter'].includes(key)) return false
+    const line = editor.state.doc.lineAt(editor.state.selection.main.head).text
+    return /^-+$/.test(isBulletLine(line) ? bulletContent(line) : line.trim())
+}
+
+/** Move the caret to where Backspace or Delete joins two blocks rather than edits text: the start of a
+ *  bullet's text for Backspace, the end of a bullet's line for Delete. False where the caret's line is
+ *  not a bullet of the outline (code, YAML, prose), where neither key joins blocks. */
+function placeForJoin(editor: HeadlessEditor, key: 'Backspace' | 'Delete'): boolean {
+    const sel = editor.state.selection.main
+    if (!sel.empty) return false
+    const line = editor.state.doc.lineAt(sel.head)
+    const lines = editor.text().split('\n')
+    const blocks = fencedBlocks(lines)
+    const n = line.number - 1
+    if (!isBulletLine(line.text) || (opaqueLineFlags(lines, blocks)[n] && !formOneOpeners(lines, blocks).has(n))) return false
+    editor.select(key === 'Backspace' ? line.from + contentStart(line.text) : line.to)
+    return true
 }
 
 /** The selection starts inside the frontmatter: YAML editing, which may dissolve the block on purpose
@@ -522,6 +592,142 @@ describe('outliner invariants under random key sequences', () => {
                 const before = editor.fixture()
                 const handled = editor.key(keys[0])
                 if (!handled || editor.text() === before.replace('|', '')) return
+                editor.key('Mod-z')
+                expect(editor.fixture()).toBe(before)
+            }),
+            fuzz(300),
+        )
+    })
+
+    it('the bullet toggle among the structural keys keeps the invariants and acts exactly where its gate is live', () => {
+        // The Command Bar's bullet toggle has no key, so it runs here as a pseudo-key among the structural
+        // keys, over outlines with a rule (`---`) or a code block at the margin, or a rule as a bullet's text.
+        const stepArb = fc.oneof({ weight: 2, arbitrary: fc.constantFrom(...STRUCTURAL_KEYS) }, { weight: 1, arbitrary: fc.constant('bullet') })
+        const toggleArb = fc.record({ scenario: scenarioArb, ruleText: ruleTextArb, margin: marginArb, steps: fc.array(stepArb, { minLength: 1, maxLength: 6 }) })
+        fc.assert(
+            fc.property(toggleArb, ({ scenario: { outline, caretAt, selectTo }, ruleText, margin, steps }) => {
+                const editor = editorFor(outline, caretAt, selectTo, 'unit', [], [], [], [], [], ruleText, margin)
+                for (const step of steps) {
+                    if (editsFenceText(editor, step) || editsFrontmatter(editor) || editsRule(editor, step)) return
+                    const before = editor.text().split('\n')
+                    if (step === 'bullet') {
+                        const live = bulletToggleable(editor.state)
+                        toggleBullet(editor as never)
+                        // A greyed button never hides an edit, and a live one never does nothing.
+                        expect(editor.text() !== before.join('\n'), 'gate').toBe(live)
+                    } else editor.key(step)
+                    const lines = editor.text().split('\n')
+                    expect(fencesBalanced(lines), step).toBeGreaterThanOrEqual(fencesBalanced(before))
+                    if (step === 'bullet') expect(frontmatterLines(lines), step).toBe(frontmatterLines(before))
+                    expect(noOrphans(lines)).toBe(true)
+                    expect(indentsOnGrid(lines)).toBe(true)
+                    expect(markersIntact(lines)).toBe(true)
+                    expect(keysAndWalkAgree(lines)).toBe(true)
+                    expect(normaliseIndentUnit(editor.text())).toBe(editor.text())
+                    const sel = editor.state.selection.main
+                    if (!sel.empty) continue
+                    const line = editor.state.doc.lineAt(sel.head)
+                    expect(sel.head - line.from, step).toBeGreaterThanOrEqual(clampColumn(lines, line.number - 1))
+                }
+            }),
+            fuzz(400),
+        )
+    })
+
+    it('no key that moves or joins text re-pairs a fence or changes the frontmatter', () => {
+        // A bullet's text may be a fence or a `---`, with text at the margin it could pair with once it
+        // moves: leaving the list (the bullet toggle, Shift+Tab past the root), an outdent, Ctrl+Enter
+        // and the Backspace and Delete joins (Editor Content Rules → Shift+Tab past the root). Those keys
+        // alone, so no other key's gap is in the way. Backspace and Delete are pressed where they join.
+        const leaveArb = fc.record({
+            scenario: scenarioArb,
+            edgeText: edgeTextArb,
+            margin: marginArb,
+            steps: fc.array(fc.constantFrom('bullet', 'Shift-Tab', 'Mod-Enter', 'Backspace', 'Delete'), { minLength: 1, maxLength: 4 }),
+        })
+        fc.assert(
+            fc.property(leaveArb, ({ scenario: { outline, caretAt, selectTo }, edgeText, margin, steps }) => {
+                const editor = editorFor(outline, caretAt, selectTo, 'unit', [], [], [], [], [], edgeText, margin)
+                for (const step of steps) {
+                    if (editsFrontmatter(editor)) return
+                    if ((step === 'Backspace' || step === 'Delete') && !placeForJoin(editor, step)) continue
+                    const before = editor.text().split('\n')
+                    // A fence just written on its own line is held pending: the editor reads the lines after
+                    // it as text until the document balances, so a step may edit what the plain scan pairs
+                    // as code. That is the pending fence's design, not a pairing changed.
+                    const pending = analysisFor(editor.state).pendingFence !== null
+                    if (step === 'bullet') {
+                        const live = bulletToggleable(editor.state)
+                        toggleBullet(editor as never)
+                        expect(editor.text() !== before.join('\n'), 'gate').toBe(live)
+                    } else editor.key(step)
+                    const lines = editor.text().split('\n')
+                    if (!pending) {
+                        expect(codeHeld(lines), step).toBe(codeHeld(before))
+                        // A step that adds no line, and lost none to the tidy, keeps every line's standing as
+                        // code, line by line. Ctrl+Enter adds the line it carries text to, and the tidy can take
+                        // one away above it, so its lines are matched by content alone.
+                        if (step !== 'Mod-Enter' && lines.length === before.length) {
+                            expect(opaqueLineFlags(lines, fencedBlocks(lines)), step).toEqual(opaqueLineFlags(before, fencedBlocks(before)))
+                        }
+                    }
+                    expect(frontmatterLines(lines), step).toBe(frontmatterLines(before))
+                    expect(noOrphans(lines)).toBe(true)
+                    expect(markersIntact(lines)).toBe(true)
+                }
+            }),
+            fuzz(400),
+        )
+    })
+
+    it('in a code sample that holds fenced blocks of its own, the code keys never dissolve a block', () => {
+        // An outline written inside a markdown sample: an outer fence around it (three backticks, or the
+        // four the docs advise), the outline's own code blocks nested in it. Every line of it is code, and
+        // the inner pairs are blocks the keys edit in: their fences are structure, so no key splits,
+        // joins or moves one off its partner's column, from a caret or over a range.
+        const keyArb = fc.array(
+            fc.constantFrom('Enter', 'Shift-Enter', 'Backspace', 'Delete', 'Mod-Backspace', 'Mod-Delete', 'Tab', 'Shift-Tab', 'Mod-Enter', 'Alt-ArrowUp', 'Alt-ArrowDown'),
+            { minLength: 1, maxLength: 4 },
+        )
+        const placeArb = fc.record({
+            outer: fc.constantFrom('```', '````'),
+            lineAt: fc.double({ min: 0, max: 1, noNaN: true }),
+            where: fc.constantFrom('start', 'column', 'end'),
+            /** Sometimes a range instead: from the caret to this far down the sample's lines. */
+            selectTo: fc.option(fc.double({ min: 0, max: 1, noNaN: true }), { nil: undefined }),
+        })
+        fc.assert(
+            fc.property(outlineArb, placeArb, keyArb, (outline, { outer, lineAt, where, selectTo }, keys) => {
+                const doc = [`${outer}md`, render(outline), outer].join('\n')
+                const editor = editorFixture('|' + doc)
+                const inside = editor.state.doc.lines - 2
+                const line = editor.state.doc.line(2 + Math.min(inside - 1, Math.floor(lineAt * inside)))
+                const caret = where === 'start' ? line.from : where === 'column' ? line.from + lineIndent(line.text) : line.to
+                editor.select(caret)
+                if (selectTo !== undefined) {
+                    const last = editor.state.doc.line(line.number + Math.round(selectTo * (inside + 1 - line.number)))
+                    editor.select(caret, last.to)
+                }
+                let count = fencesBalanced(editor.text().split('\n'))
+                for (const key of keys) {
+                    // Deleting a fence's own characters dissolves its block on purpose.
+                    const editsFence = editsFenceText(editor, key)
+                    editor.key(key)
+                    const next = fencesBalanced(editor.text().split('\n'))
+                    if (!editsFence) expect(next, key).toBeGreaterThanOrEqual(count)
+                    count = next
+                }
+            }),
+            fuzz(300),
+        )
+    })
+
+    it('Mod-z restores the exact text and caret after a bullet toggle', () => {
+        fc.assert(
+            fc.property(scenarioArb, edgeTextArb, marginArb, ({ outline, caretAt, selectTo }, edgeText, margin) => {
+                const editor = editorFor(outline, caretAt, selectTo, 'unit', [], [], [], [], [], edgeText, margin)
+                const before = editor.fixture()
+                if (!toggleBullet(editor as never)) return
                 editor.key('Mod-z')
                 expect(editor.fixture()).toBe(before)
             }),

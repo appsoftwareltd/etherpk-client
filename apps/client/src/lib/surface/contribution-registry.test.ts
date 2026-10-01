@@ -97,6 +97,16 @@ describe('command-menu helpers', () => {
             'table.addRow',
         ])
     })
+
+    it('orders by `order`, ties keeping registration order, and a row without one after the rest', () => {
+        const reg = createContributionRegistry()
+        registerCommandMenuItem(reg, { ...item('unordered') })
+        registerCommandMenuItem(reg, { ...item('b'), order: 20 })
+        registerCommandMenuItem(reg, { ...item('a'), order: 10 })
+        registerCommandMenuItem(reg, { ...item('c'), order: 20 }) // ties with b → after it
+        const ctx = { inTable: false, tableInsertable: true, bodyWritable: true }
+        expect(listCommandMenuItems(reg, ctx).map((i) => i.id)).toEqual(['a', 'b', 'c', 'unordered'])
+    })
 })
 
 describe('command-bar helpers', () => {

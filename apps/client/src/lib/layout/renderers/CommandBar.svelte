@@ -7,7 +7,8 @@
      * Layout: a scrollable strip of `align:'start'` buttons (the slash trigger + the outliner
      * block-ops) with an {@link HScrollbar} beneath, and a pinned `align:'end'` group (the zoom
      * controls) that never scrolls away. Outliner-only buttons are disabled (greyed) when the
-     * caret is not in an outliner block, read reactively from `editorContext`. A button in a
+     * caret is not in an outliner block, read reactively from `editorContext`, and a toggle button
+     * (the bullet toggle) carries `aria-pressed` from it too. A button in a
      * **Contextual Group** (the table group) is present only while the caret is on what its
      * Command acts on - it appears beside the slash button inside a table and is absent otherwise.
      *
@@ -15,7 +16,9 @@
      * so the soft keyboard stays up and the active editor keeps its selection. Riding above the
      * keyboard is handled by {@link MobilePresenter} shrinking the surface to the visual viewport.
      */
-    import { editorContext } from '$lib/document'
+    import { onMount } from 'svelte'
+
+    import { editorContext, registerCommandBar } from '$lib/document'
     import {
         type CommandBarItem,
         listCommandBarItems,
@@ -44,15 +47,20 @@
 
     let stripEl = $state<HTMLDivElement>()
 
+    // The bullet button's gate scans the document's fences on a bullet at column 0, so the editor
+    // context computes it only while a bar is mounted to show it (editor-context.svelte.ts).
+    onMount(() => registerCommandBar())
+
     /**
      * Disabled when the button's gate says its command would do nothing here: outliner-only
      * buttons off a bullet, the task toggle on a heading / in code / in frontmatter, Indent there
-     * too except on a form-1 opener (`view/task-toggleable.ts`), undo and
-     * redo on an empty history stack, and every editing button on a locked Protected Document.
+     * too except on a form-1 opener, the bullet toggle on a nested bullet (`view/task-toggleable.ts`),
+     * undo and redo on an empty history stack, and every editing button on a locked Protected Document.
      */
     function disabled(item: CommandBarItem): boolean {
         if (item.writableOnly && !editorContext.bodyWritable) return true
         if (item.taskToggleOnly && !editorContext.taskToggleable) return true
+        if (item.bulletToggleOnly && !editorContext.bulletToggleable) return true
         if (item.convertibleOnly && !editorContext.indentable) return true
         if (item.tableInsertOnly && !editorContext.tableInsertable) return true
         if (item.tableRowOnly && !(editorContext.table && editorContext.table.bodyRow >= 0)) return true
@@ -60,6 +68,12 @@
         if (item.undoOnly && !editorContext.canUndo) return true
         if (item.redoOnly && !editorContext.canRedo) return true
         return !!item.outlinerOnly && !editorContext.inOutlinerBlock
+    }
+
+    /** A toggle button's `aria-pressed`. Undefined on every other button, which renders no attribute. */
+    function pressed(item: CommandBarItem): boolean | undefined {
+        if (item.pressed === 'bullet') return editorContext.bulletToggleOn
+        return undefined
     }
 
     function run(item: CommandBarItem) {
@@ -71,46 +85,36 @@
     const svg = (name: string) => iconSvg(name, { size: 18 })
 </script>
 
+{#snippet barButton(item: CommandBarItem)}
+    <button
+        class={['command-bar__btn', { slash: item.icon === 'slash' }]}
+        data-testid="command-bar-button"
+        data-command={item.command}
+        tabindex={-1}
+        disabled={disabled(item)}
+        aria-pressed={pressed(item)}
+        title={item.label}
+        aria-label={item.label}
+        onpointerdown={(e) => e.preventDefault()}
+        onclick={() => run(item)}
+    >
+        <!-- Icon markup from the in-repo icon table, never user or document content. -->
+        <!-- eslint-disable-next-line svelte/no-at-html-tags -->
+        {@html svg(item.icon)}
+    </button>
+{/snippet}
+
 <div class="command-bar" data-testid="command-bar">
     <div class="command-bar__row">
         <div class="command-bar__buttons" bind:this={stripEl}>
             {#each startItems as item (item.id)}
-                <button
-                    class="command-bar__btn"
-                    class:slash={item.icon === 'slash'}
-                    data-testid="command-bar-button"
-                    data-command={item.command}
-                    tabindex={-1}
-                    disabled={disabled(item)}
-                    title={item.label}
-                    aria-label={item.label}
-                    onpointerdown={(e) => e.preventDefault()}
-                    onclick={() => run(item)}
-                >
-                    <!-- Icon markup from the in-repo icon table, never user or document content. -->
-                    <!-- eslint-disable-next-line svelte/no-at-html-tags -->
-                    {@html svg(item.icon)}
-                </button>
+                {@render barButton(item)}
             {/each}
         </div>
         {#if endItems.length}
             <div class="command-bar__zoom">
                 {#each endItems as item (item.id)}
-                    <button
-                        class="command-bar__btn"
-                        data-testid="command-bar-button"
-                        data-command={item.command}
-                        tabindex={-1}
-                        disabled={disabled(item)}
-                        title={item.label}
-                        aria-label={item.label}
-                        onpointerdown={(e) => e.preventDefault()}
-                        onclick={() => run(item)}
-                    >
-                        <!-- Icon markup from the in-repo icon table, never user content. -->
-                        <!-- eslint-disable-next-line svelte/no-at-html-tags -->
-                        {@html svg(item.icon)}
-                    </button>
+                    {@render barButton(item)}
                 {/each}
             </div>
         {/if}
@@ -173,6 +177,12 @@
             width: 2.75rem;
             height: 2.75rem;
         }
+    }
+    /* A toggle that is on: a neutral fill and a firmer edge that stay at rest. The icon keeps the
+       bar's own colour, as on every other button. */
+    .command-bar__btn[aria-pressed='true'] {
+        background: var(--gk-surface-2);
+        border-color: var(--gk-border-strong, var(--gk-border-soft));
     }
     .command-bar__btn:active:not(:disabled) {
         background: var(--gk-surface-2);

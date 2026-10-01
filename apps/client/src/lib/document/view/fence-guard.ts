@@ -21,7 +21,9 @@
  * corrections ride the *same* transaction (so one paste is one undo step).
  */
 
-import { ChangeSet, type ChangeSpec, EditorState, type Extension, type Text, Transaction, type TransactionSpec } from '@codemirror/state'
+import { ChangeSet, type ChangeSpec, EditorState, type Extension, MapMode, type Text, Transaction, type TransactionSpec } from '@codemirror/state'
+
+import { frontmatterLines } from '$lib/storage/fs/frontmatter-span'
 
 import { type FencedBlockRange, fencedBlocks, fenceLineInfo, normaliseFenceLines } from '../fenced-code'
 import { editorAnalysisField, type EditorAnalysis } from './analysis/editor-analysis'
@@ -123,8 +125,39 @@ export function fencePad(): Extension {
     })
 }
 
-/** The re-clamp of every complete block the edit touched, as changes to `doc`. */
-function normaliseTouchedBlocks(doc: Text, changed: readonly Range[]): ChangeSpec[] {
+/**
+ * Each fence line the strict scan paired before `tr`, mapped to the line it was paired with, both as
+ * lines of the edited text. A line counts where the edit kept it, its start and its end landing on one
+ * line: a closer the edit nudged right keeps its pairing, and a fence the edit deleted or split has
+ * none. The pad inserts no line, so these are the padded text's lines too.
+ */
+function pairingsBefore(tr: Transaction): Map<number, number> {
+    const before = tr.startState.doc
+    const kept = (index: number): number | null => {
+        const line = before.line(index + 1)
+        const start = tr.changes.mapPos(line.from, 1, MapMode.TrackDel)
+        const end = tr.changes.mapPos(line.to, -1, MapMode.TrackDel)
+        if (start === null || end === null) return null
+        const at = tr.newDoc.lineAt(start).number - 1
+        return tr.newDoc.lineAt(end).number - 1 === at ? at : null
+    }
+    const partners = new Map<number, number>()
+    for (const block of fencedBlocks(before.toString().split('\n'))) {
+        const start = kept(block.start)
+        const end = kept(block.end)
+        if (start === null || end === null) continue
+        partners.set(start, end)
+        partners.set(end, start)
+    }
+    return partners
+}
+
+/**
+ * The re-clamp of every complete block the edit touched, as changes to `doc`. `before` gives the
+ * strict pairing as it stood before the edit ({@link pairingsBefore}), read only when a block needs
+ * a repair.
+ */
+function normaliseTouchedBlocks(doc: Text, changed: readonly Range[], before: () => Map<number, number>): ChangeSpec[] {
     const docLines = doc.toString().split('\n')
     const corrections: ChangeSpec[] = []
     // The strict scan's openers: a tolerant "closer" that is really another block's opener means
@@ -150,6 +183,16 @@ function normaliseTouchedBlocks(doc: Text, changed: readonly Range[]): ChangeSpe
         const opener = fenceLineInfo(lines[0])
         if (!opener) continue
         const fixed = normaliseFenceLines(lines, block.fenceColumn, opener.run)
+        if (fixed.every((line, k) => line === lines[k])) continue
+        // A repair restores a pairing the edit broke, or makes a new one. It never pairs a fence the
+        // strict scan paired with another line before the edit: a "closer" a few columns right of the
+        // opener can be another block's fence, not one an edit nudged. In a code sample written with
+        // three backticks, an inner opener that stops being a fence (a backtick deleted, a second word
+        // typed after its info string) leaves the inner closer two columns right of the sample's opener,
+        // and snapping it back closed the sample there. Judged against the text after the edit, a nudge
+        // can look the same: the opener pairs with a stray fence further down until the repair.
+        const paired = before()
+        if ((paired.get(block.start) ?? block.end) !== block.end || (paired.get(block.end) ?? block.start) !== block.start) continue
         for (let k = 0; k < lines.length; k++) {
             if (fixed[k] !== lines[k]) {
                 const ln = doc.line(block.start + 1 + k)
@@ -177,12 +220,83 @@ export function fenceGuard(): Extension {
         const padded = pads.length ? padSpec(tr, pads) : null
         const doc = padded ? padded.set.apply(tr.newDoc) : tr.newDoc
         const touched = padded ? changed.map((c) => ({ from: padded.set.mapPos(c.from, -1), to: padded.set.mapPos(c.to, 1) })) : changed
-        const corrections = normaliseTouchedBlocks(doc, touched)
+        let paired: Map<number, number> | undefined
+        const corrections = normaliseTouchedBlocks(doc, touched, () => (paired ??= pairingsBefore(tr)))
 
         if (!padded && corrections.length === 0) return tr // no-op ⇒ loop-breaker
         const specs: (Transaction | TransactionSpec)[] = [tr]
         if (padded) specs.push(padded.spec)
         if (corrections.length) specs.push({ changes: corrections, sequential: true })
         return specs
+    })
+}
+
+/**
+ * Whether deleting `from` to `to` moves a fence line on its own or joins text onto one, without
+ * deleting any of that fence's own text (its backticks and info string). A fence pairs only with one
+ * at its own column on a line of its own, so either dissolves the block, or pairs the fence with
+ * another. Deleting the fence's own text is how a block is dissolved on purpose, and stays allowed.
+ *
+ * - Above the fence: what is left before it on its line must be exactly what was there, its indent
+ *   (and a form-1 bullet's marker). A deletion in that indent moves the fence, and one across the
+ *   line break above joins the line above onto it. Deleting an empty line above leaves it as it was.
+ * - Below the fence: a deletion across its line break must leave nothing after it but spaces. Joining
+ *   the next line's text turns a closer into an opener, or an opener's info string into another.
+ *
+ * Every complete block in the body counts, an inner pair of a code sample included; a fence-like
+ * line in the frontmatter is YAML text.
+ */
+export function deletionBreaksFence(state: EditorState, from: number, to: number): boolean {
+    if (to <= from) return false
+    const { doc } = state
+    // The analysis holds the blocks as they stand (a half-typed fence set aside); a bare state scans.
+    const analysis = state.field(editorAnalysisField, false) as EditorAnalysis | undefined
+    const lines = analysis?.lines ?? doc.toString().split('\n')
+    const blocks = analysis?.fencedBlocks ?? fencedBlocks(lines)
+    const body = frontmatterLines(lines)
+    const first = doc.lineAt(from).number - 1
+    const last = doc.lineAt(to).number - 1
+    for (const block of blocks) {
+        if (block.start < body) continue
+        for (const index of [block.start, block.end]) {
+            if (index < first || index > last) continue
+            const line = doc.line(index + 1)
+            const info = fenceLineInfo(line.text)
+            if (!info) continue
+            const run = line.from + info.col
+            const textEnd = line.from + line.text.trimEnd().length // the info string's end, not trailing spaces
+            if (from < textEnd && to > run) continue // takes some of the fence's own text: on purpose
+            if (from < run && to >= line.from) {
+                const above = doc.lineAt(from)
+                const kept = above.text.slice(0, from - above.from) + line.text.slice(Math.max(to, line.from) - line.from, info.col)
+                if (kept !== line.text.slice(0, info.col)) return true
+            }
+            // From after the fence's text across its line break: what the line below holds joins it.
+            if (from >= textEnd && to > line.to) {
+                const below = doc.lineAt(to)
+                if (below.text.slice(to - below.from).trim() !== '') return true
+            }
+        }
+    }
+    return false
+}
+
+/**
+ * Holds every delete CodeMirror makes to {@link deletionBreaksFence}: Backspace and Delete, the word
+ * deletes (Ctrl+Backspace, Ctrl+Delete, Alt on a Mac), the line deletes (Cmd+Backspace on a Mac) and
+ * the emacs keys all dispatch as `delete.backward`, `delete.forward` or `delete.selection`. The
+ * keymap's own fence-edge keys consume most of these first; this catches the rest, which once
+ * deleted a fence's indent or joined the next line onto a closer. A refused delete changes nothing,
+ * as a consumed key does. The keymap's own deletes (`delete`) judge their structure themselves.
+ */
+export function fenceDeleteGuard(): Extension {
+    return EditorState.transactionFilter.of((tr) => {
+        if (leftAlone(tr)) return tr
+        if (!tr.isUserEvent('delete.backward') && !tr.isUserEvent('delete.forward') && !tr.isUserEvent('delete.selection')) return tr
+        let breaks = false
+        tr.changes.iterChanges((fromA, toA) => {
+            if (!breaks && deletionBreaksFence(tr.startState, fromA, toA)) breaks = true
+        })
+        return breaks ? [] : tr
     })
 }

@@ -49,7 +49,7 @@ import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate
 import type { FencedBlockRange } from '../../fenced-code'
 import { INDENT_UNIT, type OutlineLine } from '../../indent-unit'
 import { contentColumn, continuationColumn, isBulletLine, lineIndent, markerLength, MARKER_WIDTH } from '../../outliner'
-import { fencedBlockAtIn, visibleFencedBlocks } from '../outliner-context'
+import { fencedBlockAtIn, insideFencedBlockIn, visibleFencedBlocks } from '../outliner-context'
 import { treeChanged } from './base-renderer'
 import { blockquoteLines } from './blockquote-core'
 import { CODE_FONT_SCALE, CODE_PANEL_PAD_LEFT } from './code-highlight'
@@ -460,9 +460,9 @@ function classifyLine(
     if (lineFrom <= frontmatterEnd) {
         return { cols: 0, code: false, body: false, panel: false, fenceCol: 0, opener: false, bullet: false }
     }
-    // A `- item` INSIDE a fence (content or closer, not the opener) is code, whatever it looks like.
-    const enclosing = fencedBlockAtIn(state, lineFrom, visibleBlocks)
-    const insideFence = enclosing !== null && enclosing.from !== lineFrom
+    // A `- item` INSIDE a fence (content or closer, not the opener) is code, whatever it looks like:
+    // in a code sample that holds a fenced block of its own, the inner pair's opener is code too.
+    const insideFence = insideFencedBlockIn(state, lineFrom, visibleBlocks)
     if (isBulletLine(lineText) && !insideFence) {
         // A form-1 opener is a bullet line that also opens a code block — it carries the panel too.
         // UNLESS the block is collapsed to a rendered widget (ADR 0022): then the visible part of

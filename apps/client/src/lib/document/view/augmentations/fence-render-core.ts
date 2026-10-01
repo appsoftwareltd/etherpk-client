@@ -5,7 +5,7 @@
  * else ({@link fencedBlocks}) — never a second notion of "in a block".
  */
 
-import { fencedBlocks, fenceLineInfo } from '../../fenced-code'
+import { fencedBlocks, fencedBlockTree, fenceLineInfo } from '../../fenced-code'
 
 export interface RenderableFence {
     /** 0-based line index of the opening fence. */
@@ -25,7 +25,10 @@ export interface RenderableFence {
 /** The complete fenced blocks whose opener carries an info-string — the renderer-dispatch set. */
 export function renderableFences(lines: string[]): RenderableFence[] {
     const out: RenderableFence[] = []
-    for (const block of fencedBlocks(lines)) {
+    const { sorted, parent } = fencedBlockTree(fencedBlocks(lines))
+    for (const [i, block] of sorted.entries()) {
+        // A block inside another block's code is part of a code sample, drawn as code, never on its own.
+        if (parent[i] >= 0) continue
         const opener = fenceLineInfo(lines[block.start])
         if (!opener || !opener.info) continue
         const source = lines

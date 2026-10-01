@@ -3,23 +3,28 @@ import { describe, expect, it } from 'vitest'
 import { fencedBlocks } from './fenced-code'
 
 import {
+    applyLineCuts,
     blockBodyEnd,
     branchRange,
     branchRootsWithin,
     bulletContent,
     canIndent,
+    canLeaveList,
     canOutdent,
+    leaveListCuts,
     outdentTarget,
     computeMove,
     contentColumn,
     continuationColumn,
     continuationFloor,
+    cutsAfterBulletIntoProse,
     cycleTask,
     groupBounds,
     healOrphanIndent,
     isBulletLine,
     isHeadingLine,
     isMergeableSource,
+    joinsBulletIntoProse,
     MARKER_WIDTH,
     mergeTargetAbove,
     opaqueLineFlags,
@@ -171,6 +176,53 @@ describe('indent / outdent guards', () => {
         const lines = L('- a\n  - a1')
         expect(canOutdent(lines, 0)).toBe(false)
         expect(canOutdent(lines, 1)).toBe(true)
+    })
+})
+
+/** `lines` after leaving the list from `root`, the cuts applied. */
+function leaveList(src: string, root: number): string {
+    const lines = L(src)
+    for (const { line, count } of leaveListCuts(lines, root)) lines[line] = lines[line].slice(count)
+    return lines.join('\n')
+}
+
+describe('leaving the list from a top-level bullet (Shift+Tab past the root, the bullet toggle)', () => {
+    it('cuts the marker and any checkbox, takes its own lines to column 0 and brings its children up one level', () => {
+        expect(leaveList('- a\n  soft\n  - b\n    - c', 0)).toBe('a\nsoft\n- b\n  - c')
+        expect(leaveList('- [ ] a\n  - b', 0)).toBe('a\n- b')
+        // Each child comes up by its own indent, so a four-space child lands at 0 too.
+        expect(leaveList('- a\n    - b\n        - c', 0)).toBe('a\n- b\n    - c')
+        // On a ragged grid a later, shallower child keeps its own lines: the soft line stays c's.
+        expect(leaveList('- a\n      - b\n    - c\n      soft', 0)).toBe('a\n- b\n- c\n  soft')
+        // A paragraph after the children is the root's own, and goes to the margin with it.
+        expect(leaveList('- a\n  - b\n  after', 0)).toBe('a\n- b\nafter')
+    })
+
+    it('adds and removes no line, so a line keeps its index', () => {
+        const lines = L('- a\n  ```\n  x\n  ```\n  - b\n- c')
+        expect(leaveListCuts(lines, 0).every(({ line }) => line >= 0 && line <= 4)).toBe(true)
+    })
+
+    it('may leave where every fence keeps its pairing: a form-1 bullet\'s fences move to column 0 together', () => {
+        expect(canLeaveList(L('- ```py\n  code\n  ```'), 0)).toBe(true)
+        expect(canLeaveList(L('- a\n  ```\n  x\n  ```\n- b'), 0)).toBe(true)
+    })
+
+    it('may not where its text at the margin would pair with another fence, a task\'s included', () => {
+        expect(canLeaveList(L('- ```py\ntext\n```\ncode\n```'), 0)).toBe(false)
+        expect(canLeaveList(L('- [ ] ```py\ntext\n```\ncode\n```'), 0)).toBe(false)
+        expect(canLeaveList(L('```js\ntext\n- ```'), 2)).toBe(false)
+    })
+
+    it('may not where its own code block at the margin would close an open prose fence above', () => {
+        expect(canLeaveList(L('```js\ntext\n- a\n  ```\n  code\n  ```'), 2)).toBe(false)
+    })
+
+    it('may not where a `---` at the margin would close or open a frontmatter block', () => {
+        expect(canLeaveList(L('---\ntitle: x\n- ---\nbody'), 2)).toBe(false)
+        expect(canLeaveList(L('- ---\n\ntext\n\n---\nmore'), 0)).toBe(false)
+        // Under a frontmatter block that is already closed it is a rule in the body.
+        expect(canLeaveList(L('---\ntitle: x\n---\n- ---'), 3)).toBe(true)
     })
 })
 
@@ -415,5 +467,48 @@ describe('opaqueLineFlags', () => {
     it('flags fenced blocks and the frontmatter, nothing else', () => {
         const lines = ['---', 'title: A', '---', '- a', '```', 'x', '```', '- b']
         expect(opaqueLineFlags(lines, fencedBlocks(lines))).toEqual([true, true, true, false, true, true, true, false])
+    })
+})
+
+describe('a deletion from prose that takes a bullet into it', () => {
+    const doc = L('prose\n- a\n  cont\n  - b\n    - c')
+
+    it('is one from a prose line over a bullet’s marker, never one starting in another bullet’s text', () => {
+        expect(joinsBulletIntoProse(doc, 0, 1, 2)).toBe(true) // to after `- `
+        expect(joinsBulletIntoProse(doc, 0, 1, 0)).toBe(false) // ends before the marker
+        expect(joinsBulletIntoProse(L('- x\n- a\n  - b'), 0, 1, 2)).toBe(false) // a bullet merges into a bullet
+        expect(joinsBulletIntoProse(L('- x\n  soft\n- a'), 1, 2, 2)).toBe(false) // a continuation is the bullet's
+        expect(joinsBulletIntoProse(L('```\nx\n- a\n```'), 1, 2, 2)).toBe(false) // code
+    })
+
+    it('makes the bullet leave the list: its own lines to the margin, its children up a level', () => {
+        const cuts = cutsAfterBulletIntoProse(doc, 0, 1, 2)
+        expect(cuts).toEqual([
+            { line: 2, count: 2 },
+            { line: 3, count: 2 },
+            { line: 4, count: 2 },
+        ])
+        // After the deletion the two lines are one: each cut lands a line earlier.
+        expect(applyLineCuts(L('proa\n  cont\n  - b\n    - c'), cuts, -1)).toEqual(L('proa\ncont\n- b\n  - c'))
+    })
+
+    it('cuts nothing for an indented bullet, or where its code at the margin would pair another fence', () => {
+        expect(cutsAfterBulletIntoProse(L('prose\n  - a\n    - b'), 0, 1, 4)).toEqual([])
+        expect(cutsAfterBulletIntoProse(L('```js\ntext\nprose\n- a\n  ```\n  x\n  ```'), 2, 3, 2)).toEqual([])
+    })
+})
+
+describe('prevSiblingRange across a code block', () => {
+    it('reads a code block at the margin between two bullets as prose that ends the group', () => {
+        expect(prevSiblingRange(L('- a\n```\nx\n```\n- b'), 4)).toBeNull()
+    })
+
+    it('reads a parent’s own block between two of its children as closing the one above', () => {
+        expect(prevSiblingRange(L('- p\n  - a\n  ```\n  x\n  ```\n  - b'), 5)).toBeNull()
+    })
+
+    it('still finds a sibling whose own block sits deeper, and a form-1 sibling', () => {
+        expect(prevSiblingRange(L('- a\n  ```\n  x\n  ```\n- b'), 4)).toEqual({ start: 0, end: 3 })
+        expect(prevSiblingRange(L('- ```py\n  x\n  ```\n- b'), 3)).toEqual({ start: 0, end: 2 })
     })
 })

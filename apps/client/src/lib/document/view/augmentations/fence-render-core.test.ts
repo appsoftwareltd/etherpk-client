@@ -34,3 +34,15 @@ describe('renderableFences', () => {
         expect(renderableFences(['```mermaid', 'graph TD'])).toEqual([])
     })
 })
+
+describe('renderableFences in a code sample that holds fenced blocks of its own', () => {
+    it('draws only the outermost block: a diagram fence inside a sample is code of the sample', () => {
+        const lines = ['```md', '- d', '  ```mermaid', '  graph TD', '  ```', '```']
+        expect(renderableFences(lines).map((f) => [f.start, f.end, f.info])).toEqual([[0, 5, 'md']])
+    })
+
+    it('still draws a diagram fence of its own', () => {
+        const lines = ['- d', '  ```mermaid', '  graph TD', '  ```']
+        expect(renderableFences(lines).map((f) => [f.start, f.end, f.info])).toEqual([[1, 3, 'mermaid']])
+    })
+})

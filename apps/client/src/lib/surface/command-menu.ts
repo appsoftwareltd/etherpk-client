@@ -43,8 +43,15 @@ export interface CommandMenuItem {
     detail?: string
     /** Icon name resolved to an SVG by the popover (unknown ⇒ a default glyph). */
     icon?: string
-    /** Section / ordering label (e.g. `Date`, `Table`). */
+    /** Section label (e.g. `Date`, `Table`). */
     group?: string
+    /**
+     * Sort key for a bare `/`: lower lists earlier, and equal values keep registration order. A row
+     * without one lists after every row that has one. The rows come from several modules registered
+     * in the workspace's order, so each carries its place in the menu itself; the whole first-party
+     * order is written down in `document/commands/command-menu-order.test.ts`.
+     */
+    order?: number
     /** Extra fuzzy-match terms beyond the title (e.g. `['calendar', 'date']`). */
     keywords?: string[]
     /** Applicability predicate; absent ⇒ always shown. */
@@ -60,10 +67,18 @@ export function registerCommandMenuItem(registry: ContributionRegistry, item: Co
     return registry.register(COMMAND_MENU_KIND, item.id, item)
 }
 
-/** Every registered item, in registration order, filtered to those applicable in `ctx`. */
-export function listCommandMenuItems(registry: ContributionRegistry, ctx: CommandMenuContext): CommandMenuItem[] {
+/** The sort key of a row: its `order`, or after every row that has one. */
+const menuOrder = (item: CommandMenuItem) => item.order ?? Number.MAX_SAFE_INTEGER
+
+/** Every registered item in menu order (`order`, then registration order), applicable or not. */
+export function commandMenuItemsInOrder(registry: ContributionRegistry): CommandMenuItem[] {
     return registry
         .list(COMMAND_MENU_KIND)
         .map((e) => e.value as CommandMenuItem)
-        .filter((item) => !item.when || item.when(ctx))
+        .sort((a, b) => menuOrder(a) - menuOrder(b))
+}
+
+/** Every registered item in menu order, filtered to those applicable in `ctx`. */
+export function listCommandMenuItems(registry: ContributionRegistry, ctx: CommandMenuContext): CommandMenuItem[] {
+    return commandMenuItemsInOrder(registry).filter((item) => !item.when || item.when(ctx))
 }

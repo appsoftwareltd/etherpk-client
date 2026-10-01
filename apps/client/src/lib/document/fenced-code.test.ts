@@ -5,6 +5,8 @@ import {
     codeLineText,
     defangFence,
     fencedBlocks,
+    fencedBlocksAtLine,
+    fencedBlockTree,
     fenceLineInfo,
     isUnterminatedOpener,
     normaliseFenceLines,
@@ -256,5 +258,51 @@ describe('fence normalisation (hard guard backstop)', () => {
     })
     it('does not pad blank middle lines', () => {
         expect(normaliseFenceLines(['  ```ts', '', '  ```'], 2, '```')).toEqual(['  ```ts', '', '  ```'])
+    })
+})
+
+/**
+ * A code sample can hold a fenced block of its own, written deeper (a markdown sample of a list item
+ * with code in it). The scan pairs the inner fences inside the outer block and lists blocks in the
+ * order they close, so a lookup by line reads them as a tree.
+ */
+describe('fenced blocks as a tree, and the blocks holding a line', () => {
+    const sample = ['```md', '- b', '  ```js', '  x', '  ```', '- c', '```']
+    const at = (lines: string[], line: number) => {
+        const found = fencedBlocksAtLine(fencedBlocks(lines), line)
+        return found && { inner: [found.inner.start, found.inner.end], outer: [found.outer.start, found.outer.end] }
+    }
+
+    it('gives each block the block around it, whatever order the scan lists them in', () => {
+        const blocks = fencedBlocks(sample)
+        expect(blocks.map((b) => [b.start, b.end])).toEqual([[2, 4], [0, 6]]) // closing order: inner first
+        const { sorted, parent } = fencedBlockTree(blocks)
+        expect(sorted.map((b) => [b.start, b.end])).toEqual([[0, 6], [2, 4]])
+        expect(parent).toEqual([-1, 0])
+    })
+
+    it('finds the inner pair for its own lines and the outer block for the rest of the sample', () => {
+        expect(at(sample, 3)).toEqual({ inner: [2, 4], outer: [0, 6] })
+        expect(at(sample, 2)).toEqual({ inner: [2, 4], outer: [0, 6] })
+        expect(at(sample, 1)).toEqual({ inner: [0, 6], outer: [0, 6] })
+        expect(at(sample, 5)).toEqual({ inner: [0, 6], outer: [0, 6] })
+        expect(at(sample, 0)).toEqual({ inner: [0, 6], outer: [0, 6] })
+    })
+
+    it('finds the outer block between two inner pairs, and the middle one three deep', () => {
+        const two = ['```md', '  ```', '  a', '  ```', 'between', '  ```', '  b', '  ```', '```']
+        expect(at(two, 4)).toEqual({ inner: [0, 8], outer: [0, 8] })
+        expect(at(two, 6)).toEqual({ inner: [5, 7], outer: [0, 8] })
+        const three = ['```md', '  ```md', '    ```', '    x', '    ```', '  after', '  ```', '```']
+        expect(at(three, 3)).toEqual({ inner: [2, 4], outer: [0, 7] })
+        expect(at(three, 5)).toEqual({ inner: [1, 6], outer: [0, 7] })
+    })
+
+    it('finds nothing between disjoint blocks or outside them', () => {
+        const lines = ['```', 'a', '```', 'prose', '- b', '  ```', '  c', '  ```']
+        expect(at(lines, 3)).toBeNull()
+        expect(at(lines, 4)).toBeNull()
+        expect(at(lines, 6)).toEqual({ inner: [5, 7], outer: [5, 7] })
+        expect(at([], 0)).toBeNull()
     })
 })

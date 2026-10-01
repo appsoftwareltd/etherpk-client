@@ -47,7 +47,7 @@ function itemScore(item: CommandMenuItem, query: string): number | null {
 
 /**
  * The applicable items filtered and ranked for a typed `query`. An empty query keeps every
- * item in its registration order (so bare `/` lists everything, grouped by registration);
+ * item in menu order (each row's `order`, so bare `/` lists everything in that order);
  * a non-empty query keeps only fuzzy matches (reusing `matchScore`: exact › prefix ›
  * substring › subsequence over title + keywords), best score first, ties broken by the
  * original order so a group stays contiguous. Pure; the popover renders this list verbatim.

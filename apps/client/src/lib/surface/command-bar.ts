@@ -51,6 +51,18 @@ export interface CommandBarItem {
      * prose counts (the toggle makes the line a task), headings / code / frontmatter do not.
      */
     taskToggleOnly?: boolean
+    /**
+     * Disabled where the bullet toggle has nothing to do: a nested bullet, a heading, code,
+     * frontmatter, a table row and a block selection. Prose and a blank line count (the toggle makes
+     * them a bullet), and so does a bullet at column 0 (it becomes prose).
+     */
+    bulletToggleOnly?: boolean
+    /**
+     * A toggle button, shown pressed (`aria-pressed`) while what it toggles is on. `'bullet'`: while
+     * the line the bullet toggle acts on is a bullet, greyed or not, so the button says which way a
+     * tap goes. Every other button carries no pressed state.
+     */
+    pressed?: 'bullet'
     /** Disabled where no table can be inserted: fenced code, frontmatter, and inside a table. */
     tableInsertOnly?: boolean
     /** Disabled unless the caret is on a table's body row (the header and separator cannot be removed). */

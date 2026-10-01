@@ -6,7 +6,7 @@
 
 import type { EditorState } from '@codemirror/state'
 
-import { defangFence, type FencedBlockRange, fencedBlocks, fenceLineInfo, isUnterminatedOpener } from '../fenced-code'
+import { defangFence, type FencedBlockRange, fencedBlocks, fencedBlocksAtLine, fenceLineInfo, isUnterminatedOpener } from '../fenced-code'
 import { isBulletLine, taskDone } from '../outliner'
 import {
     analysisFor,
@@ -29,6 +29,12 @@ export interface FencedBlock {
     fenceColumn: number
     /** The opener's backtick/tilde run (used to rebalance the closer). */
     ticks: string
+    /**
+     * Whether the block sits inside another block's code: a code sample holding a fenced block of its
+     * own, written deeper. Its fences pair and its column clamps as any block's do, but the lines around
+     * it are still code, so nothing that leaves it reaches the outline.
+     */
+    enclosed: boolean
 }
 
 /**
@@ -50,36 +56,37 @@ export function fencedBlockAt(state: EditorState, pos: number): FencedBlock | nu
     )
 }
 
-/** Shared: the block in `blocks` enclosing `pos`, mapped to a {@link FencedBlock}. */
-export function fencedBlockAtIn(
-    state: EditorState,
-    pos: number,
-    blocks: readonly FencedBlockRange[],
-): FencedBlock | null {
-    const lineIndex = state.doc.lineAt(pos).number - 1
-    let low = 0
-    let high = blocks.length - 1
-    while (low <= high) {
-        const middle = (low + high) >>> 1
-        const block = blocks[middle]
-        if (lineIndex < block.start) {
-            high = middle - 1
-            continue
-        }
-        if (lineIndex > block.end) {
-            low = middle + 1
-            continue
-        }
-        const openerLine = state.doc.line(block.start + 1)
-        const opener = fenceLineInfo(openerLine.text)
-        return {
-            from: openerLine.from,
-            to: state.doc.line(block.end + 1).to,
-            fenceColumn: block.fenceColumn,
-            ticks: opener?.run ?? '```',
-        }
+/** `block` as a {@link FencedBlock} of `state`'s document. */
+function toFencedBlock(state: EditorState, block: FencedBlockRange, enclosed: boolean): FencedBlock {
+    const openerLine = state.doc.line(block.start + 1)
+    return {
+        from: openerLine.from,
+        to: state.doc.line(block.end + 1).to,
+        fenceColumn: block.fenceColumn,
+        ticks: fenceLineInfo(openerLine.text)?.run ?? '```',
+        enclosed,
     }
-    return null
+}
+
+/**
+ * Shared: the block in `blocks` the line holding `pos` is edited in, mapped to a {@link FencedBlock}.
+ * That is the innermost block holding it: in a code sample that holds a fenced block of its own, the
+ * inner pair's fences are structure and its column clamps, for its own lines (`fencedBlocksAtLine`).
+ */
+export function fencedBlockAtIn(state: EditorState, pos: number, blocks: readonly FencedBlockRange[]): FencedBlock | null {
+    const found = fencedBlocksAtLine(blocks, state.doc.lineAt(pos).number - 1)
+    return found ? toFencedBlock(state, found.inner, found.inner !== found.outer) : null
+}
+
+/**
+ * The outermost block holding `pos`: the whole code sample when one holds a fenced block of its own.
+ * Leaving the code (Mod+Enter) leaves this block, not an inner pair, whose surroundings are code too.
+ */
+export function outermostFencedBlockAt(state: EditorState, pos: number): FencedBlock | null {
+    const analysis = state.field(editorAnalysisField, false) as EditorAnalysis | undefined
+    const blocks = analysis?.fencedBlocks ?? fencedBlocks(state.doc.toString().split('\n'))
+    const found = fencedBlocksAtLine(blocks, state.doc.lineAt(pos).number - 1)
+    return found ? toFencedBlock(state, found.outer, false) : null
 }
 
 /** {@link visibleFencedBlocks} by state: a state never changes, so neither does its reading. */
@@ -155,8 +162,19 @@ export function unterminatedFenceOpenerAt(state: EditorState, pos: number): bool
  * checkbox, widget or clamp of its own (Editor Content Rules → Fenced blocks are opaque).
  */
 export function insideFencedBlock(state: EditorState, lineFrom: number): boolean {
-    const block = fencedBlockAt(state, lineFrom)
-    return block !== null && block.from !== lineFrom
+    const analysis = state.field(editorAnalysisField, false) as EditorAnalysis | undefined
+    return insideFencedBlockIn(state, lineFrom, analysis?.fencedBlocks ?? fencedBlocks(state.doc.toString().split('\n')))
+}
+
+/**
+ * {@link insideFencedBlock} over `blocks`. Read from the outermost block holding the line: in a code
+ * sample that holds a fenced block of its own, the inner pair's opener is code too, even one on a
+ * bullet-shaped line of the sample, never a form-1 opener of the outline.
+ */
+export function insideFencedBlockIn(state: EditorState, lineFrom: number, blocks: readonly FencedBlockRange[]): boolean {
+    const line = state.doc.lineAt(lineFrom).number - 1
+    const found = fencedBlocksAtLine(blocks, line)
+    return found !== null && line !== found.outer.start
 }
 
 /** Whether the line holding `pos` is inside the [[Frontmatter]] block: verbatim metadata, opaque like a fence. */

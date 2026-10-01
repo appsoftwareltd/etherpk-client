@@ -31,6 +31,7 @@ import {
     moveBranchDown,
     moveBranchUp,
     outdentBranch,
+    toggleBullet,
     toggleTask,
 } from '../view/outliner-keymap'
 import type { MarkdownTable } from '../markdown-table'
@@ -140,6 +141,7 @@ export function registerEditorCommands(
     command('editor.moveUp', withWritableView((view) => void moveBranchUp(view)))
     command('editor.moveDown', withWritableView((view) => void moveBranchDown(view)))
     command('editor.toggleTask', withWritableView((view) => void toggleTask(view)))
+    command('editor.toggleBullet', withWritableView((view) => void toggleBullet(view)))
     command('editor.toggleFold', withView((view) => void toggleFold(view)))
     command('editor.openCommandMenu', withView((view) => openCommandMenu(view)))
     // The bracket buttons. Over a selection the wrap rule takes (one line, not only whitespace, not
@@ -224,11 +226,17 @@ export function registerEditorCommands(
     barItem({ id: 'table.addColumn', icon: 'table-add-column', label: 'Add column', order: 0, command: 'table.addColumn', contextualGroup: 'table', writableOnly: true })
     barItem({ id: 'table.removeRow', icon: 'table-remove-row', label: 'Remove row', order: 0, command: 'table.removeRow', contextualGroup: 'table', tableRowOnly: true, writableOnly: true })
     barItem({ id: 'table.removeColumn', icon: 'table-remove-column', label: 'Remove column', order: 0, command: 'table.removeColumn', contextualGroup: 'table', tableMultiColumnOnly: true, writableOnly: true })
+    // The bullet toggle is the first fixed button after the slash: making a line a bullet, or a
+    // bullet prose again, is the block edit a phone reaches for most. Prose (a blank line included)
+    // becomes a bullet and a bullet at column 0 becomes prose. A nested bullet greys it, since as
+    // prose it would split its tree. It shows pressed on a bullet, so the button says which way a
+    // tap goes. Inside a table the table group comes first (order 0) and this is greyed.
+    barItem({ id: 'editor.toggleBullet', icon: 'bullet', label: 'Bullet', order: 1, command: 'editor.toggleBullet', bulletToggleOnly: true, pressed: 'bullet', writableOnly: true })
     barItem({
         id: 'editor.insertWikilinkOpen',
         icon: 'wikilink-open',
         label: 'Insert [[',
-        order: 1,
+        order: 2,
         command: 'editor.insertWikilinkOpen',
         writableOnly: true,
     })
@@ -236,30 +244,30 @@ export function registerEditorCommands(
         id: 'editor.insertWikilinkClose',
         icon: 'wikilink-close',
         label: 'Insert ]]',
-        order: 2,
+        order: 3,
         command: 'editor.insertWikilinkClose',
         writableOnly: true,
     })
-    barItem({ id: 'asset.upload', icon: 'image', label: 'Upload', order: 5, command: 'asset.upload', writableOnly: true })
+    barItem({ id: 'asset.upload', icon: 'image', label: 'Upload', order: 6, command: 'asset.upload', writableOnly: true })
     // Insert is never dead the way the edits are, so it is a fixed button: greyed only where no
     // table can go (code, frontmatter, inside a table), where its Command refuses.
-    barItem({ id: 'table.insert', icon: 'table', label: 'Insert table', order: 6, command: 'table.insert', tableInsertOnly: true, writableOnly: true })
+    barItem({ id: 'table.insert', icon: 'table', label: 'Insert table', order: 7, command: 'table.insert', tableInsertOnly: true, writableOnly: true })
     barItem({ id: 'editor.outdent', icon: 'outdent', label: 'Outdent', order: 10, command: 'editor.outdent', outlinerOnly: true, writableOnly: true })
     // Indent is live on prose too: there it makes the line a block (the mobile way into block mode).
     barItem({ id: 'editor.indent', icon: 'indent', label: 'Indent', order: 20, command: 'editor.indent', convertibleOnly: true, writableOnly: true })
     barItem({ id: 'editor.moveUp', icon: 'move-up', label: 'Move up', order: 30, command: 'editor.moveUp', outlinerOnly: true, writableOnly: true })
     barItem({ id: 'editor.moveDown', icon: 'move-down', label: 'Move down', order: 40, command: 'editor.moveDown', outlinerOnly: true, writableOnly: true })
-    // Order 3, beside the `/` and `[[ ]]` triggers, not 50 among the block ops: on a phone the
-    // strip scrolls, and at 50 the one button people reach for on a task was off-screen.
+    // Order 4, after the `[[ ]]` triggers, not 50 among the block ops: on a phone the strip
+    // scrolls, and at 50 the one button people reach for on a task was off-screen.
     // `taskToggleOnly`, not `outlinerOnly`: on prose the toggle MAKES the line a task, so the
     // button is live there too; it is disabled only where the command refuses (heading, code,
     // frontmatter) — the two read the same predicate.
-    barItem({ id: 'editor.toggleTask', icon: 'task', label: 'Toggle task', order: 3, command: 'editor.toggleTask', taskToggleOnly: true, writableOnly: true })
-    // Order 4, still in the strip's first screenful: undo is the button reached for in a hurry, and a
+    barItem({ id: 'editor.toggleTask', icon: 'task', label: 'Toggle task', order: 4, command: 'editor.toggleTask', taskToggleOnly: true, writableOnly: true })
+    // Order 5, still in the strip's first screenful: undo is the button reached for in a hurry, and a
     // soft keyboard has no Mod-z. Greyed on an empty stack (`undoOnly` / `redoOnly` ←
     // `editorContext.canUndo` / `canRedo`), so the pair also shows whether there is anything to undo.
-    barItem({ id: 'editor.undo', icon: 'undo', label: 'Undo', order: 4, command: 'editor.undo', undoOnly: true, writableOnly: true })
-    barItem({ id: 'editor.redo', icon: 'redo', label: 'Redo', order: 4, command: 'editor.redo', redoOnly: true, writableOnly: true })
+    barItem({ id: 'editor.undo', icon: 'undo', label: 'Undo', order: 5, command: 'editor.undo', undoOnly: true, writableOnly: true })
+    barItem({ id: 'editor.redo', icon: 'redo', label: 'Redo', order: 5, command: 'editor.redo', redoOnly: true, writableOnly: true })
     barItem({ id: 'editor.toggleFold', icon: 'fold', label: 'Fold', order: 60, command: 'editor.toggleFold', outlinerOnly: true })
     barItem({ id: 'editor.zoomOut', icon: 'zoom-out', label: 'Decrease font size', order: 100, align: 'end', command: 'editor.zoomOut' })
     barItem({ id: 'editor.zoomIn', icon: 'zoom-in', label: 'Increase font size', order: 110, align: 'end', command: 'editor.zoomIn' })
@@ -267,36 +275,38 @@ export function registerEditorCommands(
     // ── Command Menu descriptors ──────────────────────────────────────────────
     // Every row that writes to the body is hidden on a locked Protected Document (the menu's
     // vocabulary is hide, not grey); Search stays, which is why the menu itself stays reachable.
+    // Each row's `order` places it among the other modules' rows (the protection rows sit between
+    // Date Picker and Bold); command-menu-order.test.ts writes the whole order down.
     const writable = (ctx: { bodyWritable: boolean }) => ctx.bodyWritable
     const inTable = (ctx: { inTable: boolean; bodyWritable: boolean }) => ctx.inTable && ctx.bodyWritable
     const insertable = (ctx: { tableInsertable: boolean; bodyWritable: boolean }) => ctx.tableInsertable && ctx.bodyWritable
-    item({ id: 'search.open', title: 'Search', detail: 'Search names and text across this graph', icon: 'search', group: 'Navigate', keywords: ['find', 'text', 'full', 'grep'], command: 'search.open' })
+    item({ id: 'search.open', title: 'Search', detail: 'Search names and text across this graph', icon: 'search', group: 'Navigate', order: 10, keywords: ['find', 'text', 'full', 'grep'], command: 'search.open' })
     // Opens a confirmation, never resets on its own; not gated on `bodyWritable`, because it
     // touches the Layout and nothing in any document.
-    item({ id: 'workspace.reset', title: 'Reset workspace', detail: 'Close every tab and restore the sidebars', icon: 'reset', group: 'Workspace', keywords: ['layout', 'panes', 'tabs', 'sidebars', 'default'], command: 'workspace.reset' })
+    item({ id: 'workspace.reset', title: 'Reset workspace', detail: 'Close every tab and restore the sidebars', icon: 'reset', group: 'Workspace', order: 200, keywords: ['layout', 'panes', 'tabs', 'sidebars', 'default'], command: 'workspace.reset' })
     // One row at a time, naming the change it makes. Not gated on `bodyWritable`: the preference
     // writes to no document, so it stays on a locked Protected Document (where it has no effect).
-    item({ id: 'editor.spellCheckOff', title: 'Spell check: turn off', detail: 'Stop underlining misspellings on this device', icon: 'spell-check', group: 'Editor', keywords: ['spelling', 'spellcheck', 'dictionary'], when: () => isSpellCheckEnabled(), command: 'editor.toggleSpellCheck', args: { enabled: false } })
-    item({ id: 'editor.spellCheckOn', title: 'Spell check: turn on', detail: 'Underline misspellings on this device', icon: 'spell-check', group: 'Editor', keywords: ['spelling', 'spellcheck', 'dictionary'], when: () => !isSpellCheckEnabled(), command: 'editor.toggleSpellCheck', args: { enabled: true } })
-    item({ id: 'asset.upload', title: 'Upload asset', detail: 'Insert an image or file', icon: 'image', group: 'Asset', keywords: ['image', 'file', 'attach', 'upload', 'photo'], when: writable, command: 'asset.upload' })
-    item({ id: 'date.today', title: 'Today', detail: 'Insert today as a wikilink', icon: 'today', group: 'Date', keywords: ['now'], when: writable, command: 'date.today' })
-    item({ id: 'date.pick', title: 'Date Picker', detail: 'Pick a date to insert', icon: 'calendar', group: 'Date', keywords: ['date', 'calendar'], when: writable, command: 'date.pick' })
+    item({ id: 'editor.spellCheckOff', title: 'Spell check: turn off', detail: 'Stop underlining misspellings on this device', icon: 'spell-check', group: 'Editor', order: 180, keywords: ['spelling', 'spellcheck', 'dictionary'], when: () => isSpellCheckEnabled(), command: 'editor.toggleSpellCheck', args: { enabled: false } })
+    item({ id: 'editor.spellCheckOn', title: 'Spell check: turn on', detail: 'Underline misspellings on this device', icon: 'spell-check', group: 'Editor', order: 180, keywords: ['spelling', 'spellcheck', 'dictionary'], when: () => !isSpellCheckEnabled(), command: 'editor.toggleSpellCheck', args: { enabled: true } })
+    item({ id: 'asset.upload', title: 'Upload asset', detail: 'Insert an image or file', icon: 'image', group: 'Asset', order: 30, keywords: ['image', 'file', 'attach', 'upload', 'photo'], when: writable, command: 'asset.upload' })
+    item({ id: 'date.today', title: 'Today', detail: 'Insert today as a wikilink', icon: 'today', group: 'Date', order: 20, keywords: ['now'], when: writable, command: 'date.today' })
+    item({ id: 'date.pick', title: 'Date Picker', detail: 'Pick a date to insert', icon: 'calendar', group: 'Date', order: 40, keywords: ['date', 'calendar'], when: writable, command: 'date.pick' })
     // The menu's `/` has replaced any selection by the time a row runs, so from here a toggle
     // opens an empty pair with the caret inside; the wrap keys and chords are the selection path.
-    item({ id: 'editor.bold', title: 'Bold', detail: 'Wrap in **, or open an empty pair', icon: 'bold', group: 'Format', keywords: ['strong', 'format'], when: writable, command: 'editor.bold' })
-    item({ id: 'editor.italic', title: 'Italic', detail: 'Wrap in *, or open an empty pair', icon: 'italic', group: 'Format', keywords: ['emphasis', 'format'], when: writable, command: 'editor.italic' })
-    item({ id: 'editor.highlight', title: 'Highlight', detail: 'Wrap in ==, or open an empty pair', icon: 'highlight', group: 'Format', keywords: ['mark', 'marker', 'format'], when: writable, command: 'editor.highlight' })
-    item({ id: 'editor.insertCodeBlock', title: 'Code block', detail: 'Insert a fenced code block', icon: 'code', group: 'Insert', keywords: ['code', 'fence', 'snippet', 'pre'], when: writable, command: 'editor.insertCodeBlock' })
-    item({ id: 'table.insert', title: 'Table', detail: 'Insert a table (choose its size)', icon: 'table', group: 'Table', keywords: ['grid'], when: insertable, command: 'table.insert' })
-    item({ id: 'table.addColumn', title: 'Table: Add column', detail: 'Add a column after this one', icon: 'table-add-column', group: 'Table', when: inTable, command: 'table.addColumn' })
-    item({ id: 'table.addRow', title: 'Table: Add row', detail: 'Add a row below', icon: 'table-add-row', group: 'Table', when: inTable, command: 'table.addRow' })
-    item({ id: 'table.format', title: 'Table: Format', detail: 'Normalise column widths', icon: 'table-format', group: 'Table', when: inTable, command: 'table.format' })
-    item({ id: 'table.removeRow', title: 'Table: Remove row', detail: 'Remove the current row', icon: 'table-remove-row', group: 'Table', when: inTable, command: 'table.removeRow' })
-    item({ id: 'table.removeColumn', title: 'Table: Remove column', detail: 'Remove the current column', icon: 'table-remove-column', group: 'Table', when: inTable, command: 'table.removeColumn' })
-    item({ id: 'table.removeRowsAbove', title: 'Table: Remove rows above', detail: 'Remove rows above', icon: 'table-remove', group: 'Table', when: inTable, command: 'table.removeRowsAbove' })
-    item({ id: 'table.removeRowsBelow', title: 'Table: Remove rows below', detail: 'Remove rows below', icon: 'table-remove', group: 'Table', when: inTable, command: 'table.removeRowsBelow' })
-    item({ id: 'table.removeColumnsRight', title: 'Table: Remove columns right', detail: 'Remove columns to the right', icon: 'table-remove', group: 'Table', when: inTable, command: 'table.removeColumnsRight' })
-    item({ id: 'table.removeColumnsLeft', title: 'Table: Remove columns left', detail: 'Remove columns to the left', icon: 'table-remove', group: 'Table', when: inTable, command: 'table.removeColumnsLeft' })
+    item({ id: 'editor.bold', title: 'Bold', detail: 'Wrap in **, or open an empty pair', icon: 'bold', group: 'Format', order: 70, keywords: ['strong', 'format'], when: writable, command: 'editor.bold' })
+    item({ id: 'editor.italic', title: 'Italic', detail: 'Wrap in *, or open an empty pair', icon: 'italic', group: 'Format', order: 80, keywords: ['emphasis', 'format'], when: writable, command: 'editor.italic' })
+    item({ id: 'editor.highlight', title: 'Highlight', detail: 'Wrap in ==, or open an empty pair', icon: 'highlight', group: 'Format', order: 90, keywords: ['mark', 'marker', 'format'], when: writable, command: 'editor.highlight' })
+    item({ id: 'editor.insertCodeBlock', title: 'Code block', detail: 'Insert a fenced code block', icon: 'code', group: 'Insert', order: 100, keywords: ['code', 'fence', 'snippet', 'pre'], when: writable, command: 'editor.insertCodeBlock' })
+    item({ id: 'table.insert', title: 'Table', detail: 'Insert a table (choose its size)', icon: 'table', group: 'Table', order: 110, keywords: ['grid'], when: insertable, command: 'table.insert' })
+    item({ id: 'table.addColumn', title: 'Table: Add column', detail: 'Add a column after this one', icon: 'table-add-column', group: 'Table', order: 120, when: inTable, command: 'table.addColumn' })
+    item({ id: 'table.addRow', title: 'Table: Add row', detail: 'Add a row below', icon: 'table-add-row', group: 'Table', order: 120, when: inTable, command: 'table.addRow' })
+    item({ id: 'table.format', title: 'Table: Format', detail: 'Normalise column widths', icon: 'table-format', group: 'Table', order: 120, when: inTable, command: 'table.format' })
+    item({ id: 'table.removeRow', title: 'Table: Remove row', detail: 'Remove the current row', icon: 'table-remove-row', group: 'Table', order: 120, when: inTable, command: 'table.removeRow' })
+    item({ id: 'table.removeColumn', title: 'Table: Remove column', detail: 'Remove the current column', icon: 'table-remove-column', group: 'Table', order: 120, when: inTable, command: 'table.removeColumn' })
+    item({ id: 'table.removeRowsAbove', title: 'Table: Remove rows above', detail: 'Remove rows above', icon: 'table-remove', group: 'Table', order: 120, when: inTable, command: 'table.removeRowsAbove' })
+    item({ id: 'table.removeRowsBelow', title: 'Table: Remove rows below', detail: 'Remove rows below', icon: 'table-remove', group: 'Table', order: 120, when: inTable, command: 'table.removeRowsBelow' })
+    item({ id: 'table.removeColumnsRight', title: 'Table: Remove columns right', detail: 'Remove columns to the right', icon: 'table-remove', group: 'Table', order: 120, when: inTable, command: 'table.removeColumnsRight' })
+    item({ id: 'table.removeColumnsLeft', title: 'Table: Remove columns left', detail: 'Remove columns to the left', icon: 'table-remove', group: 'Table', order: 120, when: inTable, command: 'table.removeColumnsLeft' })
 
     return () => offs.forEach((off) => off())
 }

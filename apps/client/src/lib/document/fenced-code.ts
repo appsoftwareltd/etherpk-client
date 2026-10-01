@@ -108,6 +108,66 @@ export function fencedBlocks(lines: readonly string[], closerTolerance = 0): Fen
     return blocks
 }
 
+/** A scan's blocks sorted by start, each with the block around it. */
+export interface FencedBlockTree {
+    /** The blocks, sorted by start. */
+    sorted: readonly FencedBlockRange[]
+    /** For each block in `sorted`, the index in `sorted` of the block holding it, or -1 for an outermost one. */
+    parent: readonly number[]
+}
+
+/** {@link fencedBlockTree} by scan: a scan never changes, so neither does its tree. */
+const treeByBlocks = new WeakMap<readonly FencedBlockRange[], FencedBlockTree>()
+
+/**
+ * The blocks of one scan as a tree. A code sample can hold a fenced block of its own, written deeper (a
+ * markdown sample of a list item with code in it): the scan pairs the inner fences inside the outer
+ * block, and lists blocks in the order they close, the inner pair before the block around it. Blocks
+ * nest or are disjoint, never overlap partly. Read once per scan and shared, as the lookups run on
+ * every caret move.
+ */
+export function fencedBlockTree(blocks: readonly FencedBlockRange[]): FencedBlockTree {
+    const cached = treeByBlocks.get(blocks)
+    if (cached) return cached
+    const sorted = [...blocks].sort((a, b) => a.start - b.start)
+    const parent: number[] = []
+    const open: number[] = [] // the blocks still open at the current block's start, outermost first
+    sorted.forEach((block, i) => {
+        while (open.length && sorted[open[open.length - 1]].end < block.start) open.pop()
+        parent.push(open.length ? open[open.length - 1] : -1)
+        open.push(i)
+    })
+    const tree = { sorted, parent }
+    treeByBlocks.set(blocks, tree)
+    return tree
+}
+
+/**
+ * The blocks holding 0-based line `line`: the innermost, which a line of it is edited in (its fences
+ * pair, its column clamps), and the outermost, which makes the line code. The same block unless a code
+ * sample holds a fenced block of its own. Null when no block holds the line.
+ */
+export function fencedBlocksAtLine(blocks: readonly FencedBlockRange[], line: number): { inner: FencedBlockRange; outer: FencedBlockRange } | null {
+    const { sorted, parent } = fencedBlockTree(blocks)
+    // The last block starting at or before the line. A block holding the line starts there too, so
+    // with proper nesting it is that block or one of the blocks around it.
+    let i = -1
+    let low = 0
+    let high = sorted.length - 1
+    while (low <= high) {
+        const middle = (low + high) >>> 1
+        if (sorted[middle].start <= line) {
+            i = middle
+            low = middle + 1
+        } else high = middle - 1
+    }
+    while (i >= 0 && sorted[i].end < line) i = parent[i]
+    if (i < 0) return null
+    let outer = i
+    while (parent[outer] >= 0) outer = parent[outer]
+    return { inner: sorted[i], outer: sorted[outer] }
+}
+
 /**
  * A line of a fenced block as code: the indentation up to the fence's column is structure (the
  * block's place in the outline) and goes; whatever lies past it is the code's own and stays.
