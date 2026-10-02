@@ -16,6 +16,7 @@
  * Back was meant to find Settings again (2026-09-20).
  */
 
+import { GRAPH_VIEW_WHOLE_KIND } from '$lib/graph-view/identity'
 import type { ViewRef } from '$lib/layout'
 
 /** Encode a concept for the `[...concept]` rest param: per-segment, `/` kept. */
@@ -46,6 +47,15 @@ export function kanbanUrl(graphId: string, concept: string): string {
     return `${graphUrl(graphId)}/k/${encodeConceptPath(concept)}`
 }
 
+/**
+ * The URL of the whole-graph [[Graph View]]. One per graph, so it carries no target: the
+ * resident in the Sidebar has no address, being chrome you look through, but the whole graph is
+ * a place you go and come back to with Back.
+ */
+export function graphViewUrl(graphId: string): string {
+    return `${graphUrl(graphId)}/graph-view`
+}
+
 /** The bare workspace URL for a graph. */
 export function graphUrl(graphId: string): string {
     return `/g/${encodeURIComponent(graphId)}`
@@ -64,5 +74,6 @@ export function viewUrl(graphId: string, view: ViewRef): string | null {
     if (view.kind === 'asset') return assetUrl(graphId, view.target)
     if (view.kind === 'theme') return themeUrl(graphId, view.target)
     if (view.kind === 'kanban') return kanbanUrl(graphId, view.target)
+    if (view.kind === GRAPH_VIEW_WHOLE_KIND) return graphViewUrl(graphId)
     return null
 }

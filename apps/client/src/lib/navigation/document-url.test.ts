@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { assetUrl, documentUrl, encodeConceptPath, graphUrl, kanbanUrl, themeUrl, viewUrl } from './document-url'
+import { assetUrl, documentUrl, encodeConceptPath, graphUrl, graphViewUrl, kanbanUrl, themeUrl, viewUrl } from './document-url'
 
 describe('encodeConceptPath', () => {
     it('encodes each segment but preserves slashes as path separators', () => {
@@ -50,6 +50,16 @@ describe('viewUrl', () => {
         expect(viewUrl('g1', { kind: 'backlinks', target: 'Physics' })).toBeNull()
         expect(viewUrl('g1', { kind: 'tasks', target: 'tasks' })).toBeNull()
         expect(viewUrl('g1', { kind: 'document-tree', target: 'root' })).toBeNull()
+        expect(viewUrl('g1', { kind: 'graph-view.local', target: 'local' })).toBeNull()
+    })
+})
+
+describe('graphViewUrl', () => {
+    // The whole-graph Graph View is a place you go, one per graph, so its address has no target.
+    // The Sidebar's local copy is a resident and has none (above).
+    it('addresses the whole graph', () => {
+        expect(graphViewUrl('g1')).toBe('/g/g1/graph-view')
+        expect(viewUrl('g1', { kind: 'graph-view.whole', target: 'whole' })).toBe('/g/g1/graph-view')
     })
 })
 

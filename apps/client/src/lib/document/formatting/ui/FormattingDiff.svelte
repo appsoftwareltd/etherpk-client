@@ -1,9 +1,11 @@
 <script lang="ts">
     /**
      * One Formatting Issue's fix as a unified diff (ADR 0109): each changed line as a removed row
-     * then an added row, three lines of context around each run of changes, a line-number gutter,
-     * and the characters nobody can see drawn as stand-ins (`line-diff.ts`). Code font, no
-     * wrapping: a long line scrolls sideways inside the diff rather than widening the dialog.
+     * then an added row, an inserted line as an added row, three lines of context around each run
+     * of changes, a gutter of the page's line numbers (blank for an inserted line, which the page
+     * does not have yet), and the characters nobody can see drawn as stand-ins (`line-diff.ts`).
+     * Code font, no wrapping: a long line scrolls sideways inside the diff rather than widening the
+     * dialog.
      */
     import { type DiffRow, diffHunks, INVISIBLE_GLYPHS, type Invisible } from "../line-diff";
 
@@ -34,7 +36,7 @@
             </p>
             <table class="w-max min-w-full border-collapse font-mono text-sm [tab-size:4]">
                 <tbody>
-                    {#each hunk.rows as row (`${row.kind}-${row.line}`)}
+                    {#each hunk.rows as row (row.key)}
                         <tr
                             data-kind={row.kind}
                             class={row.kind === "removed"
@@ -43,7 +45,7 @@
                                   ? "bg-green-50 dark:bg-green-950/40"
                                   : ""}
                         >
-                            <td class="w-px select-none whitespace-nowrap px-2 text-right align-top text-gray-600 dark:text-gray-400">{row.line + 1}</td>
+                            <td class="w-px select-none whitespace-nowrap px-2 text-right align-top text-gray-600 dark:text-gray-400">{row.line === null ? "" : row.line + 1}</td>
                             <td
                                 class="w-px select-none px-1 align-top {row.kind === 'removed'
                                     ? 'text-red-700 dark:text-red-300'

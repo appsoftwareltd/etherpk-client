@@ -42,6 +42,24 @@ describe('a refused edit', () => {
         expect(refusalIn(tr)).toBe('frontmatter-seam')
     })
 
+    it('names the join on Backspace at the start of the closing delimiter', () => {
+        const editor = editorFixture(`${FM}|body`)
+        const closer = FM.indexOf('---\n', 4)
+        const tr = editor.state.update({ changes: { from: closer - 1, to: closer }, userEvent: 'delete.backward' })
+        expect(refusalIn(tr)).toBe('frontmatter-join')
+        expect(tr.docChanged).toBe(false)
+    })
+
+    it('names the removal when the closing line is taken out whole, whichever line break goes with it', () => {
+        const editor = editorFixture(`${FM}|body`)
+        const closer = FM.indexOf('---\n', 4)
+        for (const changes of [{ from: closer, to: closer + 4 }, { from: closer - 1, to: closer + 3 }]) {
+            const tr = editor.state.update({ changes, userEvent: 'delete.backward' })
+            expect(refusalIn(tr)).toBe('frontmatter-remove')
+            expect(tr.docChanged).toBe(false)
+        }
+    })
+
     it('names growth when the closer is deleted above a rule in the body', () => {
         const editor = editorFixture(`${FM}|body\n---\nmore`)
         const closer = FM.indexOf('---\n', 4)
@@ -56,7 +74,8 @@ describe('a refused edit', () => {
     })
 
     it('has one message per reason, each naming the --- line', () => {
-        const reasons: EditRefusal[] = ['frontmatter-seam', 'frontmatter-grow', 'frontmatter-vanish']
+        const reasons: EditRefusal[] = ['frontmatter-seam', 'frontmatter-join', 'frontmatter-remove', 'frontmatter-grow', 'frontmatter-vanish']
+        expect(Object.keys(EDIT_REFUSAL_MESSAGE).sort()).toEqual([...reasons].sort())
         for (const reason of reasons) {
             expect(EDIT_REFUSAL_MESSAGE[reason]).toContain('---')
             expect(EDIT_REFUSAL_MESSAGE[reason].length).toBeLessThan(220)

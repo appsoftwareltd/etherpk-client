@@ -23,6 +23,7 @@ import type {
     TaskHit,
     TaskQuery,
 } from '../index-db'
+import type { LinkGraph } from '../index-link-graph'
 import type { PropertyFilter } from '../search-query'
 import type { EmbeddingRow, PendingPassage, SemanticDocumentGroup, SemanticStatus } from '../semantic/embedding-db'
 import { conceptKey } from '../backlinks/backlink-index'
@@ -101,6 +102,12 @@ export interface RemoteGraphIndex {
      * comes from here rather than from a walk of every document.
      */
     assetUsage(needles: readonly string[]): Promise<AssetUsage>
+    /**
+     * Every concept and every pair a wikilink joins, for the [[Graph View]] (index-link-graph.ts).
+     * A round trip whose answer grows with the graph, so a caller asks while it is on screen and
+     * after an `onUpdated`, never speculatively.
+     */
+    linkGraph(): Promise<LinkGraph>
     /**
      * One page of the [[Tasks View]]'s list, with its total. A round trip like `backlinks` —
      * the Tasks View re-issues it when a filter changes or the index updates, never per
@@ -1012,6 +1019,10 @@ export function createRemoteGraphIndex(
                 needles: [...needles],
             }))
             return response.usage
+        },
+        async linkGraph() {
+            const response = await request<Extract<IndexResponse, { type: 'link-graph' }>>((id) => ({ type: 'link-graph', id }))
+            return response.graph
         },
         async searchText(query, offset, limit, filters) {
             const response = await request<Extract<IndexResponse, { type: 'search-text' }>>(

@@ -8,7 +8,7 @@ import { frontmatterLines } from '$lib/storage/fs/frontmatter-span'
 import { type FencedBlockRange, fencedBlocks } from '../fenced-code'
 import { changedLineIndices, joinLines, type SourceLine, splitLines } from './line-diff'
 
-export type FormattingCheckId = 'no-break-space-indent' | 'bullet-marker' | 'indentation' | 'line-endings' | 'unclosed-fence'
+export type FormattingCheckId = 'no-break-space-indent' | 'bullet-marker' | 'indentation' | 'blank-line-after-list' | 'line-endings' | 'unclosed-fence'
 
 /**
  * A document's whole text, frontmatter included, as every check reads it: split into lines once,
@@ -33,7 +33,7 @@ export function checkedText(text: string): CheckedText {
 
 /** One check's finding on one document: a Formatting Issue once the scan knows the page. */
 export interface FormattingFinding {
-    /** 0-based lines the finding is on: the lines the fix changes, or the lines reported. */
+    /** 0-based lines the finding is on: the lines the fix changes or inserts a line before, or the lines reported. */
     lines: readonly number[]
     /** The whole fixed text, or null for a check that only reports. */
     fixed: string | null
@@ -54,14 +54,36 @@ export interface FormattingCheck {
 
 /**
  * The finding for a fix that rewrites `source`'s lines as `fixed`, or null when the fix changes
- * nothing. `fixed` must hold as many lines as `source`: a fix rewrites lines in place, which is what
- * lets the diff compare line by line and the write splice line by line.
+ * nothing. `fixed` must hold as many lines as `source`: a fix rewrites lines in place or inserts
+ * lines ({@link insertionFinding}), never both, which is what lets the diff and the write line the
+ * two texts up without searching for matching runs (`line-diff.ts`).
  */
 export function fixFinding(source: CheckedText, fixed: readonly SourceLine[], reason: (changed: readonly number[]) => string): FormattingFinding | null {
     if (fixed.length !== source.lines.length) throw new Error(`A formatting fix must keep every line: ${source.lines.length} lines became ${fixed.length}`)
     const changed = changedLineIndices(source.lines, fixed)
     if (changed.length === 0) return null
     return { lines: changed, fixed: joinLines(fixed), reason: reason(changed) }
+}
+
+/**
+ * The finding for a fix that inserts lines into `source` and changes nothing else, or null when it
+ * inserts none. `inserted` maps a line to the line put before it, and the finding is on the lines
+ * the insertions go before.
+ */
+export function insertionFinding(
+    source: CheckedText,
+    inserted: ReadonlyMap<number, SourceLine>,
+    reason: (lines: readonly number[]) => string,
+): FormattingFinding | null {
+    if (inserted.size === 0) return null
+    const fixed: SourceLine[] = []
+    source.lines.forEach((line, i) => {
+        const before = inserted.get(i)
+        if (before) fixed.push(before)
+        fixed.push(line)
+    })
+    const lines = [...inserted.keys()].sort((a, b) => a - b)
+    return { lines, fixed: joinLines(fixed), reason: reason(lines) }
 }
 
 /**

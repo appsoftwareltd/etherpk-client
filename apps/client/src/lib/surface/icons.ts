@@ -117,6 +117,14 @@ export const ICON_PATHS: Record<string, string> = {
     // Sidebar
     /** Three linked nodes: a knowledge graph. Leads the Graph Sidebar's tab, before the graph's name. */
     graph: '<circle cx="4" cy="4.5" r="1.8"/><circle cx="12" cy="5.5" r="1.8"/><circle cx="7.5" cy="12" r="1.8"/><path d="M5.8 4.7 10.2 5.3M5 6.1l1.7 4.3M8.6 10.6l2.6-3.6"/>',
+    /**
+     * A large dot with four smaller ones linked to it: the [[Graph View]], on its tab and its rows.
+     * Drawn apart from `graph` (three equal dots), which is the Graph Sidebar's.
+     */
+    'graph-view':
+        '<circle cx="8" cy="8" r="2.2"/><circle cx="3" cy="3.5" r="1.2"/><circle cx="13" cy="3" r="1.2"/><circle cx="2.8" cy="12.5" r="1.2"/><circle cx="13" cy="12.8" r="1.2"/><path d="M4 4.4 6.4 6.6M12.1 3.9 9.7 6.5M3.8 11.6l2.6-2.3M12.1 11.9 9.6 9.5"/>',
+    /** Four corners: fit the whole picture in view. */
+    fit: '<path d="M2.5 6V2.5H6M10 2.5h3.5V6M13.5 10v3.5H10M6 13.5H2.5V10"/>',
     /** Six dots: the grip of a row that can be dragged to reorder. */
     grip: [4, 8, 12]
         .flatMap((y) => [6, 10].map((x) => `<circle cx="${x}" cy="${y}" r="1" fill="currentColor" stroke="none"/>`))

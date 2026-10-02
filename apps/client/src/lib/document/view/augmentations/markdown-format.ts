@@ -130,7 +130,11 @@ function hideFromOnLine(line: Line, markFrom: number): number {
 /**
  * How the editor reads a line the parser took as a setext heading's underline.
  *
- * - `heading`: CommonMark's reading, and the publisher's. The text above is a heading.
+ * - `heading`: CommonMark's reading, and the publisher's. The text above is a heading. One case
+ *   differs: a margin line directly under a bullet, which the parser reads as the bullet's lazy
+ *   continuation and the publisher as a line of its own (`list-item-end-rule.ts`). An underline
+ *   indented to the bullet's text under it is the underline of the bullet's text here, and a rule
+ *   after the line on a published page.
  * - `rule`: a `---` under a GFM table. `@lezer/markdown` reads the table as the heading's text,
  *   but the editor's analysis sees the table end above the dashes, and GFM renderers (the
  *   publisher) draw the table and then a rule.

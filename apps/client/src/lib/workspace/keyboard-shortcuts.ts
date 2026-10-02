@@ -50,13 +50,15 @@ export const APP_KEYBINDINGS: AppKeybinding[] = [
     // about that.
     { key: 'Mod+K', command: 'search.open', label: 'Search the graph', group: 'Go to' },
     // ── Sidebars ──────────────────────────────────────────────────────────────────────────
-    // One letter per Sidebar (L, R) to toggle it, and one per resident (G, N, B, T) to get to it:
-    // a reveal ends with the View in front of an expanded Sidebar, a toggle collapses as often as
-    // it expands, and each brings a closed resident back (workspace/residents.ts, 2026-09-18).
-    { key: 'Alt+G', command: 'graph.open', label: 'Graph', group: 'Sidebars' },
+    // One letter per Sidebar (L, R) to toggle it, and one per resident (G, N, B, T, M) to get to
+    // it: a reveal ends with the View in front of an expanded Sidebar, a toggle collapses as often
+    // as it expands, and each brings a closed resident back (workspace/residents.ts, 2026-09-18).
+    // "Graph Sidebar", not "Graph", since the Graph View (M, for map) arrived beside it.
+    { key: 'Alt+G', command: 'graph.open', label: 'Graph Sidebar', group: 'Sidebars' },
     { key: 'Alt+N', command: 'quickNotes.open', label: 'Quick notes, ready to type', group: 'Sidebars' },
     { key: 'Alt+B', command: 'backlinks.open', label: 'Backlinks', group: 'Sidebars' },
     { key: 'Alt+T', command: 'tasks.open', label: 'Tasks', group: 'Sidebars' },
+    { key: 'Alt+M', command: 'graph-view.reveal', label: 'Graph View (desktop)', group: 'Sidebars' },
     { key: 'Alt+L', command: 'layout.toggleSidebar', label: 'Show or hide the left sidebar', group: 'Sidebars' },
     { key: 'Alt+R', command: 'layout.toggleBacklinks', label: 'Show or hide the right sidebar', group: 'Sidebars' },
     // ── Editor ────────────────────────────────────────────────────────────────────────────

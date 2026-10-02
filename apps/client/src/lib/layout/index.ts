@@ -21,10 +21,18 @@ export type {
     SidebarSide,
     ViewInstance,
     ViewPlacement,
+    ViewProps,
     ViewRef,
     ViewRegistry,
     ViewRegistryEntry,
 } from './types'
+export {
+    createViewVisibility,
+    type ViewVisibility,
+    type ViewVisibilityControl,
+    watchPageVisibility,
+    watchViewSize,
+} from './view-visibility'
 export {
     KEY_SEPARATOR,
     KIND_NAMESPACE_SEPARATOR,

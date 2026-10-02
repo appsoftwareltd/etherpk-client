@@ -67,6 +67,8 @@ describe('the MCP server', () => {
             'delete_theme_file',
             'edit_document',
             'graph_info',
+            'graph_insights',
+            'graph_path',
             'import_theme_folder',
             'list_assets',
             'list_documents',

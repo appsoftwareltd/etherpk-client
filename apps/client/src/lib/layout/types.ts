@@ -12,6 +12,7 @@
 import type { Component } from 'svelte'
 
 import type { ViewRef } from './view-ref'
+import type { ViewVisibility } from './view-visibility'
 
 export type { ViewRef } from './view-ref'
 
@@ -295,10 +296,25 @@ export interface LayoutStore {
 
 // ── View registry ───────────────────────────────────────────────────────────
 
+/**
+ * The props every presenter mounts a View's component with. A component declares the ones it
+ * reads; most read only `view`.
+ */
+export interface ViewProps {
+    view: ViewRef
+    /** The dockview panel id, for retitling the View's own tab. The phone presenter passes none. */
+    panelId?: string
+    /**
+     * Whether the View is on screen (view-visibility.ts). Every presenter passes one, for a View
+     * that must stop its work while nobody can see it, because the desktop keeps every tab mounted.
+     */
+    visibility?: ViewVisibility
+}
+
 /** Tells the renderer which Svelte component to mount for a View `kind`. */
 export interface ViewRegistryEntry {
     kind: string
-    component: Component<{ view: ViewRef }>
+    component: Component<ViewProps>
     /** Default region for this kind when a caller does not specify one. */
     naturalRegion?: Region
     /** Human title for the tab; defaults to the target. */

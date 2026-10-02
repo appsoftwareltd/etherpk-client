@@ -1,10 +1,9 @@
-import { execSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { mkdtemp, readFile, readdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeAll, describe, expect, it } from 'vitest'
 
 import { createGraphKeyring } from '$lib/crypto'
 import { frontmatterIdentity } from '$lib/document/frontmatter/identity'
@@ -14,6 +13,7 @@ import { fixedSyncToken } from '$lib/sync/sync-token'
 import { assetNameFromRef, createAssetStore } from '$lib/storage/fs/asset-store'
 import { createMemoryDirectoryAdapter } from '$lib/storage/fs/memory-adapter'
 
+import { chromiumOnThisMachine, WARM_UP_TIMEOUT, warmChromium } from './chromium-fixture'
 import { openHeadlessFolder } from './headless-folder'
 import { openHeadlessGraph, type HeadlessGraph } from './headless-graph'
 import { publishGraphKey, withPublishFolder, writePublishFolders } from './publish-folders'
@@ -61,16 +61,8 @@ const backends: Array<[string, (id: string) => Promise<HeadlessGraph>]> = [
 ]
 
 /** A Chromium to draw with, when this machine has one: the named one, or a `chromium` on the PATH. */
-function chromiumOnThisMachine(): string | null {
-    const named = process.env.ETHERPK_CHROMIUM?.trim() || process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE?.trim()
-    if (named && existsSync(named)) return named
-    try {
-        const found = execSync('command -v chromium || command -v chromium-browser || command -v google-chrome', { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim()
-        return found && existsSync(found) ? found : null
-    } catch {
-        return null
-    }
-}
+// The first Chromium launch on a machine is slow: done once here, it counts against no test.
+beforeAll(() => warmChromium(chromiumOnThisMachine()), WARM_UP_TIMEOUT)
 
 describe.each(backends)('%s backend', (_name, openGraph) => {
     async function graph(id: string): Promise<HeadlessGraph> {

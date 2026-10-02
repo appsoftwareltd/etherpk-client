@@ -11,7 +11,8 @@
         "build:mcp": "pnpm --filter @appsoftwareltd/etherpk-mcp build",
         "check": "pnpm -r check",
         "lint": "eslint .",
-        "test": "pnpm -r test"
+        "test": "pnpm -r test",
+        "test:ci": "pnpm -r --workspace-concurrency=1 test"
     },
     "devDependencies": {
         "@eslint/js": "^9.39.5",

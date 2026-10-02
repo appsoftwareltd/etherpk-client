@@ -58,6 +58,7 @@ import type {
     ViewRegistry,
 } from '../types'
 import { parseViewKey } from '../view-ref'
+import { createViewVisibility, watchPageVisibility, watchViewSize } from '../view-visibility'
 import { installTabStripScrollbar } from './tab-strip-scrollbar'
 import { NO_PAGE_OPEN } from './no-page-open'
 import { installTabContextMenu, labelOf } from './tab-context-menu'
@@ -235,6 +236,8 @@ export function createDockviewRenderer(options: DockviewRendererOptions): Dockvi
             element.style.height = '100%'
             element.style.width = '100%'
             let instance: Record<string, unknown> | null = null
+            // What stops following this panel's visibility (view-visibility.ts) on dispose.
+            let stopWatching: (() => void)[] = []
 
             return {
                 element,
@@ -251,11 +254,22 @@ export function createDockviewRenderer(options: DockviewRendererOptions): Dockvi
                         element.dataset.testid = 'view-unavailable'
                         return
                     }
+                    // Every tab stays mounted, so a View that must do nothing off screen learns
+                    // whether it is on screen from this: its tab in front (dockview's own panel
+                    // visibility), its box not collapsed to nothing, and the browser tab shown.
+                    // Off screen until the first size report: at init dockview can still call a
+                    // tab added behind others visible, and a View that believed it would start its
+                    // work in that moment. ResizeObserver reports any rendered box once at once.
+                    const visibility = createViewVisibility({ tab: params.api.isVisible, size: false })
+                    const tabWatch = params.api.onDidVisibilityChange((event) => visibility.set('tab', event.isVisible))
+                    stopWatching = [() => tabWatch.dispose(), watchViewSize(visibility, element), watchPageVisibility(visibility)]
                     // The panel id travels in as a prop: a View that learns its own name late
                     // retitles by it, and a forceNew copy's id (`key::n`) is not its view key.
-                    instance = mount(entry.component, { target: element, props: { view, panelId: component.id } })
+                    instance = mount(entry.component, { target: element, props: { view, panelId: component.id, visibility } })
                 },
                 dispose() {
+                    for (const stop of stopWatching) stop()
+                    stopWatching = []
                     if (instance) unmount(instance)
                     instance = null
                 },

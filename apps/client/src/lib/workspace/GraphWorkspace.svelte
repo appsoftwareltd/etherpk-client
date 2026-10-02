@@ -101,6 +101,8 @@
     import { documentRemoved } from "$lib/kanban/board-actions";
     import { KANBAN_TITLE_PREFIX, KANBAN_VIEW_KIND } from "$lib/kanban/board-model";
     import { registerKanbanCommands } from "$lib/kanban/kanban-commands";
+    import { GRAPH_VIEW_EXTENSION_ID, GRAPH_VIEW_LOCAL, GRAPH_VIEW_RESIDENT, GRAPH_VIEW_WHOLE } from "$lib/graph-view/identity";
+    import { registerGraphView } from "$lib/graph-view/register";
     import { registerTaskReferenceCommands } from "$lib/document/commands/task-reference-commands";
     import { everyIndexedTask, parseTaskReference, resolveTaskReference, type TaskReference } from "$lib/document/task-reference";
     import { taskDateKey } from "$lib/document/index-db";
@@ -1242,6 +1244,7 @@
     let detachLinkCommands: (() => void) | undefined;
     let detachDocumentCommands: (() => void) | undefined;
     let detachKanbanCommands: (() => void) | undefined;
+    let detachGraphView: (() => void) | undefined;
     let detachTaskReferenceCommands: (() => void) | undefined;
     let detachQuickNotesCommands: (() => void) | undefined;
     let detachSpellingCommands: (() => void) | undefined;
@@ -3342,7 +3345,14 @@
             if (controller) toggleResidentSidebar(controller, [RESIDENTS.graph, RESIDENTS.quickNotes]);
         });
         commandRegistry.register("layout.toggleBacklinks", () => {
-            if (controller) toggleResidentSidebar(controller, [RESIDENTS.backlinks, RESIDENTS.tasks]);
+            // The Graph View is the right Sidebar's third resident on a desktop, so a Sidebar
+            // holding only it is not empty and the toggle collapses it rather than restoring Backlinks.
+            if (controller)
+                toggleResidentSidebar(controller, [
+                    RESIDENTS.backlinks,
+                    RESIDENTS.tasks,
+                    ...(useMobile ? [] : [GRAPH_VIEW_RESIDENT]),
+                ]);
         });
         // The reveal commands (Alt+G / Alt+B): the resident in front of an expanded Sidebar.
         commandRegistry.register("graph.open", () => {
@@ -3453,6 +3463,26 @@
             openBoard: (concept, sourcePanelId) =>
                 void openViewInPaneOf({ kind: KANBAN_VIEW_KIND, target: canonicalConceptName(concept) }, sourcePanelId),
             openPage: (concept, sourcePanelId) => openConcept(concept, sourcePanelId),
+            isDesktop: () => !useMobile,
+        });
+        // The [[Graph View]]: a built-in extension, handed the narrow context an extension may
+        // use (surface/extension-context.ts) rather than these services, and taken back whole by
+        // its one disposer as the graph closes. Registered before the presenter mounts, so a
+        // restored Layout finds its two View kinds. The index is read through `graphIndex` at
+        // call time because the open can swap it for an inline one (see `useGraphIndex`).
+        detachGraphView = registerGraphView({
+            extensionId: GRAPH_VIEW_EXTENSION_ID,
+            views: registry,
+            contributions,
+            commands: commandRegistry,
+            events: bus,
+            index: {
+                allConcepts: () => graphIndex?.allConcepts() ?? [],
+                linkGraph: () => (graphIndex ? graphIndex.linkGraph() : Promise.reject(new Error("The graph's index is not open."))),
+                onUpdated: (listener) => graphIndex?.onUpdated(listener) ?? (() => {}),
+            },
+            layout: () => controller,
+            activeDocument: () => getActiveDocument(),
             isDesktop: () => !useMobile,
         });
         // Copy task reference (ADR 0114): the task on the caret's line, or a card's, on the
@@ -3943,6 +3973,11 @@
         // Quick Notes is the left Sidebar's resident (ADR 0078), ensured the same way.
         if (!controller.isOpen(QUICK_NOTES_VIEW))
             controller.openView(QUICK_NOTES_VIEW, { activate: false });
+        // The Graph View is the right Sidebar's third resident on a desktop or tablet only
+        // (CONTEXT.md → Sidebar): a phone has no room to draw it, so it is not added there. Ensured
+        // like Tasks, which also gives every Layout saved before it existed the tab, behind the others.
+        if (!useMobile && !controller.isOpen(GRAPH_VIEW_LOCAL))
+            controller.openView(GRAPH_VIEW_LOCAL, { activate: false });
         // A share that landed while the graph was opening (ADR 0087, amended) is shown now: in
         // front of its Sidebar, expanded, and BEFORE the baseline save below, so the layout is
         // persisted with Quick Notes in front and a reload finds it there. Revealing after this
@@ -3991,6 +4026,8 @@
         // A [[Kanban Board]]'s address carries its concept, resolved like a document's.
         const board = page.params.board;
         if (board) return { kind: KANBAN_VIEW_KIND, target: canonicalConceptName(board) };
+        // The whole-graph Graph View's address has no param, so its route names it.
+        if (page.route.id?.endsWith("/(workspace)/graph-view")) return GRAPH_VIEW_WHOLE;
         return null;
     }
 
@@ -5643,6 +5680,8 @@
         detachDocumentCommands = undefined;
         detachKanbanCommands?.();
         detachKanbanCommands = undefined;
+        detachGraphView?.();
+        detachGraphView = undefined;
         detachTaskReferenceCommands?.();
         detachTaskReferenceCommands = undefined;
         detachQuickNotesCommands?.();

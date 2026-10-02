@@ -4,7 +4,13 @@
  */
 import { describe, expect, it } from 'vitest'
 
-import { crossesFrontmatterSeam as crosses, frontmatterWouldGrow, frontmatterWouldVanish } from './boundary'
+import {
+    crossesFrontmatterSeam as crosses,
+    frontmatterWouldGrow,
+    frontmatterWouldVanish,
+    joinsFrontmatterDelimiter as joins,
+    removesClosingDelimiter as removesCloser,
+} from './boundary'
 
 const DOC = '---\ntitle: Kanban\n---\nfirst line\nsecond'
 const SEAM = DOC.indexOf('\nfirst') // the terminator that ends the closing delimiter
@@ -164,5 +170,98 @@ describe('the block may hold only text typed into it', () => {
         const closer = page.indexOf('---\nabc')
         const after = '---\ntitle: Router\nabc\n---\nmore'
         expect(frontmatterWouldGrow(page, [{ from: closer, to: closer + 4, inserted: 0 }], () => after)).toBe(true)
+    })
+})
+
+describe('joinsFrontmatterDelimiter', () => {
+    const joinsFrontmatterDelimiter = (text: string, changes: { from: number; to: number; insert?: string }[]) =>
+        joins(text, changes, () => apply(text, changes))
+    const BEFORE_CLOSER = DOC.indexOf('\n---\nfirst') // the line break before the closing delimiter
+    const AFTER_OPENER = DOC.indexOf('\n') // the line break that ends the opening delimiter
+
+    it('refuses joining the closing delimiter onto the block’s last line, from either side of the break', () => {
+        expect(joinsFrontmatterDelimiter(DOC, [{ from: BEFORE_CLOSER, to: BEFORE_CLOSER + 1 }])).toBe(true)
+    })
+
+    it('refuses joining the block’s first line onto the opening delimiter', () => {
+        expect(joinsFrontmatterDelimiter(DOC, [{ from: AFTER_OPENER, to: AFTER_OPENER + 1 }])).toBe(true)
+    })
+
+    it('refuses a selection inside the block that ends at the closing delimiter, deleted or replaced', () => {
+        expect(joinsFrontmatterDelimiter(DOC, [{ from: 6, to: BEFORE_CLOSER + 1 }])).toBe(true)
+        expect(joinsFrontmatterDelimiter(DOC, [{ from: 6, to: BEFORE_CLOSER + 1, insert: 'x' }])).toBe(true)
+    })
+
+    it('refuses the join in an empty block, and in a block that ends the document', () => {
+        const empty = '---\n---\nbody'
+        expect(joinsFrontmatterDelimiter(empty, [{ from: 3, to: 4 }])).toBe(true)
+        const bare = '---\ntitle: K\n---'
+        expect(joinsFrontmatterDelimiter(bare, [{ from: 12, to: 13 }])).toBe(true)
+    })
+
+    it('allows editing a delimiter’s dashes, and an edit inside the block', () => {
+        const closer = DOC.indexOf('---\nfirst')
+        expect(joinsFrontmatterDelimiter(DOC, [{ from: closer + 2, to: closer + 3 }])).toBe(false)
+        expect(joinsFrontmatterDelimiter(DOC, [{ from: 11, to: 17 }])).toBe(false)
+    })
+
+    it('allows removing the block from the document start, or everything to the end', () => {
+        expect(joinsFrontmatterDelimiter(DOC, [{ from: 0, to: BEFORE_CLOSER + 1 }])).toBe(false)
+        expect(joinsFrontmatterDelimiter(DOC, [{ from: 6, to: DOC.length }])).toBe(false)
+    })
+
+    it('refuses a change through the closing line too, which deletes the break before it (the removal rule names it first)', () => {
+        const closerLine = BEFORE_CLOSER + '\n---'.length
+        expect(joinsFrontmatterDelimiter(DOC, [{ from: BEFORE_CLOSER, to: closerLine }])).toBe(true)
+        expect(joinsFrontmatterDelimiter(DOC, [{ from: BEFORE_CLOSER, to: closerLine - 1 }])).toBe(true)
+    })
+
+    it('is inert with no block, and when the block survives (a break inside the block that keeps both delimiters)', () => {
+        expect(joinsFrontmatterDelimiter('first\nsecond', [{ from: 5, to: 6 }])).toBe(false)
+        const two = '---\ntitle: K\ntags: x\n---\nbody'
+        expect(joinsFrontmatterDelimiter(two, [{ from: 12, to: 13 }])).toBe(false) // joins two YAML lines
+    })
+})
+
+describe('removesClosingDelimiter', () => {
+    const removesClosingDelimiter = (text: string, changes: { from: number; to: number; insert?: string }[]) =>
+        removesCloser(text, changes, () => apply(text, changes))
+    const CLOSER = DOC.indexOf('---\nfirst') // the closing delimiter's line
+
+    it('refuses taking the closing line out whole, with the line break before it or after it, deleted or typed over', () => {
+        // A cut makes the first shape; the keymap's smallest change for Backspace or Delete over the line, the second.
+        expect(removesClosingDelimiter(DOC, [{ from: CLOSER - 1, to: CLOSER + 3 }])).toBe(true)
+        expect(removesClosingDelimiter(DOC, [{ from: CLOSER, to: CLOSER + 4 }])).toBe(true)
+        expect(removesClosingDelimiter(DOC, [{ from: CLOSER - 1, to: CLOSER + 3, insert: 'x' }])).toBe(true)
+    })
+
+    it('allows deleting the dashes, which leaves the line, and a removal that leaves a block for the growth rule', () => {
+        expect(removesClosingDelimiter(DOC, [{ from: CLOSER, to: CLOSER + 3 }])).toBe(false)
+        const ruled = `${DOC}\n---\nmore`
+        expect(removesClosingDelimiter(ruled, [{ from: CLOSER, to: CLOSER + 4 }])).toBe(false)
+    })
+
+    it('refuses a selection from anywhere in the block through the closing line, as Shift+Down from inside the last key makes', () => {
+        expect(removesClosingDelimiter(DOC, [{ from: DOC.indexOf('anban'), to: CLOSER + 3 }])).toBe(true)
+        const two = '---\na: 1\nb: 2\n---\nbody'
+        expect(removesClosingDelimiter(two, [{ from: two.indexOf('1'), to: two.indexOf('---\nbody') + 3 }])).toBe(true)
+    })
+
+    it('refuses it on a page with no body, and on a block that ends the document', () => {
+        const empty = '---\ntitle: K\n---\n'
+        expect(removesClosingDelimiter(empty, [{ from: 13, to: 17 }])).toBe(true) // the line and the break after it, to the end
+        expect(removesClosingDelimiter(empty, [{ from: 12, to: 16 }])).toBe(true)
+        // The keymap's tidy takes the blank line a delete would leave there, so the change takes both line breaks.
+        expect(removesClosingDelimiter(empty, [{ from: 12, to: 17 }])).toBe(true)
+        const bare = '---\ntitle: K\n---'
+        expect(removesClosingDelimiter(bare, [{ from: 12, to: 16 }])).toBe(true)
+        // With a body after, that change joins the body onto the last key: the seam rule's to refuse.
+        expect(removesClosingDelimiter(DOC, [{ from: CLOSER - 1, to: CLOSER + 4 }])).toBe(false)
+        expect(crossesFrontmatterSeam(DOC, [{ from: CLOSER - 1, to: CLOSER + 4 }])).toBe(true)
+    })
+
+    it('allows removing the block from its start, and is inert with no block', () => {
+        expect(removesClosingDelimiter(DOC, [{ from: 0, to: CLOSER + 3 }])).toBe(false)
+        expect(removesClosingDelimiter('first\n---\nsecond', [{ from: 5, to: 9 }])).toBe(false)
     })
 })

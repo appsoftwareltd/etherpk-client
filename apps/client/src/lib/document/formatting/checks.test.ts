@@ -1,6 +1,7 @@
 /**
  * The registry of Formatting Checks (ADR 0109) and the properties every check keeps: it never
- * throws, its fix rewrites lines in place, and a fixed text has nothing left for it to fix.
+ * throws, its fix rewrites lines in place or inserts lines, and a fixed text has nothing left for it
+ * to fix.
  */
 
 import fc from 'fast-check'
@@ -48,12 +49,12 @@ function applySplices(text: string, splices: readonly { from: number; to: number
 
 describe('the registry', () => {
     it('lists the checks in the order a page shows their issues, the report-only one last', () => {
-        expect(FORMATTING_CHECKS.map((c) => c.id)).toEqual(['no-break-space-indent', 'bullet-marker', 'indentation', 'line-endings', 'unclosed-fence'])
+        expect(FORMATTING_CHECKS.map((c) => c.id)).toEqual(['no-break-space-indent', 'bullet-marker', 'indentation', 'blank-line-after-list', 'line-endings', 'unclosed-fence'])
     })
 
     it("finds a page's issues in that order", () => {
-        const text = '* a\r\n\t- b\r\n\u{a0}- c\r\n```js'
-        expect(findIssues(text).map((f) => f.check)).toEqual(['no-break-space-indent', 'bullet-marker', 'indentation', 'line-endings', 'unclosed-fence'])
+        const text = '* a\r\n\t- b\r\n- c\r\nd\r\n\u{a0}- e\r\n```js'
+        expect(findIssues(text).map((f) => f.check)).toEqual(['no-break-space-indent', 'bullet-marker', 'indentation', 'blank-line-after-list', 'line-endings', 'unclosed-fence'])
     })
 
     it('finds nothing on a page EtherPK wrote', () => {
@@ -70,14 +71,21 @@ describe('every check', () => {
         )
     })
 
-    it('fixes by rewriting lines in place: the same number of lines, and splices that reproduce the fix', () => {
+    it('fixes by rewriting lines in place or inserting lines, keeping every other line, with splices that reproduce the fix', () => {
         fc.assert(
             fc.property(documentText, (text) => {
                 for (const check of FORMATTING_CHECKS) {
-                    const fixed = check.find(checkedText(text))?.fixed
-                    if (fixed == null) continue
-                    expect(splitLines(fixed)).toHaveLength(splitLines(text).length)
-                    expect(applySplices(text, lineSplices(text, fixed))).toBe(fixed)
+                    const finding = check.find(checkedText(text))
+                    if (finding?.fixed == null) continue
+                    const was = splitLines(text)
+                    const now = splitLines(finding.fixed)
+                    if (now.length !== was.length) {
+                        // Inserted lines, one before each flagged line: taking them out gives the page back.
+                        const inserted = new Set(finding.lines.map((line, k) => line + k))
+                        expect(now).toHaveLength(was.length + finding.lines.length)
+                        expect(now.filter((_, i) => !inserted.has(i))).toEqual(was)
+                    }
+                    expect(applySplices(text, lineSplices(text, finding.fixed))).toBe(finding.fixed)
                 }
             }),
         )
@@ -95,13 +103,16 @@ describe('every check', () => {
         )
     })
 
-    it('together settle: approving the first fixable issue each time leaves nothing within five fixes', () => {
-        // One fix can create work for another (a `*` item made a `-` bullet may be off the grid),
-        // which is why a page is re-checked after every fix; it must never go round for ever.
+    it('together settle: approving the first fixable issue each time leaves nothing within one fix per check', () => {
+        // One fix can create work for another (a `*` item made a `-` bullet may be off the grid, and
+        // a bullet put on the grid may need a blank line after its list), which is why a page is
+        // re-checked after every fix; it must never go round for ever. One fix per check, as there is
+        // one fix fewer than checks, leaves room for the indentation fix's second pass over some
+        // off-grid pages (a known gap: the Roadmap's Formatting Scan items).
         fc.assert(
             fc.property(documentText, (text) => {
                 let current = text
-                for (let fix = 0; fix < 5; fix++) {
+                for (let fix = 0; fix < FORMATTING_CHECKS.length; fix++) {
                     const next = findIssues(current).find((found) => found.finding.fixed !== null)
                     if (!next) return
                     current = next.finding.fixed!
@@ -111,7 +122,7 @@ describe('every check', () => {
         )
     })
 
-    it('flags exactly the lines its fix changes', () => {
+    it('flags exactly the lines its fix changes, when it rewrites lines in place', () => {
         fc.assert(
             fc.property(documentText, (text) => {
                 for (const check of FORMATTING_CHECKS) {
@@ -119,6 +130,7 @@ describe('every check', () => {
                     if (finding?.fixed == null) continue
                     const was = splitLines(text)
                     const now = splitLines(finding.fixed)
+                    if (now.length !== was.length) continue // an insertion, flagged at the lines after it (above)
                     const changed = was.flatMap((line, i) => (line.text === now[i].text && line.ending === now[i].ending ? [] : [i]))
                     expect(finding.lines).toEqual(changed)
                 }

@@ -14,6 +14,7 @@ import MarkdownIt, { type Token } from 'markdown-it'
 import { isSafeAssetName } from '../../../storage/fs/asset-names'
 import { parseImageDisplaySizeHint } from '../../view/augmentations/image-display-size'
 import { publishSlug } from '../../wikilink/derive'
+import { listItemEndRule } from './list-item-end-rule'
 import { markRule } from './mark-rule'
 import { mathRule, renderMath } from './math-rule'
 import { taskRule } from './task-rule'
@@ -122,6 +123,7 @@ export function createDocumentRenderer(options: RendererOptions): DocumentRender
     // ADR 0079's neighbour `file-link.ts`), and on a static site the link is merely inert.
     const validateLink = md.validateLink
     md.validateLink = (url) => validateLink(url) || /^file:\/\//i.test(url)
+    listItemEndRule(md)
     wikilinkRule(md, options.resolve)
     markRule(md)
     mathRule(md)

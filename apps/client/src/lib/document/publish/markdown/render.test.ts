@@ -22,6 +22,81 @@ describe('createDocumentRenderer', () => {
         expect(html.replace(/\n/g, '')).toBe('<ul><li>parent<ul><li>child<ul><li>grandchild</li></ul></li></ul></li><li>sibling</li></ul>')
     })
 
+    it('ends a bullet at a line short of its content column, which the editor reads as prose, where CommonMark would continue it', () => {
+        const html = (body: string) => renderer().render(body).html.replace(/\n/g, '')
+        // A margin line under a bullet is a paragraph of its own, not the bullet's lazy continuation.
+        expect(html('- a\nb\n')).toBe('<ul><li>a</li></ul><p>b</p>')
+        expect(html('- [ ] task\nprose\n')).toBe('<ul><li class="task"><input type="checkbox" disabled> task</li></ul><p>prose</p>')
+        // One space short of the column is prose too, and it splits the list around it.
+        expect(html('- a\n b\n- c\n')).toBe('<ul><li>a</li></ul><p>b</p><ul><li>c</li></ul>')
+        // At a parent's content column after its child, the line continues the parent, not the child.
+        expect(html('- a\n  - b\n  c\n')).toBe('<ul><li>a<ul><li>b</li></ul>c</li></ul>')
+        // A quote inside a bullet ends at the margin line the same way.
+        expect(html('- > q\nb\n')).toBe('<ul><li><blockquote><p>q</p></blockquote></li></ul><p>b</p>')
+    })
+
+    it("measures a bullet's content column as the editor does, two columns past the dash, whatever follows it", () => {
+        const { render } = renderer()
+        // The editor's Shift+Enter under a bullet typed with two spaces, or a tab, after the dash.
+        expect(render('-  a\n  b\n').html).toBe('<ul>\n<li>a\nb</li>\n</ul>\n')
+        expect(render('-\ta\n  b\n').html).toBe('<ul>\n<li>a\nb</li>\n</ul>\n')
+        expect(render('-  [ ] task\n  more\n').html).toContain('task\nmore</li>')
+        // Never an indented code block out of a line the editor keeps in the bullet.
+        expect(render('-    a\n    b\n').html).toBe('<ul>\n<li>a\nb</li>\n</ul>\n')
+    })
+
+    it("leaves CommonMark's reading where the editor reads no outline: numbered and * items, and lists in a quote", () => {
+        const html = (body: string) => renderer().render(body).html.replace(/\n/g, ' ').trim()
+        expect(html('1. a\nb\n')).toBe('<ol> <li>a b</li> </ol>')
+        expect(html('* a\nb\n')).toBe('<ul> <li>a b</li> </ul>')
+        expect(html('> - a\n> b\n')).toBe('<blockquote> <ul> <li>a b</li> </ul> </blockquote>')
+        expect(html('- > - a\n  > b\n')).toBe('<ul> <li> <blockquote> <ul> <li>a b</li> </ul> </blockquote> </li> </ul>')
+    })
+
+    it('leaves a line indented with anything but spaces to CommonMark, as the indentation checks own it', () => {
+        // A no-break space is indentation to the editor, and text to CommonMark.
+        expect(renderer().render('- a\n\u{a0}\u{a0}b\n').html).toBe('<ul>\n<li>a\n\u{a0}\u{a0}b</li>\n</ul>\n')
+    })
+
+    it('starts a block at that line, which is never a setext heading, as the editor draws it', () => {
+        // The editor's parser still reads the line as the bullet's lazy continuation, which cannot
+        // take an underline: a `---` under it is a rule and a `===` is text.
+        expect(renderer().render('- a\nb\n---\n').html).toBe('<ul>\n<li>a</li>\n</ul>\n<p>b</p>\n<hr>\n')
+        expect(renderer().render('- a\nb\n===\n').html).toBe('<ul>\n<li>a</li>\n</ul>\n<p>b\n===</p>\n')
+        // A table there is a table, as the editor draws it.
+        expect(renderer().render('- a\nb | c\n--|--\n').html).toMatch(/^<ul>\n<li>a<\/li>\n<\/ul>\n<table>/)
+        // After a blank line the text above an underline is a heading, in both.
+        expect(renderer().render('- a\n\nb\n---\n').html).toMatch(/<h2[^>]*>b<\/h2>/)
+        // Nor a link reference definition, which would hide a line the editor shows as text.
+        expect(renderer().render('- a\n[x]: /url\n').html).toBe('<ul>\n<li>a</li>\n</ul>\n<p>[x]: /url</p>\n')
+        // An underline indented to the bullet's text is a rule after the line. The editor's parser
+        // takes it as the underline of the bullet's own text, lazy line included, and styles both
+        // as a heading: one of the places the two still differ.
+        expect(renderer().render('- a\nb\n  ---\n').html).toBe('<ul>\n<li>a</li>\n</ul>\n<p>b</p>\n<hr>\n')
+    })
+
+    it('starts a paragraph at that line where a block there would swallow what the editor shows after it', () => {
+        const { render } = renderer()
+        // A lone tag would start an HTML block running to the next blank line, the next bullet and its link included.
+        const html = render('- a\n<img src="x">\n- b [[Physics]]\n').html
+        expect(html).toBe('<ul>\n<li>a</li>\n</ul>\n<p><img src="x"></p>\n<ul>\n<li>b <a href="physics.html" class="wikilink">Physics</a></li>\n</ul>\n')
+        expect(render('- a\n</span>\n').html).toBe('<ul>\n<li>a</li>\n</ul>\n<p></span></p>\n')
+        // Four columns past the margin would be an indented code block.
+        expect(render('   - a\n    p\n').html).toBe('<ul>\n<li>a</li>\n</ul>\n<p>p</p>\n')
+        // A link definition's address on the next line is that line, not part of a hidden definition.
+        expect(render('- [ref]:\n/url\n').html).toBe('<ul>\n<li>[ref]:</li>\n</ul>\n<p>/url</p>\n')
+    })
+
+    it('ends the paragraph a margin line starts at an empty bullet, as the editor reads one there', () => {
+        const html = renderer().render('- a\nb\n- \n  - c\n').html.replace(/\n/g, '')
+        expect(html).toBe('<ul><li>a</li></ul><p>b</p><ul><li><ul><li>c</li></ul></li></ul>')
+    })
+
+    it('keeps a line at or past a bullet content column in the bullet, as the editor does', () => {
+        const { html } = renderer().render('- a\n  b\n    c\n')
+        expect(html).toBe('<ul>\n<li>a\nb\nc</li>\n</ul>\n')
+    })
+
     it('renders wikilinks as anchors, nested ones as chained siblings, missing ones to the 404 page', () => {
         const { html } = renderer().render('see [[Physics]] and [[[[Physics]] Waves]] and [[Nowhere]]')
         expect(html).toContain('<a href="physics.html" class="wikilink">Physics</a>')

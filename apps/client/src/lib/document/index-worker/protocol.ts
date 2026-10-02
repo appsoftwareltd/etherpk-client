@@ -22,6 +22,7 @@ import type {
     TaskHit,
     TaskQuery,
 } from '../index-db'
+import type { LinkGraph } from '../index-link-graph'
 import type { PropertyFilter } from '../search-query'
 import type { EmbeddingRow, PendingPassage, SemanticDocumentGroup, SemanticStatus } from '../semantic/embedding-db'
 
@@ -79,6 +80,12 @@ export type IndexRequest =
      * identity, plus its percent-encoded form when that differs.
      */
     | { type: 'asset-usage'; id: number; needles: string[] }
+    /**
+     * The [[Graph View]]'s whole picture: every concept and every pair a wikilink joins, from
+     * rows the index already holds (index-link-graph.ts). Asked only while a Graph View is on
+     * screen, once when it is shown and again after an update, never per keystroke.
+     */
+    | { type: 'link-graph'; id: number }
     /**
      * [[Semantic Search]] (ADR 0076). The worker holds the vectors and the scan and knows no
      * model: the caller embeds, both the passages it is handed and the query it asks with, so
@@ -158,6 +165,7 @@ export type IndexResponse =
     | { type: 'property-match'; id: number; documents: PropertyMatch[] }
     | { type: 'tasks'; id: number; hits: TaskHit[]; hasMore: boolean; total: number }
     | { type: 'asset-usage'; id: number; usage: AssetUsage }
+    | { type: 'link-graph'; id: number; graph: LinkGraph }
     | { type: 'semantic-status'; id: number; status: SemanticStatus }
     | { type: 'semantic-pending'; id: number; passages: PendingPassage[] }
     | { type: 'semantic-put'; id: number; stored: number }

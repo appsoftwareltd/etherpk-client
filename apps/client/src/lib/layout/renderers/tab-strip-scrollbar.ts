@@ -250,7 +250,24 @@ export function installTabStripScrollbar(api: DockviewApi, container: HTMLElemen
     }
     // dockview's OverflowObserver rewrites the badge to the hidden-tab count after
     // our update; re-assert the total whenever it (or the tab set) changes.
-    const countObserver = new MutationObserver(() => updateOverflowCounts())
+    //
+    // Only a change inside a tab strip, or a new strip arriving with a new Pane, can change a
+    // badge or the tabs it counts. The observer watches the whole layout, so it also hears every
+    // keystroke in an editor and every update inside a View, and searching the whole layout for
+    // badges on each of those cost seconds of main-thread time while typing beside a large
+    // Graph View (measured 2026-10-01). Other changes are ignored.
+    const TAB_STRIP = '.dv-tabs-and-actions-container'
+    const touchesTabStrip = (mutation: MutationRecord) => {
+        const target = mutation.target instanceof Element ? mutation.target : mutation.target.parentElement
+        if (target?.closest(TAB_STRIP)) return true
+        for (const node of mutation.addedNodes) {
+            if (node instanceof Element && (node.matches(TAB_STRIP) || node.querySelector(TAB_STRIP))) return true
+        }
+        return false
+    }
+    const countObserver = new MutationObserver((mutations) => {
+        if (mutations.some(touchesTabStrip)) updateOverflowCounts()
+    })
     countObserver.observe(container, { subtree: true, childList: true, characterData: true })
 
     function rebuildOverflowPopup(popup: HTMLElement, list: HTMLElement) {

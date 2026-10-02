@@ -1,13 +1,16 @@
 /**
  * The registry of [[Formatting Check]]s (ADR 0109), in the order a page's issues are shown and
  * approved. The order follows what the fixes do to each other: fixing no-break spaces and `*` or `+`
- * markers can make new bullets, which the indentation check then puts on the grid. The line-endings
- * fix touches nothing the others read, and the check that only reports comes last.
+ * markers can make new bullets, which the indentation check then puts on the grid, and indenting a
+ * line can move it under or out from a bullet, which decides where a list needs a blank line after
+ * it. The line-endings fix touches nothing the others read, and the check that only reports comes
+ * last.
  *
  * Core only: not an extension Contribution Point, and not a Headless Client tool, until something
  * needs one.
  */
 
+import { blankLineAfterList } from './blank-line-after-list'
 import { bulletMarker } from './bullet-marker'
 import { checkedText, type FormattingCheck, type FormattingCheckId, type FormattingFinding } from './finding'
 import { indentation } from './indentation'
@@ -17,7 +20,7 @@ import { unclosedFence } from './unclosed-fence'
 
 export type { FormattingCheck, FormattingCheckId, FormattingFinding } from './finding'
 
-export const FORMATTING_CHECKS: readonly FormattingCheck[] = [noBreakSpaceIndent, bulletMarker, indentation, lineEndings, unclosedFence]
+export const FORMATTING_CHECKS: readonly FormattingCheck[] = [noBreakSpaceIndent, bulletMarker, indentation, blankLineAfterList, lineEndings, unclosedFence]
 
 const BY_ID = new Map(FORMATTING_CHECKS.map((check) => [check.id, check]))
 

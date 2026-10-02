@@ -155,8 +155,9 @@ export function editorFeatures(services: EditorExtensionServices): EditorFeature
         // after the pad so it runs before it, and judges the delete as typed; before the frontmatter
         // boundary so that one runs first, and a delete at the closing delimiter still says why.
         { name: 'fence-deletes', extension: fenceDeleteGuard() },
-        // The Frontmatter block's edges: body text never joins onto its closer, and it never grows
-        // past what was typed into it (ADR 0061).
+        // The Frontmatter block's edges: body text never joins onto its closer, neither delimiter joins
+        // the line beside it inside the block, the closing line is never taken out whole, and the block
+        // never grows past what was typed into it (ADR 0061).
         { name: 'frontmatter-boundary', extension: frontmatterBoundaryGuard() },
         // A wrap key over a selection encloses it (ADR 0077): an input handler, so it sees typed text
         // before it becomes a change. It places no ordering constraint on anything and is kept here

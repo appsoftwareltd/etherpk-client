@@ -18,6 +18,7 @@
     import { markIcon, tabTitleWidth, type TabMark } from './tab-renderer'
     import { iconSvg } from '$lib/surface/icons'
     import { unavailableViewMessage } from './unavailable-view'
+    import { createViewVisibility, watchPageVisibility } from '../view-visibility'
 
     let {
         controller,
@@ -33,6 +34,12 @@
          */
         markFor?: (panelId: string) => TabMark | null
     } = $props()
+
+    // A View is mounted here only while it is the one shown (the active main View, or the front
+    // tab of an open drawer), so of the three conditions in view-visibility.ts only the browser
+    // tab's own visibility is left to follow. One object serves every View this presenter mounts.
+    const visibility = createViewVisibility()
+    $effect(() => watchPageVisibility(visibility))
 
     // Re-derive the model whenever the renderer signals a mutation.
     const model = $derived.by<LayoutModel>(() => {
@@ -328,7 +335,7 @@
         </div>
     {/if}
     <div class="drawer-body">
-        {#if inst}{@const C = component(inst.view.kind)}{#if C}<C view={inst.view} />
+        {#if inst}{@const C = component(inst.view.kind)}{#if C}<C view={inst.view} {visibility} />
         {:else}<p class="empty" data-testid="view-unavailable">{unavailableViewMessage(inst.view.kind)}</p>{/if}{/if}
     </div>
 {/snippet}
@@ -451,7 +458,7 @@
             {#if activeMain}
                 {@const Active = component(activeMain.view.kind)}
                 {#if Active}
-                    {#key activeMain.panelId}<Active view={activeMain.view} />{/key}
+                    {#key activeMain.panelId}<Active view={activeMain.view} {visibility} />{/key}
                 {:else}<p class="empty" data-testid="view-unavailable">{unavailableViewMessage(activeMain.view.kind)}</p>{/if}
             {:else}
                 <p class="empty" data-testid="no-page-open">{NO_PAGE_OPEN}</p>

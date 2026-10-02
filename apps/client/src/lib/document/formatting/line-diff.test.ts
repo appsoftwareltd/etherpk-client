@@ -18,7 +18,7 @@ function applySplices(text: string, splices: readonly { from: number; to: number
 /** A hunk's rows as `<sign><line number> <text with its invisibles shown>`, for a readable assertion. */
 function rows(list: readonly DiffRow[]): string[] {
     const sign = { context: ' ', removed: '-', added: '+' } as const
-    return list.map((row) => `${sign[row.kind]}${row.line + 1} ${shownText(row.segments)}`)
+    return list.map((row) => `${sign[row.kind]}${row.line === null ? '' : row.line + 1} ${shownText(row.segments)}`)
 }
 
 const numbered = (count: number) => Array.from({ length: count }, (_, i) => `line ${i + 1}`)
@@ -84,8 +84,21 @@ describe('lineSplices', () => {
         expect(lineSplices(before, after)).toEqual([{ from: 0, to: 6, insert: 'a\nb\n' }])
     })
 
-    it('refuses two texts with different numbers of lines: a fix rewrites lines in place', () => {
+    it('inserts a line between two as a splice that replaces nothing, with the page line endings it is given', () => {
+        expect(lineSplices('- a\nb', '- a\n\nb')).toEqual([{ from: 4, to: 4, insert: '\n' }])
+        expect(lineSplices('- a\r\nb', '- a\r\n  \r\nb')).toEqual([{ from: 5, to: 5, insert: '  \r\n' }])
+        const before = '- a\nb\n- c\nd'
+        const after = '- a\n\nb\n- c\n\nd'
+        expect(lineSplices(before, after)).toEqual([
+            { from: 4, to: 4, insert: '\n' },
+            { from: 10, to: 10, insert: '\n' },
+        ])
+        expect(applySplices(before, lineSplices(before, after))).toBe(after)
+    })
+
+    it('refuses a fix that removes a line, or rewrites one and inserts another at once', () => {
         expect(() => lineSplices('a\nb', 'a')).toThrow(/lines/)
+        expect(() => lineSplices('\t- a\nb', '  - a\n\nb')).toThrow(/lines/)
     })
 })
 
@@ -143,7 +156,27 @@ describe('diffHunks', () => {
 
     it('shows context lines as they are, unmarked', () => {
         const [hunk] = diffHunks('\t- a\n\t- b', '\t- a\n  - b')
-        expect(hunk.rows[0]).toEqual({ kind: 'context', line: 0, segments: [{ at: 0, text: '\t- a' }] })
+        expect(hunk.rows[0]).toEqual({ kind: 'context', line: 0, key: 'context-0', segments: [{ at: 0, text: '\t- a' }] })
+    })
+
+    it("shows an inserted line as an added row with no line number, between the page's own numbers", () => {
+        const before = numbered(10)
+        const after = [...before.slice(0, 5), '', ...before.slice(5)]
+        const [hunk] = diffHunks(before.join('\n'), after.join('\n'))
+        expect(rows(hunk.rows)).toEqual([' 3 line 3', ' 4 line 4', ' 5 line 5', '+ ', ' 6 line 6', ' 7 line 7', ' 8 line 8'])
+        expect([hunk.first, hunk.last]).toEqual([2, 7])
+        // An indented blank line shows its spaces.
+        expect(rows(diffHunks('- a\n  - b\n  c', '- a\n  - b\n  \n  c')[0].rows)).toEqual([' 1 - a', ' 2   - b', '+ ··', ' 3   c'])
+    })
+
+    it('keys every row of a hunk apart, two inserted lines included', () => {
+        const [hunk] = diffHunks('- a\nb\n- c\nd', '- a\n\nb\n- c\n\nd')
+        expect(rows(hunk.rows)).toEqual([' 1 - a', '+ ', ' 2 b', ' 3 - c', '+ ', ' 4 d'])
+        expect(new Set(hunk.rows.map((row) => row.key)).size).toBe(hunk.rows.length)
+    })
+
+    it('places a hunk of inserted lines alone, with no context, at the page line after them', () => {
+        expect(diffHunks('- a\nb', '- a\n\nb', 0).map((h) => [h.first, h.last])).toEqual([[1, 1]])
     })
 
     it('says where each run starts in its line, so a row can key its runs', () => {

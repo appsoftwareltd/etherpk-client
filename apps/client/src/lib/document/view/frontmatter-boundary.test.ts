@@ -26,6 +26,29 @@ describe('the frontmatter seam in the editor', () => {
         expect(del.fixture()).toBe('---\ntitle: K\n---|\nbody')
     })
 
+    it('refuses joining a delimiter to the line beside it inside the block, from either side of the break', () => {
+        for (const [before, key] of [
+            ['---\ntitle: K|\n---\nbody', 'Delete'], // the block's last line, at its end
+            ['---\ntitle: K\n|---\nbody', 'Backspace'], // the closing delimiter, at its start
+            ['---|\ntitle: K\n---\nbody', 'Delete'], // the opening delimiter, at its end
+            ['---\n|title: K\n---\nbody', 'Backspace'], // the block's first line, at its start
+            ['---\nti«tle: K\n»---\nbody', 'Delete'], // a selection that ends at the closing delimiter
+        ] as const) {
+            const editor = editorFixture(before)
+            editor.key(key)
+            expect(editor.fixture(), `${key} on ${JSON.stringify(before)}`).toBe(before)
+        }
+    })
+
+    it('still lets a delimiter’s dashes be edited, and the block be removed whole', () => {
+        const dash = editorFixture('---\ntitle: K\n---|\nbody')
+        dash.key('Backspace')
+        expect(dash.text()).toBe('---\ntitle: K\n--\nbody')
+        const whole = editorFixture('«---\ntitle: K\n---\n»body')
+        whole.key('Delete')
+        expect(whole.text()).toBe('body')
+    })
+
     it('refuses typing over a selection that spans the seam', () => {
         const editor = editorFixture('---\ntitle: «K\n---\nbo»dy')
         type(editor, 'x')

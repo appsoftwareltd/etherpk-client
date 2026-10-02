@@ -15,7 +15,7 @@ import { type Extension, StateEffect, type Transaction, type TransactionSpec } f
 import { EditorView } from '@codemirror/view'
 
 /** Why an edit was refused - one per rule that refuses. */
-export type EditRefusal = 'frontmatter-seam' | 'frontmatter-grow' | 'frontmatter-vanish'
+export type EditRefusal = 'frontmatter-seam' | 'frontmatter-join' | 'frontmatter-remove' | 'frontmatter-grow' | 'frontmatter-vanish'
 
 /** Carried by the transaction a filter returns in place of the edit it refused. */
 export const editRefused = StateEffect.define<EditRefusal>()
@@ -36,13 +36,19 @@ export const EDIT_REFUSAL_TITLE = 'Frontmatter kept'
 
 /**
  * One short paragraph per reason: what the edit would have done, then what to do instead. The
- * closing `---` line is named in each, because that line is what the user is looking at. Kept to
- * a sentence or two: the notice shares the pane with the document.
+ * `---` line the edit reaches is named in each, because that line is what the user is looking at.
+ * Kept to a sentence or two: the notice shares the pane with the document.
  */
 export const EDIT_REFUSAL_MESSAGE: Record<EditRefusal, string> = {
     'frontmatter-seam':
         'That edit would join body text onto the closing --- line, and the block would stop being frontmatter. ' +
         'Edit inside the block or below it, or select the whole block to delete it.',
+    'frontmatter-join':
+        'That edit would join a --- line to the line beside it, and the block would stop being frontmatter. ' +
+        'Edit inside the block or below it, or select the whole block to delete it.',
+    'frontmatter-remove':
+        'That edit would remove the closing --- line, and the block would stop being frontmatter. ' +
+        'Delete the line\'s dashes to dissolve the block on purpose, or select the whole block to delete it.',
     'frontmatter-grow':
         'That edit would remove the closing --- line, and the body down to the next --- would become frontmatter. ' +
         'Edit inside the block or below it instead.',

@@ -141,15 +141,20 @@ content column, two characters right of the bullet's own indent:
 
 ```markdown
 - a parent block
+  a second line of the parent block, at its content column
   - a child, two spaces in
     - a grandchild
-  a second line of the parent block, at its content column
-
+  
   a second paragraph of the parent block (the blank line above is indented too)
 - a sibling of the parent
 
 A flush-left blank line ends the group - this is prose.
 ```
+
+Put a blank line before a line that follows a bullet but is not part of it: flush-left before a
+paragraph after the list, and indented to the parent's content column before a paragraph that
+continues a parent after its children. EtherPK reads such a line as its own either way, but other
+markdown readers take it into the bullet above unless the blank line is there.
 
 Headings (`#`, `##`, ...) and plain paragraphs are ordinary markdown and also nest blocks by
 heading level. Numbered lists, `*` bullets and `+` bullets are not outliner blocks.

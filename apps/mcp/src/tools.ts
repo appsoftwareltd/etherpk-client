@@ -56,6 +56,8 @@ import {
     taskReferenceUrl,
 } from '$lib/document/task-reference'
 import { ancestorChain, bulletLabel, deriveDoc } from '$lib/document/index-derive'
+import { type ConceptFacts, createGraphModel, type GraphFilter, shortestPath, visibleGraph } from '$lib/graph-view/model/graph-model'
+import { bridges, findClusters, hubs, isolatedDocuments, pagelessByDocuments, type RankedConcept } from '$lib/graph-view/model/insights'
 import { taskLineWith } from '$lib/document/task-write'
 import { minimalReplacement } from '$lib/document/view/minimal-replacement'
 
@@ -594,6 +596,91 @@ export async function backlinks(graph: HeadlessGraph, concept: string) {
             })),
         })),
     }
+}
+
+/** The most rows any one list of graph_insights returns. */
+export const INSIGHTS_LIST_LIMIT = 50
+
+export interface GraphInsightsArgs {
+    /** Rows per list; 15 when absent. */
+    limit?: number
+    /** Count journal entries in the picture (default true). Hubs and Pageless Concepts always count every document. */
+    journals?: boolean
+    /** Which Pageless Concepts the picture holds (default: those two or more documents mention). */
+    pageless?: GraphFilter['pageless']
+}
+
+/**
+ * What the whole-graph [[Graph View]] lists beside its picture, for an agent: the same model
+ * and the same rules (graph-view/model), over the same index query, so an agent and a person
+ * looking at the Graph View see the same Hubs, Clusters and Bridges.
+ */
+export async function graphInsights(graph: HeadlessGraph, args: GraphInsightsArgs = {}) {
+    const limit = Math.max(1, bounded(args.limit, 15, INSIGHTS_LIST_LIMIT))
+    await graph.store.refresh()
+    const model = createGraphModel(await graph.index.linkGraph())
+    const shown = visibleGraph(model, { journals: args.journals ?? true, pageless: args.pageless ?? 'mentioned-twice' })
+    const clustered = findClusters(shown)
+    const isolated = isolatedDocuments(model)
+    const byDocuments = (rows: RankedConcept[]) => rows.map((row) => ({ concept: row.name, documents: row.count }))
+    // A Cluster's best-known members, so an agent can say what it is about.
+    const membersOf = new Map<number, ConceptFacts[]>()
+    for (const [key, id] of clustered.clusterOf) {
+        const facts = model.concepts.get(key)
+        if (facts) membersOf.set(id, [...(membersOf.get(id) ?? []), facts])
+    }
+    return {
+        shown: { concepts: shown.order, lines: shown.size },
+        hubs: byDocuments(hubs(model, limit)),
+        pageless: byDocuments(pagelessByDocuments(model, limit)),
+        isolated: { total: isolated.length, concepts: isolated.slice(0, limit).map((row) => row.name), truncated: isolated.length > limit },
+        clusters: clustered.clusters.slice(0, limit).map((cluster) => ({
+            name: cluster.name,
+            size: cluster.size,
+            members: (membersOf.get(cluster.id) ?? [])
+                .sort((a, b) => b.linkedFrom - a.linkedFrom || a.name.localeCompare(b.name))
+                .slice(0, 5)
+                .map((member) => member.name),
+        })),
+        bridges: bridges(shown, clustered, limit).map((bridge) => ({ concept: bridge.name, joins: bridge.between })),
+    }
+}
+
+export interface GraphPathArgs {
+    from: string
+    to: string
+    /** Let the route pass through journal entries (default true). */
+    journals?: boolean
+}
+
+/** The fewest wikilink steps from one concept to another, through every concept, or null when nothing joins them. */
+export async function graphPath(graph: HeadlessGraph, args: GraphPathArgs) {
+    await graph.store.refresh()
+    const model = createGraphModel(await graph.index.linkGraph())
+    const resolve = (asked: string): string => {
+        const name = asked.trim() === 'today' ? todayISO() : asked.trim()
+        if (name === '') throw new ToolError('invalid_argument', 'from and to must not be empty.')
+        const key = conceptKey(name)
+        if (model.concepts.has(key)) return key
+        // An alias names its page.
+        const alias = graph.index.allConcepts().find((candidate) => candidate.key === key && candidate.kind === 'alias')
+        const page = alias?.canonical === undefined ? undefined : conceptKey(alias.canonical)
+        if (page !== undefined && model.concepts.has(page)) return page
+        throw new ToolError('not_found', `No concept is named "${asked}". Names are case-insensitive; list_documents and search find one.`)
+    }
+    const from = resolve(args.from)
+    const to = resolve(args.to)
+    const journals = args.journals ?? true
+    if (!journals) {
+        // Left out, a journal end would read as "nothing joins them", which is not the answer.
+        for (const end of [from, to]) {
+            const concept = model.concepts.get(end)
+            if (concept?.kind === 'journal') throw new ToolError('invalid_argument', `${concept.name} is a journal entry, and journals: false leaves journal entries out. Ask again with journals left on.`)
+        }
+    }
+    const path = shortestPath(visibleGraph(model, { journals, pageless: 'all' }), from, to)
+    const nameOf = (key: string) => model.concepts.get(key)?.name ?? key
+    return { from: nameOf(from), to: nameOf(to), path: path?.map(nameOf) ?? null, steps: path ? path.length - 1 : null }
 }
 
 export async function tasks(graph: HeadlessGraph, args: TasksArgs = {}) {

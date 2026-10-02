@@ -1682,3 +1682,63 @@ describe('a corrupt stored index heals itself', () => {
         index.dispose()
     })
 })
+
+describe('the Graph View query', () => {
+    it('answers every concept and line in one round trip, and follows an edit', async () => {
+        vi.useFakeTimers()
+        try {
+            const s = fakeSource([doc('Alpha', '- see [[Beta]] and [[Beta]]'), doc('Beta', '- nothing')])
+            const index = createRemoteGraphIndex(s.source, inlineTransport(), { graphId: 'g1', debounceMs: 10 })
+            await index.refresh()
+            await vi.advanceTimersByTimeAsync(20)
+
+            const before = await index.linkGraph()
+            expect(before.concepts.map((c) => c.name)).toEqual(['Alpha', 'Beta'])
+            expect(before.links).toEqual([{ source: 0, target: 1, mentions: 2 }])
+
+            s.setText('Beta', '- now links [[Gamma]]')
+            s.fire({ concept: 'Beta' })
+            await vi.advanceTimersByTimeAsync(20)
+
+            const after = await index.linkGraph()
+            expect(after.concepts.map((c) => [c.name, c.kind])).toEqual([
+                ['Alpha', 'page'],
+                ['Beta', 'page'],
+                ['Gamma', 'pageless'],
+            ])
+            expect(after.links).toHaveLength(2)
+            index.dispose()
+        } finally {
+            vi.useRealTimers()
+        }
+    })
+
+    it("keeps a page that shares its name with another page's alias after an unrelated edit", async () => {
+        // The worker's concept cache, kept by deltas, holds one row per key and let the alias row
+        // win. The query must not lose the page Foo once anything at all has been edited.
+        vi.useFakeTimers()
+        try {
+            const s = fakeSource([
+                doc('Foo', '- [[Other]]'),
+                { concept: 'Bar', kind: 'page', aliases: ['Foo'], text: '' },
+                doc('Other', '- [[Foo]]'),
+                doc('Unrelated', '- nothing'),
+            ])
+            const index = createRemoteGraphIndex(s.source, inlineTransport(), { graphId: 'g1', debounceMs: 10 })
+            await index.refresh()
+            await vi.advanceTimersByTimeAsync(20)
+
+            s.setText('Unrelated', '- still nothing')
+            s.fire({ concept: 'Unrelated' })
+            await vi.advanceTimersByTimeAsync(20)
+
+            const graph = await index.linkGraph()
+            const name = (position: number) => graph.concepts[position].name
+            expect(graph.concepts.map((c) => [c.name, c.kind])).toContainEqual(['Foo', 'page'])
+            expect(graph.links.map((l) => `${name(l.source)} -> ${name(l.target)}`)).toEqual(['Foo -> Other', 'Other -> Foo'])
+            index.dispose()
+        } finally {
+            vi.useRealTimers()
+        }
+    })
+})

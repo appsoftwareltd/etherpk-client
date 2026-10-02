@@ -1292,6 +1292,85 @@ table('Frontmatter keeps its edges', [
         key: 'Backspace',
         after: '---\ntitle: K\n«---\n»body\n---\nmore',
     },
+    // The block's own edges: a delimiter joined to the line beside it inside the block is no longer a
+    // delimiter either, and the block dissolves the same way.
+    {
+        rule: 'Backspace at the start of the first key is refused: the first line never joins onto the opening delimiter',
+        precedent: 'EtherPK',
+        before: '---\n|title: K\n---\nbody',
+        key: 'Backspace',
+        after: '---\n|title: K\n---\nbody',
+    },
+    {
+        rule: 'Delete at the end of the opening delimiter is refused: the same join from above',
+        precedent: 'EtherPK',
+        before: '---|\ntitle: K\n---\nbody',
+        key: 'Delete',
+        after: '---|\ntitle: K\n---\nbody',
+    },
+    {
+        rule: 'Backspace at the start of the closing delimiter is refused: it never joins onto the last key',
+        precedent: 'EtherPK',
+        before: '---\ntitle: K\n|---\nbody',
+        key: 'Backspace',
+        after: '---\ntitle: K\n|---\nbody',
+    },
+    {
+        rule: 'Delete at the end of the last key is refused: the same join from above',
+        precedent: 'EtherPK',
+        before: '---\ntitle: K|\n---\nbody',
+        key: 'Delete',
+        after: '---\ntitle: K|\n---\nbody',
+    },
+    {
+        rule: 'Backspace over the closing line, taken with the line break before it, is refused: the block would dissolve as by a join',
+        precedent: 'EtherPK',
+        before: '---\ntitle: K«\n---»\nbody',
+        key: 'Backspace',
+        after: '---\ntitle: K«\n---»\nbody',
+    },
+    {
+        rule: 'Delete over the closing line, taken with the line break after it, is refused the same way',
+        precedent: 'EtherPK',
+        before: '---\ntitle: K\n«---\n»body',
+        key: 'Delete',
+        after: '---\ntitle: K\n«---\n»body',
+    },
+    {
+        rule: 'a selection from inside the last key through the closing line is refused, deleted or typed over',
+        precedent: 'EtherPK',
+        before: '---\ntitle: K«anban\n---»\nbody',
+        key: 'Backspace',
+        after: '---\ntitle: K«anban\n---»\nbody',
+    },
+    {
+        rule: 'Delete over that selection is refused the same way',
+        precedent: 'EtherPK',
+        before: '---\ntitle: K«anban\n---»\nbody',
+        key: 'Delete',
+        after: '---\ntitle: K«anban\n---»\nbody',
+    },
+    {
+        rule: 'on a page with no body the closing line is kept too, though its line break ends the document',
+        precedent: 'EtherPK',
+        before: '---\ntitle: K«\n---»\n',
+        key: 'Backspace',
+        after: '---\ntitle: K«\n---»\n',
+    },
+    {
+        rule: 'and the closing line with the line break after it, on that page',
+        precedent: 'EtherPK',
+        before: '---\ntitle: K\n«---\n»',
+        key: 'Delete',
+        after: '---\ntitle: K\n«---\n»',
+    },
+    {
+        rule: 'a delimiter’s own dashes can still be deleted, the way to dissolve the block on purpose',
+        precedent: 'EtherPK',
+        before: '---\ntitle: K\n---|\nbody',
+        key: 'Backspace',
+        after: '---\ntitle: K\n--|\nbody',
+    },
 ])
 
 // Select all selects the region the caret is in, the body or the frontmatter's lines, and never

@@ -40,6 +40,7 @@ import {
     tasksMatching,
     tasksMatchingCount,
 } from '../index-db'
+import { linkGraph } from '../index-link-graph'
 import { conceptKey } from '../backlinks/backlink-index'
 import {
     type EmbeddingMatrix,
@@ -450,6 +451,14 @@ export function createIndexCore(host: IndexDbHost): IndexCore {
                     // "unreferenced" — it reads it as "cannot answer" and refuses the delete.
                     const usage = db ? assetUsage(db, request.needles) : { references: 0, documents: [] }
                     return [{ type: 'asset-usage', id: request.id, usage }]
+                }
+
+                case 'link-graph': {
+                    // Read from the tables, never from the concept cache this worker keeps for the
+                    // tabs: that cache holds one row per key, so a page sharing its name with
+                    // another page's alias would be lost from the picture after the next edit.
+                    const graph = db ? linkGraph(db) : { concepts: [], links: [] }
+                    return [{ type: 'link-graph', id: request.id, graph }]
                 }
 
                 case 'semantic-status': {

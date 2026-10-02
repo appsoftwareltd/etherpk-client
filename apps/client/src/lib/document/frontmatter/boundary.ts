@@ -4,8 +4,8 @@
  * then not a delimiter - and by the one rule for what a block is (`frontmatter-span.ts`) the
  * whole block dissolves into body text, `title:` and all. Backspace at the start of the first
  * body line does exactly that, and it is a habitual keystroke, so the join is refused rather
- * than repaired: the editor refuses the transaction, and each store refuses the change on the
- * way in, because the buffer is what gets saved and the editor's filter is not the only writer.
+ * than repaired: the editor refuses the transaction (`view/frontmatter-boundary.ts`). No store
+ * repeats the rule, since a store cannot tell undo's inverse of a keystroke from the keystroke.
  *
  * Judged by the result, not the shape of the change, because undo is dispatched past the
  * editor's filters and may legitimately remove a terminator - the one it inserted a moment ago,
@@ -91,4 +91,62 @@ export function crossesFrontmatterSeam(text: string, changes: readonly SeamChang
         (change) => change.from > 0 && change.from <= seam && change.to > seam && change.to < text.length,
     )
     return deletesSeam && frontmatterSpan(after()) === null
+}
+
+/**
+ * Whether `changes` would take the closing delimiter's line out whole and leave no block: the block
+ * dissolves into body text, `title:` and all, as a join dissolves it. That is a change ending at the
+ * closer's last dash that starts inside the block, past the opener's line break and before the
+ * closer's own line (a selection from the end of the last key, or from anywhere above that,
+ * deleted, cut or typed over), or one taking the closer's line with the line break after it (the
+ * keymap's smallest change for Backspace or Delete over such a selection, and a whole-line cut). It
+ * holds on a page with no body too, where that line break ends the document and the keymap's tidy
+ * takes the blank line it would leave, so the change runs from inside the block to the end. With a
+ * body after the closer, that change would join the body onto the last key, and the seam rule
+ * refuses it as that. Deleting the
+ * delimiter's own dashes leaves its line, and stays the way to dissolve a block on purpose. Where a
+ * rule further down would close the block instead, a block is left, and {@link frontmatterWouldGrow}
+ * judges it. The guard asks this before the seam and the join, which most of these changes also
+ * cross, so the notice names what the edit would do.
+ */
+export function removesClosingDelimiter(text: string, changes: readonly SeamChange[], after: () => string): boolean {
+    const span = frontmatterSpan(text)
+    if (!span) return false
+    const afterOpener = text.indexOf('\n')
+    const closerEnd = text[span.end - 1] === '\n' ? span.end - 1 : span.end
+    const closerStart = text.lastIndexOf('\n', closerEnd - 1) + 1
+    // The end of the closer's line, its line break included when it has one.
+    const lineEnd = text[closerEnd] === '\n' ? closerEnd + 1 : closerEnd
+    const removes = changes.some((change) => {
+        const fromInside = change.from > afterOpener && change.from < closerStart
+        if (fromInside && change.to === closerEnd) return true
+        if (lineEnd === closerEnd || change.to !== lineEnd) return false
+        return change.from === closerStart || (fromInside && lineEnd === text.length)
+    })
+    return removes && frontmatterSpan(after()) === null
+}
+
+/**
+ * Whether `changes` would join a delimiter of `text`'s block to the line beside it inside the block:
+ * the closing `---` onto the block's last line (Delete at that line's end, Backspace at the start of
+ * the closer), or the block's first line onto the opening `---` (Delete at the opener's end, Backspace
+ * at the start of the first line). A delimiter that is not a line of its own is no delimiter, and the
+ * block dissolves into body text, `title:` and all, in one keystroke. The twin of
+ * {@link crossesFrontmatterSeam}, judged the same way: by the result, a change that deletes either line
+ * break and leaves no block, never the two deliberate shapes, a change from the document start (the
+ * block removed whole) or one to its end. Editing a delimiter's own dashes deletes no line break, and
+ * stays the way to dissolve a block on purpose.
+ */
+export function joinsFrontmatterDelimiter(text: string, changes: readonly SeamChange[], after: () => string): boolean {
+    const span = frontmatterSpan(text)
+    if (!span) return false
+    const afterOpener = text.indexOf('\n')
+    // The closing delimiter ends at the block's end, or just before the line break there.
+    const closerEnd = text[span.end - 1] === '\n' ? span.end - 1 : span.end
+    const beforeCloser = text.lastIndexOf('\n', closerEnd - 1)
+    const breaks = [afterOpener, beforeCloser]
+    const deletesBreak = changes.some(
+        (change) => change.from > 0 && change.to < text.length && breaks.some((at) => change.from <= at && change.to > at),
+    )
+    return deletesBreak && frontmatterSpan(after()) === null
 }

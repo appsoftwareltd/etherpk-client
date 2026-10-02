@@ -1,6 +1,6 @@
 {
     "name": "@appsoftwareltd/etherpk-mcp",
-    "version": "0.8.52",
+    "version": "0.8.53",
     "license": "Elastic-2.0",
     "description": "EtherPK Headless Client: an MCP server over a synced knowledge graph, run beside the agent on the user's own machine.",
     "type": "module",
@@ -31,6 +31,9 @@
         "@noble/hashes": "2.2.0",
         "@sqlite.org/sqlite-wasm": "3.53.0-build1",
         "fake-indexeddb": "^6.2.5",
+        "graphology": "^0.26.0",
+        "graphology-communities-louvain": "^2.0.2",
+        "graphology-types": "^0.24.8",
         "katex": "^0.17.0",
         "lib0": "0.2.117",
         "markdown-it": "15.0.2",

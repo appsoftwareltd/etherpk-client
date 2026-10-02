@@ -38,8 +38,10 @@ jobs:
         run: pnpm check
       - name: Lint
         run: pnpm lint
+      # One package at a time: run together, the vitest worker pools share the runner's cores, and
+      # tests that time a browser launch fail on that load alone.
       - name: Unit tests
-        run: pnpm test
+        run: pnpm test:ci
       - name: Build the Client and the Headless Client
         run: pnpm build
 

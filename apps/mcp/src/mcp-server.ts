@@ -11,6 +11,7 @@ import type { HeadlessGraph } from './headless-graph'
 import { createPublication, listPublications, publish, publishingInfo, updatePublication } from './publish-tools'
 import { createTheme, customisePublicationTheme, deleteTheme, deleteThemeFile, importThemeFolder, listThemes, previewTheme, readTheme, readThemeFile, writeThemeFile } from './theme-tools'
 import {
+    INSIGHTS_LIST_LIMIT,
     LIST_PAGE_LIMIT,
     SEARCH_PAGE_LIMIT,
     READ_MANY_LIMIT,
@@ -22,6 +23,8 @@ import {
     createPage,
     editDocument,
     graphInfo,
+    graphInsights,
+    graphPath,
     listAssets,
     listDocuments,
     planRename,
@@ -103,6 +106,7 @@ export function createMcpServer(graph: HeadlessGraph, info: McpServerInfo): McpS
                 'Edit with edit_document (an exact, unique old→new replacement) or append_document - read first, then edit, and never paste a whole page back.',
                 'To rename a page or concept use plan_rename then rename, never a frontmatter edit: rename carries scoped concepts ("[[Old]] Notes") along and by default rewrites every [[Old]] link in the graph to the new name (strategy "rewrite") - strategy "alias" keeps the old name resolving instead. A rename onto a name that is taken merges two documents and needs confirm_merge: true. References inside protected documents cannot be seen or rewritten.',
                 'search has two kinds of matching: mode "text" (default) matches words and quoted phrases, and mode "semantic" finds passages about what a question or description means even when no words match. Use semantic for questions and descriptions, text for names, identifiers and exact phrases. "hybrid" returns both groups. When you answer from a search result, cite the document and where in it (its breadcrumb or lines). Semantic mode needs a one-time "semantic setup" on this computer - if it is not set up, search says so and names the command.',
+                'graph_insights says what the links show across the whole graph (the most-linked concepts, pages many documents ask for that do not exist yet, pages linked to nothing, groups of related concepts and the concepts bridging them), and graph_path finds how two concepts are connected. Use them to answer questions about the shape of the graph, or to suggest pages to write or link.',
                 'Start with graph_info to see what you are connected to. read_documents reads several documents in one call. tasks lists tasks and set_task changes one (status, priority, due and scheduled dates) by document and line.',
                 'A task reference is how a person hands you one task: its words, then an EtherPK address ending in #task=<line>-<fingerprint>. Pass the whole reference, or the address, to read_task for the task and its detail, to set_task (as reference) to change it, and to add_task_note to write what you did under it. It finds the task after lines are added above it or its tags change; if its words were edited it answers task_not_found, and you should ask the user for a fresh one.',
                 'Publishing: list_publications shows the publications this graph defines (a publication is a page whose frontmatter defines it - its outline is the site navigation) and the public documents none takes. A document is on a site when its frontmatter has public: true and names the publication in publications. create_publication and update_publication change the settings, and publish writes the site into the publish folder the user set for it on this machine with the etherpk-mcp publish command (the tool cannot choose a folder) and returns the report. Diagrams need a browser the user installs once with "diagrams setup".',
@@ -173,6 +177,35 @@ export function createMcpServer(graph: HeadlessGraph, info: McpServerInfo): McpS
             inputSchema: { concept },
         },
         async (args) => run(() => backlinks(graph, args.concept)),
+    )
+
+    const journals = z.boolean().optional().describe('Count journal entries as part of the graph (default true).')
+    server.registerTool(
+        'graph_insights',
+        {
+            title: 'Graph insights',
+            description: `What the whole graph's links show, as the Graph View lists it. hubs: the concepts linked from the most documents. pageless: concepts many documents mention that have no page yet (pages worth writing). isolated: pages with no wikilinks in or out (pages to connect). clusters: groups of concepts that link to one another more than to the rest, named after their biggest hub, with their best-known members. bridges: concepts carrying the links between two clusters, with the two they join. shown counts the concepts and lines the clusters and bridges were found in. Hubs, pageless and isolated always count every document. At most ${INSIGHTS_LIST_LIMIT} rows per list (default 15).`,
+            inputSchema: {
+                limit: z.number().int().positive().max(INSIGHTS_LIST_LIMIT).optional(),
+                journals,
+                pageless: z
+                    .enum(['all', 'mentioned-twice', 'none'])
+                    .optional()
+                    .describe('Which pageless concepts the clusters and bridges consider: those two or more documents mention (default), all, or none.'),
+            },
+        },
+        async (args) => run(() => graphInsights(graph, args)),
+    )
+
+    server.registerTool(
+        'graph_path',
+        {
+            title: 'Graph path',
+            description:
+                'The fewest wikilink steps between two concepts, in either direction, as the list of concepts passed through; path is null when nothing joins them. Answers "how is this connected to that?".',
+            inputSchema: { from: concept, to: concept, journals },
+        },
+        async (args) => run(() => graphPath(graph, args)),
     )
 
     server.registerTool(

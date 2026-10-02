@@ -23,6 +23,8 @@ import {
     createPage,
     editDocument,
     graphInfo,
+    graphInsights,
+    graphPath,
     listAssets,
     listDocuments,
     planRename,
@@ -932,6 +934,63 @@ describe('deleted and rewritten notes', () => {
         await editDocument(g, { concept: 'Stays', old: '- garden tomatoes', new: '- greenhouse cucumbers' })
         await indexed(g, async () => (await search(g, { query: 'greenhouse cucumbers', mode: 'semantic' })).results.length === 1)
         expect((await search(g, { query: 'garden tomatoes', mode: 'semantic' })).results).toEqual([])
+    })
+})
+
+describe('the Graph View tools', () => {
+    /** A small garden: Plants and Monstera link each other's neighbours, Alone links nothing. */
+    async function garden(id: string) {
+        const g = await graph(id)
+        await seed(g, 'Plants', '- [[Monstera]] likes bright [[Light]]\n- repot in fresh [[Soil]]')
+        await seed(g, 'Monstera', '- needs [[Light]] and [[Water]]')
+        await seed(g, 'Light', '- see [[Plants]]')
+        await seed(g, 'Water', '- rain is best')
+        await seed(g, 'Alone', '- nothing links here')
+        await seed(g, 'Notes', '- buy [[Soil]] and [[Compost]]')
+        await indexed(g, async () => (await g.index.linkGraph()).links.length === 8)
+        return g
+    }
+
+    it('graph_insights names the Hubs, the Pageless Concepts asked for most and the Isolated Documents', async () => {
+        const g = await garden('g-insights')
+        const insights = await graphInsights(g, {})
+        expect(insights.hubs.slice(0, 2)).toEqual([
+            { concept: 'Light', documents: 2 },
+            { concept: 'Soil', documents: 2 },
+        ])
+        expect(insights.pageless).toEqual([
+            { concept: 'Soil', documents: 2 },
+            { concept: 'Compost', documents: 1 },
+        ])
+        expect(insights.isolated).toEqual({ total: 1, concepts: ['Alone'], truncated: false })
+        // Compost is mentioned by one document, so the picture it describes leaves it out.
+        expect(insights.shown).toEqual({ concepts: 7, lines: 6 })
+        expect(Array.isArray(insights.clusters)).toBe(true)
+        expect(Array.isArray(insights.bridges)).toBe(true)
+    })
+
+    it('graph_insights caps each list and can show every Pageless Concept', async () => {
+        const g = await garden('g-insights-limit')
+        const insights = await graphInsights(g, { limit: 1, pageless: 'all' })
+        expect(insights.hubs).toHaveLength(1)
+        expect(insights.pageless).toHaveLength(1)
+        expect(insights.shown.concepts).toBe(8)
+    })
+
+    it('graph_path finds the fewest steps between two concepts, by any of their names', async () => {
+        const g = await garden('g-path')
+        expect(await graphPath(g, { from: 'water', to: 'Soil' })).toEqual({ from: 'Water', to: 'Soil', path: ['Water', 'Monstera', 'Plants', 'Soil'], steps: 3 })
+        expect(await graphPath(g, { from: 'Alone', to: 'Plants' })).toEqual({ from: 'Alone', to: 'Plants', path: null, steps: null })
+        await rejectsWith(graphPath(g, { from: 'Nowhere', to: 'Plants' }), 'not_found')
+    })
+
+    it('graph_path says so when an end is a journal entry and journal entries are left out', async () => {
+        const g = await garden('g-path-journal')
+        await appendDocument(g, { concept: '2026-06-02', text: '- watered the [[Monstera]]' })
+        await indexed(g, async () => (await g.index.linkGraph()).links.length === 9)
+        expect((await graphPath(g, { from: '2026-06-02', to: 'Water' })).path).toEqual(['2026-06-02', 'Monstera', 'Water'])
+        const refused = await rejectsWith(graphPath(g, { from: '2026-06-02', to: 'Water', journals: false }), 'invalid_argument')
+        expect(refused.message).toContain('journal entry')
     })
 })
 })

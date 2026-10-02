@@ -1,10 +1,14 @@
 /**
  * The [[Frontmatter]] block's edges, as a transaction filter for every document.
  *
- * Two rules, both pure in `document/frontmatter/boundary.ts`: body text may not be joined onto
+ * Four rules, all pure in `document/frontmatter/boundary.ts`: body text may not be joined onto
  * the closing delimiter (Backspace at the start of the first body line, Delete at the end of the
- * closer, a selection spanning the seam), and the block may not grow past what was typed into it
- * (its closer deleted above a horizontal rule in the body). Either would silently turn metadata
+ * closer, a selection spanning the seam), neither delimiter may be joined to the line beside it inside
+ * the block (Delete at the end of the block's last line, Backspace at the start of the closer, and
+ * the same at the opener), the closing line may not be taken out whole (a selection of it deleted,
+ * cut or typed over: deleting its dashes is the way to dissolve the block on purpose), and the block
+ * may not grow past what was typed into it (its closer deleted above a horizontal rule in the
+ * body). Each would silently turn metadata
  * into prose or prose into metadata - `title:` included, which on a Filesystem Backend is the
  * document's identity.
  *
@@ -29,7 +33,7 @@
  */
 import { EditorSelection, EditorState, type Extension, type StateCommand } from '@codemirror/state'
 
-import { type GuardedChange, crossesFrontmatterSeam, frontmatterWouldGrow } from '$lib/document/frontmatter/boundary'
+import { type GuardedChange, crossesFrontmatterSeam, frontmatterWouldGrow, joinsFrontmatterDelimiter, removesClosingDelimiter } from '$lib/document/frontmatter/boundary'
 
 import { analysisFor } from './analysis/editor-analysis'
 import { EXTERNAL, collaborative } from './cm-document'
@@ -51,7 +55,10 @@ export function frontmatterBoundaryGuard(): Extension {
         const before = tr.startState.doc.toString()
         let materialised: string | null = null
         const after = () => (materialised ??= tr.newDoc.toString())
+        // Before the seam: taking the closing line out with the break after it deletes the seam too.
+        if (removesClosingDelimiter(before, changes, after)) return refuseEdit('frontmatter-remove')
         if (crossesFrontmatterSeam(before, changes, after)) return refuseEdit('frontmatter-seam')
+        if (joinsFrontmatterDelimiter(before, changes, after)) return refuseEdit('frontmatter-join')
         if (frontmatterWouldGrow(before, changes, after)) return refuseEdit('frontmatter-grow')
         return tr
     })
