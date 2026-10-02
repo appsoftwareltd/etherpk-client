@@ -1,8 +1,10 @@
 /**
- * The IndexedDB persistence for the graph registry. `FileSystemDirectoryHandle`s
- * are structured-cloneable, so a graph's handle survives a reload here — which is
- * what lets the picker reopen a graph without re-prompting for the folder (only
- * for permission). Browser-only.
+ * The IndexedDB persistence for the graph registry. A picked folder's
+ * `FileSystemDirectoryHandle` is structured-cloneable in Chromium, so it survives a reload
+ * here, which is what lets the picker reopen a graph without re-prompting for the folder
+ * (only for permission). A folder inside the Origin Private File System is stored by its path
+ * instead, because WebKit cannot store a handle at all (graph-registry-opfs-paths.ts).
+ * Browser-only.
  */
 
 import { type IDBPDatabase, openDB } from 'idb'
@@ -13,7 +15,9 @@ import {
     type GraphStoragePort,
     createGraphRegistry,
 } from './graph-registry'
+import { withOpfsFoldersByPath } from './graph-registry-opfs-paths'
 import { recoverableGraphRecord, withRegistrySafetyCopy } from './graph-registry-safety'
+import { getOpfsRoot } from './fs/web-fs-adapter'
 import { isClosedConnectionError } from './idb-connection'
 import { createSafetyCopy } from './safety-copy'
 import { reportStorageRecovery } from './storage-recovery'
@@ -138,7 +142,7 @@ function createRawIdbGraphStoragePort(): GraphStoragePort {
  */
 export function createIdbGraphStoragePort(): GraphStoragePort {
     return withRegistrySafetyCopy(
-        createRawIdbGraphStoragePort(),
+        withOpfsFoldersByPath(createRawIdbGraphStoragePort(), getOpfsRoot),
         createSafetyCopy('graphs', recoverableGraphRecord),
         (restored) => reportStorageRecovery({ kind: 'graphs', restored: restored.map((record) => record.name) }),
     )

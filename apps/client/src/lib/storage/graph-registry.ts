@@ -5,7 +5,8 @@
  *
  * Pure over a key-value {@link GraphStoragePort} so the logic is testable without
  * IndexedDB; the real port (graph-registry-idb.ts) persists the records — including
- * the structured-cloneable `FileSystemDirectoryHandle` — across sessions.
+ * the `FileSystemDirectoryHandle`, or the path of one inside the Origin Private File
+ * System (graph-registry-opfs-paths.ts) — across sessions.
  */
 
 export type GraphBackend = 'filesystem' | 'server'

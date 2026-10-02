@@ -9,13 +9,16 @@
  * - `getOpfsRoot()` — the Origin Private File System: browser-private; no picker;
  *   the automated test vehicle and (later) the home of derived caches/indexes.
  *
+ * Every write replaces a file's whole contents through file-write.ts, which also covers Safari
+ * before 26: it has no `createWritable()`, so its writes go through a worker.
+ *
  * Browser-only; not Node-testable. Exercised through the OPFS path in Playwright
  * (tests-client/) and manually through `/dev/filesystem` for the FSA picker.
  */
 
 import type { DirectoryAdapter, DirEntry, Subdir } from './directory-adapter'
 import { SUBDIRS } from './directory-adapter'
-import { writeWithOneRetry } from './write-retry'
+import { writeFileContents } from './file-write'
 
 // `showDirectoryPicker` is part of the File System Access API but not yet in the
 // TS DOM lib. Declare the slice we use (Chromium desktop only; see isFsaSupported).
@@ -59,13 +62,7 @@ export function createWebFsDirectoryAdapter(root: FileSystemDirectoryHandle): Di
         async write(subdir, name, text) {
             const dir = await subdirHandle(root, subdir)
             const fileHandle = await dir.getFileHandle(name, { create: true })
-            // close() renames the swap file over the target; on Windows another process's read
-            // handle on the target refuses that, so the whole write is tried once more (write-retry.ts).
-            await writeWithOneRetry(async () => {
-                const writable = await fileHandle.createWritable()
-                await writable.write(text)
-                await writable.close()
-            })
+            await writeFileContents(fileHandle, text)
             // Re-read for the post-write mtime and size: the pair the store's reconcile fast
             // path compares against the next listing. A coarse mtime costs an extra read at
             // worst; text equality decides whatever the fast path lets through.
@@ -83,11 +80,7 @@ export function createWebFsDirectoryAdapter(root: FileSystemDirectoryHandle): Di
         async writeBinary(subdir, name, bytes) {
             const dir = await subdirHandle(root, subdir)
             const fileHandle = await dir.getFileHandle(name, { create: true })
-            await writeWithOneRetry(async () => {
-                const writable = await fileHandle.createWritable()
-                await writable.write(bytes)
-                await writable.close()
-            })
+            await writeFileContents(fileHandle, bytes)
             // Re-read for the post-write mtime, mirroring write().
             const file = await fileHandle.getFile()
             return { bytes, lastModified: file.lastModified }
@@ -134,11 +127,7 @@ export function createWebFsDirectoryAdapter(root: FileSystemDirectoryHandle): Di
 
         async writeRootFile(name, text) {
             const fileHandle = await root.getFileHandle(name, { create: true })
-            await writeWithOneRetry(async () => {
-                const writable = await fileHandle.createWritable()
-                await writable.write(text)
-                await writable.close()
-            })
+            await writeFileContents(fileHandle, text)
             const file = await fileHandle.getFile()
             return { text, lastModified: file.lastModified, size: file.size }
         },
