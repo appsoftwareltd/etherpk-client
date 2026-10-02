@@ -220,8 +220,6 @@ const theme = EditorView.baseTheme({
     },
     '.cm-md-table .cm-md-link': { overflowWrap: 'anywhere' },
     '.cm-md-table th': { background: 'var(--gk-surface-2, rgba(0,0,0,0.06))', fontWeight: '700' },
-    // Inline code's own wash is the header's background too; the code panel's grey shows on both.
-    '.cm-md-table th .cm-md-code': { background: 'var(--gk-code-bg, rgba(127, 127, 127, 0.1))' },
 })
 
 /** The table grid widget augmentation (Dual Mode Editor.md). */

@@ -218,6 +218,12 @@ export function createDocumentEditor(options: DocumentEditorOptions): DocumentEd
                     '.cm-content': {
                         caretColor: 'var(--gk-text-default, #111)',
                         fontFamily: 'var(--gk-sans, "Inter", system-ui, sans-serif)',
+                        // The editor shows source, so each character is drawn as itself. Inter's
+                        // contextual alternates lift or drop `*`, `=` and other punctuation beside a
+                        // capital and draw `->` as an arrow: `**` jumped as a capital was typed after
+                        // it, and the two halves of a marker split across text runs sat at different
+                        // heights.
+                        fontVariantLigatures: 'no-contextual',
                         // Airier rows (Logseq-like) — more vertical breathing room for outliner text.
                         lineHeight: '1.7',
                         // The row pitch as a length, for anything that must be exactly one row tall

@@ -15,6 +15,7 @@
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { TransactionSpec } from '@codemirror/state'
 import { EditorView, keymap, showTooltip, type WidgetType } from '@codemirror/view'
 
 import { hiddenSyntax, type HiddenSyntaxSpec, hiddenSyntaxPieces } from './augmentations/base-renderer'
@@ -68,6 +69,48 @@ describe('completion popovers (EtherPK)', () => {
             editor.dispatch(editor.state.update(editor.state.replaceSelection('more ')))
             expect(editor.state.facet(showTooltip).filter(Boolean).map((tooltip) => tooltip!.pos))
                 .toEqual([editor.head()])
+        })
+    }
+})
+
+// Accepting a completion closes the link being completed and no other (Editor Content Rules →
+// Completion popovers). Text alone cannot say whose a `]]` is in `[[A [[B|]]`: a link typed into A,
+// or an existing B inside an A not yet closed. What decides is whether a `[` was typed inside a
+// link whose `]]` it is.
+describe('accepting a completion inside another link (EtherPK)', () => {
+    const concepts = [
+        { display: 'Quantum', key: 'quantum', kind: 'page' as const },
+        { display: 'Physics', key: 'physics', kind: 'page' as const },
+    ]
+    /** Type `typed` a key at a time at the fixture's caret, then press the popover's Enter. */
+    function accept(before: string, typed = ''): string {
+        const editor = editorFixture(before, { extensions: [wikilinkCompletion({ concepts: () => concepts })] })
+        for (const key of typed) editor.type(key)
+        // The popover dispatches a spec, as a view takes one, and reads the state back after it.
+        const view = {
+            get state() {
+                return editor.state
+            },
+            dispatch: (spec: TransactionSpec) => editor.dispatch(editor.state.update(spec)),
+        }
+        // The popover's own Enter, which sits above the outliner's in the keymap.
+        const bindings = editor.state.facet(keymap).flat().filter((binding) => binding.key === 'Enter')
+        expect(bindings.some((binding) => binding.run?.(view as never) ?? false)).toBe(true)
+        return editor.fixture()
+    }
+
+    for (const row of [
+        { rule: 'a link typed inside another leaves the outer link its ]]', before: '- [[Physics |]] now', typed: '[[Quan', after: '- [[Physics [[Quantum]]|]] now' },
+        { rule: '…typed in the middle of its text too', before: '- [[Physics | theory]] now', typed: '[[Quan', after: '- [[Physics [[Quantum]]| theory]] now' },
+        { rule: 'an existing inner link is completed over its own ]]', before: '- [[Physics [[Qu|an]]]] now', after: '- [[Physics [[Quantum]]|]] now' },
+        { rule: '…and so is one inside an outer link not yet closed', before: '- [[[[Phy|sics]] Quantum', after: '- [[[[Physics]]| Quantum' },
+        { rule: 'a stray [[ earlier on the line takes no ]] from the link after it', before: '- a [[ b, see [[Phy|sics]] now', after: '- a [[ b, see [[Physics]]| now' },
+        { rule: 'nor does a [[ in inline code', before: '- tap the `[[` button ([[Phy|sics]]).', after: '- tap the `[[` button ([[Physics]]|).' },
+        { rule: 'a link on its own is completed over its ]]', before: '- see [[Qu|an]] now', after: '- see [[Quantum]]| now' },
+        { rule: 'an unclosed link is closed', before: '- see [[Quan| now', after: '- see [[Quantum]]| now' },
+    ]) {
+        it(`Enter: ${row.rule}`, () => {
+            expect(accept(row.before, row.typed)).toBe(row.after)
         })
     }
 })

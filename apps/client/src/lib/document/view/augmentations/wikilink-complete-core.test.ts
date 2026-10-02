@@ -4,6 +4,7 @@ import type { ConceptCandidate } from '../../index-db'
 import {
     MAX_COMPLETION_ROWS,
     closingBracketOffset,
+    enclosingLinkClose,
     isInFrontmatter,
     matchScore,
     openWikilinkContext,
@@ -66,6 +67,28 @@ describe('closingBracketOffset', () => {
     })
 })
 
+describe('enclosingLinkClose', () => {
+    it('is the column of the ]] of the link holding the column between its brackets', () => {
+        // '- [[Physics ]]': the brackets at 2-3 and 12-13.
+        expect(enclosingLinkClose('- [[Physics ]]', 12)).toBe(12) // just before the ]]
+        expect(enclosingLinkClose('- [[Physics ]]', 4)).toBe(12)
+    })
+
+    it('is -1 outside a link and on its brackets', () => {
+        expect(enclosingLinkClose('- [[Physics ]]', 2)).toBe(-1) // before the [[
+        expect(enclosingLinkClose('- [[Physics ]]', 3)).toBe(-1) // between the two [
+        expect(enclosingLinkClose('- [[Physics ]]', 14)).toBe(-1) // after the ]]
+        expect(enclosingLinkClose('- [[Physics', 6)).toBe(-1) // no balanced link
+    })
+
+    it('is the innermost link that holds the column', () => {
+        // '[[A [[B]] C]]': inner at 4-8, outer at 0-12.
+        expect(enclosingLinkClose('[[A [[B]] C]]', 6)).toBe(7)
+        expect(enclosingLinkClose('[[A [[B]] C]]', 4)).toBe(11) // before the inner [[
+        expect(enclosingLinkClose('[[A [[B]] C]]', 9)).toBe(11) // at the seam after the inner ]]
+    })
+})
+
 describe('queryForWikilinkCompletion', () => {
     it('uses the whole existing concept when the caret is in the middle of a closed link', () => {
         const prefix = 'see [[Test'
@@ -80,6 +103,12 @@ describe('queryForWikilinkCompletion', () => {
         const context = openWikilinkContext('see [[Test New')
         expect(context).not.toBeNull()
         expect(queryForWikilinkCompletion(context!, ' ordinary prose')).toBe('Test New')
+    })
+
+    it('uses the text typed so far when the ]] after the caret is not the link\'s own', () => {
+        // [[Physics [[Quan|tum]] - the ]] belongs to Physics, so the inner link has no text after the caret.
+        const context = openWikilinkContext('see [[Physics [[Quan')
+        expect(queryForWikilinkCompletion(context!, 'tum]] after', -1)).toBe('Quan')
     })
 })
 

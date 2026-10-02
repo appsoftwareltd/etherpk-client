@@ -287,12 +287,14 @@ const theme = EditorView.baseTheme({
         padding: '0.05em 0.15em',
         margin: '0 -0.05em',
     },
-    // Inline code matches a fenced block's font and size (code-highlight.ts), so a `command` in prose
-    // reads as the same thing as the block below it rather than a larger, different typeface.
+    // Inline code matches a fenced block's font, size and panel shade (code-highlight.ts), so a
+    // `command` in prose reads as the same thing as the block below it rather than a larger,
+    // different typeface. The shade is translucent, as the block's panel is: the selection highlight
+    // is drawn behind the text (selection-layer.ts), and an opaque pill hid a range selected in it.
     '.cm-md-code': {
         fontFamily: 'var(--gk-mono, ui-monospace, SFMono-Regular, Menlo, monospace)',
         fontSize: CODE_FONT_SIZE,
-        background: 'var(--gk-surface-2, rgba(0,0,0,0.06))',
+        background: 'var(--gk-code-bg, rgba(127,127,127,0.10))',
         borderRadius: '4px',
         // Room around the text: horizontal padding plus a hair of vertical padding (inline padding does
         // not change the line height, it only widens the painted background).

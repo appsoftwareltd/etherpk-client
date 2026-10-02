@@ -8,6 +8,7 @@
 
 import { conceptKey } from '../../backlinks/backlink-index'
 import type { ConceptCandidate, ConceptCandidateKind } from '../../index-db'
+import { parseWikilinks } from '../../wikilink/parser'
 
 /** The innermost unclosed `[[` the cursor sits inside, as columns within a line. */
 export interface WikilinkContext {
@@ -80,16 +81,37 @@ export function closingBracketOffset(lineSuffix: string): number {
 }
 
 /**
+ * The column of the `]]` that closes the innermost balanced link holding `column` strictly between
+ * its brackets, or -1. `lineText` is the whole line. Where a `[` is typed, this is the link it is
+ * typed inside, whose `]]` a new link opened there must not take for its own.
+ */
+export function enclosingLinkClose(lineText: string, column: number): number {
+    let close = -1
+    let width = Infinity
+    for (const link of parseWikilinks(lineText)) {
+        // link.end is the second `]`: between the brackets is [start + 2, end - 1].
+        if (column < link.start + 2 || column > link.end - 1) continue
+        if (link.end - link.start < width) {
+            width = link.end - link.start
+            close = link.end - 1
+        }
+    }
+    return close
+}
+
+/**
  * The query to rank while editing a wikilink. For an unterminated link this is simply what
  * has been typed before the caret. For an existing closed link, include the text after the
  * caret up to its matching `]]`: clicking near the start of `[[Test New Page]]` should rank
- * against "Test New Page", not the misleading one-letter prefix under the pointer.
+ * against "Test New Page", not the misleading one-letter prefix under the pointer. `close` is
+ * the offset past the link's own `]]` when the caller has decided it ({@link closingBracketOffset}
+ * by default), and -1 when the `]]` after the caret belongs to an enclosing link.
  */
 export function queryForWikilinkCompletion(
     context: WikilinkContext,
     lineSuffix: string,
+    close = closingBracketOffset(lineSuffix),
 ): string {
-    const close = closingBracketOffset(lineSuffix)
     return close < 0
         ? context.query
         : context.query + lineSuffix.slice(0, close - 2)
