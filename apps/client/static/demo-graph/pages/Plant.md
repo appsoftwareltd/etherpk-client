@@ -29,7 +29,7 @@ Research confirms that plants make you happier, improve the air a bit, and make 
 
 ## Types of plant
 
-There are roughly 390,000 known species. You'll probably end up with a [[Monstera]], a [[Succulent]], a [[Peace Lily]] and a [[Spider Plant]], because those are the ones every garden centre and supermarket sells. For something more structured, see [[Types of [[Plant]]]].
+There are roughly 390,000 known species. You'll probably end up with a [[Monstera]], a [[Succulent]], a [[Peace Lily]] and a [[Spider Plant]], because those are the ones every garden centre and supermarket sells. For something more structured, see [[Types of [[Plant]]]]. Every species in this graph has a page of its own, and the [[Plant Index]] lists them all.
 
 ## Feeding
 

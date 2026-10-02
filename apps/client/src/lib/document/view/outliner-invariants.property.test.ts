@@ -352,7 +352,11 @@ function markersIntact(lines: string[]): boolean {
     return lines.every((line, i) => i < body || blocks.some((f) => i > f.start && i <= f.end) || !/^\s*-(\[|$)/.test(line))
 }
 
-describe('outliner invariants under random key sequences', () => {
+// Each property replays a fixed, seeded batch of a few hundred key sequences, so the work never
+// varies but the time does: about half a second alone, and ten times that when `pnpm test` runs
+// all four packages' suites at once (the pre-push `pnpm verify`). Vitest's 5 s default is a hang
+// guard, which a busy machine trips on fixed work. A real hang still fails, at 30 s.
+describe('outliner invariants under random key sequences', { timeout: 30_000 }, () => {
     it('never creates an orphan, never leaves a bullet off the indent grid, never breaks a marker', () => {
         fc.assert(
             fc.property(scenarioArb, ({ outline, caretAt, selectTo, keys }) => {

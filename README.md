@@ -7,7 +7,7 @@
 The source of the [EtherPK](https://etherpk.com) Client and Headless Client, available under the
 [Elastic License 2.0](LICENSE).
 
-![The EtherPK Client: the graph sidebar with its journal calendar, a page in the editor, and the page's backlinks](.github/assets/etherpk-client.png)
+![The EtherPK Client in the dark theme: the demo graph in the whole Graph View, its list of hubs, and the Backlinks pane](.github/assets/etherpk-graph-view.png)
 
 [Try the demo](https://etherpk.com) from etherpk.com. It runs in your browser, needs no account, and
 keeps what you write in that browser only.

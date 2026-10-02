@@ -32,25 +32,60 @@ function isSubdir(value: string): value is Subdir {
     return (SUBDIRS as readonly string[]).includes(value)
 }
 
+/**
+ * The reserved characters `decodeURI` leaves escaped. A static server that decodes request paths
+ * with it, as Vite's does, would look for a file literally named `%2C`, so these go unescaped:
+ * each is valid as it is inside a path segment. `#` and `?` stay escaped and cannot be served at
+ * all, which is why the manifest builder refuses a name with `#` (`?` is illegal in a file name).
+ */
+const LITERAL_IN_PATH = /%(2C|3B|40|26|3D|2B|24)/gi
+
 /** Where a bundle file is served from: one static path per segment, each URL-encoded. */
 export function demoFileUrl(base: string, path: string): string {
-    return `${base}/${path.split('/').map(encodeURIComponent).join('/')}`
+    const segment = (name: string) => encodeURIComponent(name).replace(LITERAL_IN_PATH, (escape) => decodeURIComponent(escape))
+    return `${base}/${path.split('/').map(segment).join('/')}`
 }
 
+/** How many bundle files are requested at once by default. */
+const DEFAULT_FETCH_CONCURRENCY = 6
+
 /**
- * The bundle's files, fetched one at a time in manifest order. Sequential on purpose: the
- * bundle is small, a burst of parallel requests gains little, and progress reads cleanly.
+ * The bundle's files, yielded in manifest order. A few requests are kept in flight ahead of the
+ * file being yielded: the bundle is a few hundred small pages, and one request at a time would
+ * cost a network round trip per page. Order is kept so progress reads cleanly and the first
+ * missing file is the one reported.
  */
 export async function* fetchDemoBundle(
     manifest: DemoBundleManifest,
-    options: { fetch?: typeof fetch; base?: string } = {},
+    options: { fetch?: typeof fetch; base?: string; concurrency?: number } = {},
 ): AsyncGenerator<DemoFile> {
     const fetchImpl = options.fetch ?? fetch
     const base = options.base ?? '/demo-graph'
-    for (const file of manifest.files) {
-        const response = await fetchImpl(demoFileUrl(base, file.path))
-        if (!response.ok) throw new Error(`The demo bundle file ${file.path} could not be fetched (${response.status})`)
-        yield { path: file.path, bytes: new Uint8Array(await response.arrayBuffer()) }
+    const concurrency = Math.max(1, options.concurrency ?? DEFAULT_FETCH_CONCURRENCY)
+
+    const fetchFile = async (path: string): Promise<DemoFile> => {
+        const response = await fetchImpl(demoFileUrl(base, path))
+        if (!response.ok) throw new Error(`The demo bundle file ${path} could not be fetched (${response.status})`)
+        return { path, bytes: new Uint8Array(await response.arrayBuffer()) }
+    }
+
+    const ahead: Promise<DemoFile>[] = []
+    let next = 0
+    const startMore = () => {
+        while (ahead.length < concurrency && next < manifest.files.length) {
+            const request = fetchFile(manifest.files[next++].path)
+            // A request that fails while an earlier one is still awaited would otherwise be an
+            // unhandled rejection. It is still awaited, and thrown, when its turn comes.
+            request.catch(() => {})
+            ahead.push(request)
+        }
+    }
+
+    startMore()
+    for (let request = ahead.shift(); request; request = ahead.shift()) {
+        const file = await request
+        startMore()
+        yield file
     }
 }
 

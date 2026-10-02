@@ -1,0 +1,43 @@
+---
+title: "[[Plant Index]] Vegetables and Fruit"
+---
+There are 38 vegetables and fruit here, each with a page of its own. The other groups are in the [[Plant Index]].
+
+- [[Apple]] *Malus domestica*
+- [[Asparagus]] *Asparagus officinalis*
+- [[Aubergine]] *Solanum melongena*
+- [[Avocado]] *Persea americana*
+- [[Banana]] *Musa acuminata*
+- [[Beetroot]] *Beta vulgaris*
+- [[Blueberry]] *Vaccinium corymbosum*
+- [[Broccoli]] *Brassica oleracea Italica Group*
+- [[Cabbage]] *Brassica oleracea Capitata Group*
+- [[Carrot]] *Daucus carota*
+- [[Chilli Pepper]] *Capsicum annuum*
+- [[Coffee]] *Coffea arabica*
+- [[Courgette]] *Cucurbita pepo*
+- [[Cucumber]] *Cucumis sativus*
+- [[Dragon Fruit]] *Selenicereus undatus*
+- [[Fig]] *Ficus carica*
+- [[French Bean]] *Phaseolus vulgaris*
+- [[Garlic]] *Allium sativum*
+- [[Horseradish]] *Armoracia rusticana*
+- [[Kale]] *Brassica oleracea Acephala Group*
+- [[Lemon]] *Citrus × limon*
+- [[Lettuce]] *Lactuca sativa*
+- [[Olive]] *Olea europaea*
+- [[Onion]] *Allium cepa*
+- [[Passion Fruit]] *Passiflora edulis*
+- [[Pea]] *Pisum sativum*
+- [[Pear]] *Pyrus communis*
+- [[Pineapple]] *Ananas comosus*
+- [[Potato]] *Solanum tuberosum*
+- [[Pumpkin]] *Cucurbita maxima*
+- [[Raspberry]] *Rubus idaeus*
+- [[Rhubarb]] *Rheum × hybridum*
+- [[Runner Bean]] *Phaseolus coccineus*
+- [[Strawberry]] *Fragaria × ananassa*
+- [[Sweet Potato]] *Ipomoea batatas*
+- [[Sweetcorn]] *Zea mays*
+- [[Tea]] *Camellia sinensis*
+- [[Tomato]] *Solanum lycopersicum*

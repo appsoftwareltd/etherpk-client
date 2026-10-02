@@ -38,3 +38,5 @@ Fenced code highlights in place and stays editable - there's no widget to click 
 The RHS has a sensible page on it: https://www.rhs.org.uk/plants/types/houseplants/watering
 
 Signs you've got it wrong: [[Yellow Leaves]] (too much), crispy edges (too little), fungus gnats ([[Pests]], and too much again).
+
+Some plants make it easy. A [[Peace Lily]] or [[Nerve Plant]] droops when it's thirsty and stands back up within the hour. A [[Succulent]] wants a soak and then a long wait. A [[Carnivorous Plant]] wants rainwater only, never tap.

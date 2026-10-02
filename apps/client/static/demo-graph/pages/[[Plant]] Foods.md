@@ -5,7 +5,7 @@ Feeding is the bit people skip, then wonder why the [[Monstera]] has produced on
 
 ## The three numbers
 
-Every feed carries an N-P-K ratio - nitrogen, phosphorus, potassium. Roughly: leaves, roots and flowers, general vigour. A balanced feed (something like 10-10-10) does for almost every [[Houseplant]].
+Every feed carries an N-P-K ratio - nitrogen, phosphorus, potassium. Roughly: leaves, roots and flowers, general vigour. A balanced feed (something like 10-10-10) does for almost every [[Houseplant]]. The exceptions: a fruiting crop such as a [[Tomato]] wants a high-potash feed once it flowers, a [[Moth Orchid]] wants a weak orchid feed, and a [[Carnivorous Plant]] wants nothing at all.
 
 ## When
 

@@ -11,6 +11,7 @@ This is the demo graph. It's about houseplants, because everyone has killed at l
 - Type `[[` anywhere and pick from the completion. Type `/` on an empty line for the command menu (tables, dates, images, maths).
 - Press Tab / Shift+Tab on a bullet to indent and outdent. Alt + Up / Down moves a block with its children.
 - Look at [[Watering]] for maths, a diagram and a code block rendered in place, and [[Monstera]] for images and a PDF.
+- Open the whole **Graph View**: right-click this tab and choose **Show in Graph View**. Every page is a dot, every link a line, and each cluster of closely linked pages gets a colour of its own.
 - [[Where I hide the good fertiliser]] is a protected page. The passphrase is `monstera`. Unlock it from the padlock, have a read, then lock it again.
 
 **The pages**
@@ -22,5 +23,6 @@ This is the demo graph. It's about houseplants, because everyone has killed at l
 - [[Watering]] - more nuanced than "pour water on it"
 - [[Repotting]] - because roots need space too
 - [[Season Guide]] - what to do and when
+- [[Plant Index]] - every species in the graph, a page each, from [[Aloe Vera]] to [[ZZ Plant]]
 
 - [ ] #P2 Add a page for [[Yellow Leaves]] before the [[Monstera]] notices

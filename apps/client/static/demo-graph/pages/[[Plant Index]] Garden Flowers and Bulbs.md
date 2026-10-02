@@ -1,0 +1,46 @@
+---
+title: "[[Plant Index]] Garden Flowers and Bulbs"
+---
+There are 41 garden flowers and bulbs here, each with a page of its own. The other groups are in the [[Plant Index]].
+
+- [[Agapanthus]] *Agapanthus africanus*
+- [[Amaryllis]] *Hippeastrum*
+- [[Bleeding Heart]] *Lamprocapnos spectabilis*
+- [[Bluebell]] *Hyacinthoides non-scripta*
+- [[Busy Lizzie]] *Impatiens walleriana*
+- [[Christmas Rose]] *Helleborus niger*
+- [[Common Daisy]] *Bellis perennis*
+- [[Common Poppy]] *Papaver rhoeas*
+- [[Cosmos]] *Cosmos bipinnatus*
+- [[Crocus]] *Crocus vernus*
+- [[Cyclamen]] *Cyclamen persicum*
+- [[Daffodil]] *Narcissus pseudonarcissus*
+- [[Dahlia]] *Dahlia pinnata*
+- [[Delphinium]] *Delphinium elatum*
+- [[Echinacea]] *Echinacea purpurea*
+- [[Forget-Me-Not]] *Myosotis sylvatica*
+- [[Foxglove]] *Digitalis purpurea*
+- [[Freesia]] *Freesia refracta*
+- [[French Marigold]] *Tagetes patula*
+- [[Fuchsia]] *Fuchsia magellanica*
+- [[Gladiolus]] *Gladiolus × hortulanus*
+- [[Hardy Geranium]] *Geranium sanguineum*
+- [[Hosta]] *Hosta sieboldiana*
+- [[Hyacinth]] *Hyacinthus orientalis*
+- [[Lily of the Valley]] *Convallaria majalis*
+- [[Lupin]] *Lupinus polyphyllus*
+- [[Morning Glory]] *Ipomoea purpurea*
+- [[Nasturtium]] *Tropaeolum majus*
+- [[Pelargonium]] *Pelargonium × hortorum*
+- [[Peony]] *Paeonia lactiflora*
+- [[Petunia]] *Petunia × atkinsiana*
+- [[Pot Marigold]] *Calendula officinalis*
+- [[Primrose]] *Primula vulgaris*
+- [[Regal Lily]] *Lilium regale*
+- [[Snapdragon]] *Antirrhinum majus*
+- [[Snowdrop]] *Galanthus nivalis*
+- [[Sunflower]] *Helianthus annuus*
+- [[Sweet Pea]] *Lathyrus odoratus*
+- [[Tulip]] *Tulipa gesneriana*
+- [[Verbena]] *Verbena bonariensis*
+- [[Zinnia]] *Zinnia elegans*

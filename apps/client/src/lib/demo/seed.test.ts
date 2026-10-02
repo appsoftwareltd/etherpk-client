@@ -62,6 +62,16 @@ describe('fetchDemoBundle', () => {
         expect(demoFileUrl('/demo-graph', 'pages/[[Plant]] Foods.md')).toBe('/demo-graph/pages/%5B%5BPlant%5D%5D%20Foods.md')
     })
 
+    it('leaves commas, ampersands and the like literal, because the static server decodes with decodeURI', () => {
+        // decodeURI leaves %2C, %26, %2B and the other reserved escapes as they are, so the
+        // server would look for a file literally named "%2C". Unescaped, they are valid in a path.
+        expect(demoFileUrl('/demo-graph', 'pages/Salt, Pepper & Co; $5 + tax=@home.md')).toBe(
+            '/demo-graph/pages/Salt,%20Pepper%20&%20Co;%20$5%20+%20tax=@home.md',
+        )
+        // Anything decodeURI does decode stays escaped as before.
+        expect(demoFileUrl('/demo-graph', "pages/Bird's Nest Fern.md")).toBe("/demo-graph/pages/Bird's%20Nest%20Fern.md")
+    })
+
     it('yields the files in manifest order with their bytes', async () => {
         const requested: string[] = []
         const fetchImpl = (async (url: string) => {
@@ -74,6 +84,48 @@ describe('fetchDemoBundle', () => {
         expect(requested).toEqual(['/demo-graph/pages/%5B%5BPlant%5D%5D%20Foods.md', '/demo-graph/assets/leaf.0a0b0c0d.png'])
         expect(files.map((f) => f.path)).toEqual(manifest.files.map((f) => f.path))
         expect(new TextDecoder().decode(files[0].bytes)).toBe('# Foods')
+    })
+
+    it('keeps a few requests in flight and still yields in manifest order', async () => {
+        // Eight files whose responses can be released one by one, in any order. Fetched one at a
+        // time, a bundle of a few hundred files costs a few hundred round trips.
+        const many: DemoBundleManifest = {
+            ...manifest,
+            files: Array.from({ length: 8 }, (_, i) => ({ path: `pages/P${i}.md`, size: 1 })),
+            totalBytes: 8,
+        }
+        const pending = new Map<string, () => void>()
+        let inFlight = 0
+        let mostInFlight = 0
+        const fetchImpl = ((url: string) => {
+            inFlight++
+            mostInFlight = Math.max(mostInFlight, inFlight)
+            return new Promise<Response>((resolve) => {
+                pending.set(url, () => {
+                    inFlight--
+                    resolve(new Response(encoder.encode(url)))
+                })
+            })
+        }) as unknown as typeof fetch
+
+        const files: string[] = []
+        const done = (async () => {
+            for await (const file of fetchDemoBundle(many, { fetch: fetchImpl, concurrency: 3 })) files.push(file.path)
+        })()
+        // Release the newest request first each time, so responses arrive out of order.
+        while (files.length < many.files.length) {
+            await new Promise((resolve) => setTimeout(resolve, 0))
+            const urls = [...pending.keys()]
+            const last = urls.at(-1)
+            if (last) {
+                pending.get(last)?.()
+                pending.delete(last)
+            }
+        }
+        await done
+
+        expect(mostInFlight).toBe(3)
+        expect(files).toEqual(many.files.map((f) => f.path))
     })
 
     it('fails on the first file the server does not have', async () => {

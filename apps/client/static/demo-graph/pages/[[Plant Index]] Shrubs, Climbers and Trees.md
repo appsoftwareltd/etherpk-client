@@ -1,0 +1,32 @@
+---
+title: "[[Plant Index]] Shrubs, Climbers and Trees"
+---
+There are 27 shrubs, climbers and trees here, each with a page of its own. The other groups are in the [[Plant Index]].
+
+- [[Azalea]] *Rhododendron simsii*
+- [[Bougainvillea]] *Bougainvillea glabra*
+- [[Box]] *Buxus sempervirens*
+- [[Buddleja]] *Buddleja davidii*
+- [[Cabbage Palm]] *Cordyline australis*
+- [[Camellia]] *Camellia japonica*
+- [[Chusan Palm]] *Trachycarpus fortunei*
+- [[Cider Gum]] *Eucalyptus gunnii*
+- [[Clematis]] *Clematis montana*
+- [[Common Jasmine]] *Jasminum officinale*
+- [[English Ivy]] *Hedera helix*
+- [[English Oak]] *Quercus robur*
+- [[Fatsia]] *Fatsia japonica*
+- [[Heather]] *Calluna vulgaris*
+- [[Holly]] *Ilex aquifolium*
+- [[Honeysuckle]] *Lonicera periclymenum*
+- [[Hydrangea]] *Hydrangea macrophylla*
+- [[Japanese Cherry]] *Prunus serrulata*
+- [[Japanese Maple]] *Acer palmatum*
+- [[Magnolia]] *Magnolia grandiflora*
+- [[Monkey Puzzle]] *Araucaria araucana*
+- [[New Zealand Flax]] *Phormium tenax*
+- [[Passion Flower]] *Passiflora caerulea*
+- [[Rose]] *Rosa*
+- [[Silver Birch]] *Betula pendula*
+- [[Star Jasmine]] *Trachelospermum jasminoides*
+- [[Wisteria]] *Wisteria sinensis*

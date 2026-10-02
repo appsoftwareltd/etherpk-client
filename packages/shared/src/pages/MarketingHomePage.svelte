@@ -59,7 +59,7 @@
 
     // The screenshot's own pixel size, declared on the element so the page reserves the space
     // before the bytes arrive rather than jumping when they do.
-    const SCREENSHOT = { src: "/marketing/editor-dark.webp", width: 1999, height: 1123 };
+    const SCREENSHOT = { src: "/marketing/graph-view-dark.webp", width: 2317, height: 1309 };
 
     type Action = { id: string; label: string; href: string; icon: "app" | "demo" | "pricing" };
 
@@ -411,20 +411,20 @@
         </ul>
     </div>
 
-    <!-- The editor as it is, rather than an illustration of it. -->
+    <!-- The app as it is, rather than an illustration of it: the demo graph in the whole Graph View. -->
     <figure class="mx-auto mt-14 max-w-6xl px-4 sm:mt-20 sm:px-6">
         <div class="overflow-hidden rounded-xl bg-gray-950 shadow-2xl shadow-gray-950/15 ring-1 ring-gray-950/10 sm:rounded-2xl dark:shadow-black/40 dark:ring-white/10">
             <img
                 src={SCREENSHOT.src}
                 width={SCREENSHOT.width}
                 height={SCREENSHOT.height}
-                alt="The EtherPK editor in the dark theme, showing the demo graph's Plant page with its frontmatter, the Backlinks pane listing the journal entries that link to it, and the sidebar's calendar, favourites and recents."
+                alt="The EtherPK Client in the dark theme, showing the demo graph in the whole Graph View: each page is a dot, each wikilink a line, and each cluster of closely linked pages has its own colour, with place names drawn as rings. Beside it is the list of Hubs, and the Backlinks pane on the right lists everything that mentions the Plant page."
                 fetchpriority="high"
                 decoding="async"
                 class="block h-auto w-full"
             />
         </div>
-        <figcaption class="mx-auto mt-4 max-w-3xl text-center text-sm leading-6 text-gray-500 dark:text-gray-400">The demo graph, in the dark theme. A page and its frontmatter in the middle, everything that links to it on the right, and the calendar, favourites and recents in the sidebar. What is on screen is the markdown itself, styled in place.</figcaption>
+        <figcaption class="mx-auto mt-4 max-w-3xl text-center text-sm leading-6 text-gray-500 dark:text-gray-400">The demo graph, in the dark theme. The Graph View draws every page as a dot and every wikilink as a line, and gives each cluster of closely linked pages a colour of its own. The most linked concepts are listed beside it, and everything that links to the Plant page is on the right.</figcaption>
     </figure>
 </section>
 

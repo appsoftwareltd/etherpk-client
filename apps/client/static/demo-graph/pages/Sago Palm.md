@@ -1,0 +1,13 @@
+---
+title: Sago Palm
+aliases:
+  - Cycas revoluta
+---
+*Cycas revoluta*, in the [[Cycadaceae]] family. Native to [[Japan]].
+
+Not a palm. It is a cycad, from a group of plants that was already old when the dinosaurs were around. It grows one flush of stiff leaves a year, if that. Every part of it is poisonous, to pets especially.
+
+- Light: bright, with some direct sun
+- Water: when the top half of the pot is dry
+
+See also [[Ponytail Palm]].

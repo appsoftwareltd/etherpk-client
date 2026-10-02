@@ -1,0 +1,58 @@
+---
+title: "[[Plant Index]] Houseplants"
+---
+There are 53 houseplants here, each with a page of its own. The other groups are in the [[Plant Index]].
+
+- [[African Violet]] *Streptocarpus ionanthus*
+- [[Alocasia Polly]] *Alocasia × amazonica*
+- [[Anthurium]] *Anthurium andraeanum*
+- [[Aphelandra]] *Aphelandra squarrosa*
+- [[Arrowhead Plant]] *Syngonium podophyllum*
+- [[Baby Rubber Plant]] *Peperomia obtusifolia*
+- [[Bird of Paradise]] *Strelitzia reginae*
+- [[Calathea Orbifolia]] *Goeppertia orbifolia*
+- [[Cape Primrose]] *Streptocarpus × hybridus*
+- [[Cast Iron Plant]] *Aspidistra elatior*
+- [[Chinese Evergreen]] *Aglaonema commutatum*
+- [[Chinese Money Plant]] *Pilea peperomioides*
+- [[Croton]] *Codiaeum variegatum*
+- [[Dragon Tree]] *Dracaena marginata*
+- [[Dumb Cane]] *Dieffenbachia seguine*
+- [[Ficus Ginseng]] *Ficus microcarpa*
+- [[Fiddle Leaf Fig]] *Ficus lyrata*
+- [[Golden Pothos]] *Epipremnum aureum*
+- [[Goldfish Plant]] *Nematanthus gregarius*
+- [[Hoya]] *Hoya carnosa*
+- [[Kentia Palm]] *Howea forsteriana*
+- [[Lucky Bamboo]] *Dracaena sanderiana*
+- [[Mini Monstera]] *Rhaphidophora tetrasperma*
+- [[Money Tree]] *Pachira aquatica*
+- [[Monstera]] *Monstera deliciosa*
+- [[Monstera Adansonii]]
+- [[Nerve Plant]] *Fittonia albivenis*
+- [[Norfolk Island Pine]] *Araucaria heterophylla*
+- [[Parlour Palm]] *Chamaedorea elegans*
+- [[Peace Lily]] *Spathiphyllum wallisii*
+- [[Philodendron]] *Philodendron hederaceum*
+- [[Poinsettia]] *Euphorbia pulcherrima*
+- [[Polka Dot Begonia]] *Begonia maculata*
+- [[Polka Dot Plant]] *Hypoestes phyllostachya*
+- [[Ponytail Palm]] *Beaucarnea recurvata*
+- [[Prayer Plant]] *Maranta leuconeura*
+- [[Purple Shamrock]] *Oxalis triangularis*
+- [[Rattlesnake Plant]] *Goeppertia insignis*
+- [[Rex Begonia]] *Begonia rex*
+- [[Rose of China]] *Hibiscus rosa-sinensis*
+- [[Rubber Plant]] *Ficus elastica*
+- [[Sago Palm]] *Cycas revoluta*
+- [[Sensitive Plant]] *Mimosa pudica*
+- [[Snake Plant]] *Dracaena trifasciata*
+- [[Spider Plant]] *Chlorophytum comosum*
+- [[Stromanthe Triostar]] *Stromanthe thalia*
+- [[Swedish Ivy]] *Plectranthus verticillatus*
+- [[Sweetheart Hoya]] *Hoya kerrii*
+- [[Tradescantia]] *Tradescantia zebrina*
+- [[Umbrella Plant]] *Heptapleurum arboricola*
+- [[Watermelon Peperomia]] *Peperomia argyreia*
+- [[Yucca]] *Yucca gigantea*
+- [[ZZ Plant]] *Zamioculcas zamiifolia*

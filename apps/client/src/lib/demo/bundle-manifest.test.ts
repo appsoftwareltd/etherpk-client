@@ -78,6 +78,12 @@ describe('buildDemoBundleManifest', () => {
         ])
     })
 
+    it('refuses a file name with a # in it, which no static URL can reach', () => {
+        expect(problemsOf([sidecar, text('pages/Plant #2.md', 'x')])).toEqual([
+            'pages/Plant #2.md: a bundle file name cannot contain #, because the static server cannot serve it',
+        ])
+    })
+
     it('insists every asset carries the content hash the store would give it', () => {
         expect(problemsOf([sidecar, bin('assets/leaf.png', 1), bin('assets/leaf.deadbeef.png', 1)])).toEqual([
             'assets/leaf.png: an asset is named <kebab-stem>.<8-hex-content-hash>.<ext>',

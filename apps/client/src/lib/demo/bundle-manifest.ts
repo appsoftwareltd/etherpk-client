@@ -117,6 +117,11 @@ export function buildDemoBundleManifest(
             problems.push(`${source.path}: files live directly under journals/, pages/, assets/ or etherpk/`)
             continue
         }
+        // The file is fetched by URL, and no escape of `#` survives a static server (seed.ts,
+        // demoFileUrl), so it would only fail in a visitor's browser.
+        if (name.includes('#')) {
+            problems.push(`${source.path}: a bundle file name cannot contain #, because the static server cannot serve it`)
+        }
         if (subdir === 'journals' && !/^\d{4}-\d{2}-\d{2}\.md$/.test(name)) {
             problems.push(`${source.path}: a journal entry is named by its day, YYYY-MM-DD.md`)
         }

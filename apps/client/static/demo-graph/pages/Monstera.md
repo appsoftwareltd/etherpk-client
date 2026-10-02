@@ -4,6 +4,8 @@ aliases:
   - Swiss cheese plant
   - Monstera deliciosa
 ---
+*Monstera deliciosa*, in the [[Araceae]] family. Native to [[Mexico]] and [[Central America]].
+
 The one everybody starts with, and the one that rewards you for it. Big glossy leaves that split as the plant matures, a habit of climbing anything you give it, and a surprising tolerance for being forgotten about for a fortnight.
 
 ![Monstera leaves against a wall|420](../assets/monstera-leaves.5b1303c6.png)
@@ -29,5 +31,7 @@ The short version is on the [care sheet](../assets/monstera-care-sheet.e2e78af3.
 - [[Yellow Leaves]] - almost always too much water
 - Brown crispy edges - too dry, or too close to a radiator
 - No splits in new leaves - not enough light, or it's just young. Patience.
+
+See also [[Monstera Adansonii]], [[Mini Monstera]] (which isn't one) and [[Philodendron]].
 
 - [ ] #P1 #D-2026-09-20 Move the [[Monstera]] back from the window before it scorches
