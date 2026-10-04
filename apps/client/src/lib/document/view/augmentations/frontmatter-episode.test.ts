@@ -96,6 +96,36 @@ describe('FrontmatterEpisode', () => {
         expect(typed.blockIsNew).toBe(false)
     })
 
+    // Deleting the whole block is how a person clears a synced page's aliases (ADR 0061, amended
+    // 2026-10-03), so the end says whether the block the episode began with is gone.
+    it('says whether the episode removed a block that was there when it began', () => {
+        const removed = new FrontmatterEpisode()
+        expect(removed.update({ blockEndBefore: END, blockEndAfter: -1, changes: [{ from: 0, to: 21 }], caret: 0, focused: true })).toBe(true)
+        expect(removed.blockRemoved).toBe(true)
+
+        // Edited first, then deleted in the same episode.
+        const later = new FrontmatterEpisode()
+        later.update(typing(12))
+        expect(later.update({ blockEndBefore: END + 1, blockEndAfter: -1, changes: [{ from: 0, to: 22 }], caret: 0, focused: true })).toBe(true)
+        expect(later.blockRemoved).toBe(true)
+
+        const kept = new FrontmatterEpisode()
+        kept.update(typing(12))
+        expect(kept.update(move(END + 5))).toBe(true)
+        expect(kept.blockRemoved).toBe(false)
+
+        // A block typed and deleted again within one episode was never there to remove.
+        const typedAndGone = new FrontmatterEpisode()
+        typedAndGone.update({ blockEndBefore: -1, blockEndAfter: END, changes: [{ from: 18, to: 18 }], caret: 19, focused: true })
+        expect(typedAndGone.update({ blockEndBefore: END, blockEndAfter: -1, changes: [{ from: 0, to: 21 }], caret: 0, focused: true })).toBe(true)
+        expect(typedAndGone.blockRemoved).toBe(false)
+
+        // Each episode is judged on its own: the next one, on a block typed back, removed nothing.
+        expect(removed.update({ blockEndBefore: -1, blockEndAfter: END, changes: [{ from: 0, to: 0 }], caret: 5, focused: true })).toBe(false)
+        expect(removed.update(move(END + 5))).toBe(true)
+        expect(removed.blockRemoved).toBe(false)
+    })
+
     it('reports a touched block when the editor closes', () => {
         const episode = new FrontmatterEpisode()
         episode.update(typing(12))

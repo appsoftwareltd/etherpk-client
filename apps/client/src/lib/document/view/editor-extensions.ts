@@ -52,6 +52,7 @@ import { spellCheckAugmentation } from './augmentations/spell-check'
 import { taskCheckboxAugmentation } from './augmentations/task-checkbox'
 import { taskTagCompletion } from './augmentations/task-tag-complete'
 import { wikilinkAugmentation } from './augmentations/wikilink'
+import type { WikilinkEdit } from './augmentations/wikilink-episode'
 import { wikilinkCompletion } from './augmentations/wikilink-complete'
 import { blockSelection } from './block-select'
 import { caretClamp } from './caret-clamp'
@@ -71,11 +72,11 @@ export interface EditorExtensionServices {
     /** Open a wikilinked concept (a click on the link). */
     openConcept: (concept: string) => void
     /**
-     * An editing episode inside a wikilink ended having changed its concept (ADR 0065): what
-     * it named before, and what the link at that place names now (null when no balanced link
-     * survived the edit). The workspace decides whether that is a rename to propose.
+     * An editing episode in a wikilink ended having changed concepts (ADR 0065, amended
+     * 2026-10-03): each a concept a link named before and names now, outermost first. The
+     * workspace decides which are renames to propose.
      */
-    wikilinkEdited?: (before: string, after: string | null) => void
+    wikilinksEdited?: (edits: readonly WikilinkEdit[]) => void
     /** A right-click or long-press on a wikilink: raise the Context Menu for its concept. */
     wikilinkContextMenu?: (concept: string, x: number, y: number) => void
     /**
@@ -224,7 +225,7 @@ export function editorFeatures(services: EditorExtensionServices): EditorFeature
             extension: wikilinkAugmentation({
                 isMissing: services.conceptIsMissing,
                 onOpen: services.openConcept,
-                onLinkEdited: services.wikilinkEdited,
+                onLinksEdited: services.wikilinksEdited,
                 onContextMenu: services.wikilinkContextMenu,
                 // Restyle when the index catches up: an editor opened during the initial build
                 // otherwise shows every link as missing until edited.

@@ -33,9 +33,15 @@ export interface ProposalInput {
     /**
      * The block did not exist when the editing episode began: the person typed or pasted it. It
      * then claims nothing about aliases unless it has an `aliases` key, so typing `tags:` onto a
-     * synced page whose aliases live only in the registry does not clear them.
+     * synced page whose aliases are in the registry and not yet shown does not clear them.
      */
     blockIsNew?: boolean
+    /**
+     * The block was there when the editing episode began and the person deleted it. On a Server
+     * Backend that clears the aliases, as deleting a local file's block does (ADR 0061, amended
+     * 2026-10-03).
+     */
+    blockRemoved?: boolean
     /**
      * The file's name without `.md`, on a Filesystem Backend. A block with no `title` names the
      * file there (ADR 0007), so removing the title is a proposal to be called after the file.
@@ -45,9 +51,14 @@ export interface ProposalInput {
 
 export function proposeFrontmatter(input: ProposalInput): ProposalStep[] {
     const claim = frontmatterIdentity(input.text)
-    // No block is no claim - on a synced graph most documents never have one, and their
-    // registry aliases are not up for clearing.
-    if (!claim.hasBlock) return []
+    if (!claim.hasBlock) {
+        // No block is no claim: a synced document without aliases need not have one, and nothing
+        // it has not said is up for clearing. A block the person just deleted is the exception,
+        // and clears the aliases it showed. On a local graph the saved file already has none.
+        if (!input.blockRemoved || input.backend !== 'server') return []
+        const from = normaliseAliases(input.registry.aliases, input.registry.concept)
+        return from.length > 0 ? [{ property: 'aliases', policy: 'silent', from, to: [] }] : []
+    }
     // Nor is a block whose YAML does not parse: most often a line is still being typed when the
     // episode ends. Its identity is unknown, not empty, so nothing is proposed until it parses.
     if (!claim.readable) return []

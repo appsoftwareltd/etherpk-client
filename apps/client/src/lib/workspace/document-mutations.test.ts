@@ -5,6 +5,8 @@ import { registerBoard, type RenamedDocument, takeBoardHandover } from '$lib/kan
 import type { BoardState } from '$lib/kanban/board-state'
 
 import {
+    INDEX_CATCH_UP_MS,
+    PREVIEW_CATCH_UP_MS,
     createDocumentMutationController,
     deleteDocumentMessage,
     deleteRefusedAsIncludeMessage,
@@ -14,16 +16,20 @@ import {
 const plan: RenamePlan = {
     direct: { from: 'Old', to: 'New', hasDocument: true, merges: false, redirects: false, into: 'New' },
     cascade: [{ from: '[[Old]] Child', to: '[[New]] Child', hasDocument: true, merges: false, redirects: false, into: '[[New]] Child' }],
+    aliases: [],
+    aliasOf: null,
     referencingDocuments: 2,
     refusal: null,
 }
 
 const result: RenameResult = {
     concept: 'New',
+    aliasOf: null,
     rewritten: 2,
     rewrittenDocuments: ['Essay', 'Diary'],
     cascaded: 1,
     merged: 1,
+    aliasesRewritten: ['P'],
 }
 
 /** A layout with the given documents open in one Pane, `front` at the front. */
@@ -89,17 +95,48 @@ describe('workspace document mutations', () => {
 
     it('keeps rename outcome summaries explicit', () => {
         expect(renameDocumentSummary(result)).toBe(
-            'Renamed to "New", 1 scoped document renamed, 1 merged, 2 documents updated.',
+            'Renamed to "New", 1 scoped document renamed, 1 merged, 2 documents updated, aliases updated in 1 document.',
         )
         expect(
             renameDocumentSummary({
                 concept: 'New',
+                aliasOf: null,
                 rewritten: 0,
                 rewrittenDocuments: [],
                 cascaded: 0,
                 merged: 0,
+                aliasesRewritten: [],
             }),
         ).toBe('Renamed to "New".')
+    })
+
+    // A renamed alias leaves the page's title as it was (ADR 0065, amended 2026-10-04), so the notice
+    // names the page that now answers to the new form, and does not count that page again among the
+    // documents whose aliases changed.
+    it('says which page answers to a renamed alias', () => {
+        expect(
+            renameDocumentSummary({
+                concept: 'Boards',
+                aliasOf: 'Kanban',
+                rewritten: 1,
+                rewrittenDocuments: ['Notes'],
+                cascaded: 0,
+                merged: 0,
+                aliasesRewritten: ['Kanban'],
+            }),
+        ).toBe('"Kanban" now answers to "Boards", 1 document updated.')
+        // A holder the cascade retitled is named as it is now, once, whatever case the lists use.
+        expect(
+            renameDocumentSummary({
+                concept: 'New',
+                aliasOf: '[[New]] Notes',
+                rewritten: 0,
+                rewrittenDocuments: [],
+                cascaded: 1,
+                merged: 0,
+                aliasesRewritten: ['[[new]] notes'],
+            }),
+        ).toBe('"[[New]] Notes" now answers to "New", 1 scoped document renamed.')
     })
 
     it('plans, renames and deletes through explicit collaborators', async () => {
@@ -108,14 +145,15 @@ describe('workspace document mutations', () => {
             renamePage: vi.fn().mockResolvedValue(result),
             deleteDocument: vi.fn().mockResolvedValue(undefined),
         }
-        // Three groups link to Old; the third only carries it in its title (`[[Old]] Child`,
-        // scoped by it - ADR 0083). The cascade retitles that one, so the body-rewrite count
-        // the dialog shows must not include it.
+        // Four groups link to Old's page; the third only carries it in its title (`[[Old]] Child`,
+        // scoped by it - ADR 0083), and the fourth says another of its names. The rewrite changes
+        // neither, so the body-rewrite count the dialog shows includes neither.
         const index = {
             backlinks: vi.fn().mockResolvedValue([
-                { sourceConcept: 'Essay', refs: [{ kind: 'prose' }] },
-                { sourceConcept: 'Diary', refs: [{ kind: 'title' }, { kind: 'block' }] },
-                { sourceConcept: '[[Old]] Child', refs: [{ kind: 'title' }] },
+                { sourceConcept: 'Essay', refs: [{ kind: 'prose' }], bodyNames: ['old'] },
+                { sourceConcept: 'Diary', refs: [{ kind: 'title' }, { kind: 'block' }], bodyNames: ['old'] },
+                { sourceConcept: '[[Old]] Child', refs: [{ kind: 'title' }], bodyNames: [] },
+                { sourceConcept: 'Journal', refs: [{ kind: 'prose' }], bodyNames: ['old name'] },
             ]),
         }
         const layout = layoutWith([], null)
@@ -168,6 +206,8 @@ describe('workspace document mutations', () => {
         const stale: RenamePlan = {
             direct: { from: 'Old', to: 'Old', hasDocument: false, merges: false, redirects: false, into: 'Old' },
             cascade: [{ from: '[[Old]] Child', to: '[[Old]] Child', hasDocument: true, merges: false, redirects: false, into: '[[Old]] Child' }],
+            aliases: [],
+            aliasOf: null,
             referencingDocuments: 2,
             refusal: null,
         }
@@ -470,6 +510,81 @@ describe('a Task Detail follows its document', () => {
             expect(takeBoardHandover('[[Old]] Archive')?.detail?.document).toBe('[[Old]] Archive')
         } finally {
             unregister()
+        }
+    })
+})
+
+/**
+ * The index trails the store: by a debounce and an ingest, and by a whole rebuild after a change to
+ * the graph's names. A rename that asked it too early left out documents that link by the name, and
+ * on a synced graph the rewrite reads only the documents it names. So the rename waits for the
+ * index to take in what it has seen, and when it does not in time, the store reads every document.
+ */
+describe('a rename asks the index only once it has caught up', () => {
+    /** The index as the controller takes it. */
+    type MutationIndex = NonNullable<ReturnType<Parameters<typeof createDocumentMutationController>[0]['index']>>
+
+    function controllerWith(index: MutationIndex) {
+        const store = {
+            planRename: vi.fn().mockResolvedValue(plan),
+            renamePage: vi.fn().mockResolvedValue(result),
+            deleteDocument: vi.fn().mockResolvedValue(undefined),
+        }
+        const controller = createDocumentMutationController({
+            store: () => store,
+            index: () => index,
+            layout: () => undefined,
+            recents: () => null,
+            renameFavourite: vi.fn().mockResolvedValue(undefined),
+        })
+        return { store, controller }
+    }
+
+    it('reads the backlinks after the index has settled', async () => {
+        let settle = () => {}
+        const settled = vi.fn(() => new Promise<void>((resolve) => (settle = resolve)))
+        const backlinks = vi.fn().mockResolvedValue([{ sourceConcept: 'Essay', refs: [{ kind: 'prose' }], bodyNames: ['old'] }])
+        const { store, controller } = controllerWith({ settled, backlinks })
+
+        const planned = controller.planRename('Old', 'New')
+        await vi.waitFor(() => expect(settled).toHaveBeenCalled())
+        expect(backlinks).not.toHaveBeenCalled()
+        settle()
+        await planned
+
+        expect(store.planRename).toHaveBeenCalledWith('Old', 'New', 1)
+    })
+
+    it('previews with the index as it stands once a short wait runs out', async () => {
+        vi.useFakeTimers()
+        try {
+            const backlinks = vi.fn().mockResolvedValue([{ sourceConcept: 'Essay', refs: [{ kind: 'prose' }], bodyNames: ['old'] }])
+            const { store, controller } = controllerWith({ settled: () => new Promise<void>(() => {}), backlinks })
+
+            const planned = controller.planRename('Old', 'New')
+            await vi.advanceTimersByTimeAsync(PREVIEW_CATCH_UP_MS)
+            await planned
+
+            expect(store.planRename).toHaveBeenCalledWith('Old', 'New', 1)
+        } finally {
+            vi.useRealTimers()
+        }
+    })
+
+    it('has the store read every document when the index does not catch up in time', async () => {
+        vi.useFakeTimers()
+        try {
+            const backlinks = vi.fn()
+            const { store, controller } = controllerWith({ settled: () => new Promise<void>(() => {}), backlinks })
+
+            const renaming = controller.rename('Old', plan, 'New', 'rewrite')
+            await vi.advanceTimersByTimeAsync(INDEX_CATCH_UP_MS)
+            await renaming
+
+            expect(backlinks).not.toHaveBeenCalled()
+            expect(store.renamePage).toHaveBeenCalledWith('Old', 'New', { strategy: 'rewrite', referencing: undefined })
+        } finally {
+            vi.useRealTimers()
         }
     })
 })

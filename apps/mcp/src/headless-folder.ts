@@ -210,7 +210,9 @@ export async function openHeadlessFolder(deps: HeadlessFolderDeps): Promise<Head
             // other write is (see settle).
             async renamePage(from, to, options) {
                 const result = await store.renamePage(from, to, options)
-                for (const concept of [result.concept, ...result.rewrittenDocuments]) await store.flushDocument(concept)
+                for (const concept of [result.concept, ...result.rewrittenDocuments, ...result.aliasesRewritten]) {
+                    await store.flushDocument(concept)
+                }
                 return result
             },
             // The files are the truth and a read is a disk read, so every body is confirmed.

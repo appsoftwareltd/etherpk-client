@@ -8,6 +8,7 @@
 import type { RenameLinkStrategy, RenameOptions, RenamePlan, RenameResult } from '$lib/storage/rename'
 import { renameSteps } from '$lib/storage/rename'
 import { type DbBacklinkGroup, referencedInBody } from '$lib/document/index-db'
+import { reachedWithin } from '$lib/reached-within'
 import { cascadeFor, isScopedBy } from '$lib/document/wikilink/rename'
 import { documentsRenamed, handOverBoard, type RenamedDocument } from '$lib/kanban/board-actions'
 import { KANBAN_VIEW_KIND } from '$lib/kanban/board-model'
@@ -21,8 +22,28 @@ interface DocumentMutationStore {
 }
 
 interface DocumentMutationIndex {
-    backlinks(concept: string): Promise<readonly Pick<DbBacklinkGroup, 'refs' | 'sourceConcept'>[]>
+    backlinks(concept: string): Promise<readonly Pick<DbBacklinkGroup, 'refs' | 'sourceConcept' | 'bodyNames'>[]>
+    /** Resolves once every change the index has seen is in it (`RemoteGraphIndex.settled`). */
+    settled?(): Promise<void>
 }
+
+/** One source document's backlinks, as a rename reads them. */
+type MutationBacklinkGroup = Pick<DbBacklinkGroup, 'refs' | 'sourceConcept' | 'bodyNames'>
+
+/**
+ * How long a rename waits for the [[Derived Index]] to take in the changes it has already seen
+ * before asking it which documents link to a name. The index trails the store by a debounce and an
+ * ingest, and by a whole rebuild after a change to the graph's names. Asked too early it leaves out
+ * documents that link by the name, and a synced rewrite reads only the documents it names.
+ */
+export const INDEX_CATCH_UP_MS = 10_000
+
+/**
+ * How long a rename's preview waits for the index before showing what it has. The preview is
+ * redrawn as a name is typed and only informs: the rename itself plans again and waits the full
+ * {@link INDEX_CATCH_UP_MS}, so a figure a moment stale here changes nothing that is written.
+ */
+export const PREVIEW_CATCH_UP_MS = 1_500
 
 interface DocumentMutationLayout {
     closeView(view: { kind: string; target: string }): void
@@ -142,7 +163,8 @@ export function deleteRefusedAsIncludeMessage(concept: string, publications: rea
 
 /** Report every non-trivial effect of a completed rename. */
 export function renameDocumentSummary(result: RenameResult): string {
-    const parts = [`Renamed to "${result.concept}"`]
+    // A renamed alias leaves the page's title as it was (ADR 0065, amended 2026-10-04).
+    const parts = [result.aliasOf === null ? `Renamed to "${result.concept}"` : `"${result.aliasOf}" now answers to "${result.concept}"`]
     if (result.cascaded > 0) {
         parts.push(
             `${result.cascaded} scoped ${result.cascaded === 1 ? 'document' : 'documents'} renamed`,
@@ -154,27 +176,76 @@ export function renameDocumentSummary(result: RenameResult): string {
             `${result.rewritten} ${result.rewritten === 1 ? 'document' : 'documents'} updated`,
         )
     }
+    // Scoped aliases the cascade carried along (ADR 0038, amended 2026-10-03). A renamed alias's
+    // page is the first part's, so it is not counted again here.
+    const aliasHolders = result.aliasesRewritten.filter(
+        (holder) => result.aliasOf === null || conceptKey(holder) !== conceptKey(result.aliasOf),
+    ).length
+    if (aliasHolders > 0) {
+        parts.push(`aliases updated in ${aliasHolders} ${aliasHolders === 1 ? 'document' : 'documents'}`)
+    }
     return `${parts.join(', ')}.`
 }
 
 export function createDocumentMutationController(dependencies: DocumentMutationDependencies) {
-    /**
-     * Count the documents whose BODY references the concept, through the derived index. Reading
-     * every source document here was visibly slow on large graphs, while the index already owns
-     * the same relationship. A document that only names the concept in its title - one scoped
-     * by it (ADR 0083) - is the cascade's to report, not this count's.
-     */
-    async function referencingDocuments(concept: string): Promise<string[] | undefined> {
-        const groups = await dependencies.index()?.backlinks(concept)
-        return groups?.filter(referencedInBody).map((group) => group.sourceConcept)
+    /** Whether the index has taken in every change it has seen, waiting up to `waitMs`. */
+    async function indexCaughtUp(index: DocumentMutationIndex, waitMs: number): Promise<boolean> {
+        return index.settled ? reachedWithin(index.settled(), waitMs) : true
     }
 
+    /**
+     * The index's backlinks for `concept` once it has taken in every change it has seen, or null
+     * when there is no index or it has not caught up within {@link INDEX_CATCH_UP_MS}. Null is "the
+     * index cannot say", never "nothing links here": each caller decides what not knowing means.
+     * For what is written, or decided, from the answer.
+     */
+    async function backlinksCaughtUp(concept: string): Promise<readonly MutationBacklinkGroup[] | null> {
+        const index = dependencies.index()
+        if (!index || !(await indexCaughtUp(index, INDEX_CATCH_UP_MS))) return null
+        return index.backlinks(concept)
+    }
+
+    /**
+     * The index's backlinks for `concept` for a preview: after at most {@link PREVIEW_CATCH_UP_MS}
+     * of waiting for it to catch up, as it stands. Null when there is no index.
+     */
+    async function previewBacklinks(concept: string): Promise<readonly MutationBacklinkGroup[] | null> {
+        const index = dependencies.index()
+        if (!index) return null
+        await indexCaughtUp(index, PREVIEW_CATCH_UP_MS)
+        return index.backlinks(concept)
+    }
+
+    /**
+     * The documents whose BODY links to `name` by that very name: the page's other names share its
+     * backlinks, and the rewrite leaves them be. A document that only names it in its title, one
+     * scoped by it (ADR 0083), is the cascade's to report, not this list's.
+     */
+    function bodyReferences(groups: readonly MutationBacklinkGroup[], name: string): string[] {
+        return groups.filter((group) => referencedInBody(group, name)).map((group) => group.sourceConcept)
+    }
+
+    /**
+     * The documents a rewrite of `concept` has to read, through the derived index: reading every
+     * source document here was visibly slow on large graphs, while the index already owns the same
+     * relationship. Undefined when the index cannot say: the store then reads every document,
+     * which is slower and misses none.
+     */
+    async function referencingDocuments(concept: string): Promise<string[] | undefined> {
+        const groups = await backlinksCaughtUp(concept)
+        return groups ? bodyReferences(groups, concept) : undefined
+    }
+
+    /** The preview's "N documents link to X". Undefined without an index: the store counts. */
     async function referenceCount(concept: string): Promise<number | undefined> {
-        return (await referencingDocuments(concept))?.length
+        const groups = await previewBacklinks(concept)
+        return groups ? bodyReferences(groups, concept).length : undefined
     }
 
     return {
         referenceCount,
+        backlinksCaughtUp,
+        previewBacklinks,
 
         async planRename(concept: string, candidate: string): Promise<RenamePlan | null> {
             const store = dependencies.store()

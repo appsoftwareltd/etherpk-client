@@ -118,7 +118,7 @@ describe('registerEditorCommands — mobile wikilink shortcuts', () => {
         // to make on a phone and replacing it with `]]` is never what was wanted.
         expect(await tap('- the «fox» jumped', 'editor.insertWikilinkOpen')).toBe('- the [[«fox»]] jumped')
         expect(await tap('- the «fox» jumped', 'editor.insertWikilinkClose')).toBe('- the [[«fox»]] jumped')
-        expect(await tap('# How «Desktop CRM» fits', 'editor.insertWikilinkOpen')).toBe('# How [[«Desktop CRM»]] fits')
+        expect(await tap('# How «Garden Shed» fits', 'editor.insertWikilinkOpen')).toBe('# How [[«Garden Shed»]] fits')
         // `]]` over the word `[[` has just enclosed finishes the link rather than stacking a layer.
         expect(await tap('- the [[«fox»]] jumped', 'editor.insertWikilinkClose')).toBe('- the [[fox]]| jumped')
     })

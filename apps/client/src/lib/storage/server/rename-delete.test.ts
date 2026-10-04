@@ -39,6 +39,58 @@ async function page(store: Awaited<ReturnType<typeof graph>>['store'], title: st
     if (body) store.open(title).applyChange({ from: 0, to: 0, insert: body })
 }
 
+/**
+ * A rename that names one of a page's aliases renames that alias (ADR 0065, amended 2026-10-04).
+ * The registry resolves an alias to its page by name, so these pin that the page keeps its title.
+ */
+describe('server rename — renaming an alias', () => {
+    async function kanban(id: string) {
+        const g = await graph(id)
+        await page(g.store, 'Kanban', '- k')
+        await g.store.setAliases('Kanban', ['Board', 'Desk'])
+        await page(g.store, 'Notes', '- see [[Board]] and [[Kanban]]')
+        return g
+    }
+    const aliasesOf = (g: Awaited<ReturnType<typeof graph>>, concept: string) =>
+        g.store.listDocuments().find((entry) => entry.concept === concept)?.aliases
+
+    it('plans the alias as an alias, not as the page it resolves to', async () => {
+        const g = await kanban('g-alias-rename-plan')
+        const plan = await g.store.planRename('Board', 'Boards', 0)
+        expect(plan.aliasOf).toBe('Kanban')
+        expect(plan.direct.hasDocument).toBe(false)
+        expect(plan.aliases[0]).toEqual({ holder: 'Kanban', from: 'Board', to: 'Boards' })
+        g.dispose()
+    })
+
+    it('under the alias arm, gives the page the new name beside the old, and retitles nothing', async () => {
+        const g = await kanban('g-alias-rename-keep')
+
+        const result = await g.store.renamePage('Board', 'Boards', { strategy: 'alias' })
+
+        expect(result).toMatchObject({ concept: 'Boards', aliasOf: 'Kanban', rewritten: 0, cascaded: 0, merged: 0, aliasesRewritten: ['Kanban'] })
+        expect(g.store.listDocuments().map((entry) => entry.concept).sort()).toEqual(['Kanban', 'Notes'])
+        expect(aliasesOf(g, 'Kanban')).toEqual(['Board', 'Boards', 'Desk'])
+        // Shown in the block, as every synced document's aliases are (ADR 0061, amended 2026-10-03).
+        expect(g.store.open('Kanban').getText()).toBe('---\ntitle: Kanban\naliases:\n  - Board\n  - Boards\n  - Desk\n---\n- k')
+        expect(g.store.open('Notes').getText()).toBe('- see [[Board]] and [[Kanban]]')
+        g.dispose()
+    })
+
+    it('under the rewrite arm, swaps the alias and rewrites the links that say it, and no other', async () => {
+        const g = await kanban('g-alias-rename-rewrite')
+
+        const result = await g.store.renamePage('Board', 'Boards', { strategy: 'rewrite' })
+
+        expect(result.rewrittenDocuments).toEqual(['Notes'])
+        expect(aliasesOf(g, 'Kanban')).toEqual(['Boards', 'Desk'])
+        expect(g.store.open('Notes').getText()).toBe('- see [[Boards]] and [[Kanban]]')
+        expect(() => g.store.open('Board')).toThrow()
+        expect(g.store.listDocuments().map((entry) => entry.concept).sort()).toEqual(['Kanban', 'Notes'])
+        g.dispose()
+    })
+})
+
 describe('server rename — the cascade', () => {
     it('renames scoped concepts at every depth', async () => {
         const g = await graph('g-cascade')
@@ -54,10 +106,13 @@ describe('server rename — the cascade', () => {
         expect(concepts).toContain('[[Physical Science]] Quantum')
         expect(concepts).toContain('[[[[Physical Science]] Quantum]] Fields')
         expect(concepts).not.toContain('[[Physics]] Quantum')
-        // Content travels with the entry, because only the entry moved. The rename released the
+        // Content travels with the entry, because only the entry moved, and the old name it now
+        // answers to shows in a block (ADR 0061, amended 2026-10-03). The rename released the
         // engines it brought current, so the read waits for the seed like any other consumer.
         await g.store.whenReady('[[Physical Science]] Quantum')
-        expect(g.store.open('[[Physical Science]] Quantum').getText()).toBe('- q')
+        expect(g.store.open('[[Physical Science]] Quantum').getText()).toBe(
+            '---\ntitle: "[[Physical Science]] Quantum"\naliases:\n  - "[[Physics]] Quantum"\n---\n- q',
+        )
         g.dispose()
     })
 
@@ -309,7 +364,7 @@ describe('server rename — a pageless concept', () => {
 
         const result = await g.store.renamePage('Physcis', 'Physics', { strategy: 'rewrite' })
 
-        expect(result).toEqual({ concept: 'Physics', rewritten: 2, rewrittenDocuments: ['Notes', 'Diary'], cascaded: 0, merged: 0 })
+        expect(result).toEqual({ concept: 'Physics', aliasOf: null, rewritten: 2, rewrittenDocuments: ['Notes', 'Diary'], cascaded: 0, merged: 0, aliasesRewritten: [] })
         await g.store.whenReady('Notes')
         await g.store.whenReady('Diary')
         expect(g.store.open('Notes').getText()).toBe('- see [[Physics]]')
@@ -433,34 +488,34 @@ describe('server rename — the rewrite merges with concurrent typing', () => {
 describe('server rename — onto another page\'s alias', () => {
     it('merges into the alias holder under its own title', async () => {
         const g = await graph('g-alias-merge')
-        await page(g.store, 'Agentic Software Development', '- agentic')
-        await g.store.setAliases('Agentic Software Development', ['Agent Accelerated Development'])
-        await page(g.store, 'Vibe Coding', '- vibe')
+        await page(g.store, 'Vegetable Growing', '- vegetables')
+        await g.store.setAliases('Vegetable Growing', ['Growing Vegetables'])
+        await page(g.store, 'Kitchen Garden', '- kitchen')
 
-        const plan = await g.store.planRename('Vibe Coding', 'Agent Accelerated Development')
-        expect(plan.direct).toMatchObject({ merges: true, into: 'Agentic Software Development' })
+        const plan = await g.store.planRename('Kitchen Garden', 'Growing Vegetables')
+        expect(plan.direct).toMatchObject({ merges: true, into: 'Vegetable Growing' })
 
-        const result = await g.store.renamePage('Vibe Coding', 'Agent Accelerated Development', { strategy: 'alias' })
+        const result = await g.store.renamePage('Kitchen Garden', 'Growing Vegetables', { strategy: 'alias' })
 
-        expect(result.concept).toBe('Agentic Software Development')
-        expect(g.store.listDocuments().map((d) => d.concept)).toEqual(['Agentic Software Development'])
-        const text = g.store.open('Agentic Software Development').getText()
-        expect(text).toContain('- agentic')
-        expect(text).toContain('- vibe')
+        expect(result.concept).toBe('Vegetable Growing')
+        expect(g.store.listDocuments().map((d) => d.concept)).toEqual(['Vegetable Growing'])
+        const text = g.store.open('Vegetable Growing').getText()
+        expect(text).toContain('- vegetables')
+        expect(text).toContain('- kitchen')
         const snapshot = await g.store.snapshotForIndex()
-        expect(snapshot[0]?.aliases).toEqual(expect.arrayContaining(['Agent Accelerated Development', 'Vibe Coding']))
+        expect(snapshot[0]?.aliases).toEqual(expect.arrayContaining(['Growing Vegetables', 'Kitchen Garden']))
         g.dispose()
     })
 
     it('renaming a page onto its own alias retitles it and drops the alias', async () => {
         const g = await graph('g-alias-self')
-        await page(g.store, 'Agentic Software Development', '- agentic')
-        await g.store.setAliases('Agentic Software Development', ['Agent Accelerated Development'])
-        const result = await g.store.renamePage('Agentic Software Development', 'Agent Accelerated Development', { strategy: 'alias' })
-        expect(result).toMatchObject({ concept: 'Agent Accelerated Development', merged: 0 })
+        await page(g.store, 'Vegetable Growing', '- vegetables')
+        await g.store.setAliases('Vegetable Growing', ['Growing Vegetables'])
+        const result = await g.store.renamePage('Vegetable Growing', 'Growing Vegetables', { strategy: 'alias' })
+        expect(result).toMatchObject({ concept: 'Growing Vegetables', merged: 0 })
         const snapshot = await g.store.snapshotForIndex()
-        expect(snapshot.map((d) => d.concept)).toEqual(['Agent Accelerated Development'])
-        expect(snapshot[0]?.aliases).toEqual(['Agentic Software Development'])
+        expect(snapshot.map((d) => d.concept)).toEqual(['Growing Vegetables'])
+        expect(snapshot[0]?.aliases).toEqual(['Vegetable Growing'])
         g.dispose()
     })
 })
@@ -546,6 +601,32 @@ describe('server rename — the rewrite over documents that are not live', () =>
         await b.close()
     })
 
+    it('writes the block of an alias holder held only in the warm cache (ADR 0038, amended 2026-10-03)', async () => {
+        // The index derives no link from an alias, so the referencing list never names the
+        // holder; a cold one has to be brought current, or its block would keep the old alias
+        // and a later frontmatter proposal would turn the registry back.
+        const relay = createLoopbackRelay()
+        const keyring = createGraphKeyring('g1')
+        const cacheName = `rename-warm-alias-${++sequence}`
+        const a = await session(relay, cacheName, keyring)
+        await page(a.store, 'Garden', '- the scope')
+        await page(a.store, 'P', '---\ntitle: P\n---\n- p')
+        await a.store.setAliases('P', ['Planning [[Garden]]'])
+        await page(a.store, 'Diary', '- see [[Planning [[Garden]]]]')
+        await a.sync.flushAll()
+        await a.sync.awaitAcked({ stallMs: 1000 })
+        await a.close()
+
+        const b = await session(relay, cacheName, keyring)
+        const result = await b.store.renamePage('Garden', 'Gardens', { strategy: 'rewrite', referencing: ['Diary'] })
+
+        expect(result.aliasesRewritten).toEqual(['P'])
+        await b.store.whenReady('P')
+        expect(b.store.open('P').getText()).toContain('Planning [[Gardens]]')
+        expect(b.store.open('P').getText()).not.toContain('Planning [[Garden]]\n')
+        await b.close()
+    })
+
     it('refuses the whole rename when a referencing document cannot be confirmed', async () => {
         const relay = createLoopbackRelay()
         const keyring = createGraphKeyring('g1')
@@ -621,6 +702,69 @@ describe('server rename - engine holds', () => {
         expect(batches).toBe(2)
         expect([...retired].sort()).toEqual([...asked].sort())
         expect(new Set(retired).size).toBe(retired.length)
+        g.dispose()
+    })
+})
+
+/**
+ * An alias scoped by the renamed concept follows it as a scoped title does (ADR 0038, amended
+ * 2026-10-03). The registry is the authority for aliases here, so it is the registry that moves.
+ */
+describe('server rename — scoped aliases', () => {
+    const aliasesOf = async (g: Awaited<ReturnType<typeof graph>>, concept: string) =>
+        (await g.store.snapshotForIndex()).find((d) => d.concept === concept)?.aliases
+
+    it('rewrites the alias with the links under the rewrite arm, so the rewritten link resolves', async () => {
+        const g = await graph('g-alias-rewrite')
+        await page(g.store, 'Garden')
+        await page(g.store, 'P', '- p')
+        await g.store.setAliases('P', ['Planning [[Garden]]'])
+        await page(g.store, 'Diary', '- see [[Planning [[Garden]]]]')
+
+        const result = await g.store.renamePage('Garden', 'Gardens', { strategy: 'rewrite' })
+
+        expect(result.aliasesRewritten).toEqual(['P'])
+        expect(await aliasesOf(g, 'P')).toEqual(['Planning [[Gardens]]'])
+        expect(g.store.open('Diary').getText()).toContain('[[Planning [[Gardens]]]]')
+        expect(() => g.store.open('Planning [[Gardens]]')).not.toThrow()
+        g.dispose()
+    })
+
+    it('keeps the old alias and adds the new form under the alias arm', async () => {
+        const g = await graph('g-alias-alias')
+        await page(g.store, 'Garden')
+        await page(g.store, 'P', '- p')
+        await g.store.setAliases('P', ['Planning [[Garden]]'])
+
+        await g.store.renamePage('Garden', 'Gardens', { strategy: 'alias' })
+
+        expect(await aliasesOf(g, 'P')).toEqual(['Planning [[Garden]]', 'Planning [[Gardens]]'])
+        g.dispose()
+    })
+
+    it('rewrites the alias of a page the cascade retitles', async () => {
+        const g = await graph('g-alias-cascade')
+        await page(g.store, 'Garden')
+        await page(g.store, 'Tools [[Garden]]')
+        await g.store.setAliases('Tools [[Garden]]', ['[[Garden]] tools'])
+
+        const result = await g.store.renamePage('Garden', 'Gardens', { strategy: 'rewrite' })
+
+        expect(result.aliasesRewritten).toEqual(['Tools [[Gardens]]'])
+        expect(await aliasesOf(g, 'Tools [[Gardens]]')).toEqual(['[[Gardens]] tools'])
+        g.dispose()
+    })
+
+    it('refuses when another document answers to the new form, and writes nothing', async () => {
+        const g = await graph('g-alias-taken')
+        await page(g.store, 'Garden')
+        await page(g.store, 'P')
+        await g.store.setAliases('P', ['Planning [[Garden]]'])
+        await page(g.store, 'Planning [[Gardens]]')
+
+        await expect(g.store.renamePage('Garden', 'Gardens', { strategy: 'rewrite' })).rejects.toThrow('already a name of “Planning [[Gardens]]”')
+        expect(await aliasesOf(g, 'P')).toEqual(['Planning [[Garden]]'])
+        expect(g.store.listDocuments().map((d) => d.concept)).toContain('Garden')
         g.dispose()
     })
 })

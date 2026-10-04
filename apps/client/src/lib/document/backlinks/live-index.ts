@@ -8,11 +8,14 @@
  */
 
 import { type BacklinkIndex, type IndexDoc, buildBacklinkIndex } from './backlink-index'
+import type { DocumentKind } from '$lib/storage'
 
 /**
  * What changed, when the source knows. A named `concept` means ONLY that document's content
- * moved, so a consumer can re-index just it; `undefined` means "assume everything" (a
- * registry change - create, delete, rename - or a source that cannot tell).
+ * moved, so a consumer can re-index just it. `undefined` means the graph's names moved (a
+ * create, delete, rename or alias change): a consumer whose source lists its documents
+ * (`IndexSource.listDocuments`) reconciles names and re-reads the documents they changed, and any
+ * other assumes everything moved.
  */
 export interface StoreChange {
     concept: string
@@ -28,6 +31,16 @@ export type StoreChangeListener = (change?: StoreChange) => void
  */
 export interface IndexChangeCheckpoint {
     changes: readonly StoreChange[] | null
+    /**
+     * The graph's names moved since the last acknowledgement (the registry changed): reconciled
+     * against `names`, or the source's listing without it, rather than replaced whole.
+     */
+    namesMoved?: boolean
+    /**
+     * Every document by its names as this checkpoint saw the registry: merged from every tab's
+     * cache, so newer than this tab's live registry can be when another tab renamed something.
+     */
+    names?: readonly NamedDocument[]
     /** Cache-bound document snapshots for targeted changes, newer than any stale live view. */
     documents?: readonly IndexDoc[]
     /** Cache-bound replacement source when identity moved or incremental work grew too large. */
@@ -61,9 +74,7 @@ export interface IndexSource {
     ): Promise<{ total: number; batches: AsyncIterable<readonly IndexDoc[]> }>
     /**
      * One document's snapshot; null when it has gone. Optional — a source without it simply
-     * forces the full rebuild path, which is always correct, just slower. (The Filesystem
-     * store does not implement it yet: its snapshot reads from disk, so the same win there
-     * is a separate change.)
+     * forces the full rebuild path, which is always correct, just slower.
      */
     snapshotDocument?(concept: string): Promise<IndexDoc | null> | IndexDoc | null
     /**
@@ -74,7 +85,20 @@ export interface IndexSource {
     catchUpPersistedIndex?(): Promise<void>
     /** Recover source changes which survived a crash after cache commit but before index commit. */
     pendingIndexChanges?(): Promise<IndexChangeCheckpoint>
+    /**
+     * Every document's names, without its text: cheap, and what a change to the graph's names is
+     * reconciled against (`reconcileNames` in `index-worker/name-reconcile.ts`). A source without it
+     * has every unnamed change replace the whole index.
+     */
+    listDocuments?(): readonly NamedDocument[]
     onChange(listener: StoreChangeListener): () => void
+}
+
+/** A document as a source lists it: its names, without its text. */
+export interface NamedDocument {
+    concept: string
+    kind: DocumentKind
+    aliases?: readonly string[]
 }
 
 export interface GraphIndex {

@@ -9,6 +9,7 @@ import {
     type DocumentConflict,
     createFilesystemDocumentStore,
 } from './filesystem-store'
+import { DocumentNotFoundError } from '../../document/types'
 
 function clock(start = 1000) {
     let t = start
@@ -193,6 +194,47 @@ describe('FilesystemDocumentStore — scan, createPage, createJournal', () => {
             doc.applyChange({ from: 0, to: 0, insert: 'x' })
             await vi.advanceTimersByTimeAsync(400) // autosave → onChange
             expect(changes).toBeGreaterThan(before)
+        } finally {
+            vi.useRealTimers()
+        }
+    })
+
+    // A rescan says what it found as the index needs it: a file edited outside the app is one
+    // document to re-read, by name, and the names are reported moved only when they did. Every
+    // rescan after a save used to report an unnamed change, which re-read every document.
+    it('names a file edited outside the app on a rescan, and reports names moved only when they did', async () => {
+        vi.useFakeTimers()
+        try {
+            const fs = createMemoryDirectoryAdapter({ now: clock() })
+            const store = createFilesystemDocumentStore(fs, { autosaveMs: 400 })
+            await fs.write('pages', 'Notes.md', '---\ntitle: Notes\n---\n- n')
+            await fs.write('pages', 'Other.md', '---\ntitle: Other\n---\n- o')
+            await store.scan()
+            const changes: Array<{ concept: string } | undefined> = []
+            store.onChange((change) => changes.push(change))
+
+            // Saved by the app: named once, by the save, and not again by the next rescan.
+            const doc = store.open('Notes')
+            await store.whenReady('Notes')
+            doc.applyChange({ from: 0, to: 0, insert: 'x' })
+            await vi.advanceTimersByTimeAsync(400)
+            await store.reconcile()
+            expect(changes).toEqual([{ concept: 'Notes' }])
+
+            // Edited outside the app while closed: one named change.
+            await fs.write('pages', 'Other.md', '---\ntitle: Other\n---\n- edited elsewhere')
+            await store.reconcile()
+            expect(changes.slice(1)).toEqual([{ concept: 'Other' }])
+
+            // Retitled outside the app: the names moved, and the document under its new name is read.
+            await fs.write('pages', 'Other.md', '---\ntitle: Another\n---\n- edited elsewhere')
+            await store.reconcile()
+            expect(changes.slice(2)).toEqual([{ concept: 'Another' }, undefined])
+
+            // Renamed in the app: its steps patch the registry before the closing rescan, which must
+            // still report the names moved.
+            await store.renamePage('Notes', 'Journal Notes', { strategy: 'alias' })
+            expect(changes.slice(3)).toContain(undefined)
         } finally {
             vi.useRealTimers()
         }
@@ -463,7 +505,7 @@ describe('FilesystemDocumentStore — whenReady', () => {
     it('resolves only once the text is really there, so a reader never sees the empty seed', async () => {
         const fs = createMemoryDirectoryAdapter({
             now: clock(),
-            seed: { pages: { 'Kanban.md': '- [ ] #P1 TEst task' } },
+            seed: { pages: { 'Kanban.md': '- [ ] #P1 Water the beans' } },
         })
         const store = createFilesystemDocumentStore(fs)
         await store.scan()
@@ -471,7 +513,7 @@ describe('FilesystemDocumentStore — whenReady', () => {
         // Nobody has opened Kanban. Asking whenReady is what opens it AND waits for the read.
         await store.whenReady('Kanban')
 
-        expect(store.open('Kanban').getText()).toBe('- [ ] #P1 TEst task')
+        expect(store.open('Kanban').getText()).toBe('- [ ] #P1 Water the beans')
     })
 
     it('resolves after an editor already subscribed has heard the text it read', async () => {
@@ -608,6 +650,25 @@ describe('FilesystemDocumentStore — flushDocument', () => {
         await store.flushAll()
 
         expect((await fs.read('pages', 'A.md')).text).toBe('aX')
+        expect((await fs.read('pages', 'B.md')).text).toBe('bY')
+    })
+
+    // A deleted page's unsaved typing went with it, on purpose. Counted as unwritten, it made every
+    // later flushAll throw, and anything that flushes first (an export) failed until its tab closed.
+    it("flushAll does not hold a deleted document's unsaved edits against the folder", async () => {
+        const fs = createMemoryDirectoryAdapter({ now: clock(), seed: { pages: { 'A.md': 'a', 'B.md': 'b' } } })
+        const store = createFilesystemDocumentStore(fs, { autosaveMs: 400 })
+        await store.scan()
+        const a = store.open('A')
+        const b = store.open('B')
+        await flushMicrotasks()
+        a.applyChange({ from: 1, to: 1, insert: 'X' })
+        b.applyChange({ from: 1, to: 1, insert: 'Y' })
+
+        await store.deleteDocument('A')
+        await store.flushAll()
+
+        expect(await fs.exists('pages', 'A.md')).toBe(false)
         expect((await fs.read('pages', 'B.md')).text).toBe('bY')
     })
 })
@@ -1002,6 +1063,27 @@ describe('FilesystemDocumentStore - hydration failure on a file that exists', ()
         }
     }
 
+    // A buffer that never loaded stands in for content never seen: aliases read from it would read
+    // as none, and aliases written to it would never reach the file. Both go to the file instead.
+    it('reads and writes the aliases of a document whose buffer never loaded through its file', async () => {
+        const fs = createMemoryDirectoryAdapter({
+            now: clock(),
+            seed: { pages: { 'P.md': '---\ntitle: P\naliases:\n  - Planning [[Garden]]\n---\n- p', 'Garden.md': '---\ntitle: Garden\n---\n' } },
+        })
+        const unreadable = { now: false }
+        const store = createFilesystemDocumentStore(flakyReads(fs, unreadable), { autosaveMs: 10 })
+        await store.scan()
+        unreadable.now = true
+        store.open('P')
+        await store.whenReady('P') // resolves, with the buffer still empty
+        unreadable.now = false
+
+        await store.renamePage('Garden', 'Gardens', { strategy: 'rewrite' })
+
+        expect((await fs.read('pages', 'P.md')).text).toContain('Planning [[Gardens]]')
+        expect(store.listDocuments().find((entry) => entry.concept === 'P')?.aliases).toEqual(['Planning [[Gardens]]'])
+    })
+
     it('refuses to save over the file, reports it, and a reconcile pass offers the choice', async () => {
         // The empty stand-in buffer used to be saved by the first keystroke: a document
         // replaced by one character.
@@ -1341,5 +1423,99 @@ describe('FilesystemDocumentStore — a Formatting Scan reads and fixes (ADR 010
 
         expect(await store.spliceIfUnchanged('Win', scanned, REGRID)).toBe('written')
         expect((await fs.read('pages', 'Win.md')).text).toBe('- a\n  - b\n')
+    })
+})
+
+/**
+ * A document deleted while open keeps its buffer, so its tab still shows it and an edit there
+ * brings it back (ADR 0039 §4). It answers to its name only until a file does again. Before, it
+ * kept the name for the session: a page created under the same name opened with the deleted text,
+ * the index read that text, and the first keystroke saved it over the new file.
+ */
+describe('FilesystemDocumentStore — a name taken again after its open document was deleted', () => {
+    const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+    async function deletedWhileOpen(options: { autosaveMs?: number; onConflict?: (conflict: DocumentConflict) => void } = {}) {
+        const fs = createMemoryDirectoryAdapter({ now: clock(), seed: { pages: { 'Physics.md': '---\ntitle: Physics\n---\n- original' } } })
+        const store = createFilesystemDocumentStore(fs, { autosaveMs: options.autosaveMs ?? 5, onConflict: options.onConflict })
+        await store.scan()
+        const old = store.open('Physics')
+        await store.whenReady('Physics')
+        return { fs, store, old }
+    }
+
+    it('a page created under the name is the new page, in the old tab and for the index', async () => {
+        const { fs, store, old } = await deletedWhileOpen()
+        old.applyChange({ from: old.getText().length, to: old.getText().length, insert: ' and unsaved typing' })
+        await store.deleteDocument('Physics')
+
+        await store.createPage('Physics', '- the new page')
+
+        expect(store.open('Physics').getText()).toBe('---\ntitle: Physics\n---\n- the new page')
+        expect(old.getText()).toBe('---\ntitle: Physics\n---\n- the new page')
+        expect((await store.snapshotDocument('Physics'))?.text).toBe('- the new page')
+        // Typing edits the new page: the deleted text is not written back over it.
+        store.open('Physics').applyChange({ from: store.open('Physics').getText().length, to: store.open('Physics').getText().length, insert: ' more' })
+        await wait(30)
+        expect((await fs.read('pages', 'Physics.md')).text).toBe('---\ntitle: Physics\n---\n- the new page more')
+    })
+
+    it('a file another program writes under the name is what the old tab shows', async () => {
+        const { fs, store, old } = await deletedWhileOpen()
+        await store.deleteDocument('Physics')
+
+        await fs.write('pages', 'Physics.md', '---\ntitle: Physics\n---\n- restored elsewhere')
+        await store.reconcile()
+
+        expect(old.getText()).toBe('---\ntitle: Physics\n---\n- restored elsewhere')
+        expect(store.open('Physics').getText()).toBe('---\ntitle: Physics\n---\n- restored elsewhere')
+    })
+
+    // The user's own delete closes its tab: there is nothing to contest (ADR 0039). Opened afresh,
+    // as a Quick Find Draft opens a name, it is a name with no page, not the deleted text.
+    it('a name deleted in the app opens afresh as no document, while the handle already held still edits it', async () => {
+        const { store, old } = await deletedWhileOpen()
+        await store.deleteDocument('Physics')
+
+        expect(() => store.open('Physics')).toThrow(DocumentNotFoundError)
+        expect(await store.snapshotDocument('Physics')).toBeNull()
+
+        // An edit through the handle a view still holds brings it back (ADR 0039 §4), under its name.
+        old.applyChange({ from: old.getText().length, to: old.getText().length, insert: ' still writing' })
+        expect(store.open('Physics').getText()).toBe('---\ntitle: Physics\n---\n- original still writing')
+    })
+
+    // A rename onto the name rewrites the documents that link to the old one. Under the new name it
+    // found the deleted document's buffer, rewrote that, and the edit brought the deleted text back
+    // over the renamed page's file.
+    it('a rename onto the name writes the renamed page, not the deleted text', async () => {
+        const { fs, store } = await deletedWhileOpen()
+        await fs.write('pages', 'Ideas.md', '---\ntitle: Ideas\n---\n- see [[Ideas]] and [[Physics]]')
+        await store.reconcile()
+        const old = store.open('Physics')
+        old.applyChange({ from: old.getText().length, to: old.getText().length, insert: ' and [[Ideas]]' })
+        await wait(30)
+        await store.deleteDocument('Physics')
+
+        await store.renamePage('Ideas', 'Physics', { strategy: 'rewrite' })
+        await wait(30)
+
+        expect((await fs.read('pages', 'Physics.md')).text).toBe('---\ntitle: Physics\n---\n- see [[Physics]] and [[Physics]]')
+        expect(store.open('Physics').getText()).toBe('---\ntitle: Physics\n---\n- see [[Physics]] and [[Physics]]')
+    })
+
+    it('keeps the unsaved edits of a page removed outside the app, as a conflict, when its file comes back', async () => {
+        const conflicts: DocumentConflict[] = []
+        const { fs, store, old } = await deletedWhileOpen({ autosaveMs: 60_000, onConflict: (conflict) => conflicts.push(conflict) })
+        old.applyChange({ from: old.getText().length, to: old.getText().length, insert: ' unsaved' })
+        await fs.remove('pages', 'Physics.md')
+        await store.reconcile()
+
+        await fs.write('pages', 'Physics.md', '---\ntitle: Physics\n---\n- restored elsewhere')
+        await store.reconcile()
+
+        expect(conflicts).toHaveLength(1)
+        expect(conflicts[0]).toMatchObject({ target: 'Physics', diskText: '---\ntitle: Physics\n---\n- restored elsewhere' })
+        expect(old.getText()).toBe('---\ntitle: Physics\n---\n- original unsaved')
     })
 })

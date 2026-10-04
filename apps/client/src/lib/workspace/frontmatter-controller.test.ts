@@ -53,6 +53,12 @@ describe('the frontmatter controller', () => {
         expect(later.log).toEqual(['aliases:Kanban:'])
     })
 
+    it('clears a synced page’s aliases when the episode removed its block whole', async () => {
+        const h = harness('- body', { kind: 'page', concept: 'Kanban', aliases: ['Old'] })
+        await h.controller.episodeEnded('Kanban', { blockIsNew: false, blockRemoved: true })
+        expect(h.log).toEqual(['aliases:Kanban:'])
+    })
+
     // A local graph's listing reads aliases from the last saved file, so it can still hold ones the
     // person just cut with the old block. The file is the truth there: nothing is carried back.
     it('on a local graph a block the episode created changes nothing unless it names aliases', async () => {
@@ -119,6 +125,28 @@ describe('the frontmatter controller', () => {
         h.answerRename(null)
         await h.controller.episodeEnded('Kanban')
         expect(h.log).toEqual(['aliases:Kanban:Board', 'rename:Kanban→Kanban 2', 'writeBack:Kanban:{"title":"Kanban"}'])
+    })
+
+    it('still runs an episode queued behind one that failed', async () => {
+        const h = harness('---\ntitle: Kanban\naliases: [Desk]\n---\nbody')
+        h.deps.applyAliases = vi.fn().mockRejectedValueOnce(new Error('not synced')).mockResolvedValue(undefined)
+
+        const first = h.controller.episodeEnded('Kanban')
+        const second = h.controller.episodeEnded('Kanban')
+
+        await expect(first).rejects.toThrow('not synced')
+        await second
+        expect(h.deps.applyAliases).toHaveBeenCalledTimes(2)
+    })
+
+    // A block typed in one episode and still unreadable when it ended made no claim, so deleting it
+    // in the next episode removes nothing the person had said.
+    it('a block created unreadable and then deleted claims nothing', async () => {
+        const h = harness('---\ntitle: [Kanban\n---\nbody', { kind: 'page', concept: 'Kanban', aliases: ['Old'] })
+        await h.controller.episodeEnded('Kanban', { blockIsNew: true })
+        h.setText('body')
+        await h.controller.episodeEnded('Kanban', { blockIsNew: false, blockRemoved: true })
+        expect(h.log).toEqual([])
     })
 
     it('runs one episode at a time per document, so two dialogs never stack', async () => {

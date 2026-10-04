@@ -314,7 +314,7 @@ export function createMcpServer(graph: HeadlessGraph, info: McpServerInfo): McpS
         'plan_rename',
         {
             title: 'Plan a rename',
-            description: 'What renaming a page or concept would do, before anything changes: the scoped concepts carried along (cascade), the documents whose links would be rewritten (referencingDocuments, by name - read or backlinks any of them), any merge (the new name is already a document\'s name or alias, so the two would be joined), a refusal if the rename is not allowed, and how many protected documents exist whose references cannot be seen. Journal entries cannot be renamed.',
+            description: 'What renaming a page or concept would do, before anything changes: the scoped concepts carried along (cascade), the documents whose links would be rewritten (referencingDocuments, by name - read or backlinks any of them), any merge (the new name is already a document\'s name or alias, so the two would be joined), the aliases that name it as a scope and would be rewritten with it (aliases: the document, the alias and its new form), a refusal if the rename is not allowed, and how many protected documents exist whose references cannot be seen. Journal entries cannot be renamed.',
             inputSchema: {
                 from: z.string().min(1).describe('The current name: a page title or a concept that only links name.'),
                 to: z.string().min(1).describe('The new name.'),
@@ -327,7 +327,7 @@ export function createMcpServer(graph: HeadlessGraph, info: McpServerInfo): McpS
         'rename',
         {
             title: 'Rename',
-            description: 'Rename a page or concept. Its page (if any) and every scoped concept beneath it ("[[Old]] Notes" becomes "[[New]] Notes") move with it. strategy "rewrite" (default) rewrites every [[Old]] link in the graph to the new name. "alias" keeps the old name as an alias so existing links keep resolving. If the new name is already taken the two documents would merge, which is irreversible: refused with error "merge_requires_confirmation" unless confirm_merge is true. Refused with "unconfirmed_documents" if a document it must read has not finished syncing to this device (nothing changes - try again). Call plan_rename first to see what will happen.',
+            description: 'Rename a page or concept. Its page (if any) and every scoped concept beneath it ("[[Old]] Notes" becomes "[[New]] Notes") move with it, and so does any alias that names it as a scope ("[[Old]] lab" on another page becomes "[[New]] lab"; with strategy "alias" the old alias is kept and the new form added). Refused if such an alias would become a name another document already has. strategy "rewrite" (default) rewrites every [[Old]] link in the graph to the new name. "alias" keeps the old name as an alias so existing links keep resolving. If the new name is already taken the two documents would merge, which is irreversible: refused with error "merge_requires_confirmation" unless confirm_merge is true. Refused with "unconfirmed_documents" if a document it must read has not finished syncing to this device (nothing changes - try again). Call plan_rename first to see what will happen.',
             inputSchema: {
                 from: z.string().min(1),
                 to: z.string().min(1),
@@ -342,7 +342,7 @@ export function createMcpServer(graph: HeadlessGraph, info: McpServerInfo): McpS
         'set_aliases',
         {
             title: 'Set aliases',
-            description: 'Replace a document\'s aliases: other names it answers to in [[wikilinks]], Quick Find and on a published site. The list you pass is the complete list. A name that is already another document\'s title or alias is refused with error "name_taken".',
+            description: 'Replace a document\'s aliases: other names it answers to in [[wikilinks]], Quick Find and on a published site. The list you pass is the complete list, and it is shown in the document\'s frontmatter, in a block added if there is none. A name that is already another document\'s title or alias is refused with error "name_taken".',
             inputSchema: {
                 concept,
                 aliases: z.array(z.string()).describe('Every alias the document should have - an empty list removes them all.'),

@@ -58,6 +58,7 @@
             graphId={data.graphId}
             opfs={data.opfs}
             autosaveMs={data.autosaveMs}
+            indexingIconMs={data.indexingIconMs}
             server={data.server}
         />
     </div>

@@ -108,23 +108,23 @@ describe('toggleIndexedTask on a page with frontmatter', () => {
     // unlike a journal - was therefore refused as "stale" on every tick, because line 0 of the
     // file is `---`, not the task. Live: a #P1 task on a page called Kanban, ticked from the
     // Tasks view, wrote nothing.
-    const text = '---\ntitle: Kanban\n---\n- [ ] #P1 TEst task\n- [ ] second'
+    const text = '---\ntitle: Kanban\n---\n- [ ] #P1 Water the beans\n- [ ] second'
 
     it('finds the task at its body-relative line and ticks it in the file', async () => {
         const store = createInMemoryDocumentStore({ Kanban: text })
 
-        const result = await toggleIndexedTask(store, { concept: 'Kanban', line: 0, text: '#P1 TEst task' }, true)
+        const result = await toggleIndexedTask(store, { concept: 'Kanban', line: 0, text: '#P1 Water the beans' }, true)
 
         expect(result).toEqual({ ok: true, done: true })
-        expect(store.open('Kanban').getText()).toBe('---\ntitle: Kanban\n---\n- [x] #P1 TEst task\n- [ ] second')
+        expect(store.open('Kanban').getText()).toBe('---\ntitle: Kanban\n---\n- [x] #P1 Water the beans\n- [ ] second')
     })
 
     it('follows the task to its real line when the indexed line holds another', async () => {
         const store = createInMemoryDocumentStore({ Kanban: text })
 
-        const result = await toggleIndexedTask(store, { concept: 'Kanban', line: 1, text: '#P1 TEst task' }, true)
+        const result = await toggleIndexedTask(store, { concept: 'Kanban', line: 1, text: '#P1 Water the beans' }, true)
 
         expect(result).toEqual({ ok: true, done: true })
-        expect(store.open('Kanban').getText()).toBe('---\ntitle: Kanban\n---\n- [x] #P1 TEst task\n- [ ] second')
+        expect(store.open('Kanban').getText()).toBe('---\ntitle: Kanban\n---\n- [x] #P1 Water the beans\n- [ ] second')
     })
 })

@@ -117,10 +117,17 @@ describe('syncedImportText', () => {
         expect(syncedImportText(DOC)).toBe('---\naliases:\n  - Board\ncolour: blue\n---\n\n- body\n')
     })
 
-    it('drops a block that holds nothing but identity keys', () => {
+    it('drops a block that holds a title and nothing else to show', () => {
         expect(syncedImportText('---\ntitle: Kanban\n---\n\n- body\n')).toBe('\n- body\n')
-        expect(syncedImportText('---\ntitle: Kanban\naliases:\n  - Board\n---\n\n- body\n')).toBe('\n- body\n')
-        expect(syncedImportText('---\naliases:\n  - Board\n---\n\n- body\n')).toBe('\n- body\n')
+        expect(syncedImportText('---\ntitle: Kanban\naliases: []\n---\n\n- body\n')).toBe('\n- body\n')
+    })
+
+    // An alias is never invisible (ADR 0061, amended 2026-10-03): the registry gets the aliases,
+    // and the block stays so the page shows them.
+    it('keeps a block that holds aliases, without its title', () => {
+        expect(syncedImportText('---\ntitle: Kanban\naliases:\n  - Board\n---\n\n- body\n')).toBe('---\naliases:\n  - Board\n---\n\n- body\n')
+        const aliasesOnly = '---\naliases:\n  - Board\n---\n\n- body\n'
+        expect(syncedImportText(aliasesOnly)).toBe(aliasesOnly)
     })
 
     it('leaves a document without a block, or a block without a title, untouched', () => {

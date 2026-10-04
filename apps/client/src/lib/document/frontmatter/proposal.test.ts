@@ -74,6 +74,23 @@ describe('proposeFrontmatter', () => {
         expect(proposeFrontmatter({ text: typed, registry: page('Kanban'), backend: 'filesystem', fileStem: 'Kanban', blockIsNew: true })).toEqual([])
     })
 
+    // Deleting the whole block clears a synced page's aliases, as deleting a local file's block
+    // does (ADR 0061, amended 2026-10-03). A document that never had a block still claims nothing.
+    it('on a synced graph a block the episode removed whole clears the aliases', () => {
+        expect(proposeFrontmatter({ text: '- body', registry: page('Kanban', ['Old']), backend: 'server', blockRemoved: true })).toEqual([
+            { property: 'aliases', policy: 'silent', from: ['Old'], to: [] },
+        ])
+        // The title stays: on a synced graph no block is no claim about it.
+        expect(proposeFrontmatter({ text: '- body', registry: page('Kanban'), backend: 'server', blockRemoved: true })).toEqual([])
+        // On a local graph the saved file already has no aliases once the block is gone.
+        expect(
+            proposeFrontmatter({ text: '- body', registry: page('Kanban', ['Old']), backend: 'filesystem', fileStem: 'Kanban', blockRemoved: true }),
+        ).toEqual([])
+        // A block still there, or one that came back, is read as it stands.
+        const text = '---\ntitle: Kanban\naliases: [Old]\n---\n- body'
+        expect(proposeFrontmatter({ text, registry: page('Kanban', ['Old']), backend: 'server', blockRemoved: true })).toEqual([])
+    })
+
     it('a block that drops its aliases key clears the aliases', () => {
         const text = '---\ntitle: Kanban\n---\n'
         expect(proposeFrontmatter({ text, registry: page('Kanban', ['Old']), backend: 'server' })).toEqual([

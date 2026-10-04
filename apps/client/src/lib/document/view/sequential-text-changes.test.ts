@@ -72,8 +72,8 @@ class EditorWithStore {
     }
 }
 
-const REPORTED = '# How Desktop CRM, Lighthouse, the AC Database and the Superset Schema fit together'
-const LINKED = '# How [[Desktop CRM]], Lighthouse, the [[AC Database]] and the [[Superset Schema]] fit together'
+const REPORTED = '# How Garden Shed, Greenhouse, the Rain Barrel and the Potting Benches fit together'
+const LINKED = '# How [[Garden Shed]], Greenhouse, the [[Rain Barrel]] and the [[Potting Benches]] fit together'
 
 /** Make each of `names` a wikilink the wrap-key way: select it, press `[` twice. */
 function linkEach(h: EditorWithStore, names: string[]): void {
@@ -94,25 +94,25 @@ describe('sequentialTextChanges: each change against the text the ones before it
         // Found live on 2026-09-22 on a Filesystem graph. The wrap is one transaction of two
         // changes (`[` before the selection, `]` after it), and both were forwarded in
         // pre-transaction offsets, so the store spliced the `]` one character early once the `[`
-        // had shifted the text. Each press compounded the last: `[[Desktop CR]]M` on disk, and a
-        // pageless "Desktop CR" in the index.
-        const h = new EditorWithStore(`# How «Desktop CRM», ${REPORTED.slice('# How Desktop CRM, '.length)}`)
+        // had shifted the text. Each press compounded the last: `[[Garden She]]d` on disk, and a
+        // pageless "Garden She" in the index.
+        const h = new EditorWithStore(`# How «Garden Shed», ${REPORTED.slice('# How Garden Shed, '.length)}`)
         h.type('[')
-        expect(h.store).toBe('# How [Desktop CRM], Lighthouse, the AC Database and the Superset Schema fit together')
+        expect(h.store).toBe('# How [Garden Shed], Greenhouse, the Rain Barrel and the Potting Benches fit together')
         h.type('[')
-        expect(h.store).toBe('# How [[Desktop CRM]], Lighthouse, the AC Database and the Superset Schema fit together')
-        linkEach(h, ['AC Database', 'Superset Schema'])
+        expect(h.store).toBe('# How [[Garden Shed]], Greenhouse, the Rain Barrel and the Potting Benches fit together')
+        linkEach(h, ['Rain Barrel', 'Potting Benches'])
         expect(h.store).toBe(LINKED)
         expect(h.store).toBe(h.text())
     })
 
     it.each([
-        ['prose', 'How «Desktop CRM» fits together', 'How [[Desktop CRM]] fits together'],
-        ['a heading', '## How «Desktop CRM» fits together', '## How [[Desktop CRM]] fits together'],
-        ['an outliner block', '- How «Desktop CRM» fits together', '- How [[Desktop CRM]] fits together'],
-        ['a nested block', '- parent\n  - How «Desktop CRM» fits', '- parent\n  - How [[Desktop CRM]] fits'],
-        ['a task', '- [ ] How «Desktop CRM» fits', '- [ ] How [[Desktop CRM]] fits'],
-        ['a line after a fence', '```\ncode\n```\nHow «Desktop CRM» fits', '```\ncode\n```\nHow [[Desktop CRM]] fits'],
+        ['prose', 'How «Garden Shed» fits together', 'How [[Garden Shed]] fits together'],
+        ['a heading', '## How «Garden Shed» fits together', '## How [[Garden Shed]] fits together'],
+        ['an outliner block', '- How «Garden Shed» fits together', '- How [[Garden Shed]] fits together'],
+        ['a nested block', '- parent\n  - How «Garden Shed» fits', '- parent\n  - How [[Garden Shed]] fits'],
+        ['a task', '- [ ] How «Garden Shed» fits', '- [ ] How [[Garden Shed]] fits'],
+        ['a line after a fence', '```\ncode\n```\nHow «Garden Shed» fits', '```\ncode\n```\nHow [[Garden Shed]] fits'],
     ])('holds in %s', (_, before, after) => {
         const h = new EditorWithStore(before)
         h.type('[')
@@ -221,7 +221,7 @@ describe('sequentialTextChanges through a Filesystem store', () => {
 
         // The editor seeds from the store and pushes every change through `applyChange`, as DocumentView does.
         const h = new EditorWithStore(`|${doc.getText()}`, { sink: (change) => doc.applyChange(change) })
-        linkEach(h, ['Desktop CRM', 'AC Database', 'Superset Schema'])
+        linkEach(h, ['Garden Shed', 'Rain Barrel', 'Potting Benches'])
         expect(h.text()).toBe(LINKED)
         expect(doc.getText()).toBe(LINKED)
 

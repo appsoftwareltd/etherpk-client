@@ -27,10 +27,12 @@ import type { LinkGraph } from '../index-link-graph'
 import type { PropertyFilter } from '../search-query'
 import type { EmbeddingRow, PendingPassage, SemanticDocumentGroup, SemanticStatus } from '../semantic/embedding-db'
 import { conceptKey } from '../backlinks/backlink-index'
+import { reconcileNames } from './name-reconcile'
 import type {
     IndexChangeCheckpoint,
     IndexSource,
     IndexProgress,
+    NamedDocument,
     StoreChange,
 } from '../backlinks/live-index'
 import { INDEX_DISCARDED_PREFIX } from './core'
@@ -144,11 +146,12 @@ export interface RemoteGraphIndex {
     rebuild(): Promise<void>
     onUpdated(listener: (update: IndexUpdate) => void): () => void
     /**
-     * Resolves once every source change observed so far has been through the ingest pipeline -
-     * the debounce fired and the rebuild it queued finished - whether or not it changed the
-     * index. `onUpdated` cannot say this: an ingest of a document whose indexed text is unchanged
-     * (a frontmatter-only edit on a synced graph, an edit typed and reverted) emits nothing, so
-     * a caller waiting for an update would wait out its bound every time.
+     * Resolves once every source change observed when it was called has been through the ingest
+     * pipeline, whether or not it changed the index: a pending debounce is taken at once, and a
+     * change observed afterwards is the next caller's, so a stream of them cannot hold it open.
+     * `onUpdated` cannot say this: an ingest of a document whose indexed text is unchanged (a
+     * frontmatter-only edit on a synced graph, an edit typed and reverted) emits nothing, so a
+     * caller waiting for an update would wait out its bound every time.
      */
     settled?(): Promise<void>
     /** True when this index survives a reload; false means it was rebuilt from scratch. */
@@ -167,6 +170,15 @@ export interface RemoteGraphIndex {
      * nothing — the wikilink completion's empty popover read as a hang (live, 2026-07-29).
      */
     isBuilding(): boolean
+    /**
+     * True while the index is doing work a person may be waiting on: the first build, the
+     * catch-up after opening on a persisted generation, or a rebuild of changed documents (the
+     * whole index, after a rename). Not the debounce before a rebuild, which typing re-arms on
+     * every keystroke. The toolbar's indexing icon reads it.
+     */
+    isBusy(): boolean
+    /** Called with each change of `isBusy()`. */
+    onBusyChanged(listener: (busy: boolean) => void): () => void
     dispose(): void
 }
 
@@ -259,6 +271,10 @@ export function createRemoteGraphIndex(
     let workerReplaced = false
     /** Set while refresh()'s initial full derivation runs; cleared by its snapshot. */
     let building = false
+    /** Rebuilds queued or running, catch-ups and cold builds not yet finished: what `isBusy` reads. */
+    let workInFlight = 0
+    let busyReported = false
+    const busyChanged = new Set<(busy: boolean) => void>()
     const updated = new Set<(update: IndexUpdate) => void>()
     let timer: ReturnType<typeof setTimeout> | undefined
     let rebuildTail = Promise.resolve()
@@ -283,6 +299,20 @@ export function createRemoteGraphIndex(
 
     /** Concepts whose content changed, or `null` for "the document set moved — replace all". */
     let dirty: Set<string> | null = new Set()
+    /**
+     * The graph's names moved since the last rebuild (a create, rename, alias change or delete):
+     * the next one reconciles them against the source's listing (`reconcileNames`) and re-reads
+     * only the documents they changed, where it used to replace the whole index.
+     */
+    let namesMoved = false
+    /**
+     * Source changes observed so far, and how many of them a completed rebuild had taken when it
+     * started: what `settled` waits on, so it waits for the changes seen when it was asked only.
+     */
+    let observedChanges = 0
+    let ingestedThrough = 0
+    /** Rebuilds queued on the tail and not finished: whether a `settled` wait can still end. */
+    let queuedRuns = 0
 
     let nextId = 1
     let nextOpenId = 1
@@ -789,6 +819,33 @@ export function createRemoteGraphIndex(
         }
     }
 
+    /** Tell `onBusyChanged` listeners when `isBusy()` has changed. */
+    function reportBusy(): void {
+        const busy = workInFlight > 0
+        if (busy === busyReported) return
+        busyReported = busy
+        for (const listener of busyChanged) listener(busy)
+    }
+
+    /**
+     * Count `work` towards `isBusy()` until it settles, whichever way. Started at once, not a
+     * microtask later: `runRebuild` chains the next run onto the tail it reads synchronously.
+     */
+    function busyWhile<T>(work: () => Promise<T>): Promise<T> {
+        workInFlight++
+        reportBusy()
+        let started: Promise<T>
+        try {
+            started = work()
+        } catch (error) {
+            started = Promise.reject(error)
+        }
+        return started.finally(() => {
+            workInFlight--
+            reportBusy()
+        })
+    }
+
     function catchUpWarmIndex({ verifyExternalSource = true } = {}): void {
         // `dirty` is the monotonic queue of source events observed since subscription.
         // A target preload can emit while a busy shared worker is still answering `open`;
@@ -800,7 +857,7 @@ export function createRemoteGraphIndex(
         // only genuine remote changes emit named `onChange` events and cross into the
         // worker. Externally mutable sources without that seam retain the safe full
         // verification path.
-        const catchUp = Promise.resolve().then(() =>
+        const catchUp = busyWhile(() => Promise.resolve().then(() =>
             withCatchUpLock(async () => {
                 if (source.catchUpPersistedIndex) {
                     await source.catchUpPersistedIndex()
@@ -822,7 +879,7 @@ export function createRemoteGraphIndex(
                 dirty = null
                 await runRebuild()
             }),
-        )
+        ))
         void catchUp.catch((error: unknown) =>
             options.onBackgroundError?.(
                 error instanceof Error ? error : new Error(String(error)),
@@ -909,64 +966,121 @@ export function createRemoteGraphIndex(
         } else if (checkpoint && dirty !== null) {
             for (const change of checkpoint.changes) dirty.add(change.concept)
         }
+        // The names as the checkpoint saw them, merged from every tab's cache, else this tab's own.
+        const listing = checkpoint?.names ?? source.listDocuments?.()
+        if (checkpoint?.namesMoved) {
+            if (listing) namesMoved = true
+            else dirty = null // a source that cannot list its names can only be replaced whole
+        }
+        // Every change observed by now is in `dirty` or `namesMoved`, which this run takes.
+        const through = observedChanges
         const changed = dirty
+        const reconcile = namesMoved
         dirty = new Set()
+        namesMoved = false
+        /** Titles the source no longer has, found by reconciling names; read nothing to drop. */
+        let removed: string[] = []
         try {
+            if (changed !== null && reconcile && listing) {
+                // Names alone cannot see two titles that swapped between two reconciles: the
+                // stores name both titles of every document whose name changed as it happens,
+                // and this is the backstop for what no event announced (a crash between the
+                // cache and the index committing).
+                const names = reconcileNames(await indexedNames(), listing)
+                for (const concept of names.changed) changed.add(concept)
+                removed = names.removed
+            }
             const checkpointCoversChanged =
                 changed !== null &&
                 [...changed].every((concept) =>
                     checkpointDocuments.has(conceptKey(concept)),
                 )
-            if (
-                changed === null ||
-                (changed.size > INCREMENTAL_LIMIT && !checkpointCoversChanged)
-            ) {
+            const targeted =
+                changed !== null && (changed.size + removed.length <= INCREMENTAL_LIMIT || checkpointCoversChanged)
+                    ? await targetedChanges(changed, removed, checkpointDocuments, listing)
+                    : null
+            if (targeted === null) {
+                // Everything moved, the change is too large to take a document at a time, or a
+                // document the source still lists could not be read: dropping that one would lose
+                // its rows until its next edit, so the whole index is replaced instead.
                 await rebuildAll(checkpoint?.streamForIndex)
-            } else if (changed.size > 0) {
-                const docs: IndexDoc[] = []
-                for (const concept of changed) {
-                    const doc =
-                        checkpointDocuments.get(conceptKey(concept)) ??
-                        (await source.snapshotDocument?.(concept))
-                    if (doc) docs.push(doc)
+            } else if (targeted.docs.length > 0 || targeted.removed.length > 0) {
+                // A cold post-commit hydration can make every cache row dirty at once. Those rows
+                // already have exact, cache-bound snapshots, so replacing the just-committed
+                // generation would be a duplicate derivation. Send bounded targeted chunks instead
+                // and acknowledge them behind one ordered barrier.
+                const { docs } = targeted
+                for (let start = 0; start < Math.max(docs.length, 1); start += REBUILD_SEND_CHUNK) {
+                    transport.send({
+                        type: 'ingest',
+                        docs: docs.slice(start, start + REBUILD_SEND_CHUNK),
+                        // The removals ride with the first chunk, so a rename's two halves, the old
+                        // title out and the document in under its new one, are one delta.
+                        ...(start === 0 && targeted.removed.length > 0 ? { removed: targeted.removed } : {}),
+                    })
                 }
-                if (docs.length !== changed.size) {
-                    // A named document disappeared before its snapshot was read. Only a full
-                    // replacement can remove its old rows safely.
-                    await rebuildAll(checkpoint?.streamForIndex)
-                } else {
-                    // A cold post-commit hydration can make every cache row dirty at once.
-                    // Those rows already have exact, cache-bound snapshots, so replacing the
-                    // just-committed generation would be a duplicate derivation. Send bounded
-                    // targeted chunks instead and acknowledge them behind one ordered barrier.
-                    for (let start = 0; start < docs.length; start += REBUILD_SEND_CHUNK) {
-                        transport.send({
-                            type: 'ingest',
-                            docs: docs.slice(start, start + REBUILD_SEND_CHUNK),
-                        })
-                    }
-                    await request<Extract<IndexResponse, { type: 'barrier' }>>((id) => ({
-                        type: 'barrier',
-                        id,
-                    }))
-                }
+                await request<Extract<IndexResponse, { type: 'barrier' }>>((id) => ({
+                    type: 'barrier',
+                    id,
+                }))
             }
             await checkpoint?.acknowledge()
+            ingestedThrough = Math.max(ingestedThrough, through)
         } catch (error) {
             // Keep volatile work retryable in this session. A durable checkpoint remains
             // unacknowledged as the cross-restart source of truth as well.
             if (changed === null) dirty = null
-            else if (dirty !== null) for (const concept of changed) dirty.add(concept)
+            else if (dirty !== null) for (const concept of [...changed, ...removed]) dirty.add(concept)
+            if (reconcile) namesMoved = true
             throw error
         }
     }
 
-    /** Source events and the terminal catch-up flush share one ordered main-thread pipeline. */
+    /** Every document the index holds, by its names: the worker's own rows (`indexedNames`). */
+    async function indexedNames(): Promise<NamedDocument[]> {
+        const response = await request<Extract<IndexResponse, { type: 'names' }>>((id) => ({ type: 'names', id }))
+        return response.documents
+    }
+
+    /**
+     * What a targeted ingest takes for `changed` and `removed`: each changed name read again, and
+     * dropped when it reads back as nothing (gone) or as a document under another title (now that
+     * document's alias, or retitled). Null when a name might only have failed to read: one the
+     * source still lists as a title, or any, from a source that cannot list its documents.
+     */
+    async function targetedChanges(
+        changed: ReadonlySet<string>,
+        removed: readonly string[],
+        checkpointDocuments: ReadonlyMap<string, IndexDoc>,
+        listing: readonly NamedDocument[] | undefined,
+    ): Promise<{ docs: IndexDoc[]; removed: string[] } | null> {
+        const listed = listing ? new Set(listing.map((document) => conceptKey(document.concept))) : null
+        const docs = new Map<string, IndexDoc>()
+        const gone = new Set(removed)
+        for (const concept of changed) {
+            const doc = checkpointDocuments.get(conceptKey(concept)) ?? (await source.snapshotDocument?.(concept))
+            if (!doc) {
+                if (!listed || listed.has(conceptKey(concept))) return null
+                gone.add(concept)
+                continue
+            }
+            if (conceptKey(doc.concept) !== conceptKey(concept)) gone.add(concept)
+            docs.set(conceptKey(doc.concept), doc)
+        }
+        return { docs: [...docs.values()], removed: [...gone] }
+    }
+
+    /**
+     * Source events and the terminal catch-up flush share one ordered main-thread pipeline. A run
+     * counts as busy from the moment it is queued, so runs waiting on one another read as one spell.
+     */
     function runRebuild(): Promise<void> {
-        const next = rebuildTail.then(() => rebuild())
+        queuedRuns++
+        const next = busyWhile(() => rebuildTail.then(() => rebuild()))
         rebuildTail = next
             .catch(() => undefined)
             .then(() => {
+                queuedRuns--
                 const woken = drainWaiters
                 drainWaiters = []
                 for (const wake of woken) wake()
@@ -978,17 +1092,26 @@ export function createRemoteGraphIndex(
         if (timer !== undefined) clearTimeout(timer)
         timer = setTimeout(() => {
             timer = undefined
-            void runRebuild().catch((error: unknown) =>
-                options.onBackgroundError?.(
-                    error instanceof Error ? error : new Error(String(error)),
-                ),
-            )
+            void runRebuild().catch(reportBackgroundError)
         }, debounceMs)
     }
 
+    /** A rebuild nobody awaits failed: said, without failing anything that is waiting. */
+    function reportBackgroundError(error: unknown): void {
+        options.onBackgroundError?.(error instanceof Error ? error : new Error(String(error)))
+    }
+
     function scheduleRebuild(change?: StoreChange): void {
-        if (!change || !source.snapshotDocument) dirty = null
-        else if (dirty !== null) dirty.add(change.concept)
+        observedChanges++
+        if (change && source.snapshotDocument) {
+            if (dirty !== null) dirty.add(change.concept)
+        } else if (!change && source.snapshotDocument && source.listDocuments) {
+            // The graph's names moved: reconciled when the rebuild runs, reading only the
+            // documents whose names changed.
+            namesMoved = true
+        } else {
+            dirty = null
+        }
         if (activeRebuildId) {
             rebuildInvalidated = true
             return
@@ -1094,6 +1217,11 @@ export function createRemoteGraphIndex(
             return () => persistenceChanged.delete(listener)
         },
         isBuilding: () => building,
+        isBusy: () => busyReported,
+        onBusyChanged(listener) {
+            busyChanged.add(listener)
+            return () => busyChanged.delete(listener)
+        },
         async refresh() {
             const opened = await preparedOpenResponse(true)
             // Something usable was already on disk. Trust it for the interactive open.
@@ -1107,7 +1235,7 @@ export function createRemoteGraphIndex(
             // Keep every follower on GraphWorkspace's loading surface while the first tab
             // derives and commits the shared generation.
             building = true
-            await withRebuildLock(async () => {
+            await busyWhile(() => withRebuildLock(async () => {
                 // Another tab may have completed the graph walk while this tab waited.
                 // Re-open is idempotent in the shared worker and avoids touching the source.
                 const afterLock = await openIndex()
@@ -1121,7 +1249,7 @@ export function createRemoteGraphIndex(
                 coldCatchUpPending = true
                 await runRebuild()
                 backgroundRebuildsEnabled = true
-            })
+            }))
         },
         async rebuild() {
             if (disposed) return
@@ -1146,15 +1274,21 @@ export function createRemoteGraphIndex(
             return () => updated.delete(listener)
         },
         settled() {
+            // The changes observed by now, and no later ones: a change a collaborator types while
+            // this waits is the next caller's, so a stream of them cannot hold the wait open.
+            const target = observedChanges
             return new Promise<void>((resolve) => {
                 const look = () => {
-                    // A queued debounce will run a rebuild; wait for that run, then look again in
-                    // case a change arrived meanwhile and re-armed it.
-                    if (timer !== undefined && !disposed) {
-                        drainWaiters.push(look)
-                        return
+                    if (disposed || ingestedThrough >= target) return resolve()
+                    if (timer !== undefined && backgroundRebuildsEnabled) {
+                        // Taken now rather than when the debounce fires, which every change re-arms.
+                        clearTimeout(timer)
+                        timer = undefined
+                        void runRebuild().catch(reportBackgroundError)
                     }
-                    rebuildTail.then(resolve, resolve)
+                    // Nothing queued that could take them (a run that failed, say): no wait would end.
+                    if (queuedRuns === 0) return resolve()
+                    drainWaiters.push(look)
                 }
                 look()
             })
@@ -1170,6 +1304,7 @@ export function createRemoteGraphIndex(
             unsubscribe()
             updated.clear()
             persistenceChanged.clear()
+            busyChanged.clear()
             transport.send({ type: 'close' })
             transport.close()
         },

@@ -9,7 +9,7 @@ import * as Y from 'yjs'
 import type { Awareness } from 'y-protocols/awareness'
 import { dayIsNotAPageName, isJournalConcept } from '$lib/document/journal-concept'
 import { lineFeedChanges } from '$lib/document/line-endings'
-import { normaliseAliases, withFrontmatterIdentity } from '$lib/document/frontmatter/identity'
+import { frontmatterIdentity, normaliseAliases, withFrontmatterIdentity } from '$lib/document/frontmatter/identity'
 import { parseFrontmatter } from '$lib/storage/fs/frontmatter'
 import { frontmatterSpan } from '$lib/storage/fs/frontmatter-span'
 import { conceptKey } from '$lib/storage/fs/identity'
@@ -18,11 +18,13 @@ import {
     type ChangeOrigin,
     DocumentNotFoundError,
     DocumentSyncDegradedError,
+    DocumentUnconfirmedError,
     type EditorDocument,
     type SpliceOutcome,
     type TextChange,
 } from '$lib/document/types'
 import { includeFactsOf } from '$lib/document/publish/publication'
+import { reachedWithin } from '$lib/reached-within'
 import { propertiesOf } from '$lib/document/properties'
 import type { IndexDocSnapshot } from '$lib/storage/fs/filesystem-store'
 import type {
@@ -37,8 +39,17 @@ import { type TextSplice, countWikilinkTargets, wikilinkScopeSplices } from '$li
 import { documentProtection } from '$lib/document/protection/cipher-fence'
 import { containsCipherFence } from '$lib/document/protection/fence-info'
 import { mergeDocuments } from '../merge'
-import { planRename, refuseProtectedMerges } from '../rename-plan'
-import { type RenameOptions, type RenamePlan, type RenameResult, RenameUnconfirmedError, mergeCount, renameSteps } from '../rename'
+import { aliasesAfterRename, planRename, refuseProtectedMerges } from '../rename-plan'
+import {
+    type AliasRewrite,
+    type RenameOptions,
+    type RenamePlan,
+    type RenameResult,
+    RenameUnconfirmedError,
+    landedName,
+    mergeCount,
+    renameSteps,
+} from '../rename'
 
 export interface ServerDocumentStoreOptions {
     /** Bounded wait (ms) for an initial relay connection in scan(). */
@@ -72,6 +83,17 @@ export interface DocumentText {
      * durable must skip it rather than record an empty document.
      */
     settled: boolean
+}
+
+/**
+ * What {@link ServerDocumentStore.revealHiddenAliases} did, by each document's name: the ones now
+ * showing their aliases, the ones skipped because their block does not parse, and the ones this
+ * device could not bring current.
+ */
+export interface HiddenAliasesReport {
+    revealed: string[]
+    unreadable: string[]
+    unconfirmed: string[]
 }
 
 /** Structural mirror of FilesystemDocumentStore (documented in document/types.ts). */
@@ -181,10 +203,18 @@ export interface ServerDocumentStore {
      */
     uploadSnapshot(target: string): Promise<void>
     /**
-     * Set a document's aliases (ADR 0061): the registry entry, then the block if the text carries
-     * one. Normalised: trimmed, unique, never the document's own name.
+     * Set a document's aliases (ADR 0061): the registry entry, then the block, which is added when
+     * the document has aliases and none (amended 2026-10-03). Normalised: trimmed, unique, never
+     * the document's own name.
      */
     setAliases(target: string, aliases: readonly string[]): Promise<void>
+    /**
+     * TEMPORARY (ADR 0061, amended 2026-10-03): show the aliases a synced graph hid before an
+     * alias was always shown. Every document whose registry entry has aliases and whose block is
+     * missing, or has no `aliases` line, gets them written in; nothing else in a block changes.
+     * Run once per graph from Graph Settings > Maintenance, then removed with the button.
+     */
+    revealHiddenAliases(): Promise<HiddenAliasesReport>
     /**
      * Write `splices` into a document only if it holds exactly `expected`, the text a
      * [[Formatting Scan]] read (ADR 0109). The splices are in `expected`'s offsets and go in one
@@ -200,27 +230,6 @@ function conceptOf(entry: RegistryEntry): string {
     return entry.kind === 'journal' ? (entry.date ?? '') : (entry.title ?? '')
 }
 
-/**
- * Whether `promise` settled within `timeoutMs`. A sync milestone that never arrives (offline, a
- * silent server) is a bounded wait and a `false`, never a hang and never an unhandled rejection:
- * the caller decides what an unreached milestone means.
- */
-async function reachedWithin(promise: Promise<unknown>, timeoutMs: number): Promise<boolean> {
-    let timer: ReturnType<typeof setTimeout> | undefined
-    try {
-        return await Promise.race([
-            promise.then(
-                () => true,
-                () => false,
-            ),
-            new Promise<boolean>((resolve) => {
-                timer = setTimeout(() => resolve(false), timeoutMs)
-            }),
-        ])
-    } finally {
-        if (timer) clearTimeout(timer)
-    }
-}
 
 export function createServerDocumentStore(
     graph: GraphSync,
@@ -394,9 +403,12 @@ export function createServerDocumentStore(
             const additions: string[] = []
             const renames: Array<{ docId: string; from: string; to: string }> = []
             let additionsOnly = true
+            // Every name a changed entry had or has, by key: what the index re-reads.
+            const named = new Map<string, string>()
             for (const docId of changedDocIds) {
                 const before = knownRegistry.get(docId)
                 const after = nextRegistry.get(docId)
+                for (const entry of [before, after]) if (entry) named.set(conceptKey(entry.concept), entry.concept)
                 if (fromElsewhere && before && after && before.concept !== after.concept) {
                     renames.push({ docId, from: before.concept, to: after.concept })
                 }
@@ -421,6 +433,13 @@ export function createServerDocumentStore(
                         changeListeners.forEach((listener) => listener({ concept }))
                     }
                 } else {
+                    // Each document whose names changed, under every title it had or has: the index
+                    // reads it again under its title now and drops a title gone, and names alone
+                    // could not see two titles swap. Then unnamed, for a consumer that reconsiders
+                    // every name on a registry change (the Local Mirror moves files by it).
+                    for (const concept of named.values()) {
+                        changeListeners.forEach((listener) => listener({ concept }))
+                    }
                     changeListeners.forEach((listener) => listener())
                 }
             }
@@ -503,21 +522,35 @@ export function createServerDocumentStore(
      * Bring a block the text carries in line with the registry (ADR 0061). Part of the action that
      * changed the registry - a rename, an alias change - and never a reaction to one arriving: if
      * every member's device rewrote the block on seeing the registry move, the CRDT would merge N
-     * identical concurrent edits into duplicated text. Adds no block to a document without one. A
-     * journal's title is its date, so only its aliases are mirrored.
+     * identical concurrent edits into duplicated text. A journal's title is its date, so only its
+     * aliases are mirrored.
+     *
+     * A document with aliases and no block is given one (amended 2026-10-03): an alias is never
+     * invisible, so a page that answers to another name says so in its text. Without aliases a
+     * document without a block keeps none. The caller has brought the text current first, or the
+     * block would be written above a block still on its way.
      */
     function writeBackIdentity(docId: string): void {
         const entry = registry.get(docId)
         if (!entry) return
         const ytext = graph.docSync(docId).doc.getText('content')
         const text = ytext.toString()
-        const next = withFrontmatterIdentity(text, {
-            ...(entry.kind === 'page' ? { title: conceptOf(entry) } : {}),
-            aliases: entry.aliases ?? [],
-        })
+        const aliases = entry.aliases ?? []
+        const next = withFrontmatterIdentity(
+            text,
+            { ...(entry.kind === 'page' ? { title: conceptOf(entry) } : {}), aliases },
+            { addBlock: aliases.length > 0 },
+        )
+        replaceBlock(ytext, text, next)
+    }
+
+    /**
+     * Write `next`'s block over `text`'s. Only the block is replaced: the body is verbatim in
+     * `next`, and a whole-document rewrite would be a whole-document edit for every other member
+     * to receive.
+     */
+    function replaceBlock(ytext: Y.Text, text: string, next: string): void {
         if (next === text) return
-        // Only the block is replaced: the body is verbatim in `next`, and a whole-document rewrite
-        // would be a whole-document edit for every other member to receive.
         const before = frontmatterSpan(text)?.end ?? 0
         const after = frontmatterSpan(next)?.end ?? 0
         ytext.doc!.transact(() => {
@@ -831,12 +864,7 @@ export function createServerDocumentStore(
                 if (timer) clearTimeout(timer)
             }
         },
-        async confirmRegistry(timeoutMs = 5000): Promise<boolean> {
-            if (registryConfirmed) return true
-            if (!graph.isConnected()) return false
-            if (await reachedWithin(graph.rootCaughtUp(), timeoutMs)) registryConfirmed = true
-            return registryConfirmed
-        },
+        confirmRegistry,
         onDocumentsChanged(listener) {
             docsChangedListeners.add(listener)
             return () => docsChangedListeners.delete(listener)
@@ -967,24 +995,29 @@ export function createServerDocumentStore(
 
             const concepts = new Map<string, string>()
             const documents: IndexDocSnapshot[] = []
-            let requiresFullReplacement = false
+            let namesMoved = false
             for (const docId of checkpoint.docIds) {
                 const entry = entriesByDocId.get(docId)
                 if (!entry) {
-                    // The root document owns graph identity, aliases and membership. A
-                    // removed content document is also absent here. Either shape can remove
-                    // index rows, so a targeted upsert is insufficient.
-                    requiresFullReplacement = true
-                    break
+                    // The root document owns graph identity, aliases and membership, and a removed
+                    // content document is absent here too. Either can add, remove or rename names,
+                    // which the index reconciles against `listDocuments` and takes a document at
+                    // a time; no snapshot is needed for it here.
+                    namesMoved = true
+                    continue
                 }
                 const concept = conceptOf(entry)
                 concepts.set(conceptKey(concept), concept)
                 documents.push(await snapshot(docId, entry))
             }
             return {
-                changes: requiresFullReplacement
-                    ? null
-                    : [...concepts.values()].map((concept) => ({ concept })),
+                changes: [...concepts.values()].map((concept) => ({ concept })),
+                namesMoved,
+                // The registry as this checkpoint has it, merged from every tab's cache: newer than
+                // this tab's live one can be, when another tab renamed something.
+                ...(namesMoved
+                    ? { names: entries.map(([, entry]) => ({ concept: conceptOf(entry), kind: entry.kind, aliases: entry.aliases ?? [] })) }
+                    : {}),
                 documents,
                 streamForIndex: checkpointStream,
                 acknowledge: checkpoint.acknowledge,
@@ -1022,14 +1055,76 @@ export function createServerDocumentStore(
 
         async setAliases(target: string, aliases: readonly string[]): Promise<void> {
             const docId = docIdFor(target)
-            const entry = docId ? registry.get(docId) : undefined
-            if (!docId || !entry) throw new DocumentNotFoundError(target)
-            const next = normaliseAliases(aliases, conceptOf(entry))
-            const updated: RegistryEntry = { ...entry }
-            if (next.length > 0) updated.aliases = next
-            else delete updated.aliases
-            registry.set(docId, updated)
-            writeBackIdentity(docId)
+            const known = docId ? registry.get(docId) : undefined
+            if (!docId || !known) throw new DocumentNotFoundError(target)
+            // Written at once unless it gives the document its first block. A block the text has,
+            // or aliases going, is the person's own edit coming back to the block, and a wait here
+            // would leave a window in which an undo of that edit lands and is then written over. A first
+            // block waits for the document to be current: written into text that has not arrived,
+            // it would sit above the document's own block once that did.
+            if (!givesFirstBlock(docId, known, aliases)) {
+                writeAliases(docId, known, aliases)
+                return
+            }
+            const materialised = await materialise([docId], COLD_CONTENT_TIMEOUT_MS)
+            try {
+                const entry = registry.get(docId)
+                if (!entry) throw new DocumentNotFoundError(target) // deleted while it loaded
+                if (materialised.unconfirmed.length > 0) throw new DocumentUnconfirmedError(target)
+                writeAliases(docId, entry, aliases)
+            } finally {
+                materialised.release()
+            }
+        },
+        async revealHiddenAliases(): Promise<HiddenAliasesReport> {
+            // Offline the cache is all this device has: a block another device's run already added
+            // may not be in it, and a second one inserted beside it would stay. A registry not yet
+            // confirmed could be partial, and report a false all-clear.
+            if (!graph.isConnected() || !(await confirmRegistry())) {
+                throw new Error('This graph has not finished syncing to this device, so nothing was changed.')
+            }
+            const report: HiddenAliasesReport = { revealed: [], unreadable: [], unconfirmed: [] }
+            const holders: string[] = []
+            registry.forEach((entry, docId) => {
+                if ((entry.aliases ?? []).length > 0) holders.push(docId)
+            })
+            if (holders.length === 0) return report
+            // Brought current first, as setAliases does: a block written into text that has not
+            // arrived would sit above the document's own block once it does.
+            const materialised = await materialise(holders, COLD_CONTENT_TIMEOUT_MS)
+            try {
+                const unconfirmed = new Set(materialised.unconfirmed)
+                for (const docId of holders) {
+                    const entry = registry.get(docId)
+                    const aliases = entry?.aliases ?? []
+                    if (!entry || aliases.length === 0) continue // deleted or cleared while it loaded
+                    const name = conceptOf(entry)
+                    if (unconfirmed.has(docId)) {
+                        report.unconfirmed.push(name)
+                        continue
+                    }
+                    const ytext = graph.docSync(docId).doc.getText('content')
+                    const text = ytext.toString()
+                    const claim = frontmatterIdentity(text)
+                    if (claim.hasBlock && !claim.readable) {
+                        report.unreadable.push(name)
+                        continue
+                    }
+                    // A block that already says which aliases it has is shown, and if it disagrees
+                    // with the registry the mismatch mark offers to settle it.
+                    if (claim.hasAliasesKey) continue
+                    // Into a block the text has, only the `aliases` line goes: a title there that
+                    // disagrees is the mark's to settle. A new block reads as write-back writes one.
+                    const next = claim.hasBlock
+                        ? withFrontmatterIdentity(text, { aliases })
+                        : withFrontmatterIdentity(text, { ...(entry.kind === 'page' ? { title: name } : {}), aliases }, { addBlock: true })
+                    replaceBlock(ytext, text, next)
+                    report.revealed.push(name)
+                }
+            } finally {
+                materialised.release()
+            }
+            return report
         },
         async spliceIfUnchanged(docId, expected, splices, spliceOptions): Promise<SpliceOutcome> {
             if (!registry.has(docId)) return 'gone'
@@ -1093,9 +1188,13 @@ export function createServerDocumentStore(
 
         async planRename(from: string, to: string, referencingDocuments?: number): Promise<RenamePlan> {
             // No entry is not a refusal: a [[Pageless Concept]] renames by rewriting its links,
-            // and the plan says so through a null kind (ADR 0064).
+            // and the plan says so through a null kind (ADR 0064). The kind is that of the document
+            // whose TITLE `from` is: a name held only as an alias renames that alias, which the
+            // planner reads from the aliases below (ADR 0065, amended 2026-10-04). `docIdFor`
+            // resolves both, a title first.
             const docId = docIdFor(from)
-            const entry = docId ? registry.get(docId) : undefined
+            const resolved = docId ? registry.get(docId) : undefined
+            const entry = resolved && conceptKey(conceptOf(resolved)) === conceptKey(from) ? resolved : undefined
 
             // Counting here materialises every Y.Doc in the graph. The caller usually has the
             // figure already (the backlink index knows it); the slow path stays for those that
@@ -1155,6 +1254,14 @@ export function createServerDocumentStore(
                     if (id) wanted.add(id)
                 }
             }
+            // A document whose alias the rename rewrites has its block written back, so it is
+            // brought current too: the index derives no link from an alias, so `referencing`
+            // never names it, and a cold one would keep a stale block that a later frontmatter
+            // proposal turns back (ADR 0038, amended 2026-10-03).
+            for (const alias of plan.aliases) {
+                const id = docIdFor(alias.holder)
+                if (id) wanted.add(id)
+            }
             if (options.strategy === 'rewrite') {
                 if (options.referencing) {
                     for (const concept of options.referencing) {
@@ -1207,14 +1314,64 @@ export function createServerDocumentStore(
         },
     }
 
+    async function confirmRegistry(timeoutMs = 5000): Promise<boolean> {
+        if (registryConfirmed) return true
+        if (!graph.isConnected()) return false
+        if (await reachedWithin(graph.rootCaughtUp(), timeoutMs)) registryConfirmed = true
+        return registryConfirmed
+    }
+
+    /** Whether writing `aliases` back would give the document its first block (amended 2026-10-03). */
+    function givesFirstBlock(docId: string, entry: RegistryEntry, aliases: readonly string[]): boolean {
+        if (normaliseAliases(aliases, conceptOf(entry)).length === 0) return false
+        return frontmatterSpan(graph.docSync(docId).doc.getText('content').toString()) === null
+    }
+
+    /** Write a document's aliases to the registry, the authority, and show them in its block, added if need be. */
+    function writeAliases(docId: string, entry: RegistryEntry, aliases: readonly string[]): void {
+        const next = normaliseAliases(aliases, conceptOf(entry))
+        const updated: RegistryEntry = { ...entry }
+        if (next.length > 0) updated.aliases = next
+        else delete updated.aliases
+        registry.set(docId, updated)
+        writeBackIdentity(docId)
+    }
+
+    /**
+     * The aliases a rename carries along (ADR 0038, amended 2026-10-03), after its title steps,
+     * on both arms: each holder's registry list with its rewrites applied. A holder a step
+     * retitled, or merged into another document, is found under the name it landed on. Returns
+     * the holders, by their names now.
+     */
+    function rewriteScopedAliases(plan: RenamePlan, options: RenameOptions): string[] {
+        const byHolder = new Map<string, AliasRewrite[]>()
+        for (const rewrite of plan.aliases) {
+            const docId = docIdFor(landedName(plan, rewrite.holder))
+            if (docId) byHolder.set(docId, [...(byHolder.get(docId) ?? []), rewrite])
+        }
+        const holders: string[] = []
+        for (const [docId, rewrites] of byHolder) {
+            const entry = registry.get(docId)
+            if (!entry) continue
+            writeAliases(docId, entry, aliasesAfterRename(entry.aliases ?? [], rewrites, options.strategy))
+            holders.push(conceptOf(entry))
+        }
+        return holders
+    }
+
     /**
      * The writes of a rename, over documents `renamePage` has already brought current and
-     * holds live: the registry steps, then the body pass over `readable` (ADR 0038).
+     * holds live: the registry steps, the scoped aliases, then the body pass over `readable`
+     * (ADR 0038).
      */
     function applyRename(plan: RenamePlan, options: RenameOptions, readable: readonly string[]): RenameResult {
         for (const step of renameSteps(plan)) {
+            // A pageless concept, or a renamed alias: only links and aliases move (ADR 0064, and
+            // ADR 0065 amended 2026-10-04). Asked of the plan, since `docIdFor` would resolve an
+            // alias to its holder and retitle it.
+            if (!step.hasDocument) continue
             const docId = docIdFor(step.from)
-            if (!docId) continue // a pageless concept; only its links move (ADR 0064)
+            if (!docId) continue
             const entry = registry.get(docId)
             if (!entry) continue
 
@@ -1266,6 +1423,8 @@ export function createServerDocumentStore(
             writeBackIdentity(docId)
         }
 
+        const aliasesRewritten = rewriteScopedAliases(plan, options)
+
         // Bodies last, in one pass: the cascade rule fixes plain and scoped references
         // together. Each document is its own CRDT transaction — there is none spanning them
         // — and within a document the rewrite is a set of per-occurrence splices, never a
@@ -1307,6 +1466,14 @@ export function createServerDocumentStore(
             }
         }
 
-        return { concept: plan.direct.into, rewritten, rewrittenDocuments, cascaded: plan.cascade.length, merged: mergeCount(plan) }
+        return {
+            concept: plan.direct.into,
+            aliasOf: plan.aliasOf === null ? null : landedName(plan, plan.aliasOf),
+            rewritten,
+            rewrittenDocuments,
+            cascaded: plan.cascade.length,
+            merged: mergeCount(plan),
+            aliasesRewritten,
+        }
     }
 }

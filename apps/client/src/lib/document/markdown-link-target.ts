@@ -3,8 +3,8 @@
  *
  * Ten places used to spell this out, and each spelled the destination `[^)\s]+`, which stops at
  * the FIRST closing parenthesis. That is wrong the moment a file name contains one, and imported
- * attachments contain them all the time - `Estimate_320_from_B_Sprake_ltd_(1)_1706517395516_0.pdf`
- * is a real example. Every reader then saw the same truncated target, so the link styling and the
+ * attachments contain them all the time - `Quote_320_from_Garden_Fencing_ltd_(1)_1700000000000_0.pdf`
+ * has the shape they take. Every reader then saw the same truncated target, so the link styling and the
  * download and delete controls landed in the middle of the text, and the [[Local Mirror]] reported
  * the stub as a document link to an attachment the graph plainly had (2026-09-10).
  *

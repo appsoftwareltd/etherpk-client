@@ -310,6 +310,72 @@ describe('index core', () => {
         expect(same).toEqual([])
     })
 
+    // A rename arrives as the old name removed and the document under its new name, in one ingest:
+    // one delta then takes the title away and gives the name back as an alias of the page.
+    it('removes named documents in the same ingest that takes others, in one delta', async () => {
+        const { host } = persistentHost()
+        const core = createIndexCore(host)
+        await core.handle({ type: 'open', graphId: 'g1' })
+        await rebuild(core, [doc('Physics', '- p'), doc('Notes', '- see [[Physics]]')])
+
+        const [renamed] = await core.handle({
+            type: 'ingest',
+            docs: [{ ...doc('Physical Science', '- p'), aliases: ['Physics'] }],
+            removed: ['Physics'],
+        })
+
+        expect(renamed).toMatchObject({ type: 'delta' })
+        const delta = renamed as Extract<IndexResponse, { type: 'delta' }>
+        expect(delta.candidateUpserts.find((candidate) => candidate.key === 'physics')).toMatchObject({
+            kind: 'alias',
+            canonical: 'Physical Science',
+        })
+        expect(delta.existingAdded).toContain('physical science')
+        // Who links to the old name is now asked of the new page.
+        expect(delta.backlinkTargetsChanged).toContain('physics')
+
+        // A name nothing links to, removed, is gone altogether.
+        const [deleted] = await core.handle({ type: 'ingest', docs: [], removed: ['Notes'] })
+        expect((deleted as Extract<IndexResponse, { type: 'delta' }>).candidateRemoved).toContain('notes')
+        expect((deleted as Extract<IndexResponse, { type: 'delta' }>).existingRemoved).toContain('notes')
+        // Removing what is not there changes nothing, and says nothing.
+        expect(await core.handle({ type: 'ingest', docs: [], removed: ['Nowhere'] })).toEqual([])
+    })
+
+    // A title whose case alone changed has the same key and the same text: still a change, or the
+    // index would go on showing the old spelling.
+    it('takes a document whose title changed only in case', async () => {
+        const { host } = persistentHost()
+        const core = createIndexCore(host)
+        await core.handle({ type: 'open', graphId: 'g1' })
+        await rebuild(core, [doc('Foo', '- f')])
+
+        const [response] = await core.handle({ type: 'ingest', docs: [doc('foo', '- f')] })
+
+        expect((response as Extract<IndexResponse, { type: 'delta' }>).candidateUpserts).toContainEqual(
+            expect.objectContaining({ key: 'foo', display: 'foo', kind: 'page' }),
+        )
+    })
+
+    // What a change to the graph's names is reconciled against: the worker's own rows, each page
+    // with its aliases, even where one page's title is another page's alias, which the candidate
+    // list (one row per name) cannot show.
+    it('answers with every document it holds, by its names', async () => {
+        const { host } = persistentHost()
+        const core = createIndexCore(host)
+        await core.handle({ type: 'open', graphId: 'g1' })
+        await rebuild(core, [{ ...doc('Kanban', '- k'), aliases: ['Board', 'Roadmap'] }, doc('Roadmap', '- r')])
+
+        const [response] = await core.handle({ type: 'names', id: 7 })
+
+        expect(response).toMatchObject({ type: 'names', id: 7 })
+        const documents = (response as Extract<IndexResponse, { type: 'names' }>).documents
+        expect([...documents].sort((a, b) => a.concept.localeCompare(b.concept))).toEqual([
+            { concept: 'Kanban', kind: 'page', aliases: ['Board', 'Roadmap'] },
+            { concept: 'Roadmap', kind: 'page', aliases: [] },
+        ])
+    })
+
     it('emits a small revisioned delta for one changed document', async () => {
         const { host } = persistentHost()
         const core = createIndexCore(host)
@@ -552,6 +618,300 @@ describe('remote graph index', () => {
             expect(s.counts.full).toBe(1) // the graph was never re-read
             expect(s.counts.single).toBe(1)
             expect((await index.backlinks('Gamma')).length).toBe(1)
+            index.dispose()
+        } finally {
+            vi.useRealTimers()
+        }
+    })
+
+    // The toolbar's indexing icon reads this. Busy covers the work itself, from a rebuild being
+    // queued to run until it finishes, and never the debounce wait alone: typing re-arms that wait
+    // on every keystroke, and would otherwise read as indexing for as long as anyone types.
+    it('reports busy while a rebuild runs, and idle once it has finished', async () => {
+        vi.useFakeTimers()
+        try {
+            const s = fakeSource([doc('Alpha', '- a')])
+            const index = createRemoteGraphIndex(s.source, inlineTransport(), { graphId: 'g1', debounceMs: 10 })
+            await index.refresh()
+            await vi.advanceTimersByTimeAsync(20)
+            expect(index.isBusy()).toBe(false)
+            const seen: boolean[] = []
+            index.onBusyChanged((busy) => seen.push(busy))
+
+            s.fire() // a registry change names nothing: the whole index is replaced
+            expect(index.isBusy()).toBe(false) // only waiting out the debounce
+            await vi.advanceTimersByTimeAsync(20)
+            await vi.waitFor(() => expect(seen).toEqual([true, false]))
+            expect(index.isBusy()).toBe(false)
+            index.dispose()
+        } finally {
+            vi.useRealTimers()
+        }
+    })
+
+    it('reports the first build of a cold index as busy', async () => {
+        const s = fakeSource([doc('Alpha', '- a')])
+        const index = createRemoteGraphIndex(s.source, inlineTransport(), { graphId: 'g1', debounceMs: 10 })
+        const seen: boolean[] = []
+        index.onBusyChanged((busy) => seen.push(busy))
+
+        await index.refresh()
+
+        // The catch-up that follows a cold build's commit is indexing too, so idle comes after it.
+        await vi.waitFor(() => expect(index.isBusy()).toBe(false))
+        expect(seen[0]).toBe(true)
+        expect(seen.at(-1)).toBe(false)
+        index.dispose()
+    })
+
+    it('says nothing more once disposed', async () => {
+        vi.useFakeTimers()
+        try {
+            const s = fakeSource([doc('Alpha', '- a')])
+            const index = createRemoteGraphIndex(s.source, inlineTransport(), { graphId: 'g1', debounceMs: 10 })
+            await index.refresh()
+            await vi.advanceTimersByTimeAsync(20)
+            const seen: boolean[] = []
+            index.onBusyChanged((busy) => seen.push(busy))
+            s.fire()
+            index.dispose()
+            await vi.advanceTimersByTimeAsync(50)
+            expect(seen).toEqual([])
+        } finally {
+            vi.useRealTimers()
+        }
+    })
+
+    /**
+     * A source that lists its documents: a change to the graph's names (create, rename, alias
+     * change, delete) is reconciled against the index's own names, and only the documents whose
+     * names changed are read. The listing costs no document text.
+     */
+    function listingSource(initial: IndexDoc[]) {
+        const base = fakeSource(initial)
+        let docs = initial
+        let unreadable = new Set<string>()
+        const source: IndexSource = {
+            ...base.source,
+            snapshotDocument(concept: string) {
+                base.counts.single++
+                if (unreadable.has(concept)) return null
+                return docs.find((d) => d.concept.toLowerCase() === concept.toLowerCase()) ?? null
+            },
+            async snapshotForIndex() {
+                base.counts.full++
+                return docs
+            },
+            listDocuments: () => docs.map((d) => ({ concept: d.concept, kind: d.kind, aliases: d.aliases })),
+        }
+        return {
+            ...base,
+            source,
+            setDocs(next: IndexDoc[]) {
+                docs = next
+            },
+            failReading(concept: string) {
+                unreadable = new Set([concept])
+            },
+        }
+    }
+
+    it('reconciles a rename as a removal and one read, without re-reading the graph', async () => {
+        vi.useFakeTimers()
+        try {
+            const s = listingSource([doc('Physics', '- p'), doc('Notes', '- see [[Physics]]'), doc('Other', '- o')])
+            const index = createRemoteGraphIndex(s.source, inlineTransport(), { graphId: 'g1', debounceMs: 10 })
+            await index.refresh()
+            await vi.advanceTimersByTimeAsync(20)
+            s.counts.full = 0
+            s.counts.single = 0
+
+            // Renamed under "Keep the old name working": the old title is the page's alias now.
+            s.setDocs([{ ...doc('Physical Science', '- p'), aliases: ['Physics'] }, doc('Notes', '- see [[Physics]]'), doc('Other', '- o')])
+            s.fire() // a registry change names nothing
+            await vi.advanceTimersByTimeAsync(20)
+            await index.settled?.()
+
+            expect(s.counts.full).toBe(0)
+            expect(s.counts.single).toBe(1) // Physical Science; Physics needs no read to be removed
+            expect(index.candidate('Physics')).toMatchObject({ kind: 'alias', canonical: 'Physical Science' })
+            expect(index.candidate('Physical Science')).toMatchObject({ kind: 'page' })
+            expect((await index.backlinks('Physical Science')).map((group) => group.sourceConcept)).toEqual(['Notes'])
+            index.dispose()
+        } finally {
+            vi.useRealTimers()
+        }
+    })
+
+    it('reconciles an alias change, and a delete, one document each', async () => {
+        vi.useFakeTimers()
+        try {
+            const s = listingSource([doc('Kanban', '- k'), doc('Old', '- o')])
+            const index = createRemoteGraphIndex(s.source, inlineTransport(), { graphId: 'g1', debounceMs: 10 })
+            await index.refresh()
+            await vi.advanceTimersByTimeAsync(20)
+            s.counts.full = 0
+
+            s.setDocs([{ ...doc('Kanban', '- k'), aliases: ['Board'] }])
+            s.fire()
+            await vi.advanceTimersByTimeAsync(20)
+            await index.settled?.()
+
+            expect(s.counts.full).toBe(0)
+            expect(index.candidate('Board')).toMatchObject({ kind: 'alias', canonical: 'Kanban' })
+            expect(index.conceptExists('Old')).toBe(false)
+            index.dispose()
+        } finally {
+            vi.useRealTimers()
+        }
+    })
+
+    it('replaces the whole index when a document it still lists cannot be read, rather than dropping it', async () => {
+        vi.useFakeTimers()
+        try {
+            const s = listingSource([doc('Kanban', '- k')])
+            const index = createRemoteGraphIndex(s.source, inlineTransport(), { graphId: 'g1', debounceMs: 10 })
+            await index.refresh()
+            await vi.advanceTimersByTimeAsync(20)
+            s.counts.full = 0
+
+            s.setDocs([{ ...doc('Kanban', '- k'), aliases: ['Board'] }])
+            s.failReading('Kanban')
+            s.fire()
+            await vi.advanceTimersByTimeAsync(20)
+            await index.settled?.()
+
+            expect(s.counts.full).toBe(1)
+            expect(index.conceptExists('Kanban')).toBe(true)
+            index.dispose()
+        } finally {
+            vi.useRealTimers()
+        }
+    })
+
+    /** A listing source whose durable checkpoint can say the names moved, with its own listing of them. */
+    function checkpointSource(initial: IndexDoc[]) {
+        const s = listingSource(initial)
+        let pending: { names: { concept: string; kind: 'page' | 'journal'; aliases: string[] }[] } | null = null
+        const acknowledged = vi.fn(async () => {
+            pending = null
+        })
+        const source: IndexSource = {
+            ...s.source,
+            async pendingIndexChanges() {
+                return pending ? { changes: [], namesMoved: true, names: pending.names, acknowledge: acknowledged } : { changes: [], acknowledge: acknowledged }
+            },
+        }
+        return {
+            ...s,
+            source,
+            acknowledged,
+            /** The registry moved while this tab was away: the checkpoint lists the names as they are now. */
+            namesMovedTo(docs: IndexDoc[]) {
+                pending = { names: docs.map((d) => ({ concept: d.concept, kind: d.kind, aliases: d.aliases })) }
+            },
+        }
+    }
+
+    it("reconciles names when a checkpoint says they moved, against the checkpoint's own listing", async () => {
+        vi.useFakeTimers()
+        try {
+            const s = checkpointSource([doc('Physics', '- p')])
+            const index = createRemoteGraphIndex(s.source, inlineTransport(), { graphId: 'g1', debounceMs: 10 })
+            await index.refresh()
+            await vi.advanceTimersByTimeAsync(20)
+            s.counts.full = 0
+
+            // Another tab renamed it: the shared cache has the new name, though this tab's live
+            // listing has not caught up yet.
+            s.setDocs([doc('Physical Science', '- p')])
+            s.namesMovedTo([doc('Physical Science', '- p')])
+            s.source.listDocuments = () => [{ concept: 'Physics', kind: 'page', aliases: [] }]
+            s.fire({ concept: 'Unrelated' })
+            await vi.advanceTimersByTimeAsync(20)
+            await index.settled?.()
+
+            expect(s.counts.full).toBe(0)
+            expect(index.conceptExists('Physics')).toBe(false)
+            expect(index.conceptExists('Physical Science')).toBe(true)
+            expect(s.acknowledged).toHaveBeenCalled()
+            index.dispose()
+        } finally {
+            vi.useRealTimers()
+        }
+    })
+
+    // Two titles swapped, each document's change named by both its titles as stores report it:
+    // both titles are read again, so each shows the text it names now.
+    it('takes a swap of two titles, named by both titles, a document at a time', async () => {
+        vi.useFakeTimers()
+        try {
+            const s = listingSource([doc('Left', '- the left text'), doc('Right', '- the right text')])
+            const index = createRemoteGraphIndex(s.source, inlineTransport(), { graphId: 'g1', debounceMs: 10 })
+            await index.refresh()
+            await vi.advanceTimersByTimeAsync(20)
+            s.counts.full = 0
+
+            s.setDocs([doc('Left', '- the right text [[Target]]'), doc('Right', '- the left text')])
+            s.fire({ concept: 'Left' })
+            s.fire({ concept: 'Right' })
+            await vi.advanceTimersByTimeAsync(20)
+            await index.settled?.()
+
+            expect(s.counts.full).toBe(0)
+            expect((await index.backlinks('Target')).map((group) => group.sourceConcept)).toEqual(['Left'])
+            index.dispose()
+        } finally {
+            vi.useRealTimers()
+        }
+    })
+
+    // A rename waits for the index to settle before reading which documents to rewrite. Changes
+    // that arrive after it asked are the next caller's: a collaborator typing without a pause would
+    // otherwise re-arm the debounce for as long as they type, and hold the rename to its bound.
+    it('settles the changes observed when asked, however many arrive after', async () => {
+        vi.useFakeTimers()
+        try {
+            const s = listingSource([doc('Alpha', '- a'), doc('Beta', '- b')])
+            const index = createRemoteGraphIndex(s.source, inlineTransport(), { graphId: 'g1', debounceMs: 300 })
+            await index.refresh()
+            await vi.advanceTimersByTimeAsync(400)
+
+            s.setDocs([doc('Alpha', '- a [[Target]]'), doc('Beta', '- b')])
+            s.fire({ concept: 'Alpha' })
+            let done = false
+            void index.settled!().then(() => (done = true))
+            // Beta changes every 100 ms, inside the 300 ms debounce, for two seconds.
+            for (let tick = 0; tick < 20 && !done; tick++) {
+                s.fire({ concept: 'Beta' })
+                await vi.advanceTimersByTimeAsync(100)
+            }
+
+            expect(done).toBe(true)
+            expect((await index.backlinks('Target')).map((group) => group.sourceConcept)).toEqual(['Alpha'])
+            index.dispose()
+        } finally {
+            vi.useRealTimers()
+        }
+    })
+
+    it("removes a deleted page whose title another page has as an alias", async () => {
+        vi.useFakeTimers()
+        try {
+            const s = listingSource([{ ...doc('Kanban', '- k'), aliases: ['Roadmap'] }, doc('Roadmap', '- r [[Target]]'), doc('Target', '- t')])
+            const index = createRemoteGraphIndex(s.source, inlineTransport(), { graphId: 'g1', debounceMs: 10 })
+            await index.refresh()
+            await vi.advanceTimersByTimeAsync(20)
+            s.counts.full = 0
+
+            s.setDocs([{ ...doc('Kanban', '- k'), aliases: ['Roadmap'] }, doc('Target', '- t')])
+            s.fire()
+            await vi.advanceTimersByTimeAsync(20)
+            await index.settled?.()
+
+            expect(s.counts.full).toBe(0)
+            // Roadmap's own link went with it.
+            expect((await index.backlinks('Target')).map((group) => group.sourceConcept)).toEqual([])
             index.dispose()
         } finally {
             vi.useRealTimers()
@@ -1085,10 +1445,10 @@ describe('remote graph index', () => {
             // The persisted generation makes refresh interactive while source catch-up
             // remains held behind the gate.
             await b.refresh()
-            second.add(doc('Submeta', ''))
-            second.fire({ concept: 'Submeta' })
+            second.add(doc('Seedlings', ''))
+            second.fire({ concept: 'Seedlings' })
             release()
-            await vi.waitFor(() => expect(b.conceptExists('Submeta')).toBe(true))
+            await vi.waitFor(() => expect(b.conceptExists('Seedlings')).toBe(true))
             await vi.advanceTimersByTimeAsync(20)
 
             expect(second.counts.full).toBe(0)

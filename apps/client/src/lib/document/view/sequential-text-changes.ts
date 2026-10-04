@@ -8,9 +8,9 @@
  * (wrap-selection.ts, ADR 0077), a format toggle removes both markers, a multi-caret edit types
  * in every range. CodeMirror reports each of those in the coordinates of the document BEFORE the
  * transaction (`fromA`, `toA`), so forwarding them as reported applied the second change to text
- * the first had already shifted: the `]` of `[Desktop CRM]` landed one character early, the next
- * press compounded it, and the file on disk read `[[Desktop CR]]M` while the index minted a
- * pageless "Desktop CR". Found live on 2026-09-22 on a Filesystem graph; every store that takes
+ * the first had already shifted: the `]` of `[Garden Shed]` landed one character early, the next
+ * press compounded it, and the file on disk read `[[Garden She]]d` while the index minted a
+ * pageless "Garden She". Found live on 2026-09-22 on a Filesystem graph; every store that takes
  * `applyChange` was exposed (the Filesystem store, the in-memory harness store, and a Draft, the
  * page a new name starts as on any graph). A page already synced binds the `Y.Text` to the
  * editor and never takes this path.

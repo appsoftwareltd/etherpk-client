@@ -28,6 +28,7 @@
 import 'fake-indexeddb/auto'
 
 import type { GraphKeyring } from '$lib/crypto'
+import { reachedWithin } from '$lib/reached-within'
 import { createRemoteGraphIndex, type RemoteGraphIndex } from '$lib/document/index-worker/client'
 import { inlineTransport, memoryDbHost } from '$lib/document/index-worker/transport'
 import type { SemanticStatus } from '$lib/document/semantic/embedding-db'
@@ -146,6 +147,17 @@ export interface IndexFollower {
  * stays for an index without `settled`.
  */
 export function followIndex(index: RemoteGraphIndex, source: { onChange(listener: () => void): () => void }, followMs = INDEX_FOLLOW_MS): IndexFollower {
+    // An index that says when it has absorbed what it has seen is simply asked, every time: its
+    // `settled` covers exactly the changes seen by then. A flag that any index update cleared let
+    // an update for an earlier change, landing after a later change was seen, stand in for it.
+    if (index.settled) {
+        return {
+            async settled() {
+                await reachedWithin(index.settled!(), followMs)
+            },
+            dispose() {},
+        }
+    }
     let pending = false
     let waiters: Array<() => void> = []
     const stopSource = source.onChange(() => {
@@ -164,13 +176,6 @@ export function followIndex(index: RemoteGraphIndex, source: { onChange(listener
                 waiters.push(resolve)
                 const timer = setTimeout(resolve, followMs)
                 timer.unref?.()
-                if (index.settled) {
-                    void index.settled().then(() => {
-                        pending = false
-                        clearTimeout(timer)
-                        resolve()
-                    })
-                }
             })
         },
         dispose() {
@@ -419,7 +424,7 @@ export async function openHeadlessGraph(deps: HeadlessGraphDeps): Promise<Headle
                 await Promise.race([caughtUp, timeout])
             },
             // The body alone, as on a folder: an imported page keeps its block, and the store
-            // writes identity back into one that exists (ADR 0061).
+            // writes identity back into one that exists, adding one to show aliases (ADR 0061).
             open: (concept) => bodyView(store.open(concept)),
             openRaw: (concept) => store.open(concept),
             createJournal: (date, body) => store.createJournal(date, body),

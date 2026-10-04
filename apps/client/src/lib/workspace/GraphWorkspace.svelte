@@ -95,6 +95,8 @@
     import AllDocumentsView from "$lib/document/view/AllDocumentsView.svelte";
     import GraphSidebarView from "$lib/document/view/GraphSidebarView.svelte";
     import RenameDocumentDialog from "$lib/document/view/RenameDocumentDialog.svelte";
+    import LinkRenameDialog from "$lib/document/view/LinkRenameDialog.svelte";
+    import { type LinkRenameChoice, type LinkRenameRow, previewPlans, runInOrder, type RunStatus, scopeRenamesInTypedName, usesScopeBeyondPage } from "$lib/document/view/link-renames";
     import SearchModal from "$lib/document/view/SearchModal.svelte";
     import TasksView from "$lib/document/view/TasksView.svelte";
     import KanbanView from "$lib/kanban/KanbanView.svelte";
@@ -299,8 +301,10 @@
     } from "$lib/document/favourites";
     import { createRecents, type RecentsStore } from "$lib/navigation/recents";
     import {
+        mergeCount,
         type RenameLinkStrategy,
         type RenamePlan,
+        type RenameResult,
     } from "$lib/storage/rename";
     import ContextMenu from "$lib/surface/ui/ContextMenu.svelte";
     import {
@@ -361,6 +365,7 @@
     import {
         createServerDocumentStore,
         type ServerDocumentStore,
+        type HiddenAliasesReport,
     } from "$lib/storage/server/server-document-store";
     import { createServerAssetStore } from "$lib/storage/server/server-asset-store";
     import {
@@ -416,6 +421,8 @@
     import type { ActivityOutcome } from "$lib/activity/store";
     import type { ActivityProgress } from "$lib/activity/types";
     import { type MirrorIndicator, mirrorIndicatorView } from "./mirror-indicator";
+    import { createIndexingIndicator } from "./indexing-indicator";
+    import { toolbarAccentStyle } from "./toolbar-accent";
 
     /** One tab per graph owns the mirror folder; the rest queue behind this. */
     const MIRROR_LOCK_PREFIX = "etherpk-mirror-folder:";
@@ -464,7 +471,7 @@
     } from "$lib/storage/fs/folder-path";
     import GraphFolderPathDialog from "$lib/storage/ui/GraphFolderPathDialog.svelte";
     import { isScopedBy, rewriteWikilinkScope } from "$lib/document/wikilink/rename";
-    import { createLinkRenameController } from "./link-rename-controller";
+    import { asksSomething, createLinkRenameController, type ProposedRename } from "./link-rename-controller";
     import {
         createGraphSync,
         openGraphCache,
@@ -566,11 +573,14 @@
         graphId: routeGraphId,
         opfs,
         autosaveMs,
+        indexingIconMs,
         server,
     }: {
         graphId: string;
         opfs: boolean;
         autosaveMs?: number;
+        /** Dev and e2e only: the indexing icon's show delay, 0 to show it at once. */
+        indexingIconMs?: number;
         server?: ServerGate;
     } = $props();
 
@@ -656,6 +666,16 @@
     type LoadingStep = "opening" | "loading" | "indexing";
     let loadingStep = $state<LoadingStep>("opening");
     let indexed = $state<{ done: number; total: number } | null>(null);
+    /**
+     * The toolbar's indexing icon (desktop), shown while the search index takes in a change a
+     * person may be waiting on, such as the whole index being replaced after a rename.
+     */
+    let indexingIconShown = $state(false);
+    // Read once: a dev and e2e knob, fixed for the workspace's life like the graph id.
+    // svelte-ignore state_referenced_locally
+    const indexingIndicator = createIndexingIndicator((shown) => (indexingIconShown = shown), {
+        showAfterMs: dev ? indexingIconMs : undefined,
+    });
 
     let indexTransport: IndexTransport | undefined;
     /**
@@ -696,6 +716,15 @@
         }
         noteIndexNotPersisted(status.blocked);
     }
+    /**
+     * TEMPORARY (ADR 0061, amended 2026-10-03): Graph Settings > Maintenance's repair for the
+     * aliases a synced graph hid. Goes with the store's `revealHiddenAliases`.
+     */
+    async function revealHiddenAliases(): Promise<HiddenAliasesReport> {
+        if (!store || !isServerStore) throw new Error("This graph is not synced.");
+        return (store as ServerDocumentStore).revealHiddenAliases();
+    }
+
     /**
      * Discard and re-derive the [[Derived Index]] on request (Graph Settings → Storage, and the
      * `index.rebuild` Command). `indexed` is cleared first: it still holds the initial build's
@@ -1102,12 +1131,9 @@
      * with it (graph-accent.svelte.ts). Applied as a CSS custom property on the workspace root,
      * which both presenters' top bars read as their background: the desktop toolbar and the
      * mobile strip, neither of which knows about Graph Settings. The buttons on either bar paint
-     * their own theme surface over it.
+     * their own theme surface over it, and what has none takes the ink beside it (toolbar-accent.ts).
      */
-    const toolbarStyle = $derived.by(() => {
-        const color = graphAccentFor(graphId);
-        return color ? `--gk-toolbar-accent: ${color};` : "";
-    });
+    const toolbarStyle = $derived(toolbarAccentStyle(graphAccentFor(graphId)));
     /**
      * Title the Graph Sidebar's dockview tab from the current name. The tab is titled once, when
      * its panel is created, and two things make that stale: a restored Layout carries the title
@@ -1761,6 +1787,7 @@
     /** Rename dialog state — the dialog itself is a presentation surface over the store. */
     let renaming = $state<{
         concept: string;
+        /** What renaming the page to `candidate` would do. */
         plan: RenamePlan | null;
         /** No document yet - a [[Draft]] - so the dialog offers no alias arm (ADR 0064). */
         pageless: boolean;
@@ -1768,16 +1795,23 @@
         error: string | null;
         /** A name typed into the document's frontmatter (ADR 0061); the dialog opens on it. */
         initialName?: string;
-        /** Where a pre-filled name came from: the block, or a link edited in place (ADR 0065). */
-        source?: "frontmatter" | "wikilink";
-        /**
-         * The document whose edited link proposed this rename (ADR 0065). Its group in the
-         * index still counts the old name until the index catches up with the keystrokes that
-         * just happened, so the preview's reference count corrects for it from the live text.
-         */
-        editingTarget?: string;
         /** Settles the frontmatter proposal that opened the dialog: the new concept, or null. */
         resolve?: (result: string | null) => void;
+        /** The latest name typed, whose plan and scope rows are being worked out. */
+        candidate: string;
+        /** The name the plan and the scope rows shown are for: what Rename would act on. */
+        rowsFor: string;
+        /**
+         * The scopes that name renames which other documents use, one row each (ADR 0065, amended
+         * 2026-10-04): renamed everywhere when ticked, after the page itself.
+         */
+        scopeRows: LinkRenameRow[];
+        /** How the page's own rename went, once a run has started. */
+        pageStatus: RunStatus;
+        /** The page's name once its own rename has run: what a title edit's proposal settles with. */
+        renamedTo: string | null;
+        /** What the run has renamed so far, for the notice when the dialog closes. */
+        results: RenameResult[];
     } | null>(null);
 
     /** Delete confirmation state. */
@@ -1800,12 +1834,24 @@
 
     /** Open the rename dialog. The plan is recomputed as the typed name changes. */
     function startRename(concept: string) {
+        // A rename that is running is never replaced: its rows are mid-way through the graph.
+        if (renaming?.busy) return;
+        // A proposal's dialog already open is replaced, and its question answered "no", so the
+        // controller waiting on it moves on; otherwise that document's proposals queue forever.
+        renaming?.resolve?.(null);
+        dismissLinkRenames();
         renaming = {
             concept,
             plan: null,
             pageless: !documentExists(concept),
             busy: false,
             error: null,
+            candidate: concept,
+            rowsFor: concept,
+            scopeRows: [],
+            pageStatus: "waiting",
+            renamedTo: null,
+            results: [],
         };
         void refreshRenamePlan(concept, concept);
     }
@@ -1815,47 +1861,52 @@
      * frontmatter (ADR 0061), resolving to the new concept, or null when cancelled - at which
      * point the controller puts the old name back into the block.
      */
-    async function promptRename(
-        concept: string,
-        initialName: string,
-        source: "frontmatter" | "wikilink" = "frontmatter",
-        editingTarget?: string,
-    ): Promise<string | null> {
-        // A link's question opens at once and its plan fills in after: the wait is the index's
-        // and the user has already been told about it; a refusal shows in the dialog, where
-        // "Just this link" is the way out. A block's question is different - Cancel puts the
-        // registry's name back - so a name the store refuses outright (a Protected Document's,
-        // which nothing may merge into, ADR 0062) never opens that dialog: the refusal is said,
-        // and null hands the block back to the controller.
-        const plan = source === "wikilink" ? null : await planFor(concept, initialName, editingTarget);
+    async function promptRename(concept: string, initialName: string): Promise<string | null> {
+        // Cancel puts the registry's name back into the block, so a name the store refuses
+        // outright (a Protected Document's, which nothing may merge into, ADR 0062) never opens
+        // the dialog: the refusal is said, and null hands the block back to the controller.
+        const [plan, scopeRows] = await Promise.all([planFor(concept, initialName), scopeRowsFor(concept, initialName)]);
         if (plan?.refusal) {
             notify(`Could not rename: ${plan.refusal}`);
             return null;
         }
-        if (source === "wikilink") void refreshRenamePlan(concept, initialName, editingTarget);
+        // A rename that is running is never replaced; this proposal is answered "no" instead.
+        if (renaming?.busy) return null;
         return new Promise((resolve) => {
             // A dialog already open (Rename… chosen by hand, or an earlier proposal) is replaced;
             // its question is answered "no" so the controller waiting on it moves on.
             renaming?.resolve?.(null);
-            // A frontmatter proposal only ever comes from a document, so never pageless; a
-            // link's concept may have no page (ADR 0064).
+            dismissLinkRenames();
+            // A frontmatter proposal only ever comes from a document, so never pageless.
             renaming = {
                 concept,
                 plan,
-                pageless: source === "wikilink" && !documentExists(concept),
+                pageless: false,
                 busy: false,
                 error: null,
                 initialName,
-                source,
-                editingTarget,
                 resolve,
+                candidate: initialName,
+                rowsFor: initialName,
+                scopeRows,
+                pageStatus: "waiting",
+                renamedTo: null,
+                results: [],
             };
         });
     }
 
-    function cancelRename() {
-        renaming?.resolve?.(null);
+    /**
+     * Cancel, or Close after a run that stopped part-way: what ran stays, said in one notice, and a
+     * title edit's proposal settles with the page's name as it is now (null when it never moved, so
+     * the old name goes back into the block).
+     */
+    function dismissRename() {
+        const current = renaming;
+        if (!current || current.busy) return;
         renaming = null;
+        current.resolve?.(current.renamedTo);
+        if (current.results.length > 0) notify(current.results.map(renameDocumentSummary).join(" "));
     }
 
     // ── Frontmatter as a proposal (ADR 0061) ──────────────────────────────────────────────────
@@ -1883,6 +1934,18 @@
         return identityIndex.get(conceptKey(target)) ?? null;
     }
 
+    /**
+     * The concept of the document that answers to `name`, by its title or one of its aliases, or
+     * null when none does. A page's own title outranks another page's alias, as everywhere else.
+     */
+    function documentNamed(name: string): string | null {
+        const titled = identityOf(name);
+        if (titled) return titled.concept;
+        const key = conceptKey(name);
+        const holder = store?.listDocuments().find((entry) => entry.aliases.some((alias) => conceptKey(alias) === key));
+        return holder?.concept ?? null;
+    }
+
     /** The document as its editors hold it - the projection for a Protected Document. */
     function editorDocumentFor(target: string) {
         try {
@@ -1897,7 +1960,15 @@
         textOf: (target) => editorDocumentFor(target)?.getText() ?? null,
         identityOf,
         applyAliases: async (target, aliases) => {
-            await store?.setAliases(target, aliases);
+            try {
+                await store?.setAliases(target, aliases);
+            } catch (error) {
+                // The block keeps what the person typed, and the mark offers to apply it again, so
+                // nothing is lost: say why it did not apply.
+                notify(
+                    `Could not change the aliases of "${target}". ${error instanceof Error ? error.message : String(error)}`,
+                );
+            }
         },
         // Through the document every editor is showing, as an external change, so each of them
         // sees it; only the block is replaced, the body being verbatim in the rewritten text.
@@ -1929,33 +2000,221 @@
     // question, so the answer can take a moment: a status says what is being waited for, and
     // the dialog then opens at once, its impact figures filling in after (the wait is not
     // blocking, and nothing the user does in the meantime is lost).
+    /** Whether `after` is another name of the page `before` names: it still reaches that page. */
+    function namesSameDocument(before: string, after: string): boolean {
+        const page = documentNamed(before);
+        return page !== null && conceptKey(page) === conceptKey(documentNamed(after) ?? "");
+    }
+
+    /**
+     * Whether `name` is used beyond `here`, the document being edited (ADR 0065): a page that
+     * answers to it, by its title or one of its aliases; a page whose NAME or one of whose aliases
+     * holds it as a scope (the index holds body links only, so this is asked of the registry); a
+     * link in `here`'s live text (the index lags the keystrokes that just happened); or a link in
+     * any other document, per the index. An index or a document that cannot say counts as a use: a
+     * question the user can answer beats a rename never offered.
+     *
+     * For a scope of a page being renamed (`ownName`, ADR 0065, amended 2026-10-04) the page's own
+     * rename already carries some of these: its name, the pages and aliases it scopes, and every
+     * link to them, which hold the scope only as part of the page's name. Only a use beyond those
+     * counts, so a document the index names is read to see whether it has one.
+     */
+    async function nameUsedBeyond(
+        name: string,
+        here: string,
+        options: { ownName: boolean; backlinks: (name: string) => Promise<readonly { sourceConcept: string }[] | null> },
+    ): Promise<boolean> {
+        if (identityOf(name) || documentExists(name)) return true;
+        const entries = store?.listDocuments() ?? [];
+        const carried = (concept: string) => options.ownName && (conceptKey(concept) === conceptKey(here) || isScopedBy(concept, here));
+        if (entries.some((entry) => !carried(entry.concept) && isScopedBy(entry.concept, name))) return true;
+        if (entries.some((entry) => entry.aliases.some((alias) => !carried(alias) && isScopedBy(alias, name)))) return true;
+        const usesIn = (text: string) =>
+            options.ownName ? usesScopeBeyondPage(text, name, here) : rewriteWikilinkScope(text, name, name).count > 0;
+        if (usesIn(editorDocumentFor(here)?.getText() ?? "")) return true;
+        const groups = await options.backlinks(name);
+        if (groups === null) return true;
+        for (const group of groups) {
+            if (conceptKey(group.sourceConcept) === conceptKey(here)) continue;
+            if (!options.ownName) return true;
+            const snapshot = await store?.snapshotDocument(group.sourceConcept).catch(() => null);
+            if (!snapshot || usesIn(snapshot.text)) return true;
+        }
+        return false;
+    }
+
+    /**
+     * The scope rows a name typed for `page` shows (ADR 0065, amended 2026-10-04): each scope the
+     * name renames, read as an edited link reads, that something besides this page's own name
+     * uses. A scope only this page's name holds has no row: renaming it would rename only this page.
+     */
+    async function scopeRowsFor(page: string, typed: string): Promise<LinkRenameRow[]> {
+        const rows: LinkRenameRow[] = [];
+        for (const edit of scopeRenamesInTypedName(page, typed)) {
+            if (!asksSomething(edit, namesSameDocument)) continue;
+            const used = await nameUsedBeyond(edit.before, page, { ownName: true, backlinks: documentMutations.previewBacklinks });
+            if (!used) continue;
+            const after = edit.after.trim();
+            rows.push({
+                before: edit.before,
+                after,
+                plan: await planFor(edit.before, after),
+                pageless: !documentExists(edit.before),
+                status: "waiting",
+                error: null,
+            });
+        }
+        return rows;
+    }
+
     const linkRenameController = createLinkRenameController({
+        sameDocument: namesSameDocument,
+        // A name a page answers to, its title or one of its aliases, exists while the page does:
+        // editing a link that says it proposes renaming that name (ADR 0065, amended 2026-10-04,
+        // for an alias). The index is waited for, since the answer decides what is asked.
         existsElsewhere: (target, before) =>
-            withProgressNotice(`Checking whether "${before}" is used elsewhere…`, async () => {
-                if (identityOf(before)) return true;
-                if (documentExists(before)) return false; // resolves, but not by that name: an alias
-                if (store?.listDocuments().some((entry) => isScopedBy(entry.concept, before))) return true;
-                const text = editorDocumentFor(target)?.getText() ?? "";
-                if (rewriteWikilinkScope(text, before, before).count > 0) return true;
-                const groups = (await graphIndex?.backlinks(before)) ?? [];
-                return groups.some(
-                    (group) => conceptKey(group.sourceConcept) !== conceptKey(target),
-                );
-            }),
-        promptRename: (target, before, after) =>
-            promptRename(before, after, "wikilink", target),
+            withProgressNotice(`Checking whether "${before}" is used elsewhere…`, () =>
+                nameUsedBeyond(before, target, { ownName: false, backlinks: documentMutations.backlinksCaughtUp }),
+            ),
+        promptRenames: (target, renames) => promptLinkRenames(target, renames),
         conceptMoved: (before, after) =>
             documentMutations.followConceptMove(before, after),
     });
+
+    /**
+     * The renames one link edit proposes, asked together (ADR 0065, amended 2026-10-03). The
+     * dialog keeps each row's tick and strategy; this keeps the rows, their plans and how the run
+     * went, and runs them.
+     */
+    let linkRenaming = $state<{
+        /** Each prompt mounts a fresh dialog, whose ticks start from the rows it opens with. */
+        id: number;
+        /** The document whose edited link proposed these renames. */
+        target: string;
+        rows: LinkRenameRow[];
+        busy: boolean;
+        /** What the run has renamed so far, for the notice when the dialog closes. */
+        results: RenameResult[];
+        /** Settles the controller's question once the dialog is done with. */
+        resolve: () => void;
+    } | null>(null);
+    let linkRenamePrompts = 0;
+    /** Settles when no run of the dialog is in progress. */
+    let linkRenameRun: Promise<void> = Promise.resolve();
+
+    /**
+     * Ask about the renames an edit proposes. The dialog opens at once and each row's plan fills
+     * in as the index answers: the wait is the index's, and the user has already been told
+     * about it. Resolves when the dialog closes, whatever was renamed. A run in progress is never
+     * replaced: another document's proposal waits for it to finish.
+     */
+    async function promptLinkRenames(target: string, renames: readonly ProposedRename[]): Promise<void> {
+        await linkRenameRun;
+        return new Promise((resolve) => {
+            // A dialog already open is replaced, and its question answered, as promptRename does.
+            renaming?.resolve?.(null);
+            renaming = null;
+            dismissLinkRenames();
+            const id = ++linkRenamePrompts;
+            linkRenaming = {
+                id,
+                target,
+                rows: renames.map((rename) => ({
+                    before: rename.before,
+                    after: rename.after,
+                    plan: null,
+                    pageless: !documentExists(rename.before),
+                    status: "waiting",
+                    error: null,
+                })),
+                busy: false,
+                results: [],
+                resolve,
+            };
+            renames.forEach((rename, index) => {
+                void planFor(rename.before, rename.after, target).then((plan) => {
+                    if (linkRenaming?.id === id) linkRenaming.rows[index].plan = plan;
+                });
+            });
+        });
+    }
+
+    /**
+     * Close the dialog: what ran stays, said in one notice, and the controller moves on. A
+     * running dialog refuses, as the dialog shell refuses dismissal while busy.
+     */
+    function dismissLinkRenames() {
+        const current = linkRenaming;
+        if (!current || current.busy) return;
+        linkRenaming = null;
+        if (current.results.length > 0) notify(current.results.map(renameDocumentSummary).join(" "));
+        current.resolve();
+    }
+
+    /**
+     * Run the ticked renames outermost first (the rows' order), stopping at the first failure
+     * with the dialog open and each row marked. A Retry runs again from the failed row.
+     */
+    async function confirmLinkRenames(choices: LinkRenameChoice[]) {
+        const current = linkRenaming;
+        if (!current || current.busy) return;
+        current.busy = true;
+        let settle = () => {};
+        linkRenameRun = new Promise((resolve) => (settle = resolve));
+        // What the dialog showed for each row when Rename was pressed.
+        const shown = previewPlans(current.rows.map((row, index) => ({ plan: row.plan, ticked: choices[index]?.ticked ?? false })));
+        try {
+            const completed = await runInOrder(
+                current.rows.map((row, index) => ({ ticked: choices[index]?.ticked ?? false, status: row.status })),
+                async (index) => {
+                    const row = current.rows[index];
+                    // Planned afresh: an earlier rename in this run may have moved names this one
+                    // would have cascaded into, or taken a name it now lands on. The store re-plans
+                    // and refuses on its own; this plan says what to re-key, and whether it merges.
+                    const plan = await documentMutations.planRename(row.before, row.after);
+                    if (plan?.refusal) throw new Error(plan.refusal);
+                    // Never a merge the dialog did not show: an earlier rename can create the very
+                    // name this one lands on. The row shows it now, and Retry is the consent.
+                    const before = shown[index];
+                    if (plan && mergeCount(plan) > (before ? mergeCount(before) : 0)) {
+                        row.plan = plan;
+                        shown[index] = plan;
+                        throw new Error(
+                            `Renaming "${row.before}" now merges documents, after the renames above it. The merge is shown below; choose Retry to go ahead.`,
+                        );
+                    }
+                    current.results.push(
+                        await documentMutations.rename(row.before, plan, row.after, choices[index].strategy),
+                    );
+                },
+                (index, status, error) => {
+                    current.rows[index].status = status;
+                    current.rows[index].error = error;
+                },
+            );
+            current.busy = false;
+            if (completed && linkRenaming === current) dismissLinkRenames();
+        } finally {
+            current.busy = false;
+            settle();
+        }
+    }
 
     /**
      * Recompute the impact for a candidate name (ADR 0038 §1): how many scoped concepts come
      * with it, how many merge, how many documents reference it. Preview and effect come from
      * the same plan, so they cannot drift.
      */
-    async function refreshRenamePlan(concept: string, candidate: string, editingTarget?: string) {
-        const plan = await planFor(concept, candidate, editingTarget ?? renaming?.editingTarget);
-        if (renaming?.concept === concept) renaming = { ...renaming, plan };
+    async function refreshRenamePlan(concept: string, candidate: string) {
+        const current = renaming;
+        if (!current || current.concept !== concept || current.busy) return;
+        current.candidate = candidate;
+        const [plan, scopeRows] = await Promise.all([planFor(concept, candidate), scopeRowsFor(concept, candidate)]);
+        // A newer name was typed meanwhile, a run began, or the dialog went: this answer is stale.
+        if (renaming !== current || current.candidate !== candidate || current.busy) return;
+        current.plan = plan;
+        current.scopeRows = scopeRows;
+        current.rowsFor = candidate;
     }
 
     /** The plan for a candidate name, or null when it could not be computed. */
@@ -1974,10 +2233,10 @@
             // count never included, so that row is not the one too many.
             const text = editorDocumentFor(editingTarget)?.getText() ?? "";
             if (rewriteWikilinkScope(text, concept, concept).count > 0) return plan;
-            const groups = (await graphIndex?.backlinks(concept)) ?? [];
+            const groups = (await documentMutations.previewBacklinks(concept)) ?? [];
             const stale = groups.some(
                 (group) =>
-                    referencedInBody(group) &&
+                    referencedInBody(group, concept) &&
                     conceptKey(group.sourceConcept) === conceptKey(editingTarget),
             );
             return stale
@@ -2036,26 +2295,69 @@
         }
     }
 
-    async function confirmRename(next: string, strategy: RenameLinkStrategy) {
+    /**
+     * Run a page's rename (ADR 0065, amended 2026-10-04): the page itself first, to the name typed,
+     * then each ticked scope everywhere, outermost first, each planned afresh as it runs. "Rename
+     * just this page" ticks no scope. A failure stops the run with the dialog open and each row
+     * marked; Retry runs on from the failed row, and Close keeps what is done.
+     */
+    async function confirmRename(next: string, strategy: RenameLinkStrategy, scopes: LinkRenameChoice[]) {
         const current = renaming;
-        if (!current || !store) return;
-        renaming = { ...current, busy: true, error: null };
+        if (!current || !store || current.busy) return;
+        // Rename pressed before the rows followed the name typed: work them out now, and when the
+        // name renames a scope, show its row rather than run without asking. A run only ever does
+        // what the dialog showed.
+        if (current.rowsFor !== next && current.pageStatus === "waiting") {
+            await refreshRenamePlan(current.concept, next);
+            if (renaming !== current || current.rowsFor !== next) return;
+            if (current.scopeRows.length > 0 || current.plan?.refusal) return;
+        }
+        current.busy = true;
+        current.error = null;
+        const ticked = [true, ...current.scopeRows.map((_, index) => scopes[index]?.ticked ?? false)];
+        // What the dialog showed for each row when Rename was pressed.
+        const shown = previewPlans([current.plan, ...current.scopeRows.map((row) => row.plan)].map((plan, index) => ({ plan, ticked: ticked[index] })));
         try {
-            const result = await documentMutations.rename(
-                current.concept,
-                current.plan,
-                next,
-                strategy,
+            const completed = await runInOrder(
+                [current.pageStatus, ...current.scopeRows.map((row) => row.status)].map((status, index) => ({ ticked: ticked[index], status })),
+                async (index) => {
+                    if (index === 0) {
+                        const result = await documentMutations.rename(current.concept, current.plan, next, strategy);
+                        current.results.push(result);
+                        current.renamedTo = result.concept;
+                        return;
+                    }
+                    const row = current.scopeRows[index - 1];
+                    // Planned afresh: the page's own rename has just moved names this one would
+                    // have cascaded into. The store re-plans and refuses on its own; this plan says
+                    // what to re-key, and whether it merges.
+                    const plan = await documentMutations.planRename(row.before, row.after);
+                    if (plan?.refusal) throw new Error(plan.refusal);
+                    // Never a merge the dialog did not show; the row shows it now, and Retry is the consent.
+                    const before = shown[index];
+                    if (plan && mergeCount(plan) > (before ? mergeCount(before) : 0)) {
+                        row.plan = plan;
+                        shown[index] = plan;
+                        throw new Error(
+                            `Renaming "${row.before}" now merges documents, after the rename above it. The merge is shown below; choose Retry to go ahead.`,
+                        );
+                    }
+                    current.results.push(await documentMutations.rename(row.before, plan, row.after, scopes[index - 1].strategy));
+                },
+                (index, status, error) => {
+                    if (index === 0) {
+                        current.pageStatus = status;
+                        current.error = error;
+                    } else {
+                        current.scopeRows[index - 1].status = status;
+                        current.scopeRows[index - 1].error = error;
+                    }
+                },
             );
-            renaming = null;
-            current.resolve?.(result.concept);
-            notify(renameDocumentSummary(result));
-        } catch (err) {
-            renaming = {
-                ...current,
-                busy: false,
-                error: (err as Error).message,
-            };
+            current.busy = false;
+            if (completed && renaming === current) dismissRename();
+        } finally {
+            current.busy = false;
         }
     }
 
@@ -2803,6 +3105,7 @@
         let ownedGraphIndex: RemoteGraphIndex | undefined;
         let currentGraphIndex: RemoteGraphIndex | undefined;
         let detachIndexPersistence = () => {};
+        let detachIndexBusy = () => {};
         let detachSearchRefresh = () => {};
         let ownsIndexCleanup = false;
         const useGraphIndex = (next: RemoteGraphIndex) => {
@@ -2814,6 +3117,14 @@
                 if (!attempt.isCurrent() || graphIndex !== next) return;
                 applyIndexPersistence(status);
             });
+            // The toolbar's indexing icon follows whichever index is current: the inline
+            // fallback replaces the worker's mid-open, and its own work is what to show.
+            detachIndexBusy();
+            detachIndexBusy = next.onBusyChanged((busy) => {
+                if (!attempt.isCurrent() || graphIndex !== next) return;
+                indexingIndicator.busy(busy);
+            });
+            indexingIndicator.busy(next.isBusy());
             // Re-run an OPEN Search when the index changes underneath it — a document edited
             // in another tab, a sync arriving, or the initial build finishing. Quick Find
             // already does this for the same reason: results ranked only on keystroke go
@@ -2870,6 +3181,8 @@
                 ownsIndexCleanup = true;
                 attempt.own(() => {
                     detachIndexPersistence();
+                    detachIndexBusy();
+                    indexingIndicator.busy(false);
                     detachSearchRefresh();
                     ownedGraphIndex?.dispose();
                     // Search is scoped to this graph's index, so it goes with it (ADR 0014).
@@ -3814,8 +4127,8 @@
                 restore: (target) => frontmatterController.restore(target),
             },
             wikilinkRename: {
-                edited: (target, before, after) =>
-                    void linkRenameController.edited(target, before, after),
+                edited: (target, edits) =>
+                    void linkRenameController.edited(target, edits),
             },
             // A View that learns its name late (an asset tab on a synced graph) retitles through
             // this rather than holding the renderer, which a presenter swap replaces. Published
@@ -5805,6 +6118,7 @@
         })();
         return () => {
             stopRecoveries();
+            indexingIndicator.dispose();
             void session.dispose();
         };
     });
@@ -5942,14 +6256,26 @@
         busy={renaming.busy}
         error={renaming.error}
         initialName={renaming.initialName}
-        source={renaming.source}
+        scopeRows={renaming.scopeRows}
+        pageStatus={renaming.pageStatus}
         onpreview={(candidate) => {
             const current = renaming;
             if (current) void refreshRenamePlan(current.concept, candidate);
         }}
-        onconfirm={(next, strategy) => void confirmRename(next, strategy)}
-        oncancel={cancelRename}
+        onconfirm={(next, strategy, scopes) => void confirmRename(next, strategy, scopes)}
+        oncancel={dismissRename}
     />
+{/if}
+
+{#if linkRenaming}
+    {#key linkRenaming.id}
+        <LinkRenameDialog
+            rows={linkRenaming.rows}
+            busy={linkRenaming.busy}
+            onconfirm={(choices) => void confirmLinkRenames(choices)}
+            onclose={dismissLinkRenames}
+        />
+    {/key}
 {/if}
 
 {#if deleting}
@@ -6025,6 +6351,7 @@
         {indexPersistenceBlocked}
         indexProgress={indexed}
         onrebuildindex={rebuildIndex}
+        onrevealhiddenaliases={isServerStore ? revealHiddenAliases : null}
         assetTools={mirrorAwareAssetTools()}
         tab={graphSettingsDialog.tab}
         nameHelp={isServerStore
@@ -6208,6 +6535,7 @@
             ontasks={() => void commandRegistry?.execute("tasks.open")}
             onreset={() => void commandRegistry?.execute("workspace.reset")}
             mirror={mirrorIndicator()}
+            indexing={indexingIconShown}
         />
         <div
             bind:this={container}

@@ -301,14 +301,14 @@ describe('local mirror', () => {
         }
 
         it('renames a file the old rule wrote, keeping its content and leaving no stray', async () => {
-            const adapter = await oldStyleFolder([['submeta-kimura.md', 'Submeta Kimura', 'body']])
+            const adapter = await oldStyleFolder([['herb-garden.md', 'Herb Garden', 'body']])
             const mirror = createLocalMirror(
-                source([{ docId: 'p1', kind: 'page', concept: 'Submeta Kimura', text: 'body' }]),
+                source([{ docId: 'p1', kind: 'page', concept: 'Herb Garden', text: 'body' }]),
                 adapter,
             )
             await mirror.sync()
-            expect(await namesIn(adapter, 'pages')).toEqual(['Submeta Kimura.md'])
-            expect(await textOf(adapter, 'pages', 'Submeta Kimura.md')).toBe('---\ntitle: Submeta Kimura\n---\nbody')
+            expect(await namesIn(adapter, 'pages')).toEqual(['Herb Garden.md'])
+            expect(await textOf(adapter, 'pages', 'Herb Garden.md')).toBe('---\ntitle: Herb Garden\n---\nbody')
             mirror.dispose()
         })
 
@@ -364,15 +364,15 @@ describe('local mirror', () => {
         })
 
         it('renames even while the registry is unconfirmed: the old file is this document\'s own', async () => {
-            const adapter = await oldStyleFolder([['submeta-kimura.md', 'Submeta Kimura', 'body']])
+            const adapter = await oldStyleFolder([['herb-garden.md', 'Herb Garden', 'body']])
             const mirror = createLocalMirror(
-                source([{ docId: 'p1', kind: 'page', concept: 'Submeta Kimura', text: 'body' }], {
+                source([{ docId: 'p1', kind: 'page', concept: 'Herb Garden', text: 'body' }], {
                     confirmRegistry: async () => false,
                 }),
                 adapter,
             )
             await mirror.sync()
-            expect(await namesIn(adapter, 'pages')).toEqual(['Submeta Kimura.md'])
+            expect(await namesIn(adapter, 'pages')).toEqual(['Herb Garden.md'])
             mirror.dispose()
         })
 

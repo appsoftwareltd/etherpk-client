@@ -51,12 +51,30 @@ describe('ServerDocumentStore', () => {
             await s.createPage('Alpha')
             await graph.flushAll()
 
-            // Registry state lives in the root doc. Its cache boundary can add, remove or
-            // rename identities, so only a full replacement can acknowledge it safely.
+            // Registry state lives in the root doc. Its cache boundary can add, remove or rename
+            // identities, which the index reconciles against the store's names: it re-reads the
+            // documents whose names changed rather than replacing itself whole.
             const registryCheckpoint = await s.pendingIndexChanges()
-            expect(registryCheckpoint.changes).toBeNull()
+            expect(registryCheckpoint.changes).not.toBeNull()
+            expect(registryCheckpoint.namesMoved).toBe(true)
+            // The names as the checkpoint's registry has them, merged from every tab's cache.
+            expect(registryCheckpoint.names).toEqual([{ concept: 'Alpha', kind: 'page', aliases: [] }])
             await registryCheckpoint.acknowledge()
-            expect((await s.pendingIndexChanges()).changes).toEqual([])
+            const settled = await s.pendingIndexChanges()
+            expect(settled.changes).toEqual([])
+            expect(settled.namesMoved).toBe(false)
+
+            // A deleted document's row is dirty with no registry entry: its name is gone, which
+            // the same reconciliation finds.
+            await s.createPage('Beta')
+            await graph.flushAll()
+            await (await s.pendingIndexChanges()).acknowledge()
+            await s.deleteDocument('Beta')
+            await graph.flushAll()
+            const deletion = await s.pendingIndexChanges()
+            expect(deletion.changes).not.toBeNull()
+            expect(deletion.namesMoved).toBe(true)
+            await deletion.acknowledge()
 
             // Keep this tab's engine empty, then let a peer persist newer CRDT bytes without
             // delivering them through this tab's relay connection. The checkpoint must bind
@@ -281,13 +299,13 @@ describe('ServerDocumentStore', () => {
         })
         const s = createServerDocumentStore(graph, { readyTimeoutMs: 100 })
         await s.scan()
-        await s.createPage('Contracting')
-        s.open('Contracting').applyChange({ from: 0, to: 0, insert: 'agreed terms' })
+        await s.createPage('Allotment')
+        s.open('Allotment').applyChange({ from: 0, to: 0, insert: 'plot rules' })
         await graph.flushAll()
 
         let docId = ''
         graph.registry().forEach((entry, id) => {
-            if (entry.title === 'Contracting') docId = id
+            if (entry.title === 'Allotment') docId = id
         })
         expect(docId).not.toBe('')
         // The append's acknowledgement must have settled, or seq 2 below is itself a gap.
@@ -303,7 +321,7 @@ describe('ServerDocumentStore', () => {
             envelope: 'AAEC',
         })
         expect(graph.docSync(docId).health()).toBe('sequence-gap')
-        await expect(s.whenReady('Contracting')).resolves.toBeUndefined()
+        await expect(s.whenReady('Allotment')).resolves.toBeUndefined()
 
         // Undecryptable contiguous history is a genuine content failure and must surface.
         const contiguousSeq = 2
@@ -317,7 +335,7 @@ describe('ServerDocumentStore', () => {
             updates: [{ seq: contiguousSeq, epochId: 1, envelope: 'AAEC' }],
         })
         expect(graph.docSync(docId).health()).toBe('ciphertext-corrupt')
-        await expect(s.whenReady('Contracting')).rejects.toThrow(/sync-degraded: ciphertext-corrupt/)
+        await expect(s.whenReady('Allotment')).rejects.toThrow(/sync-degraded: ciphertext-corrupt/)
 
         await s.dispose()
         cache.dispose()
@@ -461,7 +479,7 @@ describe('ServerDocumentStore', () => {
             await s.setAliases('Notes', ['Physics'])
 
             expect(s.open('Physics').getText()).toBe('- physics')
-            expect(s.open('Notes').getText()).toBe('- notes')
+            expect(s.open('Notes').getText()).toBe('---\ntitle: Notes\naliases:\n  - Physics\n---\n- notes')
             await s.dispose()
         }
     })
@@ -481,6 +499,30 @@ describe('ServerDocumentStore', () => {
         await s.dispose()
     })
 
+    // A change to a document's names says which: both its titles, so the index re-reads it under
+    // its title now and drops the one it had, and two titles that swap are both read again. Then
+    // the unnamed change the Local Mirror needs to reconsider every name.
+    it('a rename names both titles of the document, then says the names moved', async () => {
+        const relay = createLoopbackRelay()
+        const s = await store(relay)
+        await s.createPage('Alpha')
+        await s.createPage('Beta')
+
+        const seen: Array<string | undefined> = []
+        const off = s.onChange((change) => seen.push(change?.concept))
+        await s.renamePage('Alpha', 'Gamma', { strategy: 'alias' })
+
+        expect(seen).toEqual(expect.arrayContaining(['Alpha', 'Gamma', undefined]))
+        expect(seen).not.toContain('Beta')
+        seen.length = 0
+        await s.setAliases('Beta', ['Bet'])
+        // Named for the registry, then unnamed; the block written to show the alias names it again.
+        expect(seen.slice(0, 2)).toEqual(['Beta', undefined])
+        expect(new Set(seen)).toEqual(new Set(['Beta', undefined]))
+        off()
+        await s.dispose()
+    })
+
     it('a newly created page emits one targeted index change', async () => {
         // Registry additions have an exact concept. Treating the root-doc update as an
         // unnamed change promoted page creation to a full graph rebuild, leaving existing
@@ -490,10 +532,10 @@ describe('ServerDocumentStore', () => {
         const seen: Array<string | undefined> = []
         const off = s.onChange((change) => seen.push(change?.concept))
 
-        await s.createPage('Submeta')
-        await vi.waitFor(() => expect(seen).toContain('Submeta'))
+        await s.createPage('Seedlings')
+        await vi.waitFor(() => expect(seen).toContain('Seedlings'))
 
-        expect(seen).toEqual(['Submeta'])
+        expect(seen).toEqual(['Seedlings'])
         off()
         await s.dispose()
     })

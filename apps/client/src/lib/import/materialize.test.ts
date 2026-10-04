@@ -398,6 +398,24 @@ describe('materializeToServer keeps imported aliases in a kept block', () => {
         dispose()
     })
 
+    it('from an Obsidian vault: a note whose block holds nothing but aliases keeps showing them', async () => {
+        const { graph, dispose } = await importSynced([src('Home.md', '---\naliases: [Start]\n---\n# Home\n')], 'obsidian')
+        const home = afterBlockEdit(graph, 'Home')
+        expect(home.registryAliases).toEqual(['Start'])
+        expect(home.imported).toMatch(/^---\naliases:\n {2}- Start\n---\n/)
+        expect(home.proposedOnImport).toEqual([])
+        dispose()
+    })
+
+    it('from a Logseq graph: a page with alias:: alone keeps showing it', async () => {
+        const { graph, dispose } = await importSynced([src('pages/Home.md', 'alias:: Start\n- body\n')], 'logseq')
+        const home = afterBlockEdit(graph, 'Home')
+        expect(home.registryAliases).toEqual(['Start'])
+        expect(home.imported).toMatch(/^---\naliases:\n {2}- Start\n---\n/)
+        expect(home.proposedOnImport).toEqual([])
+        dispose()
+    })
+
     it('from a Local Mirror folder rebuilt as a new synced graph', async () => {
         // The mirror writes the registry's identity into the block beside the document's own keys;
         // importing that folder back must not lose the aliases the block carries.

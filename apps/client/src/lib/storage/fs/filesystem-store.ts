@@ -38,13 +38,15 @@ import { documentProtection } from '$lib/document/protection/cipher-fence'
 import { containsCipherFence } from '$lib/document/protection/fence-info'
 import { portableFileName, suffixedFileName } from '../file-names'
 import { mergeDocuments } from '../merge'
-import { planRename, refuseProtectedMerges, refuseUnreadableBlocks, unreadableBlockRefusal } from '../rename-plan'
+import { aliasesAfterRename, planRename, refuseProtectedMerges, refuseUnreadableBlocks, unreadableBlockRefusal } from '../rename-plan'
 import {
+    type AliasRewrite,
     type RenameLinkStrategy,
     type RenameOptions,
     type RenamePlan,
     type RenameResult,
     type RenameStep,
+    landedName,
     mergeCount,
     renameSteps,
 } from '../rename'
@@ -55,6 +57,7 @@ import { parseFrontmatter } from './frontmatter'
 import { type DocumentKind, aliasesOf, conceptKey, fileStem } from './identity'
 import { reconcileDecision } from './reconcile'
 import { type DocumentEntry, scanGraph } from './scan'
+import { type RegistryChanges, registryChanges } from './registry-changes'
 
 /** One document as fed to the backlink index: identity, aliases, and body. */
 export interface IndexDocSnapshot {
@@ -261,6 +264,12 @@ interface OpenDoc {
     /** Settles once the hydration read has landed (or failed). What `whenReady` waits on. */
     ready: Promise<void>
     removed: boolean
+    /**
+     * Removed by this store's own delete, the user's: its tab closes, so only a handle a view
+     * already holds still reaches it (an edit there brings it back, ADR 0039 §4). Opened afresh,
+     * its name has no document until a file has it again.
+     */
+    deletedHere: boolean
     conflict: DocumentConflict | null
     listeners: Set<(text: string) => void>
     save: Debounced<[]>
@@ -290,6 +299,13 @@ export function createFilesystemDocumentStore(
 
     const registry = new Map<string, DocumentEntry>()
     let registrySig = ''
+    /**
+     * The registry as the last rescan announced it, what the next one's changes are measured
+     * against. Not `registry` itself: a rename's steps patch that in place before the closing
+     * rescan, which would then find nothing moved. The same entry objects, so a save's stamps,
+     * kept in step on its entry, are never mistaken for an edit made outside the app.
+     */
+    let announced: ReadonlyMap<string, DocumentEntry> = new Map()
     const open = new Map<string, OpenDoc>()
     const documentsChanged = new Set<() => void>()
     const documentRemoved = new Set<(target: string) => void>()
@@ -310,9 +326,16 @@ export function createFilesystemDocumentStore(
         return registry.get(doc.key)?.concept ?? doc.target
     }
 
-    function emitDocumentsChanged(): void {
+    /**
+     * Tell listeners what a rescan changed. The document-set listeners hear whenever the listing
+     * moved; the index hears it precisely (`registryChanges`): each file changed outside the app,
+     * by name, and the names, once, when they moved. Unnamed for every listing change, it re-read
+     * every document after each save, since a save's new file stamp moves the listing too.
+     */
+    function emitRegistryChanged(changes: RegistryChanges): void {
         for (const listener of documentsChanged) listener()
-        emitChange() // a registry change is also a change
+        for (const concept of changes.contentChanged) emitChange({ concept })
+        if (changes.namesMoved) emitChange()
     }
 
     function emitDocumentRemoved(target: string): void {
@@ -387,10 +410,14 @@ export function createFilesystemDocumentStore(
         })
         registry.clear()
         for (const entry of entries) registry.set(entry.key, entry)
+        // Before anyone is told, so whoever reads such a name next reads the new document.
+        for (const doc of [...open.values()]) if (doc.removed && registry.has(doc.key)) await takeUpFileAgain(doc)
         const sig = registrySignature(entries)
         if (sig !== registrySig) {
             registrySig = sig
-            emitDocumentsChanged()
+            const changes = registryChanges(announced, entries)
+            announced = new Map(registry)
+            emitRegistryChanged(changes)
         }
         return entries
     }
@@ -448,6 +475,42 @@ export function createFilesystemDocumentStore(
     }
 
     /**
+     * The aliases a rename carries along (ADR 0038, amended 2026-10-03), after its title steps,
+     * on both arms: each holder's list with its rewrites applied, handed to `write` (the store's
+     * `setAliases`, which goes through the open buffer or the file and patches the registry).
+     * Never through `applyStep`, which retitles and moves files and would give a journal a
+     * title. A holder a step retitled, or merged into another document, is found under the name
+     * it landed on. Its aliases are read from the open buffer where there is one, so an alias
+     * typed but not yet saved is kept. Returns the holders, by their names now.
+     */
+    async function rewriteScopedAliases(
+        plan: RenamePlan,
+        strategy: RenameLinkStrategy,
+        write: (target: string, aliases: readonly string[]) => Promise<void>,
+    ): Promise<string[]> {
+        const byHolder = new Map<string, AliasRewrite[]>()
+        for (const rewrite of plan.aliases) {
+            const key = conceptKey(landedName(plan, rewrite.holder))
+            byHolder.set(key, [...(byHolder.get(key) ?? []), rewrite])
+        }
+        const holders: string[] = []
+        for (const [key, rewrites] of byHolder) {
+            const entry = registry.get(key)
+            if (!entry) continue
+            const openDoc = open.get(entry.key)
+            if (openDoc) await openDoc.ready
+            // A buffer that never loaded stands in for content never seen: the file holds the aliases.
+            const text = openDoc?.loaded ? openDoc.buffer : (await adapter.read(entry.subdir, entry.fileName)).text
+            // planRename refused this before any step ran; the text may have changed since. Read
+            // from nothing, the list would drop every alias the document has.
+            if (!frontmatterIdentity(text).readable) throw new Error(unreadableBlockRefusal(plan.direct.from, entry.concept))
+            await write(entry.concept, aliasesAfterRename(aliasesOf(parseFrontmatter(text)), rewrites, strategy))
+            holders.push(entry.concept)
+        }
+        return holders
+    }
+
+    /**
      * One step of a rename plan: retitle the document, and if the target name is already
      * taken, [[Merge]] into it instead.
      *
@@ -489,8 +552,19 @@ export function createFilesystemDocumentStore(
         const targetEntry = step.merges ? registry.get(conceptKey(step.into)) : undefined
         // The document this step merges into, when the target name is another document's.
         const survivor = targetEntry && targetEntry.key !== entry.key ? targetEntry : undefined
+        // A survivor open in an editor is merged through its buffer, which is what the editor shows
+        // and its autosave writes: a merge written to the file alone was overwritten by the
+        // buffer's next save, and the absorbed body with it. Its pending save is stopped, and the
+        // buffer, unsaved typing included, is what is merged.
+        const survivorDoc = survivor ? open.get(survivor.key) : undefined
+        if (survivorDoc) {
+            survivorDoc.save.cancel()
+            await settled(survivorDoc)
+            await survivorDoc.ready
+        }
+        const throughBuffer = survivorDoc?.loaded === true
         if (survivor) {
-            const existing = await adapter.read(survivor.subdir, survivor.fileName)
+            const existing = { text: throughBuffer ? survivorDoc!.buffer : (await adapter.read(survivor.subdir, survivor.fileName)).text }
             if (!frontmatterIdentity(existing.text).readable) throw new Error(unreadableBlockRefusal(step.from, survivor.concept))
             const existingFm = parseFrontmatter(existing.text)
             const merged = mergeDocuments(
@@ -517,7 +591,16 @@ export function createFilesystemDocumentStore(
         // keeps the file it has on a pure re-casing.
         const subdir = survivor?.subdir ?? entry.subdir
         const fileName = survivor?.fileName ?? (await allocateFileName(subdir, step.into, entry))
-        const written = await adapter.write(subdir, fileName, content)
+        let written: { lastModified: number; size: number }
+        if (throughBuffer && survivorDoc) {
+            // An external change, so the editor showing it is told; then the document's own save,
+            // which keeps its record of the file in step with what was written.
+            survivorDoc.handle.applyChange({ from: 0, to: survivorDoc.buffer.length, insert: content }, 'external')
+            await saveNow(survivorDoc)
+            written = { lastModified: survivorDoc.lastModified, size: survivorDoc.size }
+        } else {
+            written = await adapter.write(subdir, fileName, content)
+        }
         if (!(subdir === entry.subdir && fileName === entry.fileName)) {
             await adapter.remove(entry.subdir, entry.fileName)
         }
@@ -545,6 +628,13 @@ export function createFilesystemDocumentStore(
         // exists (six NotFoundErrors on the first real-graph drive). Retire the handle: the
         // caller reopens the View under the new concept.
         if (openDoc) open.delete(entry.key)
+
+        // A document removed while open under the name this step gives takes up the file that
+        // holds the name now, as when a page is created under it. Left removed, the rewrite below
+        // found it under the name, rewrote the deleted text, and that edit brought it back over
+        // this file.
+        const stale = open.get(conceptKey(step.into))
+        if (stale?.removed) await takeUpFileAgain(stale)
     }
 
     /**
@@ -665,9 +755,10 @@ export function createFilesystemDocumentStore(
 
     /** The open document `target` names, opening it if it is not; throws when nothing has that name. */
     function openDocNamed(target: string): OpenDoc {
-        // An open document answers to its name even after its file went (an edit brings it back).
+        // An open document answers to its name even after its file went (an edit brings it back),
+        // unless it went by the user's own delete: then the name is free until a file has it.
         const existing = open.get(conceptKey(target))
-        if (existing) return existing
+        if (existing && !(existing.removed && existing.deletedHere)) return existing
         const entry = entryNamed(target)
         if (!entry) throw new DocumentNotFoundError(target)
         // Reached by an alias: the document it names, open under that name's key, which it keeps.
@@ -693,6 +784,7 @@ export function createFilesystemDocumentStore(
             loadError: null,
             ready: Promise.resolve(),
             removed: false,
+            deletedHere: false,
             conflict: null,
             listeners: new Set(),
             save: undefined as unknown as Debounced<[]>,
@@ -717,6 +809,7 @@ export function createFilesystemDocumentStore(
                 // predates delete, reachable through any external removal (a git checkout).
                 if (doc.removed) {
                     doc.removed = false
+                    doc.deletedHere = false
                     options.onResurrected?.(doc.target)
                 }
                 doc.save.call()
@@ -835,6 +928,28 @@ export function createFilesystemDocumentStore(
         onConflict?.(doc.conflict)
     }
 
+    /**
+     * A document removed while open keeps its buffer, so its tab still shows it and an edit there
+     * brings it back (ADR 0039 §4). It answers to its name only until a file does again: a page
+     * created under the name, in the app or by another program. Then it takes that file up as an
+     * opened document would. A buffer with no unsaved edits reloads from the file, and one with
+     * unsaved edits raises a conflict rather than being written over it. Before, it kept the name
+     * for the session: the name opened the deleted text, the index read it, and the first
+     * keystroke saved it over the new file.
+     */
+    async function takeUpFileAgain(doc: OpenDoc): Promise<void> {
+        const entry = registry.get(doc.key)
+        if (!doc.removed || !entry) return
+        const read = await readIfPresent(entry.subdir, entry.fileName)
+        if (!read) return
+        doc.removed = false
+        doc.deletedHere = false
+        doc.subdir = entry.subdir
+        doc.fileName = entry.fileName
+        doc.target = entry.concept
+        followDisk(doc, read)
+    }
+
     /** A file's content, or null when it does not exist; any other failure rejects. */
     async function readIfPresent(subdir: Subdir, fileName: string): Promise<{ text: string; lastModified: number; size: number } | null> {
         try {
@@ -927,8 +1042,10 @@ export function createFilesystemDocumentStore(
             if (!entry) throw new DocumentNotFoundError(target)
             const next = normaliseAliases(aliases, entry.concept)
             const doc = open.get(entry.key)
-            if (doc) {
-                await doc.ready
+            if (doc) await doc.ready
+            // Through the buffer the editor shows, unless it never loaded: then it stands in for
+            // content never seen, refuses to save, and the aliases would never reach the file.
+            if (doc?.loaded) {
                 const text = withFrontmatterIdentity(doc.buffer, { aliases: next }, { addBlock: next.length > 0 })
                 // External, so the editor showing this buffer is told; the save follows as usual.
                 if (text !== doc.buffer) doc.handle.applyChange({ from: 0, to: doc.buffer.length, insert: text }, 'external')
@@ -1019,8 +1136,12 @@ export function createFilesystemDocumentStore(
         },
 
         async reconcile() {
+            // One removed while open and taken up again by the rescan has just been followed to its
+            // file (`takeUpFileAgain`): reading it again here would raise any conflict twice.
+            const wasRemoved = new Set([...open.values()].filter((doc) => doc.removed))
             await refreshRegistry()
             for (const doc of [...open.values()]) {
+                if (wasRemoved.has(doc) && !doc.removed) continue
                 if (!registry.has(doc.key)) followFile(doc)
                 await reconcileDoc(doc)
             }
@@ -1123,14 +1244,26 @@ export function createFilesystemDocumentStore(
             })
             // A block that does not parse would be rebuilt from nothing and lose its keys. Judged on
             // the file, which is what applyStep rewrites, once any save in flight has landed: an
-            // open buffer fixed but not yet saved is still broken on disk.
-            return refuseUnreadableBlocks(checked, async (concept) => {
-                const other = registry.get(conceptKey(concept))
-                if (!other) return null
-                const openDoc = open.get(other.key)
-                if (openDoc) await settled(openDoc)
-                return (await adapter.read(other.subdir, other.fileName)).text
-            })
+            // open buffer fixed but not yet saved is still broken on disk. A scoped alias is
+            // rewritten through the open buffer where there is one (rewriteScopedAliases), so its
+            // holder is judged on that.
+            return refuseUnreadableBlocks(
+                checked,
+                async (concept) => {
+                    const other = registry.get(conceptKey(concept))
+                    if (!other) return null
+                    const openDoc = open.get(other.key)
+                    if (openDoc) await settled(openDoc)
+                    return (await adapter.read(other.subdir, other.fileName)).text
+                },
+                async (concept) => {
+                    const other = registry.get(conceptKey(concept))
+                    if (!other) return null
+                    const openDoc = open.get(other.key)
+                    if (openDoc) await openDoc.ready
+                    return openDoc?.loaded ? openDoc.buffer : (await adapter.read(other.subdir, other.fileName)).text
+                },
+            )
         },
 
         /**
@@ -1146,6 +1279,9 @@ export function createFilesystemDocumentStore(
             if (plan.refusal) throw new Error(plan.refusal)
 
             for (const step of renameSteps(plan)) await applyStep(step, options.strategy)
+            const aliasesRewritten = await rewriteScopedAliases(plan, options.strategy, (target, aliases) =>
+                this.setAliases(target, aliases),
+            )
 
             // Bodies last, and in ONE pass over the graph: the cascade rule rewrites every
             // `[[from]]` at any depth, which fixes plain references and scoped ones together.
@@ -1187,7 +1323,20 @@ export function createFilesystemDocumentStore(
             }
 
             await refreshRegistry()
-            return { concept: plan.direct.into, rewritten, rewrittenDocuments, cascaded: plan.cascade.length, merged: mergeCount(plan) }
+            // Every document the rename wrote is named, so the index reads each one again whatever
+            // its file's stamps say: a file rewritten in the millisecond of its last announced
+            // write, to the same size, looks unchanged to the rescan above.
+            const wrote = [...renameSteps(plan).filter((step) => step.hasDocument).map((step) => step.into), ...rewrittenDocuments]
+            for (const concept of new Set(wrote)) emitChange({ concept })
+            return {
+                concept: plan.direct.into,
+                aliasOf: plan.aliasOf === null ? null : landedName(plan, plan.aliasOf),
+                rewritten,
+                rewrittenDocuments,
+                cascaded: plan.cascade.length,
+                merged: mergeCount(plan),
+                aliasesRewritten,
+            }
         },
 
         async deleteDocument(concept: string): Promise<void> {
@@ -1199,6 +1348,10 @@ export function createFilesystemDocumentStore(
                 // write already open: its writable would recreate the file at close().
                 doc.save.cancel()
                 doc.removed = true
+                doc.deletedHere = true
+                // Its unsaved typing goes with it. An edit in its tab brings both back (ADR 0039
+                // §4); a page created under its name later starts from that page's own text.
+                doc.dirty = false
                 await settled(doc)
             }
             await adapter.remove(entry.subdir, entry.fileName)
@@ -1215,8 +1368,9 @@ export function createFilesystemDocumentStore(
         async flushAll() {
             await Promise.all([...open.values()].map(saveNow))
             // A write that failed leaves its buffer dirty and resolves (onSaveError reports it). A
-            // caller reading the folder must not believe it, so this one says so.
-            const unwritten = [...open.values()].filter((doc) => doc.dirty).map((doc) => doc.target)
+            // caller reading the folder must not believe it, so this one says so. A removed
+            // document's typing is not owed to the folder: it went with the document.
+            const unwritten = [...open.values()].filter((doc) => doc.dirty && !doc.removed).map((doc) => doc.target)
             if (unwritten.length > 0) {
                 throw new Error(`Edits to ${unwritten.join(', ')} could not be written to the folder yet, so it does not hold them. Try again once they are saved.`)
             }

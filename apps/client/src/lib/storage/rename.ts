@@ -12,6 +12,7 @@
  */
 
 import { dayIsNotAPageName, isJournalConcept } from '$lib/document/journal-concept'
+import { conceptKey } from './fs/identity'
 
 /** How the rename deals with existing inbound links. */
 export type RenameLinkStrategy =
@@ -35,8 +36,17 @@ export interface RenameOptions {
 }
 
 export interface RenameResult {
-    /** The page's new concept. */
+    /**
+     * The renamed name as it is now: the page's new title, the page it merged into, or the new
+     * form of a renamed alias (`aliasOf`).
+     */
     concept: string
+    /**
+     * The document whose alias was renamed, when the rename named an alias (ADR 0065, amended
+     * 2026-10-04), by its name after the rename: the cascade retitles it when its title names the
+     * alias as a scope.
+     */
+    aliasOf: string | null
     /** Documents whose text was rewritten (`0` for the alias strategy). */
     rewritten: number
     /** The concepts of those documents, so a caller can say which - and an agent can check them. */
@@ -45,6 +55,11 @@ export interface RenameResult {
     cascaded: number
     /** Steps that landed on a taken name and so merged. */
     merged: number
+    /**
+     * The documents whose aliases the cascade rewrote (ADR 0038, amended 2026-10-03), by their
+     * names after the rename, so a caller can say which and flush them.
+     */
+    aliasesRewritten: string[]
 }
 
 /**
@@ -128,6 +143,20 @@ export interface RenameStep {
 }
 
 /**
+ * An [[Alias]] a rename rewrites: the alias the rename names (ADR 0065, amended 2026-10-04), or
+ * one that names the renamed concept as a scope and is carried along as a scoped title is (ADR
+ * 0038, amended 2026-10-03). `holder` is the concept of the document that holds it, as it is
+ * before the rename. Which arm is chosen is not known when the plan is made, so this says what
+ * the alias becomes, and the applier keeps or drops the old form by the arm
+ * ({@link aliasesAfterRename} in `rename-plan.ts`).
+ */
+export interface AliasRewrite {
+    holder: string
+    from: string
+    to: string
+}
+
+/**
  * Everything a rename will do, computed before anything is written (ADR 0038 §1).
  *
  * The dialog renders this so the user confirms the real blast radius - renaming one page and
@@ -143,6 +172,18 @@ export interface RenamePlan {
      * never renamed onto a name a later step is about to vacate.
      */
     cascade: RenameStep[]
+    /**
+     * The aliases the rename rewrites, on any document: the alias it names first, when it names
+     * one (`aliasOf`), then those scoped by the old name.
+     */
+    aliases: AliasRewrite[]
+    /**
+     * The document whose [[Alias]] `direct.from` is, when no document has it as its title (ADR
+     * 0065, amended 2026-10-04). The rename then renames that alias and retitles nothing: the
+     * direct step has no document of its own, its `into` is the new form, and the holder's
+     * alias is the first of `aliases`. Null for a page's title or a [[Pageless Concept]].
+     */
+    aliasOf: string | null
     /** Documents whose body text references the old name (the rewrite arm's cost). */
     referencingDocuments: number
     /** Refusal message, or null. When set, nothing else here should be acted on. */
@@ -152,6 +193,24 @@ export interface RenamePlan {
 /** Every step, direct first - what an applier iterates. */
 export function renameSteps(plan: RenamePlan): RenameStep[] {
     return [plan.direct, ...plan.cascade]
+}
+
+/**
+ * The name a document called `concept` before the rename goes by after it: where a title step
+ * lands it (its `into`, a merge's survivor included), or the same name when no step moves it.
+ * How a holder of an alias the rename rewrites is found, and named in what the rename reports.
+ */
+export function landedName(plan: RenamePlan, concept: string): string {
+    const key = conceptKey(concept)
+    return renameSteps(plan).find((step) => step.hasDocument && conceptKey(step.from) === key)?.into ?? concept
+}
+
+/**
+ * The aliases a rename carries along because they name the old name as a scope: every rewrite
+ * but the alias the rename itself names. What the preview lists as carried along.
+ */
+export function scopedAliasRewrites(plan: RenamePlan): AliasRewrite[] {
+    return plan.aliasOf === null ? plan.aliases : plan.aliases.slice(1)
 }
 
 /** How many steps merge - what the dialog warns about. */

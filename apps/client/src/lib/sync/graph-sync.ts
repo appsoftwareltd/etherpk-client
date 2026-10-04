@@ -137,9 +137,10 @@ export interface RegistryEntry {
     title?: string
     date?: string
     /**
-     * Alternative names resolving to this document ([[Alias]]). A server document has no
-     * frontmatter - identity lives only here (ADR 0024) - so this is where a rename's
-     * "keep the old name working" arm puts the old name (ADR 0037).
+     * Alternative names resolving to this document ([[Alias]]). Identity lives here (ADR 0024),
+     * so this is where a rename's "keep the old name working" arm puts the old name (ADR 0037).
+     * The document's [[Frontmatter]] shows them, in a block added for them if it has none
+     * (ADR 0061, amended 2026-10-03).
      */
     aliases?: string[]
 }

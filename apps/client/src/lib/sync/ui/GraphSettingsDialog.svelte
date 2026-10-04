@@ -42,6 +42,8 @@
     import type { GraphAssetTools } from "$lib/storage/fs/asset-orphans";
     import OrphanAssetsSection from "$lib/storage/ui/OrphanAssetsSection.svelte";
     import FormattingSection from "$lib/document/formatting/ui/FormattingSection.svelte";
+    import HiddenAliasesSection from "./HiddenAliasesSection.svelte";
+    import type { HiddenAliasesReport } from "$lib/storage/server/server-document-store";
     import type { FormattingSectionProps } from "$lib/document/formatting/ui/formatting-section";
     import Modal from "@appsoftwareltd/etherpk-shared/dialog";
     import ProtectionSettingsTab from "$lib/document/protection/ui/ProtectionSettingsTab.svelte";
@@ -84,6 +86,7 @@
         publish = null,
         folderPath = null,
         formatting = null,
+        onrevealhiddenaliases = null,
         tab = undefined,
         onchangetab = undefined,
         onsave,
@@ -136,6 +139,12 @@
          */
         formatting?: FormattingSectionProps | null;
         /**
+         * TEMPORARY (ADR 0061, amended 2026-10-03): the Maintenance repair that shows the aliases a
+         * synced graph hid. Null hides it: a Filesystem graph, or the dialog opened outside an open
+         * graph. Goes once every synced graph has run it.
+         */
+        onrevealhiddenaliases?: (() => Promise<HiddenAliasesReport>) | null;
+        /**
          * The tab to be on: the one the address names while the workspace hosts this dialog
          * (ADR 0023, 2026-09-20), which is the tab an entry point asked for, else the one this
          * graph's Settings was last on (remembered per device, 2026-09-19). Followed while open,
@@ -157,7 +166,7 @@
     const showStorage = $derived(
         assetTools !== null || storageInfo !== null || indexPersisted !== null,
     );
-    const showTools = $derived(showStorage || formatting !== null);
+    const showTools = $derived(showStorage || formatting !== null || onrevealhiddenaliases !== null);
 
     let rebuilding = $state(false);
     let rebuilt = $state(false);
@@ -1050,6 +1059,11 @@
                             {...formatting}
                             onexport={mirror ? () => selectTab("mirror") : null}
                         />
+                    </div>
+                {/if}
+                {#if onrevealhiddenaliases}
+                    <div class="border-t border-gray-100 dark:border-gray-800 pt-4">
+                        <HiddenAliasesSection onreveal={onrevealhiddenaliases} />
                     </div>
                 {/if}
             {:else}

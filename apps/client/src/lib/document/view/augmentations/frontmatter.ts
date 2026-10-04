@@ -142,14 +142,16 @@ function episodePlugin(options: FrontmatterOptions, session: EditingSession): Ex
                 // After the update cycle, so the View's own listener has already forwarded the
                 // text to the store the workspace will read.
                 if (ended) {
-                    const end = { blockIsNew: this.episode.blockIsNew }
+                    const end = { blockIsNew: this.episode.blockIsNew, blockRemoved: this.episode.blockRemoved }
                     queueMicrotask(() => options.onEpisodeEnd(end))
                 }
             }
 
             destroy(): void {
                 session.editing = false
-                if (this.episode.close()) options.onEpisodeEnd({ blockIsNew: this.episode.blockIsNew })
+                if (this.episode.close()) {
+                    options.onEpisodeEnd({ blockIsNew: this.episode.blockIsNew, blockRemoved: this.episode.blockRemoved })
+                }
             }
         },
     )

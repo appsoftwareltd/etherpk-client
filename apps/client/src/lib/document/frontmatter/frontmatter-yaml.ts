@@ -206,7 +206,8 @@ function editorFor(doc: Document): FrontmatterEditor {
 export interface EditOptions {
     /**
      * Add a block to a document that has none. Off by default: a document without a block has
-     * made no claim, and a synced document never grows one unprompted (ADR 0061).
+     * made no claim, and a synced document grows one only to show its aliases (ADR 0061, amended
+     * 2026-10-03).
      */
     addBlock?: boolean
 }

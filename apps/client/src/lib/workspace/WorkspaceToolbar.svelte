@@ -16,6 +16,11 @@
      *
      * A synced graph's sync status is not here: it is the last row of the Graph Sidebar, which
      * has the room for its words on a phone as well as a desktop.
+     *
+     * The indexing icon is a status light too, and not a control: it shows while the search index
+     * takes in a change a person may be waiting on, such as a rename, so that a link or Quick
+     * Find not following yet reads as "still working" rather than as a fault. It sits first after
+     * the spacer, so its coming and going moves no button.
      */
     import { PUBLIC_DOCS_URL } from '@appsoftwareltd/etherpk-shared'
 
@@ -31,6 +36,7 @@
         ontasks,
         onreset,
         mirror = { state: 'hidden' },
+        indexing = false,
     }: {
         ontoggleleft: () => void
         ontoggleright: () => void
@@ -40,6 +46,8 @@
         /** Reset workspace: opens the confirmation, never resets on its own. */
         onreset: () => void
         mirror?: MirrorIndicator
+        /** The search index is busy with work worth showing (workspace/indexing-indicator.ts). */
+        indexing?: boolean
     } = $props()
 </script>
 
@@ -54,6 +62,22 @@
         <SidebarToggleIcon side="left" />
     </button>
     <span class="spacer"></span>
+    {#if indexing}
+        <!-- Not a live region: indexing comes and goes with every rename, and announcing each
+             would be noise. The label names it for anyone who reaches it with a screen reader. -->
+        <span
+            class="indexing"
+            role="img"
+            aria-label="Updating the search index"
+            title="Updating the search index. Search, links and backlinks catch up when it finishes."
+            data-testid="ws-indexing"
+        >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <circle cx="12" cy="12" r="8.25" opacity="0.25" />
+                <path stroke-linecap="round" d="M20.25 12A8.25 8.25 0 0 0 12 3.75" />
+            </svg>
+        </span>
+    {/if}
     {#if mirror.state !== 'hidden'}
         <button
             class="toggle mirror"
@@ -185,6 +209,35 @@
     }
     @media (prefers-reduced-motion: reduce) {
         .mirror .dot.spin {
+            animation: none;
+        }
+    }
+
+    /* The same box as a button beside it, without the border and fill that invite a click. It has no
+       surface of its own, so it is drawn in the ink that reads on the graph's toolbar colour when one
+       is set (toolbar-accent.ts), and otherwise in the theme's muted grey: grey on a light toolbar,
+       light on a dark one. */
+    .indexing {
+        display: inline-flex;
+        justify-content: center;
+        align-items: center;
+        padding: calc(0.3rem + 1px);
+        color: var(--gk-toolbar-ink, var(--gk-text-muted));
+    }
+    .indexing > svg {
+        width: 1.1rem;
+        height: 1.1rem;
+        display: block;
+        animation: indexing-spin 0.9s linear infinite;
+    }
+    @keyframes indexing-spin {
+        to {
+            transform: rotate(360deg);
+        }
+    }
+    /* Still, the ring with its brighter arc reads as "in progress" without the turn. */
+    @media (prefers-reduced-motion: reduce) {
+        .indexing > svg {
             animation: none;
         }
     }

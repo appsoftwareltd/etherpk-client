@@ -23,6 +23,7 @@ import type {
     TaskQuery,
 } from '../index-db'
 import type { LinkGraph } from '../index-link-graph'
+import type { NamedDocument } from '../backlinks/live-index'
 import type { PropertyFilter } from '../search-query'
 import type { EmbeddingRow, PendingPassage, SemanticDocumentGroup, SemanticStatus } from '../semantic/embedding-db'
 
@@ -47,8 +48,12 @@ export type IndexRequest =
     | { type: 'rebuild-begin'; rebuildId: string; total: number }
     | { type: 'rebuild-docs'; rebuildId: string; docs: IndexDoc[] }
     | { type: 'rebuild-commit'; rebuildId: string }
-    /** Re-index named documents. Unchanged ones are skipped by content hash. */
-    | { type: 'ingest'; docs: IndexDoc[] }
+    /**
+     * Re-index named documents, unchanged ones skipped by content hash, after dropping the
+     * documents `removed` names: names no document has as its title any more (a rename, a delete,
+     * a title become another page's alias). One request, so a rename is one delta.
+     */
+    | { type: 'ingest'; docs: IndexDoc[]; removed?: string[] }
     /** Recover after a missed delta or owner failover. */
     | { type: 'snapshot-request' }
     /** Confirm that every earlier request on this connection has committed. */
@@ -86,6 +91,8 @@ export type IndexRequest =
      * screen, once when it is shown and again after an update, never per keystroke.
      */
     | { type: 'link-graph'; id: number }
+    /** Every document the index holds, by its names, for reconciling a change to the graph's names. */
+    | { type: 'names'; id: number }
     /**
      * [[Semantic Search]] (ADR 0076). The worker holds the vectors and the scan and knows no
      * model: the caller embeds, both the passages it is handed and the query it asks with, so
@@ -166,6 +173,7 @@ export type IndexResponse =
     | { type: 'tasks'; id: number; hits: TaskHit[]; hasMore: boolean; total: number }
     | { type: 'asset-usage'; id: number; usage: AssetUsage }
     | { type: 'link-graph'; id: number; graph: LinkGraph }
+    | { type: 'names'; id: number; documents: NamedDocument[] }
     | { type: 'semantic-status'; id: number; status: SemanticStatus }
     | { type: 'semantic-pending'; id: number; passages: PendingPassage[] }
     | { type: 'semantic-put'; id: number; stored: number }

@@ -30,6 +30,18 @@ export class DocumentSyncDegradedError extends Error {
     }
 }
 
+/**
+ * A synced document this device could not bring current in time, so a write that has to see its
+ * whole text was refused rather than made blind: a block added to text that has not arrived would
+ * sit above the document's own block once it does.
+ */
+export class DocumentUnconfirmedError extends Error {
+    constructor(readonly target: string) {
+        super(`"${target}" has not finished syncing to this device. Nothing was changed - try again once sync has caught up.`)
+        this.name = 'DocumentUnconfirmedError'
+    }
+}
+
 /** A {@link ViewRef} narrowed to documents — `kind` is always `'document'`. */
 export interface DocumentRef extends ViewRef {
     kind: 'document'

@@ -89,7 +89,7 @@ describe('allAssetReferences', () => {
     })
 
     it('matches a reference whose file name holds parentheses', () => {
-        const ref = '../assets/Estimate_320_from_B_Sprake_ltd_(1)_1706517395516_0.pdf'
+        const ref = '../assets/Quote_320_from_Garden_Fencing_ltd_(1)_1700000000000_0.pdf'
         const line = `see ![doc](${ref}) here`
         expect(allAssetReferences(line, ref)).toEqual([{ from: 4, to: 4 + `![doc](${ref})`.length }])
     })

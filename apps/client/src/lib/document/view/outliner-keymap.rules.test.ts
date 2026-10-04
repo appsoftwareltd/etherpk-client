@@ -1558,7 +1558,7 @@ bracketButtonTable('the Command Bar bracket buttons over a selection', [
     { rule: 'the same for a link whose name was selected by hand', precedent: 'EtherPK', before: '- the [[«fox»]] jumped', key: ']]', after: '- the [[fox]]| jumped' },
     { rule: 'in prose too', precedent: 'Logseq', before: 'read «Physics» today', key: '[[', after: 'read [[«Physics»]] today' },
     { rule: 'in a heading', precedent: 'Logseq', before: '## «Physics» notes', key: '[[', after: '## [[«Physics»]] notes' },
-    { rule: 'a phrase, not only a word', precedent: 'Logseq', before: '- see «Desktop CRM» here', key: '[[', after: '- see [[«Desktop CRM»]] here' },
+    { rule: 'a phrase, not only a word', precedent: 'Logseq', before: '- see «Garden Shed» here', key: '[[', after: '- see [[«Garden Shed»]] here' },
     { rule: 'whitespace at the edges stays outside the brackets', precedent: 'VS Code', before: '- the« fox »jumped', key: '[[', after: '- the [[«fox»]] jumped' },
     { rule: 'a second tap adds a layer, as a third and fourth press of [ would', precedent: 'Logseq', before: '- «fox»', key: '[[ [[', after: '- [[[[«fox»]]]]' },
     { rule: 'a wikilink wraps towards a nested one', precedent: 'Logseq', before: '- «[[Test]]»', key: '[[', after: '- [[«[[Test]]»]]' },

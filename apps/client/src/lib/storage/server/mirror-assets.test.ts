@@ -38,7 +38,7 @@ describe('referencedAssetNames with parentheses', () => {
     it('reads the whole name, not the stub before its first bracket', () => {
         // The stub was reported as a link to an attachment the graph does not hold, which is how
         // a real graph came to list attachments it plainly had (2026-09-10).
-        const name = 'Estimate_320_from_B_Sprake_Building_Contractor_ltd_(1)_1706517395516_0.pdf'
+        const name = 'Quote_320_from_Garden_Fencing_Contractor_ltd_(1)_1700000000000_0.pdf'
         expect(referencedAssetNames(`![doc](../assets/${name})`)).toEqual([name])
         expect(referencedAssetNames(`<img src="../assets/${name}">`)).toEqual([name])
     })

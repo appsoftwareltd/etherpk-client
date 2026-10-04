@@ -511,6 +511,48 @@ describe('plan_rename and rename', () => {
         expect((await listDocuments(g)).documents.map((d) => d.concept)).not.toContain('Physics')
     })
 
+    it('carries an alias that names the concept as a scope, and reports it in the plan and the result', async () => {
+        // ADR 0038, amended 2026-10-03: an alias is a concept string like a title, so a scope
+        // rename moves it too, or the rewritten [[[[Physical Science]] lab]] would name nothing.
+        const g = await physics('g-rename-scoped-alias')
+        await seed(g, 'Lab', '- the lab')
+        await setAliases(g, { concept: 'Lab', aliases: ['[[Physics]] lab'] })
+        await seed(g, 'Visit', '- went to [[[[Physics]] lab]]')
+
+        const plan = await planRename(g, { from: 'Physics', to: 'Physical Science' })
+        expect(plan.aliases).toEqual([{ document: 'Lab', from: '[[Physics]] lab', to: '[[Physical Science]] lab' }])
+
+        const result = await rename(g, { from: 'Physics', to: 'Physical Science' })
+        expect(result.aliasesRewritten).toEqual(['Lab'])
+        expect((await listDocuments(g)).documents.find((d) => d.concept === 'Lab')?.aliases).toEqual(['[[Physical Science]] lab'])
+        expect((await readDocument(g, 'Visit')).text).toBe('- went to [[[[Physical Science]] lab]]')
+        expect((await readDocument(g, '[[Physical Science]] lab')).concept).toBe('Lab')
+    })
+
+    it('refuses a rename whose alias rewrite would land on a name another document has', async () => {
+        const g = await physics('g-rename-scoped-alias-taken')
+        await seed(g, 'Lab', '- the lab')
+        await setAliases(g, { concept: 'Lab', aliases: ['[[Physics]] lab'] })
+        await seed(g, '[[Physical Science]] lab', '- another')
+        const refused = await rejectsWith(rename(g, { from: 'Physics', to: 'Physical Science' }), 'invalid_argument')
+        expect(refused.message).toContain('already a name of')
+        expect((await listDocuments(g)).documents.find((d) => d.concept === 'Lab')?.aliases).toEqual(['[[Physics]] lab'])
+    })
+
+    it('a merge into a document a tool has read keeps the absorbed body', async () => {
+        // On a folder graph every document a tool reads stays open, and a merge written to the
+        // file alone was overwritten by the open buffer's next save (review, 2026-10-03).
+        const g = await graph('g-rename-merge-read')
+        await seed(g, 'Garden', '- Garden')
+        await seed(g, '[[Garden]] y', '- absorbed body')
+        await seed(g, '[[Orchard]] y', '- survivor')
+        await readDocument(g, '[[Orchard]] y')
+        await rename(g, { from: 'Garden', to: 'Orchard', strategy: 'alias', confirm_merge: true })
+        const merged = (await readDocument(g, '[[Orchard]] y')).text
+        expect(merged).toContain('- absorbed body')
+        expect(merged).toContain('- survivor')
+    })
+
     it('renames a concept that has no page by rewriting its links', async () => {
         const g = await graph('g-rename-pageless')
         await seed(g, 'Notes', '- see [[Physcis]]')

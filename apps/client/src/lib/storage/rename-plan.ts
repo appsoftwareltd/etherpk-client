@@ -7,9 +7,9 @@
  */
 
 import { frontmatterIdentity } from '$lib/document/frontmatter/identity'
-import { cascadeFor } from '$lib/document/wikilink/rename'
+import { cascadeFor, rewriteWikilinkScope } from '$lib/document/wikilink/rename'
 import { conceptKey } from './fs/identity'
-import { type RenamePlan, type RenameStep, renameRefusal, renameSteps } from './rename'
+import { type AliasRewrite, type RenameLinkStrategy, type RenamePlan, type RenameStep, renameRefusal, renameSteps } from './rename'
 
 export interface PlanRenameInput {
     from: string
@@ -27,12 +27,18 @@ export interface PlanRenameInput {
 export function planRename(input: PlanRenameInput): RenamePlan {
     const from = input.from.trim()
     const to = input.to.trim()
+    // A name no document has as its title, but one has as an alias: the rename renames that alias,
+    // on that document, and retitles nothing (ADR 0065, amended 2026-10-04). A page's own title
+    // outranks another page's alias, so the caller's kind, read by title, decides first.
+    const renamedAlias = input.kind === null ? (input.aliases ?? []).find((alias) => conceptKey(alias.name) === conceptKey(from)) : undefined
+    const aliasOf = renamedAlias?.concept ?? null
 
-    const refusal = renameRefusal({ from, to, kind: input.kind })
+    // An alias is a page's name, so it is refused what a page's title is: never a day.
+    const refusal = renameRefusal({ from, to, kind: renamedAlias ? 'page' : input.kind })
     const hasDocument = input.kind !== null
     const direct: RenameStep = { from, to, hasDocument, merges: false, redirects: false, into: to }
     if (refusal) {
-        return { direct, cascade: [], referencingDocuments: input.referencingDocuments, refusal }
+        return { direct, cascade: [], aliases: [], aliasOf, referencingDocuments: input.referencingDocuments, refusal }
     }
 
     // Which document answers to a name - by title, or by alias - so a step can tell whether
@@ -49,12 +55,109 @@ export function planRename(input: PlanRenameInput): RenamePlan {
         // The cascade is computed over documented concepts, so every step here has one.
         .map<RenameStep>((step) => stepFor(step.from, step.to, true, existing))
 
-    return {
-        direct: stepFor(from, to, hasDocument, existing),
+    const plan: RenamePlan = {
+        // A renamed alias moves no document: it stays on its holder under its new form, which is
+        // the name the renamed concept goes by now.
+        direct: renamedAlias ? direct : stepFor(from, to, hasDocument, existing),
         cascade,
+        aliases: [],
+        aliasOf,
         referencingDocuments: input.referencingDocuments,
         refusal: null,
     }
+    const rewrites = aliasRewrites(plan, renamedAlias, input.aliases ?? [], existing)
+    return 'refusal' in rewrites ? { ...plan, refusal: rewrites.refusal } : { ...plan, aliases: rewrites.aliases }
+}
+
+/**
+ * The aliases the rename rewrites: the alias it names, when it names one (ADR 0065, amended
+ * 2026-10-04), then every alias that names `from` as a scope, by the cascade's own rule, on
+ * whatever document holds it (ADR 0038, amended 2026-10-03). A new form that a different document
+ * will answer to refuses the rename: one another document already has, by title or alias; one a
+ * title step of this same rename gives; or one another alias of this rename also becomes. Sharing
+ * an alias does not make two documents one concept, and the name would go to whichever document a
+ * lookup reached first.
+ *
+ * "Different" is judged on where each document ends up: a merge in the same rename makes two
+ * documents one, so a parallel hierarchy merging into another, each page with its scoped alias,
+ * is no collision. Nor is a re-casing (the name stays the same name), a form the holder itself
+ * already has (the applier drops the duplicate), or one alias two documents already shared (the
+ * rename carries that over rather than creating it).
+ */
+function aliasRewrites(
+    plan: RenamePlan,
+    renamed: { name: string; concept: string } | undefined,
+    aliases: readonly { name: string; concept: string }[],
+    existing: Map<string, string>,
+): { aliases: AliasRewrite[] } | { refusal: string } {
+    const steps = renameSteps(plan).filter((step) => step.hasDocument)
+    // Where each document ends up: a title step moves it, and a merge joins it into another.
+    const landed = new Map(steps.map((step) => [conceptKey(step.from), step.into]))
+    const endsIn = (concept: string) => conceptKey(landed.get(conceptKey(concept)) ?? concept)
+    // The names this rename's title steps give, and to which document (named as it is now).
+    const given = new Map(steps.map((step) => [conceptKey(step.to), step.from]))
+    // The new forms planned so far, to catch two different aliases becoming one name.
+    const planned = new Map<string, { name: string; concept: string }>()
+    const refuse = (alias: { name: string; concept: string }, to: string, why: string) => ({
+        refusal: `“${alias.concept}” has the alias “${alias.name}”, which the rename would make “${to}”, but ${why}. Change one of the two names, then rename again.`,
+    })
+    // The renamed alias becomes the new name itself; a scoped one has the old name rewritten inside it.
+    const candidates: { alias: { name: string; concept: string }; to: string }[] = renamed ? [{ alias: renamed, to: plan.direct.to }] : []
+    for (const alias of aliases) {
+        const rewritten = rewriteWikilinkScope(alias.name, plan.direct.from, plan.direct.to)
+        if (rewritten.count > 0) candidates.push({ alias, to: rewritten.text })
+    }
+    const out: AliasRewrite[] = []
+    for (const { alias, to } of candidates) {
+        const key = conceptKey(to)
+        if (key !== conceptKey(alias.name)) {
+            const holder = endsIn(alias.concept)
+            const owner = existing.get(key)
+            if (owner !== undefined && endsIn(owner) !== holder) {
+                if (alias === renamed) return { refusal: renamedAliasTaken(alias, to, owner) }
+                return refuse(alias, to, `that is already a name of “${owner}”`)
+            }
+            const receiver = given.get(key)
+            if (receiver !== undefined && endsIn(receiver) !== holder) return refuse(alias, to, `the rename gives that name to “${receiver}”`)
+            const earlier = planned.get(key)
+            if (earlier && endsIn(earlier.concept) !== holder && conceptKey(earlier.name) !== conceptKey(alias.name)) {
+                return refuse(alias, to, `it would also make “${earlier.concept}”'s alias “${earlier.name}” that name`)
+            }
+            planned.set(key, alias)
+        }
+        out.push({ holder: alias.concept, from: alias.name, to })
+    }
+    return { aliases: out }
+}
+
+/**
+ * Why an alias cannot be renamed to a name another document answers to. Not a merge, as a page's
+ * rename onto a taken name is: the alias belongs to one page, and the other page keeps its name.
+ */
+function renamedAliasTaken(alias: { name: string; concept: string }, to: string, owner: string): string {
+    const taken = conceptKey(owner) === conceptKey(to) ? `“${to}” is another page's name` : `“${to}” is already an alias of “${owner}”`
+    return `${taken}, so “${alias.concept}”'s alias “${alias.name}” cannot be renamed to it. Choose another name, or keep the link as typed.`
+}
+
+/**
+ * A holder's alias list after the rename (ADR 0038, amended 2026-10-03): under the rewrite arm
+ * each rewritten alias is replaced in place, as the links that used it are rewritten; under the
+ * alias arm the old form stays, since untouched links still say it, and the new form is added
+ * after it. The caller normalises the result, which drops a new form the document already has.
+ */
+export function aliasesAfterRename(
+    current: readonly string[],
+    rewrites: readonly AliasRewrite[],
+    strategy: RenameLinkStrategy,
+): string[] {
+    const next: string[] = []
+    for (const alias of current) {
+        const rewrite = rewrites.find((r) => conceptKey(r.from) === conceptKey(alias))
+        if (!rewrite) next.push(alias)
+        else if (strategy === 'rewrite') next.push(rewrite.to)
+        else next.push(alias, rewrite.to)
+    }
+    return next
 }
 
 /**
@@ -96,20 +199,26 @@ export async function refuseProtectedMerges(
  * Refuse a plan whose steps would rewrite a [[Frontmatter]] block that does not parse. A
  * Filesystem Backend rebuilds each renamed document's block, and a merge survivor's, from its
  * parsed data, which is empty for such a block, so every key it holds would be lost from the file:
- * the only copy. `textOf` gives a document's current text (an open buffer, else its file), or
- * null for a name with no document behind it.
+ * the only copy. `textOf` gives the text a step rewrites, or null for a name with no document
+ * behind it. A document whose alias the rename rewrites has its block rewritten too, and
+ * `holderTextOf` gives the text that write starts from (an open buffer, where a step's is the
+ * file), defaulting to `textOf`.
  */
 export async function refuseUnreadableBlocks(
     plan: RenamePlan,
     textOf: (concept: string) => Promise<string | null>,
+    holderTextOf: (concept: string) => Promise<string | null> = textOf,
 ): Promise<RenamePlan> {
     if (plan.refusal) return plan
-    for (const step of renameSteps(plan)) {
-        for (const concept of step.merges ? [step.from, step.into] : [step.from]) {
-            const text = await textOf(concept)
-            if (text === null || frontmatterIdentity(text).readable) continue
-            return { ...plan, refusal: unreadableBlockRefusal(plan.direct.from, concept) }
-        }
+    const rewritten = renameSteps(plan).flatMap((step) => (step.merges ? [step.from, step.into] : [step.from]))
+    const checks = [
+        ...rewritten.map((concept) => [concept, textOf] as const),
+        ...plan.aliases.map((alias) => [alias.holder, holderTextOf] as const),
+    ]
+    for (const [concept, read] of checks) {
+        const text = await read(concept)
+        if (text === null || frontmatterIdentity(text).readable) continue
+        return { ...plan, refusal: unreadableBlockRefusal(plan.direct.from, concept) }
     }
     return plan
 }

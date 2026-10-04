@@ -126,23 +126,23 @@ describe('planMirrorNames', () => {
         // follows the title, and the planner says which file to rename rather than write afresh.
         const existing = folder({
             pages: [
-                { name: 'covariance-contravariance-in-c.md', concept: 'Covariance & Contravariance in C#' },
-                { name: 'submeta-kimura.md', concept: 'Submeta Kimura' },
+                { name: 'tools-seeds-in-shed-2.md', concept: 'Tools & Seeds in Shed #2' },
+                { name: 'herb-garden.md', concept: 'Herb Garden' },
                 { name: 'test-kanban.md', concept: 'Test [[Kanban]]' },
             ],
         })
         const plan = planMirrorNames(
-            [page('p1', 'Covariance & Contravariance in C#'), page('p2', 'Submeta Kimura'), page('p3', 'Test [[Kanban]]')],
+            [page('p1', 'Tools & Seeds in Shed #2'), page('p2', 'Herb Garden'), page('p3', 'Test [[Kanban]]')],
             existing,
         )
         expect(names(plan)).toEqual({
-            p1: 'Covariance & Contravariance in C#.md',
-            p2: 'Submeta Kimura.md',
+            p1: 'Tools & Seeds in Shed #2.md',
+            p2: 'Herb Garden.md',
             p3: 'Test [[Kanban]].md',
         })
         expect(Object.fromEntries(plan.renameFrom)).toEqual({
-            p1: 'covariance-contravariance-in-c.md',
-            p2: 'submeta-kimura.md',
+            p1: 'tools-seeds-in-shed-2.md',
+            p2: 'herb-garden.md',
             p3: 'test-kanban.md',
         })
         expect(plan.collisions).toEqual([])

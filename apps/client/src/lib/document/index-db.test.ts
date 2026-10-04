@@ -17,6 +17,9 @@ import {
     ingestOne,
     ingestIndexRebuildChunk,
     referencedInBody,
+    removeDocument,
+    indexDocHash,
+    hashText,
     type SqlDb,
 } from './index-db'
 import { wrapOo1Db } from './index-db-sqlite'
@@ -104,6 +107,35 @@ describe('index-db', () => {
         expect(conceptExists(db, 'Proj')).toBe(true)
         expect(conceptExists(db, 'Nope')).toBe(false)
         expect(existingConceptKeys(db)).toEqual(expect.arrayContaining(['project', 'proj']))
+    })
+
+    // A rename, a delete, or a name becoming another page's alias leaves rows under a name no
+    // document has. They go one document at a time, not by replacing the whole index.
+    it('removes one document and everything derived from it', () => {
+        expect(removeDocument(db, 'project')).toBe(true)
+
+        expect(conceptExists(db, 'Project')).toBe(false)
+        expect(conceptExists(db, 'Proj')).toBe(false)
+        // The journals still link to it, so the name lives on with no page behind it.
+        expect(conceptCandidates(db).find((candidate) => candidate.key === 'project')?.kind).toBe('pageless')
+        expect(indexedDocumentFacts(db, 'project')).toEqual({ aliases: [], linkTargets: [], includeTargets: [] })
+        expect(removeDocument(db, 'project')).toBe(false)
+    })
+
+    it('takes a renamed document back under its new name, answering to the old one as an alias', () => {
+        removeDocument(db, 'project')
+        ingestOne(db, { concept: 'Programme', kind: 'page', aliases: ['Proj', 'Project'], text: '# Programme' })
+
+        expect(conceptCandidates(db).find((candidate) => candidate.key === 'project')).toMatchObject({ kind: 'alias', canonical: 'Programme' })
+        expect(backlinksFor(db, 'Programme').map((group) => group.sourceConcept).sort()).toEqual(['2026-06-24', '2026-06-25'])
+    })
+
+    it("changes a document's hash when only its aliases change, so an incremental ingest takes it", () => {
+        const kanban = { concept: 'Kanban', kind: 'page' as const, aliases: [] as string[], text: '- k' }
+        expect(indexDocHash({ ...kanban, aliases: ['Board'] })).not.toBe(indexDocHash(kanban))
+        expect(indexDocHash({ ...kanban, aliases: ['Board'] })).not.toBe(indexDocHash({ ...kanban, aliases: ['Desk'] }))
+        // One without aliases keeps the hash it had, so a persisted index re-reads nothing for it.
+        expect(indexDocHash(kanban)).toBe(hashText('- k'))
     })
 
     it('pools backlinks across the concept and its aliases', () => {
@@ -401,6 +433,24 @@ describe('index-db', () => {
             ingest(db, [scoped])
             expect(indexedDocumentFacts(db, 'dev doc').linkTargets).toEqual([])
             expect(indexedDocumentFacts(db, '[[dev doc]] file name').linkTargets).toEqual(['dev doc'])
+        })
+
+        // A rename rewrites the links that say the name it renames and no other (ADR 0065, amended
+        // 2026-10-04), so what it touches is asked by name: a page's title and its aliases are
+        // listed under one page, but a link says only one of them.
+        it("tells which of the page's names a group's body links say", () => {
+            ingest(db, [
+                { concept: 'Kanban', kind: 'page', aliases: ['Board'], text: '' },
+                { concept: 'ByTitle', kind: 'page', aliases: [], text: '- [[Kanban]]' },
+                { concept: 'ByAlias', kind: 'page', aliases: [], text: '- [[board]] and [[[[Board]] notes]]' },
+            ])
+            const groups = new Map(backlinksFor(db, 'Board').map((group) => [group.sourceConcept, group]))
+            expect(referencedInBody(groups.get('ByTitle')!, 'Board')).toBe(false)
+            expect(referencedInBody(groups.get('ByTitle')!, 'Kanban')).toBe(true)
+            expect(referencedInBody(groups.get('ByAlias')!, 'BOARD')).toBe(true)
+            expect(referencedInBody(groups.get('ByAlias')!, 'Kanban')).toBe(false)
+            // Asked without a name, any body link counts, whichever name it says.
+            expect(referencedInBody(groups.get('ByTitle')!)).toBe(true)
         })
 
         it('tells a group that links in its body from one that only names the scope', () => {

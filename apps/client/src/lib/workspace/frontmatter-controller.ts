@@ -62,7 +62,14 @@ export function createFrontmatterController(deps: FrontmatterControllerDeps): Fr
         const text = deps.textOf(target)
         const registry = deps.identityOf(target)
         if (text === null || !registry) return []
-        return proposeFrontmatter({ text, registry, backend: deps.backend(), fileStem: registry.fileStem, blockIsNew: end?.blockIsNew })
+        return proposeFrontmatter({
+            text,
+            registry,
+            backend: deps.backend(),
+            fileStem: registry.fileStem,
+            blockIsNew: end?.blockIsNew,
+            blockRemoved: end?.blockRemoved,
+        })
     }
 
     /**
@@ -112,7 +119,12 @@ export function createFrontmatterController(deps: FrontmatterControllerDeps): Fr
 
     return {
         episodeEnded(target, end) {
-            const queued = (running.get(target) ?? Promise.resolve()).then(() => run(target, end))
+            // Run whether the episode before it succeeded or failed: one store write that failed
+            // must not swallow the episodes queued behind it. The failure is still the caller's.
+            const queued = (running.get(target) ?? Promise.resolve()).then(
+                () => run(target, end),
+                () => run(target, end),
+            )
             running.set(target, queued)
             return queued.finally(() => {
                 if (running.get(target) === queued) running.delete(target)

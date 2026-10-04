@@ -29,7 +29,7 @@ describe('image lines', () => {
     it('takes a whole target with parentheses, as an imported attachment has', () => {
         // Every link reader used to stop at the first `)`, so the image rendered over half its
         // own target and the controls landed mid-text (2026-09-10).
-        const target = '../assets/Estimate_320_from_B_Sprake_ltd_(1)_1706517395516_0.png'
+        const target = '../assets/Quote_320_from_Garden_Fencing_ltd_(1)_1700000000000_0.png'
         expect(parseImageLine(`![shot](${target})`)).toMatchObject({ kind: 'standalone', url: target })
         expect(parseImageLine(`- ![shot](${target})`)).toMatchObject({ kind: 'bullet', url: target })
     })

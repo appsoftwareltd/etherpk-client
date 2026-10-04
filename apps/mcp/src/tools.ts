@@ -30,6 +30,7 @@ import { normaliseIndentUnit } from '$lib/document/indent-unit'
 import { lineFeedsOnly } from '$lib/document/line-endings'
 import { isJournalConcept } from '$lib/document/journal-concept'
 import { documentProtection } from '$lib/document/protection/cipher-fence'
+import { DocumentUnconfirmedError } from '$lib/document/types'
 import { withAliasesInAddedBlock } from '$lib/document/frontmatter/identity'
 import { withFrontmatterPatch } from '$lib/document/frontmatter/patch'
 import { withPublishing } from '$lib/document/frontmatter/publishing'
@@ -796,7 +797,8 @@ export async function createPage(graph: HeadlessGraph, args: CreatePageArgs) {
     }
     // No frontmatter block: on a Server Backend identity is the encrypted registry (ADR 0024),
     // and the app seeds a new page with its body alone - a block the text carries is a mirror the
-    // store writes back when the registry changes (ADR 0061), never the source of the name.
+    // store writes back when the registry changes, and adds once the page has aliases (ADR 0061),
+    // never the source of the name.
     await graph.store.createPage(title, asWritten(args.text ?? ''))
     if (args.frontmatter && Object.keys(args.frontmatter).length > 0) {
         await graph.store.whenReady(title)
@@ -837,10 +839,14 @@ function conceptExists(graph: HeadlessGraph, concept: string): boolean {
     return graph.index.candidate(concept) !== undefined
 }
 
-/** The documents whose BODIES link to the concept, by name - what a rewrite has to read (ADR 0083: a title reference is the cascade's). */
+/**
+ * The documents whose BODIES link to the concept by that very name - what a rewrite has to read
+ * (ADR 0083: a title reference is the cascade's). The page's other names share its backlinks, and
+ * the rewrite leaves links that say them alone.
+ */
 async function referencingDocuments(graph: HeadlessGraph, concept: string): Promise<string[]> {
     const groups = await graph.index.backlinks(concept)
-    return groups.filter(referencedInBody).map((group) => group.sourceConcept)
+    return groups.filter((group) => referencedInBody(group, concept)).map((group) => group.sourceConcept)
 }
 
 /** Protected documents in the graph: their references can be neither seen nor rewritten. */
@@ -865,17 +871,21 @@ export async function planRename(graph: HeadlessGraph, args: PlanRenameArgs) {
     if (!conceptExists(graph, from)) throw new ToolError('not_found', `Nothing in the graph is named "${from}".`)
     const identity = resolveIdentity(graph, from)
     if (identity) refuseIfProtected(identity.concept, await liveText(graph, identity))
-    const referencing = await referencingDocuments(graph, from)
-    const plan = await graph.store.planRename(identity?.concept ?? from, to, referencing.length)
+    // A page is renamed by its title, whichever of its names the agent gave, as `rename` does.
+    const subject = identity?.concept ?? from
+    const referencing = await referencingDocuments(graph, subject)
+    const plan = await graph.store.planRename(subject, to, referencing.length)
     const steps = renameSteps(plan)
     return {
-        from: identity?.concept ?? from,
+        from: subject,
         to,
         refusal: plan.refusal,
         direct: renameStepView(plan.direct),
         cascade: plan.cascade.map(renameStepView),
         referencingDocuments: referencing,
         merges: steps.filter((step) => step.merges).map((step) => ({ from: step.from, into: step.into })),
+        // Aliases that name it as a scope move with it (ADR 0038, amended 2026-10-03).
+        aliases: plan.aliases.map((alias) => ({ document: alias.holder, from: alias.from, to: alias.to })),
         protectedDocuments: protectedDocumentCount(graph),
     }
 }
@@ -927,6 +937,7 @@ export async function rename(graph: HeadlessGraph, args: RenameArgs) {
         rewrittenDocuments: result.rewrittenDocuments,
         cascaded: plan.cascade.map((step) => ({ from: step.from, to: step.into })),
         merged: result.merged,
+        aliasesRewritten: result.aliasesRewritten,
     }
 }
 
@@ -952,7 +963,12 @@ export async function setAliases(graph: HeadlessGraph, args: SetAliasesArgs) {
         }
         aliases.push(alias)
     }
-    await graph.store.setAliases(identity.concept, aliases)
+    try {
+        await graph.store.setAliases(identity.concept, aliases)
+    } catch (error) {
+        if (error instanceof DocumentUnconfirmedError) throw new ToolError('unconfirmed_documents', error.message)
+        throw error
+    }
     await settle(graph)
     await graph.store.refresh()
     return { concept: identity.concept, aliases: resolveIdentity(graph, identity.concept)?.aliases ?? aliases }

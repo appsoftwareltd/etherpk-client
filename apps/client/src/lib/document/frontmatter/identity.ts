@@ -149,7 +149,8 @@ export interface IdentityPatch {
 export interface WriteOptions {
     /**
      * Add a block to a document that has none. Off by default: a document without a block has
-     * made no claim, and a synced document never grows one unprompted (ADR 0061).
+     * made no claim, and a synced document grows one only to show its aliases (ADR 0061, amended
+     * 2026-10-03).
      */
     addBlock?: boolean
 }
@@ -192,7 +193,8 @@ export function withFrontmatterIdentity(text: string, patch: IdentityPatch, opti
  * the rewrite added. A writer that gives a document its first block, as Publish does when it adds
  * `public:`, must not make the document claim fewer aliases than it has: a block with no
  * `aliases:` line claims none, and the next edit to it would clear them (ADR 0061). Only a Server
- * Backend has aliases without a block; on a Filesystem Backend they are read from the saved file,
+ * Backend has aliases without a block, on a document aliased before they were always shown and not
+ * yet repaired (amended 2026-10-03). On a Filesystem Backend they are read from the saved file,
  * so `aliases` is empty there provided the caller wrote pending edits before reading them
  * (`rewriteFrontmatter` flushes first). A block `before` already had is left as the writer left it.
  */
@@ -204,10 +206,11 @@ export function withAliasesInAddedBlock(before: string, after: string, aliases: 
 /**
  * The text an [[Import]] into a synced graph stores for a document whose identity it has written to
  * the registry (ADR 0061). `title` is removed: the registry names the document, and on a Server
- * Backend a block without a title claims none. `aliases` stays in a block that other keys keep, so
- * the block and the registry agree. A block with no `aliases` key reads as the claim "no aliases",
- * so stripping them there would make the first edit to the block clear every imported alias. A
- * block holding nothing but identity keys is removed whole: no block is no claim.
+ * Backend a block without a title claims none. `aliases` stays, so the block and the registry
+ * agree and the page shows the names it answers to (an alias is never invisible, amended
+ * 2026-10-03). A block with no `aliases` key reads as the claim "no aliases", so stripping them
+ * would make the first edit to the block clear every imported alias. A block left with nothing to
+ * show once its title goes is removed whole: no block is no claim.
  */
 export function syncedImportText(text: string): string {
     const span = frontmatterSpan(text)
@@ -215,7 +218,8 @@ export function syncedImportText(text: string): string {
     const data = frontmatterData(span.body)
     if (data === null) return text
     if (!('title' in data) && !('aliases' in data)) return text
-    if (Object.keys(data).every((key) => key === 'title' || key === 'aliases')) return text.slice(span.end)
+    const identityOnly = Object.keys(data).every((key) => key === 'title' || key === 'aliases')
+    if (identityOnly && aliasesOf({ data }).length === 0) return text.slice(span.end)
     // Nothing to strip: keep the block as written rather than reformatting it.
     if (!('title' in data)) return text
     return editFrontmatter(text, (block) => block.delete('title'))

@@ -95,6 +95,12 @@ export interface DbBacklinkGroup {
     sourceConcept: string
     sourceKind: DocumentKind
     refs: DbBacklinkRef[]
+    /**
+     * The keys of the page's names this source's BODY links say, each once: its title, any of its
+     * aliases, at any depth of nesting. A place naming the page twice is one ref, so the refs
+     * cannot say this.
+     */
+    bodyNames: string[]
 }
 
 /**
@@ -102,9 +108,14 @@ export interface DbBacklinkGroup {
  * it. A rename's "N documents link to X and will be updated" counts the documents whose text
  * the rewrite touches; a page that merely carries the scope in its title is retitled by the
  * cascade and reported there, so counting it here would describe it twice (ADR 0083).
+ *
+ * Given `name`, only links that say that name count. The rewrite changes `[[name]]` and no
+ * other name the page answers to, so a rename asks by the name it renames (ADR 0065, amended
+ * 2026-10-04): the page's title and its aliases share one group of backlinks.
  */
-export function referencedInBody(group: Pick<DbBacklinkGroup, 'refs'>): boolean {
-    return group.refs.some((ref) => ref.kind !== 'title')
+export function referencedInBody(group: Pick<DbBacklinkGroup, 'refs' | 'bodyNames'>, name?: string): boolean {
+    if (name === undefined) return group.refs.some((ref) => ref.kind !== 'title')
+    return group.bodyNames.includes(conceptKey(name))
 }
 
 const MAX_CONTEXT = 1000
@@ -286,6 +297,40 @@ export function documentHashes(db: SqlDb): Map<string, string> {
     return new Map(rows.map((r) => [r.concept_key, r.text_hash]))
 }
 
+/**
+ * The page the live generation holds under `key`, as an ingest compares a document with it: its
+ * hash, and the title and kind it is shown under, which a title changed only in case moves while
+ * its key and its text stay the same.
+ */
+export function indexedPage(db: SqlDb, key: string): { hash: string; concept: string; kind: DocumentKind } | undefined {
+    const row = db.all<{ text_hash: string; concept: string; kind: DocumentKind }>(
+        'SELECT text_hash, concept, kind FROM pages WHERE generation = ? AND concept_key = ? LIMIT 1',
+        [activeIndexGeneration(db), key],
+    )[0]
+    return row ? { hash: row.text_hash, concept: row.concept, kind: row.kind } : undefined
+}
+
+/**
+ * Every document the live generation holds, by its names: what a change to the graph's names is
+ * reconciled against (`reconcileNames`). Read from the tables, not the concept candidates, which
+ * hold one row per name and so lose a page whose title is another page's alias.
+ */
+export function indexedNames(db: SqlDb): { concept: string; kind: DocumentKind; aliases: string[] }[] {
+    const generation = activeIndexGeneration(db)
+    const pages = db.all<{ id: number; concept: string; kind: DocumentKind }>('SELECT id, concept, kind FROM pages WHERE generation = ?', [generation])
+    const aliases = db.all<{ page_id: number; display: string }>(
+        'SELECT a.page_id, a.display FROM aliases a JOIN pages p ON p.id = a.page_id WHERE p.generation = ? ORDER BY a.rowid',
+        [generation],
+    )
+    const byPage = new Map<number, string[]>()
+    for (const alias of aliases) {
+        const list = byPage.get(alias.page_id)
+        if (list) list.push(alias.display)
+        else byPage.set(alias.page_id, [alias.display])
+    }
+    return pages.map((page) => ({ concept: page.concept, kind: page.kind, aliases: byPage.get(page.id) ?? [] }))
+}
+
 export function documentHash(db: SqlDb, key: string): string | undefined {
     return db.all<{ text_hash: string }>(
         'SELECT text_hash FROM pages WHERE generation = ? AND concept_key = ? LIMIT 1',
@@ -306,12 +351,15 @@ export function documentHash(db: SqlDb, key: string): string | undefined {
 export function indexDocHash(doc: IndexDoc): string {
     const includes = doc.includes ?? []
     const properties = doc.properties ?? []
-    if (includes.length === 0 && properties.length === 0) return hashText(doc.text)
+    const aliases = doc.aliases ?? []
+    if (includes.length === 0 && properties.length === 0 && aliases.length === 0) return hashText(doc.text)
     // Properties come from the Frontmatter the body does not carry either, so an edit that only
-    // sets `status: done` must still change the hash, or the index would keep the old value.
+    // sets `status: done` must still change the hash, or the index would keep the old value. The
+    // aliases likewise: a rename that keeps the old name, or an alias edit, changes nothing else,
+    // and an ingest that took the document as unchanged would leave the name unresolved.
     const includeText = includes.map((i) => `${i.publication}\u0001${i.slot}\u0001${i.concept}`).join('\u0000')
     const propertyText = properties.map((p) => `${p.key}\u0001${p.value ?? '\u0002'}`).join('\u0000')
-    return hashText(`${doc.text}\u0000${includeText}\u0003${propertyText}`)
+    return hashText(`${doc.text}\u0000${includeText}\u0003${propertyText}\u0004${aliases.join('\u0000')}`)
 }
 
 export function hashText(text: string): string {
@@ -754,18 +802,7 @@ export function ingestOne(db: SqlDb, doc: IndexDoc): void {
                 : []
         if (found.length > 0) {
             pageId = found[0].id
-            db.run('DELETE FROM aliases WHERE page_id = ?', [pageId])
-            db.run('DELETE FROM publication_includes WHERE page_id = ?', [pageId])
-            const [ftsFrom, ftsTo] = blockFtsRange(pageId)
-            // A primary-key range delete, which is why the rowid encodes the page: this runs
-            // on every keystroke, and a scan of the text index would not survive that.
-            db.run('DELETE FROM block_fts WHERE rowid >= ? AND rowid < ?', [ftsFrom, ftsTo])
-            db.run('DELETE FROM blocks WHERE page_id = ?', [pageId])
-            db.run('DELETE FROM links WHERE page_id = ?', [pageId])
-            db.run('DELETE FROM tasks WHERE page_id = ?', [pageId])
-            db.run('DELETE FROM task_concepts WHERE page_id = ?', [pageId])
-            db.run('DELETE FROM passages WHERE page_id = ?', [pageId])
-            db.run('DELETE FROM properties WHERE page_id = ?', [pageId])
+            deleteDerivedRows(db, pageId)
             db.run('UPDATE pages SET concept = ?, kind = ?, text_hash = ?, protected = ? WHERE id = ?', [
                 doc.concept,
                 doc.kind,
@@ -784,6 +821,44 @@ export function ingestOne(db: SqlDb, doc: IndexDoc): void {
         const written = new Set(insertDerived(db, pageId, doc))
         if (leaving.some((text) => !written.has(text))) purgeDeletedText(db)
     })
+}
+
+/**
+ * Every row derived from page `pageId`, the page row itself aside: what an ingest replaces and a
+ * removal drops. One list, so a table added to the schema is cleared by both.
+ */
+function deleteDerivedRows(db: SqlDb, pageId: number): void {
+    db.run('DELETE FROM aliases WHERE page_id = ?', [pageId])
+    db.run('DELETE FROM publication_includes WHERE page_id = ?', [pageId])
+    const [ftsFrom, ftsTo] = blockFtsRange(pageId)
+    // A primary-key range delete, which is why the rowid encodes the page: this runs on every
+    // keystroke, and a scan of the text index would not survive that.
+    db.run('DELETE FROM block_fts WHERE rowid >= ? AND rowid < ?', [ftsFrom, ftsTo])
+    db.run('DELETE FROM blocks WHERE page_id = ?', [pageId])
+    db.run('DELETE FROM links WHERE page_id = ?', [pageId])
+    db.run('DELETE FROM tasks WHERE page_id = ?', [pageId])
+    db.run('DELETE FROM task_concepts WHERE page_id = ?', [pageId])
+    db.run('DELETE FROM passages WHERE page_id = ?', [pageId])
+    db.run('DELETE FROM properties WHERE page_id = ?', [pageId])
+}
+
+/**
+ * Drop the document with key `key` from the live generation: its page row and every row derived
+ * from it. A rename, a delete, or a title becoming another page's alias leaves rows under a name
+ * no document has any more, and this takes them out one document at a time, where a whole
+ * replacement would re-read the graph. Links other documents hold to the name are theirs and stay,
+ * so a name still linked to lives on as a [[Pageless Concept]]. Returns whether there was one.
+ */
+export function removeDocument(db: SqlDb, key: string): boolean {
+    let removed = false
+    inTransaction(db, () => {
+        const found = db.all<{ id: number }>('SELECT id FROM pages WHERE generation = ? AND concept_key = ?', [activeIndexGeneration(db), key])
+        if (found.length === 0) return
+        deleteDerivedRows(db, found[0].id)
+        db.run('DELETE FROM pages WHERE id = ?', [found[0].id])
+        removed = true
+    })
+    return removed
 }
 
 /** Every concept key that resolves to a real document (canonical name or alias). */
@@ -1124,6 +1199,8 @@ function namesForPage(db: SqlDb, pageId: number): string[] {
 
 interface LinkHit {
     page_id: number
+    /** The key of the name this link says: the page's title, or one of its aliases. */
+    concept_key: string
     sourceConcept: string
     sourceKind: DocumentKind
     line: number
@@ -1268,7 +1345,7 @@ export function backlinksFor(db: SqlDb, concept: string): DbBacklinkGroup[] {
     const placeholders = names.map(() => '?').join(',')
     const generation = activeIndexGeneration(db)
     const hits = db.all<LinkHit>(
-        `SELECT l.page_id, p.concept AS sourceConcept, p.kind AS sourceKind, l.line, l.line_text,
+        `SELECT l.page_id, l.concept_key, p.concept AS sourceConcept, p.kind AS sourceKind, l.line, l.line_text,
                 l.match_start, l.match_end, l.block_local_id, l.in_title
          FROM links l JOIN pages p ON p.id = l.page_id
          WHERE p.generation=? AND l.concept_key IN (${placeholders})
@@ -1316,6 +1393,13 @@ export function backlinksFor(db: SqlDb, concept: string): DbBacklinkGroup[] {
     // mention; one entry per link repeated the line and inflated the count.
     const places = new Set<string>()
     for (const h of hits) {
+        let group = groups.get(h.sourceConcept)
+        if (!group) {
+            group = { sourceConcept: h.sourceConcept, sourceKind: h.sourceKind, refs: [], bodyNames: [] }
+            groups.set(h.sourceConcept, group)
+        }
+        // Every link, before places are merged: a place naming the page by two names says both.
+        if (!h.in_title && !group.bodyNames.includes(h.concept_key)) group.bodyNames.push(h.concept_key)
         const place = h.in_title
             ? `${h.page_id}:title`
             : h.block_local_id != null
@@ -1323,11 +1407,6 @@ export function backlinksFor(db: SqlDb, concept: string): DbBacklinkGroup[] {
               : `${h.page_id}:line:${h.line}`
         if (places.has(place)) continue
         places.add(place)
-        let group = groups.get(h.sourceConcept)
-        if (!group) {
-            group = { sourceConcept: h.sourceConcept, sourceKind: h.sourceKind, refs: [] }
-            groups.set(h.sourceConcept, group)
-        }
         group.refs.push(buildRef(h, blocksByPage.get(h.page_id) ?? []))
     }
     // The title first - it is above every line - then the body in line order.

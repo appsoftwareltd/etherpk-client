@@ -23,7 +23,6 @@ import {
     conceptCandidatesForKeys,
     conceptFamilyKeys,
     createSchema,
-    documentHash,
     documentsMatchingProperties,
     existingConceptKeys,
     indexDocHash,
@@ -31,6 +30,9 @@ import {
     indexRevision,
     ingestOne,
     indexedDocumentFacts,
+    indexedNames,
+    indexedPage,
+    removeDocument,
     ingestIndexRebuildChunk,
     isUsableIndex,
     propertyKeys,
@@ -338,14 +340,37 @@ export function createIndexCore(host: IndexDbHost): IndexCore {
                     if (!db) throw new Error('index not open')
                     const changed: IndexDoc[] = []
                     for (const doc of request.docs) {
-                        if (documentHash(db, conceptKey(doc.concept)) !== indexDocHash(doc)) {
-                            changed.push(doc)
-                        }
+                        const stored = indexedPage(db, conceptKey(doc.concept))
+                        // The same text under a title changed only in case is still a change.
+                        const same = stored !== undefined && stored.hash === indexDocHash(doc) && stored.concept === doc.concept && stored.kind === doc.kind
+                        if (!same) changed.push(doc)
                     }
-                    if (changed.length === 0) return []
+                    // Only a name that has a document here, and that this ingest does not take
+                    // again under the same key, is removed.
+                    const taken = new Set(request.docs.map((doc) => conceptKey(doc.concept)))
+                    const removed = [...new Set((request.removed ?? []).map(conceptKey))].filter(
+                        (key) => !taken.has(key) && indexedPage(db!, key) !== undefined,
+                    )
+                    if (changed.length === 0 && removed.length === 0) return []
 
                     const affected = new Set<string>()
                     const backlinkTargetsChanged = new Set<string>()
+                    for (const key of removed) {
+                        const before = indexedDocumentFacts(db, key)
+                        // Every name the document answered to resolves elsewhere now, or nowhere,
+                        // and so do the backlinks asked of it.
+                        for (const name of [key, ...before.aliases]) {
+                            affected.add(name)
+                            backlinkTargetsChanged.add(name)
+                        }
+                        for (const target of before.includeTargets) {
+                            for (const family of conceptFamilyKeys(db, target)) affected.add(family)
+                        }
+                        for (const target of before.linkTargets) {
+                            affected.add(target)
+                            backlinkTargetsChanged.add(target)
+                        }
+                    }
                     for (const doc of changed) {
                         const key = conceptKey(doc.concept)
                         const before = indexedDocumentFacts(db, key)
@@ -368,6 +393,7 @@ export function createIndexCore(host: IndexDbHost): IndexCore {
                     // cache which predates a partially-applied batch.
                     const previousSnapshot = visibleSnapshot
                     visibleSnapshot = undefined
+                    for (const key of removed) removeDocument(db, key)
                     for (const doc of changed) ingestOne(db, doc)
                     const after = conceptCandidatesForKeys(db, affected)
                     const delta = deltaFor(
@@ -452,6 +478,9 @@ export function createIndexCore(host: IndexDbHost): IndexCore {
                     const usage = db ? assetUsage(db, request.needles) : { references: 0, documents: [] }
                     return [{ type: 'asset-usage', id: request.id, usage }]
                 }
+
+                case 'names':
+                    return [{ type: 'names', id: request.id, documents: db ? indexedNames(db) : [] }]
 
                 case 'link-graph': {
                     // Read from the tables, never from the concept cache this worker keeps for the

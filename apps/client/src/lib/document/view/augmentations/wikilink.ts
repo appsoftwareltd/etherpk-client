@@ -32,7 +32,7 @@ import {
 } from '../analysis/editor-analysis'
 import { EXTERNAL } from '../cm-document'
 import { isOwnEditing } from '../own-editing'
-import { innermostLinkContainingEdit, type LinkAt, WikilinkEpisode } from './wikilink-episode'
+import { type LinkAt, type WikilinkEdit, WikilinkEpisode } from './wikilink-episode'
 
 export interface WikilinkIndexUpdate {
     full: boolean
@@ -52,27 +52,37 @@ export interface WikilinkAugmentationOptions {
      */
     onIndexUpdated?: (listener: (update: WikilinkIndexUpdate) => void) => () => void
     /**
-     * An editing episode inside a link ended having changed its concept (ADR 0065): what the
-     * link named before, and what the link at that place names now - null when the edit left
-     * no balanced link there.
+     * An editing episode in a link ended having changed concepts (ADR 0065, amended 2026-10-03):
+     * the renames it proposes, outermost first, each what a link named before and names now.
      */
-    onLinkEdited?: (before: string, after: string | null) => void
+    onLinksEdited?: (edits: readonly WikilinkEdit[]) => void
     /** A right-click or long-press on a link, with the pointer position for the menu. */
     onContextMenu?: (concept: string, x: number, y: number) => void
 }
 
 /**
  * Whether one of the user's own transactions may open an editing episode: typing, deleting,
- * pasting, dragging, undoing, as CodeMirror marks them. Not a wrap or an unwrap
- * (wrap-selection.ts, ADR 0077): those write their markers around the selection and leave the
- * selected text as it was, so a link inside the selection is not being edited. Without this
- * exception, `[[A]] [[B]]` wrapped in `[` reads to the bracket matcher as a link named `[A` until
- * the second press balances it, and the caret, at the selection's end, is outside that link, so
- * the episode ended at once and proposed renaming A (live, 2026-09-18).
+ * pasting, dragging, undoing, as CodeMirror marks them.
+ *
+ * A wrap or an unwrap (wrap-selection.ts, ADR 0077) writes its markers around the selection and
+ * leaves the selected text as it was, so a link INSIDE the selection is not being edited: `[[A]]
+ * [[B]]` wrapped in `[` reads to the bracket matcher as a link named `[A` until the second press
+ * balances it, and that proposed renaming A (live, 2026-09-18). But a wrap made inside one link's
+ * text does change that link: `[[Physics Two]]` with "Two" wrapped in `[` twice is
+ * `[[Physics [[Two]]]]`, a new name for Physics Two (live, 2026-10-03). So a wrap or an unwrap
+ * opens an episode only when one link holds every change it makes between its brackets.
  */
 export function opensWikilinkEpisode(tr: Transaction): boolean {
-    if (tr.isUserEvent('input.wrap') || tr.isUserEvent('input.unwrap')) return false
-    return isOwnEditing(tr)
+    if (!isOwnEditing(tr)) return false
+    if (!tr.isUserEvent('input.wrap') && !tr.isUserEvent('input.unwrap')) return true
+    const ranges: { from: number; to: number }[] = []
+    tr.changes.iterChangedRanges((fromA, toA) => ranges.push({ from: fromA, to: toA }))
+    if (ranges.length === 0) return false
+    const first = ranges[0].from
+    const last = ranges[ranges.length - 1].to
+    return linksOnLineAt(tr.startState, first, last).some((link) =>
+        ranges.every((range) => link.from + 2 <= range.from && range.to <= link.to - 2),
+    )
 }
 
 /**
@@ -95,16 +105,6 @@ function linksOnLineAt(state: EditorState, from: number, to: number): LinkAt[] {
     return links
 }
 
-/** The innermost balanced link whose whole span contains `[from, to]`: what occupies a tracked range. */
-function innermostLinkContaining(state: EditorState, from: number, to: number): LinkAt | null {
-    let best: LinkAt | null = null
-    for (const link of linksOnLineAt(state, from, to)) {
-        if (link.from > from || link.to < to) continue
-        if (!best || link.to - link.from < best.to - best.from) best = link
-    }
-    return best
-}
-
 /** Feeds the episode tracker from editor updates and reports an ended edit (ADR 0065). */
 function episodePlugin(options: WikilinkAugmentationOptions): Extension {
     return ViewPlugin.fromClass(
@@ -121,25 +121,25 @@ function episodePlugin(options: WikilinkAugmentationOptions): Extension {
                     tr.changes.iterChangedRanges((fromA, toA) => localChanges.push({ from: fromA, to: toA }))
                 }
                 if (!this.episode.open && localChanges.length === 0) return
-                const edit = this.episode.update({
+                const edits = this.episode.update({
                     localChanges,
-                    // The subject: the link the first change is an edit OF (its text, not its
-                    // brackets, wikilink-episode.ts); what occupies the range afterwards is any link there.
-                    linkBefore: (from, to) => innermostLinkContainingEdit(linksOnLineAt(update.startState, from, to), from, to),
-                    linkAfter: (from, to) => innermostLinkContaining(update.state, from, to),
+                    // The episode opens on the outermost link the first change is an edit of, and
+                    // pairs every link that was inside it with what holds its range afterwards
+                    // (wikilink-episode.ts); both read the line's links, before and after.
+                    linksBefore: (from, to) => linksOnLineAt(update.startState, from, to),
+                    linksAfter: (from, to) => linksOnLineAt(update.state, from, to),
                     mapPos: (pos, assoc) => update.changes.mapPos(pos, assoc),
                     caret: update.state.selection.main.head,
                     focused: update.view.hasFocus,
                 })
                 // After the update cycle, so the View's own listener has already forwarded the
                 // text to the store the workspace will read.
-                if (edit) queueMicrotask(() => options.onLinkEdited?.(edit.before, edit.after))
+                if (edits.length > 0) queueMicrotask(() => options.onLinksEdited?.(edits))
             }
 
             destroy(): void {
-                // The view is gone; the last state it held is the only answer left.
-                const edit = this.episode.close(() => null)
-                if (edit) options.onLinkEdited?.(edit.before, edit.after)
+                // The view is gone and its links with it: nothing pairs, so nothing is proposed.
+                this.episode.close(() => [])
             }
         },
     )

@@ -4,8 +4,8 @@
  */
 import { describe, expect, it } from 'vitest'
 
-import { planRename, refuseProtectedMerges } from './rename-plan'
-import { renameSteps } from './rename'
+import { aliasesAfterRename, planRename, refuseProtectedMerges, refuseUnreadableBlocks } from './rename-plan'
+import { landedName, mergeCount, renameSteps } from './rename'
 
 const plan = (from: string, to: string, concepts: string[]) =>
     planRename({ from, to, concepts, kind: 'page', referencingDocuments: 0 })
@@ -116,36 +116,142 @@ describe('planRename — a pageless concept', () => {
  * refined): renaming onto another page's alias merges into that page under ITS title.
  */
 describe('planRename — a name held as an alias', () => {
-    const aliases = [{ name: 'Agent Accelerated Development', concept: 'Agentic Software Development' }]
+    const aliases = [{ name: 'Growing Vegetables', concept: 'Vegetable Growing' }]
     const withAliases = (from: string, to: string, kind: 'page' | null) =>
-        planRename({ from, to, concepts: ['Agentic Software Development', 'Vibe Coding'], aliases, kind, referencingDocuments: 0 })
+        planRename({ from, to, concepts: ['Vegetable Growing', 'Kitchen Garden'], aliases, kind, referencingDocuments: 0 })
 
     it('merges a page renamed onto another page\'s alias into that page', () => {
-        const out = withAliases('Vibe Coding', 'Agent Accelerated Development', 'page')
+        const out = withAliases('Kitchen Garden', 'Growing Vegetables', 'page')
         expect(out.refusal).toBeNull()
         expect(out.direct).toMatchObject({
             merges: true,
             redirects: false,
-            to: 'Agent Accelerated Development',
-            into: 'Agentic Software Development',
+            to: 'Growing Vegetables',
+            into: 'Vegetable Growing',
         })
     })
 
     it('redirects a pageless concept renamed onto an alias to the page that answers to it', () => {
-        const out = withAliases('Physcis', 'Agent Accelerated Development', null)
-        expect(out.direct).toMatchObject({ merges: false, redirects: true, into: 'Agentic Software Development' })
+        const out = withAliases('Physcis', 'Growing Vegetables', null)
+        expect(out.direct).toMatchObject({ merges: false, redirects: true, into: 'Vegetable Growing' })
     })
 
     it('treats a page renamed onto one of its OWN aliases as a plain retitle', () => {
-        const out = withAliases('Agentic Software Development', 'Agent Accelerated Development', 'page')
-        expect(out.direct).toMatchObject({ merges: false, redirects: false, into: 'Agent Accelerated Development' })
+        const out = withAliases('Vegetable Growing', 'Growing Vegetables', 'page')
+        expect(out.direct).toMatchObject({ merges: false, redirects: false, into: 'Growing Vegetables' })
     })
 
     it('asks the protected-merge rule about the page that answers to the name, not the alias', async () => {
         const asked: string[] = []
-        await refuseProtectedMerges(withAliases('Vibe Coding', 'Agent Accelerated Development', 'page'), (c) => (asked.push(c), false))
-        expect(asked).toContain('Agentic Software Development')
-        expect(asked).not.toContain('Agent Accelerated Development')
+        await refuseProtectedMerges(withAliases('Kitchen Garden', 'Growing Vegetables', 'page'), (c) => (asked.push(c), false))
+        expect(asked).toContain('Vegetable Growing')
+        expect(asked).not.toContain('Growing Vegetables')
+    })
+})
+
+/**
+ * A link that named a page by one of its aliases, edited, renames that alias (ADR 0065, amended
+ * 2026-10-04). The page keeps its title, the alias is rewritten on the arm the user chooses, as an
+ * alias the cascade carries is, and what the alias scopes comes along. The plan says whose alias it
+ * is, so the preview and both stores read one answer.
+ */
+describe('planRename — renaming an alias', () => {
+    const concepts = ['Kanban', 'Roadmap', '[[Board]] Notes']
+    const aliases = [
+        { name: 'Board', concept: 'Kanban' },
+        { name: 'Desk', concept: 'Kanban' },
+        { name: 'Plan', concept: 'Roadmap' },
+        { name: 'Planning [[Board]]', concept: 'Roadmap' },
+    ]
+    // No document has the name as its title, so the caller passes no kind.
+    const renameAlias = (to: string, from = 'Board') => planRename({ from, to, concepts, aliases, kind: null, referencingDocuments: 0 })
+
+    it('renames the alias on the page that holds it, and retitles nothing', () => {
+        const out = renameAlias('Boards')
+        expect(out.refusal).toBeNull()
+        expect(out.aliasOf).toBe('Kanban')
+        expect(out.direct).toEqual({ from: 'Board', to: 'Boards', hasDocument: false, merges: false, redirects: false, into: 'Boards' })
+        expect(out.aliases[0]).toEqual({ holder: 'Kanban', from: 'Board', to: 'Boards' })
+        expect(mergeCount(out)).toBe(0)
+    })
+
+    it('carries what the alias scopes along, titles and aliases alike, as a title rename does', () => {
+        const out = renameAlias('Boards')
+        expect(out.cascade.map((step) => [step.from, step.to])).toEqual([['[[Board]] Notes', '[[Boards]] Notes']])
+        expect(out.aliases).toEqual([
+            { holder: 'Kanban', from: 'Board', to: 'Boards' },
+            { holder: 'Roadmap', from: 'Planning [[Board]]', to: 'Planning [[Boards]]' },
+        ])
+    })
+
+    it('spells the old alias as the page holds it, whatever case the link used', () => {
+        expect(renameAlias('Boards', 'board').aliases[0]).toEqual({ holder: 'Kanban', from: 'Board', to: 'Boards' })
+    })
+
+    it("lets the alias become another of the same page's names: the duplicate is dropped when written", () => {
+        expect(renameAlias('Desk').refusal).toBeNull()
+        expect(renameAlias('Kanban').refusal).toBeNull()
+    })
+
+    it('refuses a new name another page answers to, by title or by alias, naming both pages', () => {
+        expect(renameAlias('Roadmap').refusal).toContain("“Roadmap” is another page's name")
+        expect(renameAlias('Plan').refusal).toContain('“Plan” is already an alias of “Roadmap”')
+        for (const taken of ['Roadmap', 'Plan']) expect(renameAlias(taken).refusal).toContain("“Kanban”'s alias “Board”")
+    })
+
+    it('refuses a day as the new name, since a day names its journal entry', () => {
+        expect(renameAlias('2026-09-01').refusal).toContain('“2026-09-01” is a date')
+    })
+
+    it("renames a journal entry's alias, and the entry keeps its date", () => {
+        const out = planRename({
+            from: 'Launch day',
+            to: 'Launch',
+            concepts: ['2026-06-02'],
+            aliases: [{ name: 'Launch day', concept: '2026-06-02' }],
+            kind: null,
+            referencingDocuments: 0,
+        })
+        expect(out.refusal).toBeNull()
+        expect(out.aliasOf).toBe('2026-06-02')
+        expect(out.aliases).toEqual([{ holder: '2026-06-02', from: 'Launch day', to: 'Launch' }])
+    })
+
+    it("is a page's rename when the name is its title, though another page has it as an alias", () => {
+        const out = planRename({ from: 'Plan', to: 'Plans', concepts: ['Plan', 'Roadmap'], aliases: [{ name: 'Plan', concept: 'Roadmap' }], kind: 'page', referencingDocuments: 0 })
+        expect(out.aliasOf).toBeNull()
+        expect(out.direct.hasDocument).toBe(true)
+    })
+
+    it('is a pageless rename when no page answers to the name', () => {
+        const out = renameAlias('Somewhere', 'Nowhere')
+        expect(out.aliasOf).toBeNull()
+        expect(out.aliases).toEqual([])
+    })
+
+    // A page whose title names its own alias as a scope is renamed by the cascade of that alias:
+    // what the rename reports names it as it is afterwards.
+    it('names a holder the cascade retitles by its title afterwards', () => {
+        const out = planRename({
+            from: 'Old',
+            to: 'New',
+            concepts: ['[[Old]] Notes'],
+            aliases: [{ name: 'Old', concept: '[[Old]] Notes' }],
+            kind: null,
+            referencingDocuments: 0,
+        })
+        expect(out.aliasOf).toBe('[[Old]] Notes')
+        expect(landedName(out, '[[Old]] Notes')).toBe('[[New]] Notes')
+        expect(landedName(out, 'Unrelated')).toBe('Unrelated')
+    })
+
+    it("refuses when the holder's frontmatter cannot be read, since its alias list is rewritten", async () => {
+        const out = await refuseUnreadableBlocks(
+            renameAlias('Boards'),
+            async () => null,
+            async (concept) => (concept === 'Kanban' ? '---\ntitle: [Kanban\n---\n- body' : null),
+        )
+        expect(out.refusal).toContain('“Kanban”')
     })
 })
 
@@ -179,5 +285,171 @@ describe('planRename — a page renamed to a day', () => {
     it('lets a page an older version named after a day be renamed away from it', () => {
         // The way out for a `pages/2026-09-01.md` written before ADR 0056.
         expect(plan('2026-09-01', 'Launch Day', ['2026-09-01']).refusal).toBeNull()
+    })
+})
+
+/**
+ * An alias scoped by the renamed concept is carried along like a scoped title (ADR 0038, amended
+ * 2026-10-03), on whatever document holds it: the plan lists it, so the preview and both stores
+ * read the same rewrites, and a new form another document answers to refuses the rename.
+ */
+describe('planRename — scoped aliases', () => {
+    const graph = (aliases: { name: string; concept: string }[], concepts = ['Garden', 'P', 'Diary']) =>
+        planRename({ from: 'Garden', to: 'Gardens', concepts, aliases, kind: concepts.includes('Garden') ? 'page' : null, referencingDocuments: 0 })
+
+    it('plans an alias scoped by the renamed concept, on the document that holds it', () => {
+        const out = graph([{ name: 'Planning [[Garden]]', concept: 'P' }])
+        expect(out.refusal).toBeNull()
+        expect(out.aliases).toEqual([{ holder: 'P', from: 'Planning [[Garden]]', to: 'Planning [[Gardens]]' }])
+        expect(out.cascade).toEqual([]) // P's title is not scoped
+    })
+
+    it('at any depth, on a journal, and for a pageless concept', () => {
+        expect(graph([{ name: '[[[[Garden]] Theory]] Notes', concept: '2026-01-05' }], ['Garden', '2026-01-05']).aliases).toEqual([
+            { holder: '2026-01-05', from: '[[[[Garden]] Theory]] Notes', to: '[[[[Gardens]] Theory]] Notes' },
+        ])
+        const pageless = graph([{ name: 'Planning [[Garden]]', concept: 'P' }], ['P'])
+        expect(pageless.direct.hasDocument).toBe(false)
+        expect(pageless.aliases).toHaveLength(1)
+    })
+
+    it('leaves an alias that names the concept as plain text, not as a link, alone', () => {
+        expect(graph([{ name: 'Garden notes', concept: 'P' }, { name: '[Garden] notes', concept: 'P' }]).aliases).toEqual([])
+    })
+
+    it('plans an alias on a document the cascade retitles, under its old name', () => {
+        const out = graph([{ name: '[[Garden]] tools', concept: 'Tools [[Garden]]' }], ['Garden', 'Tools [[Garden]]'])
+        expect(out.refusal).toBeNull()
+        expect(out.cascade.map((s) => s.to)).toEqual(['Tools [[Gardens]]'])
+        expect(out.aliases).toEqual([{ holder: 'Tools [[Garden]]', from: '[[Garden]] tools', to: '[[Gardens]] tools' }])
+    })
+
+    it('is no collision when the same document already answers to the new form', () => {
+        const out = graph([
+            { name: 'Planning [[Garden]]', concept: 'P' },
+            { name: 'Planning [[Gardens]]', concept: 'P' },
+        ])
+        expect(out.refusal).toBeNull()
+        expect(out.aliases).toEqual([{ holder: 'P', from: 'Planning [[Garden]]', to: 'Planning [[Gardens]]' }])
+    })
+
+    it("refuses one whose new form is another document's title, naming the alias and both documents", () => {
+        const out = graph([{ name: 'Planning [[Garden]]', concept: 'P' }], ['Garden', 'P', 'Planning [[Gardens]]'])
+        expect(out.refusal).toContain('“P”')
+        expect(out.refusal).toContain('“Planning [[Garden]]”')
+        expect(out.refusal).toContain('already a name of “Planning [[Gardens]]”')
+    })
+
+    it("refuses one whose new form is another document's alias", () => {
+        const out = graph([
+            { name: 'Planning [[Garden]]', concept: 'P' },
+            { name: 'Planning [[Gardens]]', concept: 'Q' },
+        ], ['Garden', 'P', 'Q'])
+        expect(out.refusal).toContain('already a name of “Q”')
+    })
+
+    it('refuses one whose new form a title of the same rename lands on', () => {
+        // The page Tools [[Garden]] and P's alias Tools [[Garden]] would both become Tools [[Gardens]].
+        const out = graph([{ name: 'Tools [[Garden]]', concept: 'P' }], ['Garden', 'P', 'Tools [[Garden]]'])
+        expect(out.refusal).toContain('“Tools [[Gardens]]”')
+        expect(out.refusal).toContain('“Tools [[Garden]]”')
+    })
+
+    it("refuses when a holder's frontmatter cannot be read, as for a cascaded title", async () => {
+        const unreadable = '---\ntitle: P\ntitle: P\n---\n- body'
+        const out = await refuseUnreadableBlocks(graph([{ name: 'Planning [[Garden]]', concept: 'P' }]), async (concept) =>
+            concept === 'P' ? unreadable : `---\ntitle: ${concept}\n---\n`,
+        )
+        expect(out.refusal).toContain('“P”')
+    })
+})
+
+describe('aliasesAfterRename', () => {
+    const rewrites = [{ holder: 'P', from: 'Planning [[Garden]]', to: 'Planning [[Gardens]]' }]
+
+    it('replaces the alias in place under the rewrite arm', () => {
+        expect(aliasesAfterRename(['First', 'planning [[GARDEN]]', 'Last'], rewrites, 'rewrite')).toEqual(['First', 'Planning [[Gardens]]', 'Last'])
+    })
+
+    it('keeps the old alias and adds the new form beside it under the alias arm', () => {
+        expect(aliasesAfterRename(['First', 'Planning [[Garden]]'], rewrites, 'alias')).toEqual([
+            'First',
+            'Planning [[Garden]]',
+            'Planning [[Gardens]]',
+        ])
+    })
+
+    it('leaves a list with none of the rewritten aliases as it is', () => {
+        expect(aliasesAfterRename(['First'], rewrites, 'rewrite')).toEqual(['First'])
+    })
+})
+
+/**
+ * A collision is judged on the documents each name ends up in: a holder and an "other" document
+ * that the same rename merges into one are not two documents sharing a name (the review of
+ * 2026-10-03 found parallel hierarchies refused).
+ */
+describe('planRename — scoped aliases where the rename merges', () => {
+    const input = (concepts: string[], aliases: { name: string; concept: string }[], to = 'Orchard') =>
+        planRename({ from: 'Garden', to, concepts, aliases, kind: 'page', referencingDocuments: 0 })
+
+    it('lets a parallel hierarchy merge, each scoped page bringing its alias', () => {
+        const out = input(['Garden', 'Orchard', '[[Garden]] y', '[[Orchard]] y'], [
+            { name: '[[Garden]] q', concept: '[[Garden]] y' },
+            { name: '[[Orchard]] q', concept: '[[Orchard]] y' },
+        ])
+        expect(out.refusal).toBeNull()
+        expect(out.cascade[0]).toMatchObject({ from: '[[Garden]] y', merges: true, into: '[[Orchard]] y' })
+        expect(out.aliases).toEqual([{ holder: '[[Garden]] y', from: '[[Garden]] q', to: '[[Orchard]] q' }])
+    })
+
+    it('lets a direct merge through when both pages hold the two forms', () => {
+        const out = input(['Garden', 'Orchard'], [
+            { name: '[[Garden]] q', concept: 'Garden' },
+            { name: '[[Orchard]] q', concept: 'Orchard' },
+        ])
+        expect(out.refusal).toBeNull()
+    })
+
+    it('lets it through when the survivor holds the old form and the absorbed page the new one', () => {
+        const out = input(['Garden', 'Orchard', '[[Garden]] y', '[[Orchard]] y'], [
+            { name: '[[Garden]] q', concept: '[[Orchard]] y' },
+            { name: '[[Orchard]] q', concept: '[[Garden]] y' },
+        ])
+        expect(out.refusal).toBeNull()
+    })
+
+    it('treats a re-casing as no collision, as a rename to a new name is', () => {
+        const shared = [
+            { name: '[[Garden]] z', concept: 'P' },
+            { name: '[[Garden]] z', concept: 'Q' },
+        ]
+        expect(input(['Garden', 'P', 'Q'], shared, 'GARDEN').refusal).toBeNull()
+        expect(input(['Garden', 'P', 'Q'], shared).refusal).toBeNull()
+    })
+
+    it('refuses two different old aliases that would become one new name', () => {
+        const out = input(['Garden', 'Orchard', 'P', 'Q'], [
+            { name: '[[Garden]] z', concept: 'P' },
+            { name: '[[Orchard]] z', concept: 'Q' },
+        ])
+        // Q already has the new form: P's rewrite would land on it.
+        expect(out.refusal).toContain('already a name of “Q”')
+    })
+
+    it('refuses two different aliases the rename would turn into the same name', () => {
+        // The cascade's rule reads [[ Garden ]] as the link Garden, so both become [[Orchard]] z.
+        const out = input(['Garden', 'P', 'Q'], [
+            { name: '[[Garden]] z', concept: 'P' },
+            { name: '[[ Garden ]] z', concept: 'Q' },
+        ])
+        expect(out.refusal).toContain('“P”')
+        expect(out.refusal).toContain('“Q”')
+        expect(out.refusal).toContain('“[[Orchard]] z”')
+    })
+
+    it('says a title step gives the name, rather than that it already has it', () => {
+        const out = input(['Garden', 'P', 'Tools [[Garden]]'], [{ name: 'Tools [[Garden]]', concept: 'P' }])
+        expect(out.refusal).toContain('the rename gives that name to “Tools [[Garden]]”')
     })
 })

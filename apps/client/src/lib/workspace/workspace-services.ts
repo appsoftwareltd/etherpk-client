@@ -128,7 +128,8 @@ export interface FrontmatterService {
  * if so, proposes the rename.
  */
 export interface WikilinkRenameService {
-    edited(target: string, before: string, after: string | null): void
+    /** An edit of a link in `target` ended having changed these concepts, outermost first. */
+    edited(target: string, edits: readonly { before: string; after: string }[]): void
 }
 
 /**

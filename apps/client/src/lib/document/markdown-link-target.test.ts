@@ -42,7 +42,7 @@ describe('markdownLinks', () => {
 
 describe('linkTargetPattern', () => {
     it('takes a whole file name with balanced parentheses', () => {
-        const name = 'Estimate_320_from_B_Sprake_Building_Contractor_ltd_(1)_1706517395516_0.pdf'
+        const name = 'Quote_320_from_Garden_Fencing_Contractor_ltd_(1)_1700000000000_0.pdf'
         expect(targets(`![label](../assets/${name})`)).toEqual([`../assets/${name}`])
     })
 

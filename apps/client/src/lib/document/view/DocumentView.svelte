@@ -780,8 +780,8 @@
                 openConcept: (concept) => void openConcept(concept, panelId),
                 // An edited link is a rename proposal (ADR 0065); the workspace owns the
                 // question. A right-click or long-press on one raises its Context Menu.
-                wikilinkEdited: (before, after) =>
-                    currentWorkspaceServices()?.wikilinkRename?.edited(view.target, before, after),
+                wikilinksEdited: (edits) =>
+                    currentWorkspaceServices()?.wikilinkRename?.edited(view.target, edits),
                 wikilinkContextMenu: (concept, x, y) =>
                     openContextMenu({ kind: 'wikilink', concept, panelId }, x, y),
                 onFocus(cmView) {
