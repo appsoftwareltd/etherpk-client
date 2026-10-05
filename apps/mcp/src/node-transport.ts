@@ -1,5 +1,5 @@
 /**
- * The relay socket for Node: the client's `TransportSocket` over the global `WebSocket` Node 22+
+ * The relay socket for Node: the client's `TransportSocket` over the global `WebSocket` that Node
  * ships, so `graph-sync.ts` runs unchanged. The browser's `browserTransport` is the same five
  * lines over the same API; it is not imported here only because the client's module lives
  * beside code that reads `window`.

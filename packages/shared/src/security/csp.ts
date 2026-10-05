@@ -3,8 +3,8 @@
  *
  * CSP belongs in `kit.csp` rather than at the ingress: SvelteKit emits inline scripts of its
  * own and only it can nonce or hash them. It matters most on the Client,
- * where the key that decrypts every graph is held in `localStorage` and untrusted
- * document content is rendered through Mermaid and KaTeX. Without a CSP, one renderer escape
+ * where the keys that decrypt every graph are held in this origin's storage and memory, and
+ * untrusted document content is rendered through Mermaid and KaTeX. Without a CSP, one renderer escape
  * or one compromised dependency is a total disclosure of the account's encrypted data.
  *
  * `app.html` carries a hand-written inline script (the pre-paint theme bootstrap) which

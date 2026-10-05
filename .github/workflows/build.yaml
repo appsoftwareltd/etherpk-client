@@ -31,7 +31,7 @@ jobs:
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 22
+          node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Type check
@@ -162,7 +162,7 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         if: steps.registry.outputs.publish == 'true'
         with:
-          node-version: 22
+          node-version: 24
           cache: pnpm
       - if: steps.registry.outputs.publish == 'true'
         run: pnpm install --frozen-lockfile
@@ -199,9 +199,10 @@ jobs:
           path: ${{ runner.temp }}/npm
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 22
+          node-version: 24
           registry-url: https://registry.npmjs.org
-      # Trusted publishing needs npm 11.5.1 or later; Node 22 ships npm 10. Pinned exactly.
+      # Trusted publishing needs npm 11.5.1 or later. Pinned exactly, so the publish does not depend on
+      # the npm version the runner's Node ships.
       - run: npm install -g npm@11.20.0
       - run: npm publish "$RUNNER_TEMP/npm/appsoftwareltd-etherpk-mcp-${VERSION}.tgz" --access public
 
@@ -225,7 +226,7 @@ jobs:
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 22
+          node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
 
@@ -313,7 +314,7 @@ jobs:
           {
             echo "The Client and the Headless Client (\`@appsoftwareltd/etherpk-mcp@${VERSION}\`) at ${VERSION}."
             echo
-            echo "Run it with \`docker run -p 3000:3000 ${IMAGE}:${VERSION}\`, or unpack \`${BUNDLE_STEM}.tar.gz\` and run \`node build\` inside it (Node.js 22 or later)."
+            echo "Run it with \`docker run -p 3000:3000 ${IMAGE}:${VERSION}\`, or unpack \`${BUNDLE_STEM}.tar.gz\` and run \`node build\` inside it (Node.js 24 or later)."
             echo
             git log --format='%b' "$range" | grep -vE '^(GitOrigin-RevId|Co-authored-by):|^Changes from the private repository:|^$' || true
           } > notes.md

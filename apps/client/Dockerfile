@@ -2,7 +2,7 @@
 # Must be run from the repository root so pnpm workspace resolution works.
 
 # -- Stage 1: Build ---------------------------------------------------------
-FROM node:22-alpine AS builder
+FROM node:24-alpine AS builder
 
 WORKDIR /app
 
@@ -51,7 +51,7 @@ RUN pnpm --filter @appsoftwareltd/etherpk-client build \
     && node scripts/prune-build-tooling.mjs /app/deploy
 
 # -- Stage 2: Runtime -------------------------------------------------------
-FROM node:22-alpine
+FROM node:24-alpine
 
 WORKDIR /app
 

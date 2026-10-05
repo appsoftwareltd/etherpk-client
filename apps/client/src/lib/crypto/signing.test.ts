@@ -37,9 +37,9 @@ describe('signing keys (ADR 0126)', () => {
         expect(verifySignature(new Uint8Array(64), message, pair.publicKey)).toBe(false)
     })
 
-    it('makes signatures the Sync Server accepts with node:crypto', () => {
-        // The Server checks key writes with node:crypto (OpenSSL), the Client with @noble/curves.
-        // A signature one accepts and the other refuses would lock an account out of its keys.
+    it('makes signatures that node:crypto, an independent implementation, also accepts', () => {
+        // A second implementation accepting them shows the Client makes standard Ed25519
+        // signatures, not ones only @noble/curves would accept.
         const pair = generateSigningKeyPair()
         const message = utf8('a key write')
         const signature = signMessage(message, pair.privateKey)

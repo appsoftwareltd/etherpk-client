@@ -208,7 +208,7 @@
             id: "sync",
             label: "Sync and collaboration",
             heading: "Encrypted on your device before anything is sent",
-            intro: "The Sync Server stores only ciphertext, filed under ids that carry none of your content: not your text, not your titles, not the graph's name, not your images. It enforces limits by counting bytes it cannot read.",
+            intro: "The Sync Server stores your content only as ciphertext, filed under ids that carry none of it: not your text, not your titles, not the graph's name, not your images. It enforces limits by counting bytes it cannot read.",
             items: [
                 { lead: "Every device, live", text: ": real-time co-editing with collaborators' cursors. Edits made while the connection drops are kept, and merge when you are back in the order you made them." },
                 { lead: "Sharing by invitation", text: ", with a short key fingerprint to compare, so you know the key you share with is theirs." },
@@ -281,7 +281,7 @@
 
     const honest = [
         "Folder graphs need the File System Access API, which today means a Chromium desktop browser (Chrome, Edge, Brave). Phones, Safari and Firefox work with synced graphs.",
-        "End-to-end encryption cuts both ways. Lose every signed-in device and your Recovery Code and nobody can decrypt your synced notes, us included. Keep the code, and keep a local copy if you like belt and braces.",
+        "End-to-end encryption cuts both ways. Lose every unlocked device and your Recovery Code and nobody can decrypt your synced notes, us included. Keep the code, and keep a local copy if you like belt and braces.",
         "The editor is one text surface. No separate reading mode, no blocks as UI widgets, no rich-text layer hiding the markdown. Some people love that - some don't.",
         "EtherPK changes often. The docs say what is built and what is only planned: queries and saved views, kanban boards over tasks, D2 and Excalidraw diagrams, block drag and drop, and working with no network at all are on the second list. Today the app needs a connection to load, and then a synced graph works through a dropped connection.",
     ];

@@ -53,7 +53,7 @@ settings it reads are listed, with their defaults, in
 
 ### Node bundle
 
-Each release attaches `etherpk-client-<version>.tar.gz`, which runs on Node.js 22 or later on
+Each release attaches `etherpk-client-<version>.tar.gz`, which runs on Node.js 24 or later on
 Windows, macOS and Linux, with nothing to install:
 
 ```bash
@@ -78,7 +78,7 @@ Setup for each kind of graph is in [`apps/mcp/README.md`](apps/mcp/README.md).
 
 ## Build from source
 
-You need Node.js 22 or later and pnpm - `corepack enable` provides the pnpm version that
+You need Node.js 24 or later and pnpm - `corepack enable` provides the pnpm version that
 `package.json` names.
 
 ```bash

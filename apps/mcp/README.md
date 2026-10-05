@@ -11,7 +11,7 @@ This package is EtherPK's **Headless Client**: EtherPK without an editor. It ser
 folder on your computer or a graph synced through a Sync Server, and the agent gets the same tools
 for both. Protected documents are listed by name only and never served.
 
-Needs Node.js 22 or later.
+Needs Node.js 24 or later.
 
 ## Get started
 
@@ -110,7 +110,9 @@ directory, once per computer.
 `login` makes this computer a device of your account:
 
 - It asks for an account-wide Personal Access Token, from `<Sync Server>/account/tokens` or
-  **Access tokens** in EtherPK's account menu. `--pat` or `ETHERPK_PAT` supplies it instead.
+  **Access tokens** in EtherPK's account menu. `--pat` or `ETHERPK_PAT` supplies it instead. The
+  token can reset your encryption keys, which deletes the graphs you own, so keep it as safe as
+  your password.
 - It unlocks your keys by Device Approval. Open EtherPK in a browser signed in to the account with
   its keys unlocked. Once that browser answers, both show the same short code. Select **Approve** in
   the browser, then press `y` in the terminal. Press `n` if the codes differ, which cancels the

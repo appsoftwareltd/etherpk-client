@@ -3,10 +3,9 @@
  *
  * Two things happen here. A vault written before signing keys existed gets its Ed25519 key pair,
  * and the identity is published with it, so the account can sign. Then the identity the Sync
- * Server publishes for the account is compared with the one in the vault. Anyone who could sign
- * in as the user, or the server itself, could once publish a key of their own there, and invites
- * would then have been sealed to them. When the two differ, the vault's identity is published
- * again with a signed write, and the caller warns the user.
+ * Server publishes for the account is compared with the one in the vault. A server can publish a
+ * key of its own for the account, and invites would then be sealed to it. When the two differ,
+ * the vault's identity is published again with a signed write, and the caller warns the user.
  */
 import { type KeyVault, bytesEqual, fingerprint, fromBase64Url, identityPublicKeys } from '$lib/crypto'
 import { IDENTITY_PROOF_REFUSED_CODE, KEY_SIGNATURE_REFUSED_CODE } from '@appsoftwareltd/etherpk-shared'
