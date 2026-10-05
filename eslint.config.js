@@ -94,6 +94,56 @@ export default tseslint.config(
         },
     },
     {
+        // Trusted Types (ADR 0130). The Client's CSP refuses a plain string at an HTML sink unless
+        // a named policy made it, and its own sinks go through `lib/security/trusted-types.ts`, so
+        // a string from a document reaches one only through the default policy, which sanitizes it.
+        // The browser enforces that at run time; this says where at the line.
+        files: ['apps/client/src/**/*.ts', 'apps/client/src/**/*.svelte'],
+        ignores: ['apps/client/src/lib/security/trusted-types.ts', 'apps/client/src/**/*.test.ts'],
+        rules: {
+            'no-restricted-syntax': [
+                'error',
+                {
+                    selector: 'AssignmentExpression[left.property.name=/^(innerHTML|outerHTML)$/]',
+                    message: 'Use setTrustedMarkup from $lib/security/trusted-types (Trusted Types, ADR 0130).',
+                },
+                {
+                    selector: 'AssignmentExpression[left.property.name="srcdoc"], SvelteAttribute[key.name="srcdoc"]',
+                    message: 'Use setSandboxedSrcdoc from $lib/security/trusted-types (Trusted Types, ADR 0130).',
+                },
+                {
+                    selector: 'CallExpression[callee.property.name="parseFromString"]',
+                    message: 'Use parseInertHtml from $lib/security/trusted-types (Trusted Types, ADR 0130).',
+                },
+                {
+                    selector:
+                        'CallExpression[callee.property.name="insertAdjacentHTML"], CallExpression[callee.object.name="document"][callee.property.name=/^(write|writeln)$/]',
+                    message: 'Write markup through $lib/security/trusted-types (Trusted Types, ADR 0130).',
+                },
+            ],
+        },
+    },
+    {
+        // The `etherpk-icons` policy passes markup as it is, which is safe only because its one
+        // caller, the icon table, holds constant text. Every other icon comes from `iconSvg`.
+        files: ['apps/client/src/**/*.ts', 'apps/client/src/**/*.svelte'],
+        ignores: ['apps/client/src/lib/surface/icons.ts', 'apps/client/src/**/*.test.ts'],
+        rules: {
+            'no-restricted-imports': [
+                'error',
+                {
+                    patterns: [
+                        {
+                            group: ['**/security/trusted-types', '$lib/security/trusted-types'],
+                            importNames: ['trustedIconMarkup'],
+                            message: 'Icon markup comes from iconSvg in $lib/surface/icons, whose table is constant text (ADR 0130).',
+                        },
+                    ],
+                },
+            ],
+        },
+    },
+    {
         // Tests reach into internals and stub globals, and print diagnostics. `any` stays an
         // error here though: the existing eslint-disable directives are almost all in test
         // files, and turning the rule off in tests would make those directives inert.

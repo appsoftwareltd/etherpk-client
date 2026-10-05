@@ -16,6 +16,23 @@ export function concatBytes(...parts: Uint8Array[]): Uint8Array {
     return out
 }
 
+/**
+ * Each part preceded by its length as a 32-bit big-endian integer. What every signed or hashed
+ * transcript is built from, so that bytes cannot move from one field to the next and leave the
+ * result the same.
+ */
+export function lengthPrefixed(...parts: Uint8Array[]): Uint8Array {
+    const out = new Uint8Array(parts.reduce((n, p) => n + 4 + p.length, 0))
+    const view = new DataView(out.buffer)
+    let offset = 0
+    for (const p of parts) {
+        view.setUint32(offset, p.length, false)
+        out.set(p, offset + 4)
+        offset += 4 + p.length
+    }
+    return out
+}
+
 /** Constant-time-shaped comparison (length leak is fine; contents don't short-circuit). */
 export function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
     if (a.length !== b.length) return false

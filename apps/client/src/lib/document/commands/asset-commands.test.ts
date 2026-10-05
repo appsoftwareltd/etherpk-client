@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
+import { AssetIntegrityError } from '$lib/storage/fs/asset-store'
 import { createCommandRegistry, createContributionRegistry, listContextMenuItems } from '$lib/surface'
 import type { AssetContextMenuTarget } from '$lib/surface'
 
@@ -305,6 +306,37 @@ describe('asset.delete', () => {
         await h.commands.execute(ASSET_DELETE, target)
 
         expect(h.deps.promptDelete).toHaveBeenCalledWith(expect.objectContaining({ name: REF }))
+    })
+
+    it('still deletes a file that arrived damaged or cannot be fetched: the name is only for the prompt', async () => {
+        const h = harness({
+            store: () => ({
+                resolve: async () => {
+                    throw new AssetIntegrityError()
+                },
+            }) as never,
+        })
+
+        await h.commands.execute(ASSET_DELETE, target)
+
+        expect(h.deps.promptDelete).toHaveBeenCalledWith(expect.objectContaining({ name: REF }))
+        expect(h.removed).toEqual([[ASSET_ID]])
+        expect(h.deps.onError).not.toHaveBeenCalled()
+    })
+
+    it('reports a damaged file on download in words the user can act on', async () => {
+        const h = harness({
+            store: () => ({
+                resolve: async () => {
+                    throw new AssetIntegrityError()
+                },
+            }) as never,
+        })
+
+        await h.commands.execute(ASSET_DOWNLOAD, target)
+
+        expect(h.deps.download).not.toHaveBeenCalled()
+        expect(h.deps.onError).toHaveBeenCalledWith('This file did not arrive complete, so it was not opened. Try again in a moment.')
     })
 
     it('refuses a reference the surface only shows, having no line to take it out of', async () => {

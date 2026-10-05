@@ -31,6 +31,7 @@
  */
 import type { GroupPanelPartInitParameters, ITabRenderer } from 'dockview-core'
 
+import { setTrustedMarkup } from '$lib/security/trusted-types'
 import { iconSvg } from '$lib/surface/icons'
 
 /** The mark a tab wears, if any: which glyph, and the title that explains it on hover. */
@@ -158,7 +159,7 @@ export function createTabRenderer(options: TabRendererOptions): ITabRenderer {
         if (element.dataset.pinned === String(pinned)) return
         element.dataset.pinned = String(pinned)
         if (pinned) {
-            pin.innerHTML = iconSvg('pin', { size: 12 })
+            setTrustedMarkup(pin, iconSvg('pin', { size: 12 }))
             pin.title = 'Pinned'
         } else {
             pin.replaceChildren()
@@ -174,7 +175,7 @@ export function createTabRenderer(options: TabRendererOptions): ITabRenderer {
             mark.dataset.state = ''
             return
         }
-        if (mark.dataset.state !== next.state) mark.innerHTML = iconSvg(markIcon(next.state), { size: 13 })
+        if (mark.dataset.state !== next.state) setTrustedMarkup(mark, iconSvg(markIcon(next.state), { size: 13 }))
         mark.dataset.state = next.state
         // A title, not an aria-label: the icon is decorative to a screen reader, which gets the
         // same information from the document itself.
@@ -185,7 +186,7 @@ export function createTabRenderer(options: TabRendererOptions): ITabRenderer {
         const name = panelId ? options.iconFor(panelId) : undefined
         if (icon.dataset.icon === (name ?? '')) return
         icon.dataset.icon = name ?? ''
-        if (name) icon.innerHTML = iconSvg(name, { size: 13 })
+        if (name) setTrustedMarkup(icon, iconSvg(name, { size: 13 }))
         else icon.replaceChildren()
     }
 

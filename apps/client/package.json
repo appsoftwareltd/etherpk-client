@@ -22,16 +22,16 @@
         "@tailwindcss/vite": "^4.2.2",
         "@types/mustache": "4.2.6",
         "@types/node": "^25.6.0",
-        "@vitest/coverage-v8": "^4.1.4",
-        "esbuild": "^0.28.0",
+        "@vitest/coverage-v8": "^4.1.11",
+        "esbuild": "^0.28.1",
         "fast-check": "^4.9.0",
         "linkedom": "0.18.13",
         "svelte": "^5.57.1",
         "svelte-check": "^4.4.6",
         "tailwindcss": "^4.2.2",
         "typescript": "^6.0.2",
-        "vite": "^8.0.8",
-        "vitest": "^4.1.4"
+        "vite": "^8.0.16",
+        "vitest": "^4.1.11"
     },
     "dependencies": {
         "@appsoftwareltd/etherpk-shared": "workspace:*",
@@ -53,6 +53,7 @@
         "@sqlite.org/sqlite-wasm": "3.53.0-build1",
         "@tailwindcss/typography": "^0.5.19",
         "dockview-core": "^6.6.1",
+        "dompurify": "^3.4.16",
         "fflate": "0.8.3",
         "graphology": "^0.26.0",
         "graphology-communities-louvain": "^2.0.2",

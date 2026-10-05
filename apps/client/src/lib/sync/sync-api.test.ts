@@ -168,7 +168,16 @@ describe('sync-api', () => {
             }),
         })
 
-        const refusal = await api.createInvite('graph-1', 'owner@example.com', 'sealed').catch((error: unknown) => error)
+        const refusal = await api
+            .createInvite({
+                graphId: 'graph-1',
+                inviteeEmail: 'owner@example.com',
+                inviteeUserId: 'account-1',
+                sealedKeyring: 'sealed',
+                sealedToPublicKey: 'key',
+                signature: 'signature',
+            })
+            .catch((error: unknown) => error)
         expect(refusal).toMatchObject({ status: 409, code: 'invite_self', message: 'You already own this graph' })
         expect(describeSyncFailure(refusal, 'send the invite')).toBe(
             'Could not send the invite. That is your own address. You already own this graph, so there is nobody to invite.',

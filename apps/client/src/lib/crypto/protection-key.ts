@@ -107,9 +107,10 @@ export function createProtectionKey(): Uint8Array {
 
 /**
  * Stretch a passphrase into a wrapping key. `asyncTick` lets the worker yield between Argon2id
- * blocks so a slow unlock cannot freeze the thread it runs on.
+ * blocks so a slow unlock cannot freeze the thread it runs on. The Device Passcode (ADR 0129)
+ * stretches its passcode the same way, with the same settings and bounds.
  */
-async function deriveWrapKey(passphrase: string, kdf: ProtectionKdfParams): Promise<Uint8Array> {
+export async function stretchPassphrase(passphrase: string, kdf: ProtectionKdfParams): Promise<Uint8Array> {
     return argon2idAsync(utf8(passphrase), fromBase64Url(kdf.salt), {
         t: kdf.t,
         m: kdf.m,
@@ -147,7 +148,7 @@ export async function createProtectionRecord(
     existingKey?: Uint8Array,
 ): Promise<{ record: ProtectionRecord; key: Uint8Array }> {
     const key = existingKey ?? createProtectionKey()
-    const wrapKey = await deriveWrapKey(passphrase, kdf)
+    const wrapKey = await stretchPassphrase(passphrase, kdf)
     return {
         key,
         record: {
@@ -160,7 +161,7 @@ export async function createProtectionRecord(
 }
 
 export async function unlockProtectionRecord(record: ProtectionRecord, passphrase: string): Promise<Uint8Array> {
-    return unwrap(record.wrapped, await deriveWrapKey(passphrase, record.kdf), PASSPHRASE_AAD)
+    return unwrap(record.wrapped, await stretchPassphrase(passphrase, record.kdf), PASSPHRASE_AAD)
 }
 
 /**

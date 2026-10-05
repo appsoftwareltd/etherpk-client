@@ -6,7 +6,7 @@ const DOC_ID = '018f47a0-7b5d-7cc5-b5c1-f0fbcde11234'
 describe('client sync protocol boundary', () => {
     it('adds protocol v2 to outbound messages', () => {
         expect(JSON.parse(serializeClientMessage({ type: 'subscribe', docIds: [DOC_ID] }))).toEqual({
-            v: 2,
+            v: 3,
             type: 'subscribe',
             docIds: [DOC_ID],
         })
@@ -14,7 +14,7 @@ describe('client sync protocol boundary', () => {
 
     it('accepts shared v2 server messages and removes the transport version', () => {
         expect(
-            parseServerMessage(JSON.stringify({ v: 2, type: 'update', docId: DOC_ID, generation: 1, seq: 3, epochId: 1, envelope: 'AAEC' })),
+            parseServerMessage(JSON.stringify({ v: 3, type: 'update', docId: DOC_ID, generation: 1, seq: 3, epochId: 1, envelope: 'AAEC' })),
         ).toEqual({ type: 'update', docId: DOC_ID, generation: 1, seq: 3, epochId: 1, envelope: 'AAEC' })
     })
 
@@ -26,9 +26,9 @@ describe('client sync protocol boundary', () => {
     it('names the server protocol version when a message carries a different numeric version', () => {
         // The server answers a mismatch with an error in its OWN version, so the Client reads
         // "their version is not mine" in both directions.
-        expect(readServerMessage(JSON.stringify({ v: 3, type: 'error', code: 'unsupported_version' }))).toEqual({
+        expect(readServerMessage(JSON.stringify({ v: 4, type: 'error', code: 'unsupported_version' }))).toEqual({
             kind: 'protocol_mismatch',
-            serverVersion: 3,
+            serverVersion: 4,
         })
         expect(readServerMessage(JSON.stringify({ v: 1, type: 'ack', outboxId: 'x' }))).toEqual({
             kind: 'protocol_mismatch',
@@ -39,13 +39,13 @@ describe('client sync protocol boundary', () => {
     it('reads a missing, non-numeric or fractional version as malformed, not as a mismatch', () => {
         expect(readServerMessage(JSON.stringify({ type: 'presence', docId: DOC_ID, envelope: 'AAEC' }))).toEqual({ kind: 'malformed' })
         expect(readServerMessage(JSON.stringify({ v: '3', type: 'error' }))).toEqual({ kind: 'malformed' })
-        expect(readServerMessage(JSON.stringify({ v: 2.5, type: 'error' }))).toEqual({ kind: 'malformed' })
+        expect(readServerMessage(JSON.stringify({ v: 3.5, type: 'error' }))).toEqual({ kind: 'malformed' })
         expect(readServerMessage('not json')).toEqual({ kind: 'malformed' })
     })
 
     it('returns a current-version message without its transport version', () => {
         expect(
-            readServerMessage(JSON.stringify({ v: 2, type: 'update', docId: DOC_ID, generation: 1, seq: 3, epochId: 1, envelope: 'AAEC' })),
+            readServerMessage(JSON.stringify({ v: 3, type: 'update', docId: DOC_ID, generation: 1, seq: 3, epochId: 1, envelope: 'AAEC' })),
         ).toEqual({ kind: 'message', message: { type: 'update', docId: DOC_ID, generation: 1, seq: 3, epochId: 1, envelope: 'AAEC' } })
     })
 })

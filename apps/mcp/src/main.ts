@@ -28,8 +28,9 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 // Inlined by Vite at build time, so the bundle carries the version and needs no file at runtime.
 import pkg from '../package.json'
 
-import { fromBase64Url, toBase64Url } from '$lib/crypto'
+import { EnvelopeError, fromBase64Url, mergeKeyringEpochs, toBase64Url, type KeyVault } from '$lib/crypto'
 import { createGraphNamePublisher } from '$lib/sync/graph-name-envelope'
+import { readKeyHandouts } from '$lib/sync/key-handouts'
 
 import { connectAccount, openAccountVault, resolveGraphById, type HeadlessAccount } from './account'
 import {
@@ -83,9 +84,10 @@ const USAGE = `etherpk-mcp - EtherPK Headless Client (an MCP server over one syn
       Sign this machine in as a device of your account. Prompts for a Personal Access
       Token (an account-wide one, from the Sync Server portal at <url>/account/tokens)
       unless --pat or ETHERPK_PAT is given, then unlocks your keys by Device Approval:
-      open EtherPK in a browser connected to the account with its keys unlocked and
-      confirm the code shown. Press r while waiting, or pass --recovery-code, to type
-      your Recovery Code instead (or ETHERPK_RECOVERY_CODE, for a scripted setup).
+      open EtherPK in a browser connected to the account with its keys unlocked, approve
+      there if it shows the same code, then press y. Press r while waiting, or pass
+      --recovery-code, to type your Recovery Code instead (or ETHERPK_RECOVERY_CODE, for a
+      scripted setup).
   ${CMD} graphs [--sync-server <url>]
       List the synced graphs each logged-in account can reach, by name and id.
   ${CMD} serve --graph <id or name> [--sync-server <url>] [--no-semantic]
@@ -231,22 +233,31 @@ async function login(args: { 'sync-server'?: string; pat?: string; 'recovery-cod
  * Device Approval, with the Recovery Code one keypress away: a user who has no unlocked EtherPK
  * to hand should not have to Ctrl-C and re-read the help to find `--recovery-code`. On a
  * terminal, `r` during the wait abandons the approval (cancelled server-side) and asks for the
- * code instead; without a terminal the wait runs to its outcome.
+ * code instead.
+ *
+ * Someone must confirm the two codes match (ADR 0125): without that, a server could play the
+ * approving device itself. On a terminal that is the y key. Without one the same characters are
+ * read from piped input, and input that ends before a y can never confirm, so the login stops at
+ * once rather than waiting out ten minutes. A box with no terminal and its Recovery Code in
+ * ETHERPK_RECOVERY_CODE uses the code.
  */
 async function approveOrFallBack(
     account: Awaited<ReturnType<typeof connectAccount>>,
     byRecoveryCode: () => Promise<Uint8Array>,
 ): Promise<Uint8Array> {
+    const stdin = process.stdin
+    const interactive = stdin.isTTY === true
+    if (!interactive && process.env.ETHERPK_RECOVERY_CODE) return byRecoveryCode()
     const controls = approvalWaitControls()
     const io = {
         say: (line: string) => console.log(line),
         sleep: (ms: number) => sleepUnlessAborted(ms, controls.signal),
+        codesMatch: () => controls.codesMatch,
         signal: controls.signal,
         clientUrl: account.clientUrl,
     }
-    const stdin = process.stdin
-    const interactive = stdin.isTTY === true
     const onKey = (chunk: Buffer) => controls.onKey(chunk.toString('utf8'))
+    const onInputEnd = () => controls.onInputClosed()
     // A quit that arrives as a signal (no terminal, or a supervisor stopping the process) aborts
     // the wait the same way a Ctrl-C key does, so the approval is cancelled before the exit.
     const quitSignals: QuitSignal[] = ['SIGINT', 'SIGTERM', 'SIGHUP']
@@ -255,9 +266,11 @@ async function approveOrFallBack(
     if (interactive) {
         console.log('(Press r to type your Recovery Code instead.)')
         stdin.setRawMode(true)
-        stdin.resume()
-        stdin.on('data', onKey)
+    } else {
+        stdin.on('end', onInputEnd)
     }
+    stdin.resume()
+    stdin.on('data', onKey)
     // The key listener comes off BEFORE the Recovery Code prompt runs: that prompt takes the
     // terminal into raw mode itself, and a finally that reset it afterwards ate the code.
     let abandoned = false
@@ -268,17 +281,22 @@ async function approveOrFallBack(
         abandoned = true
     } finally {
         for (const name of quitSignals) process.off(name, onSignal)
-        if (interactive) {
-            stdin.off('data', onKey)
-            stdin.setRawMode(false)
-            stdin.pause()
-        }
+        stdin.off('data', onKey)
+        stdin.off('end', onInputEnd)
+        if (interactive) stdin.setRawMode(false)
+        stdin.pause()
     }
     if (controls.exitCode !== null) {
         console.log('')
         process.exit(controls.exitCode)
     }
     if (!abandoned) throw new Error('unreachable')
+    if (controls.mismatched) {
+        fail('The codes did not match, so the request was cancelled. Something between this computer and your other device may have interfered. Run login again, or pass --recovery-code.')
+    }
+    if (controls.inputClosed) {
+        fail('Device approval needs someone to confirm the code it shows. Run login in a terminal and press y when the codes match, or pass --recovery-code, or set ETHERPK_RECOVERY_CODE.')
+    }
     console.log('Approval cancelled - unlocking with your Recovery Code instead.')
     return byRecoveryCode()
 }
@@ -318,10 +336,26 @@ function metaNameReader(account: HeadlessAccount): MetaNameReader {
     }
 }
 
+/**
+ * The account vault, opened with the key saved for `login`. A key that no longer opens it means
+ * the account's keys were replaced or reset on another device (ADR 0128), which only a new login
+ * mends, so that is what the failure says.
+ */
+async function openVaultFor(account: HeadlessAccount, login: ServerCredentials & { vaultKey: string }): Promise<KeyVault> {
+    try {
+        return await openAccountVault(account.api, fromBase64Url(login.vaultKey))
+    } catch (error) {
+        if (error instanceof EnvelopeError) {
+            fail(`Your keys on ${login.syncServer} were replaced or reset on another device, so the key saved on this computer no longer opens them. Run: ${CMD} login --sync-server ${login.syncServer}`)
+        }
+        throw error
+    }
+}
+
 async function listGraphs(login: ServerCredentials, several: boolean): Promise<void> {
     if (!login.vaultKey) fail(`Keys are not unlocked on this machine for ${login.syncServer}. Run: ${CMD} login --sync-server ${login.syncServer}`)
     const account = await connectAccount(login)
-    const vault = await openAccountVault(account.api, fromBase64Url(login.vaultKey))
+    const vault = await openVaultFor(account, { ...login, vaultKey: login.vaultKey })
     const graphs = await account.api.listGraphs()
     const serverFlag = several ? ` --sync-server ${login.syncServer}` : ''
     if (graphs.length === 0) {
@@ -506,7 +540,7 @@ async function openSyncedForServe(wanted: string, args: ServeArgs): Promise<{ gr
     const login = requireServer(await loadConfig(defaultConfigPath()), args['sync-server'])
     if (!login.vaultKey) fail(`Keys are not unlocked on this machine for ${login.syncServer}. Run: ${CMD} login --sync-server ${login.syncServer}`)
     const account = await connectAccount(login)
-    const vault = await openAccountVault(account.api, fromBase64Url(login.vaultKey))
+    const vault = await openVaultFor(account, { ...login, vaultKey: login.vaultKey })
     const graphs = await account.api.listGraphs()
     // A graph the server no longer lists for this login (deleted, left, taken away) leaves this
     // machine now rather than at logout: its cache is the graph in plaintext. Against the
@@ -532,7 +566,18 @@ async function openSyncedForServe(wanted: string, args: ServeArgs): Promise<{ gr
         }
     }
     if (!graphId) fail(`No synced graph on ${login.syncServer} is named or identified by "${wanted}". Run: ${CMD} graphs`)
-    const { record, keyring } = resolveGraphById(graphs, vault, graphId)
+    const { record, keyring: held } = resolveGraphById(graphs, vault, graphId)
+    // The copies of the graph's newest key waiting for this account (ADR 0127), read in memory: a
+    // browser of the account collects them into the vault, and this process never writes it.
+    const vaultKey = fromBase64Url(login.vaultKey)
+    let keyring = await readKeyHandouts(account.api, { vault, principalId: account.principal.id }, held).catch(() => held)
+    /** When the relay says the graph moved to a new epoch: the vault as a browser may have updated it, then the copies. */
+    const refreshKeyring = async () => {
+        const latest = await openAccountVault(account.api, vaultKey)
+        const stored = latest.keyrings.find((entry) => entry.graphId === graphId)
+        const merged = stored ? mergeKeyringEpochs(keyring, stored) : keyring
+        keyring = await readKeyHandouts(account.api, { vault: latest, principalId: account.principal.id }, merged)
+    }
     const persistDir = graphCacheDir(process.env, account.serverBaseUrl, graphId)
     await stampGraphCacheOwner(persistDir, account.principal.id)
 
@@ -540,7 +585,8 @@ async function openSyncedForServe(wanted: string, args: ServeArgs): Promise<{ gr
     const graph = await openHeadlessGraph({
         graphId,
         rootDocId: record.rootDocId,
-        keyring,
+        keyring: () => keyring,
+        refreshKeyring,
         relayUrl: account.relayUrl,
         token: account.tokenFor(graphId),
         clientUrl: account.clientUrl,
@@ -564,7 +610,7 @@ async function openSyncedForServe(wanted: string, args: ServeArgs): Promise<{ gr
             ),
         // Serving a graph republishes its name, so a graph only an agent ever opens still
         // labels itself on every device (ADR 0031, amended).
-        publishName: createGraphNamePublisher({ api: account.api, keyring, graphId }).publish,
+        publishName: createGraphNamePublisher({ api: account.api, keyring: () => keyring, graphId }).publish,
     })
     return { graph, graphName: graphName ?? graph.name }
 }

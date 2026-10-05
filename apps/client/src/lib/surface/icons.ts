@@ -14,12 +14,16 @@
  * which is precisely what an icon beside a content column must not do.
  *
  * The markup here is in-repo constant text, never user or document content, which is what
- * makes rendering it with `{@html}` (and `innerHTML` in the CodeMirror widgets) safe.
+ * makes rendering it with `{@html}` (and `innerHTML` in the CodeMirror widgets) safe. Under the
+ * Client's Trusted Types policy (ADR 0130) this module alone makes it trusted markup, through
+ * `etherpk-icons`, which passes it as it is: every icon in the Client comes from this table.
  *
  * A few icons are Heroicons (MIT) instead, kept on their own 24-unit grid with their paths copied
  * verbatim from the package's `24/outline/<name>.svg` (`HEROICON_PATHS`), so either can be
  * checked against the other.
  */
+
+import { trustedIconMarkup, type TrustedMarkup } from '$lib/security/trusted-types'
 
 /** Inner markup for each named icon; `default` is the fallback for an unknown name. */
 export const ICON_PATHS: Record<string, string> = {
@@ -57,6 +61,19 @@ export const ICON_PATHS: Record<string, string> = {
     // Slash menu
     today: '<rect x="2.5" y="3" width="11" height="11" rx="1.5"/><path d="M2.5 6.5h11M5.5 2v2M10.5 2v2"/><circle cx="8" cy="10" r="1.3" fill="currentColor" stroke="none"/>',
     calendar: '<rect x="2.5" y="3" width="11" height="11" rx="1.5"/><path d="M2.5 6.5h11M5.5 2v2M10.5 2v2"/>',
+
+    // The `#` menu: a task's priority, and its waiting, doing and cancelled states.
+    flag: '<path d="M4 14V3h7l-1.5 2.5L11 8H4"/>',
+    clock: '<circle cx="8" cy="8" r="5.5"/><path d="M8 5v3.2l2 1.2"/>',
+
+    // The `[[` menu, a row per kind of name (a journal day is `calendar`).
+    page: '<path d="M4 2h5l4 4v8.5a.5.5 0 0 1-.5.5h-8a.5.5 0 0 1-.5-.5v-12a.5.5 0 0 1 .5-.5z"/><path d="M9 2v4h4"/>',
+    alias: '<path d="M5 4v3.5a2 2 0 0 0 2 2h5"/><path d="M9.5 6.5l3 3-3 3"/>',
+    /** A dashed page: a name things link to that has no page yet. */
+    pageless: '<path d="M4 2h5l4 4v8.5a.5.5 0 0 1-.5.5h-8a.5.5 0 0 1-.5-.5v-12a.5.5 0 0 1 .5-.5z" stroke-dasharray="2 1.5"/><path d="M8 8.5v3M6.5 10h3"/>',
+    /** A circled plus: make a page by the name typed. */
+    'new-page': '<circle cx="8" cy="8" r="6"/><path d="M8 5.5v5M5.5 8h5"/>',
+
     table: '<rect x="2.5" y="3" width="11" height="10" rx="1"/><path d="M2.5 6.5h11M2.5 9.5h11M6.5 6.5v6.5"/>',
     // Row and column edits, drawn so the four read differently at 18px on the Command Bar: a
     // two-row grid with a plus or a minus, the plus/minus beside the axis it acts on.
@@ -152,17 +169,22 @@ export interface IconOptions {
 }
 
 /** The `<svg>` markup for a named icon, falling back to a neutral dot for an unknown name. */
-export function iconSvg(name: string, options: IconOptions = {}): string {
+export function iconSvg(name: string, options: IconOptions = {}): TrustedMarkup {
     const { size = 16, strokeWidth = 1.4, label } = options
-    const a11y = label ? `role="img" aria-label="${label}"` : 'aria-hidden="true"'
+    // The label is the one value here that is not a number or a table entry, so it is escaped.
+    const a11y = label ? `role="img" aria-label="${escapeAttribute(label)}"` : 'aria-hidden="true"'
     // A Heroicon keeps its own grid; its stroke is scaled up with it, so it draws as heavy as the
     // table's 16-unit icons beside it rather than at Heroicons' lighter 1.5 of 24.
     const hero = HEROICON_PATHS[name]
     const grid = hero === undefined ? 16 : 24
     const stroke = Math.round(((strokeWidth * grid) / 16) * 1000) / 1000
-    return (
-        `<svg viewBox="0 0 ${grid} ${grid}" width="${size}" height="${size}" fill="none" stroke="currentColor" ` +
-        `stroke-width="${stroke}" stroke-linecap="round" stroke-linejoin="round" ${a11y}>` +
-        `${hero ?? ICON_PATHS[name] ?? ICON_PATHS.default}</svg>`
+    return trustedIconMarkup(
+        `<svg viewBox="0 0 ${grid} ${grid}" width="${Number(size)}" height="${Number(size)}" fill="none" stroke="currentColor" ` +
+            `stroke-width="${stroke}" stroke-linecap="round" stroke-linejoin="round" ${a11y}>` +
+            `${hero ?? ICON_PATHS[name] ?? ICON_PATHS.default}</svg>`,
     )
+}
+
+function escapeAttribute(value: string): string {
+    return value.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }

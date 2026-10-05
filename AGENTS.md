@@ -33,3 +33,7 @@ Run one package's tests with `pnpm --filter @appsoftwareltd/etherpk-client exec 
   `apps/client/src/env-example.test.ts` fails when the two disagree. Add a new setting to both.
 - The sync protocol lives in `packages/shared/src/sync-protocol.ts` and is shared with the Sync
   Server. Changing a message shape means a new `SYNC_PROTOCOL_VERSION`.
+- The Client enforces Trusted Types. Write HTML only through
+  `apps/client/src/lib/security/trusted-types.ts` (`setTrustedMarkup`, `parseInertHtml`,
+  `setSandboxedSrcdoc`). ESLint refuses `innerHTML`, `outerHTML`, `srcdoc`, `insertAdjacentHTML`,
+  `parseFromString` and `document.write` elsewhere in `apps/client/src`.

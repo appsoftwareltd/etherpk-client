@@ -9,7 +9,7 @@
      * the server has not listed (offline, or the list failed) has no role and offers only what this
      * device can do on its own.
      */
-    import { PUBLIC_DOCS_URL, formatBytes } from '@appsoftwareltd/etherpk-shared'
+    import { formatBytes } from '@appsoftwareltd/etherpk-shared'
     import type { SyncedMember } from './graph-picker-helpers'
     import { OPEN_BUTTON, OPEN_ICON } from './graphs-page-icons'
 
@@ -27,6 +27,9 @@
         canInvite = false,
         checking = false,
         cancellingInvite = null,
+        keyNotice = null,
+        rotating = false,
+        removingMember = null,
         onopen,
         onadd,
         onrename,
@@ -37,6 +40,10 @@
         ondelete,
         onleave,
         oncancelinvite,
+        onverify,
+        onremovemember,
+        onrotate,
+        onverifyowner,
     }: {
         graphId: string
         name: string
@@ -59,6 +66,15 @@
         checking?: boolean
         /** The invite whose cancellation is in flight. */
         cancellingInvite?: string | null
+        /**
+         * For a Player: why the newest copy of the graph's key was not used (ADR 0127), and whether
+         * comparing the owner's fingerprint is the way on.
+         */
+        keyNotice?: { text: string; verifyOwner: boolean } | null
+        /** For the owner: the graph's key is being changed from this page. */
+        rotating?: boolean
+        /** The member whose removal is in flight. */
+        removingMember?: string | null
         onopen: () => void
         onadd: () => void
         onrename: () => void
@@ -69,10 +85,54 @@
         ondelete: () => void
         onleave: () => void
         oncancelinvite: (member: SyncedMember) => void
+        /** Compare a member's fingerprint and pin it (ADR 0126). */
+        onverify: (member: SyncedMember) => void
+        /** Remove a Player, once the owner has confirmed it here (ADR 0127). */
+        onremovemember: (member: SyncedMember) => void
+        /** Give the graph a new key now. */
+        onrotate: () => void
+        /** Compare the owner's new fingerprint and pin it, so their copy of the key is used. */
+        onverifyowner: () => void
     } = $props()
 
     const owner = $derived(role === 'owner')
-    const activePlayers = $derived((members ?? []).some((m) => m.role === 'player' && m.status !== 'invited'))
+
+    // Removing a Player asks first, in place, beside the Player: what it does cannot be undone, and
+    // the sentence says what it means for what they already have.
+    let confirmingRemoval = $state<string | null>(null)
+    /** Each member's Remove button, so stepping back can return the focus to it. */
+    const removeTriggers = new Map<string, HTMLElement>()
+
+    function removeTrigger(userId: string) {
+        return (element: HTMLElement) => {
+            removeTriggers.set(userId, element)
+            return () => {
+                if (removeTriggers.get(userId) === element) removeTriggers.delete(userId)
+            }
+        }
+    }
+
+    function cancelRemoval() {
+        const userId = confirmingRemoval
+        confirmingRemoval = null
+        if (userId) removeTriggers.get(userId)?.focus()
+    }
+
+    function escapeCancels(event: KeyboardEvent) {
+        if (event.key !== 'Escape') return
+        event.stopPropagation()
+        cancelRemoval()
+    }
+
+    function confirmRemoval(member: SyncedMember) {
+        confirmingRemoval = null
+        onremovemember(member)
+    }
+
+    /** The confirmation's first control takes the focus, so a keyboard user lands on the choice. */
+    function focusOnMount(element: HTMLElement) {
+        element.focus()
+    }
 
     const TEXT_BUTTON =
         'shrink-0 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 pointer-coarse:min-h-11 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-white/5'
@@ -117,6 +177,15 @@
         >
             {message.text}
         </p>
+    {/if}
+
+    {#if keyNotice}
+        <div data-testid="synced-key-notice" class="flex flex-wrap items-center gap-2">
+            <p role="alert" class="min-w-0 flex-1 text-sm text-amber-800 dark:text-amber-200">{keyNotice.text}</p>
+            {#if keyNotice.verifyOwner}
+                <button data-testid="synced-verify-owner" onclick={onverifyowner} class={TEXT_BUTTON}>Verify</button>
+            {/if}
+        </div>
     {/if}
 
     <div class="flex items-center gap-2">
@@ -184,35 +253,105 @@
         {#if members}
             <ul data-testid="synced-members" class="space-y-1 border-t border-gray-100 pt-2 dark:border-white/10">
                 {#each members as m (m.userId)}
-                    <li data-testid="synced-member" data-status={m.status ?? 'active'} class="flex items-center gap-2 text-sm">
+                    <li
+                        data-testid="synced-member"
+                        data-status={m.status ?? 'active'}
+                        data-trust={m.trust}
+                        class="flex flex-wrap items-center gap-2 text-sm"
+                    >
                         <span class="truncate text-gray-700 dark:text-gray-300">{m.email}</span>
                         <span class="rounded-full bg-gray-100 px-2 py-0.5 text-sm text-gray-600 dark:bg-white/10 dark:text-gray-400">
                             {m.role === 'owner' ? 'Owner' : m.status === 'invited' ? 'Invited' : 'Player'}
                         </span>
-                        {#if m.status === 'invited' && m.inviteId}
-                            <button
-                                data-testid="member-cancel-invite"
-                                disabled={cancellingInvite === m.inviteId}
-                                onclick={() => oncancelinvite(m)}
-                                class="ml-auto shrink-0 rounded-lg px-2 py-1 text-sm text-gray-600 hover:bg-gray-50 hover:text-gray-950 disabled:cursor-progress dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-white"
-                                >{cancellingInvite === m.inviteId ? 'Cancelling…' : 'Cancel invite'}</button
+                        <!-- What the owner's pins say about the member's key (ADR 0126); shown only
+                             while the keys are unlocked here, since the pins are in the vault. -->
+                        {#if m.trust === 'verified'}
+                            <span
+                                data-testid="member-trust"
+                                class="rounded-full bg-emerald-50 px-2 py-0.5 text-sm text-emerald-800 dark:bg-emerald-400/10 dark:text-emerald-200"
+                                >Verified</span
                             >
+                        {:else if m.trust === 'changed'}
+                            <span
+                                data-testid="member-trust"
+                                class="rounded-full bg-amber-50 px-2 py-0.5 text-sm text-amber-800 dark:bg-amber-400/10 dark:text-amber-200"
+                                >Key changed</span
+                            >
+                        {:else if m.trust === 'unverified'}
+                            <span data-testid="member-trust" class="rounded-full bg-gray-100 px-2 py-0.5 text-sm text-gray-600 dark:bg-white/10 dark:text-gray-400"
+                                >Unverified</span
+                            >
+                        {:else if m.trust === 'not-upgraded'}
+                            <span data-testid="member-trust" class="text-sm text-gray-500 dark:text-gray-400"
+                                >Can be verified once they next open EtherPK</span
+                            >
+                        {:else if m.trust === 'signing-key-missing'}
+                            <!-- No Verify: there is no signing key to compare. The rotation notice says
+                                 what the owner can do instead. -->
+                            <span
+                                data-testid="member-trust"
+                                class="rounded-full bg-amber-50 px-2 py-0.5 text-sm text-amber-800 dark:bg-amber-400/10 dark:text-amber-200"
+                                >Signing key missing</span
+                            >
+                        {/if}
+                        <span class="ml-auto flex shrink-0 gap-1">
+                            {#if m.trust === 'unverified' || m.trust === 'changed'}
+                                <button
+                                    data-testid="member-verify"
+                                    onclick={() => onverify(m)}
+                                    class="rounded-lg px-2 py-1 text-sm text-gray-600 hover:bg-gray-50 hover:text-gray-950 pointer-coarse:min-h-11 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-white"
+                                    >Verify</button
+                                >
+                            {/if}
+                            {#if m.status === 'invited' && m.inviteId}
+                                <button
+                                    data-testid="member-cancel-invite"
+                                    disabled={cancellingInvite === m.inviteId}
+                                    onclick={() => oncancelinvite(m)}
+                                    class="rounded-lg px-2 py-1 text-sm text-gray-600 hover:bg-gray-50 hover:text-gray-950 disabled:cursor-progress dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-white"
+                                    >{cancellingInvite === m.inviteId ? 'Cancelling…' : 'Cancel invite'}</button
+                                >
+                            {/if}
+                            {#if m.role === 'player' && m.status !== 'invited'}
+                                <button
+                                    {@attach removeTrigger(m.userId)}
+                                    data-testid="member-remove"
+                                    disabled={removingMember === m.userId}
+                                    aria-busy={removingMember === m.userId}
+                                    aria-expanded={confirmingRemoval === m.userId}
+                                    onclick={() => (confirmingRemoval = m.userId)}
+                                    class="rounded-lg px-2 py-1 text-sm text-red-700 hover:bg-red-50 disabled:cursor-progress pointer-coarse:min-h-11 dark:text-red-400 dark:hover:bg-red-950/30"
+                                    >{removingMember === m.userId ? 'Removing…' : 'Remove'}</button
+                                >
+                            {/if}
+                        </span>
+                        {#if confirmingRemoval === m.userId}
+                            <!-- Escape steps back, and the focus returns to the Remove that opened it. -->
+                            <div
+                                data-testid="member-remove-confirm"
+                                role="group"
+                                aria-label={`Remove ${m.email}`}
+                                class="flex basis-full flex-wrap items-center gap-2 rounded-lg bg-red-50 px-3 py-2 dark:bg-red-950/30"
+                            >
+                                <p class="min-w-0 flex-1 text-sm text-red-800 dark:text-red-200">
+                                    Remove {m.email}? They lose access now. Anything they already opened stays on their devices.
+                                </p>
+                                <button
+                                    {@attach focusOnMount}
+                                    data-testid="member-remove-confirm-button"
+                                    onkeydown={escapeCancels}
+                                    onclick={() => confirmRemoval(m)}
+                                    class="shrink-0 rounded-lg border border-red-300 bg-white px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50 pointer-coarse:min-h-11 dark:border-red-500/40 dark:bg-transparent dark:text-red-300 dark:hover:bg-red-950/30"
+                                    >Remove</button
+                                >
+                                <button data-testid="member-remove-cancel" onkeydown={escapeCancels} onclick={cancelRemoval} class={TEXT_BUTTON}
+                                    >Cancel</button
+                                >
+                            </div>
                         {/if}
                     </li>
                 {/each}
             </ul>
-            <!-- Removing a player is not built yet (it needs the graph's key rotated), and the row
-                 offers no control for it. -->
-            {#if activePlayers}
-                <p data-testid="synced-members-removal-note" class="text-sm text-gray-500 dark:text-gray-400">
-                    You can't remove a player yet. Ask them to leave, or transfer or delete the graph.
-                    <a
-                        href={`${PUBLIC_DOCS_URL}/sharing-a-graph`}
-                        class="font-medium text-gray-700 underline underline-offset-2 hover:text-gray-950 dark:text-gray-300 dark:hover:text-white"
-                        >Sharing a graph</a
-                    >
-                </p>
-            {/if}
         {:else}
             <p class="border-t border-gray-100 pt-2 text-sm text-gray-500 dark:border-white/10 dark:text-gray-400">
                 Could not load the member list.
@@ -230,6 +369,15 @@
                     <button data-testid="graphs-invite" onclick={oninvite} class={TEXT_BUTTON}>Invite</button>
                 {/if}
                 <button data-testid="graphs-transfer" onclick={ontransfer} class={TEXT_BUTTON}>Transfer ownership</button>
+                <!-- A new key for everyone in the graph; nothing to confirm, since nobody loses anything. -->
+                <button
+                    data-testid="graphs-rotate-key"
+                    title="Make a new key for this graph. Its members receive it automatically."
+                    disabled={rotating}
+                    aria-busy={rotating}
+                    onclick={onrotate}
+                    class="{TEXT_BUTTON} disabled:cursor-progress">{rotating ? 'Changing key…' : 'Rotate key'}</button
+                >
             {/if}
             {#if onDevice}
                 <button

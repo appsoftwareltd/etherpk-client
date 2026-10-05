@@ -33,8 +33,11 @@
         serverOrigin: string;
         /** The account's address on that server, when it has one to name. */
         account?: string | null;
-        /** A first mint has no code before it; a regenerate replaces one that still works. */
-        arrival: "first" | "regenerate";
+        /**
+         * A first mint has no code before it; a regenerate replaces one that still works; a
+         * replace (ADR 0128) replaces the code and the keys with it.
+         */
+        arrival: "first" | "regenerate" | "replace";
         /** Why the ritual appeared now, e.g. keys minted for an account that had none. */
         reason?: string;
         onconfirm: () => void;
@@ -47,17 +50,25 @@
     let saveError = $state<string | null>(null);
     let acknowledged = $state(false);
 
-    const regenerate = $derived(arrival === "regenerate");
+    // Both replace a code that still works, so both say "new" and offer a way out.
+    const replacing = $derived(arrival !== "first");
     const host = $derived(serverHost(serverOrigin));
-    const title = $derived(regenerate ? "Save your new Recovery Code" : "Save your Recovery Code");
+    const title = $derived(replacing ? "Save your new Recovery Code" : "Save your Recovery Code");
     const acknowledgement = $derived(
-        regenerate
+        replacing
             ? `I have saved my new Recovery Code for ${host} somewhere safe.`
             : `I have saved my Recovery Code for ${host} somewhere safe.`,
     );
-    // The regenerate confirm names the destructive half first: it is the moment the current
-    // code stops working, and a plain "Continue" would hide that.
-    const confirmLabel = $derived(regenerate ? "Retire old code and use this one" : "Continue");
+    // The confirm names the destructive half first: it is the moment the current code (and, on a
+    // replace, the current keys) stop working, and a plain "Continue" would hide that.
+    const confirmLabel = $derived(
+        arrival === "replace"
+            ? "Replace keys and use this code"
+            : arrival === "regenerate"
+              ? "Retire old code and use this one"
+              : "Continue",
+    );
+    const cancelLabel = $derived(arrival === "replace" ? "Keep current keys" : "Keep current code");
 
     async function copy() {
         saveError = null;
@@ -169,7 +180,7 @@
                 data-testid="recovery-cancel"
                 class="rounded-lg px-3 py-1.5 text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
             >
-                Keep current code
+                {cancelLabel}
             </button>
         {/if}
         <button

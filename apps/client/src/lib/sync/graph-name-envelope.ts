@@ -20,10 +20,12 @@ import {
     contextAad,
     currentEpoch,
     keyForEpoch,
+    keyringReader,
     openSymmetric,
     sealSymmetric,
     toBase64Url,
     type GraphKeyring,
+    type KeyringSource,
 } from '../crypto'
 
 import type { SyncApi } from './sync-api'
@@ -83,7 +85,8 @@ export interface GraphNamePublisher {
 
 export interface GraphNamePublisherDeps {
     api: Pick<SyncApi, 'setGraphName'>
-    keyring: GraphKeyring
+    /** The graph's keyring, or a getter for the current one: a name is sealed under the newest epoch (ADR 0127). */
+    keyring: KeyringSource
     graphId: string
     /** A failed publish is reported, never thrown: the meta map still holds the name. */
     onError?: (error: Error) => void
@@ -96,12 +99,13 @@ export interface GraphNamePublisherDeps {
  */
 export function createGraphNamePublisher(deps: GraphNamePublisherDeps): GraphNamePublisher {
     const report = deps.onError ?? ((error: Error) => console.warn('[sync] could not publish the graph name envelope', error))
+    const keyring = keyringReader(deps.keyring)
     let chain: Promise<void> = Promise.resolve()
     return {
         publish(name) {
             chain = chain.then(async () => {
                 try {
-                    const envelope = await sealGraphName(deps.keyring, deps.graphId, name)
+                    const envelope = await sealGraphName(keyring(), deps.graphId, name)
                     await deps.api.setGraphName(deps.graphId, toBase64Url(envelope))
                 } catch (err) {
                     report(err instanceof Error ? err : new Error(String(err)))

@@ -4,7 +4,8 @@ import { generateIdentityKeyPair } from './identity'
 import { bumpEpoch, createGraphKeyring, serializeKeyrings } from './keyring'
 import { deriveVaultWrapKey, generateRecoveryCode } from './recovery-code'
 import { randomBytes, utf8 } from './bytes'
-import { type KeyVault, encryptVault, openVault, reencryptVault } from './vault'
+import { generateSigningKeyPair } from './signing'
+import { type KeyVault, KIND_VAULT_V3, encryptVault, openVault, reencryptVault } from './vault'
 
 function someVault(): KeyVault {
     const identity = generateIdentityKeyPair()
@@ -120,6 +121,107 @@ describe('openVault reports the real failure', () => {
         expect(openedWithWrapKey.vaultKey).toEqual(vaultKey)
         expect(openedWithVaultKey.vaultKey).toEqual(vaultKey)
         expect(openedWithVaultKey.vault).toEqual(openedWithWrapKey.vault)
+    })
+})
+
+/** A v2 container (kind 3), as Clients before ADR 0126 wrote it: the content sealed under the 'vault' context. */
+async function v2Container(vault: KeyVault, wrapKey: Uint8Array): Promise<{ envelope: Uint8Array; vaultKey: Uint8Array }> {
+    const vaultKey = randomBytes(32)
+    const wrapped = await sealSymmetric({ key: wrapKey, epochId: 0, plaintext: vaultKey, aad: contextAad('vault-key') })
+    const json = {
+        identityPrivateKey: Buffer.from(vault.identityPrivateKey).toString('base64url'),
+        identityPublicKey: Buffer.from(vault.identityPublicKey).toString('base64url'),
+        keyrings: new TextDecoder().decode(serializeKeyrings(vault.keyrings)),
+    }
+    const content = await sealSymmetric({ key: vaultKey, epochId: 0, plaintext: utf8(JSON.stringify(json)), aad: contextAad('vault') })
+    const envelope = new Uint8Array(4 + wrapped.length + content.length)
+    envelope[0] = 1
+    envelope[1] = 3
+    new DataView(envelope.buffer).setUint16(2, wrapped.length, false)
+    envelope.set(wrapped, 4)
+    envelope.set(content, 4 + wrapped.length)
+    return { envelope, vaultKey }
+}
+
+const pin = {
+    publicKey: 'eDI1NTE5',
+    signingPublicKey: 'ZWQyNTUxOQ',
+    email: 'friend@example.com',
+    pinnedAt: '2026-10-05T09:00:00.000Z',
+    verified: true,
+}
+
+describe('vault format v3 (ADR 0126)', () => {
+    it('is written as container kind 5, so a Client that knows only v2 cannot open it', async () => {
+        const { envelope } = await encryptVault(someVault(), randomBytes(32))
+
+        expect(envelope[0]).toBe(1)
+        expect(envelope[1]).toBe(KIND_VAULT_V3)
+    })
+
+    it('keeps the signing key pair and the pins', async () => {
+        const signing = generateSigningKeyPair()
+        const vault: KeyVault = {
+            ...someVault(),
+            signingPrivateKey: signing.privateKey,
+            signingPublicKey: signing.publicKey,
+            pins: { 'account-2': pin },
+        }
+        const wrapKey = randomBytes(32)
+
+        const opened = await openVault((await encryptVault(vault, wrapKey)).envelope, wrapKey)
+
+        expect(opened.vault.signingPrivateKey).toEqual(signing.privateKey)
+        expect(opened.vault.signingPublicKey).toEqual(signing.publicKey)
+        expect(opened.vault.pins).toEqual({ 'account-2': pin })
+    })
+
+    it('writes back fields it does not know, so a later format change is not lost by this one', async () => {
+        const wrapKey = randomBytes(32)
+        const first = await encryptVault({ ...someVault(), otherFields: { futureField: { kept: [1, 2] } } }, wrapKey)
+
+        // A device running this version reads the vault, changes a keyring, and writes it back.
+        const opened = await openVault(first.envelope, first.vaultKey)
+        const grown: KeyVault = { ...opened.vault, keyrings: [...opened.vault.keyrings, createGraphKeyring('g3')] }
+        const second = await reencryptVault(grown, first.envelope, opened)
+
+        const reopened = await openVault(second.envelope, wrapKey)
+        expect(reopened.vault.otherFields).toEqual({ futureField: { kept: [1, 2] } })
+        expect(reopened.vault.keyrings.map((k) => k.graphId)).toEqual(['g1', 'g2', 'g3'])
+    })
+
+    it('keeps unknown fields inside a pin', async () => {
+        const wrapKey = randomBytes(32)
+        const withExtra = { ...pin, futurePinField: 'kept' }
+        const { envelope } = await encryptVault({ ...someVault(), pins: { 'account-2': withExtra } }, wrapKey)
+
+        expect((await openVault(envelope, wrapKey)).vault.pins).toEqual({ 'account-2': withExtra })
+    })
+
+    it('opens a v2 vault, and the next write upgrades it to v3 under the same wrapped key', async () => {
+        const vault = someVault()
+        const wrapKey = randomBytes(32)
+        const old = await v2Container(vault, wrapKey)
+
+        const opened = await openVault(old.envelope, old.vaultKey)
+        expect(opened.legacy).toBe(false)
+        expect(opened.vault.keyrings.map((k) => k.graphId)).toEqual(['g1', 'g2'])
+        expect(opened.vault.signingPublicKey).toBeUndefined()
+
+        const upgraded = await reencryptVault(opened.vault, old.envelope, opened)
+        expect(upgraded.envelope[1]).toBe(KIND_VAULT_V3)
+        expect(upgraded.vaultKey).toEqual(old.vaultKey)
+        // The Recovery Code still opens it: the wrapped vault key travelled across unchanged.
+        expect((await openVault(upgraded.envelope, wrapKey)).vault.keyrings).toHaveLength(2)
+    })
+
+    it('cannot be read as v2 content, even with its kind byte changed back', async () => {
+        const wrapKey = randomBytes(32)
+        const { envelope } = await encryptVault(someVault(), wrapKey)
+        const relabelled = new Uint8Array(envelope)
+        relabelled[1] = 3
+
+        await expect(openVault(relabelled, wrapKey)).rejects.toThrow(EnvelopeError)
     })
 })
 

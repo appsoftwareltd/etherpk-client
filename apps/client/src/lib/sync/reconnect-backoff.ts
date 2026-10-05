@@ -41,3 +41,19 @@ export function refusalRetryDelayMs(round: number, random: () => number = Math.r
     const ceiling = Math.min(REFUSAL_RETRY_CAP_MS, REFUSAL_RETRY_BASE_MS * 2 ** exponent)
     return Math.floor(ceiling / 2 + random() * (ceiling / 2))
 }
+
+/**
+ * How long a graph waits before asking again for the key of a new Graph Key epoch (ADR 0127) it
+ * could not collect. Usually the copy is there at once, so this runs only after a failure: the
+ * network, or a copy this device refused, which waits for the person to act. The ceiling doubles
+ * from fifteen seconds to five minutes, half fixed and half drawn below it as a refusal's is, so
+ * a tab left waiting for days asks a few times an hour.
+ */
+export const KEY_RETRY_BASE_MS = 15_000
+export const KEY_RETRY_CAP_MS = 300_000
+
+export function keyRetryDelayMs(round: number, random: () => number = Math.random): number {
+    const exponent = Math.min(Math.max(0, round - 1), 16)
+    const ceiling = Math.min(KEY_RETRY_CAP_MS, KEY_RETRY_BASE_MS * 2 ** exponent)
+    return Math.floor(ceiling / 2 + random() * (ceiling / 2))
+}

@@ -42,14 +42,26 @@ export async function managedBearerToken(fetcher: typeof fetch = fetch): Promise
 }
 
 /**
+ * A managed access token issued now, past the one held: after a Key Replacement the Sync Server
+ * refuses every token issued before it (ADR 0128), the held one included. Later calls to
+ * {@link managedBearerToken} serve this one.
+ */
+export async function freshManagedBearerToken(fetcher: typeof fetch = fetch): Promise<string> {
+    // Not joined to a refresh in flight, which may hand back the token being replaced.
+    cached = null
+    cached = await requestTokenWithCrossTabLock(fetcher, true)
+    return cached.accessToken
+}
+
+/**
  * Refresh-token rotation is single-use. The Web Lock serialises refreshes across tabs from the
  * same Client origin, while the module-level promise above deduplicates callers inside one tab.
  */
-async function requestTokenWithCrossTabLock(fetcher: typeof fetch): Promise<BrowserToken> {
+async function requestTokenWithCrossTabLock(fetcher: typeof fetch, fresh = false): Promise<BrowserToken> {
     if (typeof navigator !== 'undefined' && navigator.locks) {
-        return navigator.locks.request('etherpk-managed-token-refresh', () => requestToken(fetcher))
+        return navigator.locks.request('etherpk-managed-token-refresh', () => requestToken(fetcher, fresh))
     }
-    return requestToken(fetcher)
+    return requestToken(fetcher, fresh)
 }
 
 export function clearManagedAccessToken(): void {
@@ -57,10 +69,10 @@ export function clearManagedAccessToken(): void {
     refreshInFlight = null
 }
 
-async function requestToken(fetcher: typeof fetch): Promise<BrowserToken> {
+async function requestToken(fetcher: typeof fetch, fresh: boolean): Promise<BrowserToken> {
     for (let retry = 0; ; retry += 1) {
         try {
-            return await requestTokenOnce(fetcher)
+            return await requestTokenOnce(fetcher, fresh)
         } catch (failure) {
             if (!(failure instanceof BusyTokenService) || retry >= BUSY_RETRIES) {
                 throw failure instanceof BusyTokenService ? failure.error : failure
@@ -87,8 +99,9 @@ function retryAfterMs(response: Response): number {
     return Math.min(seconds * 1000, MAX_RETRY_AFTER_MS)
 }
 
-async function requestTokenOnce(fetcher: typeof fetch): Promise<BrowserToken> {
-    const response = await fetcher('/auth/token', {
+async function requestTokenOnce(fetcher: typeof fetch, fresh: boolean): Promise<BrowserToken> {
+    // `fresh` asks the endpoint to refresh even while the token it holds is good.
+    const response = await fetcher(fresh ? '/auth/token?fresh=1' : '/auth/token', {
         method: 'POST',
         credentials: 'same-origin',
         headers: { Accept: 'application/json' },

@@ -42,6 +42,7 @@
 
     import type { ViewRef } from "$lib/layout";
     import { workspaceService } from "$lib/workspace/workspace-services";
+    import { setSandboxedSrcdoc } from "$lib/security/trusted-types";
 
     import { bundledTheme } from "@appsoftwareltd/etherpk-themes";
 
@@ -554,7 +555,9 @@
                                  frame is not undone. -->
                             <iframe title="Theme preview" class="h-full w-full border-0" sandbox="allow-scripts allow-same-origin allow-forms" bind:this={frame} data-testid="theme-view-preview-frame"></iframe>
                         {:else if previewSrcdoc}
-                            <iframe title="Theme preview" class="h-full w-full border-0" sandbox="allow-scripts" srcdoc={previewSrcdoc} data-testid="theme-view-preview-frame" data-preview-fallback="true"></iframe>
+                            <!-- The page goes in through the inert policy (ADR 0130): the frame's opaque
+                                 origin and the app's inherited CSP keep anything in it from the app. -->
+                            <iframe title="Theme preview" class="h-full w-full border-0" sandbox="allow-scripts" {@attach (node) => setSandboxedSrcdoc(node, previewSrcdoc)} data-testid="theme-view-preview-frame" data-preview-fallback="true"></iframe>
                         {:else if previewBusy}
                             <p class="p-4 text-sm text-gray-500 dark:text-gray-400">Rendering…</p>
                         {/if}

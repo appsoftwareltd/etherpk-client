@@ -1,29 +1,30 @@
 /**
  * Client key bootstrap for a Server-backed graph (plan Phase 4, ADR 0026). On first use it
- * generates the account identity keypair + Recovery Code + empty vault; thereafter it unlocks
+ * generates the account's Sync Identity + Recovery Code + empty vault; thereafter it unlocks
  * the vault and ensures a Graph Keyring exists for the target graph. All secrets are
  * client-only - the server stores the vault as an opaque blob it can never read.
+ *
+ * Every write of the vault is signed by the account's signing key (ADR 0126) and made through
+ * `updateVault`, which applies its change again when another device wrote first.
  *
  * Pure over an injected SyncApi so it unit-tests against a fetch stub.
  */
 import {
     type GraphKeyring,
     type KeyVault,
-    type OpenedVault,
     createGraphKeyring,
     deriveVaultWrapKey,
     encryptVault,
-    fingerprint,
     fromBase64Url,
     generateIdentityKeyPair,
     generateRecoveryCode,
+    generateSigningKeyPair,
     openVault,
-    reencryptVault,
-    toBase64Url,
 } from '$lib/crypto'
 import type { VaultProtectionAccess } from '$lib/document/protection/protection-store'
 
-import { SyncApiError, type SyncApi } from './sync-api'
+import type { SyncApi } from './sync-api'
+import { updateVault, writeSignedVault } from './vault-update'
 
 export interface KeyBootstrapResult {
     keyring: GraphKeyring
@@ -58,46 +59,81 @@ export interface AccountKeyBootstrap {
     commit(): Promise<void>
 }
 
+type KeysApi = Pick<SyncApi, 'getVault' | 'putKeys' | 'me'>
+
 /**
  * Mint an account's encryption keys before it owns any graph, so the Recovery Code ritual is a
  * step the user can take deliberately rather than a surprise at the end of their first import.
  * The vault starts empty; ensureGraphKeys adds each graph's keyring to it afterwards.
  */
-export async function createAccountKeys(api: SyncApi): Promise<AccountKeyBootstrap> {
+export async function createAccountKeys(api: KeysApi): Promise<AccountKeyBootstrap> {
     if (await api.getVault()) throw new Error('This account already has encryption keys')
     const minted = await mintAccountVault(api, [])
     return { recoveryCode: minted.recoveryCode, deviceKey: minted.deviceKey, commit: minted.commit }
 }
 
-/** Identity + Recovery Code + an encrypted vault holding `keyrings`, written only by `commit`. */
+/**
+ * A Sync Identity (both key pairs) + Recovery Code + an encrypted vault holding `keyrings`,
+ * written only by `commit`.
+ */
 async function mintAccountVault(
-    api: SyncApi,
+    api: KeysApi,
     keyrings: GraphKeyring[],
 ): Promise<{ vault: KeyVault; recoveryCode: string; deviceKey: Uint8Array; commit(): Promise<void> }> {
     const identity = generateIdentityKeyPair()
+    const signing = generateSigningKeyPair()
     const recoveryCode = generateRecoveryCode()
     const wrapKey = await deriveVaultWrapKey(recoveryCode)
     const vault: KeyVault = {
         identityPrivateKey: identity.privateKey,
         identityPublicKey: identity.publicKey,
+        signingPrivateKey: signing.privateKey,
+        signingPublicKey: signing.publicKey,
         keyrings,
     }
-    const { envelope, vaultKey } = await encryptVault(vault, wrapKey)
+    // The vault key is minted now, because the device caches it once the code is acknowledged.
+    const { vaultKey } = await encryptVault(vault, wrapKey)
     return {
         vault,
         recoveryCode,
         deviceKey: vaultKey,
         commit: async () => {
-            await api.putVault(toBase64Url(envelope), 0)
-            await api.putIdentity(toBase64Url(identity.publicKey))
+            // The signature names the account, and with no vault yet there is none to read it from.
+            const { principal } = await api.me()
+            await writeSignedVault(api, vault, {
+                principalId: principal.id,
+                expectedVersion: 0,
+                seal: (content) => encryptVault(content, wrapKey, vaultKey),
+                publishIdentity: true,
+            })
         },
     }
 }
 
+/**
+ * The account's vault holds no key for a graph it is a member of (ADR 0127). A Graph Key is
+ * minted only when a graph is created: minting one for an existing graph would encrypt this
+ * device's edits under a key nobody else holds.
+ */
+export class MissingGraphKeyError extends Error {
+    constructor(readonly graphId: string) {
+        super(`This account's keys hold no key for graph ${graphId}.`)
+        this.name = 'MissingGraphKeyError'
+    }
+}
+
 export async function ensureGraphKeys(
-    api: SyncApi,
+    api: KeysApi,
     graphId: string,
     getWrapKey: () => Promise<Uint8Array>,
+    /**
+     * `true` only for a graph this device has just created, the one case a Graph Key may be
+     * minted. Opening an existing graph whose key the vault lacks fails with
+     * {@link MissingGraphKeyError} instead. An account with no vault yet is the exception: its
+     * keys were never saved, so no key for the graph is held anywhere, and its first keys are
+     * minted with the graph's.
+     */
+    options: { newGraph?: boolean } = {},
 ): Promise<KeyBootstrapResult> {
     const existing = await api.getVault()
 
@@ -115,21 +151,19 @@ export async function ensureGraphKeys(
         }
     }
 
-    // Existing account: unlock, ensure a keyring for this graph, persist if we added one.
-    // The held key may be the code-derived wrap key OR the vault key (device-approval /
-    // cached) - openVault accepts either.
-    const held = await getWrapKey()
-    const previous = fromBase64Url(existing.vault)
-    const opened = await openVault(previous, held)
-    const vault = opened.vault
-    let keyring = vault.keyrings.find((k) => k.graphId === graphId)
-    let deviceKey = opened.vaultKey
-    if (!keyring) {
-        keyring = createGraphKeyring(graphId)
-        vault.keyrings = [...vault.keyrings, keyring]
-        deviceKey = await putVaultWithRetry(api, vault, previous, opened, existing.version)
-    }
-    return { keyring, vault, deviceKey, commit: async () => {} }
+    // Existing account: unlock, and add a keyring for a NEW graph unless the vault has one. The
+    // held key may be the code-derived wrap key OR the vault key (device-approval / cached) -
+    // openVault accepts either. Applied to the latest vault, so a keyring another device added
+    // a moment ago is used rather than a second one minted beside it.
+    const update = await updateVault(api, await getWrapKey(), {
+        apply: (vault) => {
+            if (vault.keyrings.some((k) => k.graphId === graphId)) return null
+            if (!options.newGraph) throw new MissingGraphKeyError(graphId)
+            return { ...vault, keyrings: [...vault.keyrings, createGraphKeyring(graphId)] }
+        },
+    })
+    const keyring = update.vault.keyrings.find((k) => k.graphId === graphId)!
+    return { keyring, vault: update.vault, deviceKey: update.vaultKey, commit: async () => {} }
 }
 
 /** A Recovery Code regenerate, prepared but not yet written (ADR 0029 rung 2, amended 2026-09-17). */
@@ -140,7 +174,7 @@ export interface RecoveryCodeRegeneration {
      * Retire the current code and activate this one, by re-WRAPPING the vault key under it.
      * Runs only once the user has confirmed they saved the code. The vault key is preserved,
      * so every other unlocked device stays unlocked. Resolves to the vault key this device
-     * should cache - fresh only when a legacy blob was upgraded to v2 here.
+     * should cache - fresh only when a legacy blob was upgraded here.
      */
     commit(): Promise<Uint8Array>
     /**
@@ -161,39 +195,30 @@ export interface RecoveryCodeRegeneration {
  * abandoning the new one changes nothing. (Regenerate once re-wrapped before showing the code,
  * which made a crash between the press and the save cost the account its only credential.)
  */
-export async function regenerateRecoveryCode(api: SyncApi, heldKey: Uint8Array): Promise<RecoveryCodeRegeneration> {
+export async function regenerateRecoveryCode(api: KeysApi, heldKey: Uint8Array): Promise<RecoveryCodeRegeneration> {
     const existing = await api.getVault()
     if (!existing) throw new Error('No vault to re-key on this account')
     // Opened now, so a held key that cannot open the vault fails before any code is shown.
-    const opened = await openVault(fromBase64Url(existing.vault), heldKey)
+    await openVault(fromBase64Url(existing.vault), heldKey)
     const code = generateRecoveryCode()
     const wrapKey = await deriveVaultWrapKey(code)
-    // A legacy blob has no vault key yet; encryptVault mints one when none is passed.
-    const rewrap = (o: Pick<OpenedVault, 'vault' | 'vaultKey' | 'legacy'>) =>
-        encryptVault(o.vault, wrapKey, o.legacy ? undefined : o.vaultKey)
 
     return {
         code,
         async commit() {
-            const first = await rewrap(opened)
-            try {
-                await api.putVault(toBase64Url(first.envelope), existing.version)
-                return first.vaultKey
-            } catch (err) {
-                if (!(err instanceof SyncApiError && err.status === 409)) throw err
-                // The dialog stays open for human time now, so another device may well have
-                // written the vault since it was read (a keyring add, protection enabled). Re-read
-                // and re-wrap the latest under the SAME code: the code on the user's screen must
-                // be the code that ends up working. The held key still opens the latest blob -
-                // the vault key survives every concurrent write, and a wrap key does too because
-                // content writers carry the wrapped-key segment forward verbatim.
-                const latest = await api.getVault()
-                if (!latest) throw new Error('vault vanished during write')
-                const current = await openVault(fromBase64Url(latest.vault), heldKey)
-                const retry = await rewrap(current)
-                await api.putVault(toBase64Url(retry.envelope), latest.version)
-                return retry.vaultKey
-            }
+            // The dialog stays open for human time, so another device may well write the vault
+            // before this commit (a keyring add, protection enabled). updateVault re-wraps the
+            // latest under the SAME code: the code on the user's screen must be the code that
+            // ends up working. The held key still opens the latest blob - the vault key survives
+            // every concurrent write, and a wrap key does too because content writers carry the
+            // wrapped-key segment forward verbatim.
+            const update = await updateVault(api, heldKey, {
+                // The content is unchanged: what changes is the key it is wrapped under.
+                apply: (vault) => vault,
+                // A legacy blob has no vault key yet; encryptVault mints one when none is passed.
+                seal: (vault, { opened }) => encryptVault(vault, wrapKey, opened.legacy ? undefined : opened.vaultKey),
+            })
+            return update.vaultKey
         },
         async activeVaultKey() {
             const latest = await api.getVault()
@@ -205,97 +230,6 @@ export async function regenerateRecoveryCode(api: SyncApi, heldKey: Uint8Array):
             }
         },
     }
-}
-
-/** Persist the vault, retrying once on a 409 (another device wrote concurrently).
- *  Returns the vault key the caller should cache (fresh when a legacy blob was upgraded). */
-async function putVaultWithRetry(
-    api: SyncApi,
-    vault: KeyVault,
-    previousEnvelope: Uint8Array,
-    opened: Pick<OpenedVault, 'vaultKey' | 'legacy'>,
-    expectedVersion: number,
-): Promise<Uint8Array> {
-    const first = await reencryptVault(vault, previousEnvelope, opened)
-    try {
-        await api.putVault(toBase64Url(first.envelope), expectedVersion)
-        return first.vaultKey
-    } catch {
-        // Re-read, merge our new keyrings into the latest, and try once more. The vault key
-        // survives concurrent writes (even a regenerate only re-wraps it), so it reopens the
-        // latest blob directly.
-        const latest = await api.getVault()
-        if (!latest) throw new Error('vault vanished during write')
-        const latestEnvelope = fromBase64Url(latest.vault)
-        const current = await openVault(latestEnvelope, opened.vaultKey)
-        const next: KeyVault = {
-            ...current.vault,
-            keyrings: mergeKeyrings(current.vault.keyrings, vault.keyrings),
-            // Protection records merge per graph, ours winning: without this the retry spreads
-            // only the server's copy and silently discards the record we were writing, so
-            // enabling protection during a concurrent vault write would look like it worked and
-            // then be gone on the next device (ADR 0057).
-            ...mergedProtection(current.vault.protection, vault.protection),
-        }
-        const retry = await reencryptVault(next, latestEnvelope, current)
-        await api.putVault(toBase64Url(retry.envelope), latest.version)
-        return retry.vaultKey
-    }
-}
-
-/**
- * Union protection records by graph id, `ours` winning a tie - it is the write in flight - with
- * one refusal: a graph the other device protected first, under a different key. Two devices
- * enabling protection for one graph at the same moment both mint a key; letting the second write
- * win would replace the first record and orphan everything already sealed under it, and that key
- * is unrecoverable by design (ADR 0057). A record under the SAME fingerprint is a re-wrap
- * of the same key - a passphrase change - and passes. Returns an empty object when neither side
- * has any, so the vault stays byte-identical to one written before protection existed.
- */
-function mergedProtection(
-    theirs: KeyVault['protection'],
-    ours: KeyVault['protection'],
-): Pick<KeyVault, 'protection'> | Record<string, never> {
-    for (const [graphId, record] of Object.entries(ours ?? {})) {
-        const existing = theirs?.[graphId]
-        if (existing && existing.fingerprint !== record.fingerprint) {
-            throw new Error('another device protected this graph first - reload, then unlock with the passphrase chosen there')
-        }
-    }
-    const merged = { ...(theirs ?? {}), ...(ours ?? {}) }
-    return Object.keys(merged).length > 0 ? { protection: merged } : {}
-}
-
-/** Union keyrings by graphId, preferring the one with more epochs (the more-advanced copy). */
-function mergeKeyrings(a: GraphKeyring[], b: GraphKeyring[]): GraphKeyring[] {
-    const byId = new Map<string, GraphKeyring>()
-    for (const k of [...a, ...b]) {
-        const existing = byId.get(k.graphId)
-        if (!existing || k.epochs.length > existing.epochs.length) byId.set(k.graphId, k)
-    }
-    return [...byId.values()]
-}
-
-/**
- * This account's own identity fingerprint, for the other half of an invite check.
- *
- * The invite dialog shows the invitee's fingerprint and asks the inviter to confirm it matches
- * "theirs, verified in person or over a call". That comparison, the out-of-band check ADR 0026
- * relies on to guard against server key substitution, needs a screen that shows each user their
- * own.
- *
- * Formatted by the same `fingerprint()` the invite side uses, so the two strings are visually
- * comparable character for character.
- */
-export async function accountIdentityFingerprint(
-    api: SyncApi,
-    getWrapKey: () => Promise<Uint8Array>,
-): Promise<string | null> {
-    const existing = await api.getVault()
-    // No vault means no identity key yet, so there is nothing to read out.
-    if (!existing) return null
-    const opened = await openVault(fromBase64Url(existing.vault), await getWrapKey())
-    return fingerprint(opened.vault.identityPublicKey)
 }
 
 /**
@@ -310,10 +244,7 @@ export async function accountIdentityFingerprint(
  * passphrase-wrapped copy, so a device that has cached its vault key - which is every unlocked
  * device, in `localStorage` - still cannot read protected content.
  */
-export function vaultProtectionAccess(
-    api: SyncApi,
-    getWrapKey: () => Promise<Uint8Array>,
-): VaultProtectionAccess {
+export function vaultProtectionAccess(api: KeysApi, getWrapKey: () => Promise<Uint8Array>): VaultProtectionAccess {
     return {
         async readProtection() {
             const existing = await api.getVault()
@@ -321,13 +252,23 @@ export function vaultProtectionAccess(
             const opened = await openVault(fromBase64Url(existing.vault), await getWrapKey())
             return opened.vault.protection
         },
-        async writeProtection(next) {
-            const existing = await api.getVault()
-            if (!existing) throw new Error('this account has no vault yet')
-            const previousEnvelope = fromBase64Url(existing.vault)
-            const opened = await openVault(previousEnvelope, await getWrapKey())
-            const vault: KeyVault = { ...opened.vault, protection: next }
-            await putVaultWithRetry(api, vault, previousEnvelope, opened, existing.version)
+        async writeProtection(graphId, record) {
+            await updateVault(api, await getWrapKey(), {
+                apply: (vault) => {
+                    // One refusal: a record under a different key, which another device wrote
+                    // first. Replacing it would orphan everything already sealed under that key,
+                    // and the key is unrecoverable by design (ADR 0057). The same fingerprint is a
+                    // re-wrap of the same key - a passphrase change - and passes.
+                    const existing = vault.protection?.[graphId]
+                    if (record && existing && existing.fingerprint !== record.fingerprint) {
+                        throw new Error('another device protected this graph first - reload, then unlock with the passphrase chosen there')
+                    }
+                    const protection = { ...vault.protection }
+                    if (record) protection[graphId] = record
+                    else delete protection[graphId]
+                    return { ...vault, protection }
+                },
+            })
         },
     }
 }

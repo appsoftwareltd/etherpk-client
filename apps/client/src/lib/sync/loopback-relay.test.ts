@@ -3,9 +3,9 @@ import { createLoopbackRelay } from './loopback-relay'
 
 const DOC = '018f47a0-7b5d-7cc5-b5c1-f0fbcde10002'
 
-const subscribe = (docIds: string[]) => JSON.stringify({ v: 2, type: 'subscribe', docIds })
-const unsubscribe = (docIds: string[]) => JSON.stringify({ v: 2, type: 'unsubscribe', docIds })
-const presence = (docId: string, envelope: string) => JSON.stringify({ v: 2, type: 'presence', docId, envelope })
+const subscribe = (docIds: string[]) => JSON.stringify({ v: 3, type: 'subscribe', docIds })
+const unsubscribe = (docIds: string[]) => JSON.stringify({ v: 3, type: 'unsubscribe', docIds })
+const presence = (docId: string, envelope: string) => JSON.stringify({ v: 3, type: 'presence', docId, epochId: 1, envelope })
 
 /** Delivery is a microtask away; one macrotask turn flushes everything queued so far. */
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0))
@@ -57,7 +57,7 @@ describe('loopback relay presence contract', () => {
 
 describe('loopback relay snapshot contract', () => {
     const REQUEST = '018f47a0-7b5d-7cc5-b5c1-f0fbcde10003'
-    const message = (body: Record<string, unknown>) => JSON.stringify({ v: 2, ...body })
+    const message = (body: Record<string, unknown>) => JSON.stringify({ v: 3, ...body })
 
     it('acknowledges a snapshot, serves it back by identity, records verification and answers a cold catch-up with it', async () => {
         const relay = createLoopbackRelay()

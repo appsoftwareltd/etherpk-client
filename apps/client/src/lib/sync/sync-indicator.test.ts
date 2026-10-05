@@ -1,11 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { SyncActivity } from './graph-sync'
-import { createIndicatorSettle, describeSyncActivity, INDICATOR_SETTLE_MS, type SyncIndicator } from './sync-indicator'
+import { createIndicatorSettle, describeKeyWait, describeSyncActivity, INDICATOR_SETTLE_MS, type SyncIndicator } from './sync-indicator'
 
 const activity = (patch: Partial<SyncActivity> = {}): SyncActivity => ({
     connection: 'open',
     unsentDocuments: 0,
     refusal: null,
+    waitingForKey: null,
     ...patch,
 })
 
@@ -47,6 +48,37 @@ describe('describeSyncActivity', () => {
 
     it('says access ended once the session ended for good', () => {
         expect(describeSyncActivity(activity({ connection: 'ended' }), true)).toMatchObject({ state: 'ended', label: 'Not syncing' })
+    })
+
+    it('says the device is waiting for a new key, and why, instead of stalling silently (ADR 0127)', () => {
+        const waiting = describeSyncActivity(activity({ waitingForKey: 2, unsentDocuments: 1 }), true, undefined, describeKeyWait(null))
+        expect(waiting).toMatchObject({ state: 'waiting-for-key', label: 'Waiting for key', unsent: 1 })
+        expect(waiting.detail).toBe(
+            'This graph has a new key that this device does not have yet. The graph’s owner sends it, and EtherPK keeps asking for it. Changes to 1 document are kept on this device and sync once it arrives.',
+        )
+        // Offline says what to fix first: nothing arrives without a connection.
+        expect(describeSyncActivity(activity({ waitingForKey: 2 }), false).state).toBe('offline')
+    })
+})
+
+describe('describeKeyWait', () => {
+    it('names the owner whose new keys need checking before their copy is used', () => {
+        const reason = describeKeyWait({
+            kind: 'owner-key-changed',
+            graphId: 'g1',
+            epoch: 2,
+            ownerId: 'owner-1',
+            ownerEmail: 'owner@example.com',
+            identity: { publicKey: new Uint8Array(32), signingPublicKey: new Uint8Array(32) },
+            fingerprint: 'AAAA',
+        })
+        expect(reason).toBe('The copy that arrived is signed with new keys for owner@example.com. Compare their fingerprint on the Graphs page, and EtherPK uses it once you confirm it.')
+    })
+
+    it('says a copy whose signature does not check out was not used', () => {
+        expect(describeKeyWait({ kind: 'unverifiable', graphId: 'g1', epoch: 2, ownerEmail: null })).toBe(
+            'The copy that arrived does not carry a valid signature from the graph’s owner, so EtherPK did not use it. Ask them to rotate the graph’s key again.',
+        )
     })
 })
 

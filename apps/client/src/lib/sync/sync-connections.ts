@@ -13,8 +13,12 @@
  *
  * This module knows nothing of the deployment; `sync-connection.ts` resolves each entry against
  * it (the Managed Sync origin, the managed token source).
+ *
+ * With a Device Passcode set (ADR 0129) a custom server's token is stored sealed under it, as the
+ * cached vault keys are (`device-passcode.ts`).
  */
 import { normaliseServerOrigin } from './account-scope'
+import { devicePasscode } from './device-passcode'
 
 export const SYNC_CONNECTIONS_STORAGE_KEY = 'etherpk:sync-connections'
 export const SYNC_CONNECTIONS_CHANGED_EVENT = 'etherpk:sync-connections-changed'
@@ -50,6 +54,36 @@ export interface StoredSyncConnections {
 export function connectionKey(connection: SyncConnection): string {
     return connection.kind === 'managed' ? MANAGED_CONNECTION_KEY : normaliseServerOrigin(connection.serverBaseUrl)
 }
+
+/** What a custom server's access token is known as to the Device Passcode, which seals it. */
+export function tokenSecretId(origin: string): string {
+    return `sync-token:${origin}`
+}
+
+// Custom servers' tokens are secrets the Device Passcode seals, opens and removes as a set. A
+// connection whose token is removed with a forgotten passcode goes with it: it reaches nothing.
+devicePasscode.registerStore({
+    entries: () =>
+        readStoredSyncConnections().connections.flatMap((connection) =>
+            connection.kind === 'custom' ? [{ id: tokenSecretId(connectionKey(connection)), stored: connection.token }] : [],
+        ),
+    write: (id, stored) => {
+        const current = readStoredSyncConnections()
+        write({
+            connections: current.connections.map((connection) =>
+                connection.kind === 'custom' && tokenSecretId(connectionKey(connection)) === id ? { ...connection, token: stored } : connection,
+            ),
+        })
+    },
+    remove: (id) => {
+        const current = readStoredSyncConnections()
+        write({
+            connections: current.connections.filter(
+                (connection) => connection.kind !== 'custom' || tokenSecretId(connectionKey(connection)) !== id,
+            ),
+        })
+    },
+})
 
 export function readStoredSyncConnections(): StoredSyncConnections {
     if (typeof localStorage === 'undefined') return { connections: [] }
@@ -103,12 +137,13 @@ export function storeSyncConnection(connection: SyncConnection, managedOrigin: s
     write({ connections })
 }
 
-/** Forget the connection with `key`. */
+/** Forget the connection with `key`, and a custom server's token with it in every tab's memory. */
 export function removeStoredSyncConnection(key: string): void {
     const current = readStoredSyncConnections()
     const connections = current.connections.filter((held) => connectionKey(held) !== key)
     if (connections.length === current.connections.length) return
     write({ connections })
+    if (key !== MANAGED_CONNECTION_KEY) devicePasscode.forget(tokenSecretId(key))
 }
 
 /**

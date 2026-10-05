@@ -5,16 +5,23 @@
  * the connection's identity (ADR 0111).
  *
  * `managedBaseUrl` defaults to the deployment's Managed Sync URL; tests pass their own.
+ *
+ * A custom server's token is read from storage at each request, through the Device Passcode
+ * (ADR 0129) which may hold it sealed: a token saved again, sealed, or opened in another tab is the
+ * one the next request presents.
  */
 import { env } from '$env/dynamic/public'
 import { managedBearerToken } from '$lib/auth/managed-token'
 import { normaliseServerOrigin } from './account-scope'
+import { DevicePasscodeLockedError, devicePasscode } from './device-passcode'
 import { createSyncApi, type SyncApi } from './sync-api'
 import {
     connectionKey,
     readStoredSyncConnections,
     removeStoredSyncConnection,
+    serverHost,
     storeSyncConnection,
+    tokenSecretId,
     type SyncConnection,
 } from './sync-connections'
 import { isManagedSyncConfigured } from './sync-deployment'
@@ -24,7 +31,15 @@ export interface ResolvedSyncConnection {
     /** The server's normalised origin: the connection's identity and its account partition. */
     origin: string
     serverBaseUrl: string
-    token: string | (() => Promise<string>)
+    /** Asked for at each request: Managed Sync's comes from the Client's session, a custom server's from storage. */
+    token: () => Promise<string>
+    /**
+     * What tells one stored credential from another, for noticing that a connection changed: a custom
+     * server's access token as this tab can read it. Null for Managed Sync, whose credential is the
+     * Client's session, and for a token sealed by a Device Passcode this tab has not unlocked, which
+     * is unknown rather than changed.
+     */
+    credential: string | null
 }
 
 /** The deployment's Managed Sync URL, or null where it offers none. */
@@ -39,16 +54,24 @@ export function resolveSyncConnection(
 ): ResolvedSyncConnection | null {
     try {
         if (connection.kind === 'custom') {
+            const origin = normaliseServerOrigin(connection.serverBaseUrl)
             return {
                 kind: 'custom',
-                origin: normaliseServerOrigin(connection.serverBaseUrl),
+                origin,
                 serverBaseUrl: connection.serverBaseUrl,
-                token: connection.token,
+                token: () => heldAccessToken(origin),
+                credential: devicePasscode.reveal(tokenSecretId(origin), connection.token),
             }
         }
         if (!managedBaseUrl) return null
         const origin = normaliseServerOrigin(managedBaseUrl)
-        return { kind: 'managed', origin, serverBaseUrl: managedBaseUrl.trim().replace(/\/$/, ''), token: managedBearerToken }
+        return {
+            kind: 'managed',
+            origin,
+            serverBaseUrl: managedBaseUrl.trim().replace(/\/$/, ''),
+            token: managedBearerToken,
+            credential: null,
+        }
     } catch {
         return null
     }
@@ -86,15 +109,25 @@ export function primarySyncConnection(managedBaseUrl: string | null = managedSyn
 /**
  * Save a custom server's address and access token, replacing any connection this device holds to
  * the same server. Returns it resolved. The caller checks the token with the server first.
+ *
+ * With a Device Passcode set the token is stored sealed under it, so this tab must be unlocked:
+ * rejects with {@link DevicePasscodeLockedError} otherwise, and stores nothing.
  */
-export function saveCustomSyncConnection(
+export async function saveCustomSyncConnection(
     serverBaseUrl: string,
     token: string,
     managedBaseUrl: string | null = managedSyncBaseUrl(),
-): ResolvedSyncConnection {
-    const connection: SyncConnection = { kind: 'custom', serverBaseUrl, token }
-    storeSyncConnection(connection, managedOrigin(managedBaseUrl))
-    return resolveSyncConnection(connection, managedBaseUrl)!
+): Promise<ResolvedSyncConnection> {
+    const origin = normaliseServerOrigin(serverBaseUrl)
+    // A token written while locked could only wait in memory, and the connection it belongs to
+    // would not be listed until then.
+    if (devicePasscode.state() === 'locked') throw new DevicePasscodeLockedError()
+    let saved: SyncConnection = { kind: 'custom', serverBaseUrl, token }
+    await devicePasscode.store(tokenSecretId(origin), token, (stored) => {
+        saved = { kind: 'custom', serverBaseUrl, token: stored }
+        storeSyncConnection(saved, managedOrigin(managedBaseUrl))
+    })
+    return resolveSyncConnection(saved, managedBaseUrl)!
 }
 
 /** Hold a Managed Sync connection. Its credential is the Client's session, so nothing secret is stored. */
@@ -122,6 +155,20 @@ export function syncApiFor(connection: ResolvedSyncConnection): SyncApi {
 export function createSyncApiFor(origin: string): SyncApi | null {
     const connection = syncConnectionFor(origin)
     return connection ? syncApiFor(connection) : null
+}
+
+/**
+ * The access token this device holds for the custom server at `origin`, as stored now. Rejects with
+ * {@link DevicePasscodeLockedError} while it is sealed and this tab is locked.
+ */
+async function heldAccessToken(origin: string): Promise<string> {
+    const held = readStoredSyncConnections().connections.find(
+        (connection) => connection.kind === 'custom' && connectionKey(connection) === origin,
+    )
+    if (held?.kind !== 'custom') throw new Error(`This device no longer holds a connection to ${serverHost(origin)}.`)
+    const token = devicePasscode.reveal(tokenSecretId(origin), held.token)
+    if (token === null) throw new DevicePasscodeLockedError()
+    return token
 }
 
 function managedOrigin(managedBaseUrl: string | null): string | null {

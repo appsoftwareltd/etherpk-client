@@ -4,5 +4,24 @@ packages:
 
 injectWorkspacePackages: true
 
+# A version must have been published for 7 days (in minutes) before pnpm resolves it, which gives the
+# community time to find and pull a compromised release. Set explicitly, the check is strict: an
+# install that needs a younger version fails, CI's frozen install included. Let an urgent fix through
+# by naming that version under minimumReleaseAgeExclude, with the reason beside it.
+minimumReleaseAge: 10080
+
+# Floors for transitive dependencies with published advisories, each within the major its parents
+# ask for, so a fresh resolution cannot fall back to a vulnerable version. cookie is the exception:
+# SvelteKit 2 still asks for ^0.6.0, which GHSA-pxg6-pf52-xh8x covers, and 0.7 keeps the same API.
+overrides:
+  'brace-expansion@<1.1.21': ^1.1.21
+  'brace-expansion@>=4.0.0 <5.0.12': ^5.0.12
+  'cookie@<0.7.0': ^0.7.2
+  'esbuild@<0.28.1': ^0.28.1
+  'fast-uri@<3.1.8': ^3.1.8
+  'ip-address@<10.7.1': ^10.7.1
+  'nanoid@<3.3.18': ^3.3.18
+  'postcss@<8.5.23': ^8.5.23
+
 allowBuilds:
   esbuild: true

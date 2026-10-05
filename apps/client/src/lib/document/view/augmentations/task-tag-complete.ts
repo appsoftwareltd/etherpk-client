@@ -19,6 +19,9 @@
 import type { Extension } from '@codemirror/state'
 import type { EditorView } from '@codemirror/view'
 
+import type { TrustedMarkup } from '$lib/security/trusted-types'
+import { iconSvg } from '$lib/surface/icons'
+
 import { applyTaskTag } from '../../task-tags'
 import { isInCode } from '../../wikilink/code-ranges'
 import { analysisFor } from '../analysis/editor-analysis'
@@ -34,17 +37,9 @@ interface MenuState extends PopoverBase {
     to: number
 }
 
-const svg = (paths: string) =>
-    `<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">${paths}</svg>`
-
-const FLAG = svg('<path d="M4 14V3h7l-1.5 2.5L11 8H4"/>')
-const CLOCK = svg('<circle cx="8" cy="8" r="5.5"/><path d="M8 5v3.2l2 1.2"/>')
-const CALENDAR = svg('<rect x="2.5" y="3" width="11" height="11" rx="1.5"/><path d="M2.5 6.5h11M5.5 2v2M10.5 2v2"/>')
-
-function iconFor(item: TaskTagItem): string {
-    if (item.action.kind === 'date') return CALENDAR
-    if (item.action.kind === 'priority') return FLAG
-    return CLOCK
+function iconFor(item: TaskTagItem): TrustedMarkup {
+    const name = item.action.kind === 'date' ? 'calendar' : item.action.kind === 'priority' ? 'flag' : 'clock'
+    return iconSvg(name, { strokeWidth: 1.3 })
 }
 
 export function taskTagCompletion(): Extension {

@@ -1,9 +1,19 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { deriveVaultWrapKey, encryptVault, generateIdentityKeyPair, generateRecoveryCode, RecoveryCodeError, toBase64Url } from '$lib/crypto'
 import { clearSyncAccount, setSyncAccount } from './account-scope'
 import { NoVaultError } from './recovery-unlock'
 import type { SyncApi } from './sync-api'
-import { getVaultWrapKey, isVaultUnlocked, lockEveryVault, lockVault, setVaultWrapKey, unlockWithRecoveryCode } from './vault-session'
+import { DevicePasscodeLockedError, devicePasscode } from './device-passcode'
+import {
+    VaultLockedError,
+    getVaultWrapKey,
+    isVaultUnlocked,
+    lockEveryVault,
+    lockVault,
+    requireVaultWrapKey,
+    setVaultWrapKey,
+    unlockWithRecoveryCode,
+} from './vault-session'
 
 /** An account whose vault is wrapped by a fresh Recovery Code, behind a fake Sync API. */
 async function account() {
@@ -38,6 +48,67 @@ function memoryStorage(): Storage {
 beforeEach(() => {
     globalThis.localStorage = memoryStorage()
     globalThis.sessionStorage = memoryStorage()
+    // The device's passcode lives in memory as well as in storage: start every test with none.
+    devicePasscode.forgotten()
+})
+
+describe('vault-session with a Device Passcode (ADR 0129)', () => {
+    it('stores the cached key sealed, and reads it back in a tab that has been unlocked', async () => {
+        setSyncAccount(accountA)
+        const key = new Uint8Array(32).fill(7)
+        setVaultWrapKey(MANAGED, key)
+
+        await devicePasscode.set('1234')
+
+        const stored = localStorage.getItem('etherpk:vault-wrap-key:https%3A%2F%2Fsync.example.com:principal-a')!
+        expect(stored).toMatch(/^pc1:/)
+        expect(stored).not.toContain(toBase64Url(key))
+        expect(getVaultWrapKey(MANAGED)).toEqual(key)
+
+        devicePasscode.lock()
+        expect(getVaultWrapKey(MANAGED)).toBeNull()
+        expect(isVaultUnlocked(MANAGED)).toBe(false)
+        await devicePasscode.unlock('1234')
+        expect(getVaultWrapKey(MANAGED)).toEqual(key)
+    }, 30_000)
+
+    it('stores a key cached while unlocked sealed, and locking a vault drops it from memory too', async () => {
+        setSyncAccount(accountA)
+        await devicePasscode.set('1234')
+        const key = new Uint8Array(32).fill(9)
+
+        setVaultWrapKey(MANAGED, key)
+
+        expect(getVaultWrapKey(MANAGED)).toEqual(key)
+        await vi.waitFor(() =>
+            expect(localStorage.getItem('etherpk:vault-wrap-key:https%3A%2F%2Fsync.example.com:principal-a')).toMatch(/^pc1:/),
+        )
+        lockVault(MANAGED)
+        expect(getVaultWrapKey(MANAGED)).toBeNull()
+    }, 30_000)
+
+    it('says a key held sealed is locked with the passcode, and a key never held is locked on this device', async () => {
+        setSyncAccount(accountA)
+        const lockedError = () => {
+            try {
+                requireVaultWrapKey(MANAGED)
+            } catch (error) {
+                return error
+            }
+            return null
+        }
+        expect((lockedError() as Error).name).toBe('VaultLockedError')
+
+        const key = new Uint8Array(32).fill(5)
+        setVaultWrapKey(MANAGED, key)
+        await devicePasscode.set('1234')
+        devicePasscode.lock()
+
+        expect(lockedError()).toBeInstanceOf(DevicePasscodeLockedError)
+        expect(lockedError()).toBeInstanceOf(VaultLockedError)
+        await devicePasscode.unlock('1234')
+        expect(requireVaultWrapKey(MANAGED)).toEqual(key)
+    }, 30_000)
 })
 
 describe('vault-session', () => {

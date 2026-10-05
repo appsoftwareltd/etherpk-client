@@ -10,8 +10,17 @@
  * way, a reconnect) so the status does not flicker with every keystroke.
  */
 import type { SyncActivity } from './graph-sync'
+import type { HandoutOutcome } from './key-handouts'
 
-export type SyncIndicatorState = 'synced' | 'sending' | 'connecting' | 'reconnecting' | 'offline' | 'refused' | 'ended'
+export type SyncIndicatorState =
+    | 'synced'
+    | 'sending'
+    | 'connecting'
+    | 'reconnecting'
+    | 'offline'
+    | 'refused'
+    | 'waiting-for-key'
+    | 'ended'
 
 export interface SyncIndicator {
     state: SyncIndicatorState
@@ -44,11 +53,31 @@ function documents(count: number): string {
 }
 
 /**
+ * Why this device does not hold a new Graph Key epoch's key yet (ADR 0127), from what became of
+ * the copy waiting for this account when the workspace last collected it. Null: no copy came, or
+ * collecting it failed.
+ */
+export function describeKeyWait(outcome: HandoutOutcome | null): string {
+    const owner = (email: string | null) => email ?? 'the graph’s owner'
+    switch (outcome?.kind) {
+        case 'owner-key-changed':
+            return `The copy that arrived is signed with new keys for ${owner(outcome.ownerEmail)}. Compare their fingerprint on the Graphs page, and EtherPK uses it once you confirm it.`
+        case 'unverifiable':
+            return `The copy that arrived does not carry a valid signature from ${owner(outcome.ownerEmail)}, so EtherPK did not use it. Ask them to rotate the graph’s key again.`
+        case 'conflict':
+            return 'The copy that arrived holds a key that differs from one this device already has, so EtherPK did not use it. Tell the graph’s owner.'
+        default:
+            return 'The graph’s owner sends it, and EtherPK keeps asking for it.'
+    }
+}
+
+/**
  * @param online `navigator.onLine`: false is reliable ("certainly offline"), true is not, which is
  *   why an open socket, not this flag, is what makes the status say Synced.
  * @param refusalReason Why the server refuses, worded for this person (write-refusal.ts).
+ * @param keyWaitReason Why the device is still waiting for a new key ({@link describeKeyWait}).
  */
-export function describeSyncActivity(activity: SyncActivity, online: boolean, refusalReason?: string): SyncIndicator {
+export function describeSyncActivity(activity: SyncActivity, online: boolean, refusalReason?: string, keyWaitReason?: string): SyncIndicator {
     const unsent = activity.unsentDocuments
     const kept = unsent > 0 ? `Changes to ${documents(unsent)} are kept on this device` : 'Changes you make are kept on this device'
     if (activity.connection === 'ended') {
@@ -68,6 +97,14 @@ export function describeSyncActivity(activity: SyncActivity, online: boolean, re
             state: 'offline',
             label: 'Offline',
             detail: `This device is offline. ${kept} and sync when the connection returns.`,
+            unsent,
+        }
+    }
+    if (activity.waitingForKey !== null) {
+        return {
+            state: 'waiting-for-key',
+            label: 'Waiting for key',
+            detail: `This graph has a new key that this device does not have yet. ${keyWaitReason ?? describeKeyWait(null)} ${kept} and sync once it arrives.`,
             unsent,
         }
     }

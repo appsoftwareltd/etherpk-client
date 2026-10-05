@@ -1,20 +1,30 @@
 <script lang="ts">
     /**
      * Invite a player to a synced graph. Two steps in one modal: enter the invitee's email,
-     * then verify their security fingerprint out-of-band before the key is sealed to them.
-     * Replaces the browser prompt/confirm flow.
+     * then verify their Security Fingerprint out-of-band before the key is sealed to them.
+     *
+     * Fingerprints the owner confirms are pinned in the vault (ADR 0126): an invitee checked
+     * before shows as Verified and needs no second comparison, and one whose key has changed
+     * since is shown with a warning and a fresh comparison before anything is sent.
      */
-    import type { GraphKeyring } from "$lib/crypto";
-    import { InviteeNotFoundError, isOwnAddress, prepareInvite, sendInvite, type SyncApi } from "$lib/sync";
+    import {
+        InviteeNotFoundError,
+        isOwnAddress,
+        prepareInvite,
+        sendInvite,
+        type InviteLookup,
+        type SyncApi,
+    } from "$lib/sync";
     import { INVITE_SELF_COPY, describeSyncFailure } from "$lib/sync/sync-error-copy";
     import Modal from "@appsoftwareltd/etherpk-shared/dialog";
     import { copyFailureMessage, writeClipboardText } from "$lib/document/commands/clipboard-text";
+    import SecurityFingerprint from "./SecurityFingerprint.svelte";
 
     let {
         api,
         graphId,
         graphName,
-        keyring,
+        heldKey,
         ownEmail = null,
         inviteeNeeds = { account: "an EtherPK account", verifiedEmail: true },
         onclose,
@@ -23,7 +33,8 @@
         graphId: string;
         /** Sealed into the invite so the invitee's client can label the graph (ADR 0031). */
         graphName?: string;
-        keyring: GraphKeyring;
+        /** The key this device holds for the account's vault: the graph's keyring and the pins are in it. */
+        heldKey: Uint8Array;
         /** The signed-in account's address, so inviting it is refused before the lookup. */
         ownEmail?: string | null;
         /**
@@ -39,8 +50,13 @@
     let email = $state("");
     let error = $state<string | null>(null);
     let busy = $state(false);
-    let prep = $state<{ inviteePublicKey: Uint8Array; fingerprint: string } | null>(null);
+    let prep = $state.raw<Extract<InviteLookup, { kind: "found" }> | null>(null);
     const errorId = $props.id();
+
+    /** How the fingerprint check reads, from what the pins say about the invitee's key. */
+    const fingerprintState = $derived(
+        prep?.pin.kind === "verified" ? "verified" : prep?.pin.kind === "changed" ? "changed" : "unchecked",
+    );
 
     /** What an invitee needs, in words: an account, a verified address where asked, and keys. */
     const needs = $derived(
@@ -87,10 +103,15 @@
         }
         busy = true;
         try {
-            const found = await prepareInvite(api, graphId, email.trim());
-            if (!found) {
+            const found = await prepareInvite(api, graphId, email.trim(), heldKey);
+            if (found.kind === "not-found") {
                 error = inviteeNotFound;
                 inviteeMissing = true;
+                return;
+            }
+            if (found.kind === "keys-outdated") {
+                // Their keys predate signing keys (ADR 0126): opening EtherPK once updates them.
+                error = `${email.trim()} needs to open EtherPK once before you can invite them, so that their keys are updated. Ask them to open it, then try again.`;
                 return;
             }
             prep = found;
@@ -107,7 +128,16 @@
         busy = true;
         error = null;
         try {
-            await sendInvite(api, graphId, email.trim(), prep.inviteePublicKey, keyring, graphName);
+            await sendInvite(
+                api,
+                {
+                    graphId,
+                    graphName,
+                    inviteeEmail: email.trim(),
+                    invitee: { userId: prep.inviteeUserId, identity: prep.identity },
+                },
+                heldKey,
+            );
             step = "done";
         } catch (e) {
             inviteeMissing = e instanceof InviteeNotFoundError;
@@ -171,16 +201,20 @@
             </div>
             {@render appLinkOffer()}
         {:else if step === "verify" && prep}
-            <p class="text-sm text-gray-600 dark:text-gray-400">
-                Before sharing your key, confirm this is really <span class="font-medium text-gray-900 dark:text-gray-200">{email}</span>.
-                Check that the security fingerprint below matches theirs, verified in person or over a
-                call you trust.
-            </p>
-            <code class="block break-all rounded-lg bg-gray-100 dark:bg-white/5 px-4 py-3 text-center text-sm font-mono tracking-wide text-gray-950 dark:text-gray-100">{prep.fingerprint}</code>
-            <p class="text-sm text-gray-500 dark:text-gray-400">
-                They can find theirs under <span class="font-medium">Sync settings</span>, as
-                <span class="font-medium">Your security fingerprint</span>.
-            </p>
+            {#if fingerprintState === "unchecked"}
+                <p class="text-sm text-gray-600 dark:text-gray-400">
+                    Before sharing your key, confirm this is really <span class="font-medium text-gray-900 dark:text-gray-200">{email}</span>.
+                    Check that the security fingerprint below matches theirs, verified in person or over a
+                    call you trust.
+                </p>
+            {/if}
+            <SecurityFingerprint fingerprint={prep.fingerprint} state={fingerprintState} name={email.trim()} />
+            {#if fingerprintState !== "verified"}
+                <p class="text-sm text-gray-500 dark:text-gray-400">
+                    They can find theirs under <span class="font-medium">Sync settings</span>, as
+                    <span class="font-medium">Your security fingerprint</span>.
+                </p>
+            {/if}
         {:else if step === "done"}
             <p class="text-sm text-gray-600 dark:text-gray-400">
                 Invite sent to <span class="font-medium text-gray-900 dark:text-gray-200">{email}</span>.
@@ -213,7 +247,13 @@
                 disabled={busy}
                 data-testid="invite-send"
                 class="min-w-64 rounded-lg bg-gray-900 dark:bg-gray-100 px-4 py-1.5 text-center text-sm font-medium text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-200 disabled:opacity-40"
-            >{busy ? "Sending…" : "Fingerprint matches, send invite"}</button>
+            >{busy
+                    ? "Sending…"
+                    : fingerprintState === "verified"
+                      ? "Send invite"
+                      : fingerprintState === "changed"
+                        ? "It matches, trust the new key"
+                        : "Fingerprint matches, send invite"}</button>
         {:else}
             <button
                 type="submit"

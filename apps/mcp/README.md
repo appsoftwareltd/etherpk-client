@@ -23,8 +23,8 @@ server and graph filled in:
 ```sh
 # Once per computer. Asks for an account-wide Personal Access Token (from
 # https://sync.etherpk.com/account/tokens, or "Access tokens" in EtherPK's account menu),
-# then shows a short code: confirm it in any browser tab where EtherPK is signed in and
-# unlocked. The same step as adding a phone.
+# then shows a short code once a browser tab where EtherPK is unlocked answers. Approve there
+# if the tab shows the same code, then press y here. The same step as adding a phone.
 npx @appsoftwareltd/etherpk-mcp login --sync-server https://sync.etherpk.com
 
 # Tell the agent about the graph (Claude Code shown - the Agents tab has the others).
@@ -111,8 +111,10 @@ directory, once per computer.
 
 - It asks for an account-wide Personal Access Token, from `<Sync Server>/account/tokens` or
   **Access tokens** in EtherPK's account menu. `--pat` or `ETHERPK_PAT` supplies it instead.
-- It unlocks your keys by Device Approval: it shows a short code, which you confirm in EtherPK in
-  any browser signed in to the account with its graphs unlocked.
+- It unlocks your keys by Device Approval. Open EtherPK in a browser signed in to the account with
+  its keys unlocked. Once that browser answers, both show the same short code. Select **Approve** in
+  the browser, then press `y` in the terminal. Press `n` if the codes differ, which cancels the
+  request.
 - With no EtherPK to hand, press `r` while it waits, or pass `--recovery-code`, and type your
   Recovery Code instead. `ETHERPK_RECOVERY_CODE` supplies the code for a scripted setup.
 
@@ -233,7 +235,9 @@ On Windows both directories are under your user folder: `C:\Users\<you>\.config\
 `C:\Users\<you>\.cache\etherpk\`.
 
 To cut an agent off, revoke its Personal Access Token on the Sync Server. `logout` forgets the token
-and keys on this computer and deletes that server's cached graphs.
+and keys on this computer and deletes that server's cached graphs. If the computer or its login file
+may have been copied, also replace your keys in EtherPK with **Replace keys and lock out other
+devices**: the keys saved there then no longer open your account.
 
 ## Build from source
 

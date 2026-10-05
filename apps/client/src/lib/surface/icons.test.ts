@@ -18,4 +18,10 @@ describe('iconSvg', () => {
         // A caller's own stroke width is scaled the same way.
         expect(iconSvg('backlinks', { strokeWidth: 1.2 })).toContain('stroke-width="1.8"')
     })
+
+    it('escapes the label, the one value in the markup that is not a number or a table entry', () => {
+        expect(String(iconSvg('lock', { label: 'A "quoted" <b>name</b> & more' }))).toContain(
+            'aria-label="A &quot;quoted&quot; &lt;b&gt;name&lt;/b&gt; &amp; more"',
+        )
+    })
 })

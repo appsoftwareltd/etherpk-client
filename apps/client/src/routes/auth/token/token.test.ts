@@ -145,6 +145,28 @@ describe('POST /auth/token', () => {
         expect(fetch).not.toHaveBeenCalled()
     })
 
+    it('asked for a fresh token, refreshes even while the held one is good, and keeps the new one', async () => {
+        // A Key Replacement makes the Sync Server refuse every token issued before it (ADR 0128),
+        // so the device that made it needs one issued after.
+        const fetch = corporate(async () => issued())
+        const { cookies } = cookieJar()
+        const session: ManagedSession = {
+            refreshToken: 'refresh-1',
+            idToken: 'id-1',
+            expiresAt: Date.now() + 7 * 24 * 60 * 60 * 1000,
+            accessToken: 'access-held',
+            accessExpiresAt: Date.now() + 10 * 60 * 1000,
+        }
+        cookies.set(MANAGED_SESSION_COOKIE, await encryptSessionCookie(session, sessionSecret, 'managed-session'), { path: '/' })
+        const url = new URL('https://app.example.com/auth/token?fresh=1')
+        const request = new Request(url, { method: 'POST', headers: { 'sec-fetch-site': 'same-origin' } })
+
+        const response = await POST({ cookies, fetch, request, url } as unknown as Parameters<typeof POST>[0])
+
+        await expect(response.json()).resolves.toMatchObject({ accessToken: 'access-2' })
+        expect(fetch).toHaveBeenCalled()
+    })
+
     it('refreshes once the held token has two minutes or less left, and keeps the new one', async () => {
         const fetch = corporate(async () => issued())
         const { response, values } = await refreshWith(fetch, {

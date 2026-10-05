@@ -1,20 +1,46 @@
 import { describe, expect, it, vi } from 'vitest'
-import { createGraphKeyring } from '$lib/crypto'
-import { AssetUnavailableError } from '$lib/storage/fs/asset-store'
+import { ASSET_CHUNK_PLAINTEXT_BYTES } from '@appsoftwareltd/etherpk-shared'
+import {
+    type GraphKeyring,
+    contextAad,
+    createGraphKeyring,
+    currentEpoch,
+    envelopeEpochId,
+    fromBase64Url,
+    keyForEpoch,
+    openSymmetric,
+    sealSymmetric,
+    toBase64Url,
+    utf8,
+} from '$lib/crypto'
+import { AssetIntegrityError, AssetUnavailableError } from '$lib/storage/fs/asset-store'
 import { fixedSyncToken } from '$lib/sync/sync-token'
 import { assetIdFromRef, createServerAssetStore } from './server-asset-store'
+
+interface FakeBackendOptions {
+    /**
+     * What the server offers as a file's chunk list, on the given attempt for that file (1 on the
+     * first read). Lets a test play a server that drops or adds chunks.
+     */
+    downloadUrls?: (assetId: string, urls: string[], attempt: number) => string[]
+    /** The asset id a reuse lookup answers with, or null for a fresh upload. Plays a server that lies. */
+    reuseAnswer?: (body: { assetId: string; dedupToken?: string }) => string | null
+}
 
 /**
  * A fake sync-asset backend: the REST endpoints + presigned S3 URLs, all in memory. It stores
  * exactly what a real server/bucket would — ciphertext only — so the test also proves the
  * server never sees plaintext (ADR 0027).
  */
-function fakeBackend() {
+function fakeBackend(options: FakeBackendOptions = {}) {
     const objects = new Map<string, Uint8Array>() // presigned-URL → bytes
     const assets = new Map<string, { encryptedMetadata: string; chunkCount: number; dedupToken?: string; status: string }>()
     let urlSeq = 0
     /** Every begin call's body, so a test can assert what the client sent (ADR 0053 token). */
     const begins: Array<{ assetId: string; dedupToken?: string }> = []
+    /** Metadata reads per asset id, and chunk downloads in total. */
+    const reads = new Map<string, number>()
+    let chunkDownloads = 0
 
     const fetchImpl = (async (input: string | URL | Request, init?: RequestInit) => {
         const url = typeof input === 'string' ? input : input.toString()
@@ -27,6 +53,7 @@ function fakeBackend() {
                 objects.set(url, new Uint8Array(init.body as ArrayBuffer))
                 return new Response(null, { status: 200 })
             }
+            chunkDownloads++
             const bytes = objects.get(url)
             return bytes ? new Response(bytes as BodyInit) : new Response(null, { status: 404 })
         }
@@ -39,6 +66,8 @@ function fakeBackend() {
                 dedupToken?: string
             }
             begins.push({ assetId: body.assetId, dedupToken: body.dedupToken })
+            const forced = options.reuseAnswer?.(body)
+            if (forced) return json({ reuse: { assetId: forced } })
             // Within-graph reuse (ADR 0053): a COMPLETE asset already carrying this token is
             // handed back instead of presigned URLs; a pending one never matches.
             if (body.dedupToken) {
@@ -59,9 +88,13 @@ function fakeBackend() {
         if (getMatch && (!init || init.method === undefined || init.method === 'GET')) {
             const asset = assets.get(getMatch[1])
             if (!asset) return new Response(null, { status: 404 })
-            // Return the SAME object urls that were PUT (in order).
-            const keys = [...objects.keys()].filter((k) => k.includes(`/${getMatch[1]}/`)).sort()
-            return json({ encryptedMetadata: asset.encryptedMetadata, size: 0, chunkCount: asset.chunkCount, status: 'complete', downloadUrls: keys })
+            const attempt = (reads.get(getMatch[1]) ?? 0) + 1
+            reads.set(getMatch[1], attempt)
+            // Return the SAME object urls that were PUT (in order), unless the test plays a
+            // server that changes the list.
+            const keys = [...objects.keys()].filter((k) => k.includes(`/${getMatch[1]}/`)).sort((a, b) => urlOrder(a) - urlOrder(b))
+            const offered = options.downloadUrls ? options.downloadUrls(getMatch[1], keys, attempt) : keys
+            return json({ encryptedMetadata: asset.encryptedMetadata, size: 0, chunkCount: asset.chunkCount, status: 'complete', downloadUrls: offered })
         }
         // POST complete.
         if (getMatch && init?.method === 'POST') {
@@ -72,7 +105,48 @@ function fakeBackend() {
         return new Response(null, { status: 404 })
     }) as unknown as typeof fetch
 
-    return { fetchImpl, objects, assets, begins }
+    return { fetchImpl, objects, assets, begins, reads, chunkDownloads: () => chunkDownloads }
+}
+
+/** The sequence number a fake object URL ends with: the order its chunk was handed out in. */
+function urlOrder(url: string): number {
+    return Number(url.slice(url.lastIndexOf('/') + 1))
+}
+
+/**
+ * Re-seal an asset's metadata as a client holding the Graph Key could: how a test produces a file
+ * whose metadata predates the size and chunk count, or whose hash no longer matches its bytes.
+ */
+async function rewriteMetadata(
+    backend: ReturnType<typeof fakeBackend>,
+    keyring: GraphKeyring,
+    graphId: string,
+    assetId: string,
+    change: (metadata: Record<string, unknown>) => void,
+): Promise<void> {
+    const asset = backend.assets.get(assetId)
+    if (!asset) throw new Error(`no asset ${assetId}`)
+    const aad = contextAad('asset-meta', `graph:${graphId}`, `id:${assetId}`)
+    const { plaintext } = await openSymmetric({
+        keyForEpoch: (id) => keyForEpoch(keyring, id),
+        envelope: fromBase64Url(asset.encryptedMetadata),
+        aad,
+    })
+    const metadata = JSON.parse(new TextDecoder().decode(plaintext)) as Record<string, unknown>
+    change(metadata)
+    const epoch = currentEpoch(keyring)
+    asset.encryptedMetadata = toBase64Url(
+        await sealSymmetric({ key: epoch.key, epochId: epoch.epochId, plaintext: utf8(JSON.stringify(metadata)), aad }),
+    )
+}
+
+/** The decrypted metadata of an asset as the backend holds it. */
+async function readMetadata(backend: ReturnType<typeof fakeBackend>, keyring: GraphKeyring, graphId: string, assetId: string) {
+    let found: Record<string, unknown> = {}
+    await rewriteMetadata(backend, keyring, graphId, assetId, (metadata) => {
+        found = { ...metadata }
+    })
+    return found
 }
 
 describe('ServerAssetStore', () => {
@@ -469,6 +543,36 @@ describe('ServerAssetStore', () => {
             expect(backend.assets.size).toBe(2)
             expect(backend.begins[0].dedupToken).not.toBe(backend.begins[1].dedupToken)
         })
+
+        it('follows the keyring to a new epoch: new files go under it, older files still open, and reuse starts again (ADR 0127)', async () => {
+            const backend = fakeBackend()
+            let keyring = createGraphKeyring('g1')
+            const first = keyring
+            let id = 0
+            const store = createServerAssetStore({
+                graphId: 'g1',
+                keyring: () => keyring,
+                baseUrl: 'https://sync.example',
+                syncToken: fixedSyncToken('sync-tok'),
+                fetch: backend.fetchImpl,
+                newAssetId: () => `00000000-0000-4000-8000-00000000000${++id}`,
+            })
+            const before = await store.save({ name: 'pic.png', bytes: bytes(), type: 'image/png' })
+
+            keyring = { graphId: 'g1', epochs: [...first.epochs, { epochId: 2, key: new Uint8Array(32).fill(9) }] }
+            const after = await store.save({ name: 'pic.png', bytes: bytes(), type: 'image/png' })
+
+            // A token under the old secret no longer matches, so the bytes are stored again.
+            expect(after.reused).toBeFalsy()
+            expect(backend.begins[1].dedupToken).not.toBe(backend.begins[0].dedupToken)
+            const sealedUnder = (assetId: string) =>
+                envelopeEpochId(fromBase64Url(backend.assets.get(assetId)!.encryptedMetadata))
+            expect(sealedUnder(assetIdFromRef(before.ref)!)).toBe(1)
+            expect(sealedUnder(assetIdFromRef(after.ref)!)).toBe(2)
+            vi.stubGlobal('URL', { createObjectURL: () => 'blob:mem/1', revokeObjectURL: () => {} })
+            expect((await store.resolve(before.ref))?.url).toBe('blob:mem/1')
+            vi.unstubAllGlobals()
+        })
     })
 
     it('resolve returns null for a non-asset ref', async () => {
@@ -562,6 +666,149 @@ describe('ServerAssetStore.resolve', () => {
         it('keeps readBytes answering null for a server that said try again', async () => {
             expect(await answering(503).readBytes(ref)).toBeNull()
         })
+    })
+})
+
+describe('ServerAssetStore checks what the server hands back (ADR 0027, amended 2026-10-05)', () => {
+    const graphId = 'g1'
+
+    function storeOver(backend: ReturnType<typeof fakeBackend>, keyring: GraphKeyring) {
+        let id = 0
+        return createServerAssetStore({
+            graphId,
+            keyring,
+            baseUrl: 'https://sync.example',
+            syncToken: fixedSyncToken('sync-tok'),
+            fetch: backend.fetchImpl,
+            newAssetId: () => `00000000-0000-4000-8000-00000000000${++id}`,
+        })
+    }
+
+    /** A file just over one chunk, so it travels as two. */
+    function twoChunkFile(): Uint8Array<ArrayBuffer> {
+        const bytes = new Uint8Array(ASSET_CHUNK_PLAINTEXT_BYTES + 1000)
+        for (let i = 0; i < bytes.length; i++) bytes[i] = i % 251
+        return bytes
+    }
+
+    const small = () => new TextEncoder().encode('GARDEN-PLAN-'.repeat(40)) as Uint8Array<ArrayBuffer>
+
+    function stubObjectUrls(): Blob[] {
+        const created: Blob[] = []
+        vi.stubGlobal('URL', { createObjectURL: (b: Blob) => { created.push(b); return 'blob:mem/1' }, revokeObjectURL: () => {} })
+        return created
+    }
+
+    it('records the size and chunk count of a new upload in its encrypted metadata', async () => {
+        const backend = fakeBackend()
+        const keyring = createGraphKeyring(graphId)
+        const saved = await storeOver(backend, keyring).save({ name: 'plan.pdf', bytes: twoChunkFile(), type: 'application/pdf' })
+        const metadata = await readMetadata(backend, keyring, graphId, assetIdFromRef(saved.ref)!)
+        expect(metadata.size).toBe(ASSET_CHUNK_PLAINTEXT_BYTES + 1000)
+        expect(metadata.chunkCount).toBe(2)
+    })
+
+    it('refuses a file whose chunk list the server cut short, and never hands over the part it got', async () => {
+        const backend = fakeBackend({ downloadUrls: (_id, urls) => urls.slice(0, -1) })
+        const keyring = createGraphKeyring(graphId)
+        const store = storeOver(backend, keyring)
+        const saved = await store.save({ name: 'plan.pdf', bytes: twoChunkFile(), type: 'application/pdf' })
+        const created = stubObjectUrls()
+        await expect(store.resolve(saved.ref)).rejects.toBeInstanceOf(AssetIntegrityError)
+        expect(created).toHaveLength(0)
+        // The Local Mirror, exports and the publisher treat it as a missing file.
+        expect(await store.readBytes(saved.ref)).toBeNull()
+        vi.unstubAllGlobals()
+    })
+
+    it('refuses before downloading anything when the server offers more chunks than the metadata records', async () => {
+        const backend = fakeBackend({ downloadUrls: (_id, urls) => [...urls, urls[0]] })
+        const keyring = createGraphKeyring(graphId)
+        const store = storeOver(backend, keyring)
+        const saved = await store.save({ name: 'beans.txt', bytes: small(), type: 'text/plain' })
+        await expect(store.resolve(saved.ref)).rejects.toBeInstanceOf(AssetIntegrityError)
+        expect(backend.chunkDownloads()).toBe(0)
+    })
+
+    it('refuses a file whose bytes no longer match the hash in its metadata', async () => {
+        const backend = fakeBackend()
+        const keyring = createGraphKeyring(graphId)
+        const store = storeOver(backend, keyring)
+        const saved = await store.save({ name: 'beans.txt', bytes: small(), type: 'text/plain' })
+        await rewriteMetadata(backend, keyring, graphId, assetIdFromRef(saved.ref)!, (metadata) => {
+            metadata.hash = '0'.repeat(64)
+        })
+        await expect(store.resolve(saved.ref)).rejects.toBeInstanceOf(AssetIntegrityError)
+    })
+
+    it('checks the hash of a file uploaded before size and chunk count were recorded', async () => {
+        const backend = fakeBackend({ downloadUrls: (_id, urls) => urls.slice(0, -1) })
+        const keyring = createGraphKeyring(graphId)
+        const store = storeOver(backend, keyring)
+        const saved = await store.save({ name: 'plan.pdf', bytes: twoChunkFile(), type: 'application/pdf' })
+        await rewriteMetadata(backend, keyring, graphId, assetIdFromRef(saved.ref)!, (metadata) => {
+            delete metadata.size
+            delete metadata.chunkCount
+        })
+        await expect(store.resolve(saved.ref)).rejects.toBeInstanceOf(AssetIntegrityError)
+    })
+
+    it('still reads an older file whose bytes match its hash', async () => {
+        const backend = fakeBackend()
+        const keyring = createGraphKeyring(graphId)
+        const store = storeOver(backend, keyring)
+        const saved = await store.save({ name: 'beans.txt', bytes: small(), type: 'text/plain' })
+        await rewriteMetadata(backend, keyring, graphId, assetIdFromRef(saved.ref)!, (metadata) => {
+            delete metadata.size
+            delete metadata.chunkCount
+        })
+        const created = stubObjectUrls()
+        await store.resolve(saved.ref)
+        expect(await created[0].text()).toBe(new TextDecoder().decode(small()))
+        vi.unstubAllGlobals()
+    })
+
+    it('fetches once more before calling a file damaged', async () => {
+        const backend = fakeBackend({ downloadUrls: (_id, urls, attempt) => (attempt === 1 ? urls.slice(0, -1) : urls) })
+        const keyring = createGraphKeyring(graphId)
+        const store = storeOver(backend, keyring)
+        const saved = await store.save({ name: 'plan.pdf', bytes: twoChunkFile(), type: 'application/pdf' })
+        const created = stubObjectUrls()
+        await store.resolve(saved.ref)
+        expect(created).toHaveLength(1)
+        expect(backend.reads.get(assetIdFromRef(saved.ref)!)).toBe(2)
+        vi.unstubAllGlobals()
+    })
+
+    it('reuses an existing file only when its encrypted hash matches the new bytes', async () => {
+        // A server that answers every reuse lookup with the first file it holds, whatever the bytes.
+        const lie: { first?: string } = {}
+        const backend = fakeBackend({ reuseAnswer: (body) => (body.dedupToken && lie.first ? lie.first : null) })
+        const keyring = createGraphKeyring(graphId)
+        const store = storeOver(backend, keyring)
+        const garden = await store.save({ name: 'garden.png', bytes: small(), type: 'image/png' })
+        lie.first = assetIdFromRef(garden.ref)!
+        const kitchen = new TextEncoder().encode('KITCHEN-PLAN') as Uint8Array<ArrayBuffer>
+        const saved = await store.save({ name: 'kitchen.png', bytes: kitchen, type: 'image/png' })
+        expect(saved.reused).toBeFalsy()
+        expect(assetIdFromRef(saved.ref)).not.toBe(lie.first)
+        expect(backend.assets.size).toBe(2)
+        // The fresh upload carries no token, or the lying lookup would answer it again.
+        expect(backend.begins.at(-1)?.dedupToken).toBeUndefined()
+        const created = stubObjectUrls()
+        await store.resolve(saved.ref)
+        expect(await created[0].text()).toBe('KITCHEN-PLAN')
+        vi.unstubAllGlobals()
+    })
+
+    it('still reuses a file whose encrypted hash matches', async () => {
+        const backend = fakeBackend()
+        const keyring = createGraphKeyring(graphId)
+        const store = storeOver(backend, keyring)
+        const garden = await store.save({ name: 'garden.png', bytes: small(), type: 'image/png' })
+        const again = await store.save({ name: 'garden-copy.png', bytes: small(), type: 'image/png' })
+        expect(again.reused).toBe(true)
+        expect(assetIdFromRef(again.ref)).toBe(assetIdFromRef(garden.ref))
     })
 })
 

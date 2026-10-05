@@ -7,8 +7,7 @@
 import * as Y from 'yjs'
 import { Awareness, applyAwarenessUpdate, encodeAwarenessUpdate, removeAwarenessStates } from 'y-protocols/awareness'
 import { contextAad, envelopeEpochId, openSymmetric, sealSymmetric, toBase64Url, fromBase64Url } from '$lib/crypto'
-import type { GraphKeyring } from '$lib/crypto'
-import { currentEpoch, keyForEpoch } from '$lib/crypto'
+import { currentEpoch, keyForEpoch, keyringReader, type KeyringSource } from '$lib/crypto'
 import { SYNC_PROTOCOL_LIMITS } from '@appsoftwareltd/etherpk-shared'
 import type { RelayClientMessage, RelayServerMessage } from './messages'
 import { mergeStateVectors } from './state-vector'
@@ -112,7 +111,13 @@ export interface DocCache {
 export interface DocSyncDeps {
     docId: string
     graphId: string
-    keyring: GraphKeyring
+    keyring: KeyringSource
+    /**
+     * An envelope arrived under an epoch the keyring does not hold (ADR 0127): the graph moved to a
+     * new key this device has not collected yet. The engine stops asking for that update again
+     * until `keysChanged`.
+     */
+    onMissingKey?: (epochId: number) => void
     send(message: RelayClientMessage): void
     persist: DocCache
     debounceMs?: number
@@ -185,6 +190,19 @@ export interface DocSync {
      * it until the socket reconnects. The relay applies an outbox id once.
      */
     retryUnsent(): void
+    /**
+     * The relay refused a write as sealed under an older Graph Key epoch (ADR 0127): the outbox
+     * operation `outboxId`, or the snapshot in flight when there is none. Nothing was stored. The
+     * operation is sealed again once `keysChanged` brings the new epoch.
+     */
+    staleEpoch(outboxId?: string): void
+    /**
+     * The keyring gained an epoch. Operations sealed under an older one are sealed again under the
+     * newest, with new outbox ids, except the one at the head of the queue unless the relay refused
+     * it: that one may already be stored, and its acknowledgement is on the way. An update this
+     * engine could not open for want of a key is asked for again.
+     */
+    keysChanged(): Promise<void>
     destroy(): void
 }
 
@@ -237,7 +255,9 @@ function asError(error: unknown): Error {
 }
 
 export function createDocSync(deps: DocSyncDeps): DocSync {
-    const { docId, graphId, keyring, send, persist } = deps
+    const { docId, graphId, send, persist } = deps
+    /** The keyring as it is now: it gains an epoch when the graph's key changes (ADR 0127). */
+    const keyring = keyringReader(deps.keyring)
     const debounceMs = deps.debounceMs ?? 300
     const now = deps.now ?? Date.now
     const generation = deps.generation ?? 1
@@ -295,6 +315,10 @@ export function createDocSync(deps: DocSyncDeps): DocSync {
     }
     /** The snapshot uploaded and not yet read back, with the exact state it encoded. */
     let pendingSnapshot: { generation: number; throughSeq: number; state: Y.Snapshot } | undefined
+    /** The newest epoch an update needed that the keyring does not hold (ADR 0127). */
+    let missingEpoch: number | undefined
+    /** Outbox operations the relay refused as sealed under an older epoch: sealed again on `keysChanged`. */
+    const refusedAsStale = new Set<string>()
     /** A read-back failed: the next idle uploads a fresh snapshot whatever the tail size. */
     let snapshotRetryWanted = false
 
@@ -339,8 +363,8 @@ export function createDocSync(deps: DocSyncDeps): DocSync {
 
     const encrypt = (update: Uint8Array) =>
         sealSymmetric({
-            key: currentEpoch(keyring).key,
-            epochId: currentEpoch(keyring).epochId,
+            key: currentEpoch(keyring()).key,
+            epochId: currentEpoch(keyring()).epochId,
             plaintext: update,
             aad,
         })
@@ -457,7 +481,7 @@ export function createDocSync(deps: DocSyncDeps): DocSync {
 
         let operation: NewOutboxOperation
         try {
-            const epoch = currentEpoch(keyring)
+            const epoch = currentEpoch(keyring())
             const kind = lifecycleState === 'deleted' ? 'resurrect' : 'append'
             // Resurrection starts a fresh server generation, so it must be independently
             // materialisable. A state-vector difference can depend on structs deleted with
@@ -576,15 +600,18 @@ export function createDocSync(deps: DocSyncDeps): DocSync {
 
     async function sendAwareness(changed: number[]): Promise<void> {
         const update = encodeAwarenessUpdate(awareness, changed)
+        const epoch = currentEpoch(keyring())
         const envelope = toBase64Url(
             await sealSymmetric({
-                key: currentEpoch(keyring).key,
-                epochId: currentEpoch(keyring).epochId,
+                key: epoch.key,
+                epochId: epoch.epochId,
                 plaintext: update,
                 aad: presenceAad,
             }),
         )
-        send({ type: 'presence', docId, envelope })
+        // The epoch travels beside the envelope so the relay can drop presence under an older one
+        // without reading it (ADR 0127).
+        send({ type: 'presence', docId, epochId: epoch.epochId, envelope })
     }
 
     const onAwareness = (
@@ -618,22 +645,32 @@ export function createDocSync(deps: DocSyncDeps): DocSync {
         }
         if (seq <= lastSeq) return true
         if (seq !== lastSeq + 1) {
-            syncHealth = 'sequence-gap'
             if (futureUpdates.size < 256) {
                 futureUpdates.set(seq, { envelope, generation: incomingGeneration })
             }
+            // Blocked on a key this device does not hold yet: asking for the same update again
+            // cannot help until the key arrives (`keysChanged`), and would loop.
+            if (missingEpoch !== undefined) return false
+            syncHealth = 'sequence-gap'
             requestCatchup(lastSeq)
             return false
         }
         try {
             const bytes = fromBase64Url(envelope)
             const epochId = envelopeEpochId(bytes)
-            if (!keyForEpoch(keyring, epochId)) {
+            if (!keyForEpoch(keyring(), epochId)) {
+                // The graph moved to a key this device has not collected (ADR 0127). Said, not
+                // hidden behind a sequence gap: the session collects the key and the workspace
+                // shows that it is waiting for it.
                 syncHealth = 'key-unavailable'
+                if (missingEpoch === undefined || epochId > missingEpoch) {
+                    missingEpoch = epochId
+                    deps.onMissingKey?.(epochId)
+                }
                 return false
             }
             const { plaintext } = await openSymmetric({
-                keyForEpoch: (id) => keyForEpoch(keyring, id),
+                keyForEpoch: (id) => keyForEpoch(keyring(), id),
                 envelope: bytes,
                 aad,
             })
@@ -671,6 +708,51 @@ export function createDocSync(deps: DocSyncDeps): DocSync {
         return true
     }
 
+    /**
+     * Seal again, under the newest epoch and with a new outbox id, every queued operation sealed
+     * under an older one that the relay has not stored (ADR 0127): every operation behind the head,
+     * which has never been sent, and the head itself only once the relay refused it. A head still
+     * in flight may have been stored before the epoch changed, and its acknowledgement is on its
+     * way; sealing it again would store the edit twice. Returns true when the head was replaced.
+     */
+    async function resealStaleOperations(): Promise<boolean> {
+        const keys = keyring()
+        const newest = currentEpoch(keys)
+        let headReplaced = false
+        for (let index = 0; index < durableQueue.length; index++) {
+            const operation = durableQueue[index]
+            if (operation.kind === 'delete' || operation.epochId >= newest.epochId) continue
+            if (index === 0 && !refusedAsStale.has(operation.outboxId)) continue
+            const { plaintext } = await openSymmetric({
+                keyForEpoch: (id) => keyForEpoch(keys, id),
+                envelope: fromBase64Url(operation.envelope),
+                aad,
+            })
+            const resealed: NewAppendOperation = {
+                outboxId: newOutboxId(),
+                kind: operation.kind,
+                generation: operation.generation,
+                epochId: newest.epochId,
+                envelope: toBase64Url(await sealSymmetric({ key: newest.key, epochId: newest.epochId, plaintext, aad })),
+                stateVector: operation.stateVector,
+                createdAt: operation.createdAt,
+            }
+            // The new operation is stored before the old one goes, so a crash in between leaves
+            // both rather than neither; the old one is refused again and sealed again.
+            await persistTask(() => persist.enqueue(resealed, stateSnapshot()))
+            await persistTask(() => persist.discard(operation.outboxId))
+            refusedAsStale.delete(operation.outboxId)
+            const boundary = boundarySnapshots.get(operation.outboxId)
+            if (boundary) {
+                boundarySnapshots.delete(operation.outboxId)
+                boundarySnapshots.set(resealed.outboxId, boundary)
+            }
+            durableQueue[index] = { graphId, docId, ...resealed, attemptCount: 0, lastAttemptAt: null }
+            if (index === 0) headReplaced = true
+        }
+        return headReplaced
+    }
+
     async function uploadSnapshot(): Promise<boolean> {
         if (
             lastSeq === 0 ||
@@ -687,7 +769,7 @@ export function createDocSync(deps: DocSyncDeps): DocSync {
         const captured = Y.snapshot(doc)
         const throughSeq = lastSeq
         const snapshotGeneration = documentGeneration
-        const epochId = currentEpoch(keyring).epochId
+        const epochId = currentEpoch(keyring()).epochId
         const envelope = toBase64Url(await encrypt(consolidated))
         if (destroyed) return false
         pendingSnapshot = { generation: snapshotGeneration, throughSeq, state: captured }
@@ -725,7 +807,7 @@ export function createDocSync(deps: DocSyncDeps): DocSync {
         const scratch = new Y.Doc()
         try {
             const { plaintext } = await openSymmetric({
-                keyForEpoch: (id) => keyForEpoch(keyring, id),
+                keyForEpoch: (id) => keyForEpoch(keyring(), id),
                 envelope: fromBase64Url(message.envelope),
                 aad,
             })
@@ -756,7 +838,7 @@ export function createDocSync(deps: DocSyncDeps): DocSync {
         async receivePresence(envelope: string) {
             try {
                 const { plaintext } = await openSymmetric({
-                    keyForEpoch: (id) => keyForEpoch(keyring, id),
+                    keyForEpoch: (id) => keyForEpoch(keyring(), id),
                     envelope: fromBase64Url(envelope),
                     aad: presenceAad,
                 })
@@ -1057,6 +1139,27 @@ export function createDocSync(deps: DocSyncDeps): DocSync {
             if (destroyed) return
             if (durableQueue[0]) detached(transmit(durableQueue[0]))
             else detached(requestDrain())
+        },
+        staleEpoch(outboxId) {
+            if (outboxId) {
+                refusedAsStale.add(outboxId)
+                return
+            }
+            // The snapshot was refused: nothing was stored, so the next idle uploads one afresh,
+            // sealed under whatever the newest epoch is by then.
+            pendingSnapshot = undefined
+            snapshotRetryWanted = true
+            scheduleAutomaticCompaction()
+        },
+        async keysChanged() {
+            if (destroyed) return
+            if (await resealStaleOperations()) await transmit(durableQueue[0])
+            if (missingEpoch !== undefined && keyForEpoch(keyring(), missingEpoch)) {
+                // The key the blocked update needed has arrived: ask for it again.
+                missingEpoch = undefined
+                syncHealth = 'sequence-gap'
+                requestCatchup(lastSeq)
+            }
         },
         destroy() {
             destroyed = true

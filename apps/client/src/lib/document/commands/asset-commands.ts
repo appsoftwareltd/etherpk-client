@@ -184,7 +184,9 @@ export function registerAssetCommands(
             readiness: () => tools.readyToDeleteBytes(),
         })
 
-        const name = (await deps.store()?.resolve(target.ref))?.name ?? target.ref
+        // The name is only for the prompt. A file that cannot be fetched just now, or that arrived
+        // damaged, must still be removable, so a failed lookup falls back to the reference.
+        const name = (await deps.store()?.resolve(target.ref).catch(() => null))?.name ?? target.ref
         const choice = await deps.promptDelete({ name, plan })
         if (choice === 'cancel') return
 

@@ -33,11 +33,18 @@ describe('asset dedup token (ADR 0053)', () => {
         expect(await assetDedupToken(a, HASH_A)).not.toBe(await assetDedupToken(b, HASH_A))
     })
 
-    it('is stable across epoch bumps: derived from the first epoch key, which is never pruned', async () => {
+    it('changes with each new epoch, so a former member cannot work out tokens for files added since (ADR 0127)', async () => {
         const keyring = createGraphKeyring('g1')
         const before = await deriveAssetDedupSecret(keyring)
-        const after = await deriveAssetDedupSecret(bumpEpoch(bumpEpoch(keyring)))
-        expect(after).toEqual(before)
+        const after = await deriveAssetDedupSecret(bumpEpoch(keyring))
+        expect(after).not.toEqual(before)
+    })
+
+    it('comes from the newest epoch only: every member holding it derives the same secret', async () => {
+        const newest = bumpEpoch(createGraphKeyring('g1'))
+        // Nothing older goes in: a keyring holding the newest epoch alone derives the same secret.
+        const newestOnly: GraphKeyring = { graphId: 'g1', epochs: [newest.epochs[1]] }
+        expect(await deriveAssetDedupSecret(newestOnly)).toEqual(await deriveAssetDedupSecret(newest))
     })
 
     it('never equals the plaintext hash or the raw key - a blinded value, not a disclosure', async () => {

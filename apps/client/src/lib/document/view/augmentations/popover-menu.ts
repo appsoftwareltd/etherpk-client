@@ -16,6 +16,8 @@
 import { type EditorState, type Extension, Prec, StateEffect, StateField } from '@codemirror/state'
 import { EditorView, keymap, showTooltip, tooltips, type Tooltip, type TooltipView } from '@codemirror/view'
 
+import { setTrustedMarkup, type TrustedMarkup } from '$lib/security/trusted-types'
+
 /** The minimum a caller's menu state must carry: where to anchor, and the highlighted row. */
 export interface PopoverBase {
     /** Opening marker: the preferred horizontal anchor, stable while the query is typed. */
@@ -28,8 +30,8 @@ export interface PopoverBase {
 export interface PopoverRow {
     label: string
     detail?: string
-    /** Inner markup for the row icon (a full `<svg>…</svg>`); omitted ⇒ no icon slot. */
-    icon?: string
+    /** The row's icon, from `iconSvg`; omitted ⇒ no icon slot. */
+    icon?: TrustedMarkup
     /** Extra `data-*` attributes set on the row element (e.g. a kind for styling/tests). */
     dataAttrs?: Record<string, string>
 }
@@ -170,7 +172,7 @@ export function popoverMenu<S extends PopoverBase>(opts: PopoverMenuOptions<S>):
                 if (row.icon) {
                     const icon = document.createElement('span')
                     icon.className = `${p}__icon inline-flex w-4 h-4 flex-none text-[var(--gk-text-subtle)]`
-                    icon.innerHTML = row.icon
+                    setTrustedMarkup(icon, row.icon)
                     item.appendChild(icon)
                 }
 

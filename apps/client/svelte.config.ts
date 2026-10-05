@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url'
 // config loader before Vite resolves workspace packages, and cspDirectives reads app.html
 // from disk, so it must stay a Node-only module out of the browser barrel.
 import { cspDirectives } from '../../packages/shared/src/security/csp.ts'
+import { CLIENT_TRUSTED_TYPES_POLICIES } from './src/lib/security/trusted-types-policies.ts'
 
 const appHtmlPath = fileURLToPath(new URL('./src/app.html', import.meta.url))
 
@@ -31,6 +32,10 @@ const config: Config = {
                 // so that build is told explicitly (apps/client/Dockerfile ARG PLAINTEXT_ORIGINS);
                 // production never sets it.
                 plaintext: process.env.PLAINTEXT_ORIGINS === 'true',
+                // HTML and script URLs reach the page only through named policies (ADR 0130), and
+                // every violation is reported to the Client's own server, which logs it.
+                trustedTypesPolicies: CLIENT_TRUSTED_TYPES_POLICIES,
+                reportUri: '/api/csp-report',
             }),
         },
         version: {

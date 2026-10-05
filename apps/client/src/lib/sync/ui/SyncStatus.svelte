@@ -171,7 +171,8 @@
     /* Amber: not settled yet, as the mirror dot's "writing". */
     .status[data-state="sending"],
     .status[data-state="connecting"],
-    .status[data-state="reconnecting"] {
+    .status[data-state="reconnecting"],
+    .status[data-state="waiting-for-key"] {
         --sync-dot: var(--gk-sync-busy, #d97706);
     }
     .status[data-state="offline"] {

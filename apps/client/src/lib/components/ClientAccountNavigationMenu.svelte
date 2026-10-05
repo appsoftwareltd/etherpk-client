@@ -6,9 +6,11 @@
     import { currentReturnPath, managedSignInHref, syncConnectHref } from "$lib/auth/sign-in-links";
     import { ManagedTokenError, clearManagedAccessToken } from "$lib/auth/managed-token";
     import {
+        DevicePasscodeLockedError,
         SYNC_CONNECTIONS_CHANGED_EVENT,
         SYNC_CONNECTIONS_STORAGE_KEY,
         SyncApiError,
+        devicePasscode,
         clearSyncAccount,
         forgetSyncConnection,
         isManagedSyncConfigured,
@@ -26,7 +28,8 @@
     import { announceAccountSignal, onAccountSignal } from "$lib/sync/account-signal";
     import { buildAccountMenu, dismissibleMenu, truncateNavigationEmail, type SyncAccountSummary } from "@appsoftwareltd/etherpk-shared";
 
-    type AccountState = "checking" | "authenticated" | "signed-out" | "unavailable" | "disconnected";
+    /** `locked`: the server's access token waits for this device's passcode (ADR 0129). */
+    type AccountState = "checking" | "authenticated" | "signed-out" | "unavailable" | "disconnected" | "locked";
 
     interface Props {
         managedSessionAvailable?: boolean;
@@ -133,6 +136,9 @@
                         serverOrigin: connection.origin,
                     });
                 }
+            } else if (error instanceof DevicePasscodeLockedError) {
+                // Nothing was asked: the token waits for the passcode, which the graph list asks for.
+                accountState = "locked";
             } else {
                 // A failed reachability check is not evidence that the credential is invalid.
                 // Keep the last account partition for offline work, but do not present it as
@@ -208,6 +214,10 @@
         const stopAccountSignals = onAccountSignal((signal) =>
             void refreshAccount({ announce: signal.type === "check" }),
         );
+        // The passcode entered or turned off, in this tab or another: the token can be read now.
+        const stopPasscode = devicePasscode.onChange((state) => {
+            if (state !== "locked" && accountState === "locked") refresh();
+        });
         // The HTTP-only Client session is authoritative for managed mode. Restore the browser's
         // non-secret Managed Sync connection after silent SSO or when local storage has been
         // cleared. Added beside any custom server the device already holds.
@@ -220,6 +230,7 @@
             ++refreshGeneration;
             window.removeEventListener(SYNC_CONNECTIONS_CHANGED_EVENT, refresh);
             stopAccountSignals();
+            stopPasscode();
         };
     });
 </script>
@@ -289,6 +300,15 @@
     </details>
 {:else if accountState === "checking"}
     <span data-testid="client-auth-status" class="hidden text-sm font-medium text-gray-500 sm:inline dark:text-gray-400">Checking Sync…</span>
+{:else if accountState === "locked"}
+    <!-- The graph list asks for the passcode as it loads; on it, the Sync tab's card asks. -->
+    <a
+        href={page.url.pathname === "/graphs" ? "/graphs?tab=sync" : "/graphs"}
+        data-testid="client-auth-passcode"
+        class="rounded-lg border border-gray-950/10 bg-white px-3 py-1.5 text-sm font-semibold text-gray-700 shadow-sm transition-colors hover:bg-gray-50 hover:text-gray-950 dark:border-white/10 dark:bg-white/5 dark:text-gray-300 dark:hover:bg-white/10 dark:hover:text-white"
+    >
+        Enter passcode
+    </a>
 {:else if accountState !== "unavailable" && managedSyncAvailable && (connectionMode === "managed" || connectionMode === null)}
     <button
         type="button"

@@ -488,20 +488,34 @@
         syncApiFor,
         syncConnectionFor,
         getVaultWrapKey,
+        requireVaultWrapKey,
         vaultProtectionAccess,
         setVaultWrapKey,
         VaultLockedError,
+        DevicePasscodeLockedError,
+        devicePasscode,
+        type ResolvedSyncConnection,
         fixedSyncToken,
         presenceIdentity,
         SYNC_CONNECTIONS_STORAGE_KEY,
+        collectKeyHandouts,
         type GraphCache,
         type GraphSync,
+        type HandoutOutcome,
         type SyncAccessLoss,
         type SyncActivity,
         type SyncApi,
         type SyncTokenSource,
         type WriteRefusal,
+        readSyncAccount,
     } from "$lib/sync";
+    import { checkAccountIdentity } from "$lib/sync/ui/identity-check";
+    import DevicePasscodeDialog from "$lib/sync/ui/DevicePasscodeDialog.svelte";
+    import {
+        devicePasscodeNoticeShown,
+        markDevicePasscodeNoticeShown,
+    } from "$lib/sync/device-passcode-notice";
+    import { describeRotation, rotateGraphKeyOnce, rotationDue } from "$lib/sync/ui/key-rotation";
     import {
         AccountEnded,
         onAccountSignal,
@@ -521,6 +535,7 @@
     } from "$lib/sync/unsent-changes";
     import {
         createIndicatorSettle,
+        describeKeyWait,
         describeSyncActivity,
         type SyncIndicator,
         type SyncStatusAction,
@@ -530,6 +545,8 @@
     import {
         createGraphKeyring,
         fromBase64Url,
+        type GraphKeyring,
+        type KeyringSource,
         type ProtectionRecord,
     } from "$lib/crypto";
     import {
@@ -607,6 +624,18 @@
         | "error"
         | "access-lost";
     let phase = $state<Phase>("loading");
+    /**
+     * How the needs-unlock phase asks: for this device's passcode when the keys or the access token
+     * this graph needs are sealed by it (ADR 0129), else for the account's Recovery Code or approval.
+     */
+    let unlockWith = $state<"passcode" | "account">("account");
+    /**
+     * A Device Passcode offered here: from the notice on the first synced graph opened without one,
+     * or again once keys are unlocked after a forgotten passcode.
+     */
+    let passcodeOffer = $state<null | { intro?: string; dismissLabel: string }>(null);
+    /** The passcode was forgotten here: once the keys are unlocked again, offer a new one. */
+    let offerPasscodeAfterUnlock = false;
     /**
      * Why this synced graph stopped syncing for good, once it has: the membership ended, the
      * account signed out or disconnected (here or in another tab), or the Sync Server refused this
@@ -741,6 +770,8 @@
     let message = $state("");
     /** The workspace's one status line in the rail: a new notice replaces the last. */
     const STATUS_NOTICE = "workspace-status";
+    /** The once-per-device offer of a Device Passcode (ADR 0129). */
+    const DEVICE_PASSCODE_NOTICE = "device-passcode-offer";
     /**
      * Set when this tab has restored the graph's registry record or passkey wrap from the
      * device's safety copy (storage/safety-copy.ts), which is what the registry lookup in
@@ -798,7 +829,9 @@
             return;
         }
         syncIndicatorSettle ??= createIndicatorSettle((indicator) => (syncIndicator = indicator));
-        syncIndicatorSettle.update(describeSyncActivity(syncActivity, browserOnline, refusalCopy?.reason));
+        syncIndicatorSettle.update(
+            describeSyncActivity(syncActivity, browserOnline, refusalCopy?.reason, describeKeyWait(keyWaitOutcome)),
+        );
     }
 
     /** Follow a new graph session's activity: the sync status, and the refusal card when writes are refused. */
@@ -873,6 +906,10 @@
         }
         if (syncActivity.refusal) {
             actions.push({ id: "sync-state-retry", label: "Try again now", run: () => serverGraph?.retryRefused() });
+        }
+        // The new key arrived signed with the owner's new keys: they are compared on the Graphs page.
+        if (syncActivity.waitingForKey !== null && keyWaitOutcome?.kind === "owner-key-changed") {
+            actions.push({ id: "sync-state-verify-owner", label: "Compare fingerprints", run: () => void goto("/graphs") });
         }
         const unsent = syncIndicator?.unsent ?? 0;
         if (unsent > 0 && syncIndicator?.state !== "sending" && syncIndicator?.state !== "synced") {
@@ -1080,7 +1117,7 @@
      * replacing its access token means this tab's connection is gone; null on the dev gate's graphs,
      * which have no device connection to lose.
      */
-    let connectionAtOpen: string | null = null;
+    let connectionAtOpen: ResolvedSyncConnection | null = null;
     let serverAtOpen: { managed: boolean; server: string } | null = null;
     /** The account API behind a registry graph, to word a write refusal; null under the dev gate. */
     let serverApi: SyncApi | null = null;
@@ -1096,6 +1133,11 @@
     let refusalNoticeDismissed = $state(false);
     let syncIndicator = $state.raw<SyncIndicator | null>(null);
     let syncIndicatorSettle: ReturnType<typeof createIndicatorSettle> | null = null;
+    /**
+     * What became of this account's copy of the graph's newest key when it was last collected,
+     * when it was not taken in (ADR 0127): why the sync status says it is waiting for the key.
+     */
+    let keyWaitOutcome = $state.raw<HandoutOutcome | null>(null);
     let isServerStore = $state(false);
     // Orphaned-asset scan/cleanup for the Graph Settings dialog, built per backend at open.
     let assetTools = $state<GraphAssetTools | null>(null);
@@ -2789,7 +2831,13 @@
         relay: string;
         /** Asked per request/reconnect: a workspace stays open far longer than a token lives. */
         token: SyncTokenSource;
-        keyring: ReturnType<typeof createGraphKeyring>;
+        /** The graph's keyring, or a getter for it where it can move to a new epoch (ADR 0127). */
+        keyring: KeyringSource;
+        /**
+         * Collect this account's copy of the graph's newest keyring, after which `keyring` returns
+         * it. Absent under the dev gate, which has no vault to collect into.
+         */
+        refreshKeyring?: () => Promise<void>;
         root: string;
         /** HTTP base URL for asset presign calls; under the dev gate only when `http` is passed. */
         httpBaseUrl?: string;
@@ -2835,39 +2883,115 @@
                 `This device is not connected to ${serverHost(serverOrigin)}, the Sync Server that stores this graph. Connect to it in Sync settings.`,
             );
         const stored = syncConnectionFor(serverOrigin);
-        connectionAtOpen = describeConnection(stored);
+        connectionAtOpen = stored;
         serverAtOpen = {
             managed: stored?.kind === "managed",
             server: connection.serverBaseUrl,
         };
         const { api, token } = connection;
         serverApi = api;
+        // A graph opened in a new tab while another holds this device's passcode is handed the
+        // key by that tab (ADR 0129), and asks for the passcode only when no open tab answers.
+        if (devicePasscode.state() === "locked")
+            await attempt.wait(devicePasscode.unlockFromOtherTabs());
         const result = await attempt.wait(
-            ensureGraphKeys(api, graphId, async () => {
-                const cached = getVaultWrapKey(serverOrigin);
-                if (!cached) throw new VaultLockedError();
-                return cached;
-            }),
+            ensureGraphKeys(api, graphId, async () =>
+                requireVaultWrapKey(serverOrigin),
+            ),
         );
         // Cache the wrap key for the session (fresh account, or a first successful unlock).
         setVaultWrapKey(serverOrigin, result.deviceKey);
+        // The own-key check (ADR 0126), once per page load and in the background: it gives keys
+        // from before signing keys their signing key, and never holds the graph back. A fresh
+        // account publishes its identity in the commit below.
+        if (!result.recoveryCodeJustGenerated)
+            void checkAccountIdentity(
+                api,
+                result.deviceKey,
+                serverOrigin,
+                readSyncAccount(serverOrigin)?.principalId,
+            );
         // Opening a registry graph on a vault-less account is an edge case; commit immediately
         // (the primary prevention path is the create-graph flow on /graphs).
         await attempt.wait(result.commit());
         if (result.recoveryCodeJustGenerated)
             pendingRecoveryCode = result.recoveryCodeJustGenerated;
+        // The keyring this session seals and opens with (ADR 0127). It moves on when the graph
+        // moves to a new epoch and this account's copy of the new key has been collected.
+        const openedGraphId = graphId;
+        let keyring: GraphKeyring = result.keyring;
+        keyWaitOutcome = null;
+        // Never throws: graph sync reports what a refresh throws as a failed save, and a key that
+        // did not arrive is not one. The session says it is waiting, and asks again on its own.
+        const refreshKeyring = async () => {
+            const heldKey = getVaultWrapKey(serverOrigin);
+            if (!heldKey) return;
+            let collected: Awaited<ReturnType<typeof collectKeyHandouts>>;
+            try {
+                collected = await collectKeyHandouts(api, heldKey, {
+                    graphId: openedGraphId,
+                });
+            } catch (error) {
+                console.warn("[sync] could not collect the graph's new key", error);
+                return;
+            }
+            const held = collected.vault.keyrings.find(
+                (k) => k.graphId === openedGraphId,
+            );
+            if (held) keyring = held;
+            if (!attempt.isCurrent()) return;
+            // A copy refused here is why the session waits: the sync status says so.
+            keyWaitOutcome =
+                collected.outcomes.find(
+                    (o) => o.graphId === openedGraphId && o.kind !== "added",
+                ) ?? null;
+            refreshSyncIndicator();
+        };
+        if (!result.recoveryCodeJustGenerated)
+            void rotateIfDue(api, serverOrigin, openedGraphId, result.deviceKey, attempt);
+        offerDevicePasscodeOnce();
         return {
             relay: connection.relayUrl,
             token,
-            keyring: result.keyring,
+            keyring: () => keyring,
+            refreshKeyring,
             root: record.rootDocId,
             httpBaseUrl: connection.serverBaseUrl,
             publishName: createGraphNamePublisher({
                 api,
-                keyring: result.keyring,
+                keyring: () => keyring,
                 graphId,
             }).publish,
         };
+    }
+
+    /**
+     * An owner opening a graph that is due a new Graph Key epoch (a member left, was removed or
+     * reset their account) starts it, in the background (ADR 0127). The Graphs page does the same
+     * for every owned graph; whichever runs first does it, and the other finds nothing due.
+     */
+    async function rotateIfDue(
+        api: SyncApi,
+        origin: string,
+        openedGraphId: string,
+        heldKey: Uint8Array,
+        attempt: GraphOpenAttempt,
+    ): Promise<void> {
+        try {
+            if (!(await rotationDue(api, openedGraphId))) return;
+            const result = await rotateGraphKeyOnce(api, heldKey, origin, openedGraphId);
+            if (!attempt.isCurrent()) return;
+            const told = describeRotation(result, graphDisplayName || "This graph");
+            if (told)
+                showNotice({
+                    id: `graph-key-rotation:${openedGraphId}`,
+                    tone: told.tone,
+                    text: told.text,
+                });
+        } catch (error) {
+            // Still due: the Graphs page, or the next open, tries again.
+            console.warn("[sync] could not change the graph's key", error);
+        }
     }
 
     /**
@@ -2998,6 +3122,7 @@
             graphId,
             rootDocId: params.root,
             keyring: params.keyring,
+            refreshKeyring: params.refreshKeyring,
             relayUrl: params.relay,
             token: params.token,
             cache,
@@ -3931,11 +4056,9 @@
             : protectionApi
               ? vaultProtectionStore(
                     graphId,
-                    vaultProtectionAccess(protectionApi, async () => {
-                        const cached = getVaultWrapKey(protectionOrigin!);
-                        if (!cached) throw new VaultLockedError();
-                        return cached;
-                    }),
+                    vaultProtectionAccess(protectionApi, async () =>
+                        requireVaultWrapKey(protectionOrigin!),
+                    ),
                 )
               : localProtectionStore(graphId);
 
@@ -4464,6 +4587,10 @@
                 return;
             }
             if (err instanceof VaultLockedError) {
+                unlockWith =
+                    err instanceof DevicePasscodeLockedError
+                        ? "passcode"
+                        : "account";
                 phase = "needs-unlock";
             } else {
                 phase = "error";
@@ -4648,19 +4775,28 @@
     function watchSyncConnections(event: StorageEvent): void {
         if (event.key !== SYNC_CONNECTIONS_STORAGE_KEY && event.key !== null) return;
         if (connectionAtOpen === null || !graphServerOrigin) return;
-        if (describeConnection(syncConnectionFor(graphServerOrigin)) !== connectionAtOpen) {
+        if (connectionChanged(connectionAtOpen, syncConnectionFor(graphServerOrigin))) {
             endSyncFromElsewhere("disconnected", graphServerOrigin);
         }
     }
 
-    /** A connection as compared across tabs: which kind, where, and a custom server's token. */
-    function describeConnection(connection: ReturnType<typeof syncConnectionFor>): string {
-        if (!connection) return "none";
-        return JSON.stringify({
-            kind: connection.kind,
-            origin: connection.origin,
-            token: typeof connection.token === "string" ? connection.token : null,
-        });
+    /**
+     * Whether the connection is another one now: gone, of another kind or to another place, or
+     * carrying another access token. A token sealed by a Device Passcode this tab has not had
+     * entered reads as null, which is unknown rather than changed (ADR 0129): sealing, re-sealing
+     * or opening it in another tab changes how it is stored, not which token it is.
+     */
+    function connectionChanged(
+        atOpen: ResolvedSyncConnection,
+        now: ResolvedSyncConnection | null,
+    ): boolean {
+        if (!now) return true;
+        if (now.kind !== atOpen.kind || now.origin !== atOpen.origin) return true;
+        return (
+            atOpen.credential !== null &&
+            now.credential !== null &&
+            atOpen.credential !== now.credential
+        );
     }
 
     /**
@@ -4696,8 +4832,62 @@
 
     /** After the Recovery Code unlock dialog succeeds, retry opening the graph. */
     async function afterUnlock() {
+        if (offerPasscodeAfterUnlock && devicePasscode.state() === "off") {
+            offerPasscodeAfterUnlock = false;
+            passcodeOffer = {
+                intro: "Your keys are unlocked again. Set a new passcode for this device, or leave it off. You can set one later on the Sync tab of the graph list.",
+                dismissLabel: "Leave it off",
+            };
+        }
         phase = "loading";
         await runBuild();
+    }
+
+    /**
+     * Forgot your passcode? removed the keys it protected and the access tokens it sealed (ADR 0129):
+     * the keys are unlocked again as on a new device, then a new passcode is offered. A custom
+     * server's token went with it, and only a new one reaches the graph again.
+     */
+    function afterPasscodeForgotten() {
+        offerPasscodeAfterUnlock = true;
+        if (graphServerOrigin && !syncConnectionFor(graphServerOrigin)) {
+            phase = "error";
+            message = `The access token for ${serverHost(graphServerOrigin)} was removed with the passcode. Connect to it again with a new token on the graph list, then open the graph.`;
+            return;
+        }
+        unlockWith = "account";
+    }
+
+    /**
+     * Said once per device, the first time a synced graph opens without a Device Passcode (ADR 0129):
+     * the keys sit in this browser without encryption, and a passcode keeps them encrypted.
+     */
+    function offerDevicePasscodeOnce(): void {
+        if (devicePasscode.state() !== "off" || devicePasscodeNoticeShown()) return;
+        markDevicePasscodeNoticeShown();
+        showNotice({
+            id: DEVICE_PASSCODE_NOTICE,
+            tone: "info",
+            dismissal: "manual",
+            title: "Your keys are stored on this device",
+            text: "The keys that open your synced graphs are kept in this browser without encryption. A passcode keeps them encrypted, and you enter it once each time you open EtherPK in this browser. You can also set one later on the Sync tab of the graph list.",
+            actions: [
+                {
+                    label: "Set a passcode",
+                    primary: true,
+                    id: "device-passcode-notice-set",
+                    run: () => {
+                        dismissNotice(DEVICE_PASSCODE_NOTICE);
+                        passcodeOffer = { dismissLabel: "Not now" };
+                    },
+                },
+                {
+                    label: "Not now",
+                    id: "device-passcode-notice-dismiss",
+                    run: () => dismissNotice(DEVICE_PASSCODE_NOTICE),
+                },
+            ],
+        });
     }
 
     /**
@@ -6146,7 +6336,24 @@
 />
 
 {#if phase === "needs-unlock" && graphServerOrigin}
-    <UnlockDialog serverOrigin={graphServerOrigin} onunlocked={afterUnlock} onclose={() => goto("/graphs")} />
+    {#if unlockWith === "passcode"}
+        <DevicePasscodeDialog
+            mode="unlock"
+            ondone={afterUnlock}
+            onclose={() => goto("/graphs")}
+            onforgotten={afterPasscodeForgotten}
+        />
+    {:else}
+        <UnlockDialog serverOrigin={graphServerOrigin} onunlocked={afterUnlock} onclose={() => goto("/graphs")} />
+    {/if}
+{:else if passcodeOffer}
+    <DevicePasscodeDialog
+        mode="set"
+        intro={passcodeOffer.intro}
+        dismissLabel={passcodeOffer.dismissLabel}
+        ondone={() => (passcodeOffer = null)}
+        onclose={() => (passcodeOffer = null)}
+    />
 {/if}
 
 {#if pendingRecoveryCode && graphServerOrigin}

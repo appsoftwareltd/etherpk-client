@@ -7,7 +7,7 @@
  * The transport is injected (a `connect(url)` factory) so this unit-tests without real sockets.
  */
 import * as Y from 'yjs'
-import type { GraphKeyring } from '$lib/crypto'
+import { currentEpoch, keyringReader, type KeyringSource } from '$lib/crypto'
 import { performanceRecorder } from '$lib/diagnostics/performance'
 import { SYNC_PROTOCOL_LIMITS, type QuotaErrorCode } from '@appsoftwareltd/etherpk-shared'
 import { CACHE_SEED, createDocSync, type DocSync } from './doc-sync'
@@ -20,7 +20,7 @@ import {
 } from './messages'
 import { createPresenceSession, type PresenceSession } from './presence-session'
 import type { SyncTokenSource } from './sync-token'
-import { reconnectDelayMs, refusalRetryDelayMs, STABLE_CONNECTION_MS } from './reconnect-backoff'
+import { keyRetryDelayMs, reconnectDelayMs, refusalRetryDelayMs, STABLE_CONNECTION_MS } from './reconnect-backoff'
 import { type QuickNote, sanitizeQuickNotes } from '$lib/document/quick-notes'
 import { sanitizeDictionaryWords } from '$lib/document/spelling/graph-dictionary'
 import { type GraphTheme, isThemeFilePath, sanitizeGraphTheme } from '$lib/document/publish/theme/graph-theme'
@@ -74,6 +74,11 @@ export interface SyncActivity {
     unsentDocuments: number
     /** The server's current refusal of this graph's writes, from the refusal until a write is accepted. */
     refusal: WriteRefusal | null
+    /**
+     * The graph moved to a Graph Key epoch this device holds no key for yet (ADR 0127): its number,
+     * or null. Edits stay on the device until the owner's copy of the key arrives.
+     */
+    waitingForKey: number | null
 }
 
 export interface GraphSyncDeps {
@@ -88,7 +93,18 @@ export interface GraphSyncDeps {
      * engine holds yet creates a synchronised engine, which catches its history up on its own.
      */
     subscribeAll?: boolean
-    keyring: GraphKeyring
+    /**
+     * The graph's keyring, or a getter for the current one: a session that can follow a new Graph
+     * Key epoch (ADR 0127) passes a getter together with `refreshKeyring`.
+     */
+    keyring: KeyringSource
+    /**
+     * Collect this account's copy of the graph's newest keyring (ADR 0127), after which `keyring`
+     * returns it. Called when the relay announces a new epoch, refuses a write as sealed under an
+     * older one, or an update needs an epoch the keyring lacks. Absent, the session cannot follow a
+     * new epoch and says it is waiting for the key.
+     */
+    refreshKeyring?: () => Promise<void>
     relayUrl: string
     /**
      * Asked for a token on every connect, NOT captured once: a session outlives its
@@ -122,6 +138,8 @@ export interface GraphSyncDeps {
     retryDelayMs?: (attempt: number) => number
     /** The wait before retry round `round` of a refused write; a test swaps it. See reconnect-backoff.ts. */
     refusalRetryDelayMs?: (round: number) => number
+    /** The wait before asking again for a new epoch's key; a test swaps it. See reconnect-backoff.ts. */
+    keyRetryDelayMs?: (round: number) => number
     /**
      * Where the canonical [[Graph Name]] goes so devices that never opened this graph can
      * label it: the Sync Server's name envelope (ADR 0031, amended 2026-09-17;
@@ -451,7 +469,93 @@ export function createGraphSync(deps: GraphSyncDeps): GraphSync {
     const refusalDelay = deps.refusalRetryDelayMs ?? ((round: number) => refusalRetryDelayMs(round))
     const activityListeners = new Set<(activity: SyncActivity) => void>()
     let activityTimer: ReturnType<typeof setTimeout> | undefined
-    const snapshotActivity = (): SyncActivity => ({ connection, unsentDocuments: unsentDocs.size, refusal })
+    const snapshotActivity = (): SyncActivity => ({
+        connection,
+        unsentDocuments: unsentDocs.size,
+        refusal,
+        waitingForKey,
+    })
+
+    // Following a new Graph Key epoch (ADR 0127). The keyring is read on every seal and open, so
+    // once `refreshKeyring` has collected the new key every engine uses it; each is then told, to
+    // seal again what the relay refused and ask again for what it could not open.
+    const keyring = keyringReader(deps.keyring)
+    /** The newest epoch the relay has said exists, or an update needed. */
+    let wantedEpoch = 0
+    /** Set while the keyring stops short of `wantedEpoch`: what the workspace shows. */
+    let waitingForKey: number | null = null
+    let refreshing: Promise<void> | undefined
+    let lastRefreshAt = 0
+    /** While waiting, how often a refused write or an unreadable update may fetch the key again. */
+    const KEY_REFRESH_INTERVAL_MS = 15_000
+    // While waiting, the session also asks again on a timer: nothing else may prompt it when this
+    // device is not writing and nobody else is either.
+    const keyRetryDelay = deps.keyRetryDelayMs ?? ((round: number) => keyRetryDelayMs(round))
+    let keyRetryTimer: ReturnType<typeof setTimeout> | undefined
+    let keyRetryRound = 0
+
+    /**
+     * The graph has reached epoch `epoch` (an announcement, a refusal or an unreadable update).
+     * Collect the key when this device lacks it, at most every {@link KEY_REFRESH_INTERVAL_MS}
+     * while it keeps lacking it unless the relay announced a new epoch, then tell every engine.
+     */
+    function followEpoch(epoch: number, announced = false): Promise<void> {
+        wantedEpoch = Math.max(wantedEpoch, epoch)
+        if (currentEpoch(keyring()).epochId >= wantedEpoch) {
+            // The key may have arrived some other way, the workspace's own collection for one.
+            if (waitingForKey !== null) {
+                waitingForKey = null
+                activityChanged()
+                scheduleKeyRetry()
+            }
+            keysChangedEverywhere()
+            return Promise.resolve()
+        }
+        if (refreshing) return refreshing
+        if (!announced && waitingForKey !== null && Date.now() - lastRefreshAt < KEY_REFRESH_INTERVAL_MS) {
+            return Promise.resolve()
+        }
+        lastRefreshAt = Date.now()
+        refreshing = (async () => {
+            try {
+                await deps.refreshKeyring?.()
+            } catch (error) {
+                reportError(error)
+            } finally {
+                refreshing = undefined
+            }
+            if (disposed) return
+            const held = currentEpoch(keyring()).epochId
+            const nextWaiting = held >= wantedEpoch ? null : wantedEpoch
+            if (nextWaiting !== waitingForKey) {
+                waitingForKey = nextWaiting
+                activityChanged()
+            }
+            scheduleKeyRetry()
+            keysChangedEverywhere()
+        })()
+        return refreshing
+    }
+
+    /** Ask again later while the key is still missing; stop asking once it is held. */
+    function scheduleKeyRetry(): void {
+        if (waitingForKey === null) {
+            clearTimeout(keyRetryTimer)
+            keyRetryTimer = undefined
+            keyRetryRound = 0
+            return
+        }
+        if (keyRetryTimer) return
+        keyRetryTimer = setTimeout(() => {
+            keyRetryTimer = undefined
+            // As an announcement would: the timer is the rate limit here.
+            void followEpoch(wantedEpoch, true)
+        }, keyRetryDelay(++keyRetryRound))
+    }
+
+    function keysChangedEverywhere(): void {
+        for (const e of engines.values()) void e.keysChanged().catch(reportError)
+    }
     function activityChanged(): void {
         if (disposed || activityTimer || activityListeners.size === 0) return
         activityTimer = setTimeout(() => {
@@ -808,7 +912,8 @@ export function createGraphSync(deps: GraphSyncDeps): GraphSync {
             e = createDocSync({
                 docId,
                 graphId: deps.graphId,
-                keyring: deps.keyring,
+                keyring,
+                onMissingKey: (epochId) => void followEpoch(epochId),
                 send: (message) => {
                     if (
                         message.type === 'append' ||
@@ -1006,6 +1111,17 @@ export function createGraphSync(deps: GraphSyncDeps): GraphSync {
                 void engine(message.docId).staleGeneration(message.currentGeneration)
                 pumpCatchups()
             }
+            if (message.code === 'stale_epoch' && message.docId) {
+                // Nothing was stored. The write is sealed again under the current epoch once this
+                // device holds its key (ADR 0127).
+                operationAnswered(message.docId, message.outboxId)
+                engine(message.docId).staleEpoch(message.outboxId)
+                void followEpoch(message.currentEpoch ?? currentEpoch(keyring()).epochId + 1)
+            }
+            return
+        }
+        if (message.type === 'epoch_changed') {
+            void followEpoch(message.epoch, true)
             return
         }
         if (message.type === 'watermarks') {
@@ -1517,6 +1633,7 @@ export function createGraphSync(deps: GraphSyncDeps): GraphSync {
             clearTimeout(reconnectTimer)
             clearTimeout(refusalTimer)
             clearTimeout(activityTimer)
+            clearTimeout(keyRetryTimer)
             activityListeners.clear()
             socket?.close()
             for (const detach of presenceDetach.values()) detach()

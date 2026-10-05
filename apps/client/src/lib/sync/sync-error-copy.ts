@@ -10,11 +10,15 @@
  */
 import type { QuotaErrorCode } from '@appsoftwareltd/etherpk-shared'
 import { ManagedTokenError } from '$lib/auth/managed-token'
-import { EnvelopeError, RecoveryCodeError } from '$lib/crypto'
+import { EnvelopeError, KeyringConflictError, RecoveryCodeError } from '$lib/crypto'
 import { NoVaultError } from './recovery-unlock'
-import { InviteForHeldGraphError } from './invites'
+import { InviteNotAcceptedError, InviteeChangedError } from './invites'
+import { ForeignIdentityError } from './account-identity'
+import { ApprovalTamperedError } from './device-approval'
+import { MissingGraphKeyError } from './keys'
 import { SyncProtocolMismatchError } from './messages'
 import { SyncApiError } from './sync-api'
+import { DevicePasscodeLockedError } from './device-passcode'
 import { VaultLockedError } from './vault-session'
 
 /** What the server refused, and what the user can do about it. */
@@ -48,6 +52,30 @@ const REFUSAL_COPY: Record<string, string> = {
     ownership_changed: 'The graph changed hands while this ran. Refresh the page to see who owns it now.',
     asset_complete: 'This file has already been uploaded. Add it again to create a new copy.',
     asset_manifest_mismatch: 'This upload no longer matches the file it started with. Add the file again.',
+    // Device approval (ADR 0125).
+    upgrade_required:
+        'This version of EtherPK is too old for this Sync Server. Reload the page to get the latest version, or update the Headless Client.',
+    too_many_device_approvals:
+        'This account has too many approval requests open or made recently. Finish or cancel one, or wait a while, then try again.',
+    already_answered: 'Another of your devices is already handling this request.',
+    commitment_mismatch: 'This device sent a key that does not match the one it promised. Start again.',
+    // Signed Sync Identities (ADR 0126).
+    key_signature_refused:
+        'The Sync Server refused it because it is not signed with the security key the server holds for your account. If you replaced your keys on another device, unlock this device again. Otherwise, contact whoever runs the server.',
+    invite_signature_refused: 'The Sync Server did not accept the signature on the invite. Reload the page, then try again.',
+    invitee_changed: 'That address belongs to a different account now. Look them up again.',
+    invitee_keys_changed: 'Their keys changed after you looked them up. Look them up again and compare the new fingerprint.',
+    identity_required: 'Your security key has to be published before this change. Reload the page, then try again.',
+    server_upgrade_required: 'This Sync Server runs an older version of EtherPK than this app. Ask whoever runs it to update it.',
+    // Removal and Graph Key epochs (ADR 0127).
+    remove_owner: 'The owner cannot be removed. Transfer the graph to someone else first, or delete it.',
+    epoch_lease_lost: 'Another of your devices was changing the graph’s key at the same time. Try again.',
+    epoch_members_changed: 'The graph’s members changed while its key was being changed. Try again.',
+    epoch_recipient_keys_changed: 'A member’s keys changed while the graph’s key was being changed. Try again.',
+    epoch_signature_refused: 'The Sync Server did not accept the signatures on the new key. Reload the page, then try again.',
+    // Key Replacement (ADR 0128).
+    new_identity_signature_refused: 'The Sync Server did not accept the signature made with your new keys. Nothing changed. Try again.',
+    identity_unchanged: 'The new keys matched the old ones, so the Sync Server refused them. Nothing changed. Try again.',
 }
 
 function isQuotaCode(code: string | undefined): code is QuotaErrorCode {
@@ -131,9 +159,31 @@ export function describeSyncFailure(error: unknown, action: string): string {
         }
     }
 
-    if (error instanceof InviteForHeldGraphError) {
-        return `${opening} It is for a graph you already have, so it was refused and your key for that graph is unchanged. There is nothing to do.`
+    if (error instanceof InviteNotAcceptedError) {
+        const inviter = error.inviterEmail ?? 'the owner'
+        switch (error.reason) {
+            case 'unsigned':
+                return `${opening} It was sent by an older version of EtherPK. Ask ${inviter} to send it again.`
+            case 'unverifiable':
+                return `${opening} It is not signed with ${inviter}’s security key, so it may have been changed on the way. Ask ${inviter} to send it again.`
+            case 'key-changed':
+                return `${opening} ${inviter}’s security key changed while you were checking it. Open the invite again and compare the new fingerprint.`
+        }
     }
+    if (error instanceof InviteeChangedError) {
+        return `${opening} Their account or keys changed after you looked them up. Look them up again and compare the new fingerprint.`
+    }
+    if (error instanceof KeyringConflictError) {
+        return `${opening} The key in the invite does not match the key you already hold for this graph, so nothing was changed. Ask the owner to send the invite again.`
+    }
+    if (error instanceof MissingGraphKeyError) {
+        return `${opening} Your keys do not hold this graph’s key, so its documents cannot be read. Leave the graph, then ask its owner to invite you again.`
+    }
+    if (error instanceof ForeignIdentityError) {
+        return `${opening} The Sync Server publishes a security key for your account that does not match your keys, and refused to replace it. Do not send or accept invites on this server until whoever runs it has looked into it.`
+    }
+
+    if (error instanceof ApprovalTamperedError) return `${opening} ${error.message}`
 
     // Which side is older decides who can fix it: an old server needs its operator, an old
     // Client needs a reload (or an upgrade by whoever runs it). Pending appends stay in the
@@ -146,6 +196,9 @@ export function describeSyncFailure(error: unknown, action: string): string {
 
     // Key faults are device problems. Reporting them as "server could not be reached" sent
     // users to check their connection when the fix was in Sync settings (2026-09-01).
+    if (error instanceof DevicePasscodeLockedError) {
+        return `${opening} The keys on this device are protected by its passcode. Enter the passcode, then try again.`
+    }
     if (error instanceof VaultLockedError) {
         return `${opening} Your encryption keys are locked on this device. Unlock them with your Recovery Code, or by approving from another device that is unlocked, then try again.`
     }
@@ -154,7 +207,7 @@ export function describeSyncFailure(error: unknown, action: string): string {
         // nothing were unlocked correctly and have since gone stale: the account's keys were reset
         // on another device. Saying so stops a person retyping the same code; unlocking with the
         // code replaces the key held here.
-        return `${opening} The keys unlocked on this device no longer open your account’s data, usually because your keys were reset on another device. On the Sync tab, select Unlock Keys With Recovery Code.`
+        return `${opening} Your keys were replaced or reset on another device, so the keys unlocked here no longer open your account’s data. Unlock this device again: on the Sync tab, select Unlock Keys With Recovery Code, or approve this device from another device.`
     }
     if (error instanceof NoVaultError) {
         return `${opening} This account has no encryption keys yet: they are created with your first synced graph.`
@@ -178,7 +231,16 @@ export function isRetryableSyncFailure(error: unknown): boolean {
         return false // the keys will not change by trying again
     }
     if (error instanceof SyncProtocolMismatchError) return false
-    if (error instanceof InviteForHeldGraphError) return false // the vault already holds the key // one side has to be upgraded first
+    // Trying the same invite or key write again changes none of these: the keys have to.
+    if (
+        error instanceof InviteNotAcceptedError ||
+        error instanceof InviteeChangedError ||
+        error instanceof KeyringConflictError ||
+        error instanceof ForeignIdentityError ||
+        error instanceof MissingGraphKeyError
+    ) {
+        return false
+    }
     if (error instanceof Error && error.name === 'QuotaExceededError') return false
     if (!(error instanceof SyncApiError)) return true // network and storage-connection failures are worth retrying
     if (isQuotaCode(error.code)) return false // the allowance will not change by trying again

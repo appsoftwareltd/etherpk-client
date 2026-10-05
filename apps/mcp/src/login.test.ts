@@ -2,7 +2,13 @@ import { describe, expect, it } from 'vitest'
 
 import { encryptVault, generateIdentityKeyPair, toBase64Url } from '$lib/crypto'
 import { deriveVaultWrapKey, generateRecoveryCode } from '$lib/crypto/recovery-code'
-import { approveDevice, approvalSas } from '$lib/sync/device-approval'
+import {
+    answerDeviceApproval,
+    approveDevice,
+    readApproverExchange,
+    type ApproverSession,
+    type PendingDeviceApproval,
+} from '$lib/sync/device-approval'
 import type { SyncApi } from '$lib/sync/sync-api'
 
 import {
@@ -45,41 +51,114 @@ describe('unlockByRecoveryCode', () => {
     })
 })
 
+/**
+ * A Sync Server holding one approval request (ADR 0125), and the unlocked EtherPK tab that answers
+ * and approves it: what the terminal flow talks to, step by step.
+ */
+function approvalServer(envelope: string) {
+    let row: { id: string; commitment: string; status: string; approverPublicKey?: string; requesterPublicKey?: string; reply?: string } | null =
+        null
+    const api = {
+        getVault: async () => ({ vault: envelope, version: 1, principalId: 'account-1' }),
+        createDeviceApproval: async (commitment: string) => {
+            row = { id: 'appr-1', commitment, status: 'pending' }
+            return { id: 'appr-1' }
+        },
+        listDeviceApprovals: async () => (row && ['pending', 'answered', 'revealed'].includes(row.status) ? [{ ...row, createdAt: '' }] : []),
+        respondToDeviceApproval: async (_id: string, approverPublicKey: string) => {
+            row!.approverPublicKey = approverPublicKey
+            row!.status = 'answered'
+            return { ok: true as const }
+        },
+        revealDeviceApproval: async (_id: string, requesterPublicKey: string) => {
+            row!.requesterPublicKey = requesterPublicKey
+            row!.status = 'revealed'
+            return { ok: true as const }
+        },
+        pollDeviceApproval: async () => {
+            if (row!.status === 'sealed') {
+                const reply = row!.reply
+                row!.status = 'claimed'
+                return { status: 'sealed', approverPublicKey: row!.approverPublicKey, sealedVaultKey: reply }
+            }
+            return { status: row!.status, ...(row!.approverPublicKey ? { approverPublicKey: row!.approverPublicKey } : {}) }
+        },
+        sealDeviceApproval: async (_id: string, reply: string) => {
+            row!.reply = reply
+            row!.status = 'sealed'
+            return { ok: true as const }
+        },
+        cancelDeviceApproval: async () => ({ ok: true as const }),
+    } as unknown as SyncApi
+    let session: ApproverSession | null = null
+    /** The tab: answer the request, then once the terminal has revealed, read the code and approve. */
+    const tab = {
+        async answer() {
+            const [pending] = (await api.listDeviceApprovals()) as PendingDeviceApproval[]
+            const answered = await answerDeviceApproval(api, pending)
+            if (answered === 'taken') throw new Error('unreachable')
+            session = answered
+        },
+        async code(): Promise<string | null> {
+            const [listed] = (await api.listDeviceApprovals()) as PendingDeviceApproval[]
+            return (await readApproverExchange(session!, listed))?.sas ?? null
+        },
+        async approve(vaultKey: Uint8Array) {
+            await approveDevice(api, session!, vaultKey)
+        },
+    }
+    return { api, tab }
+}
+
 describe('unlockByDeviceApproval', () => {
-    it('prints the SAS the approver sees, then claims and verifies the sealed vault key', async () => {
+    it('prints the code the tab shows, and returns the vault key once the tab approved and y was pressed', async () => {
         const a = await account()
-        let request: { id: string; ephemeralPublicKey: string } | null = null
-        let sealed: string | undefined
-        const api = {
-            getVault: async () => ({ vault: a.envelope, version: 1 }),
-            createDeviceApproval: async (ephemeralPublicKey: string) => {
-                request = { id: 'appr-1', ephemeralPublicKey }
-                return { id: 'appr-1' }
-            },
-            pollDeviceApproval: async () => (sealed ? { status: 'sealed', sealedVaultKey: sealed } : { status: 'pending' }),
-            sealDeviceApproval: async (_id: string, blob: string) => {
-                sealed = blob
-                return { ok: true as const }
-            },
-        } as unknown as SyncApi
+        const { api, tab } = approvalServer(a.envelope)
         const said: string[] = []
+        let pressedY = false
         let polls = 0
         const io = {
             say: (line: string) => said.push(line),
+            codesMatch: () => pressedY,
             sleep: async () => {
-                // The approver (an unlocked tab) confirms after the second poll.
-                if (++polls === 2 && request) {
-                    const shown = await approvalSas({ id: request.id, ephemeralPublicKey: request.ephemeralPublicKey, createdAt: '' })
-                    expect(said.join('\n')).toContain(shown)
-                    await approveDevice(api, { id: request.id, ephemeralPublicKey: request.ephemeralPublicKey, createdAt: '' }, a.vaultKey)
+                polls++
+                if (polls === 1) await tab.answer()
+                if (polls === 2) {
+                    // The terminal revealed and printed its code on the previous poll.
+                    const shown = await tab.code()
+                    expect(shown).not.toBeNull()
+                    expect(said.join('\n')).toContain(shown!)
+                    await tab.approve(a.vaultKey)
                 }
+                if (polls === 4) pressedY = true
             },
         }
         const key = await unlockByDeviceApproval(api, { ...io, clientUrl: 'https://app.example.test' })
         expect(toBase64Url(key)).toBe(toBase64Url(a.vaultKey))
+        // The key was held until y, not used the moment the tab approved.
+        expect(polls).toBe(4)
+        expect(said.join('\n')).toContain('EtherPK approved this device. Press y if it showed the same code.')
         // The instruction names the Client, not the Server, and says a tab of any page will do.
         expect(said.join('\n')).toContain('open EtherPK at https://app.example.test')
         expect(said.join('\n')).toMatch(/any page/)
+    })
+
+    it('shows no code until a tab answers', async () => {
+        const a = await account()
+        const { api } = approvalServer(a.envelope)
+        const said: string[] = []
+        const abort = new AbortController()
+        let polls = 0
+        const io = {
+            say: (line: string) => said.push(line),
+            codesMatch: () => false,
+            sleep: async () => {
+                if (++polls === 3) abort.abort()
+            },
+            signal: abort.signal,
+        }
+        await expect(unlockByDeviceApproval(api, io)).rejects.toBeInstanceOf(ApprovalAbandoned)
+        expect(said.join('\n')).not.toMatch(/[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}/)
     })
 
     it('says "open EtherPK in a browser" when the Server did not declare a Client', async () => {
@@ -88,7 +167,7 @@ describe('unlockByDeviceApproval', () => {
             createDeviceApproval: async () => ({ id: 'appr-3' }),
             pollDeviceApproval: async () => ({ status: 'rejected' }),
         } as unknown as SyncApi
-        await expect(unlockByDeviceApproval(api, { say: (l) => said.push(l), sleep: async () => {} })).rejects.toThrow('rejected')
+        await expect(unlockByDeviceApproval(api, { say: (l) => said.push(l), sleep: async () => {}, codesMatch: () => false })).rejects.toThrow('rejected')
         expect(said.join('\n')).toContain('open EtherPK in a browser')
     })
 
@@ -105,6 +184,7 @@ describe('unlockByDeviceApproval', () => {
         } as unknown as SyncApi
         const io = {
             say: () => {},
+            codesMatch: () => false,
             sleep: async () => {
                 abort.abort() // the user pressed r during the wait
             },
@@ -119,7 +199,7 @@ describe('unlockByDeviceApproval', () => {
             createDeviceApproval: async () => ({ id: 'appr-2' }),
             pollDeviceApproval: async () => ({ status: 'rejected' }),
         } as unknown as SyncApi
-        await expect(unlockByDeviceApproval(api, { say: () => {}, sleep: async () => {} })).rejects.toThrow('rejected')
+        await expect(unlockByDeviceApproval(api, { say: () => {}, sleep: async () => {}, codesMatch: () => false })).rejects.toThrow('rejected')
     })
 })
 
@@ -153,6 +233,37 @@ describe('ending the approval wait early', () => {
         const controls = approvalWaitControls()
         controls.onKey('x')
         expect(controls.signal.aborted).toBe(false)
+        expect(controls.codesMatch).toBe(false)
+    })
+
+    it('y confirms the codes match without ending the wait', () => {
+        const controls = approvalWaitControls()
+        controls.onKey('y')
+        expect(controls.codesMatch).toBe(true)
+        expect(controls.signal.aborted).toBe(false)
+    })
+
+    it('n says the codes differ: the wait aborts, records the mismatch, and nothing exits', () => {
+        const controls = approvalWaitControls()
+        controls.onKey('n')
+        expect(controls.signal.aborted).toBe(true)
+        expect(controls.mismatched).toBe(true)
+        expect(controls.exitCode).toBeNull()
+    })
+
+    it('piped input that ends before a y ends the wait, since nothing can confirm now', () => {
+        const controls = approvalWaitControls()
+        controls.onInputClosed()
+        expect(controls.signal.aborted).toBe(true)
+        expect(controls.inputClosed).toBe(true)
+    })
+
+    it('piped input that ends after a y leaves the wait running', () => {
+        const controls = approvalWaitControls()
+        controls.onKey('y\n')
+        controls.onInputClosed()
+        expect(controls.signal.aborted).toBe(false)
+        expect(controls.codesMatch).toBe(true)
     })
 
     it('stops sleeping as soon as the wait aborts, so a quit does not wait out the poll interval', async () => {

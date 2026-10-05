@@ -73,7 +73,7 @@ describe('graph-sync', () => {
                 queueMicrotask(() =>
                     receive(
                         JSON.stringify({
-                            v: 2,
+                            v: 3,
                             type: 'catchup_batch',
                             requestId: request.requestId,
                             docId: request.docId,
@@ -228,7 +228,7 @@ describe('graph-sync', () => {
         const before = graph.diagnostics().activeEngines
         receive(
             JSON.stringify({
-                v: 2,
+                v: 3,
                 type: 'presence',
                 docId: DOC_PRESENCE,
                 envelope: 'AAEC',
@@ -253,7 +253,7 @@ describe('graph-sync', () => {
                 queueMicrotask(() =>
                     receive(
                         JSON.stringify({
-                            v: 2,
+                            v: 3,
                             type: 'catchup_batch',
                             requestId: request.requestId,
                             docId: request.docId,
@@ -309,7 +309,7 @@ describe('graph-sync', () => {
                     queueMicrotask(() =>
                         receive(
                             JSON.stringify({
-                                v: 2,
+                                v: 3,
                                 type: 'catchup_batch',
                                 requestId: request.requestId,
                                 docId: request.docId,
@@ -392,7 +392,7 @@ describe('graph-sync', () => {
         const complete = async (request: Record<string, unknown>) => {
             receive(
                 JSON.stringify({
-                    v: 2,
+                    v: 3,
                     type: 'catchup_batch',
                     requestId: request.requestId,
                     docId: request.docId,
@@ -962,7 +962,7 @@ describe('graph-sync', () => {
                 sent,
                 open: () => open(),
                 drop: () => close(),
-                receive: (payload) => message(JSON.stringify({ v: 2, ...payload })),
+                receive: (payload) => message(JSON.stringify({ v: 3, ...payload })),
             }
             sockets.push(controlled)
             return controlled.transport
@@ -1136,7 +1136,7 @@ describe('graph-sync', () => {
                 queueMicrotask(() =>
                     receive(
                         JSON.stringify({
-                            v: 2,
+                            v: 3,
                             type: 'watermarks',
                             requestId: message.requestId,
                             documents: message.docIds?.map((docId) => ({
@@ -1555,7 +1555,7 @@ describe('graph-sync access loss and backoff', () => {
     it('treats a membership_revoked error as the same end, before the close arrives', async () => {
         const { gs, sockets, losses } = await scripted()
         sockets[0].open()
-        sockets[0].message({ v: 2, type: 'error', code: 'membership_revoked', message: 'Graph membership has been revoked' })
+        sockets[0].message({ v: 3, type: 'error', code: 'membership_revoked', message: 'Graph membership has been revoked' })
         sockets[0].close(4403)
         await settle()
 
@@ -1650,7 +1650,7 @@ describe('graph-sync write refusals and activity', () => {
                 sent,
                 open: () => onOpen(),
                 close: (code = 1006) => onClose({ code, reason: '' }),
-                message: (data) => onMessage(JSON.stringify({ v: 2, ...data })),
+                message: (data) => onMessage(JSON.stringify({ v: 3, ...data })),
             })
             return {
                 send: (data) => sent.push(JSON.parse(data) as Record<string, unknown>),
@@ -1910,7 +1910,7 @@ describe('graph-sync protocol mismatch', () => {
     it('reports a protocol mismatch once and stops reconnecting to that server', async () => {
         const graphId = `g-protocol-mismatch-${Math.floor(performance.now() * 1000)}`
         const cache = await openGraphCache(graphId)
-        const server = mismatchedServer(3)
+        const server = mismatchedServer(4)
         const errors: Error[] = []
         const graph = createGraphSync({
             graphId,
@@ -1927,7 +1927,7 @@ describe('graph-sync protocol mismatch', () => {
             await vi.waitFor(() => expect(errors).toHaveLength(1))
             const [error] = errors
             expect(error).toBeInstanceOf(SyncProtocolMismatchError)
-            expect(error).toMatchObject({ serverVersion: 3, clientVersion: 2 })
+            expect(error).toMatchObject({ serverVersion: 4, clientVersion: 3 })
 
             // Several replies arrive in the server's version and the socket closes; a
             // reconnect would meet the same server, so none is attempted and nothing more
@@ -2096,5 +2096,129 @@ describe('graph-sync operation window', () => {
 
         graph.dispose()
         cache.dispose()
+    })
+})
+
+describe('graph-sync follows a new Graph Key epoch (ADR 0127)', () => {
+    /** A session over a socket the test answers, with a keyring the host can move on. */
+    async function session(options: { collected?: () => ReturnType<typeof createGraphKeyring> | null; keyRetryMs?: number } = {}) {
+        const graphId = `g-epoch-${Math.floor(performance.now() * 1000)}`
+        let keyring = createGraphKeyring(graphId)
+        const sent: Array<Record<string, unknown>> = []
+        let receive: (data: string) => void = () => {}
+        let opened: (() => void) | undefined
+        const connect = (): TransportSocket => ({
+            send: (data) => sent.push(JSON.parse(data) as Record<string, unknown>),
+            close: () => {},
+            onOpen: (callback) => {
+                opened = callback
+            },
+            onMessage: (callback) => {
+                receive = callback
+            },
+            onClose: () => {},
+        })
+        const refreshKeyring = vi.fn(async () => {
+            const next = options.collected?.()
+            if (next) keyring = next
+        })
+        const cache = await openGraphCache(graphId)
+        const graph = createGraphSync({
+            graphId,
+            rootDocId: ROOT,
+            keyring: () => keyring,
+            refreshKeyring,
+            relayUrl: 'ws://relay',
+            token: fixedSyncToken('t'),
+            cache,
+            connect,
+            debounceMs: 5,
+            ...(options.keyRetryMs !== undefined ? { keyRetryDelayMs: () => options.keyRetryMs! } : {}),
+        })
+        await vi.waitFor(() => expect(opened).toBeDefined())
+        opened!()
+        await graph.connected()
+        await graph.ready()
+        return {
+            graph,
+            cache,
+            sent,
+            refreshKeyring,
+            keyring: () => keyring,
+            relay: (payload: Record<string, unknown>) => receive(JSON.stringify({ v: 3, ...payload })),
+        }
+    }
+
+    /** The session's keyring with an epoch 2 added, as the owner's copy would bring it. */
+    const withEpochTwo = (keyring: ReturnType<typeof createGraphKeyring>) => ({
+        graphId: keyring.graphId,
+        epochs: [...keyring.epochs, { epochId: 2, key: new Uint8Array(32).fill(7) }],
+    })
+
+    it('collects the new key when a write is refused as stale, then sends the write again under it', async () => {
+        let rotated: ReturnType<typeof createGraphKeyring> | null = null
+        const s = await session({ collected: () => rotated })
+        rotated = withEpochTwo(s.keyring())
+        const release = s.graph.retainDoc(DOC_1)
+        s.graph.docSync(DOC_1).doc.getText('content').insert(0, 'water the beans')
+        await vi.waitFor(() => expect(s.sent.some((m) => m.type === 'append')).toBe(true))
+        const refused = s.sent.find((m) => m.type === 'append')!
+
+        s.relay({ type: 'error', code: 'stale_epoch', message: 'stale', docId: DOC_1, outboxId: refused.outboxId, currentEpoch: 2 })
+
+        await vi.waitFor(() => expect(s.sent.filter((m) => m.type === 'append')).toHaveLength(2))
+        const resent = s.sent.filter((m) => m.type === 'append')[1]
+        expect(resent).toMatchObject({ epochId: 2 })
+        expect(resent.outboxId).not.toBe(refused.outboxId)
+        expect(s.refreshKeyring).toHaveBeenCalledTimes(1)
+        expect(s.graph.activity().waitingForKey).toBeNull()
+        release()
+        s.graph.dispose()
+        s.cache.dispose()
+    })
+
+    it('collects the key when the relay announces a new epoch', async () => {
+        let rotated: ReturnType<typeof createGraphKeyring> | null = null
+        const s = await session({ collected: () => rotated })
+        rotated = withEpochTwo(s.keyring())
+
+        s.relay({ type: 'epoch_changed', epoch: 2 })
+
+        await vi.waitFor(() => expect(s.refreshKeyring).toHaveBeenCalledTimes(1))
+        await vi.waitFor(() => expect(s.keyring().epochs.at(-1)?.epochId).toBe(2))
+        s.graph.dispose()
+        s.cache.dispose()
+    })
+
+    it('says it is waiting for the key when the owner’s copy has not arrived', async () => {
+        const s = await session({ collected: () => null })
+        const changes: Array<number | null> = []
+        s.graph.onActivity((activity) => changes.push(activity.waitingForKey))
+
+        s.relay({ type: 'epoch_changed', epoch: 2 })
+
+        await vi.waitFor(() => expect(s.graph.activity().waitingForKey).toBe(2))
+        await vi.waitFor(() => expect(changes).toContain(2))
+        s.graph.dispose()
+        s.cache.dispose()
+    })
+
+    it('keeps asking for the key while it waits, with nothing else to prompt it, and stops once it has it', async () => {
+        let asked = 0
+        let rotated: ReturnType<typeof createGraphKeyring> | null = null
+        // The copy cannot be collected twice (offline, say), then can.
+        const s = await session({ collected: () => (++asked >= 3 ? rotated : null), keyRetryMs: 5 })
+        rotated = withEpochTwo(s.keyring())
+
+        s.relay({ type: 'epoch_changed', epoch: 2 })
+
+        await vi.waitFor(() => expect(s.keyring().epochs.at(-1)?.epochId).toBe(2))
+        await vi.waitFor(() => expect(s.graph.activity().waitingForKey).toBeNull())
+        const calls = s.refreshKeyring.mock.calls.length
+        expect(calls).toBe(3)
+        await new Promise((resolve) => setTimeout(resolve, 30))
+        expect(s.refreshKeyring).toHaveBeenCalledTimes(calls)
+        s.graph.dispose()
+        s.cache.dispose()
     })
 })

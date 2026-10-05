@@ -27,7 +27,7 @@
 
 import 'fake-indexeddb/auto'
 
-import type { GraphKeyring } from '$lib/crypto'
+import type { KeyringSource } from '$lib/crypto'
 import { reachedWithin } from '$lib/reached-within'
 import { createRemoteGraphIndex, type RemoteGraphIndex } from '$lib/document/index-worker/client'
 import { inlineTransport, memoryDbHost } from '$lib/document/index-worker/transport'
@@ -60,7 +60,13 @@ import { loadLocalCache, nodeIndexHost, persistLocalCache, type NodeIndexHost } 
 export interface HeadlessGraphDeps {
     graphId: string
     rootDocId: string
-    keyring: GraphKeyring
+    /** The graph's keyring, or a getter for it where it can move to a new epoch (ADR 0127). */
+    keyring: KeyringSource
+    /**
+     * Read this account's copy of the graph's newest keyring, after which `keyring` returns it.
+     * Called when the relay announces a new epoch; absent, the graph cannot follow one.
+     */
+    refreshKeyring?: () => Promise<void>
     relayUrl: string
     token: SyncTokenSource
     /** How this device announces itself in collaborators' editors: *Agent on <host>*. */
@@ -379,6 +385,7 @@ export async function openHeadlessGraph(deps: HeadlessGraphDeps): Promise<Headle
         graphId: deps.graphId,
         rootDocId: deps.rootDocId,
         keyring: deps.keyring,
+        refreshKeyring: deps.refreshKeyring,
         relayUrl: deps.relayUrl,
         token: deps.token,
         cache,

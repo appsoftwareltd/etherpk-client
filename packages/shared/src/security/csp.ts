@@ -62,6 +62,14 @@ export interface CspOptions {
      * image never sets it. Development implies it.
      */
     plaintext?: boolean
+    /**
+     * Enforce Trusted Types, allowing only these policy names (ADR 0130): HTML and script URLs then
+     * reach the page's sinks only through a named policy. The Client sets it, since it holds the
+     * keys and renders untrusted documents; the Sync Server and Corporate do not.
+     */
+    trustedTypesPolicies?: readonly string[]
+    /** Where the browser reports violations of the policy, as a path on the app's own origin. */
+    reportUri?: string
 }
 
 export function cspDirectives(options: CspOptions): Record<string, string[]> {
@@ -86,7 +94,7 @@ export function cspDirectives(options: CspOptions): Record<string, string[]> {
         if (options.dev || options.plaintext) imgSrc.push('http:')
     }
 
-    return {
+    const directives: Record<string, string[]> = {
         'default-src': ["'self'"],
         // The inline hashes cover app.html's theme bootstrap; SvelteKit nonces its own.
         // 'wasm-unsafe-eval' is required by the SQLite build the document index runs on:
@@ -131,4 +139,13 @@ export function cspDirectives(options: CspOptions): Record<string, string[]> {
         // What form-action guards against is an injected form exfiltrating to an attacker
         // origin, and script-src above is what stops the injection in the first place.
     }
+    if (options.trustedTypesPolicies) {
+        // SvelteKit quotes `script` itself. 'allow-duplicates' lets a policy be created again
+        // under its name: Vite re-evaluates a module in development, and a bundle that carries its
+        // own Svelte creates `svelte-trusted-html` a second time.
+        directives['require-trusted-types-for'] = ['script']
+        directives['trusted-types'] = [...options.trustedTypesPolicies, "'allow-duplicates'"]
+    }
+    if (options.reportUri) directives['report-uri'] = [options.reportUri]
+    return directives
 }

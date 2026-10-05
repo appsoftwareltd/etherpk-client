@@ -37,7 +37,10 @@ async function sealedVault(keyrings: ReturnType<typeof createGraphKeyring>[]) {
 const ORIGIN = 'https://sync.example.com'
 
 function apiWithVault(envelope: string | null): { api: Pick<SyncApi, 'getVault'>; origin: string } {
-    return { api: { getVault: async () => (envelope ? { vault: envelope, version: 1 } : null) }, origin: ORIGIN }
+    return {
+        api: { getVault: async () => (envelope ? { vault: envelope, version: 1, principalId: 'account-1' } : null) },
+        origin: ORIGIN,
+    }
 }
 
 afterEach(() => {

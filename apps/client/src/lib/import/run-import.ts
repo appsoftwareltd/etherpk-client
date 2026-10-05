@@ -147,7 +147,7 @@ export async function runServerImport(
     deps.onGraphCreated?.(graph.id)
     let materialized: ServerMaterializeResult
     try {
-        const keys = await ensureGraphKeys(deps.api, graph.id, deps.getWrapKey)
+        const keys = await ensureGraphKeys(deps.api, graph.id, deps.getWrapKey, { newGraph: true })
         // The source's protection record becomes this graph's own (ADR 0093). An existing
         // account's vault takes it during materialisation; a fresh account's vault is written
         // only once the Recovery Code is acknowledged, so the record waits and goes in right

@@ -1,7 +1,35 @@
 import { describe, expect, it } from 'vitest'
 import {
-    bumpEpoch, createGraphKeyring, currentEpoch, deserializeKeyrings, keyForEpoch, serializeKeyrings,
+    KeyringConflictError, bumpEpoch, createGraphKeyring, currentEpoch, deserializeKeyrings, keyForEpoch, mergeKeyringEpochs,
+    serializeKeyrings,
 } from './keyring'
+
+describe('mergeKeyringEpochs (ADR 0126)', () => {
+    it('keeps the epochs held and adds the ones made since, in order', () => {
+        // A Player who left at epoch 2 is invited back at epoch 3.
+        const held = bumpEpoch(createGraphKeyring('g1'))
+        const incoming = bumpEpoch(held)
+
+        const merged = mergeKeyringEpochs(held, incoming)
+
+        expect(merged.epochs.map((e) => e.epochId)).toEqual([1, 2, 3])
+        expect(keyForEpoch(merged, 3)).toEqual(keyForEpoch(incoming, 3))
+    })
+
+    it('keeps epochs only the held keyring has', () => {
+        const held = bumpEpoch(createGraphKeyring('g1'))
+        const incoming = { graphId: 'g1', epochs: held.epochs.slice(1) }
+
+        expect(mergeKeyringEpochs(held, incoming).epochs.map((e) => e.epochId)).toEqual([1, 2])
+    })
+
+    it('refuses an epoch held under a different key, and merges nothing', () => {
+        const held = createGraphKeyring('g1')
+        const other = createGraphKeyring('g1')
+
+        expect(() => mergeKeyringEpochs(held, other)).toThrow(KeyringConflictError)
+    })
+})
 
 describe('graph keyring', () => {
     it('starts at epoch 1 with a 32-byte key', () => {

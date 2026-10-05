@@ -10,12 +10,14 @@
  */
 import {
     type GraphKeyring,
+    type KeyringSource,
     assetDedupToken,
     contextAad,
     currentEpoch,
     deriveAssetDedupSecret,
     fromBase64Url,
     keyForEpoch,
+    keyringReader,
     openSymmetric,
     randomBytes,
     sealSymmetric,
@@ -23,7 +25,7 @@ import {
     utf8,
 } from '$lib/crypto'
 import { withRetry, type RetryOptions } from '$lib/retry'
-import { AssetUnavailableError, mimeTypeForExt } from '$lib/storage/fs/asset-store'
+import { AssetIntegrityError, AssetUnavailableError, mimeTypeForExt } from '$lib/storage/fs/asset-store'
 import {
     ASSET_CHUNK_PLAINTEXT_BYTES,
     assetChunkCount,
@@ -118,6 +120,11 @@ function isTransientStatus(status: number): boolean {
     return status === 401 || status === 408 || status === 429 || status >= 500
 }
 
+/**
+ * The encrypted metadata an asset's uploader wrote. `hash` (SHA-256 hex of the stored bytes) has
+ * been there since assets were built; `size` and `chunkCount` arrived on 2026-10-05, so a file
+ * uploaded before then is checked by its hash alone (ADR 0027, amended).
+ */
 interface AssetMetadata {
     name: string
     type: string
@@ -125,11 +132,16 @@ interface AssetMetadata {
     isImage: boolean
     /** The per-asset AEAD key (base64url) — wrapped by living inside the epoch-encrypted blob. */
     perAssetKey: string
+    /** The stored byte length. */
+    size?: number
+    /** How many encrypted chunks the bytes were stored as. */
+    chunkCount?: number
 }
 
 export interface ServerAssetStoreDeps {
     graphId: string
-    keyring: GraphKeyring
+    /** The graph's keyring, or a getter for the current one once the graph can move to a new epoch (ADR 0127). */
+    keyring: KeyringSource
     baseUrl: string
     /**
      * Supplies a sync token (member of the graph) per request, presented as x-sync-token.
@@ -191,10 +203,16 @@ export function createServerAssetStore(deps: ServerAssetStoreDeps): AssetStore {
     const base = deps.baseUrl.replace(/\/$/, '')
     const newAssetId = deps.newAssetId ?? (() => crypto.randomUUID())
     const objectUrls: string[] = []
-    // The per-graph dedup secret (ADR 0053) never changes for a keyring, so derive it once,
-    // lazily - a store that only ever resolves never pays for it.
-    let dedupSecretPromise: Promise<Uint8Array> | undefined
-    const dedupSecret = () => (dedupSecretPromise ??= deriveAssetDedupSecret(deps.keyring))
+    const keyring = keyringReader(deps.keyring)
+    // The dedup secret (ADR 0053) comes from the newest epoch, so it changes only when the graph
+    // moves to a new one: derive it lazily, once per epoch - a store that only ever resolves
+    // never pays for it.
+    let dedup: { epochId: number; secret: Promise<Uint8Array> } | undefined
+    const dedupSecret = (ring: GraphKeyring) => {
+        const epochId = currentEpoch(ring).epochId
+        if (dedup?.epochId !== epochId) dedup = { epochId, secret: deriveAssetDedupSecret(ring) }
+        return dedup.secret
+    }
 
     const authHeaders = async (fresh = false) => ({
         'x-sync-token': await deps.syncToken(fresh ? { force: true } : undefined),
@@ -236,14 +254,11 @@ export function createServerAssetStore(deps: ServerAssetStoreDeps): AssetStore {
     }
 
     /**
-     * Fetch, decrypt and reassemble one asset; both read paths go through here. `null` when the
-     * server has no such asset or refuses it. A failure that says nothing about the asset rejects
-     * with `AssetUnavailableError`: the connection, or a status that means "try again" (a 401
-     * after one fresh token). A file that will not decrypt or parse rejects with that error.
+     * Ask the server for one asset's encrypted metadata and signed chunk addresses. `null` when the
+     * server has no such asset or refuses it; `AssetUnavailableError` when the connection fails or
+     * the status means "try again" (a 401 after one fresh token).
      */
-    async function fetchAssetBytes(ref: string): Promise<AssetBytes | null> {
-        const assetId = assetIdFromRef(ref)
-        if (!assetId) return null
+    async function requestAsset(assetId: string): Promise<{ encryptedMetadata: string; downloadUrls: string[] } | null> {
         const url = `${base}/api/v1/sync/assets/${deps.graphId}/${assetId}`
         let res = await readRequest(url, { headers: { 'x-sync-token': await deps.syncToken() } })
         // A token can be refused for having expired under a slow clock; one freshly minted says
@@ -257,17 +272,67 @@ export function createServerAssetStore(deps: ServerAssetStoreDeps): AssetStore {
             }
             return null
         }
-        const body = (await res.json()) as {
-            encryptedMetadata: string
-            downloadUrls: string[]
-        }
-        // Decrypt metadata under the epoch key → the per-asset key + MIME.
-        const metaPlain = await openSymmetric({
-            keyForEpoch: (id) => keyForEpoch(deps.keyring, id),
-            envelope: fromBase64Url(body.encryptedMetadata),
+        return (await res.json()) as { encryptedMetadata: string; downloadUrls: string[] }
+    }
+
+    /** Decrypt an asset's metadata under the graph's epoch keys. Rejects when it will not open or parse. */
+    async function openMetadata(assetId: string, encryptedMetadata: string): Promise<AssetMetadata> {
+        const { plaintext } = await openSymmetric({
+            keyForEpoch: (id) => keyForEpoch(keyring(), id),
+            envelope: fromBase64Url(encryptedMetadata),
             aad: contextAad('asset-meta', `graph:${deps.graphId}`, `id:${assetId}`),
         })
-        const metadata = JSON.parse(new TextDecoder().decode(metaPlain.plaintext)) as AssetMetadata
+        return JSON.parse(new TextDecoder().decode(plaintext)) as AssetMetadata
+    }
+
+    /**
+     * Does the asset the server offered for reuse hold these bytes, by its own encrypted hash? Its
+     * metadata is enough: the hash in it was written by the client that uploaded it and cannot be
+     * changed by the server. Anything that stops the check, from a refusal to metadata that will not
+     * open, answers no, which costs a duplicate upload and never a wrong file.
+     */
+    async function holdsSameBytes(assetId: string, hash: string): Promise<boolean> {
+        try {
+            const body = await requestAsset(assetId)
+            if (!body) return false
+            return (await openMetadata(assetId, body.encryptedMetadata)).hash === hash
+        } catch {
+            return false
+        }
+    }
+
+    /**
+     * Fetch, decrypt and reassemble one asset; both read paths go through here. `null` when the
+     * server has no such asset or refuses it. A failure that says nothing about the asset rejects
+     * with `AssetUnavailableError`: the connection, or a status that means "try again" (a 401
+     * after one fresh token). A file that will not decrypt or parse rejects with that error.
+     *
+     * Each chunk is authenticated on its own, but the list of chunks comes from the server, so a
+     * file cut short decrypts chunk by chunk without complaint. The encrypted metadata is the
+     * uploader's own record of what was stored: the chunk count is checked before anything is
+     * downloaded, and the joined bytes against the size and the hash. A mismatch is an
+     * `AssetIntegrityError` and the bytes are never handed over (ADR 0027, amended 2026-10-05).
+     * One more fetch is made first, since a list cut short can be a passing fault.
+     */
+    async function fetchAssetBytes(ref: string): Promise<AssetBytes | null> {
+        try {
+            return await fetchAssetBytesOnce(ref)
+        } catch (error) {
+            if (!(error instanceof AssetIntegrityError)) throw error
+            return fetchAssetBytesOnce(ref)
+        }
+    }
+
+    async function fetchAssetBytesOnce(ref: string): Promise<AssetBytes | null> {
+        const assetId = assetIdFromRef(ref)
+        if (!assetId) return null
+        const body = await requestAsset(assetId)
+        if (!body) return null
+        // Decrypt metadata under the epoch key → the per-asset key + MIME.
+        const metadata = await openMetadata(assetId, body.encryptedMetadata)
+        if (typeof metadata.chunkCount === 'number' && body.downloadUrls.length !== metadata.chunkCount) {
+            throw new AssetIntegrityError()
+        }
         const perAssetKey = fromBase64Url(metadata.perAssetKey)
 
         // Download + decrypt each chunk, reassemble.
@@ -296,6 +361,8 @@ export function createServerAssetStore(deps: ServerAssetStoreDeps): AssetStore {
             joined.set(p, offset)
             offset += p.length
         }
+        if (typeof metadata.size === 'number' && joined.length !== metadata.size) throw new AssetIntegrityError()
+        if (typeof metadata.hash !== 'string' || (await sha256Hex(joined)) !== metadata.hash) throw new AssetIntegrityError()
         // The metadata carries the name the uploader actually chose, casing and spaces intact
         // ("Q3 Report.pdf"), which the kebab-cased ref cannot. That is what a download is
         // called and what titles an asset tab.
@@ -304,6 +371,9 @@ export function createServerAssetStore(deps: ServerAssetStoreDeps): AssetStore {
 
     return {
         async save({ name, bytes, type }, onBytes): Promise<SavedAsset> {
+            // One keyring for the whole upload, so its dedup token and its metadata are under the
+            // same epoch even when the graph moves to a new one part way through.
+            const ring = keyring()
             const assetId = newAssetId()
             const perAssetKey = randomBytes(32)
             const hash = await sha256Hex(bytes)
@@ -325,13 +395,22 @@ export function createServerAssetStore(deps: ServerAssetStoreDeps): AssetStore {
             // Within-graph reuse (ADR 0053): a blinded token of the content hash travels with
             // the begin call. The server can index it but not invert it, so it answers "these
             // bytes are already here" without learning what they are.
-            const dedupToken = await assetDedupToken(await dedupSecret(), hash)
+            const dedupToken = await assetDedupToken(await dedupSecret(ring), hash)
 
-            // Metadata encrypted under the CURRENT graph epoch key.
-            const metadata: AssetMetadata = { name, type, hash, isImage, perAssetKey: toBase64Url(perAssetKey) }
+            // Metadata encrypted under the CURRENT graph epoch key. Size and chunk count let a
+            // reader refuse a file the server cut short (ADR 0027, amended 2026-10-05).
+            const metadata: AssetMetadata = {
+                name,
+                type,
+                hash,
+                isImage,
+                perAssetKey: toBase64Url(perAssetKey),
+                size: bytes.length,
+                chunkCount,
+            }
             const encryptedMetadata = await sealSymmetric({
-                key: currentEpoch(deps.keyring).key,
-                epochId: currentEpoch(deps.keyring).epochId,
+                key: currentEpoch(ring).key,
+                epochId: currentEpoch(ring).epochId,
                 plaintext: utf8(JSON.stringify(metadata)),
                 aad: contextAad('asset-meta', `graph:${deps.graphId}`, `id:${assetId}`),
             })
@@ -340,28 +419,40 @@ export function createServerAssetStore(deps: ServerAssetStoreDeps): AssetStore {
             // complete asset in this graph already carries the token. Safe to retry - the
             // server records (graph, asset) ON CONFLICT DO NOTHING, so a second attempt
             // stores nothing new, double-counts no storage, and simply re-presigns.
-            const begun = await step(async (fresh) => {
-                const res = await f(`${base}/api/v1/sync/assets`, {
-                    method: 'POST',
-                    headers: await authHeaders(fresh),
-                    body: JSON.stringify({
-                        graphId: deps.graphId,
-                        assetId,
-                        size: bytes.length,
-                        chunkCount,
-                        encryptedMetadata: toBase64Url(encryptedMetadata),
-                        dedupToken,
-                    }),
+            const begin = (withToken: boolean) =>
+                step(async (fresh) => {
+                    const res = await f(`${base}/api/v1/sync/assets`, {
+                        method: 'POST',
+                        headers: await authHeaders(fresh),
+                        body: JSON.stringify({
+                            graphId: deps.graphId,
+                            assetId,
+                            size: bytes.length,
+                            chunkCount,
+                            encryptedMetadata: toBase64Url(encryptedMetadata),
+                            ...(withToken ? { dedupToken } : {}),
+                        }),
+                    })
+                    if (!res.ok) throw await beginFailure(res)
+                    return (await res.json()) as { uploadUrls: string[] } | { reuse: { assetId: string } }
                 })
-                if (!res.ok) throw await beginFailure(res)
-                return (await res.json()) as { uploadUrls: string[] } | { reuse: { assetId: string } }
-            })
+            let begun = await begin(true)
             if ('reuse' in begun) {
-                // Nothing to encrypt or push. Report the bytes as retired all the same: the
-                // caller is measuring work done, not bytes through a socket (as the
-                // Filesystem store does for its own dedup), so an Activity bar still completes.
-                onBytes?.(bytes.length)
-                return saved(begun.reuse.assetId, true)
+                // The server names which file to reuse, and nothing it says can be taken on
+                // trust: a reuse answer pointing at a different file of the graph would put that
+                // file where this one was pasted. Reuse only a file whose own encrypted hash is
+                // this one's; otherwise upload a fresh copy, with no token, so the same answer
+                // cannot come back.
+                if (await holdsSameBytes(begun.reuse.assetId, hash)) {
+                    // Nothing to encrypt or push. Report the bytes as retired all the same: the
+                    // caller is measuring work done, not bytes through a socket (as the
+                    // Filesystem store does for its own dedup), so an Activity bar still completes.
+                    onBytes?.(bytes.length)
+                    return saved(begun.reuse.assetId, true)
+                }
+                console.warn(`[sync] the server offered asset ${begun.reuse.assetId} for reuse, but its hash differs; uploading a fresh copy`)
+                begun = await begin(false)
+                if ('reuse' in begun) throw new Error('The sync server answered an upload with a file it was not asked for.')
             }
             const { uploadUrls } = begun
 
@@ -432,10 +523,13 @@ export function createServerAssetStore(deps: ServerAssetStoreDeps): AssetStore {
         },
 
         // The mirror and the publisher report an asset they got no bytes for. A server that answered
-        // "try again" is that, as any refusal is; a connection that failed rejects, as it always has.
+        // "try again" is that, as any refusal is, and so is a file that arrived damaged: none of
+        // it is ever saved or published in part. A connection that failed rejects, as it always has.
         readBytes: (ref: string) =>
             fetchAssetBytes(ref).catch((error: unknown) =>
-                error instanceof AssetUnavailableError && error.status !== undefined ? null : Promise.reject(error),
+                (error instanceof AssetUnavailableError && error.status !== undefined) || error instanceof AssetIntegrityError
+                    ? null
+                    : Promise.reject(error),
             ),
 
         async resolve(ref: string): Promise<ResolvedAsset | null> {

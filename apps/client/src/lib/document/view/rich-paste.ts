@@ -29,11 +29,6 @@ export interface RichPastePlan {
     images: PastedImage[]
 }
 
-/** The browser's parser. */
-export function parseHtml(html: string): Document {
-    return new DOMParser().parseFromString(html, 'text/html')
-}
-
 /**
  * What the paste puts in, or null when the plain text should be pasted instead: the caret is in a
  * fenced block or the frontmatter, or the HTML holds nothing to paste.

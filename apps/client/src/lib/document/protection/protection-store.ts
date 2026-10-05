@@ -100,7 +100,12 @@ export function filesystemProtectionStore(adapter: DirectoryAdapter): Protection
 /** The slice of vault access this store needs, so it does not depend on the whole sync stack. */
 export interface VaultProtectionAccess {
     readProtection(): Promise<Record<string, ProtectionRecord> | undefined>
-    writeProtection(next: Record<string, ProtectionRecord> | undefined): Promise<void>
+    /**
+     * Set one graph's record, or remove it with `undefined`, leaving every other graph's as it
+     * is. One vault holds every graph's record, and the write is made against the latest vault,
+     * so another device's change to a neighbour is never lost.
+     */
+    writeProtection(graphId: string, record: ProtectionRecord | undefined): Promise<void>
 }
 
 export function vaultProtectionStore(graphId: string, access: VaultProtectionAccess): ProtectionRecordStore {
@@ -116,15 +121,12 @@ export function vaultProtectionStore(graphId: string, access: VaultProtectionAcc
             return readFrom('this graph’s protection record in your account vault', () => validateProtectionRecord(entry))
         },
         async write(record) {
-            // Read-modify-write the whole map: one vault holds every graph's record, and a blind
-            // overwrite would drop the others. They are carried verbatim, unchecked - a neighbour
+            // Only this graph's record: the others are carried verbatim, unchecked - a neighbour
             // written by a newer build is that graph's key, and not ours to rewrite.
-            await access.writeProtection({ ...((await access.readProtection()) ?? {}), [graphId]: record })
+            await access.writeProtection(graphId, record)
         },
         async clear() {
-            const current = { ...((await access.readProtection()) ?? {}) }
-            delete current[graphId]
-            await access.writeProtection(current)
+            await access.writeProtection(graphId, undefined)
         },
     }
 }

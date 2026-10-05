@@ -13,6 +13,7 @@
 import type { Extension } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
 
+import { setTrustedMarkup } from '$lib/security/trusted-types'
 import { iconSvg } from '$lib/surface/icons'
 
 import type { InlineAction } from '../../inline-action'
@@ -66,7 +67,7 @@ export function buildActionCluster<T>(view: EditorView, options: ActionClusterOp
         button.setAttribute('aria-label', `${action.label} ${options.name}`)
         button.setAttribute(options.actionAttr, action.command)
         // The icon markup is in-repo constant text (surface/icons.ts), never document content.
-        button.innerHTML = iconSvg(action.icon, { size: options.size })
+        setTrustedMarkup(button, iconSvg(action.icon, { size: options.size }))
         painted.set(button, { action, name: options.name, size: options.size, buttonClass: options.buttonClass })
         // mousedown, not click: the editor's own handlers act on mousedown, and letting one
         // through would place the caret (or pin the image open) behind the dialog.
@@ -94,7 +95,7 @@ export function showConfirmation(button: HTMLButtonElement): void {
     const confirm = state?.action.confirm
     if (!state || !confirm) return
     const paint = (icon: string, label: string, done: boolean) => {
-        button.innerHTML = iconSvg(icon, { size: state.size })
+        setTrustedMarkup(button, iconSvg(icon, { size: state.size }))
         button.title = label
         button.setAttribute('aria-label', `${label} ${state.name}`)
         button.classList.toggle(`${state.buttonClass}--done`, done)

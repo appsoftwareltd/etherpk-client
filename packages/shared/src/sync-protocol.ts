@@ -1,7 +1,12 @@
 import { z } from 'zod'
 import { quotaErrorCodeSchema } from './managed-service'
 
-export const SYNC_PROTOCOL_VERSION = 2 as const
+/**
+ * 3 (ADR 0127): Graph Key epochs. Writes under an epoch older than the graph's current one are
+ * refused with `stale_epoch`, the relay tells live members of a new epoch with `epoch_changed`,
+ * and presence declares its epoch so stale presence can be dropped unread.
+ */
+export const SYNC_PROTOCOL_VERSION = 3 as const
 
 export interface SyncProtocolLimits {
     maxMessageBytes: number
@@ -63,6 +68,12 @@ export const SYNC_ERROR_CODES = [
     'subscription_limit',
     /** A snapshot read-back named a (generation, throughSeq) the relay does not hold. */
     'snapshot_missing',
+    /**
+     * A write sealed under a Graph Key epoch older than the graph's current one (ADR 0127). Nothing
+     * was stored. The client collects its copy of the new keyring, seals the write again under the
+     * current epoch, and sends it with a new outbox id.
+     */
+    'stale_epoch',
     'internal_error',
 ] as const
 
@@ -197,7 +208,9 @@ function clientMessageSchema(limits: SyncProtocolLimits) {
                 throughSeq: safeInteger,
             })
             .strict(),
-        z.object({ v: version, type: z.literal('presence'), docId: uuid, envelope: presenceEnvelope }).strict(),
+        // The epoch the presence envelope is sealed under, so the relay drops presence under an
+        // older epoch without reading the envelope (ADR 0127).
+        z.object({ v: version, type: z.literal('presence'), docId: uuid, epochId: safeInteger, envelope: presenceEnvelope }).strict(),
         z.object({ v: version, type: z.literal('ack_confirm'), outboxId: uuid }).strict(),
     ]).or(subscribe)
 }
@@ -270,6 +283,12 @@ function serverMessageSchema(limits: SyncProtocolLimits) {
             })
             .strict(),
         z.object({ v: version, type: z.literal('presence'), docId: uuid, envelope: presenceEnvelope }).strict(),
+        /**
+         * The graph's Graph Key moved to a new epoch (ADR 0127), or, sent once on connect, the epoch
+         * a graph past its first is on. The client collects its copy of the keyring when it lacks
+         * that epoch and seals what it writes from now on under it; older writes are refused.
+         */
+        z.object({ v: version, type: z.literal('epoch_changed'), epoch: generation }).strict(),
         z
             .object({
                 v: version,
@@ -303,6 +322,8 @@ function serverMessageSchema(limits: SyncProtocolLimits) {
                  */
                 outboxId: uuid.optional(),
                 currentGeneration: generation.optional(),
+                /** With `stale_epoch`: the graph's current epoch, which the write must be sealed under. */
+                currentEpoch: generation.optional(),
                 quotaCode: quotaErrorCodeSchema.optional(),
                 retryable: z.boolean().optional(),
             })

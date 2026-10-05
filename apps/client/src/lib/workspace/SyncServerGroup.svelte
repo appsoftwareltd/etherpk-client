@@ -15,6 +15,14 @@
         delete(view: SyncedGraphView): void;
         leave(view: SyncedGraphView): void;
         cancelInvite(view: SyncedGraphView, member: SyncedMember): void;
+        /** Compare a member's Security Fingerprint and pin it (ADR 0126). */
+        verifyMember(view: SyncedGraphView, member: SyncedMember): void;
+        /** Remove a Player the owner has confirmed removing, then give the graph a new key (ADR 0127). */
+        removeMember(view: SyncedGraphView, member: SyncedMember): void;
+        /** Give an owned graph a new key now (ADR 0127). */
+        rotateKey(view: SyncedGraphView): void;
+        /** Compare the owner's new fingerprint, so the key copy they signed with it can be used. */
+        verifyOwner(view: SyncedGraphView): void;
         acceptInvite(invite: PendingInvite): void;
         declineInvite(invite: PendingInvite): void;
         /** Ask to decline (an id), or step back from it (null). */
@@ -22,6 +30,8 @@
         signIn(): void;
         reconnect(): void;
         retry(): void;
+        /** Ask for this device's passcode, which protects the server's access token (ADR 0129). */
+        enterPasscode(): void;
         /** Open this server's sub-tab on the Sync tab: its account, plan and keys. */
         showSettings(): void;
     }
@@ -38,6 +48,7 @@
         formatBytes,
     } from "@appsoftwareltd/etherpk-shared";
     import SyncedGraphRow from "./SyncedGraphRow.svelte";
+    import { keyCopyNotice } from "./graph-picker-helpers";
     import {
         CUSTOM_SERVER_ICON,
         MANAGED_SERVER_ICON,
@@ -52,6 +63,7 @@
         rowMessage,
         discardChecking,
         withdrawingInvite,
+        removingMember,
         checkingInvite,
         decliningInvite,
         corporateBillingUrl,
@@ -68,6 +80,8 @@
         rowMessage: Record<string, { text: string; tone: "info" | "error" }>;
         discardChecking: string | null;
         withdrawingInvite: string | null;
+        /** The member whose removal is in flight. */
+        removingMember: string | null;
         checkingInvite: string | null;
         decliningInvite: string | null;
         corporateBillingUrl: string | null;
@@ -115,6 +129,8 @@
                 return `${kind} · signed out`;
             case "unavailable":
                 return `${kind} · could not be reached`;
+            case "locked":
+                return `${kind} · needs this device's passcode`;
             default:
                 return `${kind} · checking…`;
         }
@@ -410,6 +426,23 @@
                 >{server.loading ? "Trying again…" : "Try again"}</button
             >
         </div>
+    {:else if server.authState === "locked"}
+        <div
+            class="flex flex-wrap items-center gap-3"
+            data-testid="synced-graphs-locked"
+        >
+            <p class="min-w-0 flex-1 text-sm text-gray-600 dark:text-gray-400">
+                The access token for {server.host} is protected by this device's
+                passcode. The graphs this device holds for it are listed here.
+                Enter the passcode to see the rest.
+            </p>
+            <button
+                type="button"
+                data-testid="sync-enter-passcode"
+                onclick={actions.enterPasscode}
+                class={SECONDARY_BUTTON}>Enter passcode</button
+            >
+        </div>
     {:else if server.authState === "unavailable"}
         <div
             class="flex flex-wrap items-center gap-3"
@@ -453,6 +486,11 @@
                     canInvite={server.ownedGraphsWritable}
                     checking={discardChecking === row.id}
                     cancellingInvite={withdrawingInvite}
+                    keyNotice={view?.role !== "owner" && server.keyCopies[row.id]
+                        ? keyCopyNotice(server.keyCopies[row.id])
+                        : null}
+                    rotating={server.rotating.has(row.id)}
+                    {removingMember}
                     onopen={() => record && actions.open(record)}
                     onadd={() => view && actions.add(view)}
                     onrename={() => record && actions.rename(record)}
@@ -464,6 +502,12 @@
                     onleave={() => view && actions.leave(view)}
                     oncancelinvite={(member) =>
                         view && actions.cancelInvite(view, member)}
+                    onverify={(member) =>
+                        view && actions.verifyMember(view, member)}
+                    onremovemember={(member) =>
+                        view && actions.removeMember(view, member)}
+                    onrotate={() => view && actions.rotateKey(view)}
+                    onverifyowner={() => view && actions.verifyOwner(view)}
                 />
             {/each}
         </ul>

@@ -46,8 +46,9 @@ export const POST: RequestHandler = async ({ cookies, fetch, request, url }) => 
 
     // The access token the last refresh produced is still good: hand it out again. Refreshing on
     // every call would make each page load and each new tab a request to Corporate's token
-    // endpoint, which every managed user shares.
-    const held = heldAccessToken(session)
+    // endpoint, which every managed user shares. `?fresh=1` skips it: after a Key Replacement the
+    // Sync Server refuses every token issued before it (ADR 0128), the held one included.
+    const held = url.searchParams.get('fresh') === '1' ? null : heldAccessToken(session)
     if (held) return tokenResponse(held.accessToken, held.expiresAt)
 
     let stage: 'discovery' | 'refresh' = 'discovery'

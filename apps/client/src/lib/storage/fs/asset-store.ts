@@ -91,6 +91,22 @@ export class AssetUnavailableError extends Error {
     }
 }
 
+/**
+ * An asset arrived, but not as it was stored: the server offered a different number of chunks than
+ * its encrypted metadata records, or the joined bytes do not match the size or hash recorded there.
+ * Each chunk is authenticated on its own, so this is what catches a file cut short, or a reuse
+ * answer that points at a different file (ADR 0027, amended 2026-10-05). The bytes are never
+ * handed over. Distinct from a missing file (`null`), which is gone, and from an unavailable one,
+ * which may come good by itself.
+ */
+export class AssetIntegrityError extends Error {
+    readonly name = 'AssetIntegrityError'
+
+    constructor(message = 'This file did not arrive complete, so it was not opened. Try again in a moment.') {
+        super(message)
+    }
+}
+
 export interface AssetStore {
     /** Hash the bytes, derive the name, write-unless-present, and return the reference to embed. */
     save(

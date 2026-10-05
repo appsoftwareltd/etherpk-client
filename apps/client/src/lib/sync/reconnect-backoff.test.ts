@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { RECONNECT_CAP_MS, REFUSAL_RETRY_CAP_MS, reconnectDelayMs, refusalRetryDelayMs } from './reconnect-backoff'
+import { KEY_RETRY_CAP_MS, RECONNECT_CAP_MS, REFUSAL_RETRY_CAP_MS, keyRetryDelayMs, reconnectDelayMs, refusalRetryDelayMs } from './reconnect-backoff'
 
 describe('reconnectDelayMs', () => {
     it('draws from a ceiling that doubles from half a second', () => {
@@ -27,5 +27,14 @@ describe('refusalRetryDelayMs', () => {
         expect(refusalRetryDelayMs(2, () => 0)).toBe(10_000)
         expect(refusalRetryDelayMs(30, () => 0.999_999)).toBeLessThan(REFUSAL_RETRY_CAP_MS)
         expect(refusalRetryDelayMs(30, () => 0)).toBe(REFUSAL_RETRY_CAP_MS / 2)
+    })
+})
+
+describe('keyRetryDelayMs', () => {
+    it('waits at least half the ceiling, which doubles from fifteen seconds to five minutes', () => {
+        expect(keyRetryDelayMs(1, () => 0)).toBe(7_500)
+        expect(keyRetryDelayMs(2, () => 0)).toBe(15_000)
+        expect(keyRetryDelayMs(30, () => 0.999_999)).toBeLessThan(KEY_RETRY_CAP_MS)
+        expect(keyRetryDelayMs(30, () => 0)).toBe(KEY_RETRY_CAP_MS / 2)
     })
 })

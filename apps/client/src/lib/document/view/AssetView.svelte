@@ -15,7 +15,7 @@
      * is framed, for the reasons in ADR 0055. A type with no viewer is not a failure: the tab
      * says so and offers the download, which always works.
      */
-    import { AssetUnavailableError, displayAssetName, type ResolvedAsset } from "$lib/storage/fs/asset-store";
+    import { AssetIntegrityError, AssetUnavailableError, displayAssetName, type ResolvedAsset } from "$lib/storage/fs/asset-store";
     import { assetViewerFor, tryGetActiveContributionRegistry } from "$lib/surface";
     import { viewKey, type ViewRef } from "$lib/layout";
     import { workspaceService } from "$lib/workspace/workspace-services";
@@ -34,6 +34,14 @@
     let failed = $state(false);
     /** The bytes could not be fetched just now and are being asked for again (asset-load-retry.ts). */
     let unavailable = $state(false);
+    /**
+     * The bytes arrived but not as they were stored (`AssetIntegrityError`): cut short, or not
+     * matching their encrypted hash. Never retried by itself, since the same answer would come back,
+     * but the user can ask again.
+     */
+    let damaged = $state(false);
+    /** Bumped by **Retry** to run the load again for the same asset. */
+    let attempt = $state(0);
 
     const name = $derived(resolved?.name ?? fallbackName);
     const viewer = $derived.by(() => {
@@ -46,9 +54,11 @@
     // trip plus a decrypt, and it has to re-run when the tab is pointed at a different asset.
     $effect(() => {
         const target = view.target;
+        void attempt;
         resolved = null;
         failed = false;
         unavailable = false;
+        damaged = false;
         const store = tryGetActiveAssetStore();
         if (!store) {
             failed = true;
@@ -71,7 +81,10 @@
                 },
                 missing: () => (failed = true),
                 unavailable: () => (unavailable = true),
-                failed: () => (failed = true),
+                failed: (error) => {
+                    if (error instanceof AssetIntegrityError) damaged = true;
+                    else failed = true;
+                },
             },
             { retryable: (error) => error instanceof AssetUnavailableError },
         );
@@ -89,7 +102,20 @@
 </script>
 
 <div class="flex h-full w-full flex-col bg-[var(--gk-surface-0,transparent)]" data-testid="asset-view">
-    {#if failed}
+    {#if damaged}
+        <div class="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
+            <p class="text-sm text-gray-600 dark:text-gray-400" role="alert" data-testid="asset-view-damaged">
+                <span class="font-medium text-gray-900 dark:text-gray-100">{fallbackName}</span> could not
+                be shown because it arrived incomplete. Nothing was saved from it.
+            </p>
+            <button
+                type="button"
+                onclick={() => (attempt += 1)}
+                class="rounded-lg border border-gray-300 dark:border-gray-700 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5"
+                >Retry</button
+            >
+        </div>
+    {:else if failed}
         <div class="flex flex-1 items-center justify-center p-6 text-center">
             <p class="text-sm text-gray-600 dark:text-gray-400" data-testid="asset-view-missing">
                 <span class="font-medium text-gray-900 dark:text-gray-100">{fallbackName}</span> is no longer

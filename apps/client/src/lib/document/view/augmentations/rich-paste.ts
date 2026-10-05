@@ -14,12 +14,13 @@
 import type { Extension } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
 
+import { parseInertHtml } from '$lib/security/trusted-types'
 import type { AssetStore } from '$lib/storage/fs/asset-store'
 
 import { defaultMaxImageDisplaySize } from '../asset-upload'
 import { RICH_PASTE_USER_EVENT } from '../editor-history'
 import { addPastedRange, pastedRangesField, startRemoteImageUpload } from '../remote-image-upload'
-import { parseHtml, planRichPaste } from '../rich-paste'
+import { planRichPaste } from '../rich-paste'
 
 /** Each paste's range gets its own id, so its uploads find their own references and no other. */
 let nextPasteId = 1
@@ -47,7 +48,7 @@ export function richPasteAugmentation(options: RichPasteOptions): Extension {
         paste(event, view) {
             const html = event.clipboardData?.getData('text/html') ?? ''
             if (html.trim() === '') return false
-            const plan = planRichPaste(view.state, html, options.parse ?? parseHtml, defaultMaxImageDisplaySize())
+            const plan = planRichPaste(view.state, html, options.parse ?? parseInertHtml, defaultMaxImageDisplaySize())
             if (!plan) return false
             event.preventDefault()
             const id = nextPasteId++

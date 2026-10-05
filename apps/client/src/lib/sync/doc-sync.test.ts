@@ -1182,6 +1182,156 @@ describe('doc-sync', () => {
     })
 })
 
+describe('Graph Key epochs (ADR 0127)', () => {
+    /** An engine over a keyring the test can move to a new epoch, as a collected key does. */
+    function rotatable(cache = memoryCache()) {
+        const original = createGraphKeyring('g1')
+        let current = original
+        const sent: RelayClientMessage[] = []
+        const missing: number[] = []
+        const sync = createDocSync({
+            docId: 'd1',
+            graphId: 'g1',
+            keyring: () => current,
+            onMissingKey: (epochId) => missing.push(epochId),
+            send: (m) => sent.push(m),
+            persist: cache,
+            debounceMs: 5,
+        })
+        return {
+            sync,
+            sent,
+            missing,
+            cache,
+            original,
+            rotate: () => {
+                current = bumpEpoch(current)
+                return current
+            },
+            /** The keyring this device holds from now on, as one collected from the owner. */
+            use: (next: ReturnType<typeof createGraphKeyring>) => {
+                current = next
+            },
+        }
+    }
+
+    const appends = (sent: RelayClientMessage[]) =>
+        sent.filter((m): m is Extract<RelayClientMessage, { type: 'append' }> => m.type === 'append')
+
+    async function plaintextOf(envelope: string, keyring: ReturnType<typeof createGraphKeyring>): Promise<Uint8Array> {
+        const { openSymmetric, contextAad, fromBase64Url, keyForEpoch } = await import('$lib/crypto')
+        return (await openSymmetric({ keyForEpoch: (id) => keyForEpoch(keyring, id), envelope: fromBase64Url(envelope), aad: contextAad('update', 'graph:g1', 'doc:d1') })).plaintext
+    }
+
+    it('seals a write the relay refused again, under the new epoch and with a new outbox id', async () => {
+        const engine = rotatable()
+        await engine.sync.ready()
+        engine.sync.doc.getText('content').insert(0, 'water the beans')
+        await engine.sync.flush()
+        const [refused] = appends(engine.sent)
+        expect(refused.epochId).toBe(1)
+
+        engine.sync.staleEpoch(refused.outboxId)
+        const rotated = engine.rotate()
+        await engine.sync.keysChanged()
+
+        const resent = appends(engine.sent).at(-1)!
+        expect(resent.outboxId).not.toBe(refused.outboxId)
+        expect(resent.epochId).toBe(2)
+        expect(await plaintextOf(resent.envelope, rotated)).toEqual(await plaintextOf(refused.envelope, rotated))
+        // Only the new operation is waiting, durably.
+        expect((await engine.cache.pending()).map((op) => op.outboxId)).toEqual([resent.outboxId])
+        engine.sync.destroy()
+    })
+
+    it('leaves the write in flight alone until the relay answers it: it may already be stored', async () => {
+        const engine = rotatable()
+        await engine.sync.ready()
+        engine.sync.doc.getText('content').insert(0, 'water the beans')
+        await engine.sync.flush()
+        const [inFlight] = appends(engine.sent)
+
+        engine.rotate()
+        await engine.sync.keysChanged()
+
+        expect(appends(engine.sent)).toHaveLength(1)
+        expect((await engine.cache.pending()).map((op) => op.outboxId)).toEqual([inFlight.outboxId])
+        engine.sync.destroy()
+    })
+
+    it('seals again an operation queued behind the head, which was never sent', async () => {
+        const { sealSymmetric, contextAad, toBase64Url } = await import('$lib/crypto')
+        const cache = memoryCache()
+        const engine = rotatable(cache)
+        // What an earlier session left: two operations, both under epoch 1.
+        const queue = async (outboxId: string, text: string, createdAt: number) => {
+            const doc = new Y.Doc()
+            doc.getText('content').insert(0, text)
+            const plaintext = Y.encodeStateAsUpdate(doc)
+            const envelope = toBase64Url(
+                await sealSymmetric({ key: engine.original.epochs[0].key, epochId: 1, plaintext, aad: contextAad('update', 'graph:g1', 'doc:d1') }),
+            )
+            await cache.enqueue(
+                { outboxId, kind: 'append', generation: 1, epochId: 1, envelope, stateVector: Y.encodeStateVector(doc), createdAt },
+                { update: Y.encodeStateAsUpdate(doc), lastSeq: 0, lastSyncedStateVector: Y.encodeStateVector(new Y.Doc()) },
+            )
+        }
+        await queue('018f47a0-7b5d-7cc5-b5c1-0000000000a1', 'Garden', 1)
+        await queue('018f47a0-7b5d-7cc5-b5c1-0000000000a2', 'Kitchen', 2)
+        await engine.sync.ready()
+
+        engine.rotate()
+        await engine.sync.keysChanged()
+
+        const pending = await cache.pending()
+        expect(pending[0]).toMatchObject({ outboxId: '018f47a0-7b5d-7cc5-b5c1-0000000000a1', epochId: 1 })
+        expect(pending[1]).toMatchObject({ epochId: 2 })
+        expect(pending[1].outboxId).not.toBe('018f47a0-7b5d-7cc5-b5c1-0000000000a2')
+        engine.sync.destroy()
+    })
+
+    it('reports an update under an epoch it lacks once, stops asking for it, and asks again when the key arrives', async () => {
+        const producer = rotatable()
+        const rotated = producer.rotate()
+        await producer.sync.ready()
+        // A member of the same graph: it holds epoch 1 only, until the owner's copy arrives.
+        const consumer = rotatable()
+        consumer.use({ graphId: 'g1', epochs: rotated.epochs.slice(0, 1) })
+        producer.sync.doc.getText('content').insert(0, 'new epoch')
+        await producer.sync.flush()
+        const [append] = appends(producer.sent)
+
+        await consumer.sync.ready()
+        const update = (seq: number) => ({ type: 'update' as const, docId: 'd1', generation: 1, seq, epochId: 2, envelope: append.envelope })
+        await consumer.sync.receive(update(1))
+        await consumer.sync.receive(update(2))
+
+        expect(consumer.missing).toEqual([2])
+        expect(consumer.sync.health()).toBe('key-unavailable')
+        // The gap behind the blocked update does not set off a catch-up that would only meet it again.
+        expect(consumer.sent.filter((m) => m.type === 'catchup')).toHaveLength(0)
+
+        consumer.use(rotated)
+        await consumer.sync.keysChanged()
+        expect(consumer.sent.filter((m) => m.type === 'catchup')).toEqual([expect.objectContaining({ afterSeq: 0 })])
+        producer.sync.destroy()
+        consumer.sync.destroy()
+    })
+
+    it('declares the epoch of its presence', async () => {
+        const engine = rotatable()
+        await engine.sync.ready()
+        engine.rotate()
+
+        await engine.sync.advertisePresence()
+        engine.sync.awareness.setLocalState({ user: { name: 'Calm Owl' } })
+
+        await vi.waitFor(() => expect(engine.sent.some((m) => m.type === 'presence')).toBe(true))
+        expect(engine.sent.find((m) => m.type === 'presence')).toMatchObject({ epochId: 2 })
+        engine.sync.destroy()
+    })
+})
+
 describe('collecting the cache row', () => {
     const FENCE = '```etherpk-cipher\nAAAA\n```'
 

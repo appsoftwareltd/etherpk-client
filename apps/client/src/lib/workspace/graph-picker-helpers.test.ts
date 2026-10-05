@@ -2,15 +2,19 @@ import { describe, expect, it, vi } from 'vitest'
 
 import type { GraphRecord } from '$lib/storage'
 
-import { createGraphKeyring, toBase64Url } from '$lib/crypto'
+import { createGraphKeyring, generateIdentityKeyPair, generateSigningKeyPair, toBase64Url } from '$lib/crypto'
 import { sealGraphName } from '$lib/sync/graph-name-envelope'
+import { withPin } from '$lib/sync/pins'
+import { newVault } from '$lib/sync/testing/fake-sync-server'
 
 import type { SyncAccountSummary } from '@appsoftwareltd/etherpk-shared'
 
 import {
     copyServer,
     countCopiesByServer,
+    keyCopyNotice,
     loadSyncedGraphViews,
+    memberTrust,
     persistableGraphRecord,
     serverGroupVisible,
     serverPlanGate,
@@ -89,6 +93,7 @@ describe('graph picker helpers', () => {
                     role: 'owner',
                     members: null,
                     storage: { docBytes: 10, assetBytes: 20 },
+                    rotationDue: false,
                 },
                 {
                     id: 'shared',
@@ -100,6 +105,7 @@ describe('graph picker helpers', () => {
                     role: 'player',
                     members: null,
                     storage: undefined,
+                    rotationDue: false,
                 },
             ],
             ownedStorage: { graphs: 1, docBytes: 10, assetBytes: 20 },
@@ -181,6 +187,96 @@ describe('graph picker helpers', () => {
     })
 })
 
+describe('member trust (ADR 0126)', () => {
+    const identity = () => ({ publicKey: generateIdentityKeyPair().publicKey, signingPublicKey: generateSigningKeyPair().publicKey })
+    const published = (keys: ReturnType<typeof identity>) => ({
+        publicKey: toBase64Url(keys.publicKey),
+        signingPublicKey: toBase64Url(keys.signingPublicKey),
+    })
+    const member = (userId: string, keys: ReturnType<typeof identity> | null, role = 'player') => ({
+        userId,
+        email: `${userId}@example.com`,
+        role,
+        status: 'active' as const,
+        identity: keys ? published(keys) : null,
+    })
+
+    it('reads each member’s key against the pins: verified, unverified or changed', () => {
+        const pinned = identity()
+        const vault = withPin(newVault(), 'pinned', pinned, { email: 'pinned@example.com', verified: true })
+        const changed = withPin(vault, 'changed', identity(), { email: 'changed@example.com', verified: true })
+
+        expect(memberTrust(member('pinned', pinned), changed)).toBe('verified')
+        expect(memberTrust(member('stranger', identity()), changed)).toBe('unverified')
+        expect(memberTrust(member('changed', identity()), changed)).toBe('changed')
+    })
+
+    it('says a member whose keys predate signing keys cannot be checked yet, and skips the owner', () => {
+        const keys = identity()
+        const old = { ...member('old', null), identity: { publicKey: toBase64Url(keys.publicKey), signingPublicKey: null } }
+
+        expect(memberTrust(old, newVault())).toBe('not-upgraded')
+        expect(memberTrust(member('me', keys, 'owner'), newVault())).toBeUndefined()
+    })
+
+    it('says a pinned member shown without a signing key has lost it, which no Verify can settle', () => {
+        const keys = identity()
+        const vault = withPin(newVault(), 'pinned', keys, { email: 'pinned@example.com', verified: false })
+        const stripped = { ...member('pinned', null), identity: { publicKey: toBase64Url(keys.publicKey), signingPublicKey: null } }
+
+        expect(memberTrust(stripped, vault)).toBe('signing-key-missing')
+    })
+
+    it('carries the trust on each member only when the pins were given, which needs the keys unlocked', async () => {
+        const keys = identity()
+        const api = {
+            graphsOverview: vi.fn(async () => ({
+                graphs: [{ id: 'graph-a', rootDocId: 'root-a', role: 'owner' }],
+                ownedStorage: { graphs: 1, docBytes: 0, assetBytes: 0 },
+            })),
+            graphMembers: vi.fn(async () => [member('player', keys)]),
+        }
+
+        const locked = await loadSyncedGraphViews(api, [])
+        const unlocked = await loadSyncedGraphViews(api, [], { pins: newVault() })
+
+        expect(locked.graphs[0].members?.[0].trust).toBeUndefined()
+        expect(unlocked.graphs[0].members?.[0].trust).toBe('unverified')
+    })
+})
+
+describe('Graph Key epochs on the Graphs page (ADR 0127)', () => {
+    it('carries the server’s word that an owned graph is due a new key', async () => {
+        const api = {
+            graphsOverview: vi.fn(async () => ({
+                graphs: [
+                    { id: 'graph-a', rootDocId: 'root-a', role: 'owner', rotationDue: true },
+                    { id: 'graph-b', rootDocId: 'root-b', role: 'player' },
+                ],
+                ownedStorage: { graphs: 1, docBytes: 0, assetBytes: 0 },
+            })),
+            graphMembers: vi.fn(async () => []),
+        }
+
+        const { graphs } = await loadSyncedGraphViews(api, [])
+
+        expect(graphs.map((graph) => graph.rotationDue)).toEqual([true, false])
+    })
+
+    it('says why a copy of a graph’s key was not used, and offers Verify when the owner’s keys changed', () => {
+        const identity = { publicKey: generateIdentityKeyPair().publicKey, signingPublicKey: generateSigningKeyPair().publicKey }
+        expect(
+            keyCopyNotice({ kind: 'owner-key-changed', graphId: 'g', epoch: 2, ownerId: 'o', ownerEmail: 'owner@example.com', identity, fingerprint: 'AAAA' }),
+        ).toEqual({
+            text: 'owner@example.com’s security key changed, so EtherPK has not used the new key they sent for this graph. Compare security fingerprints with them, then select Verify.',
+            verifyOwner: true,
+        })
+        expect(keyCopyNotice({ kind: 'unverifiable', graphId: 'g', epoch: 2, ownerEmail: null })).toMatchObject({ verifyOwner: false })
+        expect(keyCopyNotice({ kind: 'added', graphId: 'g', epoch: 2 })).toBeNull()
+        expect(keyCopyNotice({ kind: 'not-joined', graphId: 'g', epoch: 2 })).toBeNull()
+    })
+})
+
 describe('the gate on a new synced graph, per Sync Server', () => {
     const host = 'sync.example.com'
     function account(plan: string, ownedGraphs: number, mode: 'managed' | 'standalone' = 'managed'): SyncAccountSummary {
@@ -230,6 +326,11 @@ describe('the gate on a new synced graph, per Sync Server', () => {
             .toBe('sync.example.com could not be reached. Try again when it answers.')
     })
 
+    it('asks for the Device Passcode when the access token is protected by it (ADR 0129)', () => {
+        expect(serverPlanGate({ account: null, planNotice: null, shownPlanNotice: null, authState: 'locked', kind: 'custom', host }).createBlockedReason)
+            .toBe("Enter this device's passcode to create a synced graph on sync.example.com.")
+    })
+
     it('blocks nothing while the account check is still in flight', () => {
         expect(serverPlanGate({ account: null, planNotice: null, shownPlanNotice: null, authState: 'checking', kind: 'managed', host }))
             .toEqual({ syncPlusRequired: false, createBlockedReason: null })
@@ -265,6 +366,8 @@ describe('which Sync Server groups the Graphs tab shows', () => {
         expect(serverGroupVisible({ ...first, authState: 'unavailable' })).toBe(true)
         // A custom server refusing its token: the first-run card cannot say how to fix that.
         expect(serverGroupVisible({ ...first, authState: 'signed-out', kind: 'custom' })).toBe(true)
+        // Nor can it ask for the Device Passcode that protects the token.
+        expect(serverGroupVisible({ ...first, authState: 'locked', kind: 'custom' })).toBe(true)
     })
 })
 

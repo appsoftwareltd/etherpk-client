@@ -18,20 +18,24 @@ export interface PendingRecoveryCode {
     code: string
     /**
      * Which ritual this is. A `first` mint has no code before it; a `regenerate` is replacing a
-     * code that still works, which is what earns it a way out. The dialog's copy follows this.
+     * code that still works, and a `replace` the keys with it (ADR 0128), which is what earns
+     * both a way out. The dialog's copy follows this.
      */
-    arrival: 'first' | 'regenerate'
+    arrival: 'first' | 'regenerate' | 'replace'
     /** Why this appeared now, shown above the code. */
     reason?: string
     /** The Sync Server whose account the code unlocks: the dialog and the saved file name it. */
     serverOrigin: string
     /** That account's address, when it has one to name. */
     account?: string | null
-    /** Makes the code real: writes the vault (first) or re-wraps it under this code (regenerate). */
+    /**
+     * Makes the code real: writes the vault (first), re-wraps it under this code (regenerate),
+     * or replaces the keys (replace).
+     */
     commit: () => Promise<void>
     /** Runs after a successful commit; receives the commit's error instead if it threw. */
     then?: (error?: Error) => void
-    /** Regenerate only: dismiss without committing. The current code keeps working. */
+    /** Regenerate and replace only: dismiss without committing. Nothing changes. */
     cancel?: () => void
 }
 

@@ -19,7 +19,7 @@
  * encrypted metadata: an eight-character id prefix would tell nobody which file they were deleting.
  */
 
-import { type GraphKeyring, contextAad, fromBase64Url, keyForEpoch, openSymmetric } from '$lib/crypto'
+import { type KeyringSource, contextAad, fromBase64Url, keyForEpoch, keyringReader, openSymmetric } from '$lib/crypto'
 import { mapWithPool } from '$lib/concurrency'
 import { formatBytes } from '@appsoftwareltd/etherpk-shared'
 import type { ProtectedTextReader } from '$lib/document/protection/protected-text-reader'
@@ -53,7 +53,7 @@ export interface ServerAssetOrphanDeps {
      * with them, and (TEMPORARY, ADR 0053) backfills dedup tokens onto assets uploaded before
      * tokens existed (`asset-dedup-backfill.ts`). Without it candidates wear their id.
      */
-    keyring?: GraphKeyring
+    keyring?: KeyringSource
     /** Reads a Protected Document's plaintext while the graph is unlocked; absent, none is read. */
     readProtected?: ProtectedTextReader
     /**
@@ -108,9 +108,10 @@ export async function scanOrphanedServerAssets(deps: ServerAssetOrphanDeps): Pro
 
     // TEMPORARY (ADR 0053): the scan already holds the list every legacy asset needs
     // tokening from, so token them here. Best effort, counted, never thrown.
-    const dedupBackfill = deps.keyring
+    const keyring = deps.keyring && keyringReader(deps.keyring)()
+    const dedupBackfill = keyring
         ? await backfillAssetDedupTokens(
-              { graphId: deps.graphId, baseUrl: deps.baseUrl, syncToken: deps.syncToken, keyring: deps.keyring, fetch: deps.fetch },
+              { graphId: deps.graphId, baseUrl: deps.baseUrl, syncToken: deps.syncToken, keyring, fetch: deps.fetch },
               assets.map((a) => ({ assetId: a.assetId, hasDedupToken: a.hasDedupToken ?? true, status: a.status })),
           )
         : undefined
@@ -172,7 +173,7 @@ function orphanLabel(asset: ListedAsset, name: string | undefined): string {
  */
 async function assetNames(deps: ServerAssetOrphanDeps, assetIds: readonly string[]): Promise<Map<string, string>> {
     const names = new Map<string, string>()
-    const keyring = deps.keyring
+    const keyring = deps.keyring && keyringReader(deps.keyring)()
     if (!keyring || assetIds.length === 0) return names
     const { f, base, headers } = api(deps)
     await mapWithPool(

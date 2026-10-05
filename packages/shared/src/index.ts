@@ -1,4 +1,7 @@
 export * from './sync-protocol'
+export * from './device-approval'
+export * from './sync-identity'
+export * from './envelope-header'
 export * from './managed-service'
 export * from './deployment-navigation'
 export * from './administrator'

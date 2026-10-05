@@ -11,6 +11,8 @@
 import { type Extension, MapMode, StateField, type Transaction } from '@codemirror/state'
 import type { EditorView } from '@codemirror/view'
 
+import { iconSvg } from '$lib/surface/icons'
+
 import type { ConceptCandidate } from '../../index-db'
 import { isInCode } from '../../wikilink/code-ranges'
 import { analysisFor } from '../analysis/editor-analysis'
@@ -77,17 +79,16 @@ interface MenuState extends PopoverBase {
     loading?: boolean
 }
 
-// 16×16 line icons per row kind (lucide-ish).
-const ICON_PATHS: Record<WikilinkCompletion['kind'], string> = {
-    page: '<path d="M4 2h5l4 4v8.5a.5.5 0 0 1-.5.5h-8a.5.5 0 0 1-.5-.5v-12a.5.5 0 0 1 .5-.5z"/><path d="M9 2v4h4"/>',
-    journal: '<rect x="2.5" y="3" width="11" height="11" rx="1.5"/><path d="M2.5 6.5h11M5.5 2v2M10.5 2v2"/>',
-    alias: '<path d="M5 4v3.5a2 2 0 0 0 2 2h5"/><path d="M9.5 6.5l3 3-3 3"/>',
-    pageless: '<path d="M4 2h5l4 4v8.5a.5.5 0 0 1-.5.5h-8a.5.5 0 0 1-.5-.5v-12a.5.5 0 0 1 .5-.5z" stroke-dasharray="2 1.5"/><path d="M8 8.5v3M6.5 10h3"/>',
-    create: '<circle cx="8" cy="8" r="6"/><path d="M8 5.5v5M5.5 8h5"/>',
+/** The icon each kind of row carries, from the shared table (`surface/icons.ts`). */
+const ROW_ICONS: Record<WikilinkCompletion['kind'], string> = {
+    page: 'page',
+    journal: 'calendar',
+    alias: 'alias',
+    pageless: 'pageless',
+    create: 'new-page',
 }
 
-const svg = (paths: string) =>
-    `<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">${paths}</svg>`
+const rowIcon = (name: string) => iconSvg(name, { strokeWidth: 1.3 })
 
 export function wikilinkCompletion(options: WikilinkCompletionOptions): Extension {
     function compute(state: EditorView['state']): MenuState | null {
@@ -133,7 +134,7 @@ export function wikilinkCompletion(options: WikilinkCompletionOptions): Extensio
             return [
                 {
                     label: 'Loading suggestions…',
-                    icon: svg(ICON_PATHS.pageless),
+                    icon: rowIcon(ROW_ICONS.pageless),
                     dataAttrs: { 'data-concept-kind': 'loading' },
                 },
             ]
@@ -141,7 +142,7 @@ export function wikilinkCompletion(options: WikilinkCompletionOptions): Extensio
         return menu.items.map((row) => ({
             label: row.label,
             detail: row.detail || undefined,
-            icon: svg(ICON_PATHS[row.kind]),
+            icon: rowIcon(ROW_ICONS[row.kind]),
             dataAttrs: { 'data-concept-kind': row.kind },
         }))
     }

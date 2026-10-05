@@ -8,14 +8,24 @@
  *   [6..17]  AES-GCM nonce (12 bytes, fresh random per seal)
  *   [18..]   ciphertext + GCM tag
  *
+ * The header is written and read by the shared package (`envelope-header.ts`), which the Sync
+ * Server reads it with too, so both sides agree on where the epoch is and on its byte order.
+ *
  * AAD binds the envelope to its context — (graph, doc, kind) — so a compromised server
  * cannot splice a valid blob into another document (design doc → Cryptography).
  */
+import {
+    ENVELOPE_KIND_SYMMETRIC,
+    ENVELOPE_VERSION,
+    SYMMETRIC_ENVELOPE_HEADER_LENGTH,
+    readSymmetricEnvelopeHeader,
+    symmetricEnvelopeHeader,
+} from '@appsoftwareltd/etherpk-shared'
 import { concatBytes, randomBytes, utf8 } from './bytes'
 
-export const ENVELOPE_VERSION = 1
-export const KIND_SYMMETRIC = 1
-const HEADER_LENGTH = 18
+export { ENVELOPE_VERSION }
+export const KIND_SYMMETRIC = ENVELOPE_KIND_SYMMETRIC
+const HEADER_LENGTH = SYMMETRIC_ENVELOPE_HEADER_LENGTH
 
 export class EnvelopeError extends Error {}
 
@@ -44,20 +54,16 @@ export async function sealSymmetric(opts: {
             opts.plaintext as BufferSource,
         ),
     )
-    const header = new Uint8Array(HEADER_LENGTH)
-    header[0] = ENVELOPE_VERSION
-    header[1] = KIND_SYMMETRIC
-    new DataView(header.buffer).setUint32(2, opts.epochId, true)
-    header.set(nonce, 6)
-    return concatBytes(header, ciphertext)
+    return concatBytes(symmetricEnvelopeHeader(opts.epochId, nonce), ciphertext)
 }
 
 /** Read the epoch id without decrypting (the client picks the keyring entry from it). */
 export function envelopeEpochId(envelope: Uint8Array): number {
-    if (envelope.length < HEADER_LENGTH) throw new EnvelopeError('envelope too short')
-    if (envelope[0] !== ENVELOPE_VERSION) throw new EnvelopeError(`unknown envelope version ${envelope[0]}`)
-    if (envelope[1] !== KIND_SYMMETRIC) throw new EnvelopeError(`unexpected envelope kind ${envelope[1]}`)
-    return new DataView(envelope.buffer, envelope.byteOffset).getUint32(2, true)
+    const header = readSymmetricEnvelopeHeader(envelope)
+    if (header.ok) return header.epochId
+    if (header.problem === 'too-short') throw new EnvelopeError('envelope too short')
+    if (header.problem === 'unknown-version') throw new EnvelopeError(`unknown envelope version ${envelope[0]}`)
+    throw new EnvelopeError(`unexpected envelope kind ${envelope[1]}`)
 }
 
 export async function openSymmetric(opts: {

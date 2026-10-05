@@ -1,8 +1,11 @@
 /** Framework-free application helpers for the graph picker route. */
 import type { SyncAccountSummary, SyncPlanNotice } from '@appsoftwareltd/etherpk-shared'
-import { fromBase64Url, type GraphKeyring } from '$lib/crypto'
+import { fromBase64Url, type GraphKeyring, type KeyVault } from '$lib/crypto'
+import { pinState, publishedIdentity } from '$lib/sync/pins'
 import type { GraphRecord } from '$lib/storage'
 import { openGraphName } from '$lib/sync/graph-name-envelope'
+import type { HandoutOutcome } from '$lib/sync/key-handouts'
+import { describeKeyWait } from '$lib/sync/sync-indicator'
 import type {
     GraphMember,
     GraphStorageFigures,
@@ -10,8 +13,29 @@ import type {
     SyncApi,
 } from '$lib/sync/sync-api'
 
+/**
+ * What the owner's pins say about a member's key (ADR 0126): compared and unchanged, never
+ * compared (or only taken on first use), changed since it was compared, not checkable yet
+ * because the member's EtherPK has not opened their keys since signing keys existed, or pinned
+ * but shown without the signing key the pin records, which no Client takes away and no
+ * fingerprint comparison can settle.
+ */
+export type MemberTrust = 'verified' | 'unverified' | 'changed' | 'not-upgraded' | 'signing-key-missing'
+
 /** A member of an owned graph, or somebody invited to it (`status: 'invited'`). */
-export type SyncedMember = GraphMember
+export interface SyncedMember extends GraphMember {
+    /** Present only while the owner's keys are unlocked here: the pins are in the vault. */
+    trust?: MemberTrust
+}
+
+/** What the pins in `vault` say about `member`'s published key; undefined for the owner and the keyless. */
+export function memberTrust(member: GraphMember, vault: Pick<KeyVault, 'pins'>): MemberTrust | undefined {
+    if (member.role === 'owner' || !member.identity) return undefined
+    const identity = publishedIdentity(member.identity)
+    if (!identity) return vault.pins?.[member.userId] ? 'signing-key-missing' : 'not-upgraded'
+    const state = pinState(vault, member.userId, identity)
+    return state.kind === 'verified' ? 'verified' : state.kind === 'changed' ? 'changed' : 'unverified'
+}
 
 export interface SyncedGraphView {
     id: string
@@ -33,6 +57,27 @@ export interface SyncedGraphView {
     members: SyncedMember[] | null
     /** Absent when an older sync service does not report storage figures. */
     storage?: GraphStorageFigures
+    /** An owned graph is due a new Graph Key epoch, which this account's Client makes (ADR 0127). */
+    rotationDue: boolean
+}
+
+/**
+ * What a graph's row says about a copy of its newest key this account was handed and did not take
+ * in (ADR 0127), and whether it offers to verify the owner. Null for a copy that needs no word.
+ */
+export function keyCopyNotice(outcome: HandoutOutcome): { text: string; verifyOwner: boolean } | null {
+    switch (outcome.kind) {
+        case 'owner-key-changed':
+            return {
+                text: `${outcome.ownerEmail ?? 'The owner'}’s security key changed, so EtherPK has not used the new key they sent for this graph. Compare security fingerprints with them, then select Verify.`,
+                verifyOwner: true,
+            }
+        case 'unverifiable':
+        case 'conflict':
+            return { text: `EtherPK has not used the newest key for this graph. ${describeKeyWait(outcome)}`, verifyOwner: false }
+        default:
+            return null
+    }
 }
 
 type SyncedOverviewApi = Pick<SyncApi, 'graphsOverview' | 'graphMembers'>
@@ -43,6 +88,8 @@ export interface LoadSyncedGraphViewsOptions {
      * labelled from the server's name envelope instead of the id placeholder.
      */
     keyrings?: readonly GraphKeyring[]
+    /** The vault's pins, when it is unlocked here: each member of an owned graph then carries its trust. */
+    pins?: Pick<KeyVault, 'pins'>
 }
 
 /**
@@ -70,7 +117,11 @@ export async function loadSyncedGraphViews(
             let members: SyncedMember[] | null = null
             if (graph.role === 'owner') {
                 try {
-                    members = await api.graphMembers(graph.id)
+                    const pins = options.pins
+                    members = (await api.graphMembers(graph.id)).map((member) => {
+                        const trust = pins ? memberTrust(member, pins) : undefined
+                        return trust ? { ...member, trust } : member
+                    })
                 } catch {
                     // Membership visibility is supplementary to the graph list.
                     members = null
@@ -86,6 +137,7 @@ export async function loadSyncedGraphViews(
                 role: graph.role,
                 members,
                 storage: graph.storage,
+                rotationDue: graph.rotationDue === true,
             }
         }),
     )
@@ -132,8 +184,13 @@ export function persistableGraphRecord(record: GraphRecord, name: string): Graph
     }
 }
 
-/** Where the account check on one Sync Server stands. */
-export type ServerAuthState = 'checking' | 'authenticated' | 'signed-out' | 'unavailable'
+/**
+ * Where the account check on one Sync Server stands. `locked`: the device's access token for it is
+ * sealed by a Device Passcode not yet entered in this browser session (ADR 0129), so nothing was asked.
+ * The UI says the passcode is needed, never that the device is locked: Lock and Unlock name the
+ * Protected Document states.
+ */
+export type ServerAuthState = 'checking' | 'authenticated' | 'signed-out' | 'unavailable' | 'locked'
 
 /** What one server's account and plan allow a new synced graph, as the Knowledge graphs page gates it. */
 export interface ServerPlanGate {
@@ -174,6 +231,7 @@ export function serverPlanGate(state: {
                 : `${state.host} did not accept this device's access token. Add a new one to create a synced graph there.`
         }
         if (state.authState === 'unavailable') return `${state.host} could not be reached. Try again when it answers.`
+        if (state.authState === 'locked') return `Enter this device's passcode to create a synced graph on ${state.host}.`
         if (syncPlusRequired) {
             return state.planNotice === 'ended'
                 ? 'Synced graphs need Sync+. Restart it from Billing to create one.'
@@ -194,8 +252,8 @@ export function serverPlanGate(state: {
  * Whether the Graphs tab shows a server's group. A browser that already has graphs sees every
  * server it holds, empty or not. On a first visit the first-run card offers the way in (signing in,
  * a first graph), so a group appears only when it has something the card cannot say: rows, an
- * invite, a list that failed, a server not answering, a custom server refusing its token, or a plan
- * standing in the way.
+ * invite, a list that failed, a server not answering, a custom server refusing its token or holding
+ * it sealed by the Device Passcode, or a plan standing in the way.
  */
 export function serverGroupVisible(group: {
     firstRun: boolean
@@ -213,6 +271,7 @@ export function serverGroupVisible(group: {
         group.failed ||
         group.planLine ||
         group.authState === 'unavailable' ||
+        group.authState === 'locked' ||
         (group.authState === 'signed-out' && group.kind === 'custom')
     )
 }

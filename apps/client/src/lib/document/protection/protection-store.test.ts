@@ -114,12 +114,16 @@ describe('the Filesystem Backend store', () => {
 })
 
 describe('the Server Backend store', () => {
+    /** The vault's protection map, written one graph at a time as `vaultProtectionAccess` does. */
     function fakeVault(initial?: Record<string, ProtectionRecord>) {
         let protection = initial
         return {
             store: vaultProtectionStore('graph-1', {
                 readProtection: async () => protection,
-                writeProtection: async (next) => {
+                writeProtection: async (graphId, record) => {
+                    const next = { ...protection }
+                    if (record) next[graphId] = record
+                    else delete next[graphId]
                     protection = next
                 },
             }),

@@ -33,6 +33,7 @@ import {
 } from '$lib/document/protection/active-protection'
 import type { FenceUnreadableReason } from '$lib/document/protection/protection-service'
 
+import { setTrustedMarkup } from '$lib/security/trusted-types'
 import { iconSvg } from '$lib/surface/icons'
 
 import { EXTERNAL } from '../cm-document'
@@ -194,7 +195,7 @@ class ProtectedFenceWidget extends WidgetType {
 function header(title: string): HTMLElement {
     const el = document.createElement('div')
     el.className = 'gk-protected-title'
-    el.innerHTML = iconSvg('lock', { size: 14 })
+    setTrustedMarkup(el, iconSvg('lock', { size: 14 }))
     el.append(document.createTextNode(` ${title}`))
     return el
 }

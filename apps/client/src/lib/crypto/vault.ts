@@ -1,32 +1,64 @@
 /**
- * The key vault (ADR 0026): everything a device needs — the identity keypair and
- * every graph keyring — as one envelope. Stored server-side as an opaque blob;
+ * The key vault (ADR 0026): everything a device needs - the Sync Identity, every graph keyring,
+ * protection records and Pinned Identities - as one envelope. Stored server-side as an opaque blob;
  * losing local storage is harmless.
  *
- * Format v2 (device approval): the vault content is encrypted under a random VAULT KEY,
- * and the vault key travels alongside, wrapped under the Recovery-Code-derived wrap key:
+ * The vault content is encrypted under a random VAULT KEY, and the vault key travels alongside,
+ * wrapped under the Recovery-Code-derived wrap key:
  *
  *   [0]      version = 1 (envelope family)
- *   [1]      kind    = 3 (vault container)
- *   [2..3]   u16 BE — byte length of the wrapped-vault-key envelope
+ *   [1]      kind    = 5 (vault container v3; 3 is v2)
+ *   [2..3]   u16 BE - byte length of the wrapped-vault-key envelope
  *   [4..]    wrapped vault key (symmetric envelope under the WRAP key, aad 'vault-key')
- *   [rest]   vault content (symmetric envelope under the VAULT key, aad 'vault')
+ *   [rest]   vault content (symmetric envelope under the VAULT key, aad 'vault|v3'; v2 used 'vault')
  *
- * The indirection is what device approval seals to a new device (the vault key, never the
- * code), and it makes Regenerate Recovery Code a re-WRAP: the vault key — the thing every
- * unlocked device caches — survives, so other devices stay unlocked.
+ * The indirection is what device approval hands to a new device (the vault key, never the code),
+ * and it makes Regenerate Recovery Code a re-WRAP: the vault key - the thing every unlocked device
+ * caches - survives, so other devices stay unlocked.
  *
- * Legacy (phase 1) blobs are the content envelope directly under the wrap key; they still
- * open, and any write upgrades them to v2 with a freshly minted vault key.
+ * Format v3 (ADR 0126) has the v2 layout and adds the signing key pair and the pins to the
+ * content. It has its own kind and its own content context because Clients before it dropped every
+ * field they did not know when they wrote the vault back, which would have deleted pins and signing
+ * keys. Such a Client cannot open v3 at all, even with the kind byte changed back, so it fails
+ * closed until it reloads. This version keeps every top-level field it does not know
+ * (`otherFields`), so the next format change does not need a new kind for the same reason.
+ *
+ * v2 and legacy (phase 1, the content directly under the wrap key) blobs still open, and any
+ * write upgrades them to v3 - a legacy blob with a freshly minted vault key.
  */
 import { fromBase64Url, randomBytes, toBase64Url, utf8 } from './bytes'
 import { ENVELOPE_VERSION, EnvelopeError, KIND_SYMMETRIC, contextAad, openSymmetric, sealSymmetric } from './envelope'
 import { type GraphKeyring, deserializeKeyrings, serializeKeyrings } from './keyring'
 import type { ProtectionRecord } from './protection-key'
 
+/**
+ * A person whose Security Fingerprint this account has confirmed, or taken on first use for a
+ * member who joined before pins existed: a Pinned Identity (ADR 0126). Kept in the vault, keyed by
+ * that person's account id on the vault's Sync Server, so every device of the account knows it.
+ * Stored as plain JSON and written back as read, so a field a later version adds survives.
+ */
+export interface PinnedIdentity {
+    /** X25519 public key, base64url. */
+    publicKey: string
+    /** Ed25519 public key, base64url. */
+    signingPublicKey: string
+    /** The address the server gave for them when the pin was made: a label, never what is trusted. */
+    email: string
+    /** When the pin was made, as an ISO 8601 timestamp. */
+    pinnedAt: string
+    /** True once the user compared fingerprints; false for a pin only taken on first use. */
+    verified: boolean
+}
+
 export interface KeyVault {
     identityPrivateKey: Uint8Array
     identityPublicKey: Uint8Array
+    /**
+     * The Ed25519 half of the Sync Identity (ADR 0126). Absent only from a vault written before
+     * signing keys existed: the next unlock adds one (`ensureAccountIdentity`).
+     */
+    signingPrivateKey?: Uint8Array
+    signingPublicKey?: Uint8Array
     keyrings: GraphKeyring[]
     /**
      * Protection records by graph id (ADR 0057), for graphs on a Server Backend. Personal, never
@@ -39,19 +71,40 @@ export interface KeyVault {
      * protected content.
      */
     protection?: Record<string, ProtectionRecord>
+    /** Pinned Identities by account id (ADR 0126). */
+    pins?: Record<string, PinnedIdentity>
+    /** Top-level fields this version does not know, written back unchanged. */
+    otherFields?: Record<string, unknown>
 }
 
 export const KIND_VAULT_V2 = 3
-const VAULT_AAD = contextAad('vault')
+export const KIND_VAULT_V3 = 5
+const VAULT_V2_AAD = contextAad('vault')
+const VAULT_V3_AAD = contextAad('vault', 'v3')
 const VAULT_KEY_AAD = contextAad('vault-key')
 const CONTAINER_HEADER = 4
+
+/** The fields this version reads. Everything else in the content is kept as `otherFields`. */
+const KNOWN_FIELDS = [
+    'identityPrivateKey',
+    'identityPublicKey',
+    'signingPrivateKey',
+    'signingPublicKey',
+    'keyrings',
+    'protection',
+    'pins',
+] as const
 
 interface VaultJson {
     identityPrivateKey: string
     identityPublicKey: string
+    /** Absent in every vault written before ADR 0126. */
+    signingPrivateKey?: string
+    signingPublicKey?: string
     keyrings: string
     /** Absent in every vault written before protection existed — read as "no protected graphs". */
     protection?: Record<string, ProtectionRecord>
+    pins?: Record<string, PinnedIdentity>
 }
 
 export interface EncryptedVault {
@@ -68,33 +121,49 @@ export interface OpenedVault {
     legacy: boolean
 }
 
+const nonEmpty = <T extends object>(value: T | undefined): value is T => value !== undefined && Object.keys(value).length > 0
+
 async function sealContent(vault: KeyVault, vaultKey: Uint8Array): Promise<Uint8Array> {
     const json: VaultJson = {
         identityPrivateKey: toBase64Url(vault.identityPrivateKey),
         identityPublicKey: toBase64Url(vault.identityPublicKey),
+        ...(vault.signingPrivateKey && vault.signingPublicKey
+            ? { signingPrivateKey: toBase64Url(vault.signingPrivateKey), signingPublicKey: toBase64Url(vault.signingPublicKey) }
+            : {}),
         keyrings: new TextDecoder().decode(serializeKeyrings(vault.keyrings)),
-        // Omitted entirely when empty, so a vault holding no protected graph is byte-identical to
-        // one written before the feature existed.
-        ...(vault.protection && Object.keys(vault.protection).length > 0 ? { protection: vault.protection } : {}),
+        // Omitted when empty, so a vault holding no protected graph or pin says nothing about them.
+        ...(nonEmpty(vault.protection) ? { protection: vault.protection } : {}),
+        ...(nonEmpty(vault.pins) ? { pins: vault.pins } : {}),
     }
-    return sealSymmetric({ key: vaultKey, epochId: 0, plaintext: utf8(JSON.stringify(json)), aad: VAULT_AAD })
+    // Known fields are written last, so an unknown field can never shadow one.
+    const content = { ...vault.otherFields, ...json }
+    return sealSymmetric({ key: vaultKey, epochId: 0, plaintext: utf8(JSON.stringify(content)), aad: VAULT_V3_AAD })
 }
 
-async function openContent(envelope: Uint8Array, vaultKey: Uint8Array): Promise<KeyVault> {
-    const { plaintext } = await openSymmetric({ keyForEpoch: () => vaultKey, envelope, aad: VAULT_AAD })
-    const json = JSON.parse(new TextDecoder().decode(plaintext)) as VaultJson
+async function openContent(envelope: Uint8Array, vaultKey: Uint8Array, aad: Uint8Array): Promise<KeyVault> {
+    const { plaintext } = await openSymmetric({ keyForEpoch: () => vaultKey, envelope, aad })
+    const content = JSON.parse(new TextDecoder().decode(plaintext)) as VaultJson & Record<string, unknown>
+    const otherFields: Record<string, unknown> = {}
+    for (const [field, value] of Object.entries(content)) {
+        if (!(KNOWN_FIELDS as readonly string[]).includes(field)) otherFields[field] = value
+    }
     return {
-        identityPrivateKey: fromBase64Url(json.identityPrivateKey),
-        identityPublicKey: fromBase64Url(json.identityPublicKey),
-        keyrings: deserializeKeyrings(utf8(json.keyrings)),
-        ...(json.protection ? { protection: json.protection } : {}),
+        identityPrivateKey: fromBase64Url(content.identityPrivateKey),
+        identityPublicKey: fromBase64Url(content.identityPublicKey),
+        ...(content.signingPrivateKey && content.signingPublicKey
+            ? { signingPrivateKey: fromBase64Url(content.signingPrivateKey), signingPublicKey: fromBase64Url(content.signingPublicKey) }
+            : {}),
+        keyrings: deserializeKeyrings(utf8(content.keyrings)),
+        ...(content.protection ? { protection: content.protection } : {}),
+        ...(content.pins ? { pins: content.pins } : {}),
+        ...(Object.keys(otherFields).length > 0 ? { otherFields } : {}),
     }
 }
 
 function buildContainer(wrapped: Uint8Array, content: Uint8Array): Uint8Array {
     const out = new Uint8Array(CONTAINER_HEADER + wrapped.length + content.length)
     out[0] = ENVELOPE_VERSION
-    out[1] = KIND_VAULT_V2
+    out[1] = KIND_VAULT_V3
     new DataView(out.buffer).setUint16(2, wrapped.length, false)
     out.set(wrapped, CONTAINER_HEADER)
     out.set(content, CONTAINER_HEADER + wrapped.length)
@@ -111,8 +180,16 @@ function splitContainer(envelope: Uint8Array): { wrapped: Uint8Array; content: U
     }
 }
 
+/** The content context of a v2 or v3 container, or null for anything else. */
+function containerContentAad(envelope: Uint8Array): Uint8Array | null {
+    if (envelope.length < 2 || envelope[0] !== ENVELOPE_VERSION) return null
+    if (envelope[1] === KIND_VAULT_V3) return VAULT_V3_AAD
+    if (envelope[1] === KIND_VAULT_V2) return VAULT_V2_AAD
+    return null
+}
+
 /**
- * Encrypt a vault under `wrapKey` (v2). Pass `vaultKey` to preserve an existing vault key —
+ * Encrypt a vault under `wrapKey` (v3). Pass `vaultKey` to preserve an existing vault key —
  * a Recovery Code regenerate re-wraps without invalidating other devices' cached keys; omit
  * it to mint a fresh one (new account, or upgrading a legacy blob).
  */
@@ -124,10 +201,11 @@ export async function encryptVault(vault: KeyVault, wrapKey: Uint8Array, vaultKe
 
 /**
  * Open a vault with whatever key the device holds: the Recovery-Code-derived wrap key
- * (legacy or v2), or the vault key itself (v2 — the device-approval / cached case).
+ * (legacy, v2 or v3), or the vault key itself (v2 or v3 — the device-approval / cached case).
  */
 export async function openVault(envelope: Uint8Array, key: Uint8Array): Promise<OpenedVault> {
-    if (envelope.length >= 2 && envelope[0] === ENVELOPE_VERSION && envelope[1] === KIND_VAULT_V2) {
+    const contentAad = containerContentAad(envelope)
+    if (contentAad) {
         const { wrapped, content } = splitContainer(envelope)
         // Only the UNWRAP is speculative: it answers "is the held key the wrap key or the
         // vault key?". Opening the content is not, so it stays outside the try. Inside it, a
@@ -140,22 +218,22 @@ export async function openVault(envelope: Uint8Array, key: Uint8Array): Promise<
             vaultKey = (await openSymmetric({ keyForEpoch: () => key, envelope: wrapped, aad: VAULT_KEY_AAD })).plaintext
         } catch {
             // The held key as the VAULT key: open the content directly under it.
-            return { vault: await openContent(content, key), vaultKey: key, legacy: false }
+            return { vault: await openContent(content, key, contentAad), vaultKey: key, legacy: false }
         }
-        return { vault: await openContent(content, vaultKey), vaultKey, legacy: false }
+        return { vault: await openContent(content, vaultKey, contentAad), vaultKey, legacy: false }
     }
     if (envelope.length >= 2 && envelope[1] === KIND_SYMMETRIC) {
         // Phase-1 blob: content directly under the wrap key — no separate vault key exists.
-        return { vault: await openContent(envelope, key), vaultKey: key, legacy: true }
+        return { vault: await openContent(envelope, key, VAULT_V2_AAD), vaultKey: key, legacy: true }
     }
     throw new EnvelopeError(`unexpected vault envelope kind ${envelope[1] ?? 'none'}`)
 }
 
 /**
- * Re-encrypt UPDATED CONTENT against the envelope it was read from. A v2 envelope keeps its
- * wrapped-key segment verbatim (content writers usually hold only the vault key, never the
- * wrap key); a legacy envelope is upgraded to v2 — there the opening key WAS the wrap key,
- * so a fresh vault key is minted under it. Cache the returned vaultKey.
+ * Re-encrypt UPDATED CONTENT against the envelope it was read from, as v3. A v2 or v3 envelope
+ * keeps its wrapped-key segment verbatim (content writers usually hold only the vault key, never
+ * the wrap key); a legacy envelope is upgraded — there the opening key WAS the wrap key, so a
+ * fresh vault key is minted under it. Cache the returned vaultKey.
  */
 export async function reencryptVault(
     vault: KeyVault,

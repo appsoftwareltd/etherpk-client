@@ -13,11 +13,15 @@
         checkPlan(): void;
         createKeys(): void;
         regenerate(): void;
+        /** Key Replacement (ADR 0128), once the user has confirmed it here. */
+        replaceKeys(): void;
         unlock(): void;
         showFingerprint(): void;
         reset(): void;
         /** Remove this server's synced graphs from this browser. */
         removeCopies(): void;
+        /** Ask for this device's passcode, which protects the server's access token (ADR 0129). */
+        enterPasscode(): void;
     }
 </script>
 
@@ -35,6 +39,7 @@
         planStatusLine,
         type SyncAccountSummary,
     } from "@appsoftwareltd/etherpk-shared";
+    import { tick } from "svelte";
     import { MANAGED_DEVICE_DISCONNECT_HELP } from "$lib/sync";
     import {
         CUSTOM_SERVER_ICON,
@@ -95,6 +100,8 @@
                     : "The server did not accept this device's access token";
             case "unavailable":
                 return "Could not reach the server";
+            case "locked":
+                return "Waiting for this device's passcode";
             default:
                 return "Checking…";
         }
@@ -119,6 +126,42 @@
         const graphs = `${formatUsage(usage.ownedGraphs, limits.ownedGraphs, "count")} ${oneGraphUnlimited ? "owned graph" : "owned graphs"}`;
         const storage = `${formatUsage(usage.ownedStorageBytes, limits.ownedStorageBytes, "bytes")} owned storage`;
         return `${graphs} · ${storage}`;
+    }
+
+    // Replacing the keys asks first, in place: it signs out every other device, so the sentence
+    // says so before the new Recovery Code is shown.
+    let confirmingReplace = $state(false);
+    let replaceTrigger: HTMLElement | undefined;
+
+    /** The trigger, kept so stepping back returns the focus to it. */
+    function rememberTrigger(element: HTMLElement) {
+        replaceTrigger = element;
+        return () => {
+            if (replaceTrigger === element) replaceTrigger = undefined;
+        };
+    }
+
+    /** The confirmation's first control takes the focus, so a keyboard user lands on the choice. */
+    function focusOnMount(element: HTMLElement) {
+        element.focus();
+    }
+
+    async function cancelReplace() {
+        confirmingReplace = false;
+        // The trigger is drawn again once the confirmation goes, so wait for it.
+        await tick();
+        replaceTrigger?.focus();
+    }
+
+    function continueReplace() {
+        confirmingReplace = false;
+        actions.replaceKeys();
+    }
+
+    function escapeCancels(event: KeyboardEvent) {
+        if (event.key !== "Escape") return;
+        event.stopPropagation();
+        void cancelReplace();
     }
 
     const SECONDARY_BUTTON =
@@ -501,6 +544,18 @@
                     >Add a new access token</button
                 >
             {/if}
+        {:else if server.authState === "locked"}
+            <p class="text-sm text-gray-600 dark:text-gray-400">
+                This device's access token for {server.host} is protected by the
+                device's passcode, so your account there is checked once the
+                passcode is entered.
+            </p>
+            <button
+                type="button"
+                data-testid="sync-server-enter-passcode"
+                onclick={actions.enterPasscode}
+                class="mt-3 {SECONDARY_BUTTON}">Enter passcode</button
+            >
         {:else}
             <p class="text-sm font-medium text-amber-800 dark:text-amber-200">
                 Could not confirm your account on {server.host}.
@@ -582,10 +637,11 @@
                     another.
                 </p>
                 <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                    Regenerate the Recovery Code if you forgot to save or have
-                    lost it, or if someone else may have seen it. The current
-                    code keeps working until you confirm you have saved the new
-                    one, and then stops working. Unlocked devices stay unlocked.
+                    Regenerate the Recovery Code if you did not save it or have
+                    lost it. If someone else may have seen it, replace your keys
+                    below instead. The current code keeps working until you
+                    confirm you have saved the new one, and then stops working.
+                    Unlocked devices stay unlocked.
                 </p>
                 <button
                     type="button"
@@ -594,6 +650,62 @@
                     class="mt-2 {SECONDARY_BUTTON}"
                     >Regenerate Recovery Code</button
                 >
+            </div>
+            <div>
+                <p class="text-sm font-medium text-gray-950 dark:text-white">
+                    Replace keys
+                </p>
+                <p class="text-sm mt-1 text-gray-500 dark:text-gray-400">
+                    Replace your keys if someone may have copied your Recovery Code
+                    or your keys, or if a device that is still unlocked is lost or no
+                    longer yours. You get a new Recovery Code and a new security
+                    fingerprint, and every other device has to be unlocked again.
+                </p>
+                {#if confirmingReplace}
+                    <div
+                        data-testid="replace-keys-confirm"
+                        role="group"
+                        aria-label="Replace keys"
+                        class="mt-2 space-y-2 rounded-lg bg-amber-50 px-3 py-2 dark:bg-amber-400/10"
+                    >
+                        <p class="text-sm text-amber-900 dark:text-amber-100">
+                            Replace your keys on {server.host}? Your other devices must be
+                            unlocked again, with the new Recovery Code or by approval, and
+                            anyone who copied your old code or keys is cut off. Invites to
+                            you and from you are cancelled, and the graphs you own get new
+                            keys. The new Recovery Code is shown next, and nothing changes
+                            until you confirm you have saved it.
+                        </p>
+                        <div class="flex flex-wrap gap-2">
+                            <button
+                                {@attach focusOnMount}
+                                type="button"
+                                data-testid="replace-keys-continue"
+                                onkeydown={escapeCancels}
+                                onclick={continueReplace}
+                                class="{SECONDARY_BUTTON} bg-white dark:bg-transparent"
+                                >Continue</button
+                            >
+                            <button
+                                type="button"
+                                data-testid="replace-keys-cancel"
+                                onkeydown={escapeCancels}
+                                onclick={cancelReplace}
+                                class="rounded-lg px-3 py-1.5 text-sm font-medium text-gray-700 hover:text-gray-950 pointer-coarse:min-h-11 dark:text-gray-200 dark:hover:text-white"
+                                >Cancel</button
+                            >
+                        </div>
+                    </div>
+                {:else}
+                    <button
+                        {@attach rememberTrigger}
+                        type="button"
+                        data-testid="replace-keys"
+                        onclick={() => (confirmingReplace = true)}
+                        class="mt-2 {SECONDARY_BUTTON}"
+                        >Replace keys and lock out other devices</button
+                    >
+                {/if}
             </div>
             <!-- One unlock, always offered. Unlocking checks the code against the server's current
                  keys and replaces whatever key this device holds, so keys that a reset on another
@@ -618,7 +730,7 @@
                     while your keys are unlocked here. The keys stay unlocked until
                     you sign out, forget the server, remove its synced graphs from
                     this browser, or clear this browser's data. If your keys are
-                    reset on another device, the keys held here stop working - unlock
+                    replaced or reset on another device, the keys held here stop working - unlock
                     with the new Recovery Code to replace them.
                 </p>
                 <button

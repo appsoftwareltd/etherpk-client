@@ -18,9 +18,11 @@ import {
     type SyncAccountSummary,
 } from '@appsoftwareltd/etherpk-shared'
 import { ManagedTokenError } from '$lib/auth/managed-token'
+import type { HandoutOutcome } from '$lib/sync/key-handouts'
 import type { PendingInvite } from '$lib/sync/sync-api'
 import { SyncApiError, type OwnedStorageTotals, type SyncApi } from '$lib/sync/sync-api'
 import { clearSyncAccount, setSyncAccount } from '$lib/sync/account-scope'
+import { DevicePasscodeLockedError } from '$lib/sync/device-passcode'
 import { syncApiFor, type ResolvedSyncConnection } from '$lib/sync/sync-connection'
 import { serverHost } from '$lib/sync/sync-connections'
 import { getVaultWrapKey, lockVault, setVaultWrapKey } from '$lib/sync/vault-session'
@@ -74,6 +76,14 @@ export class SyncServerView {
     /** The account's own identity fingerprint, revealed on request: reading it needs the vault open. */
     fingerprint = $state<string | null>(null)
     fingerprintPending = $state(false)
+
+    /**
+     * Per graph, a copy of its newest key this account was handed and did not take in (ADR 0127):
+     * signed with keys other than the ones pinned for the owner, or not signed by the owner at all.
+     */
+    keyCopies = $state.raw<Record<string, HandoutOutcome>>({})
+    /** Per graph, a change of an owned graph's key running from this page. */
+    rotating = $state.raw<ReadonlySet<string>>(new Set())
 
     /**
      * When this page first saw the plan pending, and the time of the last re-check. A new account's
@@ -178,7 +188,8 @@ export class SyncServerView {
     /**
      * Ask the server who this device is signed in as. Confirming records the account for the
      * server (the registry shows its graphs from then on); a refusal signs the device out there and
-     * locks its keys; a server that does not answer keeps the last partition for offline work.
+     * locks its keys; a server that does not answer keeps the last partition for offline work. An
+     * access token sealed by a Device Passcode not yet entered asks nothing (ADR 0129).
      */
     checkAccount(): Promise<void> {
         this.accountCheck = this.#checkAccount()
@@ -202,7 +213,8 @@ export class SyncServerView {
         } catch (error) {
             if (this.#disposed) return
             this.account = null
-            if (refusedCredential(error)) this.markSignedOut()
+            if (error instanceof DevicePasscodeLockedError) this.authState = 'locked'
+            else if (refusedCredential(error)) this.markSignedOut()
             // Unreachable is not refused: the last verified partition stays for offline local
             // work, and every remote call still presents a current token or PAT.
             else this.authState = 'unavailable'

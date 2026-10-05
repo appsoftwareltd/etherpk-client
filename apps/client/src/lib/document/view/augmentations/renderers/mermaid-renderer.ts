@@ -12,6 +12,7 @@
  * (ADR 0022) and only offers the clear.
  */
 
+import { sanitizedSvgMarkup, setTrustedMarkup, type TrustedMarkup } from '$lib/security/trusted-types'
 import type { AugmentationRenderer } from './contract'
 
 let mermaidModule: Promise<typeof import('mermaid').default> | null = null
@@ -20,8 +21,11 @@ let initializedDark: boolean | null = null
 let renderSeq = 0
 
 const CACHE_MAX = 100
-/** key `${dark}|${source}` → svg string; Map insertion order doubles as LRU recency. */
-const svgCache = new Map<string, string>()
+/**
+ * key `${dark}|${source}` → the diagram's SVG, sanitized once as it is cached (ADR 0130), so a hit
+ * goes straight into the page. Map insertion order doubles as LRU recency.
+ */
+const svgCache = new Map<string, TrustedMarkup>()
 /**
  * Bumped by every clear. A render notes the generation before it awaits anything and only
  * caches its SVG if the generation is unchanged when it lands, so a render already in flight
@@ -40,7 +44,7 @@ export function mermaidCacheSize(): number {
     return svgCache.size
 }
 
-function cacheGet(key: string): string | undefined {
+function cacheGet(key: string): TrustedMarkup | undefined {
     const hit = svgCache.get(key)
     if (hit !== undefined) {
         svgCache.delete(key)
@@ -49,7 +53,7 @@ function cacheGet(key: string): string | undefined {
     return hit
 }
 
-function cachePut(key: string, svg: string): void {
+function cachePut(key: string, svg: TrustedMarkup): void {
     svgCache.delete(key)
     svgCache.set(key, svg)
     if (svgCache.size > CACHE_MAX) svgCache.delete(svgCache.keys().next().value!)
@@ -60,10 +64,10 @@ function loadMermaid() {
     return mermaidModule
 }
 
-function container(svg: string): HTMLElement {
+function container(svg: TrustedMarkup): HTMLElement {
     const el = document.createElement('div')
     el.className = 'gk-mermaid'
-    el.innerHTML = svg
+    setTrustedMarkup(el, svg)
     return el
 }
 
@@ -82,9 +86,11 @@ export const mermaidRenderer: AugmentationRenderer = {
         const id = `gk-mermaid-${++renderSeq}`
         try {
             const { svg } = await mermaid.render(id, source)
+            // Drawn from the document's own text, so sanitized before it reaches the page.
+            const markup = sanitizedSvgMarkup(svg)
             // The caller still gets its diagram; only the cache refuses a result from before a clear.
-            if (startedIn === generation) cachePut(key, svg)
-            return container(svg)
+            if (startedIn === generation) cachePut(key, markup)
+            return container(markup)
         } catch (error) {
             // Mermaid can leave an orphan error element in <body>; never let it accumulate.
             document.getElementById(id)?.remove()

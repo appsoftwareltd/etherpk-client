@@ -142,4 +142,23 @@ describe('cspDirectives', () => {
     it('allows the module workers the importer and the document index run in', () => {
         expect(cspDirectives({ appHtmlPath: path })['worker-src']).toEqual(["'self'", 'blob:'])
     })
+
+    it('enforces Trusted Types with the named policies when asked, and reports where it is told (ADR 0130)', () => {
+        const directives = cspDirectives({
+            appHtmlPath: path,
+            trustedTypesPolicies: ['svelte-trusted-html', 'default'],
+            reportUri: '/api/csp-report',
+        })
+        // SvelteKit quotes the 'script' keyword itself; 'allow-duplicates' it leaves alone.
+        expect(directives['require-trusted-types-for']).toEqual(['script'])
+        expect(directives['trusted-types']).toEqual(['svelte-trusted-html', 'default', "'allow-duplicates'"])
+        expect(directives['report-uri']).toEqual(['/api/csp-report'])
+    })
+
+    it('leaves Trusted Types and reporting out unless asked: the Sync Server and Corporate keep their policies', () => {
+        const directives = cspDirectives({ appHtmlPath: path })
+        expect(directives['require-trusted-types-for']).toBeUndefined()
+        expect(directives['trusted-types']).toBeUndefined()
+        expect(directives['report-uri']).toBeUndefined()
+    })
 })

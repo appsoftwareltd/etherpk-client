@@ -19,6 +19,7 @@
 
 import type { DockviewApi } from 'dockview-core'
 
+import { setTrustedMarkup } from '$lib/security/trusted-types'
 import { iconSvg } from '$lib/surface/icons'
 
 import { markIcon, type TabMark } from './tab-renderer'
@@ -287,7 +288,7 @@ export function installTabStripScrollbar(api: DockviewApi, container: HTMLElemen
                 const pin = item.appendChild(document.createElement('span'))
                 pin.className = 'dv-compass-overflow-pin'
                 pin.setAttribute('aria-hidden', 'true')
-                pin.innerHTML = iconSvg('pin', { size: 12 })
+                setTrustedMarkup(pin, iconSvg('pin', { size: 12 }))
             }
             // The View's icon and the tab's mark come over too, in the tab's order: icon, label,
             // mark. Read off the elements the tab renderer draws, so a row always says what its
@@ -298,7 +299,7 @@ export function installTabStripScrollbar(api: DockviewApi, container: HTMLElemen
                 icon.className = 'dv-compass-overflow-icon'
                 icon.dataset.icon = kindIcon
                 icon.setAttribute('aria-hidden', 'true')
-                icon.innerHTML = iconSvg(kindIcon, { size: 13 })
+                setTrustedMarkup(icon, iconSvg(kindIcon, { size: 13 }))
             }
             const text = item.appendChild(document.createElement('span'))
             text.className = 'dv-compass-overflow-label'
@@ -311,7 +312,7 @@ export function installTabStripScrollbar(api: DockviewApi, container: HTMLElemen
                 mark.dataset.state = markState
                 mark.title = tabMark.title
                 mark.setAttribute('aria-hidden', 'true')
-                mark.innerHTML = iconSvg(markIcon(markState), { size: 13 })
+                setTrustedMarkup(mark, iconSvg(markIcon(markState), { size: 13 }))
             }
 
             // A close control per row: with a strip this long the row you want to close is
@@ -321,7 +322,7 @@ export function installTabStripScrollbar(api: DockviewApi, container: HTMLElemen
             close.className = 'dv-compass-overflow-close'
             close.title = `Close ${name}`
             close.setAttribute('aria-label', `Close ${name}`)
-            close.innerHTML = iconSvg('close', { size: 14 })
+            setTrustedMarkup(close, iconSvg('close', { size: 14 }))
             close.addEventListener('click', (event) => {
                 // Without this the row's own handler would also run and ACTIVATE the tab it was
                 // asked to close.

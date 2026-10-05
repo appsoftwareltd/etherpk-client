@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { readSymmetricEnvelopeHeader } from '@appsoftwareltd/etherpk-shared'
 import { randomBytes, utf8 } from './bytes'
 import { EnvelopeError, contextAad, envelopeEpochId, openSymmetric, sealSymmetric } from './envelope'
 
@@ -33,5 +34,12 @@ describe('symmetric envelope', () => {
         badVersion[0] = 9
         expect(() => envelopeEpochId(badVersion)).toThrow(EnvelopeError)
         expect(() => envelopeEpochId(envelope.subarray(0, 4))).toThrow(EnvelopeError)
+    })
+    it('is read by the shared header reader, as the Sync Server reads it, with the epoch it was sealed under', async () => {
+        // The epoch is a little-endian u32: 0x00010203 puts 3, 2, 1, 0 at bytes 2 to 5.
+        const envelope = await sealSymmetric({ key, epochId: 0x00010203, plaintext: utf8('hi'), aad })
+
+        expect([...envelope.subarray(2, 6)]).toEqual([3, 2, 1, 0])
+        expect(readSymmetricEnvelopeHeader(envelope)).toEqual({ ok: true, epochId: 0x00010203 })
     })
 })

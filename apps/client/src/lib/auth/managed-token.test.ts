@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
     ManagedTokenError,
     clearManagedAccessToken,
+    freshManagedBearerToken,
     managedBearerToken,
 } from './managed-token'
 
@@ -19,6 +20,19 @@ describe('managed bearer tokens', () => {
         { status: 503, headers: { 'Content-Type': 'application/json', ...(retryAfter ? { 'Retry-After': retryAfter } : {}) } },
     )
     const issued = () => Response.json({ accessToken: 'access-1', expiresAt: Date.now() + 15 * 60_000 })
+
+    it('asks for a fresh token past the one it holds, and serves that one from then on (ADR 0128)', async () => {
+        const fetcher = vi.fn<typeof fetch>()
+            .mockResolvedValueOnce(issued())
+            .mockResolvedValueOnce(Response.json({ accessToken: 'access-2', expiresAt: Date.now() + 15 * 60_000 }))
+        await managedBearerToken(fetcher)
+
+        await expect(freshManagedBearerToken(fetcher)).resolves.toBe('access-2')
+
+        expect(String(fetcher.mock.calls[1][0])).toBe('/auth/token?fresh=1')
+        await expect(managedBearerToken(fetcher)).resolves.toBe('access-2')
+        expect(fetcher).toHaveBeenCalledTimes(2)
+    })
 
     it('waits out Retry-After and asks again before reporting a busy sign-in service', async () => {
         // Corporate being briefly busy is not something to show the user.

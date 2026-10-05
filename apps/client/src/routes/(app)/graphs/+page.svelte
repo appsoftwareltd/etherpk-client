@@ -57,6 +57,10 @@
     } from "$lib/document/index-pool-discard";
     import {
         accountIdentityFingerprint,
+        inspectInvite,
+        publishedIdentity,
+        savePin,
+        type InviteCheck,
         clearSyncAccount,
         createAccountKeys,
         createSyncApi,
@@ -93,6 +97,15 @@
         SYNC_CONNECTIONS_CHANGED_EVENT,
         SYNC_CONNECTIONS_STORAGE_KEY,
         VaultLockedError,
+        collectKeyHandouts,
+        prepareKeyReplacement,
+        syncApiFor,
+        devicePasscode,
+        DevicePasscodeLockedError,
+        type DevicePasscodeState,
+        type HandoutOutcome,
+        type KeyReplacementResult,
+        type PreparedKeyReplacement,
     } from "$lib/sync";
     import {
         PUBLIC_DOCS_URL,
@@ -102,15 +115,27 @@
     import { managedSignInHref } from "$lib/auth/sign-in-links";
     import {
         EnvelopeError,
+        fingerprint,
         fromBase64Url,
         openVault,
         type GraphKeyring,
+        type KeyVault,
+        type PublicIdentity,
     } from "$lib/crypto";
     import { promptRecoveryCode } from "$lib/sync/recovery-code-prompt";
     import { describeSyncFailure } from "$lib/sync/sync-error-copy";
     import { describeConnectionCheckFailure } from "$lib/sync/connection-check";
     import InviteDialog from "$lib/sync/ui/InviteDialog.svelte";
+    import AcceptInviteDialog from "$lib/sync/ui/AcceptInviteDialog.svelte";
+    import VerifyMemberDialog from "$lib/sync/ui/VerifyMemberDialog.svelte";
+    import { checkAccountIdentity, reportIdentityRepair } from "$lib/sync/ui/identity-check";
+    import { describeRotation, rotateGraphKeyOnce } from "$lib/sync/ui/key-rotation";
     import UnlockDialog from "$lib/sync/ui/UnlockDialog.svelte";
+    import DevicePasscodeDialog, {
+        type DevicePasscodeDialogMode,
+    } from "$lib/sync/ui/DevicePasscodeDialog.svelte";
+    import { devicePasscodeState } from "$lib/sync/ui/device-passcode-state.svelte";
+    import DevicePasscodeCard from "$lib/workspace/DevicePasscodeCard.svelte";
     import ResetDialog from "$lib/sync/ui/ResetDialog.svelte";
     import TransferOwnershipDialog from "$lib/sync/ui/TransferOwnershipDialog.svelte";
     import RenameGraphDialog from "$lib/sync/ui/RenameGraphDialog.svelte";
@@ -131,7 +156,8 @@
         importMarkers,
         type ImportMarker,
     } from "$lib/import/import-marker";
-    import { clearManagedAccessToken } from "$lib/auth/managed-token";
+    import { clearManagedAccessToken, freshManagedBearerToken } from "$lib/auth/managed-token";
+    import { showNotice } from "$lib/activity/notices";
     import GraphPickerRow from "$lib/workspace/GraphPickerRow.svelte";
     import SyncServerGroup, {
         type SyncServerGroupActions,
@@ -271,11 +297,51 @@
         server: SyncServerView;
         graphId: string;
         graphName?: string;
-        keyring: GraphKeyring;
+        /** The key this device holds for the vault, which holds the graph's keyring and the pins. */
+        heldKey: Uint8Array;
     } | null>(null);
+    /** An invite whose signature and inviter fingerprint the user is looking at (ADR 0126). */
+    let acceptCheck = $state.raw<{
+        server: SyncServerView;
+        invite: PendingInvite;
+        check: InviteCheck;
+    } | null>(null);
+    /**
+     * Somebody whose fingerprint the user is comparing before pinning it (ADR 0126): a member of a
+     * graph the user owns, or the owner of a graph the user plays in, whose key changed.
+     */
+    let verifyingMember = $state.raw<{
+        server: SyncServerView;
+        userId: string;
+        email: string;
+        /** The keys presented differ from the ones pinned for them. */
+        changed: boolean;
+        identity: PublicIdentity;
+        fingerprint: string;
+    } | null>(null);
+    /** The member whose removal is in flight (ADR 0127). */
+    let removingMember = $state<string | null>(null);
     let unlockThen = $state<null | (() => Promise<void>)>(null);
     /** The server whose keys the open unlock dialog unlocks. */
     let unlockOrigin = $state<string | null>(null);
+    /**
+     * How the open unlock asks: for this device's passcode while it has not been entered in this
+     * browser session (ADR 0129), else for the account's Recovery Code or an approval.
+     */
+    let unlockWith = $state<"passcode" | "account">("account");
+    /**
+     * A Device Passcode dialog not tied to unlocking one server's keys: asked at page load, offered
+     * again after a forgotten passcode, or needed before a custom server's token can be saved.
+     * `then` runs once it is done.
+     */
+    let passcodePrompt = $state.raw<null | {
+        mode: DevicePasscodeDialogMode;
+        intro?: string;
+        dismissLabel?: string;
+        then?: () => void;
+    }>(null);
+    /** The passcode was forgotten on this visit: once keys are unlocked again, offer a new one. */
+    let offerPasscodeAfterUnlock = false;
     // Set alongside unlockThen when a caller is AWAITING the unlock rather than resuming
     // after it, so cancelling the dialog fails that caller instead of hanging it forever.
     let unlockCancelled: null | (() => void) = null;
@@ -424,6 +490,8 @@
     let staleCopy = $state<{
         server: SyncServerView;
         invite: PendingInvite;
+        /** The inviter fingerprint the user confirmed, which the accept is checked against. */
+        confirmedFingerprint: string;
         unsent: UnsentDocument[];
         graphName: string;
         downloaded: boolean;
@@ -660,7 +728,11 @@
         return "Connect this device to a Sync Server first: add its address and an access token in Sync settings.";
     }
 
-    /** The same way in: the same kind of connection, address and access token. */
+    /**
+     * The same way in: the same kind of connection and address, and no sign the access token
+     * changed. A token sealed by a Device Passcode this tab has not had entered reads as null, which
+     * is unknown rather than changed (ADR 0129).
+     */
     function sameCredential(
         a: ResolvedSyncConnection,
         b: ResolvedSyncConnection,
@@ -668,7 +740,9 @@
         return (
             a.kind === b.kind &&
             a.serverBaseUrl === b.serverBaseUrl &&
-            (a.kind === "managed" || a.token === b.token)
+            (a.credential === null ||
+                b.credential === null ||
+                a.credential === b.credential)
         );
     }
 
@@ -801,15 +875,25 @@
      * Null when the vault is locked, absent or unreadable: the list then keeps the id
      * placeholder, and the row copy says what would change that.
      */
-    async function heldKeyrings(
-        server: SyncServerView,
-    ): Promise<GraphKeyring[] | null> {
+    /**
+     * The vault, when this device holds its key: its keyrings label graphs not on this device,
+     * and its pins say which members of an owned graph have been verified (ADR 0126). The first
+     * time a page has the keys, it also checks the identity the server publishes for the account.
+     */
+    async function heldVault(server: SyncServerView): Promise<KeyVault | null> {
         try {
             const opened = await openHeldVault({
                 api: server.api,
                 origin: server.origin,
             });
-            return opened?.vault.keyrings ?? null;
+            if (opened)
+                void checkAccountIdentity(
+                    server.api,
+                    opened.vaultKey,
+                    server.origin,
+                    readSyncAccount(server.origin)?.principalId,
+                );
+            return opened?.vault ?? null;
         } catch (err) {
             console.warn(
                 "[graphs] could not open the vault to read graph names",
@@ -920,9 +1004,14 @@
     async function refreshSynced(server: SyncServerView) {
         server.loading = true;
         try {
-            const keyrings = await heldKeyrings(server);
+            // First, so the vault read below holds every new epoch's key: the name envelopes of
+            // graphs whose key changed are sealed under it.
+            await collectKeyCopies(server);
+            const vault = await heldVault(server);
+            const keyrings = vault?.keyrings ?? null;
             const overview = await loadSyncedGraphViews(server.api, graphs, {
                 keyrings: keyrings ?? undefined,
+                pins: vault ?? undefined,
             });
             const scope = readSyncAccount(server.origin);
             if (scope) {
@@ -954,6 +1043,8 @@
                 backfillNameEnvelopes(server.api, keyrings, overview.graphs);
                 void readUnlabelledNames(server, keyrings, overview.graphs);
             }
+            // In the background: the list is shown while each due graph gets its new key.
+            void rotateDueGraphs(server, overview.graphs);
         } catch (err) {
             server.graphs = [];
             server.listed = false;
@@ -1105,8 +1196,71 @@
             return;
         }
         supersedePendingUnlock();
+        unlockWith = unlockRoute();
         unlockOrigin = server.origin;
         unlockThen = action;
+    }
+
+    /**
+     * Which prompt unlocks keys now: this device's passcode while it has not been entered in this
+     * browser session, since the keys it protects may be all that is needed (ADR 0129), else the
+     * account's Recovery Code or an approval.
+     */
+    function unlockRoute(): "passcode" | "account" {
+        return devicePasscode.state() === "locked" ? "passcode" : "account";
+    }
+
+    /**
+     * The Device Passcode was entered or turned off, here or in another tab (ADR 0129), so nothing
+     * waits on it any more: a prompt still asking for it is answered, an unlock carries on with the
+     * keys it opened or asks for the account's, and the servers that waited on it are checked again.
+     * Runs again harmlessly when a dialog reports what its own state change already ran.
+     */
+    function passcodeChanged(state: DevicePasscodeState) {
+        if (state === "locked") return;
+        const prompt = passcodePrompt;
+        if (prompt?.mode === "unlock") {
+            passcodePrompt = null;
+            prompt.then?.();
+        }
+        if (unlockThen && unlockWith === "passcode") {
+            if (unlockOrigin && heldKey(unlockOrigin)) void runUnlockThen();
+            else unlockWith = "account";
+        }
+        if (
+            servers.some(
+                (server) =>
+                    server.authState === "locked" || !server.vaultUnlocked,
+            )
+        )
+            void refresh();
+    }
+
+    /**
+     * Forgot your passcode? removed the keys it protected and the access tokens it sealed (ADR 0129).
+     * Keys are unlocked again as on a new device, with the Recovery Code or by approval, for the
+     * server the user was unlocking, else the primary one; then a new passcode is offered.
+     */
+    function afterPasscodeForgotten() {
+        offerPasscodeAfterUnlock = true;
+        setStatus(
+            "The passcode is forgotten, and the keys it protected are removed from this device. Unlock your keys again with your Recovery Code or from another device.",
+        );
+        // Reconciles the servers first: a custom server whose token went with the passcode is gone.
+        void refresh();
+        const server = serverFor(unlockOrigin) ?? primaryServer;
+        if (!server || server.vaultExists === false) {
+            cancelUnlock();
+            return;
+        }
+        if (!unlockThen || unlockOrigin !== server.origin) {
+            supersedePendingUnlock();
+            unlockOrigin = server.origin;
+            unlockThen = async () => {
+                server.syncUnlocked();
+            };
+        }
+        unlockWith = "account";
     }
 
     /** Fail whoever was awaiting the dialog before handing it to a new caller. */
@@ -1211,6 +1365,7 @@
                         "Unlock your keys with your Recovery Code to continue.",
                     ),
                 );
+            unlockWith = unlockRoute();
             unlockOrigin = origin;
             unlockThen = async () => {
                 const key = heldKey(origin);
@@ -1433,7 +1588,9 @@
                     () => undefined,
                 );
             }
-            ownConnectionChange(() => forgetSyncConnection(connection.origin));
+            await ownConnectionChange(() =>
+                forgetSyncConnection(connection.origin),
+            );
             confirmingForget = null;
             setStatus(
                 connection.kind === "managed"
@@ -1454,10 +1611,12 @@
      * listener that keeps the page in step with the header menu skips it while this is set.
      */
     let changingConnections = false;
-    function ownConnectionChange<T>(write: () => T): T {
+    async function ownConnectionChange<T>(
+        write: () => T | Promise<T>,
+    ): Promise<T> {
         changingConnections = true;
         try {
-            return write();
+            return await write();
         } finally {
             changingConnections = false;
         }
@@ -1575,9 +1734,23 @@
         }
         // Beside any other server this device holds, replacing only one to the same server (a new
         // token for it).
-        const saved = ownConnectionChange(() =>
-            saveCustomSyncConnection(url, pat),
-        );
+        let saved: ResolvedSyncConnection;
+        try {
+            saved = await ownConnectionChange(() =>
+                saveCustomSyncConnection(url, pat),
+            );
+        } catch (err) {
+            // A Device Passcode stores the token sealed, so it is asked for first; the form keeps
+            // what was typed and saves once it is entered (ADR 0129).
+            if (err instanceof DevicePasscodeLockedError) {
+                passcodePrompt = {
+                    mode: "unlock",
+                    then: () => void saveSyncConfig(),
+                };
+                return;
+            }
+            throw err;
+        }
         token = "";
         setStatus(`Connected to ${new URL(url).host}.`);
         await refresh();
@@ -1732,8 +1905,11 @@
                 server.api,
                 graph.id,
                 () =>
-                    ensureGraphKeys(server.api, graph.id, () =>
-                        unlockVaultInteractively(server.origin),
+                    ensureGraphKeys(
+                        server.api,
+                        graph.id,
+                        () => unlockVaultInteractively(server.origin),
+                        { newGraph: true },
                     ),
             );
             const { recoveryCodeJustGenerated, deviceKey, commit } = keys;
@@ -2378,7 +2554,12 @@
                     (k) => k.graphId === graphId,
                 );
                 if (!keyring) throw new Error("You do not hold this graph key");
-                inviteDialog = { server, graphId, graphName, keyring };
+                inviteDialog = {
+                    server,
+                    graphId,
+                    graphName,
+                    heldKey: opened.vaultKey,
+                };
             } catch (err) {
                 setRowStatus(
                     graphId,
@@ -2603,17 +2784,51 @@
     }
 
     /**
-     * Accept an invite. When this browser already holds a copy of the graph with changes the
-     * server never received, nothing is accepted yet: the dialog below names what would be lost.
-     * A failure to read the copy accepts nothing and deletes nothing.
+     * Accept an invite, first step (ADR 0126): check its signature, and the inviter's fingerprint
+     * against this account's pins, and show what was found. The account's own identity and its
+     * pins are in the vault, so the keys must be unlocked. Nothing is accepted until the user
+     * confirms in the dialog.
      */
-    async function acceptInvite(server: SyncServerView, invite: PendingInvite) {
+    function acceptInvite(server: SyncServerView, invite: PendingInvite) {
+        if (checkingInvite) return;
+        checkingInvite = invite.id;
+        void requireUnlockedVault(server, async () => {
+            try {
+                acceptCheck = {
+                    server,
+                    invite,
+                    check: await inspectInvite(
+                        server.api,
+                        invite,
+                        server.heldKey()!,
+                    ),
+                };
+            } catch (err) {
+                setStatus(describeSyncFailure(err, "check the invite"), "error");
+            }
+        }).finally(() => {
+            checkingInvite = null;
+        });
+    }
+
+    /**
+     * Accept an invite the user has checked, against the fingerprint they were shown. When this
+     * browser already holds a copy of the graph with changes the server never received, nothing
+     * is accepted yet: the dialog below names what would be lost. A failure to read the copy
+     * accepts nothing and deletes nothing.
+     */
+    async function acceptCheckedInvite(
+        server: SyncServerView,
+        invite: PendingInvite,
+        confirmedFingerprint: string,
+    ) {
         if (checkingInvite) return;
         checkingInvite = invite.id;
         try {
             const outcome = await acceptUnlessUnsent(invite, {
                 inspect: staleCopyUnsentChanges,
-                accept: () => acceptInviteDiscardingCopy(server, invite),
+                accept: () =>
+                    acceptInviteDiscardingCopy(server, invite, confirmedFingerprint),
             });
             if (outcome.kind === "confirm") {
                 const record = await registry
@@ -2622,6 +2837,7 @@
                 staleCopy = {
                     server,
                     invite,
+                    confirmedFingerprint,
                     unsent: outcome.unsent,
                     graphName: record?.name ?? "Shared graph",
                     downloaded: false,
@@ -2637,6 +2853,157 @@
         }
     }
 
+    /**
+     * Compare a member's Security Fingerprint before pinning it (ADR 0126). The member list
+     * offers this only while the keys are unlocked here, because the pins are in the vault.
+     */
+    async function startVerifyMember(
+        server: SyncServerView,
+        member: SyncedMember,
+    ) {
+        const identity = publishedIdentity(member.identity);
+        if (!identity) return;
+        verifyingMember = {
+            server,
+            userId: member.userId,
+            email: member.email,
+            changed: member.trust === "changed",
+            identity,
+            fingerprint: await fingerprint(identity),
+        };
+    }
+
+    /**
+     * Compare the new fingerprint of the owner of a graph this account plays in, whose copy of the
+     * graph's newest key was signed with keys other than the ones pinned for them (ADR 0127). Once
+     * it is pinned, the next collection takes the copy in.
+     */
+    function startVerifyOwner(server: SyncServerView, view: SyncedGraphView) {
+        const outcome = server.keyCopies[view.id];
+        if (outcome?.kind !== "owner-key-changed") return;
+        verifyingMember = {
+            server,
+            userId: outcome.ownerId,
+            email: outcome.ownerEmail ?? "the owner",
+            changed: true,
+            identity: outcome.identity,
+            fingerprint: outcome.fingerprint,
+        };
+    }
+
+    /** Pin the fingerprint once the user has compared it. */
+    async function pinVerifiedMember(pending: NonNullable<typeof verifyingMember>) {
+        const heldKey = pending.server.heldKey();
+        if (!heldKey) throw new VaultLockedError();
+        await savePin(pending.server.api, heldKey, pending.userId, pending.identity, {
+            email: pending.email,
+            verified: true,
+        });
+    }
+
+    /**
+     * Collect the copies of graph keys waiting for this account on `server` (ADR 0127), while its
+     * keys are unlocked here: each new epoch's key goes into the vault, and a copy that could not
+     * be taken in is shown on its graph's row. Best effort: the next refresh tries again.
+     */
+    async function collectKeyCopies(server: SyncServerView): Promise<void> {
+        const heldKey = server.heldKey();
+        if (!heldKey) return;
+        try {
+            const { outcomes } = await collectKeyHandouts(server.api, heldKey);
+            const refused: Record<string, HandoutOutcome> = {};
+            for (const outcome of outcomes)
+                if (outcome.kind !== "added" && outcome.kind !== "not-joined")
+                    refused[outcome.graphId] = outcome;
+            server.keyCopies = refused;
+        } catch (err) {
+            console.warn("[graphs] could not collect the keys of shared graphs", err);
+        }
+    }
+
+    /**
+     * Give each owned graph the server marks due a new key (ADR 0127): after a member left, was
+     * removed or reset their account. One graph at a time, while the keys are unlocked here; a
+     * graph whose change cannot go ahead says why on its row and is tried again next time.
+     */
+    async function rotateDueGraphs(server: SyncServerView, views: SyncedGraphView[]) {
+        for (const view of views) {
+            if (view.role !== "owner" || !view.rotationDue) continue;
+            if (!server.heldKey()) {
+                setRowStatus(
+                    view.id,
+                    "Somebody left this graph, so it needs a new key. Unlock your keys on the Sync tab, and EtherPK makes one.",
+                );
+                continue;
+            }
+            await rotateKey(server, view);
+        }
+    }
+
+    /** Change one owned graph's key from this page, saying on its row how it went. */
+    async function rotateKey(server: SyncServerView, view: SyncedGraphView): Promise<void> {
+        const heldKey = server.heldKey();
+        if (!heldKey) {
+            setRowStatus(view.id, "Unlock your keys on the Sync tab to change this graph’s key.", "error");
+            return;
+        }
+        if (server.rotating.has(view.id)) return;
+        server.rotating = new Set([...server.rotating, view.id]);
+        try {
+            const result = await rotateGraphKeyOnce(server.api, heldKey, server.origin, view.id);
+            const told = describeRotation(result, view.name);
+            if (told) setRowStatus(view.id, told.text, told.tone);
+            else setRowStatus(view.id, "This graph has a new key. Former members cannot read what is written from now on.");
+            if (result.kind === "rotated")
+                server.graphs = server.graphs.map((graph) =>
+                    graph.id === view.id ? { ...graph, rotationDue: false } : graph,
+                );
+        } catch (err) {
+            setRowStatus(view.id, describeSyncFailure(err, "change this graph’s key"), "error");
+        } finally {
+            const next = new Set(server.rotating);
+            next.delete(view.id);
+            server.rotating = next;
+        }
+    }
+
+    /**
+     * The owner's Rotate key: mark the graph due first, so a change cut short here is finished by
+     * the next device, then make the new key.
+     */
+    async function rotateKeyNow(server: SyncServerView, view: SyncedGraphView) {
+        if (!server.heldKey()) {
+            setRowStatus(view.id, "Unlock your keys on the Sync tab to change this graph’s key.", "error");
+            return;
+        }
+        try {
+            await server.api.requestRotation(view.id);
+        } catch (err) {
+            setRowStatus(view.id, describeSyncFailure(err, "change this graph’s key"), "error");
+            return;
+        }
+        await rotateKey(server, view);
+    }
+
+    /**
+     * Remove a Player the owner has confirmed removing (ADR 0127). The server closes their
+     * connections at once and marks the graph due a new key, which the refresh then makes.
+     */
+    async function removeMember(server: SyncServerView, view: SyncedGraphView, member: SyncedMember) {
+        if (removingMember) return;
+        removingMember = member.userId;
+        try {
+            await server.api.removeMember(view.id, member.userId);
+        } catch (err) {
+            setRowStatus(view.id, describeSyncFailure(err, `remove ${member.email}`), "error");
+            return;
+        } finally {
+            removingMember = null;
+        }
+        setRowStatus(view.id, `${member.email} no longer has access to this graph.`);
+        await refreshSynced(server);
+    }
+
     /** The person saw what would be lost and chose to accept anyway. */
     async function confirmStaleCopyDiscard() {
         const pending = staleCopy;
@@ -2646,6 +3013,7 @@
         await acceptInviteDiscardingCopy(
             pending.server,
             pending.invite,
+            pending.confirmedFingerprint,
             pending.unsent.map((document) => document.docId),
             pending.graphName,
         );
@@ -2669,19 +3037,13 @@
     function acceptInviteDiscardingCopy(
         server: SyncServerView,
         invite: PendingInvite,
+        confirmedFingerprint: string,
         agreed: readonly string[] = [],
         graphName?: string,
     ): Promise<void> {
         return requireUnlockedVault(server, async () => {
-            const wrapKey = server.heldKey()!;
+            const heldKey = server.heldKey()!;
             try {
-                const existing = await server.api.getVault();
-                if (!existing) throw new Error("No vault on this device");
-                const opened = await openVault(
-                    fromBase64Url(existing.vault),
-                    wrapKey,
-                );
-                server.cacheKey(opened.vaultKey); // self-heal: the vault key survives re-keys
                 let accepted:
                     | Awaited<ReturnType<typeof acceptInviteFlow>>
                     | undefined;
@@ -2689,12 +3051,13 @@
                     inspect: staleCopyUnsentChanges,
                     agreed,
                     discard: async () => {
+                        // Checked again inside: an inviter key that changed since the dialog
+                        // showed it is refused rather than accepted.
                         accepted = await acceptInviteFlow(
                             server.api,
                             invite,
-                            opened.vault.identityPrivateKey,
-                            opened.vaultKey,
-                            existing.version,
+                            heldKey,
+                            confirmedFingerprint,
                         );
                         await deleteGraphCache(accepted.graphId);
                     },
@@ -2707,6 +3070,7 @@
                         staleCopy = {
                             server,
                             invite,
+                            confirmedFingerprint,
                             unsent: outcome.unsent,
                             graphName:
                                 graphName ?? record?.name ?? "Shared graph",
@@ -2751,6 +3115,14 @@
         // The keys now open the name envelopes: label the graphs this device never added.
         if (server?.vaultUnlocked && server.authState === "authenticated")
             void refreshSynced(server);
+        if (offerPasscodeAfterUnlock && devicePasscode.state() === "off") {
+            offerPasscodeAfterUnlock = false;
+            passcodePrompt = {
+                mode: "set",
+                intro: "Your keys are unlocked again. Set a new passcode for this device, or leave it off. You can set one later here on the Sync tab.",
+                dismissLabel: "Leave it off",
+            };
+        }
     }
 
     /**
@@ -2854,13 +3226,171 @@
         );
     }
 
+    /**
+     * Key Replacement (ADR 0128), once the user has confirmed it on the Sync tab: a new Recovery
+     * Code, vault key and identity, with every other device cut off. The code is shown first, and
+     * nothing changes until the user confirms they saved it, as with Regenerate.
+     */
+    function replaceKeys(server: SyncServerView) {
+        const origin = server.origin;
+        void requireUnlockedVault(server, async () => {
+            let prepared: PreparedKeyReplacement;
+            try {
+                prepared = await prepareKeyReplacement(server.api, server.heldKey()!);
+            } catch (err) {
+                setStatus(describeSyncFailure(err, "replace your keys"), "error");
+                return;
+            }
+            let replaced: KeyReplacementResult | null = null;
+            promptRecoveryCode({
+                code: prepared.code,
+                arrival: "replace",
+                ...recoveryCodeServer(origin),
+                reason: `Your current keys and Recovery Code for ${server.host} keep working until you continue. Then only this code unlocks your keys there, and your other devices must be unlocked again. Save it first.`,
+                commit: async () => {
+                    setStatus(`Replacing your keys on ${server.host}…`);
+                    replaced = await prepared.commit();
+                },
+                cancel: () => setStatus("Your keys are unchanged."),
+                then: (err) => {
+                    if (err) {
+                        void settleFailedReplacement(prepared, err, server);
+                        return;
+                    }
+                    void finishReplacement(server, replaced!);
+                },
+            });
+        });
+    }
+
+    /**
+     * After the keys were replaced: take up what this device needs to carry on, give every graph
+     * the account owns a new key, and tell the user what they still have to do.
+     */
+    async function finishReplacement(server: SyncServerView, result: KeyReplacementResult) {
+        server.cacheKey(result.vaultKey);
+        // The replacement revoked every credential issued before it, this device's included.
+        let api = server.api;
+        if (result.accessToken && server.connection.kind === "custom") {
+            try {
+                api = syncApiFor(
+                    await ownConnectionChange(() =>
+                        saveCustomSyncConnection(server.connection.serverBaseUrl, result.accessToken!),
+                    ),
+                );
+            } catch (err) {
+                // The old token was revoked with the keys, so without this one the server is out of reach.
+                setStatus(
+                    `${describeSyncFailure(err, "save the new access token")} Your keys were replaced. Add a new access token for ${server.host} to keep syncing there.`,
+                    "error",
+                );
+                return;
+            }
+            reconcileServers();
+        } else if (server.connection.kind === "managed") {
+            // The next managed token from Corporate is issued after the replacement.
+            await freshManagedBearerToken().catch(() => undefined);
+        }
+
+        const names = new Map(server.graphs.map((graph) => [graph.id, graph.name]));
+        const nameOf = (graphId: string) => names.get(graphId) ?? "a graph";
+        const items: string[] = [];
+        for (const [index, graphId] of result.ownedGraphIds.entries()) {
+            setStatus(`Giving ${nameOf(graphId)} a new key (${index + 1} of ${result.ownedGraphIds.length})…`);
+            try {
+                const rotation = await rotateGraphKeyOnce(api, result.vaultKey, server.origin, graphId);
+                const told = describeRotation(rotation, nameOf(graphId));
+                if (told?.tone === "error") items.push(told.text);
+            } catch (err) {
+                items.push(`${describeSyncFailure(err, `give ${nameOf(graphId)} a new key`)} It is tried again when you next open the graph.`);
+            }
+        }
+        const inviteName = (graphId: string) => {
+            const invite = server.invites.find((pending) => pending.graphId === graphId);
+            return invite ? (server.inviteNames[invite.id] ?? "a graph") : "a graph";
+        };
+        for (const invite of result.declinedInvites) {
+            items.push(`${invite.inviterEmail ?? "Someone"} invited you to ${inviteName(invite.graphId)}. Ask them to invite you again.`);
+        }
+        for (const invite of result.withdrawnInvites) {
+            items.push(`Your invite to ${invite.inviteeEmail ?? "someone"} for ${nameOf(invite.graphId)} was cancelled. Invite them again.`);
+        }
+        for (const shared of result.sharedGraphs) {
+            items.push(
+                `${nameOf(shared.graphId)}: ask ${shared.ownerEmail ?? "its owner"} to compare your new security fingerprint, then select Rotate key on it.`,
+            );
+        }
+        const managed = server.connection.kind === "managed";
+        showNotice({
+            id: `keys-replaced:${server.origin}`,
+            tone: "info",
+            dismissal: "manual",
+            title: `Your keys on ${server.host} were replaced`,
+            text: `Your other devices must be unlocked again. Your new security fingerprint is ${result.fingerprint}.${items.length > 0 ? " Still to do:" : ""}`,
+            items,
+            footnote: managed
+                ? "Devices still signed in to your EtherPK Account can still reach the server. They cannot unlock your new keys, but they could reset them. To sign them out, open your Account and go to Sessions."
+                : undefined,
+            actions:
+                managed && corporateAccountUrl
+                    ? [
+                          {
+                              id: "keys-replaced-account",
+                              label: "Open Account",
+                              run: () => {
+                                  window.open(corporateAccountUrl!, "_blank", "noopener");
+                              },
+                          },
+                      ]
+                    : undefined,
+        });
+        setStatus(`Your keys on ${server.host} were replaced.`);
+        await refresh();
+    }
+
+    /**
+     * A replacement whose request threw may still have landed: the server is asked which code opens
+     * the vault before the user is told anything, as for Regenerate.
+     */
+    async function settleFailedReplacement(prepared: PreparedKeyReplacement, err: Error, server: SyncServerView): Promise<void> {
+        let active: Uint8Array | null;
+        try {
+            active = await prepared.activeVaultKey();
+        } catch {
+            setStatus(
+                "Could not confirm whether your keys were replaced. Keep the new Recovery Code you saved, and the old one too, until you are back online and can check.",
+                "error",
+            );
+            return;
+        }
+        if (active) {
+            server.cacheKey(active);
+            setStatus(
+                `Your keys on ${server.host} were replaced, but this device did not get the details back. If it signs in with an access token, add a new one in Sync settings.`,
+                "error",
+            );
+            await refresh();
+            return;
+        }
+        setStatus(
+            `${describeSyncFailure(err, "replace your keys")} Nothing changed: your current keys and Recovery Code still work. Try again.`,
+            "error",
+        );
+    }
+
     /** Closing the dialog abandons a resumable action and fails an awaiting one. */
     function cancelUnlock() {
         const cancelled = unlockCancelled;
         unlockThen = null;
         unlockCancelled = null;
         unlockOrigin = null;
+        unlockWith = "account";
         cancelled?.();
+    }
+
+    /** Ask for this device's passcode on its own, as a server waiting on it asks (ADR 0129). */
+    function enterPasscode() {
+        passcodePrompt = { mode: "unlock" };
     }
 
     /**
@@ -2872,10 +3402,13 @@
         server.fingerprintPending = true;
         void requireUnlockedVault(server, async () => {
             try {
-                server.fingerprint = await accountIdentityFingerprint(
+                // Runs the own-key check too, so the fingerprint shown is the one published.
+                const own = await accountIdentityFingerprint(
                     server.api,
-                    async () => server.heldKey()!,
+                    server.heldKey()!,
                 );
+                server.fingerprint = own?.fingerprint ?? null;
+                if (own?.repaired) reportIdentityRepair(server.origin);
                 if (!server.fingerprint) {
                     setStatus(
                         "This account has no encryption keys yet, so it has no fingerprint.",
@@ -2901,6 +3434,9 @@
         // Straight to the dialog, even with a key held here: that key may be one a reset on
         // another device left out of date, and a successful unlock replaces it.
         supersedePendingUnlock();
+        // The Recovery Code or an approval, as the button says, even while a Device Passcode waits:
+        // a key unlocked so is stored under the passcode once it is entered.
+        unlockWith = "account";
         unlockOrigin = server.origin;
         unlockThen = async () => {
             server.syncUnlocked();
@@ -2993,12 +3529,19 @@
             leave: (view) => void askLeave(server, view),
             cancelInvite: (view, member) =>
                 void cancelInvite(server, view, member),
-            acceptInvite: (invite) => void acceptInvite(server, invite),
+            verifyMember: (_view, member) =>
+                void startVerifyMember(server, member),
+            removeMember: (view, member) =>
+                void removeMember(server, view, member),
+            rotateKey: (view) => void rotateKeyNow(server, view),
+            verifyOwner: (view) => startVerifyOwner(server, view),
+            acceptInvite: (invite) => acceptInvite(server, invite),
             declineInvite: (invite) => void declineInvite(server, invite),
             beginDecline: (inviteId) => (decliningInvite = inviteId),
             signIn: () => startSignIn(server),
             reconnect: () => void reconnect(server),
             retry: () => void retryServer(server),
+            enterPasscode,
             showSettings: () => void openSyncPanel(server),
         };
     }
@@ -3018,10 +3561,12 @@
             checkPlan: () => void server.recheckPlan({ manual: true }),
             createKeys: () => createKeys(server),
             regenerate: () => regenerateKit(server),
+            replaceKeys: () => replaceKeys(server),
             unlock: () => unlockKeys(server),
             showFingerprint: () => showOwnFingerprint(server),
             reset: () => (resetServer = server),
             removeCopies: () => void startRemoveCopies(server),
+            enterPasscode,
         };
     }
 
@@ -3079,7 +3624,25 @@
         // A server that never answers must not hold a first visit on the skeleton for good: after
         // a few seconds the page decides without it, and its group says it is still loading.
         const patience = setTimeout(() => (initialRefreshDone = true), 6_000);
-        void refresh()
+        // The Device Passcode (ADR 0129): an open tab hands its key over, else the page asks at once,
+        // since the synced graphs' names need the keys it protects. The first refresh waits for the
+        // hand-over, so a server's token is not read as unavailable for the moment it takes.
+        const passcodeReady =
+            devicePasscode.state() === "locked"
+                ? devicePasscode.unlockFromOtherTabs()
+                : Promise.resolve(true);
+        void passcodeReady.then((entered) => {
+            if (
+                !entered &&
+                listSyncConnections().length > 0 &&
+                !unlockThen &&
+                !passcodePrompt
+            )
+                passcodePrompt = { mode: "unlock" };
+        });
+        const stopPasscode = devicePasscode.onChange(passcodeChanged);
+        void passcodeReady
+            .then(() => refresh())
             .finally(() => {
                 clearTimeout(patience);
                 initialRefreshDone = true;
@@ -3092,6 +3655,7 @@
             clearTimeout(patience);
             for (const server of servers) server.dispose();
             stopRecoveries();
+            stopPasscode();
             window.removeEventListener("storage", onStorage);
             window.removeEventListener(
                 SYNC_CONNECTIONS_CHANGED_EVENT,
@@ -3588,6 +4152,7 @@
                             {rowMessage}
                             {discardChecking}
                             {withdrawingInvite}
+                            {removingMember}
                             {checkingInvite}
                             {decliningInvite}
                             {corporateBillingUrl}
@@ -3697,6 +4262,15 @@
                             through the server it was created on.
                         </p>
                     </div>
+
+                    {#if servers.length > 0 || devicePasscodeState() !== "off"}
+                        <!-- One passcode for every server's keys on this device, so above their tabs. -->
+                        <DevicePasscodeCard
+                            ondone={() =>
+                                passcodeChanged(devicePasscode.state())}
+                            onforgotten={afterPasscodeForgotten}
+                        />
+                    {/if}
 
                     {#if servers.length > 0}
                         <!-- A sub-tab per server, so a key reset or a removal plainly acts on one
@@ -4168,7 +4742,7 @@
         api={inviteDialog.server.api}
         graphId={inviteDialog.graphId}
         graphName={inviteDialog.graphName}
-        keyring={inviteDialog.keyring}
+        heldKey={inviteDialog.heldKey}
         ownEmail={inviteDialog.server.account?.principal.email ?? null}
         inviteeNeeds={inviteeNeeds(inviteDialog.server)}
         onclose={(result) => {
@@ -4179,6 +4753,37 @@
                     invitedGraphId,
                     `Invite sent to ${result.sentTo}.`,
                 );
+        }}
+    />
+{/if}
+
+{#if acceptCheck}
+    {@const pending = acceptCheck}
+    <AcceptInviteDialog
+        check={pending.check}
+        graphName={pending.server.inviteNames[pending.invite.id] ?? null}
+        onconfirm={(confirmed) => {
+            // Read before clearing: `pending` follows `acceptCheck`, so it is null afterwards.
+            const { server, invite } = pending;
+            acceptCheck = null;
+            void acceptCheckedInvite(server, invite, confirmed);
+        }}
+        onclose={() => (acceptCheck = null)}
+    />
+{/if}
+
+{#if verifyingMember}
+    {@const pending = verifyingMember}
+    <VerifyMemberDialog
+        email={pending.email}
+        fingerprint={pending.fingerprint}
+        changed={pending.changed}
+        onconfirm={() => pinVerifiedMember(pending)}
+        onclose={(verified) => {
+            // Read before clearing: `pending` follows `verifyingMember`, so it is null afterwards.
+            const { server } = pending;
+            verifyingMember = null;
+            if (verified) void refreshSynced(server);
         }}
     />
 {/if}
@@ -4863,9 +5468,38 @@
 
 <!-- Last in the document so it stacks above the import and create dialogs that ask for it. -->
 {#if unlockThen && unlockOrigin}
-    <UnlockDialog
-        serverOrigin={unlockOrigin}
-        onunlocked={runUnlockThen}
-        onclose={cancelUnlock}
+    {#if unlockWith === "passcode"}
+        <DevicePasscodeDialog
+            mode="unlock"
+            ondone={() => passcodeChanged(devicePasscode.state())}
+            onclose={cancelUnlock}
+            onforgotten={afterPasscodeForgotten}
+        />
+    {:else}
+        <UnlockDialog
+            serverOrigin={unlockOrigin}
+            onunlocked={runUnlockThen}
+            onclose={cancelUnlock}
+        />
+    {/if}
+{:else if passcodePrompt}
+    {@const prompt = passcodePrompt}
+    <DevicePasscodeDialog
+        mode={prompt.mode}
+        intro={prompt.intro}
+        dismissLabel={prompt.dismissLabel}
+        ondone={() => {
+            if (prompt.mode === "unlock") {
+                passcodeChanged(devicePasscode.state());
+                return;
+            }
+            passcodePrompt = null;
+            prompt.then?.();
+        }}
+        onclose={() => (passcodePrompt = null)}
+        onforgotten={() => {
+            passcodePrompt = null;
+            afterPasscodeForgotten();
+        }}
     />
 {/if}

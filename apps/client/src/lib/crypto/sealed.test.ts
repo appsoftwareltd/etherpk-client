@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { utf8 } from './bytes'
 import { EnvelopeError, contextAad } from './envelope'
-import { fingerprint, generateIdentityKeyPair } from './identity'
+import { generateIdentityKeyPair } from './identity'
 import { openSealed, sealToPublicKey } from './sealed'
 
 const aad = contextAad('keyring', 'graph:g1')
@@ -33,11 +33,5 @@ describe('identity', () => {
         expect(a.privateKey).toHaveLength(32)
         expect(Buffer.from(a.publicKey).equals(Buffer.from(b.publicKey))).toBe(false)
     })
-    it('fingerprint is stable, formatted, and key-dependent', async () => {
-        const a = generateIdentityKeyPair()
-        const fp1 = await fingerprint(a.publicKey)
-        expect(fp1).toBe(await fingerprint(a.publicKey))
-        expect(fp1).toMatch(/^([0-9A-F]{4} ){7}[0-9A-F]{4}$/)
-        expect(fp1).not.toBe(await fingerprint(generateIdentityKeyPair().publicKey))
-    })
+    // The fingerprint covers the signing key too since ADR 0126: identity.test.ts.
 })
