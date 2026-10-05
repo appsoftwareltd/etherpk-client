@@ -365,7 +365,6 @@
     import {
         createServerDocumentStore,
         type ServerDocumentStore,
-        type HiddenAliasesReport,
     } from "$lib/storage/server/server-document-store";
     import { createServerAssetStore } from "$lib/storage/server/server-asset-store";
     import {
@@ -715,14 +714,6 @@
             return;
         }
         noteIndexNotPersisted(status.blocked);
-    }
-    /**
-     * TEMPORARY (ADR 0061, amended 2026-10-03): Graph Settings > Maintenance's repair for the
-     * aliases a synced graph hid. Goes with the store's `revealHiddenAliases`.
-     */
-    async function revealHiddenAliases(): Promise<HiddenAliasesReport> {
-        if (!store || !isServerStore) throw new Error("This graph is not synced.");
-        return (store as ServerDocumentStore).revealHiddenAliases();
     }
 
     /**
@@ -6351,7 +6342,6 @@
         {indexPersistenceBlocked}
         indexProgress={indexed}
         onrebuildindex={rebuildIndex}
-        onrevealhiddenaliases={isServerStore ? revealHiddenAliases : null}
         assetTools={mirrorAwareAssetTools()}
         tab={graphSettingsDialog.tab}
         nameHelp={isServerStore

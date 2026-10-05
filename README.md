@@ -95,7 +95,8 @@ Copy `apps/client/.env.example` to `apps/client/.env` to change the development 
 
 ## Versions and releases
 
-- Every commit on `main` publishes images tagged `edge` and `sha-<commit>`.
+- Every commit on `main` publishes images tagged `edge` and `sha-<commit>`. The image of a commit
+  that is not a release is deleted after 30 days, except the newest three, so pin a version tag.
 - A release is a `v<version>` tag. It publishes images tagged `<version>`, `<major>.<minor>` and
   `latest`, a GitHub Release with the Node bundle attached, and `@appsoftwareltd/etherpk-mcp` at
   the same version on npm.

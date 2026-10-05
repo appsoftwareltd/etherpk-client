@@ -84,17 +84,17 @@ describe('runInOrder: the ticked renames run in turn and stop at the first failu
  */
 describe('scopeRenamesInTypedName: the scopes a name typed for a page renames', () => {
     it('is the changed scope, not the page', () => {
-        expect(scopeRenamesInTypedName('[[App Software]] Project', '[[App Software 2]] Project')).toEqual([{ before: 'App Software', after: 'App Software 2' }])
+        expect(scopeRenamesInTypedName('[[Kitchen]] Project', '[[Kitchen 2]] Project')).toEqual([{ before: 'Kitchen', after: 'Kitchen 2' }])
     })
 
     it('leaves the page out when its own text changed too', () => {
-        expect(scopeRenamesInTypedName('[[App Software]] Project', '[[App Software 2]] Projects')).toEqual([{ before: 'App Software', after: 'App Software 2' }])
+        expect(scopeRenamesInTypedName('[[Kitchen]] Project', '[[Kitchen 2]] Projects')).toEqual([{ before: 'Kitchen', after: 'Kitchen 2' }])
     })
 
     it('is nothing for a plain retitle, an unlinked scope or the same name', () => {
         expect(scopeRenamesInTypedName('Physics', 'Physical Science')).toEqual([])
-        expect(scopeRenamesInTypedName('[[App Software]] Project', 'App Software Project')).toEqual([])
-        expect(scopeRenamesInTypedName('[[App Software]] Project', '[[App Software]] Project')).toEqual([])
+        expect(scopeRenamesInTypedName('[[Kitchen]] Project', 'Kitchen Project')).toEqual([])
+        expect(scopeRenamesInTypedName('[[Kitchen]] Project', '[[Kitchen]] Project')).toEqual([])
     })
 })
 

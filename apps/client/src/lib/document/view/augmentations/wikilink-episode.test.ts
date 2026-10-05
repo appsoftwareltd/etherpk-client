@@ -346,16 +346,16 @@ describe('renamesProposedByName', () => {
     })
 
     it('proposes the scope, and not the name the scope change explains', () => {
-        expect(renamesProposedByName('[[App Software]] Project', '[[App Software 2]] Project')).toEqual([
-            { before: 'App Software', after: 'App Software 2' },
+        expect(renamesProposedByName('[[Kitchen]] Project', '[[Kitchen 2]] Project')).toEqual([
+            { before: 'Kitchen', after: 'Kitchen 2' },
         ])
         expect(renamesProposedByName('[[[[Garden]] Beds]] Plan', '[[[[Gardens]] Beds]] Plan')).toEqual([{ before: 'Garden', after: 'Gardens' }])
     })
 
     it('proposes the name and the scope, outer first, when both changed', () => {
-        expect(renamesProposedByName('[[App Software]] Project', '[[App Software 2]] Projects')).toEqual([
-            { before: '[[App Software]] Project', after: '[[App Software 2]] Projects' },
-            { before: 'App Software', after: 'App Software 2' },
+        expect(renamesProposedByName('[[Kitchen]] Project', '[[Kitchen 2]] Projects')).toEqual([
+            { before: '[[Kitchen]] Project', after: '[[Kitchen 2]] Projects' },
+            { before: 'Kitchen', after: 'Kitchen 2' },
         ])
     })
 
@@ -367,15 +367,15 @@ describe('renamesProposedByName', () => {
     })
 
     it('proposes only the name when a scope is unlinked or a new one is linked', () => {
-        expect(renamesProposedByName('[[App Software]] Project', 'App Software Project')).toEqual([
-            { before: '[[App Software]] Project', after: 'App Software Project' },
+        expect(renamesProposedByName('[[Kitchen]] Project', 'Kitchen Project')).toEqual([
+            { before: '[[Kitchen]] Project', after: 'Kitchen Project' },
         ])
-        expect(renamesProposedByName('App Software Project', '[[App Software]] Project')).toEqual([
-            { before: 'App Software Project', after: '[[App Software]] Project' },
+        expect(renamesProposedByName('Kitchen Project', '[[Kitchen]] Project')).toEqual([
+            { before: 'Kitchen Project', after: '[[Kitchen]] Project' },
         ])
     })
 
     it('proposes nothing for the same name', () => {
-        expect(renamesProposedByName('[[App Software]] Project', '[[App Software]] Project')).toEqual([])
+        expect(renamesProposedByName('[[Kitchen]] Project', '[[Kitchen]] Project')).toEqual([])
     })
 })

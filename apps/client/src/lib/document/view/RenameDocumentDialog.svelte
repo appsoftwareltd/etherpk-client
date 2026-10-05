@@ -8,7 +8,7 @@
      * amended 2026-10-04).
      *
      * The page always takes the name typed: its row has no tick. A new name that changes one of the
-     * page's scopes, `[[App Software]] Project` to `[[App Software 2]] Project`, changes a name other
+     * page's scopes, `[[Kitchen]] Project` to `[[Kitchen 2]] Project`, changes a name other
      * documents use, and each such scope has a row of its own, ticked by default: a ticked scope is
      * renamed everywhere (its cascade carrying every page it scopes), an unticked one is left as it
      * is. "Rename just this page" runs the page's row alone. A title edit has no name field: the

@@ -9,7 +9,7 @@ import * as Y from 'yjs'
 import type { Awareness } from 'y-protocols/awareness'
 import { dayIsNotAPageName, isJournalConcept } from '$lib/document/journal-concept'
 import { lineFeedChanges } from '$lib/document/line-endings'
-import { frontmatterIdentity, normaliseAliases, withFrontmatterIdentity } from '$lib/document/frontmatter/identity'
+import { normaliseAliases, withFrontmatterIdentity } from '$lib/document/frontmatter/identity'
 import { parseFrontmatter } from '$lib/storage/fs/frontmatter'
 import { frontmatterSpan } from '$lib/storage/fs/frontmatter-span'
 import { conceptKey } from '$lib/storage/fs/identity'
@@ -83,17 +83,6 @@ export interface DocumentText {
      * durable must skip it rather than record an empty document.
      */
     settled: boolean
-}
-
-/**
- * What {@link ServerDocumentStore.revealHiddenAliases} did, by each document's name: the ones now
- * showing their aliases, the ones skipped because their block does not parse, and the ones this
- * device could not bring current.
- */
-export interface HiddenAliasesReport {
-    revealed: string[]
-    unreadable: string[]
-    unconfirmed: string[]
 }
 
 /** Structural mirror of FilesystemDocumentStore (documented in document/types.ts). */
@@ -208,13 +197,6 @@ export interface ServerDocumentStore {
      * the document's own name.
      */
     setAliases(target: string, aliases: readonly string[]): Promise<void>
-    /**
-     * TEMPORARY (ADR 0061, amended 2026-10-03): show the aliases a synced graph hid before an
-     * alias was always shown. Every document whose registry entry has aliases and whose block is
-     * missing, or has no `aliases` line, gets them written in; nothing else in a block changes.
-     * Run once per graph from Graph Settings > Maintenance, then removed with the button.
-     */
-    revealHiddenAliases(): Promise<HiddenAliasesReport>
     /**
      * Write `splices` into a document only if it holds exactly `expected`, the text a
      * [[Formatting Scan]] read (ADR 0109). The splices are in `expected`'s offsets and go in one
@@ -1075,56 +1057,6 @@ export function createServerDocumentStore(
             } finally {
                 materialised.release()
             }
-        },
-        async revealHiddenAliases(): Promise<HiddenAliasesReport> {
-            // Offline the cache is all this device has: a block another device's run already added
-            // may not be in it, and a second one inserted beside it would stay. A registry not yet
-            // confirmed could be partial, and report a false all-clear.
-            if (!graph.isConnected() || !(await confirmRegistry())) {
-                throw new Error('This graph has not finished syncing to this device, so nothing was changed.')
-            }
-            const report: HiddenAliasesReport = { revealed: [], unreadable: [], unconfirmed: [] }
-            const holders: string[] = []
-            registry.forEach((entry, docId) => {
-                if ((entry.aliases ?? []).length > 0) holders.push(docId)
-            })
-            if (holders.length === 0) return report
-            // Brought current first, as setAliases does: a block written into text that has not
-            // arrived would sit above the document's own block once it does.
-            const materialised = await materialise(holders, COLD_CONTENT_TIMEOUT_MS)
-            try {
-                const unconfirmed = new Set(materialised.unconfirmed)
-                for (const docId of holders) {
-                    const entry = registry.get(docId)
-                    const aliases = entry?.aliases ?? []
-                    if (!entry || aliases.length === 0) continue // deleted or cleared while it loaded
-                    const name = conceptOf(entry)
-                    if (unconfirmed.has(docId)) {
-                        report.unconfirmed.push(name)
-                        continue
-                    }
-                    const ytext = graph.docSync(docId).doc.getText('content')
-                    const text = ytext.toString()
-                    const claim = frontmatterIdentity(text)
-                    if (claim.hasBlock && !claim.readable) {
-                        report.unreadable.push(name)
-                        continue
-                    }
-                    // A block that already says which aliases it has is shown, and if it disagrees
-                    // with the registry the mismatch mark offers to settle it.
-                    if (claim.hasAliasesKey) continue
-                    // Into a block the text has, only the `aliases` line goes: a title there that
-                    // disagrees is the mark's to settle. A new block reads as write-back writes one.
-                    const next = claim.hasBlock
-                        ? withFrontmatterIdentity(text, { aliases })
-                        : withFrontmatterIdentity(text, { ...(entry.kind === 'page' ? { title: name } : {}), aliases }, { addBlock: true })
-                    replaceBlock(ytext, text, next)
-                    report.revealed.push(name)
-                }
-            } finally {
-                materialised.release()
-            }
-            return report
         },
         async spliceIfUnchanged(docId, expected, splices, spliceOptions): Promise<SpliceOutcome> {
             if (!registry.has(docId)) return 'gone'

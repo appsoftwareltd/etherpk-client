@@ -193,8 +193,8 @@ export function withFrontmatterIdentity(text: string, patch: IdentityPatch, opti
  * the rewrite added. A writer that gives a document its first block, as Publish does when it adds
  * `public:`, must not make the document claim fewer aliases than it has: a block with no
  * `aliases:` line claims none, and the next edit to it would clear them (ADR 0061). Only a Server
- * Backend has aliases without a block, on a document aliased before they were always shown and not
- * yet repaired (amended 2026-10-03). On a Filesystem Backend they are read from the saved file,
+ * Backend has aliases without a block, on a document aliased before they were always shown
+ * (amended 2026-10-03). On a Filesystem Backend they are read from the saved file,
  * so `aliases` is empty there provided the caller wrote pending edits before reading them
  * (`rewriteFrontmatter` flushes first). A block `before` already had is left as the writer left it.
  */
