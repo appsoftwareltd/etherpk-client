@@ -9,7 +9,7 @@ The source of the [EtherPK](https://etherpk.com) Client and Headless Client, ava
 
 ![The EtherPK Client in the dark theme: the demo graph in the whole Graph View, its list of hubs, and the Backlinks pane](.github/assets/etherpk-graph-view.png)
 
-[Try the demo](https://etherpk.com) from etherpk.com. It runs in your browser, needs no account, and
+[Try the demo](https://app.etherpk.com/demo) from etherpk.com. It runs in your browser, needs no account, and
 keeps what you write in that browser only.
 
 EtherPK is a personal knowledge base in plain Markdown. Journal entries hold daily thinking, pages

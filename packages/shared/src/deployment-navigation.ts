@@ -7,6 +7,9 @@ export const NAV_EMAIL_MAX_CHARACTERS = 28
  */
 export const PUBLIC_DOCS_URL = 'https://docs.etherpk.com'
 
+/** The EtherPK blog, linked beneath the docs on the landing page. One site for every deployment. */
+export const PUBLIC_BLOG_URL = 'https://blog.etherpk.com'
+
 /**
  * Where the Client's source is published: its source-available Public Repository (ADR 0096).
  */
