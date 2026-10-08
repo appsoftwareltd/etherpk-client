@@ -9,6 +9,7 @@ import { clientLegalLinks } from '$lib/server/legal'
 export const load: LayoutServerLoad = ({ locals }) => {
     const managedAuthConfig = parseOptionalManagedClientAuthConfig(privateEnv)
     const serverPortalOrigin = configuredSyncServerUrl(publicEnv)
+    const corporateHomeUrl = managedAuthConfig ? buildHomeUrl(managedAuthConfig.issuer) : null
     return {
         themePreference: locals.themePreference,
         resolvedTheme: locals.resolvedTheme,
@@ -19,7 +20,10 @@ export const load: LayoutServerLoad = ({ locals }) => {
         corporateBillingUrl: managedAuthConfig ? buildBillingUrl(managedAuthConfig.issuer) : null,
         corporatePricingUrl: managedAuthConfig ? buildPricingUrl(managedAuthConfig.issuer) : null,
         // The landing page's canonical URL: Corporate's copy, when there is a Corporate.
-        corporateHomeUrl: managedAuthConfig ? buildHomeUrl(managedAuthConfig.issuer) : null,
+        corporateHomeUrl,
+        // Where the EtherPK logo leads: Corporate's home on the managed service, the deployment's
+        // one public home, and this Client's own on a standalone deployment, which has no Corporate.
+        deploymentHomeUrl: corporateHomeUrl ?? '/home',
         // EtherPK runs this deployment: its footer names the operating company.
         managedService: managedAuthConfig !== null,
         legalLinks: clientLegalLinks(privateEnv, publicEnv),

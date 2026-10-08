@@ -47,6 +47,7 @@
         actions={headerActions}
         itemMenu={{ label: "Graphs", panel: graphsMenu }}
         {mobileUtilities}
+        brandHref={data.deploymentHomeUrl}
         testId="marketing-header"
     />
 

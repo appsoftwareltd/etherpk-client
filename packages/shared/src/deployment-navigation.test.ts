@@ -11,6 +11,8 @@ import {
     buildPricingUrl,
     buildClientDemoUrl,
     buildClientGraphsUrl,
+    buildClientHomeUrl,
+    buildManagedSignedOutUrl,
     buildSyncAccessTokensUrl,
     buildSyncServerUrl,
     buildSyncStorageAdminUrl,
@@ -66,6 +68,21 @@ describe('deployment navigation', () => {
         expect(buildHomeUrl('https://www.example.com')).toBe('https://www.example.com/home')
         expect(buildHomeUrl('http://localhost:5275')).toBe('http://localhost:5275/home')
         expect(() => buildHomeUrl('https://www.example.com/home')).toThrow('Corporate origin')
+    })
+
+    // A standalone deployment has no Corporate, so the Sync Server's logo and sign-out lead here.
+    it("builds the Client's public home from its validated origin", () => {
+        expect(buildClientHomeUrl('https://app.example.com')).toBe('https://app.example.com/home')
+        expect(buildClientHomeUrl('http://localhost:5173')).toBe('http://localhost:5173/home')
+        expect(() => buildClientHomeUrl('https://app.example.com/home')).toThrow('CLIENT_PUBLIC_URL')
+    })
+
+    // Every managed sign-out finishes on Corporate's home, whichever app it started in, and the
+    // page says once that the browser is signed out.
+    it('builds the one landing every managed sign-out finishes on', () => {
+        expect(buildManagedSignedOutUrl('https://www.example.com'))
+            .toBe('https://www.example.com/home?managed=signed-out')
+        expect(() => buildManagedSignedOutUrl('https://www.example.com/home')).toThrow('Corporate origin')
     })
 
     // Account and Billing belong to the person, so they are in the account menu, never up here.

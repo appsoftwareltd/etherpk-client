@@ -14,7 +14,7 @@ import { isSameOriginPost } from '$lib/server/auth/same-origin'
  * Start coordinated sign-out from the Client: revoke this Client's refresh grant, then hand the
  * browser to Corporate's first-party sign-out, which ends the Corporate session the browser's own
  * cookie names and continues through the Client (GET below, `finish=client`) and the Sync portal,
- * which brings the browser back to the Client's Graphs page.
+ * which finishes on Corporate's home like every managed sign-out.
  *
  * Not OIDC end-session: end-session finds the Corporate session through the ID token's `sid`,
  * which names the session the Client signed in under. Signing in again at Corporate, a password

@@ -1633,20 +1633,19 @@
     }
 
     /**
-     * A one-shot arrival notice: a sign-out, a custom server's disconnect or a sign-in that ended on this page
-     * says so here, then the parameter comes off the address so a reload does not repeat it.
+     * A one-shot arrival notice: a custom server's disconnect or a sign-in that ended on this page
+     * says so here, then the parameter comes off the address so a reload does not repeat it. A
+     * managed sign-out finishes on Corporate's home, which says so there.
      */
     function announceArrival() {
         const managed = page.url.searchParams.get("managed");
         const sync = page.url.searchParams.get("sync");
         const notice =
-            managed === "signed-out"
-                ? "You are signed out of EtherPK in this browser."
-                : managed === "connected"
-                  ? "Signed in to EtherPK."
-                  : sync === "disconnected"
-                    ? "This device is disconnected from that Sync Server. Its access token stays active until you revoke it on the server."
-                    : null;
+            managed === "connected"
+                ? "Signed in to EtherPK."
+                : sync === "disconnected"
+                  ? "This device is disconnected from that Sync Server. Its access token stays active until you revoke it on the server."
+                  : null;
         if (!notice) return;
         setStatus(notice);
         const url = new URL(page.url);
@@ -3572,15 +3571,6 @@
     }
 
     onMount(() => {
-        // Arriving from a managed sign-out that started on the account site or the Sync portal:
-        // no Client page ran on the way here, so the keys lock now, as a sign-out started here
-        // locks them. The active account still names whose keys they are.
-        if (page.url.searchParams.get("managed") === "signed-out") {
-            const managed = listSyncConnections().find(
-                (held) => held.kind === "managed",
-            );
-            if (managed) lockVault(managed.origin);
-        }
         announceArrival();
         void importMarkers()
             .findInterrupted()

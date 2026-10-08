@@ -8,7 +8,7 @@
     <title>{data.title} - EtherPK</title>
 </svelte:head>
 
-<ErrorCard themePreference={data.themePreference ?? "system"}>
+<ErrorCard brandHref={data.deploymentHomeUrl} themePreference={data.themePreference ?? "system"}>
     <h1 class="text-lg font-semibold text-gray-950 text-center">{data.title}</h1>
     <p class="mt-2 text-sm text-gray-500 dark:text-gray-400 text-center" data-testid="sign-in-failed-detail">{data.detail}</p>
 

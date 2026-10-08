@@ -62,6 +62,7 @@
         actions={headerActions}
         itemMenu={{ label: "Graphs", panel: graphsMenu }}
         {mobileUtilities}
+        brandHref={data.deploymentHomeUrl}
         testId="app-navbar"
         mobileToggleTestId="mobile-nav-toggle"
         mobilePanelTestId="mobile-nav-flyout"

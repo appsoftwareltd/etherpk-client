@@ -81,12 +81,12 @@
 
     // One row, equal weight, in the order a first visit reads them: use it, look at it, price it.
     const actions = $derived<Action[]>([
-        { id: "app", label: "Open the app", href: appHref, icon: "app" },
+        { id: "app", label: "Open The App", href: appHref, icon: "app" },
         ...(demoHref
             ? [
                   {
                       id: "demo",
-                      label: "Try the demo",
+                      label: "Try The Demo",
                       href: demoHref,
                       icon: "demo" as const,
                   },
@@ -1032,7 +1032,7 @@
             <a
                 href={appHref}
                 class="mt-6 inline-flex h-11 items-center justify-center rounded-xl border border-gray-300 px-5 text-sm font-semibold text-gray-800 transition-colors hover:bg-gray-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-950 dark:border-white/15 dark:text-gray-100 dark:hover:bg-white/5 dark:focus-visible:outline-white"
-                >Open the app</a
+                >Open The App</a
             >
         </article>
         <!-- The Sync+ and Sync Server cards are dark in both themes. dark:bg-white keeps their
@@ -1138,7 +1138,7 @@
                     <a
                         href={syncServerHref}
                         class="mt-6 inline-flex h-11 items-center justify-center rounded-xl bg-white px-5 text-sm font-semibold text-gray-950 transition-colors hover:bg-gray-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
-                        >Go to your Sync Server</a
+                        >Go To Your Sync Server</a
                     >
                 {/if}
             </article>

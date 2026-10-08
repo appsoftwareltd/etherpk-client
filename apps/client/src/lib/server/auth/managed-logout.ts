@@ -1,4 +1,5 @@
 import type { Cookies } from '@sveltejs/kit'
+import { buildManagedSignedOutUrl } from '@appsoftwareltd/etherpk-shared'
 import type { ManagedClientAuthConfig } from './config'
 import { clearManagedCookies } from './cookies'
 import { discoverOAuthMetadata, revokeManagedRefreshToken } from './oauth-client'
@@ -48,12 +49,12 @@ export type CascadeSource = 'sync' | 'corporate' | 'client'
 
 /**
  * Where a coordinated sign-out goes once the Client has done its part. Started at the Sync portal,
- * its session is already gone, so it finishes there. Otherwise the portal still has to sign out,
- * and its continuation finishes where the cascade started. Built from configuration and the source
- * alone, never from a request's address.
+ * its session is already gone, so the sign-out finishes on Corporate's home, where every managed
+ * sign-out finishes. Otherwise the portal still has to sign out, and its continuation finishes
+ * there. Built from configuration and the source alone, never from a request's address.
  */
 export function nextHopAfterClient(source: CascadeSource, config: ManagedClientAuthConfig): string {
     return source === 'sync'
-        ? `${config.managedSyncUrl}/?managed=signed-out`
+        ? buildManagedSignedOutUrl(config.issuer)
         : `${config.managedSyncUrl}/auth/portal/logout/managed?finish=${source}`
 }

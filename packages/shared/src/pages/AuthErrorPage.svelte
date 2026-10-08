@@ -4,10 +4,13 @@
     let {
         data,
         signInUrl,
+        homeHref = "/home",
     }: {
         data: { errorCode: string; message: string; themePreference?: string };
         /** Where "Back to sign in" points. The Server may hand off to its configured issuer. */
         signInUrl: string;
+        /** The deployment's home, where the logo and Go to home both lead. */
+        homeHref?: string;
     } = $props();
 </script>
 
@@ -15,7 +18,7 @@
     <title>Authentication Error - EtherPK</title>
 </svelte:head>
 
-<ErrorCard themePreference={data.themePreference}>
+<ErrorCard brandHref={homeHref} themePreference={data.themePreference}>
     <!-- Warning icon -->
     <div class="flex justify-center mb-4">
         <div class="flex h-12 w-12 items-center justify-center rounded-full bg-red-50 ring-1 ring-red-600/20">
@@ -30,6 +33,6 @@
 
     <div class="mt-6 flex flex-col gap-2">
         <a href={signInUrl} class="flex w-full items-center justify-center rounded-lg bg-gray-950 px-4 py-2.5 text-sm font-medium text-white hover:bg-gray-700 dark:bg-white/20 dark:hover:bg-white/25 transition-colors"> Back to sign in </a>
-        <a href="/home" class="flex w-full items-center justify-center rounded-lg border border-gray-950/15 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"> Go to home </a>
+        <a href={homeHref} class="flex w-full items-center justify-center rounded-lg border border-gray-950/15 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"> Go to home </a>
     </div>
 </ErrorCard>

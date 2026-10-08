@@ -162,6 +162,25 @@ export function buildHomeUrl(corporateOrigin: string): string {
     return new URL('/home', `${parseNavigationOrigin(corporateOrigin, 'Corporate origin')}/`).href
 }
 
+/**
+ * The Client's public home. A standalone deployment has no Corporate, so this is where the Sync
+ * Server's EtherPK logo leads and where signing out of the Sync Server lands.
+ */
+export function buildClientHomeUrl(clientOrigin: string): string {
+    return new URL('/home', `${parseNavigationOrigin(clientOrigin, 'CLIENT_PUBLIC_URL')}/`).href
+}
+
+/**
+ * Where every managed sign-out finishes, whichever app it started in: Corporate's home, the
+ * managed service's one public home. `managed=signed-out` makes the page say once that this
+ * browser is signed out, and the page then takes it off the address.
+ */
+export function buildManagedSignedOutUrl(corporateOrigin: string): string {
+    const url = new URL(buildHomeUrl(corporateOrigin))
+    url.searchParams.set('managed', 'signed-out')
+    return url.href
+}
+
 export function buildSyncServerUrl(serverOrigin: string): string {
     return new URL('/', `${parseNavigationOrigin(serverOrigin, 'Sync Server origin')}/`).href
 }

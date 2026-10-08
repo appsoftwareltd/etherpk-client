@@ -20,8 +20,10 @@ const loadFrom = (from: string | null) =>
 describe('the Client step of a sign-out started elsewhere', () => {
     // The next hop comes from configuration and the source alone, never from the address, so the
     // page can never be used to send a browser somewhere else.
-    it('goes on to the Sync portal, which finishes where the sign-out started', async () => {
-        expect(await loadFrom('sync')).toEqual({ next: 'https://sync.example.com/?managed=signed-out' })
+    // Every managed sign-out finishes on Corporate's home. Started on the Sync portal, the portal is
+    // already signed out, so the Client is the last hop; started at Corporate, the portal is next.
+    it("finishes on Corporate's home, or goes on to the Sync portal while it is still signed in", async () => {
+        expect(await loadFrom('sync')).toEqual({ next: 'https://accounts.example.com/home?managed=signed-out' })
         expect(await loadFrom('corporate')).toEqual({
             next: 'https://sync.example.com/auth/portal/logout/managed?finish=corporate',
         })

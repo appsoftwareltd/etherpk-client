@@ -80,7 +80,7 @@ describe('POST /auth/logout/managed', () => {
 })
 
 describe('GET /auth/logout/managed', () => {
-    it("continues a cascade the Client started through the Sync portal and back to the Client", async () => {
+    it("continues a cascade the Client started through the Sync portal, which finishes on Corporate's home", async () => {
         const cookies = { get: () => undefined, getAll: () => [], delete: () => undefined } as unknown as Cookies
 
         const response = await GET({
