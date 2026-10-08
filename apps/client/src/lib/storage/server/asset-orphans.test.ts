@@ -168,21 +168,21 @@ describe('scanOrphanedServerAssets', () => {
             return { ...opened, service, deps }
         }
 
-        it('offers nothing while it cannot be read, and says how many were held back', async () => {
+        it('offers what looks unused while it cannot be read, and says how many went unchecked', async () => {
             const { graph, cache, deps } = await withProtectedPage()
             const scan = await scanOrphanedServerAssets(deps)
-            expect(scan.orphans).toEqual([])
-            expect(scan.withheld).toEqual({ assets: 2, protectedDocuments: 1, unreadableDocuments: 0, unlockable: false })
+            expect(scan.orphans.map((o) => o.id)).toEqual([ORPHAN, UNUSED])
+            expect(scan.unchecked).toEqual({ protectedDocuments: 1, unreadableDocuments: 0, unlockable: false })
             graph.dispose()
             cache.dispose()
         })
 
-        it('offers nothing while the graph is locked', async () => {
+        it('offers what looks unused while the graph is locked, and says unlocking would check it', async () => {
             const { graph, cache, deps, service } = await withProtectedPage()
             service.lockNow()
             const scan = await scanOrphanedServerAssets({ ...deps, readProtected: protectedTextReader(service) })
-            expect(scan.orphans).toEqual([])
-            expect(scan.withheld).toEqual({ assets: 2, protectedDocuments: 1, unreadableDocuments: 0, unlockable: true })
+            expect(scan.orphans.map((o) => o.id)).toEqual([ORPHAN, UNUSED])
+            expect(scan.unchecked).toEqual({ protectedDocuments: 1, unreadableDocuments: 0, unlockable: true })
             graph.dispose()
             cache.dispose()
         })
@@ -191,7 +191,7 @@ describe('scanOrphanedServerAssets', () => {
             const { graph, cache, deps, service } = await withProtectedPage()
             const scan = await scanOrphanedServerAssets({ ...deps, readProtected: protectedTextReader(service) })
             expect(scan.orphans.map((o) => o.id)).toEqual([UNUSED])
-            expect(scan.withheld).toBeUndefined()
+            expect(scan.unchecked).toBeUndefined()
             graph.dispose()
             cache.dispose()
         })
@@ -254,7 +254,7 @@ describe('scanOrphanedServerAssets', () => {
 
     // A document whose key is unavailable, or whose history will not decrypt, reads as empty: its
     // references are as invisible as a protected document's.
-    it('offers nothing while a document cannot be decrypted', async () => {
+    it('offers what looks unused while a document cannot be decrypted, and says so', async () => {
         const { graph, cache } = await openTestGraph()
         const blocked = {
             ...graph,
@@ -265,9 +265,9 @@ describe('scanOrphanedServerAssets', () => {
         }
         const { f } = stubApi([{ assetId: USED, size: 1 }, { assetId: ORPHAN, size: 1 }])
         const scan = await scanOrphanedServerAssets({ graph: blocked, graphId: 'g-orphans', baseUrl: 'http://server', syncToken: fixedSyncToken('t'), fetch: f })
-        expect(scan.orphans).toEqual([])
-        // The blocked document is the one that uses USED, so both look unused and neither is offered.
-        expect(scan.withheld).toEqual({ assets: 2, protectedDocuments: 0, unreadableDocuments: 1, unlockable: false })
+        // The blocked document is the one that uses USED, so both look unused and both are offered.
+        expect(scan.orphans.map((o) => o.id)).toEqual([USED, ORPHAN])
+        expect(scan.unchecked).toEqual({ protectedDocuments: 0, unreadableDocuments: 1, unlockable: false })
         graph.dispose()
         cache.dispose()
     })

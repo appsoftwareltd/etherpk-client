@@ -61,21 +61,21 @@ const REFUSAL_COPY: Record<string, string> = {
     commitment_mismatch: 'This device sent a key that does not match the one it promised. Start again.',
     // Signed Sync Identities (ADR 0126).
     key_signature_refused:
-        'The Sync Server refused it because it is not signed with the security key the server holds for your account. If you replaced your keys on another device, unlock this device again. Otherwise, contact whoever runs the server.',
+        'The Sync Server refused it because it is not signed with the security key the server holds for your account. If you replaced your Encryption Keys on another device, unlock this device again. Otherwise, contact whoever runs the server.',
     invite_signature_refused: 'The Sync Server did not accept the signature on the invite. Reload the page, then try again.',
     invitee_changed: 'That address belongs to a different account now. Look them up again.',
-    invitee_keys_changed: 'Their keys changed after you looked them up. Look them up again and compare the new fingerprint.',
+    invitee_keys_changed: 'Their Encryption Keys changed after you looked them up. Look them up again and compare the new fingerprint.',
     identity_required: 'Your security key has to be published before this change. Reload the page, then try again.',
     server_upgrade_required: 'This Sync Server runs an older version of EtherPK than this app. Ask whoever runs it to update it.',
     // Removal and Graph Key epochs (ADR 0127).
     remove_owner: 'The owner cannot be removed. Transfer the graph to someone else first, or delete it.',
     epoch_lease_lost: 'Another of your devices was changing the graph’s key at the same time. Try again.',
     epoch_members_changed: 'The graph’s members changed while its key was being changed. Try again.',
-    epoch_recipient_keys_changed: 'A member’s keys changed while the graph’s key was being changed. Try again.',
+    epoch_recipient_keys_changed: 'A member’s Encryption Keys changed while the graph’s Graph Key was being changed. Try again.',
     epoch_signature_refused: 'The Sync Server did not accept the signatures on the new key. Reload the page, then try again.',
     // Key Replacement (ADR 0128).
-    new_identity_signature_refused: 'The Sync Server did not accept the signature made with your new keys. Nothing changed. Try again.',
-    identity_unchanged: 'The new keys matched the old ones, so the Sync Server refused them. Nothing changed. Try again.',
+    new_identity_signature_refused: 'The Sync Server did not accept the signature made with your new Encryption Keys. Nothing changed. Try again.',
+    identity_unchanged: 'The new Encryption Keys matched the old ones, so the Sync Server refused them. Nothing changed. Try again.',
 }
 
 function isQuotaCode(code: string | undefined): code is QuotaErrorCode {
@@ -171,16 +171,16 @@ export function describeSyncFailure(error: unknown, action: string): string {
         }
     }
     if (error instanceof InviteeChangedError) {
-        return `${opening} Their account or keys changed after you looked them up. Look them up again and compare the new fingerprint.`
+        return `${opening} Their account or Encryption Keys changed after you looked them up. Look them up again and compare the new fingerprint.`
     }
     if (error instanceof KeyringConflictError) {
         return `${opening} The key in the invite does not match the key you already hold for this graph, so nothing was changed. Ask the owner to send the invite again.`
     }
     if (error instanceof MissingGraphKeyError) {
-        return `${opening} Your keys do not hold this graph’s key, so its documents cannot be read. Leave the graph, then ask its owner to invite you again.`
+        return `${opening} Your Encryption Keys do not include this graph’s Graph Key, so its documents cannot be read. Leave the graph, then ask its owner to invite you again.`
     }
     if (error instanceof ForeignIdentityError) {
-        return `${opening} The Sync Server publishes a security key for your account that does not match your keys, and refused to replace it. Do not send or accept invites on this server until whoever runs it has looked into it.`
+        return `${opening} The Sync Server publishes a security key for your account that does not match your Encryption Keys, and refused to replace it. Do not send or accept invites on this server until whoever runs it has looked into it.`
     }
 
     if (error instanceof ApprovalTamperedError) return `${opening} ${error.message}`
@@ -197,20 +197,20 @@ export function describeSyncFailure(error: unknown, action: string): string {
     // Key faults are device problems. Reporting them as "server could not be reached" sent
     // users to check their connection when the fix was in Sync settings (2026-09-01).
     if (error instanceof DevicePasscodeLockedError) {
-        return `${opening} The keys on this device are protected by its passcode. Enter the passcode, then try again.`
+        return `${opening} The Encryption Keys on this device are protected by its passcode. Enter the passcode, then try again.`
     }
     if (error instanceof VaultLockedError) {
-        return `${opening} Your encryption keys are locked on this device. Unlock them with your Recovery Code, or by approving from another device that is unlocked, then try again.`
+        return `${opening} Your Encryption Keys are locked on this device. Unlock them with your Recovery Code, or by approving from another device that is unlocked, then try again.`
     }
     if (error instanceof EnvelopeError) {
         // A wrong Recovery Code is refused at the unlock (recovery-unlock.ts), so keys that open
         // nothing were unlocked correctly and have since gone stale: the account's keys were reset
         // on another device. Saying so stops a person retyping the same code; unlocking with the
         // code replaces the key held here.
-        return `${opening} Your keys were replaced or reset on another device, so the keys unlocked here no longer open your account’s data. Unlock this device again: on the Sync tab, select Unlock Keys With Recovery Code, or approve this device from another device.`
+        return `${opening} Your Encryption Keys were replaced or reset on another device, so the Encryption Keys unlocked here no longer open your account’s data. Unlock this device again: on the Sync tab, select Unlock Encryption Keys, then approve it from another device or use your new Recovery Code.`
     }
     if (error instanceof NoVaultError) {
-        return `${opening} This account has no encryption keys yet: they are created with your first synced graph.`
+        return `${opening} This account has no Encryption Keys yet. They are created with your first synced graph.`
     }
     if (error instanceof RecoveryCodeError) {
         // Never echo the offending character: it is one keystroke away from the real code.

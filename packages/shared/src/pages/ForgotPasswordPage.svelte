@@ -3,15 +3,26 @@
     import { focusFirstInvalid, textFieldClass } from "../ui/index.svelte";
     import type { PasswordResetAuthClient } from "../auth/page-clients";
     import AlertBanner from "../components/AlertBanner.svelte";
+    import { pathWithQuery } from "../navigation/sign-in-return";
 
     let {
         authClient,
         mailEnabled = true,
+        signInQuery = "",
     }: {
         authClient: PasswordResetAuthClient;
         /** Whether this deployment sends email. Without it no reset link can arrive, so the page says so instead of offering one. */
         mailEnabled?: boolean;
+        /**
+         * The query of the sign-in this page was reached from, checked by the app's server: a
+         * `redirect`, or on Corporate a managed sign-in's signed request. Every way back to the
+         * sign-in page carries it, and so does the reset email's link, so the sign-in with the
+         * new password still returns to the page the sign-in started on.
+         */
+        signInQuery?: string;
     } = $props();
+
+    const signInHref = $derived(pathWithQuery("/login", signInQuery));
 
     let email = $state("");
     let loading = $state(false);
@@ -61,7 +72,7 @@
         formError = null;
         const result = await authClient.requestPasswordReset({
             email,
-            redirectTo: "/reset-password",
+            redirectTo: pathWithQuery("/reset-password", signInQuery),
         });
         if (result.error) {
             formError = result.error.message ?? "Failed to send reset link. Please try again.";
@@ -84,7 +95,7 @@
             This server does not send email, so it cannot send you a reset link. Ask the server's administrator to set a new password for you.
         </p>
         <p class="mt-6 text-center text-sm text-gray-500">
-            <a href="/login" class="font-medium text-gray-950 hover:underline">Back to sign in</a>
+            <a href={signInHref} class="font-medium text-gray-950 hover:underline">Back to sign in</a>
         </p>
     {:else if sent}
         <div class="text-center">
@@ -100,7 +111,7 @@
                 If an account exists for <span class="font-medium text-gray-950">{sentEmail}</span>, we've sent a password reset link. The link expires in 1 hour.
             </p>
             <p class="mt-4 text-sm text-gray-500">
-                <a href="/login" class="font-medium text-gray-950 hover:underline">Back to sign in</a>
+                <a href={signInHref} class="font-medium text-gray-950 hover:underline">Back to sign in</a>
             </p>
         </div>
     {:else}
@@ -128,7 +139,7 @@
         </form>
 
         <p class="mt-6 text-center text-sm text-gray-500">
-            Remember your password? <a href="/login" class="font-medium text-gray-950 hover:underline">Sign in</a>
+            Remember your password? <a href={signInHref} class="font-medium text-gray-950 hover:underline">Sign in</a>
         </p>
     {/if}
 </div>

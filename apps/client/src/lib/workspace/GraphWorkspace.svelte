@@ -4835,7 +4835,7 @@
         if (offerPasscodeAfterUnlock && devicePasscode.state() === "off") {
             offerPasscodeAfterUnlock = false;
             passcodeOffer = {
-                intro: "Your keys are unlocked again. Set a new passcode for this device, or leave it off. You can set one later on the Sync tab of the graph list.",
+                intro: "Your Encryption Keys are unlocked again. Set a new passcode for this device, or leave it off. You can set one later on the This Device tab of the Graphs page.",
                 dismissLabel: "Leave it off",
             };
         }
@@ -4869,8 +4869,8 @@
             id: DEVICE_PASSCODE_NOTICE,
             tone: "info",
             dismissal: "manual",
-            title: "Your keys are stored on this device",
-            text: "The keys that open your synced graphs are kept in this browser without encryption. A passcode keeps them encrypted, and you enter it once each time you open EtherPK in this browser. You can also set one later on the Sync tab of the graph list.",
+            title: "Your Encryption Keys are stored on this device",
+            text: "The Encryption Keys that open your synced graphs are kept in this browser without encryption. A passcode keeps them encrypted, and you enter it once each time you open EtherPK in this browser. You can also set one later on the This Device tab of the Graphs page.",
             actions: [
                 {
                     label: "Set a passcode",

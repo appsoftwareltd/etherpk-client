@@ -2,11 +2,13 @@ import { error } from '@sveltejs/kit'
 import type { RequestHandler } from './$types'
 import { env } from '$env/dynamic/private'
 import { parseOptionalManagedClientAuthConfig } from '$lib/server/auth/config'
-import { revokeManagedClientGrant, takeManagedClientSession } from '$lib/server/auth/managed-logout'
+import {
+    nextHopAfterClient,
+    revokeManagedClientGrant,
+    takeManagedClientSession,
+    type CascadeSource,
+} from '$lib/server/auth/managed-logout'
 import { isSameOriginPost } from '$lib/server/auth/same-origin'
-
-/** Which app started the sign-out, and so where the cascade finishes. */
-type CascadeSource = 'sync' | 'corporate' | 'client'
 
 /**
  * Start coordinated sign-out from the Client: revoke this Client's refresh grant, then hand the
@@ -35,11 +37,12 @@ export const GET: RequestHandler = async ({ url, cookies, fetch }) => {
     const source = parseCascadeSource(url.searchParams.get('finish'))
     const session = await takeManagedClientSession(cookies, config)
     await revokeManagedClientGrant(session, config, fetch)
-    // Started at Sync: its session is already gone, so finish there. Otherwise the Sync portal
-    // still has to sign out, and its continuation finishes where the cascade started.
-    return source === 'sync'
-        ? redirectResponse(`${config.managedSyncUrl}/?managed=signed-out`)
-        : redirectResponse(`${config.managedSyncUrl}/auth/portal/logout/managed?finish=${source}`)
+    // Started here, the Client's menu already cleared this browser's keys and account record and
+    // told its other tabs. Started at the account site or the Sync portal, nothing has, and only a
+    // Client page can: the cascade stops at one, which does that and then goes on.
+    return source === 'client'
+        ? redirectResponse(nextHopAfterClient(source, config))
+        : redirectResponse(`/auth/signing-out?from=${source}`)
 }
 
 function configuredClient() {

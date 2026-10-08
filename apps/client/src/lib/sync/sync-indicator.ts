@@ -61,7 +61,7 @@ export function describeKeyWait(outcome: HandoutOutcome | null): string {
     const owner = (email: string | null) => email ?? 'the graph’s owner'
     switch (outcome?.kind) {
         case 'owner-key-changed':
-            return `The copy that arrived is signed with new keys for ${owner(outcome.ownerEmail)}. Compare their fingerprint on the Graphs page, and EtherPK uses it once you confirm it.`
+            return `The copy that arrived is signed with new Encryption Keys for ${owner(outcome.ownerEmail)}. Compare their fingerprint on the Graphs page, and EtherPK uses it once you confirm it.`
         case 'unverifiable':
             return `The copy that arrived does not carry a valid signature from ${owner(outcome.ownerEmail)}, so EtherPK did not use it. Ask them to rotate the graph’s key again.`
         case 'conflict':

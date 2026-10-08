@@ -9,7 +9,7 @@ import { ApprovalTamperedError } from './device-approval'
 import { MissingGraphKeyError } from './keys'
 import { SyncApiError } from './sync-api'
 import { describeSyncFailure, isRetryableSyncFailure } from './sync-error-copy'
-import { VaultLockedError } from './vault-session'
+import { UnlockCancelledError, VaultLockedError } from './vault-session'
 import { DevicePasscodeLockedError } from './device-passcode'
 
 /** Chromium's exact wording when a transaction is opened on a closed IndexedDB connection. */
@@ -46,7 +46,7 @@ describe('describeSyncFailure', () => {
             'not signed with the security key',
         )
         expect(describeSyncFailure(new SyncApiError('x', 409, 'invitee_keys_changed'), 'send the invite')).toContain(
-            'Their keys changed',
+            'Their Encryption Keys changed',
         )
         expect(describeSyncFailure(new SyncApiError('x', 426, 'server_upgrade_required'), 'save your keys')).toContain(
             'older version of EtherPK',
@@ -69,7 +69,7 @@ describe('describeSyncFailure', () => {
     it('says a graph whose key the account does not hold cannot be read, and what to do, which a retry does not change', () => {
         const missing = new MissingGraphKeyError('g1')
         expect(describeSyncFailure(missing, 'open the graph')).toBe(
-            'Could not open the graph. Your keys do not hold this graph’s key, so its documents cannot be read. Leave the graph, then ask its owner to invite you again.',
+            'Could not open the graph. Your Encryption Keys do not include this graph’s Graph Key, so its documents cannot be read. Leave the graph, then ask its owner to invite you again.',
         )
         expect(isRetryableSyncFailure(missing)).toBe(false)
     })
@@ -210,9 +210,18 @@ describe('describeSyncFailure', () => {
         expect(message).not.toContain('Vault is locked')
     })
 
+    it('reads a cancelled unlock as keys still locked, never as a connection failure', () => {
+        // The person closed the unlock prompt themselves, so "check your connection" sent them
+        // looking for a fault that does not exist.
+        const message = describeSyncFailure(new UnlockCancelledError(), 'create a synced graph')
+        expect(message).toContain('Your Encryption Keys are locked on this device.')
+        expect(message).not.toContain('could not be reached')
+        expect(isRetryableSyncFailure(new UnlockCancelledError())).toBe(false)
+    })
+
     it('asks for the Device Passcode when the keys are protected by it, not for the Recovery Code', () => {
         const message = describeSyncFailure(new DevicePasscodeLockedError(), 'open the graph')
-        expect(message).toBe('Could not open the graph. The keys on this device are protected by its passcode. Enter the passcode, then try again.')
+        expect(message).toBe('Could not open the graph. The Encryption Keys on this device are protected by its passcode. Enter the passcode, then try again.')
         expect(isRetryableSyncFailure(new DevicePasscodeLockedError())).toBe(false)
     })
 
@@ -222,22 +231,21 @@ describe('describeSyncFailure', () => {
         // the message names the one button that does it.
         const message = describeSyncFailure(new EnvelopeError('sealed envelope authentication failed'), 'open the graph')
         expect(message).toContain('replaced or reset on another device')
-        expect(message).toContain('Unlock Keys With Recovery Code')
-        expect(message).toContain('approve this device from another device')
+        expect(message).toContain('select Unlock Encryption Keys, then approve it from another device or use your new Recovery Code')
         expect(message).not.toContain('lock your keys')
         expect(message).not.toContain('envelope')
     })
 
     it('reads the Key Replacement refusals by their codes (ADR 0128)', () => {
-        expect(describeSyncFailure(new SyncApiError('x', 400, 'new_identity_signature_refused'), 'replace your keys')).toBe(
-            'Could not replace your keys. The Sync Server did not accept the signature made with your new keys. Nothing changed. Try again.',
+        expect(describeSyncFailure(new SyncApiError('x', 400, 'new_identity_signature_refused'), 'replace your Encryption Keys')).toBe(
+            'Could not replace your Encryption Keys. The Sync Server did not accept the signature made with your new Encryption Keys. Nothing changed. Try again.',
         )
         expect(describeSyncFailure(new SyncApiError('x', 400, 'identity_unchanged'), 'replace your keys')).toContain('Nothing changed')
     })
 
     it('says an account with no keys has nothing to unlock yet', () => {
-        expect(describeSyncFailure(new NoVaultError(), 'unlock your keys')).toBe(
-            'Could not unlock your keys. This account has no encryption keys yet: they are created with your first synced graph.',
+        expect(describeSyncFailure(new NoVaultError(), 'unlock your Encryption Keys')).toBe(
+            'Could not unlock your Encryption Keys. This account has no Encryption Keys yet. They are created with your first synced graph.',
         )
     })
 

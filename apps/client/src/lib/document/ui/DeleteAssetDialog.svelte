@@ -6,7 +6,9 @@
      * judgement of its own:
      *
      * - **The last reference.** Removing it destroys the bytes for good, so the primary action
-     *   says so and is styled destructively.
+     *   says so and is styled destructively. When protected documents went unchecked (locked, or
+     *   their text could not be read), a warning says so above the button, and the delete is still
+     *   offered.
      * - **Anything else.** The bytes are staying. The dialog says why, names the documents
      *   holding the other references (each one navigable, so the refusal is a route forward
      *   rather than a dead end), and offers only to remove the reference in front of the user.
@@ -45,15 +47,27 @@
                 return "You are offline, so another device may have added a reference we have not seen. You can remove it from here now, and delete it once you are back online.";
             case "behind":
                 return "This graph is still catching up with the server, so another member may have added a reference we have not seen. You can remove it from here now, and delete it once it has caught up.";
-            case "protected-unread": {
-                // A protected document is ciphertext to everything but the unlocked session, so a
-                // reference inside one cannot be ruled out until it is read.
-                const n = plan.unreadProtected ?? 1;
-                return `${n === 1 ? "A protected document" : `${n} protected documents`} could not be read, so we cannot tell whether ${n === 1 ? "it uses" : "one of them uses"} this file. You can remove it from here now. If protected documents are locked, unlock them and try again - a document another member protected cannot be read on this device.`;
-            }
             default:
                 return "This file cannot be deleted right now. You can remove it from here instead.";
         }
+    });
+
+    /**
+     * The warning for protected documents that went unchecked: locked, or their stored text could
+     * not be read. A reference inside one would be left pointing at nothing, which is the person's
+     * call to make, not a refusal.
+     */
+    const uncheckedWarning = $derived.by(() => {
+        const locked = plan.lockedProtected ?? 0;
+        const unread = plan.unreadProtected ?? 0;
+        if (locked + unread === 0) return null;
+        const causes = [
+            locked > 0 ? (locked === 1 ? "a protected document is locked" : `${locked} protected documents are locked`) : null,
+            unread > 0 ? (unread === 1 ? "a protected document could not be read" : `${unread} protected documents could not be read`) : null,
+        ].filter((cause): cause is string => cause !== null);
+        const one = locked + unread === 1;
+        const text = `${causes.join(" and ")}, so we could not check whether ${one ? "it uses" : "they use"} this file. If ${one ? "it does" : "one does"}, the file will be missing there.`;
+        return text.charAt(0).toUpperCase() + text.slice(1);
     });
 </script>
 
@@ -65,9 +79,17 @@
 
         {#if plan.deleteBytes}
             <p class="text-sm text-gray-600 dark:text-gray-400" data-testid="delete-asset-message">
-                This is the only place it is used. Deleting removes it from this document and deletes the
-                file itself. This cannot be undone.
+                {#if !uncheckedWarning}This is the only place it is used.{/if} Deleting removes it from this document
+                and deletes the file itself. This cannot be undone.
             </p>
+            {#if uncheckedWarning}
+                <p
+                    class="rounded-lg border border-amber-300 dark:border-amber-500/40 bg-amber-50 dark:bg-amber-950/20 p-3 text-sm text-amber-900 dark:text-amber-200"
+                    data-testid="delete-asset-unchecked-warning"
+                >
+                    {uncheckedWarning}
+                </p>
+            {/if}
         {:else}
             <p class="text-sm text-gray-600 dark:text-gray-400" data-testid="delete-asset-message">
                 {reason}

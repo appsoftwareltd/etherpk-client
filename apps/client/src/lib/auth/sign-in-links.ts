@@ -9,6 +9,19 @@ export function currentReturnPath(location: Pick<Location, 'pathname' | 'search'
     return location.pathname + location.search
 }
 
+/**
+ * The Graphs page to come back to after a sign-in started on it: the same address, tab and server
+ * sub-tab included, with `managed=connected` so the page says the sign-in worked. Notices left by an
+ * earlier arrival (`managed`, `sync`) are dropped, so only this one shows.
+ */
+export function returnHereSignedIn(location: Pick<Location, 'pathname' | 'search'>): string {
+    const query = new URLSearchParams(location.search)
+    query.delete('managed')
+    query.delete('sync')
+    query.set('managed', 'connected')
+    return `${location.pathname}?${query}`
+}
+
 /** Managed sign-in, coming back to `returnPath` when given. */
 export function managedSignInHref(returnPath?: string | null): string {
     return returnPath ? `/auth/login?${new URLSearchParams({ redirect: returnPath })}` : '/auth/login'

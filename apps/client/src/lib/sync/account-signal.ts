@@ -9,6 +9,8 @@
  * each other as well as the tabs beside them. Where BroadcastChannel is missing nothing is sent
  * and each tab finds out at its next token request.
  */
+import { clearManagedAccessToken } from '$lib/auth/managed-token'
+
 const CHANNEL = 'etherpk-sync-account'
 
 /**
@@ -57,6 +59,11 @@ export function onAccountSignal(listener: (signal: AccountSignal) => void): () =
         const data = event.data as Partial<AccountSignal> | null
         if (data?.type === 'check') listener({ type: 'check' })
         else if (data?.type === 'ended' && (data.reason === 'signed-out' || data.reason === 'disconnected' || data.reason === 'refused')) {
+            // Signed out elsewhere: this tab's own copy of the managed access token is valid for up
+            // to fifteen minutes, and a re-check made with it would sign the tab straight back in
+            // and record the account again. Forgotten before any listener runs, the next check
+            // asks the Client's session, which the sign-out ended.
+            if (data.reason === 'signed-out') clearManagedAccessToken()
             listener({
                 type: 'ended',
                 reason: data.reason,

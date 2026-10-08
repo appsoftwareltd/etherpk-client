@@ -49,7 +49,7 @@ export function reportIdentityRepair(origin: string): void {
         id: `identity-repaired:${origin}`,
         tone: 'error',
         title: `Your security key was replaced on ${host}`,
-        text: `${host} was publishing a security key for your account that does not match your keys. EtherPK has published your own key again. If someone invited you, or accepted an invite from you, since you last used EtherPK, compare security fingerprints with them again.`,
+        text: `${host} was publishing a security key for your account that does not match your Encryption Keys. EtherPK has published your own key again. If someone invited you, or accepted an invite from you, since you last used EtherPK, compare security fingerprints with them again.`,
     })
 }
 

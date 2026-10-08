@@ -8,8 +8,23 @@
     import { page } from "$app/state";
     import { replaceState } from "$app/navigation";
     import { onMount } from "svelte";
+    import { pathWithQuery } from "../navigation/sign-in-return";
 
-    let { authClient }: { authClient: PasswordResetAuthClient } = $props();
+    let {
+        authClient,
+        signInQuery = "",
+    }: {
+        authClient: PasswordResetAuthClient;
+        /**
+         * The query of the sign-in the reset was asked for from, as the forgotten-password page
+         * put it in the email's link and the app's server checked it: a `redirect`, or on
+         * Corporate a managed sign-in's signed request. The way back to sign in carries it.
+         */
+        signInQuery?: string;
+    } = $props();
+
+    const signInHref = $derived(pathWithQuery("/login", signInQuery));
+    const forgotPasswordHref = $derived(pathWithQuery("/forgot-password", signInQuery));
 
     let password = $state("");
     let confirmPassword = $state("");
@@ -122,7 +137,7 @@
             <h1 class="text-lg font-semibold text-gray-950">Password reset</h1>
             <p class="mt-2 text-sm text-gray-500">Your password has been successfully reset.</p>
             <p class="mt-4 text-sm text-gray-500">
-                <a href="/login" class="font-medium text-gray-950 hover:underline">Sign in with your new password</a>
+                <a href={signInHref} class="font-medium text-gray-950 hover:underline">Sign in with your new password</a>
             </p>
         </div>
     {:else if !token}
@@ -130,7 +145,7 @@
             <h1 class="text-lg font-semibold text-gray-950">Invalid reset link</h1>
             <p class="mt-2 text-sm text-gray-500">This password reset link is invalid or has expired. If you reloaded this page, open the link in your email again.</p>
             <p class="mt-4 text-sm text-gray-500">
-                <a href="/forgot-password" class="font-medium text-gray-950 hover:underline">Request a new reset link</a>
+                <a href={forgotPasswordHref} class="font-medium text-gray-950 hover:underline">Request a new reset link</a>
             </p>
         </div>
     {:else}
@@ -167,7 +182,7 @@
         </form>
 
         <p class="mt-6 text-center text-sm text-gray-500">
-            <a href="/login" class="font-medium text-gray-950 hover:underline">Back to sign in</a>
+            <a href={signInHref} class="font-medium text-gray-950 hover:underline">Back to sign in</a>
         </p>
     {/if}
 </div>

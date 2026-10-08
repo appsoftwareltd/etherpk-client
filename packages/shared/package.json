@@ -1,6 +1,6 @@
 {
     "name": "@appsoftwareltd/etherpk-shared",
-    "version": "0.9.1",
+    "version": "0.9.2",
     "license": "Elastic-2.0",
     "private": true,
     "type": "module",
@@ -132,6 +132,21 @@
             "svelte": "./src/pages/MarketingHomePage.svelte",
             "types": "./src/pages/MarketingHomePage.svelte",
             "default": "./src/pages/MarketingHomePage.svelte"
+        },
+        "./sync-plus-offer": {
+            "svelte": "./src/billing/SyncPlusOffer.svelte",
+            "types": "./src/billing/SyncPlusOffer.svelte",
+            "default": "./src/billing/SyncPlusOffer.svelte"
+        },
+        "./account-menu-links": {
+            "svelte": "./src/navigation/AccountMenuLinks.svelte",
+            "types": "./src/navigation/AccountMenuLinks.svelte",
+            "default": "./src/navigation/AccountMenuLinks.svelte"
+        },
+        "./marketing-headline": {
+            "svelte": "./src/pages/MarketingHeadline.svelte",
+            "types": "./src/pages/MarketingHeadline.svelte",
+            "default": "./src/pages/MarketingHeadline.svelte"
         },
         "./forgot-password-page": {
             "svelte": "./src/pages/ForgotPasswordPage.svelte",

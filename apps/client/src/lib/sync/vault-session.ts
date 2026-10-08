@@ -13,7 +13,7 @@ import { readSyncAccount } from './account-scope'
 import { DevicePasscodeLockedError, devicePasscode } from './device-passcode'
 import { openVaultWithRecoveryCode } from './recovery-unlock'
 import type { SyncApi } from './sync-api'
-import { VaultLockedError } from './vault-locked'
+import { UnlockCancelledError, VaultLockedError } from './vault-locked'
 
 const LEGACY_KEY = 'etherpk:vault-wrap-key'
 /** Every account's cached key is stored under this prefix, scoped by server and account. */
@@ -100,7 +100,7 @@ export function requireVaultWrapKey(serverOrigin: string): Uint8Array {
 export function setVaultWrapKey(serverOrigin: string, wrapKey: Uint8Array): void {
     removeUnsafeLegacyKey()
     const key = scopedKey(serverOrigin)
-    if (!key) throw new Error('Authenticate with the Sync Server before unlocking keys')
+    if (!key) throw new Error('Authenticate with the Sync Server before unlocking Encryption Keys')
     if (typeof localStorage === 'undefined') return
     void devicePasscode
         .store(key, toBase64Url(wrapKey), (stored) => localStorage.setItem(key, stored))
@@ -145,4 +145,4 @@ export function lockVault(serverOrigin: string): void {
     devicePasscode.forget(key)
 }
 
-export { VaultLockedError }
+export { UnlockCancelledError, VaultLockedError }

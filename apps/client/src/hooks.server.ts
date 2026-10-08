@@ -1,7 +1,7 @@
 import type { Handle, RequestEvent, ServerInit } from '@sveltejs/kit'
 import { hostname } from 'node:os'
 import { building } from '$app/environment'
-import { applySecurityHeaders } from '@appsoftwareltd/etherpk-shared'
+import { SIGNED_IN_STATUS_PATH, applySecurityHeaders } from '@appsoftwareltd/etherpk-shared'
 import { createHandleError, logRequest } from '@appsoftwareltd/etherpk-shared/server/request-log'
 import { env } from '$env/dynamic/private'
 import { initLoggerFromEnv, logger, shutdownLogger } from '$lib/server/logger'
@@ -13,7 +13,9 @@ import {
     takeClientSsoAttempted,
 } from '$lib/server/auth/cookies'
 import {
+    buildManagedClientSsoCheckUrl,
     managedClientSsoCheckResponse,
+    shouldAskWhetherSignedInElsewhere,
     shouldAttemptManagedClientSso,
 } from '$lib/server/auth/managed-routing'
 import {
@@ -109,20 +111,29 @@ async function respond(event: RequestEvent, resolve: Parameters<Handle>[0]['reso
     }
     event.locals.managedSessionAvailable = managedSessionAvailable
 
-    const attempted = takeClientSsoAttempted(event.cookies)
-    if (shouldAttemptManagedClientSso({
+    const ssoRequest = {
         configured: managedAuthConfig !== null,
         method: event.request.method,
         pathname: event.url.pathname,
         acceptsHtml: event.request.headers.get('accept')?.includes('text/html') ?? false,
         sessionAvailable: managedSessionAvailable,
         suppressed: isClientSsoSuppressed(event.cookies),
-        attempted,
+        attempted: takeClientSsoAttempted(event.cookies),
         checked: isClientSsoChecked(event.cookies),
         arrivedFromAnotherOrigin: ['same-site', 'cross-site'].includes(event.request.headers.get('sec-fetch-site') ?? ''),
-    })) {
+    }
+    if (shouldAttemptManagedClientSso(ssoRequest)) {
         return managedClientSsoCheckResponse(event.url)
     }
+    // Skipped only because a check missed recently: the page asks the account site whether the
+    // browser has signed in there since, and checks on a yes. The Client's policy already lets a
+    // page reach any https: origin, for self-hosted Sync Servers, so the account site's is allowed.
+    event.locals.signedInElsewhereCheck = managedAuthConfig && shouldAskWhetherSignedInElsewhere(ssoRequest)
+        ? {
+              statusUrl: `${managedAuthConfig.issuer}${SIGNED_IN_STATUS_PATH}`,
+              checkUrl: buildManagedClientSsoCheckUrl(event.url),
+          }
+        : null
 
     const response = await resolve(event, {
         transformPageChunk: ({ html }) =>

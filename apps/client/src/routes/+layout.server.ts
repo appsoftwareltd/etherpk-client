@@ -14,6 +14,7 @@ export const load: LayoutServerLoad = ({ locals }) => {
         resolvedTheme: locals.resolvedTheme,
         serverPortalUrl: serverPortalOrigin ? buildSyncServerUrl(serverPortalOrigin) : null,
         managedSessionAvailable: locals.managedSessionAvailable,
+        signedInElsewhereCheck: locals.signedInElsewhereCheck ?? null,
         corporateAccountUrl: managedAuthConfig ? buildAccountUrl(managedAuthConfig.issuer) : null,
         corporateBillingUrl: managedAuthConfig ? buildBillingUrl(managedAuthConfig.issuer) : null,
         corporatePricingUrl: managedAuthConfig ? buildPricingUrl(managedAuthConfig.issuer) : null,

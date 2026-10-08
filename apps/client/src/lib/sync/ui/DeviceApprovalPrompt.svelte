@@ -231,13 +231,13 @@
                     <p class="text-sm text-gray-600 dark:text-gray-400" data-testid="device-approval-taken">
                         A device signed in to your account on
                         <span class="font-medium text-gray-950 dark:text-gray-100">{serverHost(current?.origin ?? "")}</span>
-                        asked for your encryption keys, and another of your devices is already handling the request.
+                        asked for your Encryption Keys, and another of your devices is already handling the request.
                     </p>
                 {:else}
                     <p class="text-sm text-gray-600 dark:text-gray-400">
                         A device signed in to your account on
                         <span class="font-medium text-gray-950 dark:text-gray-100" data-testid="device-approval-server">{serverHost(current?.origin ?? "")}</span>
-                        is asking for your encryption keys there.
+                        is asking for your Encryption Keys there.
                         Approve <strong>only if you are setting that device up right now</strong> and
                         its screen shows this exact code:
                     </p>

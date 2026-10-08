@@ -23,7 +23,7 @@
 </svelte:head>
 
 <div class="flex min-h-dvh flex-col items-center justify-center bg-gray-50 dark:bg-[var(--gk-surface-0)] px-4 py-12">
-    <div class="w-full max-w-xs">
+    <div class="w-full max-w-xs sm:max-w-md">
         <!-- Logo mark -->
         <div class="flex justify-center mb-8">
             <a href="/home" aria-label="EtherPK home" class="inline-flex items-center gap-2.5 text-gray-950 dark:text-white hover:opacity-80 transition-opacity">
@@ -35,7 +35,7 @@
         </div>
 
         <!-- Card -->
-        <div class="rounded-2xl bg-white dark:bg-[var(--gk-surface-0)] shadow-sm dark:shadow-gray-950/40 ring-1 ring-gray-950/5 dark:ring-white/10 px-6 py-8">
+        <div data-testid="auth-card" class="rounded-2xl bg-white dark:bg-[var(--gk-surface-0)] shadow-sm dark:shadow-gray-950/40 ring-1 ring-gray-950/5 dark:ring-white/10 px-6 py-8 sm:px-10">
             {@render children()}
         </div>
 

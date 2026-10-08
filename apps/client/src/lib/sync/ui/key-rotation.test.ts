@@ -42,7 +42,7 @@ describe('describeRotation', () => {
     it('names the members the new key went to by the server’s word alone', () => {
         expect(describeRotation({ kind: 'rotated', epoch: 2, firstUse: ['a@example.com', 'b@example.com'], unchecked: [] }, 'Garden')).toEqual({
             tone: 'info',
-            text: 'Garden has a new key. You have not compared security fingerprints with a@example.com and b@example.com, so EtherPK sent it to the keys the server gives for them. Select Verify beside them in the member list when you can.',
+            text: 'Garden has a new key. You have not compared security fingerprints with a@example.com and b@example.com, so EtherPK sent it to the security keys the server gives for them. Select Verify beside them in the member list when you can.',
         })
     })
 
@@ -56,12 +56,12 @@ describe('describeRotation', () => {
     it('names the members whose keys could not be checked at all, because they predate signing keys', () => {
         expect(describeRotation({ kind: 'rotated', epoch: 2, firstUse: [], unchecked: ['c@example.com'] }, 'Garden')).toEqual({
             tone: 'info',
-            text: 'Garden has a new key. c@example.com has not opened EtherPK since it was updated, so EtherPK sent it to a key it could not check. Compare security fingerprints with them once they have.',
+            text: 'Garden has a new key. c@example.com has not opened EtherPK since it was updated, so EtherPK sent it to a security key it could not check. Compare security fingerprints with them once they have.',
         })
         expect(
             describeRotation({ kind: 'rotated', epoch: 2, firstUse: ['a@example.com'], unchecked: ['c@example.com', 'd@example.com'] }, 'Garden')?.text,
         ).toBe(
-            'Garden has a new key. You have not compared security fingerprints with a@example.com, so EtherPK sent it to the keys the server gives for them. Select Verify beside them in the member list when you can. c@example.com and d@example.com have not opened EtherPK since it was updated, so EtherPK sent it to keys it could not check. Compare security fingerprints with them once they have.',
+            'Garden has a new key. You have not compared security fingerprints with a@example.com, so EtherPK sent it to the security keys the server gives for them. Select Verify beside them in the member list when you can. c@example.com and d@example.com have not opened EtherPK since it was updated, so EtherPK sent it to security keys it could not check. Compare security fingerprints with them once they have.',
         )
     })
 

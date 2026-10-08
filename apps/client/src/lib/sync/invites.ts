@@ -133,7 +133,7 @@ export class InviteeNotFoundError extends Error {
  */
 export class InviteeChangedError extends Error {
     constructor() {
-        super('Their account or keys changed after you looked them up')
+        super('Their account or Encryption Keys changed after you looked them up')
         this.name = 'InviteeChangedError'
     }
 }

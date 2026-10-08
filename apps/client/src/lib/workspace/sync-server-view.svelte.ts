@@ -1,5 +1,5 @@
 /**
- * What the Knowledge graphs page knows about one Sync Server this device holds a connection to
+ * What the Graphs page knows about one Sync Server this device holds a connection to
  * (ADR 0111): the account signed in there, its plan, whether its vault exists and is unlocked here,
  * its graphs and its pending invites. The page keeps one per connection and shows them all at
  * once, the Graphs tab as a group per server and the Sync tab as a sub-tab per server, so nothing

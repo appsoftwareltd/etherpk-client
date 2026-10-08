@@ -1,7 +1,7 @@
 /**
  * Markdown parser extension: autolink an `http://` / `https://` url **whatever its host**, and a
  * `file://` url (a [[File Link]]) —
- * `http://localhost:5174/g/…`, `https://intranet/page`, `http://127.0.0.1:8080`.
+ * `http://localhost:5173/g/…`, `https://intranet/page`, `http://127.0.0.1:8080`.
  *
  * GFM's extended autolink (the `Autolink` parser in `@lezer/markdown`'s {@link GFM} bundle)
  * only recognises a *dotted* domain: `example.com` yes, `localhost` no. That is the right rule
@@ -27,7 +27,7 @@ import { GFM, type InlineContext, type MarkdownExtension } from '@lezer/markdown
  */
 const SCHEME_URL = /(?:https?:\/\/[^\s<>/:]+(?::\d+)?(?:\/[^\s<>]*)?|file:\/\/[^\s<>]+)/iy
 
-/** Trailing punctuation that is prose, not url (GFM's rule): `see http://localhost:5174/x.` */
+/** Trailing punctuation that is prose, not url (GFM's rule): `see http://localhost:5173/x.` */
 const TRAILING = /[?!.,:*_~]/
 
 /** Inside an open `[…` the url stops at an unbalanced bracket — the `]` closes the link, not the url. */

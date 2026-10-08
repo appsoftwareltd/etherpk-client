@@ -39,8 +39,8 @@ export function syncPlanNotice(account: SyncAccountSummary): SyncPlanNotice {
 
 /**
  * What each plan notice says, in the same sentences on the Client's Graphs page and the Sync
- * portal's dashboard. The offer to a Free account is each surface's own, since what Free can do
- * there differs.
+ * portal's dashboard. The offer to a Free account is `SYNC_PLUS_OFFER_TEXT`, one sentence on every
+ * origin, Corporate's Billing page included.
  */
 export const PLAN_NOTICE_TEXT = {
     payment_failed:

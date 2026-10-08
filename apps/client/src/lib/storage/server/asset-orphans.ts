@@ -12,8 +12,9 @@
  * referenced if its (random, unguessable) asset id appears anywhere in any document, or a
  * reference names it by the file name its metadata holds (an imported file's source name). A
  * [[Protected Document]] is read through the protection session while it is unlocked, and while
- * any cannot be read nothing is offered: the rule and the reference test are the filesystem
- * scanner's own (`referenceTexts`, `orphanScanOf`), so the two backends cannot disagree.
+ * any cannot be read the result says so beside what it offers: the rule and the reference test
+ * are the filesystem scanner's own (`referenceTexts`, `orphanScanOf`), so the two backends
+ * cannot disagree.
  *
  * Each candidate is labelled with the file name the uploader chose, read from the asset's
  * encrypted metadata: an eight-character id prefix would tell nobody which file they were deleting.
@@ -122,7 +123,7 @@ export async function scanOrphanedServerAssets(deps: ServerAssetOrphanDeps): Pro
     deps.graph.registry().forEach((_entry, docId) => docIds.push(docId))
     const stored: string[] = []
     // A document whose key is unavailable, or whose history will not decrypt, reads as empty:
-    // its references are as invisible as a locked protected document's, so it is unread too.
+    // its references are as invisible as a locked protected document's, so it is unchecked too.
     let unreadableOther = 0
     for (const docId of docIds) {
         const engine = deps.graph.docSync(docId)
@@ -140,8 +141,7 @@ export async function scanOrphanedServerAssets(deps: ServerAssetOrphanDeps): Pro
 
     const { texts, unreadableProtected } = await referenceTexts(stored, deps.readProtected)
     const unused = assets.filter((a) => !isReferenced(texts, a.assetId))
-    // Names only for what will be shown: a withheld candidate is not listed.
-    const names = unreadableProtected === 0 && unreadableOther === 0 ? await assetNames(deps, unused.map((a) => a.assetId)) : new Map<string, string>()
+    const names = await assetNames(deps, unused.map((a) => a.assetId))
     // An imported file is stored under the name it had in the source graph, and a reference the
     // import could not repoint (one sealed inside a protected document it had no passphrase for)
     // still uses that name. The file is in use under it, so it is not offered.

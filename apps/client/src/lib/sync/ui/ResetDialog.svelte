@@ -67,7 +67,7 @@
      */
     const confirmPhrase = $derived(
         deleting === 0
-            ? "RESET MY KEYS"
+            ? "RESET MY ENCRYPTION KEYS"
             : `DELETE ${deleting} GRAPH${deleting === 1 ? "" : "S"}`,
     );
     const confirmed = $derived(confirmText.trim() === confirmPhrase);
@@ -107,7 +107,7 @@
             summary = await api.resetAccount();
             step = "done";
         } catch (e) {
-            error = describeSyncFailure(e, "reset your keys");
+            error = describeSyncFailure(e, "reset your Encryption Keys");
         } finally {
             busy = false;
         }
@@ -122,7 +122,7 @@
 
 <Modal
     {open}
-    title={`Reset encryption keys on ${host}`}
+    title={`Reset Encryption Keys on ${host}`}
     {busy}
     busyReason="Resetting…"
     onclose={() => close()}
@@ -159,8 +159,8 @@
             </div>
         {:else if step === "review"}
             <p class="text-sm text-gray-600 dark:text-gray-400">
-                Resetting deletes your keys - creating new ones afterwards gives
-                you a new identity and Recovery Code. Everything below that you
+                Resetting deletes your Encryption Keys, and creating new ones
+                afterwards gives you a new identity and Recovery Code. Everything below that you
                 own will be affected. Graphs you only take part in as a player
                 are not touched, you simply leave them.
             </p>
@@ -204,19 +204,19 @@
                     deleted.
                 </p>
                 <p class="mt-1 text-sm text-red-700/80 dark:text-red-300/80">
-                    These are yours alone - no one else holds their keys, so they
-                    cannot be recovered.
+                    These are yours alone. No one else holds their Graph Keys, so
+                    they cannot be recovered.
                 </p>
             </div>
         {:else if step === "confirm"}
             <p class="text-sm text-gray-600 dark:text-gray-400">
                 {#if deleting === 0}
-                    This resets your keys. You own no graphs, so nothing is
+                    This resets your Encryption Keys. You own no graphs, so nothing is
                     deleted. It cannot be undone.
                 {:else}
                     This permanently deletes {deleting} graph{deleting === 1
                         ? ""
-                        : "s"} you still own and resets your keys. It cannot be undone.
+                        : "s"} you still own and resets your Encryption Keys. It cannot be undone.
                 {/if}
             </p>
             <div>
@@ -242,7 +242,7 @@
             </div>
         {:else if step === "done"}
             <p class="text-sm text-gray-600 dark:text-gray-400">
-                Your keys have been reset. {summary?.ownedGraphsDeleted ?? 0} owned
+                Your Encryption Keys have been reset. {summary?.ownedGraphsDeleted ?? 0} owned
                 graph{(summary?.ownedGraphsDeleted ?? 0) === 1 ? "" : "s"}
                 deleted. Create a new synced graph to start fresh with a new Recovery
                 Code.

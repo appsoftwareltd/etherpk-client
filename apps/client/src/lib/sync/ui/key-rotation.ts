@@ -54,14 +54,14 @@ export function describeRotation(result: RotationResult, graphName: string): { t
     const notes: string[] = []
     if (result.firstUse.length > 0) {
         notes.push(
-            `You have not compared security fingerprints with ${names(result.firstUse)}, so EtherPK sent it to the keys the server gives for them. Select Verify beside them in the member list when you can.`,
+            `You have not compared security fingerprints with ${names(result.firstUse)}, so EtherPK sent it to the security keys the server gives for them. Select Verify beside them in the member list when you can.`,
         )
     }
     if (result.unchecked.length > 0) {
         // Their identity has no signing key yet, so there was nothing to pin and nothing to verify.
         const one = result.unchecked.length === 1
         notes.push(
-            `${names(result.unchecked)} ${one ? 'has' : 'have'} not opened EtherPK since it was updated, so EtherPK sent it to ${one ? 'a key' : 'keys'} it could not check. Compare security fingerprints with them once they have.`,
+            `${names(result.unchecked)} ${one ? 'has' : 'have'} not opened EtherPK since it was updated, so EtherPK sent it to ${one ? 'a security key' : 'security keys'} it could not check. Compare security fingerprints with them once they have.`,
         )
     }
     if (notes.length === 0) return null

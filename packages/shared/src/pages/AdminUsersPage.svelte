@@ -525,7 +525,7 @@
                             <div class="flex items-center gap-2 flex-wrap">
                                 <p class="text-sm font-medium text-gray-950 truncate">{user.name || "\u2014"}</p>
                                 {#if user.role === "admin"}
-                                    <span class="inline-flex items-center rounded-full bg-violet-50 px-2 py-0.5 text-sm font-medium text-violet-700 ring-1 ring-violet-600/20">Admin</span>
+                                    <span class="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-sm font-medium text-gray-700 ring-1 ring-gray-600/20">Admin</span>
                                 {/if}
                                 {#if user.banned}
                                     <span class="inline-flex items-center rounded-full bg-red-50 px-2 py-0.5 text-sm font-medium text-red-700 ring-1 ring-red-600/20">Banned</span>

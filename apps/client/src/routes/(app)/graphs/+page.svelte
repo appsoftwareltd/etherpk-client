@@ -97,6 +97,9 @@
         SYNC_CONNECTIONS_CHANGED_EVENT,
         SYNC_CONNECTIONS_STORAGE_KEY,
         VaultLockedError,
+        UnlockCancelledError,
+        VaultExistsError,
+        MissingGraphKeyError,
         collectKeyHandouts,
         prepareKeyReplacement,
         syncApiFor,
@@ -112,7 +115,10 @@
         formatBytes,
         safeReturnPath,
     } from "@appsoftwareltd/etherpk-shared";
-    import { managedSignInHref } from "$lib/auth/sign-in-links";
+    import {
+        managedSignInHref,
+        returnHereSignedIn,
+    } from "$lib/auth/sign-in-links";
     import {
         EnvelopeError,
         fingerprint,
@@ -135,7 +141,7 @@
         type DevicePasscodeDialogMode,
     } from "$lib/sync/ui/DevicePasscodeDialog.svelte";
     import { devicePasscodeState } from "$lib/sync/ui/device-passcode-state.svelte";
-    import DevicePasscodeCard from "$lib/workspace/DevicePasscodeCard.svelte";
+    import DevicePasscodeSection from "$lib/workspace/DevicePasscodeSection.svelte";
     import ResetDialog from "$lib/sync/ui/ResetDialog.svelte";
     import TransferOwnershipDialog from "$lib/sync/ui/TransferOwnershipDialog.svelte";
     import RenameGraphDialog from "$lib/sync/ui/RenameGraphDialog.svelte";
@@ -173,6 +179,7 @@
         CUSTOM_SERVER_ICON,
         LOCAL_GRAPHS_ICON,
         MANAGED_SERVER_ICON,
+        NOT_SET_ICON,
     } from "$lib/workspace/graphs-page-icons";
     import { forgetGraphOnDevice } from "$lib/workspace/graph-device-memory";
     import { isDemoGraph } from "$lib/demo/demo-graph";
@@ -203,20 +210,26 @@
     let status = $state("");
     let statusTone = $state<"info" | "error">("info");
 
+    /** The page's tabs in the order they are shown, which is also the arrow keys' order. */
+    const GRAPHS_PAGE_TABS = ["graphs", "sync", "device"] as const;
+    type GraphsPageTab = (typeof GRAPHS_PAGE_TABS)[number];
+
     /**
-     * Which tab shows: the graphs, or the Sync settings. Kept in the address as `?tab=sync`,
-     * replaced rather than pushed, so Back leaves the page rather than walking between tabs. Held
-     * here as well because a shallow `replaceState` changes the address bar but not `page.url`;
-     * a real navigation to this page reads it back from the address (`afterNavigate` below).
+     * Which tab shows: the graphs, the Sync settings, or what this device holds. Kept in the
+     * address as `?tab=sync` or `?tab=device`, replaced rather than pushed, so Back leaves the
+     * page rather than walking between tabs. Held here as well because a shallow `replaceState`
+     * changes the address bar but not `page.url`; a real navigation to this page reads it back
+     * from the address (`afterNavigate` below).
      */
-    let activeTab = $state<"graphs" | "sync">(tabIn(page.url));
+    let activeTab = $state<GraphsPageTab>(tabIn(page.url));
     /** The Sync tab's sub-tab as the address names it (`&server=`): a server's host, or `add`. */
     let requestedSyncPanel = $state<string | null>(
         page.url.searchParams.get("server"),
     );
 
-    function tabIn(url: URL): "graphs" | "sync" {
-        return url.searchParams.get("tab") === "sync" ? "sync" : "graphs";
+    function tabIn(url: URL): GraphsPageTab {
+        const tab = url.searchParams.get("tab");
+        return tab === "sync" || tab === "device" ? tab : "graphs";
     }
 
     afterNavigate(({ to }) => {
@@ -454,6 +467,9 @@
     const corporateBillingUrl = $derived(
         (page.data.corporateBillingUrl as string | null | undefined) ?? null,
     );
+    const corporatePricingUrl = $derived(
+        (page.data.corporatePricingUrl as string | null | undefined) ?? null,
+    );
     const corporateAccountUrl = $derived(
         (page.data.corporateAccountUrl as string | null | undefined) ?? null,
     );
@@ -582,6 +598,15 @@
 
     /** The registry and the stored connections have been read; before that nothing below is known. */
     const listReady = $derived(graphsListed && connectionsRead);
+
+    /**
+     * The This Device tab marks a Device Passcode not set (ADR 0129) only while this device holds a
+     * Sync Server, whose Encryption Keys or access token a passcode would protect. A passcode is
+     * optional, so a mark on the tab is all the reminder there is.
+     */
+    const passcodeNotSet = $derived(
+        listReady && servers.length > 0 && devicePasscodeState() === "off",
+    );
     /**
      * Whether this is a first visit is known: at once for a browser holding graphs of its own, else
      * only once every server has answered, so the first-run card and a returning browser's lists
@@ -630,6 +655,8 @@
     );
     const SECONDARY_BUTTON =
         "inline-flex items-center justify-center rounded-lg border border-gray-300 dark:border-gray-700 px-3 py-1.5 pointer-coarse:min-h-11 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5";
+    /** The rule between the Sync tab's top-level sections. */
+    const SECTION_RULE = "border-gray-200 dark:border-white/10";
 
     /**
      * What this tab has put back from the device's safety copy after the browser dropped
@@ -1190,7 +1217,7 @@
         // Recovery Code that does not exist. Explain instead of dead-ending the user.
         if (server.vaultExists === false) {
             setStatus(
-                "This account has no encryption keys yet - they are created with your first synced graph.",
+                "This account has no Encryption Keys yet. They are created with your first synced graph.",
                 "error",
             );
             return;
@@ -1244,7 +1271,7 @@
     function afterPasscodeForgotten() {
         offerPasscodeAfterUnlock = true;
         setStatus(
-            "The passcode is forgotten, and the keys it protected are removed from this device. Unlock your keys again with your Recovery Code or from another device.",
+            "The passcode is forgotten, and the Encryption Keys it protected are removed from this device. Unlock your Encryption Keys again with your Recovery Code or from another device.",
         );
         // Reconciles the servers first: a custom server whose token went with the passcode is gone.
         void refresh();
@@ -1291,11 +1318,11 @@
         if (server.vaultExists !== false) return;
         // Say it on the page as well as in the dialog: the ritual interrupts what they asked for.
         setStatus(
-            "This account had no encryption keys, so they are being created now. Nothing is uploaded until you save your Recovery Code.",
+            "This account had no Encryption Keys, so they are being created now. Nothing is uploaded until you save your Recovery Code.",
         );
         await mintAccountKeysWithRitual(
             server,
-            "This account had no encryption keys, so EtherPK has just created them. Nothing is uploaded to the sync server until you have saved this code.",
+            "This account had no Encryption Keys, so EtherPK has just created them. Nothing is uploaded to the sync server until you have saved this code.",
         );
     }
 
@@ -1312,9 +1339,7 @@
             created = await createAccountKeys(server.api);
         } catch (err) {
             // Another device minted first: join those keys rather than starting a rival account.
-            if (
-                (err as Error).message.includes("already has encryption keys")
-            ) {
+            if (err instanceof VaultExistsError) {
                 server.vaultExists = true;
                 await unlockVaultInteractively(server.origin);
                 server.syncUnlocked();
@@ -1359,12 +1384,9 @@
         const cached = heldKey(origin);
         if (cached) return Promise.resolve(cached);
         return new Promise<Uint8Array>((resolve, reject) => {
-            unlockCancelled = () =>
-                reject(
-                    new Error(
-                        "Unlock your keys with your Recovery Code to continue.",
-                    ),
-                );
+            // Typed, so a flow can tell the person stopping from a failure, and the message names the
+            // keys still being locked rather than a connection problem.
+            unlockCancelled = () => reject(new UnlockCancelledError());
             unlockWith = unlockRoute();
             unlockOrigin = origin;
             unlockThen = async () => {
@@ -1372,7 +1394,9 @@
                 if (key) resolve(key);
                 else
                     reject(
-                        new Error("The keys on this device are still locked."),
+                        new VaultLockedError(
+                            "The Encryption Keys on this device are still locked.",
+                        ),
                     );
             };
         });
@@ -1435,14 +1459,13 @@
      * read from the window: after an earlier shallow replace, `page.url` still carries parameters
      * that have since come off (`?sync=connect`, `?managed=…`). The Sync tab keeps its sub-tab.
      */
-    function showTab(tab: "graphs" | "sync") {
+    function showTab(tab: GraphsPageTab) {
         activeTab = tab;
         const url = new URL(window.location.href);
-        if (tab === "sync") url.searchParams.set("tab", "sync");
-        else {
-            url.searchParams.delete("tab");
-            url.searchParams.delete("server");
-        }
+        if (tab === "graphs") url.searchParams.delete("tab");
+        else url.searchParams.set("tab", tab);
+        // The server sub-tab belongs to the Sync tab's address alone.
+        if (tab !== "sync") url.searchParams.delete("server");
         replaceState(url.pathname + url.search + url.hash, page.state);
     }
 
@@ -1546,23 +1569,10 @@
         // Held beside any custom server the device already holds.
         saveManagedSyncConnection();
         // Back to the page that sent the person here to connect, if one did; otherwise to this
-        // page, which then says the sign-in worked.
-        window.location.href = managedSignInHref(returnTo);
-    }
-
-    /**
-     * Disconnect Managed Sync on this device: its keys lock and the Client's session ends, and the
-     * connection stays held, signed out. Custom servers this device holds are untouched.
-     */
-    async function disconnectManagedSync() {
-        const origin = managedServer?.origin;
-        clearManagedAccessToken();
-        if (origin) {
-            lockVault(origin);
-            clearSyncAccount(origin);
-        }
-        await fetch("/auth/logout", { method: "POST" });
-        window.location.href = "/graphs?tab=sync&managed=disconnected";
+        // page as it is now, tab and server sub-tab included, which then says the sign-in worked.
+        window.location.href = managedSignInHref(
+            returnTo ?? returnHereSignedIn(window.location),
+        );
     }
 
     /** The server whose Forget waits for its confirmation, and one being forgotten. */
@@ -1623,7 +1633,7 @@
     }
 
     /**
-     * A one-shot arrival notice: a sign-out, a disconnect or a sign-in that ended on this page
+     * A one-shot arrival notice: a sign-out, a custom server's disconnect or a sign-in that ended on this page
      * says so here, then the parameter comes off the address so a reload does not repeat it.
      */
     function announceArrival() {
@@ -1632,13 +1642,11 @@
         const notice =
             managed === "signed-out"
                 ? "You are signed out of EtherPK in this browser."
-                : managed === "disconnected"
-                  ? "This device is disconnected and its keys are locked. Your EtherPK account and the Sync Server stay signed in."
-                  : managed === "connected"
-                    ? "Signed in to EtherPK."
-                    : sync === "disconnected"
-                      ? "This device is disconnected from that Sync Server. Its access token stays active until you revoke it on the server."
-                      : null;
+                : managed === "connected"
+                  ? "Signed in to EtherPK."
+                  : sync === "disconnected"
+                    ? "This device is disconnected from that Sync Server. Its access token stays active until you revoke it on the server."
+                    : null;
         if (!notice) return;
         setStatus(notice);
         const url = new URL(page.url);
@@ -1660,18 +1668,6 @@
             "error",
         );
         void reconnect(server);
-    }
-
-    function prepareManagedSignOut() {
-        // The form navigation continues through Corporate and Server. Clear in-memory and local
-        // identity state before leaving so no authenticated UI survives if navigation is delayed.
-        // Only Managed Sync's account signs out: a custom server's is its own.
-        clearManagedAccessToken();
-        const origin = managedServer?.origin;
-        if (origin) {
-            lockVault(origin);
-            clearSyncAccount(origin);
-        }
     }
 
     /** The rules a Custom server field is held to before anything is sent. */
@@ -1897,7 +1893,7 @@
                 createError = server.createBlockedReason;
                 return;
             }
-            createStage = "Preparing your encryption keys…";
+            createStage = "Preparing your Encryption Keys…";
             await ensureAccountKeysReady(server);
             createStage = "Creating…";
             const graph = await server.api.createGraph(); // server stores no name (ADR 0024)
@@ -2258,7 +2254,7 @@
                         ? "copy of 1 synced graph"
                         : `copies of ${removed} synced graphs`;
                 setStatus(
-                    `Removed this browser's ${copies} from ${where}, and locked the keys held here for ${pending.server ? "it" : "them"}. The graphs are still on the sync server.`,
+                    `Removed this browser's ${copies} from ${where}, and locked the Encryption Keys held here for ${pending.server ? "it" : "them"}. The graphs are still on the sync server.`,
                 );
             }
         } catch (err) {
@@ -2373,12 +2369,14 @@
         const { api } = connection;
         let keyring = options.keyring;
         if (!keyring) {
-            if (!heldKey(origin)) throw new Error("Unlock your vault first.");
+            // Typed, so the failure copy says the Encryption Keys are locked rather than blaming the
+            // connection.
+            if (!heldKey(origin)) throw new VaultLockedError();
             const opened = await openHeldVault({ api, origin });
             if (!opened) throw new Error("No vault on this device");
             keyring = opened.vault.keyrings.find((k) => k.graphId === graphId);
         }
-        if (!keyring) throw new Error("You do not hold this graph key");
+        if (!keyring) throw new MissingGraphKeyError(graphId);
         const held = keyring;
         return {
             graphId,
@@ -2553,7 +2551,7 @@
                 const keyring = opened.vault.keyrings.find(
                     (k) => k.graphId === graphId,
                 );
-                if (!keyring) throw new Error("You do not hold this graph key");
+                if (!keyring) throw new MissingGraphKeyError(graphId);
                 inviteDialog = {
                     server,
                     graphId,
@@ -2932,7 +2930,7 @@
             if (!server.heldKey()) {
                 setRowStatus(
                     view.id,
-                    "Somebody left this graph, so it needs a new key. Unlock your keys on the Sync tab, and EtherPK makes one.",
+                    "Somebody left this graph, so it needs a new Graph Key. Unlock your Encryption Keys on the Sync tab, and EtherPK makes one.",
                 );
                 continue;
             }
@@ -2944,7 +2942,7 @@
     async function rotateKey(server: SyncServerView, view: SyncedGraphView): Promise<void> {
         const heldKey = server.heldKey();
         if (!heldKey) {
-            setRowStatus(view.id, "Unlock your keys on the Sync tab to change this graph’s key.", "error");
+            setRowStatus(view.id, "Unlock your Encryption Keys on the Sync tab to change this graph’s Graph Key.", "error");
             return;
         }
         if (server.rotating.has(view.id)) return;
@@ -2973,7 +2971,7 @@
      */
     async function rotateKeyNow(server: SyncServerView, view: SyncedGraphView) {
         if (!server.heldKey()) {
-            setRowStatus(view.id, "Unlock your keys on the Sync tab to change this graph’s key.", "error");
+            setRowStatus(view.id, "Unlock your Encryption Keys on the Sync tab to change this graph’s Graph Key.", "error");
             return;
         }
         try {
@@ -3119,7 +3117,7 @@
             offerPasscodeAfterUnlock = false;
             passcodePrompt = {
                 mode: "set",
-                intro: "Your keys are unlocked again. Set a new passcode for this device, or leave it off. You can set one later here on the Sync tab.",
+                intro: "Your Encryption Keys are unlocked again. Set a new passcode for this device, or leave it off. You can set one later on the This Device tab.",
                 dismissLabel: "Leave it off",
             };
         }
@@ -3135,14 +3133,17 @@
             try {
                 await mintAccountKeysWithRitual(
                     server,
-                    `These are your account's new encryption keys on ${server.host}. Every synced graph you create or join on this Sync Server from now on is protected by them.`,
+                    `These are your account's new Encryption Keys on ${server.host}. Every synced graph you create or join on this Sync Server from now on is protected by them.`,
                 );
                 setStatus(
-                    `Encryption keys created on ${server.host}. Your synced graphs there will use them from now on.`,
+                    `Encryption Keys created on ${server.host}. Your synced graphs there will use them from now on.`,
                 );
             } catch (err) {
+                // Another device had made the keys and the person closed the unlock that
+                // followed: they chose to stop, so there is nothing to report.
+                if (err instanceof UnlockCancelledError) return;
                 setStatus(
-                    describeSyncFailure(err, "create encryption keys"),
+                    describeSyncFailure(err, "create Encryption Keys"),
                     "error",
                 );
             }
@@ -3173,7 +3174,7 @@
                 code: prepared.code,
                 arrival: "regenerate",
                 ...recoveryCodeServer(origin),
-                reason: `Your current code for ${server.host} still works. When you continue, it stops working for good and only this new code can unlock your keys there. Codes for other Sync Servers are not affected. Save this one first.`,
+                reason: `Your current code for ${server.host} still works. When you continue, it stops working for good and only this new code can unlock your Encryption Keys there. Codes for other Sync Servers are not affected. Save this one first.`,
                 commit: async () => {
                     deviceKey = await prepared.commit();
                 },
@@ -3238,7 +3239,7 @@
             try {
                 prepared = await prepareKeyReplacement(server.api, server.heldKey()!);
             } catch (err) {
-                setStatus(describeSyncFailure(err, "replace your keys"), "error");
+                setStatus(describeSyncFailure(err, "replace your Encryption Keys"), "error");
                 return;
             }
             let replaced: KeyReplacementResult | null = null;
@@ -3246,12 +3247,12 @@
                 code: prepared.code,
                 arrival: "replace",
                 ...recoveryCodeServer(origin),
-                reason: `Your current keys and Recovery Code for ${server.host} keep working until you continue. Then only this code unlocks your keys there, and your other devices must be unlocked again. Save it first.`,
+                reason: `Your current Encryption Keys and Recovery Code for ${server.host} keep working until you continue. Then only this code unlocks your Encryption Keys there, and your other devices must be unlocked again. Save it first.`,
                 commit: async () => {
-                    setStatus(`Replacing your keys on ${server.host}…`);
+                    setStatus(`Replacing your Encryption Keys on ${server.host}…`);
                     replaced = await prepared.commit();
                 },
-                cancel: () => setStatus("Your keys are unchanged."),
+                cancel: () => setStatus("Your Encryption Keys are unchanged."),
                 then: (err) => {
                     if (err) {
                         void settleFailedReplacement(prepared, err, server);
@@ -3281,7 +3282,7 @@
             } catch (err) {
                 // The old token was revoked with the keys, so without this one the server is out of reach.
                 setStatus(
-                    `${describeSyncFailure(err, "save the new access token")} Your keys were replaced. Add a new access token for ${server.host} to keep syncing there.`,
+                    `${describeSyncFailure(err, "save the new access token")} Your Encryption Keys were replaced. Add a new access token for ${server.host} to keep syncing there.`,
                     "error",
                 );
                 return;
@@ -3325,11 +3326,11 @@
             id: `keys-replaced:${server.origin}`,
             tone: "info",
             dismissal: "manual",
-            title: `Your keys on ${server.host} were replaced`,
+            title: `Your Encryption Keys on ${server.host} were replaced`,
             text: `Your other devices must be unlocked again. Your new security fingerprint is ${result.fingerprint}.${items.length > 0 ? " Still to do:" : ""}`,
             items,
             footnote: managed
-                ? "Devices still signed in to your EtherPK Account can still reach the server. They cannot unlock your new keys, but they could reset them. To sign them out, open your Account and go to Sessions."
+                ? "Devices still signed in to your EtherPK Account can still reach the server. They cannot unlock your new Encryption Keys, but they could reset them. To sign them out, open your Account and go to Sessions."
                 : undefined,
             actions:
                 managed && corporateAccountUrl
@@ -3344,7 +3345,7 @@
                       ]
                     : undefined,
         });
-        setStatus(`Your keys on ${server.host} were replaced.`);
+        setStatus(`Your Encryption Keys on ${server.host} were replaced.`);
         await refresh();
     }
 
@@ -3358,7 +3359,7 @@
             active = await prepared.activeVaultKey();
         } catch {
             setStatus(
-                "Could not confirm whether your keys were replaced. Keep the new Recovery Code you saved, and the old one too, until you are back online and can check.",
+                "Could not confirm whether your Encryption Keys were replaced. Keep the new Recovery Code you saved, and the old one too, until you are back online and can check.",
                 "error",
             );
             return;
@@ -3366,14 +3367,14 @@
         if (active) {
             server.cacheKey(active);
             setStatus(
-                `Your keys on ${server.host} were replaced, but this device did not get the details back. If it signs in with an access token, add a new one in Sync settings.`,
+                `Your Encryption Keys on ${server.host} were replaced, but this device did not get the details back. If it signs in with an access token, add a new one in Sync settings.`,
                 "error",
             );
             await refresh();
             return;
         }
         setStatus(
-            `${describeSyncFailure(err, "replace your keys")} Nothing changed: your current keys and Recovery Code still work. Try again.`,
+            `${describeSyncFailure(err, "replace your Encryption Keys")} Nothing changed: your current Encryption Keys and Recovery Code still work. Try again.`,
             "error",
         );
     }
@@ -3411,7 +3412,7 @@
                 if (own?.repaired) reportIdentityRepair(server.origin);
                 if (!server.fingerprint) {
                     setStatus(
-                        "This account has no encryption keys yet, so it has no fingerprint.",
+                        "This account has no Encryption Keys yet, so it has no fingerprint.",
                         "error",
                     );
                 }
@@ -3440,7 +3441,7 @@
         unlockOrigin = server.origin;
         unlockThen = async () => {
             server.syncUnlocked();
-            setStatus(`Keys for ${server.host} unlocked on this device.`);
+            setStatus(`Encryption Keys for ${server.host} unlocked on this device.`);
         };
     }
 
@@ -3455,30 +3456,32 @@
         server.vaultExists = false; // eager — refresh() re-checks, but don't flash the old button
         await refresh();
         setStatus(
-            `Your encryption keys on ${server.host} have been reset. Create a new synced graph there to start over.`,
+            `Your Encryption Keys on ${server.host} have been reset. Create a new synced graph there to start over.`,
         );
     }
 
-    /** Arrow keys, Home and End move between the two tabs, as the ARIA tabs pattern expects. */
+    /**
+     * Arrow keys move to the next or previous tab, wrapping at the ends, and Home and End to the
+     * first and last, as the ARIA tabs pattern expects.
+     */
     function onTabKeydown(event: KeyboardEvent) {
         const keys = ["ArrowLeft", "ArrowRight", "Home", "End"];
         if (!keys.includes(event.key)) return;
         event.preventDefault();
-        const next =
+        const at = GRAPHS_PAGE_TABS.indexOf(activeTab);
+        const last = GRAPHS_PAGE_TABS.length - 1;
+        const index =
             event.key === "Home"
-                ? "graphs"
+                ? 0
                 : event.key === "End"
-                  ? "sync"
-                  : activeTab === "graphs"
-                    ? "sync"
-                    : "graphs";
+                  ? last
+                  : event.key === "ArrowRight"
+                    ? (at + 1) % GRAPHS_PAGE_TABS.length
+                    : (at + last) % GRAPHS_PAGE_TABS.length;
+        const next = GRAPHS_PAGE_TABS[index];
         showTab(next);
         void tick().then(() =>
-            document
-                .getElementById(
-                    next === "sync" ? "graphs-tab-sync" : "graphs-tab-graphs",
-                )
-                ?.focus(),
+            document.getElementById(`graphs-tab-${next}`)?.focus(),
         );
     }
 
@@ -3543,6 +3546,7 @@
             retry: () => void retryServer(server),
             enterPasscode,
             showSettings: () => void openSyncPanel(server),
+            unlock: () => unlockKeys(server),
         };
     }
 
@@ -3553,8 +3557,6 @@
         return {
             signIn: () => startSignIn(server),
             reconnect: () => void reconnect(server),
-            prepareSignOut: prepareManagedSignOut,
-            disconnect: () => void disconnectManagedSync(),
             beginForget: () => (confirmingForget = server.origin),
             cancelForget: () => (confirmingForget = null),
             forget: () => void forgetServer(server),
@@ -3565,7 +3567,6 @@
             unlock: () => unlockKeys(server),
             showFingerprint: () => showOwnFingerprint(server),
             reset: () => (resetServer = server),
-            removeCopies: () => void startRemoveCopies(server),
             enterPasscode,
         };
     }
@@ -3665,7 +3666,7 @@
     });
 </script>
 
-<svelte:head><title>Knowledge graphs · EtherPK</title></svelte:head>
+<svelte:head><title>Graphs · EtherPK</title></svelte:head>
 <svelte:document onvisibilitychange={onVisible} />
 
 {#snippet loadingSkeleton(label: string)}
@@ -3723,7 +3724,7 @@
 <div class="mx-auto max-w-5xl px-4 py-8 space-y-6">
     <header class="flex min-h-9 flex-wrap items-center justify-between gap-3">
         <h1 class="text-2xl font-semibold text-gray-950 dark:text-white">
-            Knowledge graphs
+            Graphs
         </h1>
         <!-- Offered once the page knows what this browser holds: before then, which actions apply
              (the demo, a folder) is not known. All four share one style: none of them is the right
@@ -3774,7 +3775,7 @@
     <div
         role="tablist"
         tabindex="-1"
-        aria-label="Graphs and sync settings"
+        aria-label="Graphs, sync settings and this device"
         onkeydown={onTabKeydown}
         class="flex gap-1 border-b border-gray-200 dark:border-white/10"
     >
@@ -3808,6 +3809,39 @@
                 : 'border-transparent text-gray-600 hover:text-gray-950 dark:text-gray-400 dark:hover:text-white'}"
             >Sync</button
         >
+        <button
+            type="button"
+            role="tab"
+            id="graphs-tab-device"
+            data-testid="graphs-device-tab"
+            aria-selected={activeTab === "device"}
+            aria-controls="graphs-device-settings"
+            tabindex={activeTab === "device" ? 0 : -1}
+            onclick={() => showTab("device")}
+            class="-mb-px inline-flex items-center gap-1.5 border-b-2 px-3 py-2 text-sm font-medium pointer-coarse:min-h-11 {activeTab ===
+            'device'
+                ? 'border-gray-900 text-gray-950 dark:border-white dark:text-white'
+                : 'border-transparent text-gray-600 hover:text-gray-950 dark:text-gray-400 dark:hover:text-white'}"
+        >
+            This Device
+            {#if passcodeNotSet}
+                <!-- In the tab's own colour: a hint that something is not set, not an alarm. -->
+                <svg
+                    class="h-4 w-4"
+                    viewBox="0 0 20 20"
+                    fill="currentColor"
+                    aria-hidden="true"
+                    data-testid="graphs-device-tab-passcode-not-set"
+                >
+                    <path
+                        fill-rule="evenodd"
+                        clip-rule="evenodd"
+                        d={NOT_SET_ICON}
+                    />
+                </svg>
+                <span class="sr-only">(passcode not set)</span>
+            {/if}
+        </button>
     </div>
 
     <!--
@@ -3856,16 +3890,6 @@
                 >
             {/if}
         </div>
-    {/if}
-
-    {#if managedSyncAvailable}
-        <!-- The form attribute on the Sign out button associates it with this external form, which
-             keeps it out of the Sync tab's add-server form. -->
-        <form
-            id="managed-global-logout"
-            method="POST"
-            action="/auth/logout/managed"
-        ></form>
     {/if}
 
     {#if activeTab === "graphs"}
@@ -4156,6 +4180,7 @@
                             {checkingInvite}
                             {decliningInvite}
                             {corporateBillingUrl}
+                            {corporatePricingUrl}
                             showPending={showPlanPending.current}
                             actions={groupActions(server)}
                         />
@@ -4236,7 +4261,7 @@
                 {/if}
             {/if}
         </div>
-    {:else}
+    {:else if activeTab === "sync"}
         <div
             role="tabpanel"
             id="graphs-sync-settings"
@@ -4253,24 +4278,18 @@
                     class="space-y-4"
                 >
                     <div>
-                        <h2 id="sync-servers-heading" class="sr-only">
+                        <h2
+                            id="sync-servers-heading"
+                            class="text-lg font-semibold text-gray-950 dark:text-white"
+                        >
                             Sync Servers
                         </h2>
-                        <p class="text-sm text-gray-500 dark:text-gray-400">
-                            Each Sync Server keeps its own account, encryption
-                            keys and Recovery Code. A synced graph always syncs
+                        <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                            Each Sync Server keeps its own account, Encryption
+                            Keys and Recovery Code. A synced graph always syncs
                             through the server it was created on.
                         </p>
                     </div>
-
-                    {#if servers.length > 0 || devicePasscodeState() !== "off"}
-                        <!-- One passcode for every server's keys on this device, so above their tabs. -->
-                        <DevicePasscodeCard
-                            ondone={() =>
-                                passcodeChanged(devicePasscode.state())}
-                            onforgotten={afterPasscodeForgotten}
-                        />
-                    {/if}
 
                     {#if servers.length > 0}
                         <!-- A sub-tab per server, so a key reset or a removal plainly acts on one
@@ -4432,7 +4451,7 @@
                                                 type="button"
                                                 data-testid="managed-sync-connect"
                                                 onclick={connectManagedSync}
-                                                class="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500"
+                                                class="rounded-lg bg-gray-900 px-4 py-2 text-sm font-semibold text-white hover:bg-gray-800 dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-gray-200"
                                                 >Continue to secure sign in</button
                                             >
                                         </div>
@@ -4596,31 +4615,196 @@
                             {@const server = syncPanel}
                             <SyncServerSettings
                                 {server}
-                                heldCount={copyCounts.perServer[
-                                    server.origin
-                                ] ?? 0}
                                 {corporateBillingUrl}
+                                {corporatePricingUrl}
                                 {corporateAccountUrl}
                                 showPending={showPlanPending.current}
                                 confirmingForget={confirmingForget ===
                                     server.origin}
                                 forgetting={forgettingServer === server.origin}
-                                removeChecking={removeCopiesChecking ===
-                                    server.origin}
                                 actions={settingsActions(server)}
                             />
                         {/if}
                     </div>
                 </section>
+            {/if}
+        </div>
+    {:else}
+        <div
+            role="tabpanel"
+            id="graphs-device-settings"
+            data-testid="graphs-device-settings"
+            aria-labelledby="graphs-tab-device"
+            class="space-y-8"
+        >
+            {#if !listReady}
+                {@render loadingSkeleton("Loading what this device holds…")}
+            {:else}
+                <!-- What this device holds, whichever server it came from, in sections divided by
+                     rules. The Device Passcode covers every server's Encryption Keys here, and shows
+                     with no server left while one is still set, so it can be turned off. -->
+                {#if servers.length > 0 || devicePasscodeState() !== "off"}
+                    <DevicePasscodeSection
+                        ondone={() => passcodeChanged(devicePasscode.state())}
+                        onforgotten={afterPasscodeForgotten}
+                    />
+                    <hr class={SECTION_RULE} />
+                {/if}
+
+                <!-- Signing out hides synced graphs; it does not remove this browser's readable
+                     copies, which only this does. -->
+                <section
+                    data-testid="synced-copies"
+                    aria-labelledby="synced-copies-heading"
+                    class="space-y-3"
+                >
+                    <div>
+                        <h2
+                            id="synced-copies-heading"
+                            class="text-lg font-semibold text-gray-950 dark:text-white"
+                        >
+                            Synced graphs in this browser
+                        </h2>
+                        <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                            This browser keeps a readable copy of each synced
+                            graph it has opened, for every account that has used
+                            it. Signing out leaves the copies in place, so on a
+                            shared machine, remove them before you leave.
+                            Removing them leaves the graphs on their Sync Server.
+                        </p>
+                    </div>
+                    {#if servers.length === 0 && copyCounts.unheld === 0}
+                        <p
+                            class="text-sm text-gray-500 dark:text-gray-400"
+                            data-testid="synced-copies-none"
+                        >
+                            No synced graphs are stored in this browser.
+                        </p>
+                    {:else}
+                        <!-- A row per Sync Server, and one for servers this device no longer holds,
+                             whose copies no server's row offers. -->
+                        <ul
+                            class="divide-y divide-gray-200 rounded-xl border border-gray-200 bg-white dark:divide-white/10 dark:border-white/10 dark:bg-white/5"
+                        >
+                            {#each orderedServers as server (server.origin)}
+                                {@const held =
+                                    copyCounts.perServer[server.origin] ?? 0}
+                                {@const checking =
+                                    removeCopiesChecking === server.origin}
+                                <li
+                                    data-testid="synced-copies-server"
+                                    data-origin={server.origin}
+                                    class="flex flex-wrap items-center justify-between gap-3 px-4 py-3"
+                                >
+                                    <div class="min-w-0">
+                                        <p
+                                            class="flex items-center gap-2 text-sm font-medium text-gray-950 dark:text-white"
+                                        >
+                                            {@render serverIcon(
+                                                server,
+                                                "h-4 w-4 shrink-0",
+                                            )}
+                                            <span class="truncate"
+                                                >{server.host}</span
+                                            >
+                                        </p>
+                                        {#if held > 0}
+                                            <p
+                                                class="text-sm text-gray-500 dark:text-gray-400"
+                                            >
+                                                {held === 1
+                                                    ? "1 synced graph"
+                                                    : `${held} synced graphs`} stored
+                                                in this browser.
+                                            </p>
+                                        {:else}
+                                            <p
+                                                class="text-sm text-gray-500 dark:text-gray-400"
+                                                data-testid="remove-synced-none"
+                                            >
+                                                No synced graphs from {server.host}
+                                                are stored in this browser.
+                                            </p>
+                                        {/if}
+                                    </div>
+                                    {#if held > 0}
+                                        <button
+                                            type="button"
+                                            data-testid="remove-synced"
+                                            onclick={() =>
+                                                void startRemoveCopies(server)}
+                                            disabled={checking}
+                                            aria-busy={checking}
+                                            class="{SECONDARY_BUTTON} aria-busy:cursor-progress"
+                                        >
+                                            {#if checking}
+                                                Checking for unsent changes…
+                                            {:else}
+                                                Remove<span class="sr-only">
+                                                    synced graphs from {server.host}</span
+                                                >
+                                            {/if}
+                                        </button>
+                                    {/if}
+                                </li>
+                            {/each}
+                            {#if copyCounts.unheld > 0}
+                                {@const checking =
+                                    removeCopiesChecking === "unheld"}
+                                <li
+                                    data-testid="unheld-copies"
+                                    class="flex flex-wrap items-center justify-between gap-3 px-4 py-3"
+                                >
+                                    <div class="min-w-0">
+                                        <p
+                                            class="text-sm font-medium text-gray-950 dark:text-white"
+                                        >
+                                            Other Sync Servers
+                                        </p>
+                                        <p
+                                            class="text-sm text-gray-500 dark:text-gray-400"
+                                        >
+                                            {copyCounts.unheld === 1
+                                                ? "1 synced graph"
+                                                : `${copyCounts.unheld} synced graphs`}
+                                            from Sync Servers this device is no longer
+                                            connected to. They stay hidden until you add
+                                            the server again, but anyone who uses this
+                                            browser can read them.
+                                        </p>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        data-testid="remove-unheld-copies"
+                                        onclick={() => void startRemoveCopies(null)}
+                                        disabled={checking}
+                                        aria-busy={checking}
+                                        class="{SECONDARY_BUTTON} aria-busy:cursor-progress"
+                                    >
+                                        {#if checking}
+                                            Checking for unsent changes…
+                                        {:else}
+                                            Remove<span class="sr-only">
+                                                synced graphs from other Sync Servers</span
+                                            >
+                                        {/if}
+                                    </button>
+                                </li>
+                            {/if}
+                        </ul>
+                    {/if}
+                </section>
+
+                <hr class={SECTION_RULE} />
 
                 <section
                     data-testid="device-storage"
                     aria-labelledby="device-storage-heading"
-                    class="space-y-2 rounded-xl border border-gray-200 bg-white p-4 dark:border-white/10 dark:bg-white/5"
+                    class="space-y-2"
                 >
                     <h2
                         id="device-storage-heading"
-                        class="text-base font-semibold text-gray-950 dark:text-white"
+                        class="text-lg font-semibold text-gray-950 dark:text-white"
                     >
                         This browser
                     </h2>
@@ -4671,38 +4855,6 @@
                                 ? ` of the ${formatBytes(deviceStorage.quota)} this browser allows`
                                 : ""}.
                         </p>
-                    {/if}
-                    {#if servers.length > 0}
-                        <p class="text-sm text-gray-500 dark:text-gray-400">
-                            To remove synced graphs from this browser, use
-                            Copies in this browser on each server's tab above.
-                        </p>
-                    {/if}
-                    {#if copyCounts.unheld > 0}
-                        <!-- Copies a forgotten server left: no tab offers them any more. -->
-                        <p
-                            class="text-sm text-gray-500 dark:text-gray-400"
-                            data-testid="unheld-copies"
-                        >
-                            This browser also holds copies of {copyCounts.unheld ===
-                            1
-                                ? "1 synced graph"
-                                : `${copyCounts.unheld} synced graphs`}
-                            from Sync Servers this device is no longer connected
-                            to. They stay hidden until you add the server again,
-                            but anyone who uses this browser can read them.
-                        </p>
-                        <button
-                            type="button"
-                            data-testid="remove-unheld-copies"
-                            onclick={() => void startRemoveCopies(null)}
-                            disabled={removeCopiesChecking === "unheld"}
-                            aria-busy={removeCopiesChecking === "unheld"}
-                            class="{SECONDARY_BUTTON} aria-busy:cursor-progress"
-                            >{removeCopiesChecking === "unheld"
-                                ? "Checking for unsent changes…"
-                                : "Remove them from this browser"}</button
-                        >
                     {/if}
                 </section>
             {/if}
@@ -5180,7 +5332,7 @@
                         ? "1 synced graph"
                         : `${removeSynced!.held.length} synced graphs`} from {where}:
                     the documents, search indexes and remembered tabs. It also
-                    locks the keys held here for
+                    locks the Encryption Keys held here for
                     {removeSynced!.server ? "that server" : "those servers"}.
                     The graphs stay on the sync server, and copies from other
                     Sync Servers are not touched.

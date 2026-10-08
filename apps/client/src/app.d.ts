@@ -7,6 +7,11 @@ declare global {
             resolvedTheme: import('@appsoftwareltd/etherpk-shared/theme').ResolvedTheme
             settings: import('$lib/settings').ClientSettings
             managedSessionAvailable: boolean
+            /**
+             * Set when the silent check skipped this load only because one missed recently: the
+             * page asks the account site whether the browser has signed in there since.
+             */
+            signedInElsewhereCheck: import('@appsoftwareltd/etherpk-shared').SignedInElsewhereCheck | null
         }
         interface PageState {
             /** Navigation History: the Visit this history entry lands on (ADR 0023). */

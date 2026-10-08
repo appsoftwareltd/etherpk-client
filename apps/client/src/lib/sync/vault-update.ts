@@ -133,7 +133,7 @@ export async function updateVault(
         if (!stored) throw new NoVaultError()
         // A Sync Server from before ADR 0126 does not say whose vault it is, and refuses the write anyway.
         if (typeof stored.principalId !== 'string') {
-            throw new SyncApiError('This Sync Server needs updating before it can save keys.', 426, SERVER_UPGRADE_REQUIRED_CODE)
+            throw new SyncApiError('This Sync Server needs updating before it can save Encryption Keys.', 426, SERVER_UPGRADE_REQUIRED_CODE)
         }
         const envelope = fromBase64Url(stored.vault)
         const opened = await openVault(envelope, heldKey)

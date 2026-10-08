@@ -1,6 +1,6 @@
 <script lang="ts">
     /**
-     * A local graph's row on the Knowledge graphs page: a folder on this computer, or the demo. Open
+     * A local graph's row on the Graphs page: a folder on this computer, or the demo. Open
      * is its one primary action; the name beside it is a label, not a second way in. Synced graphs
      * have a row of their own (SyncedGraphRow).
      */

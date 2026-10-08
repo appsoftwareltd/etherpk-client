@@ -41,6 +41,18 @@ export function shouldAttemptManagedClientSso(request: ManagedClientSsoRequest):
 }
 
 /**
+ * A load the silent check skipped only because one missed recently: the page asks the account
+ * site whether the browser has signed in there since, and starts the silent check only on a yes
+ * (`continueIfSignedInElsewhere`). The question costs Corporate's authorize limit nothing, so a
+ * sign-in made there is noticed on the next load, however it arrives.
+ */
+export function shouldAskWhetherSignedInElsewhere(request: ManagedClientSsoRequest): boolean {
+    return request.checked
+        && !request.arrivedFromAnotherOrigin
+        && shouldAttemptManagedClientSso({ ...request, checked: false })
+}
+
+/**
  * Send a signed-out document request through the silent check. `no-store` keeps the browser from
  * replaying the redirect from its HTTP cache on Back or Forward, where it would arrive without
  * its cookies and loop until ERR_TOO_MANY_REDIRECTS.

@@ -28,7 +28,7 @@ export default defineConfig({
         devDictionariesPlugin(),
     ],
     server: {
-        port: 5174,
+        port: 5173,
         strictPort: true
     },
     // sqlite-wasm ships its own .wasm + worker; pre-bundling breaks asset resolution.

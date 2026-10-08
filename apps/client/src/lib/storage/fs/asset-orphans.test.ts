@@ -70,37 +70,39 @@ describe('scanOrphanedAssets (filesystem)', () => {
             return { adapter, service }
         }
 
-        it('offers nothing while a protected document cannot be read, and says how many were held back', async () => {
+        it('offers what looks unused while a protected document cannot be read, and says how many went unchecked', async () => {
             const { adapter } = await withProtectedPage()
             const scan = await scanOrphanedAssets(adapter)
-            expect(scan.orphans).toEqual([])
-            // Both look unused to what the scan could read; neither is offered. With no reader at
-            // all (the Graphs page), unlocking here would not help, and the result says so.
-            expect(scan.withheld).toEqual({ assets: 2, protectedDocuments: 1, unreadableDocuments: 0, unlockable: false })
+            // Both look unused to what the scan could read, so both are offered, and the result
+            // warns that one may be used inside the unread page. With no reader at all (the Graphs
+            // page), unlocking here would not help, and the result says so.
+            expect(scan.orphans.map((o) => o.id).sort()).toEqual(['orphan.33333333.bin', 'unused.44444444.bin'])
+            expect(scan.unchecked).toEqual({ protectedDocuments: 1, unreadableDocuments: 0, unlockable: false })
             expect(scan.scannedDocuments).toBe(3)
         })
 
-        it('offers nothing while the graph is locked', async () => {
+        it('offers what looks unused while the graph is locked, and says unlocking would check it', async () => {
             const { adapter, service } = await withProtectedPage()
             service.lockNow()
             const scan = await scanOrphanedAssets(adapter, { readProtected: protectedTextReader(service) })
-            expect(scan.orphans).toEqual([])
-            expect(scan.withheld).toEqual({ assets: 2, protectedDocuments: 1, unreadableDocuments: 0, unlockable: true })
+            expect(scan.orphans.map((o) => o.id).sort()).toEqual(['orphan.33333333.bin', 'unused.44444444.bin'])
+            expect(scan.unchecked).toEqual({ protectedDocuments: 1, unreadableDocuments: 0, unlockable: true })
         })
 
         it('reads protected documents while unlocked, so only a truly unused asset is offered', async () => {
             const { adapter, service } = await withProtectedPage()
             const scan = await scanOrphanedAssets(adapter, { readProtected: protectedTextReader(service) })
             expect(scan.orphans).toEqual([{ id: 'unused.44444444.bin', label: 'unused.44444444.bin' }])
-            expect(scan.withheld).toBeUndefined()
+            expect(scan.unchecked).toBeUndefined()
         })
 
-        it('offers nothing when a document holds a fence it cannot pair', async () => {
+        it('counts a document holding a fence it cannot pair as unchecked', async () => {
             const { adapter, service } = await withProtectedPage()
             await adapter.write('pages', 'Broken.md', '```etherpk-cipher\nAQQAAAGYnot-closed\n')
             const scan = await scanOrphanedAssets(adapter, { readProtected: protectedTextReader(service) })
-            expect(scan.orphans).toEqual([])
-            expect(scan.withheld).toEqual({ assets: 1, protectedDocuments: 1, unreadableDocuments: 0, unlockable: true })
+            // Vault was read, so its asset is in use. Only the truly unused one is offered.
+            expect(scan.orphans.map((o) => o.id)).toEqual(['unused.44444444.bin'])
+            expect(scan.unchecked).toEqual({ protectedDocuments: 1, unreadableDocuments: 0, unlockable: true })
         })
     })
 

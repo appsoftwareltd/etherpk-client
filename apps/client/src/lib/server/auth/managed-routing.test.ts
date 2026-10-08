@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
     buildManagedClientSsoCheckUrl,
     managedClientSsoCheckResponse,
+    shouldAskWhetherSignedInElsewhere,
     shouldAttemptManagedClientSso,
 } from './managed-routing'
 
@@ -77,5 +78,39 @@ describe('managed Client automatic SSO', () => {
         { name: 'a SvelteKit asset', change: { pathname: '/_app/immutable/entry/start.js' } },
     ])('does not check SSO for $name', ({ change }) => {
         expect(shouldAttemptManagedClientSso({ ...documentRequest, ...change })).toBe(false)
+    })
+})
+
+// After a silent miss the Client does not check again on its own for thirty minutes. Within that
+// time a page asks the account site whether the browser has signed in there since, and checks only
+// on a yes (continueIfSignedInElsewhere), so a sign-in made there is noticed on the next load.
+describe('asking the account site whether the browser has signed in there since', () => {
+    const missedRecently = {
+        configured: true,
+        method: 'GET',
+        pathname: '/graphs',
+        acceptsHtml: true,
+        sessionAvailable: false,
+        suppressed: false,
+        attempted: false,
+        checked: true,
+        arrivedFromAnotherOrigin: false,
+    }
+
+    it('asks on a load the silent check skipped only because of a recent miss', () => {
+        expect(shouldAskWhetherSignedInElsewhere(missedRecently)).toBe(true)
+    })
+
+    it.each([
+        { name: 'no recent miss (the silent check runs instead)', change: { checked: false } },
+        { name: 'an arrival from another site (the silent check runs instead)', change: { arrivedFromAnotherOrigin: true } },
+        { name: "the silent check's own return", change: { attempted: true } },
+        { name: 'a signed-in visit', change: { sessionAvailable: true } },
+        { name: 'a browser that forgot Managed Sync here', change: { suppressed: true } },
+        { name: 'a Client with no Managed Sync', change: { configured: false } },
+        { name: 'a sign-in or sign-out step', change: { pathname: '/auth/signing-out' } },
+        { name: 'a non-document request', change: { acceptsHtml: false } },
+    ])('does not ask for $name', ({ change }) => {
+        expect(shouldAskWhetherSignedInElsewhere({ ...missedRecently, ...change })).toBe(false)
     })
 })

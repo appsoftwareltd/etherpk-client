@@ -72,9 +72,9 @@
     );
     const submitLabel = $derived(
         forgetting
-            ? "Remove the keys"
+            ? "Remove the Encryption Keys"
             : mode === "unlock"
-              ? "Unlock keys"
+              ? "Unlock Encryption Keys"
               : mode === "set"
                 ? "Set passcode"
                 : mode === "change"
@@ -152,7 +152,7 @@
                 await focusFirstInvalid();
             } else {
                 const action =
-                    mode === "unlock" ? "unlock the keys" : mode === "turn-off" ? "turn off the passcode" : "save the passcode";
+                    mode === "unlock" ? "unlock the Encryption Keys" : mode === "turn-off" ? "turn off the passcode" : "save the passcode";
                 formError = `Could not ${action}: ${(error as Error).message.replace(/\.$/, "")}. Try again.`;
             }
             return;
@@ -166,7 +166,7 @@
     {#snippet body()}
         {#if forgetting}
             <p class="text-sm text-gray-600 dark:text-gray-400">
-                A passcode cannot be recovered. Remove the keys it protects from this device, then unlock
+                A passcode cannot be recovered. Remove the Encryption Keys it protects from this device, then unlock
                 again with your Recovery Code or from another device that is unlocked. Nothing on your
                 Sync Servers changes.
             </p>
@@ -183,16 +183,17 @@
                 {#if intro}
                     {intro}
                 {:else if mode === "unlock"}
-                    The keys this device holds for your synced graphs are protected by its passcode. Enter
+                    The Encryption Keys this device holds for your synced graphs are protected by its passcode. Enter
                     it to use them in this browser session.
                 {:else if mode === "set"}
-                    With a passcode, the keys this device holds for your synced graphs, and the access
+                    With a passcode, the Encryption Keys this device holds for your synced graphs, and the access
                     tokens for your own Sync Servers, are stored encrypted. You enter it once each time you
                     open EtherPK in this browser.
                 {:else if mode === "change"}
-                    Every key this device holds is encrypted again under the new passcode.
+                    The Encryption Keys and access tokens this device holds are encrypted again under the new
+                    passcode.
                 {:else}
-                    The keys this device holds are stored without encryption again, as they are on a device
+                    The Encryption Keys this device holds are stored without encryption again, as they are on a device
                     with no passcode.
                 {/if}
             </p>
@@ -277,7 +278,8 @@
                 </div>
                 {#if mode === "set"}
                     <p class="text-sm text-gray-600 dark:text-gray-400">
-                        It protects keys, not the documents already stored on this device. If you forget it,
+                        It protects Encryption Keys and access tokens, not the documents already stored on this
+                        device. If you forget it,
                         unlock again with your Recovery Code or from another device.
                     </p>
                 {/if}

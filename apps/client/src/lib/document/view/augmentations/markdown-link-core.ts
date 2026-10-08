@@ -131,7 +131,7 @@ export interface LinkScan {
  * - `[text](url)` — a `Link`. The **text** is the link; `[` and `](url)` are hidden.
  * - `<https://example.com>` — a `URL` under an `Autolink`. The url is the link; `<`/`>` hidden.
  * - `https://example.com`, `www.example.com`, `docs@example.com` — a free-standing `URL` that
- *   GFM autolinked out of prose — or, for a dotless host GFM ignores (`http://localhost:5174/x`),
+ *   GFM autolinked out of prose — or, for a dotless host GFM ignores (`http://localhost:5173/x`),
  *   that scheme-url-autolink.ts did. There is no syntax to hide: the text *is* the link.
  *
  * A fourth, `![text](url)` over a *non-image* url (a `.pdf` — the shape an import writes for an

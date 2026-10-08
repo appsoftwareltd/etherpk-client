@@ -112,7 +112,7 @@ export interface StartImportOptions {
 }
 
 /**
- * What an import's marker records before it starts: enough for the Knowledge graphs page to say
+ * What an import's marker records before it starts: enough for the Graphs page to say
  * what a cut-off import left and to clear it up - the folder written into, or the Sync Server the
  * partial graph is on.
  */
@@ -143,7 +143,7 @@ export function startImport(options: StartImportOptions): Promise<Activity> {
         phases,
         run: async (handle) => {
             // Marked until it settles, so a tab closed or reloaded partway leaves a note the
-            // Knowledge graphs page reads, with what to clear up.
+            // Graphs page reads, with what to clear up.
             const marker = (options.markers ?? importMarkers()).start(importMarkerFields(options.name, options.destination))
             try {
                 return await runImport(options, phases, handle, marker)

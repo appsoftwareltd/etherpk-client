@@ -19,9 +19,10 @@
     $effect(() => suppressBrowserChords(["Mod+S"]));
 
     const navItems = $derived(buildApplicationNavigation({
-        // Account is auth-gated; offering it signed out only bounces through sign-in.
-        accountUrl: data.managedSessionAvailable ? data.corporateAccountUrl : null,
+        managed: data.managedService,
+        signedIn: data.managedSessionAvailable,
         syncServerUrl: data.serverPortalUrl,
+        pricingUrl: data.corporatePricingUrl,
         graphsUrl: "/graphs",
         current: page.url.pathname === "/graphs" || page.url.pathname.startsWith("/graphs/")
             ? "graphs"

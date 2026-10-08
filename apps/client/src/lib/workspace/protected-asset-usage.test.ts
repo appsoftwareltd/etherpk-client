@@ -64,12 +64,12 @@ describe('protectedUsageReader over a folder graph', () => {
             },
         })
 
-        expect(await usage(['7f3a'])).toEqual({ readable: true, references: 1, documents: [{ concept: 'Vault', kind: 'page', references: 1 }] })
+        expect(await usage(['7f3a'])).toEqual({ references: 1, documents: [{ concept: 'Vault', kind: 'page', references: 1 }], locked: 0, unread: 0 })
         expect(order).toEqual(['settle', 'read Vault'])
         expect(open).not.toHaveBeenCalled()
 
         service.lockNow()
-        expect(await usage(['7f3a'])).toEqual({ readable: false, unreadable: 1 })
+        expect(await usage(['7f3a'])).toEqual({ references: 0, documents: [], locked: 1, unread: 0 })
     })
 
     it('counts a flagged document whose file cannot be read as unread', async () => {
@@ -81,7 +81,7 @@ describe('protectedUsageReader over a folder graph', () => {
             readProtected: protectedTextReader(service),
             settle: async () => {},
         })
-        expect(await usage(['7f3a'])).toEqual({ readable: false, unreadable: 1 })
+        expect(await usage(['7f3a'])).toEqual({ references: 0, documents: [], locked: 0, unread: 1 })
         expect(await filesystemStoredTexts(store, adapter)(['Nowhere'])).toEqual(new Map([['Nowhere', null]]))
         // Two files answering to one name: which one the index flagged is unknown.
         const twins = { listDocuments: () => [...store.listDocuments(), { ...store.listDocuments().find((e) => e.concept === 'Plain')!, fileName: 'Plain copy.md' }] }

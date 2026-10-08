@@ -16,7 +16,7 @@ import type { SyncApi } from './sync-api'
 /** The account has no vault yet, so there is nothing for a Recovery Code to open. */
 export class NoVaultError extends Error {
     constructor() {
-        super('This account has no encryption keys yet - there is nothing for a Recovery Code to open.')
+        super('This account has no Encryption Keys yet, so there is nothing for a Recovery Code to open.')
         this.name = 'NoVaultError'
     }
 }
@@ -34,7 +34,7 @@ export async function openVaultWithRecoveryCode(api: Pick<SyncApi, 'getVault'>, 
         return (await openVault(fromBase64Url(stored.vault), wrapKey)).vaultKey
     } catch (error) {
         // The derived key does not open the vault: a mistyped, retired or other account's code.
-        if (error instanceof EnvelopeError) throw new RecoveryCodeError('That Recovery Code does not open this account’s keys. Check it character by character - only the most recently issued code works.')
+        if (error instanceof EnvelopeError) throw new RecoveryCodeError('That Recovery Code does not open this account’s Encryption Keys. Check it character by character - only the most recently issued code works.')
         throw error
     }
 }

@@ -6,9 +6,9 @@
  * a reference, so we over-count references rather than over-delete.
  *
  * A [[Protected Document]]'s text is ciphertext, so the same search cannot see a reference inside
- * one. Such a document is read through a {@link ProtectedTextReader} when the graph is unlocked;
- * when any one of them cannot be read, no asset is offered at all ({@link orphanScanOf}), because
- * deleting an asset is permanent.
+ * one. Such a document is read through a {@link ProtectedTextReader} when the graph is unlocked.
+ * When one cannot be read, what looked unused is still offered, and the result says how many
+ * documents went unchecked ({@link orphanScanOf}), so the person can unlock and scan again first.
  *
  * Pure over the {@link DirectoryAdapter} seam, Node-testable over the in-memory fake. The
  * reference test and the protected-document rule are shared with the synced graph's scanner
@@ -40,12 +40,10 @@ export interface OrphanScan {
      */
     dedupBackfill?: { tokened: number; failed: number }
     /**
-     * Present when some document could not be read. `assets` is how many looked unused to what the
-     * scan could read; none of them is in `orphans`, because any of them may be used inside the
-     * unread documents.
+     * Present when some document could not be read. `orphans` is what looked unused to what the
+     * scan could read, so any of them may still be used inside these documents.
      */
-    withheld?: {
-        assets: number
+    unchecked?: {
         /** [[Protected Document]]s the scan could not read: locked, or protected by another member. */
         protectedDocuments: number
         /** Other documents whose text could not be read at all: its key is unavailable, or it will not decrypt. */
@@ -91,9 +89,10 @@ export function isReferenced(texts: readonly string[], identity: string): boolea
 }
 
 /**
- * The scan's answer from what looked unused. While a protected document went unread nothing is
- * offered: a scan cannot prove an asset unused from text it could not see, and deletion is
- * permanent.
+ * The scan's answer from what looked unused. While a document went unread, what looked unused is
+ * still offered, with how many documents went unchecked: refusing would make the cleanup
+ * unreachable whenever a protected document is locked, and for good in a graph holding one another
+ * member protected. The person decides, with the warning in front of them.
  */
 export function orphanScanOf(
     candidates: OrphanedAsset[],
@@ -101,12 +100,13 @@ export function orphanScanOf(
 ): OrphanScan {
     const { totalAssets, scannedDocuments, unreadableProtected, unlockable } = counts
     const unreadableOther = counts.unreadableOther ?? 0
-    if (unreadableProtected === 0 && unreadableOther === 0) return { orphans: candidates, totalAssets, scannedDocuments }
     return {
-        orphans: [],
+        orphans: candidates,
         totalAssets,
         scannedDocuments,
-        withheld: { assets: candidates.length, protectedDocuments: unreadableProtected, unreadableDocuments: unreadableOther, unlockable },
+        ...(unreadableProtected > 0 || unreadableOther > 0
+            ? { unchecked: { protectedDocuments: unreadableProtected, unreadableDocuments: unreadableOther, unlockable } }
+            : {}),
     }
 }
 

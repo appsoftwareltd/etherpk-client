@@ -4,7 +4,7 @@
     import { page } from "$app/state";
     import { env } from "$env/dynamic/public";
     import { currentReturnPath, managedSignInHref, syncConnectHref } from "$lib/auth/sign-in-links";
-    import { ManagedTokenError, clearManagedAccessToken } from "$lib/auth/managed-token";
+    import { ManagedTokenError } from "$lib/auth/managed-token";
     import {
         DevicePasscodeLockedError,
         SYNC_CONNECTIONS_CHANGED_EVENT,
@@ -16,7 +16,6 @@
         isManagedSyncConfigured,
         listSyncConnections,
         lockVault,
-        MANAGED_DEVICE_DISCONNECT_HELP,
         primarySyncConnection,
         saveManagedSyncConnection,
         serverHost,
@@ -26,7 +25,9 @@
         type ResolvedSyncConnection,
     } from "$lib/sync";
     import { announceAccountSignal, onAccountSignal } from "$lib/sync/account-signal";
+    import { endManagedSessionInThisBrowser } from "$lib/sync/managed-sign-out";
     import { buildAccountMenu, dismissibleMenu, truncateNavigationEmail, type SyncAccountSummary } from "@appsoftwareltd/etherpk-shared";
+    import AccountMenuLinks from "@appsoftwareltd/etherpk-shared/account-menu-links";
 
     /** `locked`: the server's access token waits for this device's passcode (ADR 0129). */
     type AccountState = "checking" | "authenticated" | "signed-out" | "unavailable" | "disconnected" | "locked";
@@ -69,21 +70,14 @@
               ? `${serverBaseUrl}/account`
               : null,
     );
-    const accessTokensUrl = $derived(serverBaseUrl ? `${serverBaseUrl}/account/tokens` : null);
-    // Access tokens in both modes: a managed user mints a Personal Access Token for the Headless
-    // Client at the Server portal, which is where tokens live whoever signed the session in (ADR 0072).
-    const menuItems = $derived(buildAccountMenu({
-        home: { label: "Graphs", href: "/graphs" },
+    // The same menu as Corporate's and the Sync Server's. Graphs is in the top navigation, and the
+    // Client has no administration pages. Access tokens are the primary connection's server's, managed
+    // or custom: a Personal Access Token for the Headless Client is minted there (ADR 0072).
+    const menu = $derived(buildAccountMenu({
         accountUrl,
         billingUrl: connectionMode === "managed" ? managedBillingUrl : null,
-        accessTokensUrl,
+        accessTokensUrl: serverBaseUrl ? `${serverBaseUrl}/account/tokens` : null,
     }));
-    const disconnectHelp = $derived(
-        connectionMode === "managed"
-            ? MANAGED_DEVICE_DISCONNECT_HELP
-            : STANDALONE_DEVICE_DISCONNECT_HELP,
-    );
-
     /**
      * `announce`: tell the other tabs when this check finds a signed-in account signed out. Off
      * when the check was itself prompted by another tab's announcement, so two tabs never keep
@@ -155,7 +149,11 @@
         window.location.href = managedSignInHref(currentReturnPath(window.location));
     }
 
-    async function disconnectThisDevice(): Promise<void> {
+    /**
+     * A custom server's way out: Managed Sync has only Sign out of EtherPK, which signs every app
+     * out (ADR 0048, amended 2026-10-07).
+     */
+    function disconnectThisDevice(): void {
         ++refreshGeneration;
         const origin = serverBaseUrl;
         if (!origin) return;
@@ -163,15 +161,6 @@
         clearSyncAccount(origin);
         // Every other tab's open graph on this server stops syncing now, not at its next reconnect.
         announceAccountSignal({ type: "ended", reason: "disconnected", serverOrigin: origin });
-
-        if (connectionMode === "managed") {
-            clearManagedAccessToken();
-            // End only the Client-origin refresh session. Corporate and Server portal sessions
-            // deliberately remain signed in for this narrower device action.
-            await fetch("/auth/logout", { method: "POST" });
-            window.location.href = "/graphs?managed=disconnected";
-            return;
-        }
 
         // A standalone Client authenticates with a device-local PAT, not the Server portal's
         // browser session. Forgetting it disconnects this Client from that server alone; token
@@ -185,17 +174,10 @@
     }
 
     function prepareManagedSignOut(): void {
-        // The form continues through all three managed origins. Clear volatile Client state
-        // before navigation so the current page cannot retain authenticated UI while it leaves.
-        // Only Managed Sync's keys lock: a custom server's account has nothing to do with it.
+        // The form continues through all three managed origins. Clear this browser's part before
+        // the page leaves, so it cannot keep showing a signed-in account while it goes.
         ++refreshGeneration;
-        clearManagedAccessToken();
-        const managed = listSyncConnections().find((held) => held.kind === "managed");
-        if (managed) {
-            lockVault(managed.origin);
-            clearSyncAccount(managed.origin);
-        }
-        announceAccountSignal({ type: "ended", reason: "signed-out", ...(managed ? { serverOrigin: managed.origin } : {}) });
+        endManagedSessionInThisBrowser();
     }
 
     function refreshFromStorage(event: StorageEvent): void {
@@ -234,6 +216,16 @@
         };
     });
 </script>
+
+<!-- Sign out of EtherPK: a top-level form navigation follows the fixed Corporate and Server
+     continuations, which clear every managed host-only session. -->
+{#snippet signOutOfEtherPK()}
+    <form method="POST" action="/auth/logout/managed" onsubmit={prepareManagedSignOut}>
+        <button type="submit" class="w-full rounded-lg px-3 py-2 text-left text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 hover:text-gray-950 dark:text-gray-300 dark:hover:bg-white/5 dark:hover:text-white">
+            Sign out of EtherPK
+        </button>
+    </form>
+{/snippet}
 
 <svelte:window onstorage={refreshFromStorage} />
 <svelte:document onvisibilitychange={refreshWhenVisible} />
@@ -274,41 +266,63 @@
                     {/each}
                 </div>
             {/if}
-            <nav class="p-2" aria-label="Account navigation">
-                {#each menuItems as item (item.label)}
-                    <a href={item.href} class="block rounded-lg px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 hover:text-gray-950 dark:text-gray-300 dark:hover:bg-white/5 dark:hover:text-white">{item.label}</a>
-                {/each}
-            </nav>
+            <AccountMenuLinks {menu} />
             <div class="border-t border-gray-950/5 p-2 dark:border-white/10">
                 {#if connectionMode === "managed"}
-                    <!-- A top-level form navigation follows the fixed Corporate and Server
-                         continuations which clear every managed host-only session. -->
-                    <form method="POST" action="/auth/logout/managed" onsubmit={prepareManagedSignOut}>
-                        <button type="submit" class="w-full rounded-lg px-3 py-2 text-left text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 hover:text-gray-950 dark:text-gray-300 dark:hover:bg-white/5 dark:hover:text-white">
-                            Sign out of EtherPK
-                        </button>
-                    </form>
+                    {@render signOutOfEtherPK()}
+                {:else}
+                    <p class="px-3 pb-1 pt-2 text-sm leading-4 text-gray-500 dark:text-gray-400">
+                        {STANDALONE_DEVICE_DISCONNECT_HELP}
+                    </p>
+                    <button type="button" onclick={disconnectThisDevice} class="w-full rounded-lg px-3 py-2 text-left text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 hover:text-gray-950 dark:text-gray-300 dark:hover:bg-white/5 dark:hover:text-white">
+                        Disconnect this device
+                    </button>
                 {/if}
-                <p class="px-3 pb-1 pt-2 text-sm leading-4 text-gray-500 dark:text-gray-400">
-                    {disconnectHelp}
-                </p>
-                <button type="button" onclick={disconnectThisDevice} class="w-full rounded-lg px-3 py-2 text-left text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 hover:text-gray-950 dark:text-gray-300 dark:hover:bg-white/5 dark:hover:text-white">
-                    Disconnect this device
-                </button>
             </div>
         </div>
     </details>
 {:else if accountState === "checking"}
     <span data-testid="client-auth-status" class="hidden text-sm font-medium text-gray-500 sm:inline dark:text-gray-400">Checking Sync…</span>
 {:else if accountState === "locked"}
-    <!-- The graph list asks for the passcode as it loads; on it, the Sync tab's card asks. -->
+    <!-- The Graphs page asks for the passcode as it loads; on it, the This Device tab's Device
+         Passcode section asks. -->
     <a
-        href={page.url.pathname === "/graphs" ? "/graphs?tab=sync" : "/graphs"}
+        href={page.url.pathname === "/graphs" ? "/graphs?tab=device" : "/graphs"}
         data-testid="client-auth-passcode"
         class="rounded-lg border border-gray-950/10 bg-white px-3 py-1.5 text-sm font-semibold text-gray-700 shadow-sm transition-colors hover:bg-gray-50 hover:text-gray-950 dark:border-white/10 dark:bg-white/5 dark:text-gray-300 dark:hover:bg-white/10 dark:hover:text-white"
     >
         Enter passcode
     </a>
+{:else if accountState === "unavailable" && connectionMode === "managed"}
+    <!-- The Sync Server not answering is no reason to be stuck signed in: the way out stays
+         offered beside the way to Sync settings. -->
+    <details class="group relative min-w-0" {@attach dismissibleMenu}>
+        <summary
+            data-testid="client-auth-unavailable"
+            class="flex cursor-pointer list-none items-center gap-2 rounded-lg border border-gray-950/10 bg-white px-3 py-1.5 text-sm font-semibold text-gray-700 shadow-sm transition-colors hover:bg-gray-50 hover:text-gray-950 dark:border-white/10 dark:bg-white/5 dark:text-gray-300 dark:hover:bg-white/10 dark:hover:text-white [&::-webkit-details-marker]:hidden"
+        >
+            Sync unavailable
+            <svg class="h-3.5 w-3.5 shrink-0 motion-safe:transition-transform group-open:rotate-180" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                <path fill-rule="evenodd" d="M5.22 8.22a.75.75 0 0 1 1.06 0L10 11.94l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 9.28a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd" />
+            </svg>
+        </summary>
+
+        <div class="absolute right-0 z-40 mt-2 w-64 overflow-hidden rounded-xl border border-gray-950/10 bg-white shadow-xl dark:border-white/10 dark:bg-[#202023]">
+            <p class="border-b border-gray-950/5 px-4 py-3 text-sm text-gray-500 dark:border-white/10 dark:text-gray-400">
+                The Sync Server is not answering right now.
+            </p>
+            <nav class="p-2" aria-label="Account navigation">
+                <a
+                    href={syncConnectHref(page.url.pathname === "/graphs" ? null : currentReturnPath(page.url))}
+                    class="block rounded-lg px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 hover:text-gray-950 dark:text-gray-300 dark:hover:bg-white/5 dark:hover:text-white"
+                    >Sync settings</a
+                >
+            </nav>
+            <div class="border-t border-gray-950/5 p-2 dark:border-white/10">
+                {@render signOutOfEtherPK()}
+            </div>
+        </div>
+    </details>
 {:else if accountState !== "unavailable" && managedSyncAvailable && (connectionMode === "managed" || connectionMode === null)}
     <button
         type="button"

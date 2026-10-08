@@ -946,8 +946,9 @@
                         computer that signs in as one of your devices, keeps
                         this graph in sync and speaks MCP to the agent beside
                         it. Your notes stay encrypted on the way through the
-                        Sync Server, so it only works where your keys are - not
-                        for agents that live entirely in the cloud. Protected
+                        Sync Server, so it only works where your Encryption
+                        Keys are, and not for agents that live entirely in
+                        the cloud. Protected
                         documents are listed by name only and never served.
                     </p>
                     <ol class="space-y-3 text-sm text-gray-950 dark:text-gray-100">

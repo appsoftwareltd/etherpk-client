@@ -8,10 +8,12 @@
  *
  *  1. the [[Derived Index]] can answer at all (a cold graph mid-build cannot),
  *  2. it reports no OTHER reference anywhere,
- *  3. no [[Protected Document]] holds one either. The index never holds a protected document,
- *     so each is read on its own, decrypted, while the graph is unlocked; one that cannot be
- *     read keeps the bytes, because it may still show the image (reused there by dedup, or
- *     pasted in), and
+ *  3. no [[Protected Document]] this device can read holds one either. The index never holds a
+ *     protected document, so each is read on its own, decrypted while the graph is unlocked. One
+ *     that cannot be read (locked, another [[Member]]'s, or its stored text unreadable) is
+ *     skipped and counted, and the dialog warns that it went unchecked. Refusing instead would
+ *     make the delete unreachable whenever one is locked, and for good in a graph that holds
+ *     someone else's, so the person decides, and
  *  4. on a [[Server Backend]], this device is provably at the relay's head — otherwise a
  *     reference another [[Member]] added may simply not have arrived yet.
  *
@@ -37,11 +39,6 @@ export type AssetDeleteBlock =
     | 'offline'
     /** A Server graph whose replica is behind the relay for at least one document. */
     | 'behind'
-    /**
-     * A [[Protected Document]] could not be read (locked, or another member's protection), so a
-     * reference inside it cannot be ruled out. Unlocking is the route forward when it is ours.
-     */
-    | 'protected-unread'
 
 export interface AssetDeletePlan {
     /** True when this delete may destroy the bytes as well as the reference. */
@@ -52,14 +49,27 @@ export interface AssetDeletePlan {
     documents: AssetUsageDocument[]
     /** References across the graph, including the one being removed. */
     references: number
-    /** With `protected-unread`: how many protected documents went unread. */
+    /**
+     * Protected documents that went unchecked, present only when there are some: the dialog warns
+     * that a reference inside one would be left broken. `lockedProtected` were locked on this
+     * device (or another member's); `unreadProtected` had stored text that could not be read at
+     * all (a failed read, or a synced document the relay could not confirm current).
+     */
+    lockedProtected?: number
     unreadProtected?: number
 }
 
-/** What the [[Protected Document]]s hold, read one by one: the index never holds them. */
-export type ProtectedAssetUsage =
-    | { readable: true; references: number; documents: AssetUsageDocument[] }
-    | { readable: false; unreadable: number }
+/**
+ * What the [[Protected Document]]s hold, read one by one: the index never holds them.
+ * `references` and `documents` cover the ones that were read. `locked` counts those holding a
+ * cipher fence this device cannot open now; `unread` those whose stored text could not be read.
+ */
+export interface ProtectedAssetUsage {
+    references: number
+    documents: AssetUsageDocument[]
+    locked: number
+    unread: number
+}
 
 /** Whether a [[Server Backend]] graph may destroy bytes right now. Always ready on a filesystem graph. */
 export type AssetByteReadiness = { ready: true } | { ready: false; reason: 'offline' | 'behind' }
@@ -86,16 +96,21 @@ export async function planAssetDelete(inputs: AssetDeleteInputs): Promise<AssetD
     const usage = await inputs.usage()
     if (!usage) return { deleteBytes: false, blockedBy: 'index-building', documents: [], references: 0 }
 
-    let found = { documents: usage.documents, references: usage.references }
+    let found: Pick<AssetDeletePlan, 'documents' | 'references' | 'lockedProtected' | 'unreadProtected'> = { documents: usage.documents, references: usage.references }
     if (usage.references > 1) return { deleteBytes: false, blockedBy: 'used-elsewhere', ...found }
 
     if (inputs.protectedUsage) {
         const hidden = await inputs.protectedUsage()
-        if (!hidden.readable) return { deleteBytes: false, blockedBy: 'protected-unread', unreadProtected: hidden.unreadable, ...found }
         // Summed, not maxed: standing on a reference in an ordinary page, one more in a protected
         // page is another use; standing inside a protected page, the index has none and the
-        // document's own plaintext holds the one being removed.
-        found = { documents: [...found.documents, ...hidden.documents], references: found.references + hidden.references }
+        // document's own plaintext holds the one being removed. What was read counts even when
+        // other documents went unchecked: a known reference refuses the delete outright.
+        found = {
+            documents: [...found.documents, ...hidden.documents],
+            references: found.references + hidden.references,
+            ...(hidden.locked > 0 ? { lockedProtected: hidden.locked } : {}),
+            ...(hidden.unread > 0 ? { unreadProtected: hidden.unread } : {}),
+        }
         if (found.references > 1) return { deleteBytes: false, blockedBy: 'used-elsewhere', ...found }
     }
 
@@ -120,13 +135,13 @@ function occurrencesOf(text: string, needles: readonly string[]): number {
  *
  * - holding a cipher fence, it goes through `readProtected` (the plaintext of its fences, or null
  *   when this device cannot read it now), and only that plaintext is searched: the rest of the
- *   text is in the index's blocks and already counted;
+ *   text is in the index's blocks and already counted. One that will not open is `locked`;
  * - holding text but no fence, it is plaintext the index has not caught up with (protection was
  *   just removed), and it is searched as it is;
- * - empty, or not read at all, it is unread. The index says it holds protected content, so an
+ * - empty, or not read at all, it is `unread`. The index says it holds protected content, so an
  *   empty answer is a failed read or a document still arriving, never "no references".
  *
- * Any unread document makes the whole answer unreadable: the caller keeps the bytes.
+ * References found in the documents that were read are reported whatever happened to the others.
  */
 export async function protectedAssetUsage(
     documents: readonly { concept: string; kind: DocumentKind }[],
@@ -142,29 +157,28 @@ export async function protectedAssetUsage(
         readProtected?: (text: string) => Promise<string | null>
     },
 ): Promise<ProtectedAssetUsage> {
-    if (documents.length === 0) return { readable: true, references: 0, documents: [] }
-    const found: AssetUsageDocument[] = []
-    let references = 0
-    let unreadable = 0
+    const usage: ProtectedAssetUsage = { references: 0, documents: [], locked: 0, unread: 0 }
+    if (documents.length === 0) return usage
     const distinct = [...new Set(needles)].filter((n) => n.length > 0)
     await deps.settle?.()
     const stored = await deps.readStored(documents.map((d) => d.concept)).catch(() => new Map<string, string | null>())
     for (const { concept, kind } of documents) {
         const text = stored.get(concept) ?? null
-        let searched: string | null = null
-        if (text !== null && text.trim() !== '') {
-            searched = containsCipherFence(text) ? (deps.readProtected ? await deps.readProtected(text).catch(() => null) : null) : text
+        if (text === null || text.trim() === '') {
+            usage.unread += 1
+            continue
         }
+        const searched = containsCipherFence(text) ? ((await deps.readProtected?.(text).catch(() => null)) ?? null) : text
         if (searched === null) {
-            unreadable += 1
+            usage.locked += 1
             continue
         }
         const n = occurrencesOf(searched, distinct)
         if (n === 0) continue
-        references += n
-        found.push({ concept, kind, references: n })
+        usage.references += n
+        usage.documents.push({ concept, kind, references: n })
     }
-    return unreadable > 0 ? { readable: false, unreadable } : { readable: true, references, documents: found }
+    return usage
 }
 
 /**

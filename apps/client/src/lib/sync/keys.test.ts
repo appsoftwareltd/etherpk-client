@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { deriveVaultWrapKey, fromBase64Url, generateRecoveryCode, openVault, samePublicIdentity } from '$lib/crypto'
 import type { ProtectionRecord } from '$lib/crypto'
-import { MissingGraphKeyError, createAccountKeys, ensureGraphKeys, regenerateRecoveryCode, vaultProtectionAccess } from './keys'
+import { MissingGraphKeyError, VaultExistsError, createAccountKeys, ensureGraphKeys, regenerateRecoveryCode, vaultProtectionAccess } from './keys'
 import { SyncApiError } from './sync-api'
 import { createFakeSyncServer, seedAccount } from './testing/fake-sync-server'
 
@@ -227,7 +227,7 @@ describe('createAccountKeys', () => {
     it('refuses to mint over an account that already has keys', async () => {
         const { api } = await seeded(['g1'])
 
-        await expect(createAccountKeys(api)).rejects.toThrow('This account already has encryption keys')
+        await expect(createAccountKeys(api)).rejects.toThrow(VaultExistsError)
     })
 
     it('adds the first graph keyring to the vault it minted, with no second code', async () => {

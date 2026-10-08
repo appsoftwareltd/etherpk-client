@@ -24,41 +24,48 @@ export const COMMUNITY_DISCORD_URL = 'https://discord.gg/m9vScxQzvp'
 
 export interface ApplicationNavigationItem {
     href: string
-    label: 'Account' | 'Sync Server' | 'Graphs' | 'Docs'
+    label: 'Sync+' | 'Sync Server' | 'Graphs' | 'Docs'
     current: boolean
 }
 
 export interface ApplicationNavigationOptions {
-    accountUrl?: string | null
+    /**
+     * A managed deployment (Corporate in front) names its Sync Server link after the service's
+     * plan, Sync+, and a standalone one keeps Sync Server: a bare "Sync" would read as the Graphs
+     * page's own Sync tab.
+     */
+    managed: boolean
+    /**
+     * Whether someone is signed in. Signed out on the managed service, the Sync+ link opens the
+     * pricing page instead of the Sync Server, because there is no Sync+ account to open yet.
+     */
+    signedIn: boolean
     syncServerUrl?: string | null
+    /** Corporate's pricing page, on the managed service. */
+    pricingUrl?: string | null
     graphsUrl: string
-    /** Offered by Corporate, the public face; the working applications keep the tier short. */
-    docsUrl?: string | null
-    current?: 'account' | 'sync-server' | 'graphs' | null
+    /** `sync-server` marks the Sync+ link, whichever page it leads to. */
+    current?: 'sync-server' | 'graphs' | null
 }
 
 /**
- * Keep the cross-application destinations in one deliberate order. This tier is only ever
- * cross-application: an application's own signed-in home belongs in its section navigation,
- * not here, so a Dashboard never appears among these. Managed deployments add the Corporate
- * Account destination; standalone deployments retain only Sync Server and Graphs.
+ * Keep the cross-application destinations in one deliberate order on every origin: the Sync
+ * Server, Graphs, then the public docs. This tier is only ever cross-application. An
+ * application's own signed-in home belongs in its section navigation, and the person's Account,
+ * Billing and administration pages belong in the account menu (`buildAccountMenu`), so neither
+ * appears here and the two never repeat each other.
  */
 export function buildApplicationNavigation(
     options: ApplicationNavigationOptions,
 ): ApplicationNavigationItem[] {
     const items: ApplicationNavigationItem[] = []
 
-    if (options.accountUrl) {
-        items.push({
-            href: options.accountUrl,
-            label: 'Account',
-            current: options.current === 'account',
-        })
-    }
     if (options.syncServerUrl) {
+        // A standalone Server sells nothing, so its link always opens the Server.
+        const pricingUrl = options.managed && !options.signedIn ? options.pricingUrl : null
         items.push({
-            href: options.syncServerUrl,
-            label: 'Sync Server',
+            href: pricingUrl || options.syncServerUrl,
+            label: options.managed ? 'Sync+' : 'Sync Server',
             current: options.current === 'sync-server',
         })
     }
@@ -67,10 +74,9 @@ export function buildApplicationNavigation(
         label: 'Graphs',
         current: options.current === 'graphs',
     })
-    // Last: it leaves the deployment, and it is never the current page.
-    if (options.docsUrl) {
-        items.push({ href: options.docsUrl, label: 'Docs', current: false })
-    }
+    // Last: it leaves the deployment, and it is never the current page. One site for every
+    // deployment, so it is not an option.
+    items.push({ href: PUBLIC_DOCS_URL, label: 'Docs', current: false })
 
     return items
 }
@@ -125,6 +131,21 @@ export function buildAccountUrl(corporateOrigin: string): string {
 /** Corporate's billing page: where a Free account starts its Sync+ Trial (ADR 0068). */
 export function buildBillingUrl(corporateOrigin: string): string {
     return new URL('/billing', `${parseNavigationOrigin(corporateOrigin, 'Corporate origin')}/`).href
+}
+
+/** Corporate's user administration: the managed service's Users page (the EtherPK accounts). */
+export function buildAdminUsersUrl(corporateOrigin: string): string {
+    return new URL('/admin/users', `${parseNavigationOrigin(corporateOrigin, 'Corporate origin')}/`).href
+}
+
+/** The Sync Server's storage administration, which Corporate's account menu lists too. */
+export function buildSyncStorageAdminUrl(serverOrigin: string): string {
+    return new URL('/admin/storage', `${parseNavigationOrigin(serverOrigin, 'Sync Server origin')}/`).href
+}
+
+/** The Sync Server's Access tokens page, which every app's account menu links to. */
+export function buildSyncAccessTokensUrl(serverOrigin: string): string {
+    return new URL('/account/tokens', `${parseNavigationOrigin(serverOrigin, 'Sync Server origin')}/`).href
 }
 
 /** Corporate's public pricing page, linked from the Client's own landing page. */

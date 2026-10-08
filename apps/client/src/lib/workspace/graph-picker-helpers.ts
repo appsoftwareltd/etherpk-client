@@ -192,7 +192,7 @@ export function persistableGraphRecord(record: GraphRecord, name: string): Graph
  */
 export type ServerAuthState = 'checking' | 'authenticated' | 'signed-out' | 'unavailable' | 'locked'
 
-/** What one server's account and plan allow a new synced graph, as the Knowledge graphs page gates it. */
+/** What one server's account and plan allow a new synced graph, as the Graphs page gates it. */
 export interface ServerPlanGate {
     /**
      * A managed account on Free: its Entitlement allows no owned graphs (ADR 0068), so creating or

@@ -5,12 +5,15 @@ import {
     PUBLIC_DOCS_URL,
     buildApplicationNavigation,
     buildAccountUrl,
+    buildAdminUsersUrl,
     buildBillingUrl,
     buildHomeUrl,
     buildPricingUrl,
     buildClientDemoUrl,
     buildClientGraphsUrl,
+    buildSyncAccessTokensUrl,
     buildSyncServerUrl,
+    buildSyncStorageAdminUrl,
     parseNavigationOrigin,
     truncateNavigationEmail,
 } from './deployment-navigation'
@@ -46,53 +49,84 @@ describe('deployment navigation', () => {
         expect(buildSyncServerUrl('http://sync.localhost:5273')).toBe('http://sync.localhost:5273/')
     })
 
+    // The administrator's pages on the managed service: Users is Corporate's, Storage the Server's.
+    it('builds the administrator destinations on each origin', () => {
+        expect(buildAdminUsersUrl('https://www.example.com')).toBe('https://www.example.com/admin/users')
+        expect(buildSyncStorageAdminUrl('https://sync.example.com')).toBe('https://sync.example.com/admin/storage')
+        expect(() => buildSyncStorageAdminUrl('https://sync.example.com/path')).toThrow('Sync Server origin')
+    })
+
+    // Access tokens are always the Sync Server's, so Corporate's account menu links there.
+    it('builds the Sync Server access tokens destination', () => {
+        expect(buildSyncAccessTokensUrl('https://sync.example.com')).toBe('https://sync.example.com/account/tokens')
+        expect(() => buildSyncAccessTokensUrl('https://sync.example.com/path')).toThrow('Sync Server origin')
+    })
+
     it('builds the public home that the Client names as its canonical marketing page', () => {
         expect(buildHomeUrl('https://www.example.com')).toBe('https://www.example.com/home')
         expect(buildHomeUrl('http://localhost:5275')).toBe('http://localhost:5275/home')
         expect(() => buildHomeUrl('https://www.example.com/home')).toThrow('Corporate origin')
     })
 
-    it('carries only cross-application destinations, never an application-local Dashboard', () => {
+    // Account and Billing belong to the person, so they are in the account menu, never up here.
+    it('carries only cross-application destinations, never Account or an application-local Dashboard', () => {
         expect(buildApplicationNavigation({
-            accountUrl: 'https://www.example.com/account',
+            managed: true,
+            signedIn: true,
             syncServerUrl: 'https://sync.example.com/',
-            graphsUrl: '/graphs',
-            current: 'account',
-        })).toEqual([
-            { href: 'https://www.example.com/account', label: 'Account', current: true },
-            { href: 'https://sync.example.com/', label: 'Sync Server', current: false },
-            { href: '/graphs', label: 'Graphs', current: false },
-        ])
-    })
-
-    it('appends the public docs last, only when Corporate offers them', () => {
-        const withDocs = buildApplicationNavigation({ graphsUrl: '/graphs', docsUrl: PUBLIC_DOCS_URL })
-        expect(withDocs.at(-1)).toEqual({ href: 'https://docs.etherpk.com', label: 'Docs', current: false })
-        expect(buildApplicationNavigation({ graphsUrl: '/graphs' }).map((item) => item.label)).not.toContain('Docs')
-    })
-
-    it('orders every managed application destination consistently', () => {
-        expect(buildApplicationNavigation({
-            accountUrl: 'https://www.example.com/account',
-            syncServerUrl: 'https://sync.example.com/',
+            pricingUrl: 'https://www.example.com/pricing',
             graphsUrl: 'https://app.example.com/graphs',
         })).toEqual([
-            { href: 'https://www.example.com/account', label: 'Account', current: false },
-            { href: 'https://sync.example.com/', label: 'Sync Server', current: false },
+            { href: 'https://sync.example.com/', label: 'Sync+', current: false },
             { href: 'https://app.example.com/graphs', label: 'Graphs', current: false },
+            { href: PUBLIC_DOCS_URL, label: 'Docs', current: false },
         ])
     })
 
-    it('omits Account while retaining Sync Server and Graphs in standalone mode', () => {
+    it('ends with the public docs on every origin, managed or standalone', () => {
+        for (const managed of [true, false]) {
+            expect(buildApplicationNavigation({ managed, signedIn: false, graphsUrl: '/graphs' }).at(-1))
+                .toEqual({ href: 'https://docs.etherpk.com', label: 'Docs', current: false })
+        }
+    })
+
+    it('keeps Sync Server, Graphs and Docs in standalone mode and marks the current one', () => {
         expect(buildApplicationNavigation({
-            accountUrl: null,
+            managed: false,
+            signedIn: true,
             syncServerUrl: 'https://sync.example.com/',
             graphsUrl: '/graphs',
             current: 'graphs',
         })).toEqual([
             { href: 'https://sync.example.com/', label: 'Sync Server', current: false },
             { href: '/graphs', label: 'Graphs', current: true },
+            { href: PUBLIC_DOCS_URL, label: 'Docs', current: false },
         ])
+    })
+
+    // Sync+ is the managed service's plan, so only a managed deployment names its Sync Server
+    // that, signed out included. A standalone one keeps the full name: a bare "Sync" would read as
+    // the Graphs page's own Sync tab.
+    it('names the Sync Server link by the deployment', () => {
+        const label = (managed: boolean) =>
+            buildApplicationNavigation({ managed, signedIn: true, syncServerUrl: 'https://sync.example.com/', graphsUrl: '/graphs' })[0]?.label
+        expect(label(true)).toBe('Sync+')
+        expect(label(false)).toBe('Sync Server')
+    })
+
+    // Someone signed out has no Sync+ account to open yet, so on the managed service the link shows
+    // what Sync+ costs. A standalone Server sells nothing, so its link always opens the Server.
+    it('sends a signed-out visitor\'s Sync+ link to the pricing page, and a signed-in one to the Server', () => {
+        const syncLink = (managed: boolean, signedIn: boolean) => buildApplicationNavigation({
+            managed,
+            signedIn,
+            syncServerUrl: 'https://sync.example.com/',
+            pricingUrl: managed ? 'https://www.example.com/pricing' : null,
+            graphsUrl: '/graphs',
+        })[0]
+        expect(syncLink(true, false)).toEqual({ href: 'https://www.example.com/pricing', label: 'Sync+', current: false })
+        expect(syncLink(true, true)).toEqual({ href: 'https://sync.example.com/', label: 'Sync+', current: false })
+        expect(syncLink(false, false)).toEqual({ href: 'https://sync.example.com/', label: 'Sync Server', current: false })
     })
 
     it('rejects unsafe or ambiguous navigation origins', () => {

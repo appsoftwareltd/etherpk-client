@@ -80,6 +80,13 @@ describe('managed OAuth client', () => {
         expect(flow.transaction.returnPath).toBe('/graphs?managed=connected')
     })
 
+    // Corporate reads this copy only to start the sign-in again (an expired page's Start again, a
+    // verification email's Continue) with the same page; the real return stays in the cookie.
+    it('sends the page the sign-in returns to with the request, for Corporate to start it again', async () => {
+        const flow = await beginAuthorization(config, metadata, '/graphs?tab=sync')
+        expect(new URL(flow.authorizationUrl).searchParams.get('etherpk_return')).toBe('/graphs?tab=sync')
+    })
+
     it('starts a silent authorization check for the protected Client return path', async () => {
         const flow = await beginAuthorization(config, metadata, '/graphs?view=shared', 'silent')
         const url = new URL(flow.authorizationUrl)

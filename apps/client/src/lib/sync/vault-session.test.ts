@@ -181,8 +181,8 @@ describe('vault-session', () => {
         expect(getVaultWrapKey(MANAGED)).toBeNull()
 
         clearSyncAccount(MANAGED)
-        expect(() => setVaultWrapKey(MANAGED, new Uint8Array(32))).toThrow('Authenticate with the Sync Server before unlocking keys')
-        expect(() => setVaultWrapKey(TEAM, new Uint8Array(32))).toThrow('Authenticate with the Sync Server before unlocking keys')
+        expect(() => setVaultWrapKey(MANAGED, new Uint8Array(32))).toThrow('Authenticate with the Sync Server before unlocking Encryption Keys')
+        expect(() => setVaultWrapKey(TEAM, new Uint8Array(32))).toThrow('Authenticate with the Sync Server before unlocking Encryption Keys')
     })
 
     it('removes the unsafe legacy unscoped key instead of assigning it to an account', () => {

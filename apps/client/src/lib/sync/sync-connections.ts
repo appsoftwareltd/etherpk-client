@@ -183,7 +183,7 @@ export function defaultServerForNewGraph(
 }
 
 /**
- * A server's host, as copy names it (`sync.etherpk.com`, `localhost:5173`): what tells two
+ * A server's host, as copy names it (`sync.etherpk.com`, `localhost:5174`): what tells two
  * connections, and two Recovery Codes, apart for the person reading.
  */
 export function serverHost(origin: string): string {

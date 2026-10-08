@@ -1,12 +1,9 @@
 <script lang="ts" module>
-    /** What one server's sub-tab asks the Knowledge graphs page to do; the page owns every action. */
+    /** What one server's sub-tab asks the Graphs page to do; the page owns every action. */
     export interface SyncServerSettingsActions {
         signIn(): void;
         /** A custom server refused its token: open the form to give it a new one. */
         reconnect(): void;
-        /** Runs before the managed sign-out form submits: clears what the page holds for the account. */
-        prepareSignOut(): void;
-        disconnect(): void;
         beginForget(): void;
         cancelForget(): void;
         forget(): void;
@@ -18,8 +15,6 @@
         unlock(): void;
         showFingerprint(): void;
         reset(): void;
-        /** Remove this server's synced graphs from this browser. */
-        removeCopies(): void;
         /** Ask for this device's passcode, which protects the server's access token (ADR 0129). */
         enterPasscode(): void;
     }
@@ -27,20 +22,25 @@
 
 <script lang="ts">
     /**
-     * One Sync Server's sub-tab on the Sync tab (ADR 0111): its account and plan, its encryption
-     * keys and the copies of its graphs this browser holds. Each server keeps its own account, keys
-     * and Recovery Code, so everything here, resetting the keys included, acts on this server only.
+     * One Sync Server's sub-tab on the Sync tab (ADR 0111): its account and plan, and its
+     * Encryption Keys. Each server keeps its own account, Encryption Keys and Recovery Code, so
+     * everything here, resetting the keys included, acts on this server only. The copies of its
+     * graphs this browser holds are listed on the This Device tab, with every other server's.
+     *
+     * Headings follow the page's: the Sync tab's sections are h2, this server's name h3, its cards
+     * h4 and the parts of a card h5, each a size or weight apart from the text beneath it.
      */
     import {
         PLAN_NOTICE_TEXT,
         UNLIMITED_ALLOWANCE,
         formatUsage,
         isServerAllowance,
+        planLabel,
         planStatusLine,
         type SyncAccountSummary,
     } from "@appsoftwareltd/etherpk-shared";
+    import SyncPlusOffer from "@appsoftwareltd/etherpk-shared/sync-plus-offer";
     import { tick } from "svelte";
-    import { MANAGED_DEVICE_DISCONNECT_HELP } from "$lib/sync";
     import {
         CUSTOM_SERVER_ICON,
         MANAGED_SERVER_ICON,
@@ -49,25 +49,23 @@
 
     let {
         server,
-        heldCount,
         corporateBillingUrl,
+        corporatePricingUrl,
         corporateAccountUrl,
         showPending,
         confirmingForget,
         forgetting,
-        removeChecking,
         actions,
     }: {
         server: SyncServerView;
-        /** Copies of this server's synced graphs in this browser, under any account. */
-        heldCount: number;
         corporateBillingUrl: string | null;
+        /** Corporate's pricing page, where a Free account's offer leads. */
+        corporatePricingUrl: string | null;
         corporateAccountUrl: string | null;
         /** A plan being confirmed has taken long enough to say so (delayed, so a fast answer never flashes it). */
         showPending: boolean;
         confirmingForget: boolean;
         forgetting: boolean;
-        removeChecking: boolean;
         actions: SyncServerSettingsActions;
     } = $props();
 
@@ -168,15 +166,24 @@
         "inline-flex items-center justify-center rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 pointer-coarse:min-h-11 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-white/5";
     const CARD =
         "rounded-xl border border-gray-200 bg-white p-4 dark:border-white/10 dark:bg-white/5";
-    const INDIGO_BUTTON =
-        "inline-flex rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-indigo-500";
+    const PRIMARY_BUTTON =
+        "inline-flex rounded-lg bg-gray-900 px-3 py-1.5 text-sm font-semibold text-white hover:bg-gray-800 dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-gray-200";
+    /**
+     * A part of a card, such as the Recovery Code in the Encryption Keys card, in a tinted panel of
+     * its own. The heading is only a little larger than the help text, so the panel's edge is what
+     * shows where each part starts.
+     */
+    const SUBSECTION = "rounded-lg bg-gray-50 p-4 dark:bg-white/5";
+    /** A part's heading: smaller than the card's own (16px), larger and heavier than its text (14px). */
+    const SUBHEADING =
+        "text-[0.9375rem] font-semibold text-gray-950 dark:text-white";
 </script>
 
 <div data-testid="sync-server" data-origin={server.origin} class="space-y-6">
     <div class="flex flex-wrap items-start justify-between gap-3">
         <div class="min-w-0">
-            <h2
-                class="flex items-center gap-2 text-lg font-semibold text-gray-950 dark:text-white"
+            <h3
+                class="flex items-center gap-2 text-base font-semibold text-gray-950 dark:text-white"
             >
                 <span class="min-w-0 truncate">{server.host}</span>
                 <svg
@@ -193,7 +200,7 @@
                         d={managed ? MANAGED_SERVER_ICON : CUSTOM_SERVER_ICON}
                     />
                 </svg>
-            </h2>
+            </h3>
             <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
                 {managed ? "Managed Sync" : "Custom server"} ·
                 <span
@@ -235,8 +242,8 @@
                 data-testid="sync-server-forget-consequence"
             >
                 {managed
-                    ? "This app signs out on this device and locks your keys for it. Your EtherPK account stays signed in elsewhere and its graphs stay as they are. The copies this browser holds stay hidden until you sign in again."
-                    : "This device forgets its address and access token, and locks your keys for it. The token stays active until you revoke it on the server, and the copies this browser holds stay hidden until you add it again."}
+                    ? "This app signs out on this device and locks your Encryption Keys for it. Your EtherPK account stays signed in elsewhere and its graphs stay as they are. The copies this browser holds stay hidden until you sign in again."
+                    : "This device forgets its address and access token, and locks your Encryption Keys for it. The token stays active until you revoke it on the server, and the copies this browser holds stay hidden until you add it again."}
             </p>
         {/if}
     </div>
@@ -246,12 +253,12 @@
         aria-labelledby="sync-account-heading"
         class={CARD}
     >
-        <h3
+        <h4
             id="sync-account-heading"
             class="mb-3 text-base font-semibold text-gray-950 dark:text-white"
         >
             Account on {server.host}
-        </h3>
+        </h4>
         {#if account}
             <div class="flex flex-wrap items-start justify-between gap-3">
                 <div>
@@ -270,36 +277,18 @@
                         </p>
                     {/if}
                 </div>
-                <span
-                    class="rounded-full bg-emerald-50 px-2.5 py-1 text-sm font-medium text-emerald-700 dark:bg-emerald-400/10 dark:text-emerald-300"
-                    >Authenticated</span
-                >
             </div>
             {#if notice === "upsell"}
-                <div
-                    class="mt-3 rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-white/10 dark:bg-white/5"
-                    data-testid="sync-plus-required"
+                <!-- Free: the plan's name, then the offer every origin makes to a Free account, as
+                     the Sync Server's dashboard shows them. -->
+                <p
+                    data-testid="sync-plan-line"
+                    class="mt-3 text-sm font-medium text-gray-700 dark:text-gray-200"
                 >
-                    <p
-                        class="text-sm font-medium text-gray-950 dark:text-white"
-                    >
-                        Free plan · no synced graphs on this plan
-                    </p>
-                    <p
-                        class="mt-1 text-sm leading-5 text-gray-600 dark:text-gray-300"
-                    >
-                        Local folder graphs are free and unlimited. Sync+ adds
-                        end-to-end encrypted sync across your devices,
-                        multiplayer and managed storage. Graphs shared with you
-                        still work here.
-                    </p>
-                    {#if corporateBillingUrl}
-                        <a
-                            href={corporateBillingUrl}
-                            data-sveltekit-reload
-                            class="mt-2 {INDIGO_BUTTON}">See Sync+</a
-                        >
-                    {/if}
+                    {planLabel(account.entitlement.plan)} Plan
+                </p>
+                <div class="mt-2">
+                    <SyncPlusOffer pricingUrl={corporatePricingUrl} />
                 </div>
             {:else}
                 <!-- A server's own allowance is not a plan anyone holds, so it has no plan line: only
@@ -333,7 +322,7 @@
                             <a
                                 href={corporateBillingUrl}
                                 data-sveltekit-reload
-                                class="mt-2 {INDIGO_BUTTON}">Fix payment</a
+                                class="mt-2 {PRIMARY_BUTTON}">Fix payment</a
                             >
                         {/if}
                     </div>
@@ -348,7 +337,7 @@
                             <a
                                 href={corporateBillingUrl}
                                 data-sveltekit-reload
-                                class="mt-2 {INDIGO_BUTTON}">Restart Sync+</a
+                                class="mt-2 {PRIMARY_BUTTON}">Restart Sync+</a
                             >
                         {/if}
                     </div>
@@ -427,61 +416,9 @@
                     {/if}
                 </div>
             {/if}
-            {#if server.vaultExists === false}
-                <div
-                    role="status"
-                    data-testid="sharing-needs-keys"
-                    class="mt-3 rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm leading-5 text-gray-700 dark:border-white/10 dark:bg-white/5 dark:text-gray-300"
-                >
-                    <p>
-                        Create encryption keys so people can share graphs with
-                        you. Your first synced graph creates them too.
-                    </p>
-                    <button
-                        type="button"
-                        onclick={actions.createKeys}
-                        class="mt-2 {SECONDARY_BUTTON}"
-                        >Create encryption keys</button
-                    >
-                </div>
-            {/if}
-            {#if managed}
-                <!-- Signed in through the Client's own session: the account and the two ways out. A
-                     custom connection to a managed server authenticates with an access token, so it
-                     has only Forget, whatever mode the account reports. -->
-                <div
-                    class="mt-4 border-t border-gray-200 pt-3 dark:border-white/10"
-                >
-                    <p
-                        data-testid="managed-connected-as"
-                        class="text-sm leading-5 text-gray-600 dark:text-gray-300"
-                    >
-                        Connected as {account.principal.email ??
-                            account.principal.name ??
-                            "your EtherPK account"}.
-                    </p>
-                    <div class="mt-2 flex flex-wrap items-start gap-3">
-                        <!-- Submits the page's sign-out form, which sits outside this panel. -->
-                        <button
-                            type="submit"
-                            form="managed-global-logout"
-                            onclick={actions.prepareSignOut}
-                            class={SECONDARY_BUTTON}>Sign out of EtherPK</button
-                        >
-                        <button
-                            type="button"
-                            onclick={actions.disconnect}
-                            class={SECONDARY_BUTTON}
-                            >Disconnect this device</button
-                        >
-                    </div>
-                    <p
-                        class="mt-2 text-sm leading-5 text-gray-500 dark:text-gray-400"
-                    >
-                        {MANAGED_DEVICE_DISCONNECT_HELP}
-                    </p>
-                </div>
-            {:else}
+            <!-- Managed Sync is signed out of, or disconnected, from the account menu in the top bar,
+                 so the card does not repeat those. A custom server is left with Forget. -->
+            {#if !managed}
                 <p
                     class="mt-4 border-t border-gray-200 pt-3 text-sm leading-5 text-gray-500 dark:border-white/10 dark:text-gray-400"
                 >
@@ -518,7 +455,7 @@
                 Checking your account on {server.host}…
             </p>
         {:else if server.authState === "signed-out"}
-            <p class="text-sm font-medium text-amber-800 dark:text-amber-200">
+            <p class="text-sm font-medium text-gray-900 dark:text-gray-100">
                 {managed
                     ? "You are signed out of EtherPK on this device."
                     : `${server.host} did not accept this device's access token.`}
@@ -533,7 +470,7 @@
                     type="button"
                     data-testid="managed-sync-connect"
                     onclick={actions.signIn}
-                    class="mt-3 {INDIGO_BUTTON}">Sign in</button
+                    class="mt-3 {PRIMARY_BUTTON}">Sign in</button
                 >
             {:else}
                 <button
@@ -547,8 +484,8 @@
         {:else if server.authState === "locked"}
             <p class="text-sm text-gray-600 dark:text-gray-400">
                 This device's access token for {server.host} is protected by the
-                device's passcode, so your account there is checked once the
-                passcode is entered.
+                device's passcode, so your account there is checked once the passcode
+                is entered.
             </p>
             <button
                 type="button"
@@ -569,19 +506,20 @@
     </section>
 
     <section aria-labelledby="sync-keys-heading" class="space-y-4 {CARD}">
-        <h3
+        <h4
             id="sync-keys-heading"
             class="text-base font-semibold text-gray-950 dark:text-white"
         >
-            Encryption keys for {server.host}
-        </h3>
+            Encryption Keys for {server.host}
+        </h4>
         {#if !account}
             <!-- Every key action needs the account, so none is offered before it answers. -->
             <p
                 data-testid="keys-after-connecting"
                 class="text-sm text-gray-500 dark:text-gray-400"
             >
-                Your keys and Recovery Code for {server.host} show here once {managed
+                Your Encryption Keys and Recovery Code for {server.host} show here
+                once {managed
                     ? "you sign in"
                     : "the server accepts this device"}.
             </p>
@@ -593,17 +531,17 @@
                     data-testid="regenerate-code-none"
                     class="text-sm text-gray-500 dark:text-gray-400"
                 >
-                    No encryption keys yet. Your first synced graph on {server.host}
+                    No Encryption Keys yet. Your first synced graph on {server.host}
                     creates them, or you can create them now. Nobody can share a
-                    graph with you until you have keys, and creating them gives you
-                    your Recovery Code.
+                    graph with you until you have Encryption Keys, and creating them
+                    gives you your Recovery Code.
                 </p>
                 <button
                     type="button"
                     data-testid="create-keys"
                     onclick={actions.createKeys}
                     class="mt-2 {SECONDARY_BUTTON}"
-                    >Create encryption keys</button
+                    >Create Encryption Keys</button
                 >
             </div>
         {:else}
@@ -613,19 +551,17 @@
                 data-testid="keys-where"
                 class="text-sm text-gray-500 dark:text-gray-400"
             >
-                Your account on {server.host} has its own encryption keys. The server
-                stores them sealed and cannot read them. Encryption keys can be unlocked
-                by approval on another unlocked device, or with a Recovery Code.
+                Your account on {server.host} has its own Encryption Keys. The server
+                stores them sealed and cannot read them. They can be unlocked by
+                approval on another unlocked device, or with a Recovery Code.
             </p>
-            <div>
-                <p class="text-sm font-medium text-gray-950 dark:text-white">
-                    Recovery Code
-                </p>
+            <div class={SUBSECTION}>
+                <h5 class={SUBHEADING}>Recovery Code</h5>
                 <p class="text-sm mt-1 text-gray-500 dark:text-gray-400">
-                    Your Recovery Code unlocks these keys on a device when no
-                    other device of yours is unlocked to approve it. One code
-                    covers every synced graph on {server.host}, including graphs
-                    you join later.
+                    Your Recovery Code unlocks your Encryption Keys on a device
+                    when no other device of yours is unlocked to approve it. One
+                    code covers every synced graph on {server.host}, including
+                    graphs you join later.
                 </p>
                 <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
                     The server never sees the Recovery Code. <strong
@@ -633,15 +569,15 @@
                         >If you lose it and every unlocked device, nobody can
                         recover your notes. You must keep the Recovery Code safe</strong
                     >. Other Sync Servers have Recovery Codes of their own, and
-                    a code saved for one of them does not unlock keys for
-                    another.
+                    a code saved for one of them does not unlock Encryption Keys
+                    for another.
                 </p>
                 <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
                     Regenerate the Recovery Code if you did not save it or have
-                    lost it. If someone else may have seen it, replace your keys
-                    below instead. The current code keeps working until you
-                    confirm you have saved the new one, and then stops working.
-                    Unlocked devices stay unlocked.
+                    lost it. If someone else may have seen it, replace your
+                    Encryption Keys below instead. The current code keeps
+                    working until you confirm you have saved the new one, and
+                    then stops working. Unlocked devices stay unlocked.
                 </p>
                 <button
                     type="button"
@@ -651,30 +587,31 @@
                     >Regenerate Recovery Code</button
                 >
             </div>
-            <div>
-                <p class="text-sm font-medium text-gray-950 dark:text-white">
-                    Replace keys
-                </p>
+            <div class={SUBSECTION}>
+                <h5 class={SUBHEADING}>Replace Encryption Keys</h5>
                 <p class="text-sm mt-1 text-gray-500 dark:text-gray-400">
-                    Replace your keys if someone may have copied your Recovery Code
-                    or your keys, or if a device that is still unlocked is lost or no
-                    longer yours. You get a new Recovery Code and a new security
-                    fingerprint, and every other device has to be unlocked again.
+                    Replace your Encryption Keys if someone may have copied them
+                    or your Recovery Code, or if a device that is still unlocked
+                    is lost or no longer yours. You get a new Recovery Code and
+                    a new security fingerprint, and every other device has to be
+                    unlocked again.
                 </p>
                 {#if confirmingReplace}
                     <div
                         data-testid="replace-keys-confirm"
                         role="group"
-                        aria-label="Replace keys"
+                        aria-label="Replace Encryption Keys"
                         class="mt-2 space-y-2 rounded-lg bg-amber-50 px-3 py-2 dark:bg-amber-400/10"
                     >
                         <p class="text-sm text-amber-900 dark:text-amber-100">
-                            Replace your keys on {server.host}? Your other devices must be
-                            unlocked again, with the new Recovery Code or by approval, and
-                            anyone who copied your old code or keys is cut off. Invites to
-                            you and from you are cancelled, and the graphs you own get new
-                            keys. The new Recovery Code is shown next, and nothing changes
-                            until you confirm you have saved it.
+                            Replace your Encryption Keys on {server.host}? Your
+                            other devices must be unlocked again, with the new
+                            Recovery Code or by approval, and anyone who copied
+                            your old code or Encryption Keys is cut off. Invites
+                            to you and from you are cancelled, and each graph
+                            you own gets a new Graph Key. The new Recovery Code
+                            is shown next, and nothing changes until you confirm
+                            you have saved it.
                         </p>
                         <div class="flex flex-wrap gap-2">
                             <button
@@ -703,48 +640,45 @@
                         data-testid="replace-keys"
                         onclick={() => (confirmingReplace = true)}
                         class="mt-2 {SECONDARY_BUTTON}"
-                        >Replace keys and lock out other devices</button
+                        >Replace Encryption Keys and lock out other devices</button
                     >
                 {/if}
             </div>
             <!-- One unlock, always offered. Unlocking checks the code against the server's current
                  keys and replaces whatever key this device holds, so keys that a reset on another
                  device left out of date are replaced the same way; nothing needs locking first. -->
-            <div>
-                <p class="text-sm font-medium text-gray-950 dark:text-white">
-                    Keys on this device
-                </p>
+            <div class={SUBSECTION}>
+                <h5 class={SUBHEADING}>Encryption Keys on this device</h5>
                 <p
                     data-testid="keys-state"
                     class="text-sm mt-1 text-gray-500 dark:text-gray-400"
                 >
                     {server.vaultUnlocked
-                        ? "Keys are already unlocked on this device."
-                        : "Keys are locked on this device."}
+                        ? "Encryption Keys are already unlocked on this device."
+                        : "Encryption Keys are locked on this device."}
                 </p>
                 <p
                     data-testid="keys-help"
                     class="mt-1 text-sm text-gray-500 dark:text-gray-400"
                 >
                     Your synced graphs on {server.host} open in this browser only
-                    while your keys are unlocked here. The keys stay unlocked until
-                    you sign out, forget the server, remove its synced graphs from
-                    this browser, or clear this browser's data. If your keys are
-                    replaced or reset on another device, the keys held here stop working - unlock
-                    with the new Recovery Code to replace them.
+                    while your Encryption Keys are unlocked here. They stay unlocked
+                    until you sign out, forget the server, remove its synced graphs
+                    from this browser, or clear this browser's data. If your Encryption
+                    Keys are replaced or reset on another device, the ones held here
+                    stop working. Unlock them again, by approval from another device
+                    or with the new Recovery Code, to replace them.
                 </p>
                 <button
                     type="button"
                     data-testid="unlock-keys"
                     onclick={actions.unlock}
                     class="mt-2 {SECONDARY_BUTTON}"
-                    >Unlock Keys With Recovery Code</button
+                    >Unlock Encryption Keys</button
                 >
             </div>
-            <div>
-                <p class="text-sm font-medium text-gray-950 dark:text-white">
-                    Your security fingerprint
-                </p>
+            <div class={SUBSECTION}>
+                <h5 class={SUBHEADING}>Your security fingerprint</h5>
                 <p class="text-sm mt-1 text-gray-500 dark:text-gray-400">
                     When someone invites you to a graph, they see a fingerprint
                     for your account and are asked to check that it is yours.
@@ -774,48 +708,6 @@
         {/if}
     </section>
 
-    <!-- Signing out hides synced graphs; it does not remove this browser's readable copies, which
-         only this does. -->
-    <section
-        data-testid="sync-server-copies"
-        aria-labelledby="sync-copies-heading"
-        class="space-y-2 {CARD}"
-    >
-        <h3
-            id="sync-copies-heading"
-            class="text-base font-semibold text-gray-950 dark:text-white"
-        >
-            Copies in this browser
-        </h3>
-        <p class="text-sm text-gray-500 dark:text-gray-400">
-            This browser keeps a readable copy of each synced graph from {server.host}
-            that it has opened, for every account that has used it. Signing out leaves
-            the copies in place, so on a shared machine, remove them before you leave.
-            The graphs stay on {server.host}, and copies from other Sync Servers
-            are not touched.
-        </p>
-        {#if heldCount > 0}
-            <button
-                type="button"
-                data-testid="remove-synced"
-                onclick={actions.removeCopies}
-                disabled={removeChecking}
-                aria-busy={removeChecking}
-                class="{SECONDARY_BUTTON} aria-busy:cursor-progress"
-                >{removeChecking
-                    ? "Checking for unsent changes…"
-                    : `Remove synced graphs from ${server.host}`}</button
-            >
-        {:else}
-            <p
-                class="text-sm text-gray-500 dark:text-gray-400"
-                data-testid="remove-synced-none"
-            >
-                No synced graphs from {server.host} are stored in this browser.
-            </p>
-        {/if}
-    </section>
-
     <!-- Apart from everything else and last, because it destroys what cannot be recovered. Only an
          account with keys has anything to reset. It is offered while the keys are locked too, since
          being unable to unlock anywhere is when it is needed. -->
@@ -825,20 +717,18 @@
             aria-labelledby="sync-danger-heading"
             class="space-y-2 rounded-xl border border-red-200 bg-white p-4 dark:border-red-500/30 dark:bg-white/5"
         >
-            <h3
+            <h4
                 id="sync-danger-heading"
                 class="text-base font-semibold text-red-700 dark:text-red-400"
             >
                 Danger zone
-            </h3>
-            <p class="text-sm font-medium text-gray-950 dark:text-white">
-                Reset encryption keys
-            </p>
+            </h4>
+            <h5 class={SUBHEADING}>Reset Encryption Keys</h5>
             <p class="text-sm text-gray-500 dark:text-gray-400">
-                Reset only if you cannot unlock your keys anywhere - if you have
-                lost your Recovery Code, and no device of yours is still
-                unlocked. A reset deletes your keys on {server.host} - creating new
-                ones afterwards gives you a new Recovery Code.
+                Reset only if you cannot unlock your Encryption Keys anywhere,
+                because you have lost your Recovery Code and no device of yours
+                is still unlocked. A reset deletes your Encryption Keys on {server.host},
+                and creating new ones afterwards gives you a new Recovery Code.
             </p>
             <p class="text-sm text-gray-500 dark:text-gray-400">
                 <strong class="font-semibold text-gray-700 dark:text-gray-200"
@@ -855,15 +745,16 @@
                 <span class="font-medium">Not on this device</span> comes back
                 with
                 <span class="font-medium">Add to this device</span> on the
-                Graphs tab, and keys that stop working here are replaced with
-                <span class="font-medium">Unlock Keys With Recovery Code</span> above.
+                Graphs tab, and Encryption Keys that stop working here are
+                replaced with
+                <span class="font-medium">Unlock Encryption Keys</span> above.
             </p>
             <button
                 type="button"
                 data-testid="reset-keys"
                 onclick={actions.reset}
                 class="rounded-lg border border-red-300 px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50 pointer-coarse:min-h-11 dark:border-red-500/40 dark:hover:bg-red-950/30"
-                >Reset encryption keys</button
+                >Reset Encryption Keys</button
             >
         </section>
     {/if}

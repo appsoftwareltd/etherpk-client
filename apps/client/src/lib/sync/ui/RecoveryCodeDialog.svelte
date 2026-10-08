@@ -63,12 +63,12 @@
     // replace, the current keys) stop working, and a plain "Continue" would hide that.
     const confirmLabel = $derived(
         arrival === "replace"
-            ? "Replace keys and use this code"
+            ? "Replace Encryption Keys and use this code"
             : arrival === "regenerate"
               ? "Retire old code and use this one"
               : "Continue",
     );
-    const cancelLabel = $derived(arrival === "replace" ? "Keep current keys" : "Keep current code");
+    const cancelLabel = $derived(arrival === "replace" ? "Keep current Encryption Keys" : "Keep current code");
 
     async function copy() {
         saveError = null;
@@ -114,7 +114,7 @@
     {#snippet body()}
         <p data-testid="recovery-server" class="text-sm text-gray-700 dark:text-gray-200">
             For your account on <span class="font-semibold text-gray-950 dark:text-white">{host}</span
-            >{#if account}&nbsp;({account}){/if}. It unlocks your keys on this Sync Server only. A code you
+            >{#if account}&nbsp;({account}){/if}. It unlocks your Encryption Keys on this Sync Server only. A code you
             saved for another Sync Server stays valid and is not replaced by this one: keep each one.
         </p>
         {#if reason}

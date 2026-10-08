@@ -4,10 +4,11 @@
     import "../app.css";
     import { onMount } from "svelte";
     import { beforeNavigate } from "$app/navigation";
+    import { continueIfSignedInElsewhere } from "@appsoftwareltd/etherpk-shared";
     import { updated } from "$app/state";
     import { watchAppInstall } from "$lib/storage/app-install";
 
-    let { children } = $props();
+    let { children, data } = $props();
 
     // A deployed update must not leave this tab running stale client code: once the
     // version poll (svelte.config `kit.version.pollInterval`) sees a new build, the next
@@ -20,6 +21,9 @@
     });
 
     onMount(() => {
+        // A sign-in made at the account site since the last silent check missed: ask there, and
+        // go through the silent check on a yes, so the visit comes back signed in.
+        if (data.signedInElsewhereCheck) void continueIfSignedInElsewhere(data.signedInElsewhereCheck);
         // Register the minimal service worker required for PWA installability.
         // The SW itself does no caching — it simply passes all requests to the network.
         if ("serviceWorker" in navigator) {

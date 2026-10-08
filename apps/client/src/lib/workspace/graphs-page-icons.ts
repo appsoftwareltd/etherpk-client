@@ -1,12 +1,20 @@
 /**
- * The Knowledge graphs page's icons: Heroicons 2.2.0 outline (24×24, stroke 1.5, MIT), each path
- * copied from the package's `24/outline/<name>.svg` and inlined the way the workspace toolbar
- * inlines its own. In-repo constant markup, never content.
+ * The Graphs page's icons: Heroicons 2.2.0 outline (24×24, stroke 1.5, MIT) but for one solid
+ * mark, each path copied from the package's `24/outline/<name>.svg` (or `20/solid/`) and inlined
+ * the way the workspace toolbar inlines its own. In-repo constant markup, never content.
  */
 
 /** heroicons/outline arrow-right-end-on-rectangle: going into a graph. */
 export const OPEN_ICON =
     'M8.25 9V5.25A2.25 2.25 0 0 1 10.5 3h6a2.25 2.25 0 0 1 2.25 2.25v13.5A2.25 2.25 0 0 1 16.5 21h-6a2.25 2.25 0 0 1-2.25-2.25V15M12 9l3 3m0 0-3 3m3-3H2.25'
+
+/**
+ * heroicons/20/solid exclamation-circle (viewBox 0 0 20 20, filled, even-odd): something on a tab
+ * the person has not set yet. The one solid icon here: an outline stroke reads as a hairline at the
+ * size of a tab's text.
+ */
+export const NOT_SET_ICON =
+    'M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0Zm-8-5a.75.75 0 0 1 .75.75v4.5a.75.75 0 0 1-1.5 0v-4.5A.75.75 0 0 1 10 5Zm0 10a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z'
 
 /** heroicons/outline computer-desktop: graphs that live on this computer. */
 export const LOCAL_GRAPHS_ICON =

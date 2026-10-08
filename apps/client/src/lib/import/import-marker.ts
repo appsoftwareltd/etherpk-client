@@ -1,5 +1,5 @@
 /**
- * A mark in this browser that an [[Import]] is under way, so the Knowledge graphs page can say
+ * A mark in this browser that an [[Import]] is under way, so the Graphs page can say
  * which one a closed or reloaded tab cut off, and offer to remove what it left: a synced graph
  * partly uploaded, or a folder partly written.
  *

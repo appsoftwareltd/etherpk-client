@@ -61,13 +61,21 @@ export interface AccountKeyBootstrap {
 
 type KeysApi = Pick<SyncApi, 'getVault' | 'putKeys' | 'me'>
 
+/** The account already has a vault, typically because another device created its keys first. */
+export class VaultExistsError extends Error {
+    constructor() {
+        super('This account already has Encryption Keys')
+        this.name = 'VaultExistsError'
+    }
+}
+
 /**
  * Mint an account's encryption keys before it owns any graph, so the Recovery Code ritual is a
  * step the user can take deliberately rather than a surprise at the end of their first import.
  * The vault starts empty; ensureGraphKeys adds each graph's keyring to it afterwards.
  */
 export async function createAccountKeys(api: KeysApi): Promise<AccountKeyBootstrap> {
-    if (await api.getVault()) throw new Error('This account already has encryption keys')
+    if (await api.getVault()) throw new VaultExistsError()
     const minted = await mintAccountVault(api, [])
     return { recoveryCode: minted.recoveryCode, deviceKey: minted.deviceKey, commit: minted.commit }
 }
@@ -117,7 +125,7 @@ async function mintAccountVault(
  */
 export class MissingGraphKeyError extends Error {
     constructor(readonly graphId: string) {
-        super(`This account's keys hold no key for graph ${graphId}.`)
+        super(`This account's Encryption Keys hold no Graph Key for graph ${graphId}.`)
         this.name = 'MissingGraphKeyError'
     }
 }

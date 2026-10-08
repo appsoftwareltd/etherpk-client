@@ -5,7 +5,7 @@ import type {
     AuthorizationTransaction,
     ClientAuthorizationInteraction,
 } from './session-cookie'
-import { MANAGED_SYNC_AUDIENCE, safeReturnPath } from '@appsoftwareltd/etherpk-shared'
+import { MANAGED_SYNC_AUDIENCE, SIGN_IN_RETURN_PARAMETER, safeReturnPath } from '@appsoftwareltd/etherpk-shared'
 
 export interface OAuthMetadata {
     issuer: string
@@ -187,6 +187,10 @@ export async function beginAuthorization(
         code_challenge: challenge,
         code_challenge_method: 'S256',
         resource: MANAGED_SYNC_AUDIENCE,
+        // A copy of the page this sign-in returns to, for Corporate to start the sign-in again with
+        // it (an expired page's Start again, a verification email's Continue). The return this
+        // Client acts on stays in the encrypted transaction cookie.
+        [SIGN_IN_RETURN_PARAMETER]: transaction.returnPath,
         ...(interaction === 'silent' ? { prompt: 'none' } : {}),
     }).toString()
     return { authorizationUrl: url.href, transaction }

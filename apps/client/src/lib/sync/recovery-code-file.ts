@@ -23,7 +23,7 @@ export function recoveryCodeFileText(saved: { code: string; serverOrigin: string
         '',
         saved.code,
         '',
-        `This code unlocks your encryption keys only on ${host}. A code for another Sync Server does not replace it and cannot stand in for it. Keep each one.`,
+        `This code unlocks your Encryption Keys only on ${host}. A code for another Sync Server does not replace it and cannot stand in for it. Keep each one.`,
         '',
         'Keep this safe. It is the only way to restore access to your encrypted notes on this server if you lose every signed-in device.',
         '',

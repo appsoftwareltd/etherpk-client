@@ -1,8 +1,8 @@
 /**
  * The notice that offers a Device Passcode (ADR 0129), said once per device: the first time a
  * synced graph opens on a device with no passcode. The flag is set when the notice shows, so
- * closing the tab without answering does not bring it back; the Sync tab offers a passcode from
- * then on.
+ * closing the tab without answering does not bring it back; the Graphs page's This Device tab
+ * offers a passcode from then on, and marks the tab while none is set.
  */
 
 const KEY = 'etherpk.device-passcode-notice-shown'

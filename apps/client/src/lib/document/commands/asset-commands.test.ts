@@ -286,18 +286,30 @@ describe('asset.delete', () => {
         )
     })
 
-    it('keeps the bytes when a protected document cannot be read, asking it with the asset identity', async () => {
+    it('destroys the bytes past a locked protected document, asking it with the asset identity', async () => {
         // The index never holds a protected document, so it is asked on its own.
-        const protectedUsage = vi.fn(async () => ({ readable: false as const, unreadable: 1 }))
+        const protectedUsage = vi.fn(async () => ({ references: 0, documents: [], locked: 1, unread: 0 }))
         const h = harness({ protectedUsage } as never)
 
         await h.commands.execute(ASSET_DELETE, target)
 
         expect(protectedUsage).toHaveBeenCalledWith([ASSET_ID])
         expect(h.deps.promptDelete).toHaveBeenCalledWith(
-            expect.objectContaining({ plan: expect.objectContaining({ deleteBytes: false, blockedBy: 'protected-unread', unreadProtected: 1 }) }),
+            expect.objectContaining({ plan: expect.objectContaining({ deleteBytes: true, lockedProtected: 1 }) }),
         )
-        expect(h.removed).toEqual([])
+        expect(h.removed).toEqual([[ASSET_ID]])
+    })
+
+    it('destroys the bytes past a protected document that could not be read at all', async () => {
+        const protectedUsage = vi.fn(async () => ({ references: 0, documents: [], locked: 0, unread: 1 }))
+        const h = harness({ protectedUsage } as never)
+
+        await h.commands.execute(ASSET_DELETE, target)
+
+        expect(h.deps.promptDelete).toHaveBeenCalledWith(
+            expect.objectContaining({ plan: expect.objectContaining({ deleteBytes: true, unreadProtected: 1 }) }),
+        )
+        expect(h.removed).toEqual([[ASSET_ID]])
     })
 
     it('falls back to the reference when the asset cannot be resolved for a name', async () => {

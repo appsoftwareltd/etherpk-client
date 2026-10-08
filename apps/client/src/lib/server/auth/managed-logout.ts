@@ -42,3 +42,18 @@ export async function revokeManagedClientGrant(
         // Do not restore a local cookie or disclose token material when remote revocation fails.
     }
 }
+
+/** Which app started a coordinated sign-out, and so where the cascade finishes. */
+export type CascadeSource = 'sync' | 'corporate' | 'client'
+
+/**
+ * Where a coordinated sign-out goes once the Client has done its part. Started at the Sync portal,
+ * its session is already gone, so it finishes there. Otherwise the portal still has to sign out,
+ * and its continuation finishes where the cascade started. Built from configuration and the source
+ * alone, never from a request's address.
+ */
+export function nextHopAfterClient(source: CascadeSource, config: ManagedClientAuthConfig): string {
+    return source === 'sync'
+        ? `${config.managedSyncUrl}/?managed=signed-out`
+        : `${config.managedSyncUrl}/auth/portal/logout/managed?finish=${source}`
+}

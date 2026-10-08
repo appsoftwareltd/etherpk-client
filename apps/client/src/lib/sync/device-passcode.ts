@@ -51,7 +51,7 @@ export type DevicePasscodeState = 'off' | 'locked' | 'unlocked'
 /** The device has a passcode and it has not been entered in this browser session. */
 export class DevicePasscodeLockedError extends VaultLockedError {
     constructor() {
-        super("The keys on this device are protected by its passcode, which has not been entered in this browser session")
+        super("The Encryption Keys on this device are protected by its passcode, which has not been entered in this browser session")
         this.name = 'DevicePasscodeLockedError'
     }
 }

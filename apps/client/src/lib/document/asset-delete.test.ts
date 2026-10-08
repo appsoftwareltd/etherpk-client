@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { type AssetByteReadiness, assetUsageNeedles, planAssetDelete, protectedAssetUsage } from './asset-delete'
+import { type AssetByteReadiness, type ProtectedAssetUsage, assetUsageNeedles, planAssetDelete, protectedAssetUsage } from './asset-delete'
 import type { AssetUsage } from './index-db'
 
 const doc = (concept: string, references = 1) => ({ concept, kind: 'page' as const, references })
@@ -9,6 +9,8 @@ const usage = (references: number, ...documents: ReturnType<typeof doc>[]): Asse
     documents,
 })
 const ready: AssetByteReadiness = { ready: true }
+/** What the protected documents hold: nothing found, nothing locked or unread unless given. */
+const hidden = (found: Partial<ProtectedAssetUsage> = {}): ProtectedAssetUsage => ({ references: 0, documents: [], locked: 0, unread: 0, ...found })
 
 describe('planAssetDelete', () => {
     it('destroys the bytes when this is the only reference', async () => {
@@ -87,40 +89,75 @@ describe('planAssetDelete with protected documents', () => {
     it('keeps the bytes when a protected document uses the asset too, and names it', async () => {
         const plan = await planAssetDelete({
             usage: async () => usage(1, doc('Alpha')),
-            protectedUsage: async () => ({ readable: true, references: 1, documents: [doc('Vault')] }),
+            protectedUsage: async () => hidden({ references: 1, documents: [doc('Vault')] }),
             readiness: async () => ready,
         })
 
         expect(plan).toEqual({ deleteBytes: false, blockedBy: 'used-elsewhere', references: 2, documents: [doc('Alpha'), doc('Vault')] })
     })
 
-    it('keeps the bytes when a protected document cannot be read, and never asks the relay', async () => {
+    // A locked document is opaque by design, and one another member protected can never be read
+    // here. Refusing until every one is read would make the delete unreachable in a shared graph,
+    // so the bytes go and the dialog says how many documents went unchecked. The person decides.
+    it('destroys the bytes when protected documents are locked, and says how many went unchecked', async () => {
         const readiness = vi.fn(async () => ready)
         const plan = await planAssetDelete({
             usage: async () => usage(1, doc('Alpha')),
-            protectedUsage: async () => ({ readable: false, unreadable: 2 }),
+            protectedUsage: async () => hidden({ locked: 2 }),
             readiness,
         })
 
-        expect(plan).toEqual({ deleteBytes: false, blockedBy: 'protected-unread', unreadProtected: 2, references: 1, documents: [doc('Alpha')] })
-        expect(readiness).not.toHaveBeenCalled()
+        expect(plan).toEqual({ deleteBytes: true, lockedProtected: 2, references: 1, documents: [doc('Alpha')] })
+        expect(readiness).toHaveBeenCalled()
+    })
+
+    it('keeps the bytes when a readable protected document uses the asset, whatever else is locked', async () => {
+        const plan = await planAssetDelete({
+            usage: async () => usage(1, doc('Alpha')),
+            protectedUsage: async () => hidden({ references: 1, documents: [doc('Vault')], locked: 1 }),
+            readiness: async () => ready,
+        })
+
+        expect(plan).toMatchObject({ deleteBytes: false, blockedBy: 'used-elsewhere', references: 2, documents: [doc('Alpha'), doc('Vault')] })
+    })
+
+    it('still waits for a synced graph to be current when protected documents are locked', async () => {
+        const plan = await planAssetDelete({
+            usage: async () => usage(1, doc('Alpha')),
+            protectedUsage: async () => hidden({ locked: 1 }),
+            readiness: async () => ({ ready: false, reason: 'offline' }),
+        })
+
+        expect(plan).toMatchObject({ deleteBytes: false, blockedBy: 'offline' })
+    })
+
+    // Not locked: its stored text could not be read at all (a failed read, a synced document the
+    // relay could not confirm current). It goes unchecked like a locked one, and the dialog says so.
+    it('destroys the bytes when a protected document could not be read at all, and says how many', async () => {
+        const plan = await planAssetDelete({
+            usage: async () => usage(1, doc('Alpha')),
+            protectedUsage: async () => hidden({ locked: 1, unread: 2 }),
+            readiness: async () => ready,
+        })
+
+        expect(plan).toEqual({ deleteBytes: true, lockedProtected: 1, unreadProtected: 2, references: 1, documents: [doc('Alpha')] })
     })
 
     it('destroys the bytes when every protected document was read and none uses the asset', async () => {
         const plan = await planAssetDelete({
             usage: async () => usage(1, doc('Alpha')),
-            protectedUsage: async () => ({ readable: true, references: 0, documents: [] }),
+            protectedUsage: async () => hidden(),
             readiness: async () => ready,
         })
 
-        expect(plan.deleteBytes).toBe(true)
+        expect(plan).toEqual({ deleteBytes: true, references: 1, documents: [doc('Alpha')] })
     })
 
     it('destroys the bytes of an image trashed inside a protected document, when that is its only use', async () => {
         // The index has none (the document is protected); the document's own plaintext has one.
         const plan = await planAssetDelete({
             usage: async () => usage(0),
-            protectedUsage: async () => ({ readable: true, references: 1, documents: [doc('Vault')] }),
+            protectedUsage: async () => hidden({ references: 1, documents: [doc('Vault')] }),
             readiness: async () => ready,
         })
 
@@ -149,22 +186,23 @@ describe('protectedAssetUsage', () => {
             ['7f3a'],
             { readStored, readProtected },
         )
-        expect(found).toEqual({ readable: true, references: 2, documents: [{ concept: 'Vault', kind: 'page', references: 2 }] })
+        expect(found).toEqual({ references: 2, documents: [{ concept: 'Vault', kind: 'page', references: 2 }], locked: 0, unread: 0 })
     })
 
-    it('reports how many it could not read, locked or not its key', async () => {
+    it('counts a document it cannot decrypt as locked, and still counts the ones it can read', async () => {
+        // Other's fence will not open: locked, or sealed under another member's key.
         const found = await protectedAssetUsage([{ concept: 'Vault', kind: 'page' }, { concept: 'Other', kind: 'page' }], ['7f3a'], { readStored, readProtected })
-        expect(found).toEqual({ readable: false, unreadable: 1 })
-        expect(await protectedAssetUsage([{ concept: 'Vault', kind: 'page' }], ['7f3a'], { readStored })).toEqual({ readable: false, unreadable: 1 })
+        expect(found).toEqual({ references: 2, documents: [{ concept: 'Vault', kind: 'page', references: 2 }], locked: 1, unread: 0 })
+        expect(await protectedAssetUsage([{ concept: 'Vault', kind: 'page' }], ['7f3a'], { readStored })).toEqual({ references: 0, documents: [], locked: 1, unread: 0 })
     })
 
     // The index says protected, but what the store holds says otherwise.
     it('never reads a document that came back empty as one with no references', async () => {
         // A read that failed and left an empty buffer, or a document still syncing.
         const found = await protectedAssetUsage([{ concept: 'Vault', kind: 'page' }], ['7f3a'], { readStored: storedOf({ Vault: '' }), readProtected })
-        expect(found).toEqual({ readable: false, unreadable: 1 })
+        expect(found).toEqual({ references: 0, documents: [], locked: 0, unread: 1 })
         const unread = await protectedAssetUsage([{ concept: 'Vault', kind: 'page' }], ['7f3a'], { readStored: storedOf({ Vault: null }), readProtected })
-        expect(unread).toEqual({ readable: false, unreadable: 1 })
+        expect(unread).toEqual({ references: 0, documents: [], locked: 0, unread: 1 })
     })
 
     it('searches a document protection was just removed from as the plaintext it now is', async () => {
@@ -173,7 +211,7 @@ describe('protectedAssetUsage', () => {
             readStored: storedOf({ Vault: '- ![a](../assets/a.7f3a.png)' }),
             readProtected,
         })
-        expect(found).toEqual({ readable: true, references: 1, documents: [{ concept: 'Vault', kind: 'page', references: 1 }] })
+        expect(found).toEqual({ references: 1, documents: [{ concept: 'Vault', kind: 'page', references: 1 }], locked: 0, unread: 0 })
     })
 
     it('settles pending protected edits before reading, so an edit still on screen counts', async () => {
@@ -206,7 +244,7 @@ describe('protectedAssetUsage', () => {
 
     it('reads nothing when the graph has no protected documents', async () => {
         const reader = vi.fn(readStored)
-        expect(await protectedAssetUsage([], ['7f3a'], { readStored: reader, readProtected })).toEqual({ readable: true, references: 0, documents: [] })
+        expect(await protectedAssetUsage([], ['7f3a'], { readStored: reader, readProtected })).toEqual({ references: 0, documents: [], locked: 0, unread: 0 })
         expect(reader).not.toHaveBeenCalled()
     })
 })

@@ -92,4 +92,19 @@ describe('GET /auth/logout/managed', () => {
         expect(response.headers.get('location'))
             .toBe('https://sync.example.com/auth/portal/logout/managed?finish=client')
     })
+
+    // Started on the account site or the Sync portal, the sign-out has had no Client page yet: the
+    // browser's keys and account record are only reachable from one, so it stops at a Client page
+    // that clears them before going on.
+    it.each(['sync', 'corporate'])('stops at a Client page in a cascade started from %s', async (source) => {
+        const cookies = { get: () => undefined, getAll: () => [], delete: () => undefined } as unknown as Cookies
+
+        const response = await GET({
+            url: new URL(`https://app.example.com/auth/logout/managed?finish=${source}`),
+            cookies,
+            fetch: vi.fn(),
+        } as unknown as Parameters<typeof GET>[0])
+
+        expect(response.headers.get('location')).toBe(`/auth/signing-out?from=${source}`)
+    })
 })

@@ -67,7 +67,7 @@
      * one (it will not say whether an account exists). So it names every prerequisite.
      */
     const inviteeNotFound = $derived(
-        `Nobody with that address can be invited yet. They need ${needs}, and encryption keys: their first synced graph creates them, or Create encryption keys in Sync settings. Send them a link to EtherPK, then try again.`,
+        `Nobody with that address can be invited yet. They need ${needs}, and Encryption Keys: their first synced graph creates them, or Create Encryption Keys in Sync settings. Send them a link to EtherPK, then try again.`,
     );
     /** The app's address, for the owner to send to somebody who has not set it up yet. */
     const appLink = $derived(`${location.origin}/graphs`);
@@ -111,7 +111,7 @@
             }
             if (found.kind === "keys-outdated") {
                 // Their keys predate signing keys (ADR 0126): opening EtherPK once updates them.
-                error = `${email.trim()} needs to open EtherPK once before you can invite them, so that their keys are updated. Ask them to open it, then try again.`;
+                error = `${email.trim()} needs to open EtherPK once before you can invite them, so that their Encryption Keys are updated. Ask them to open it, then try again.`;
                 return;
             }
             prep = found;
@@ -178,7 +178,7 @@
         {#if step === "email"}
             <p class="text-sm text-gray-600 dark:text-gray-400">
                 Enter the email address of the person you want to share this graph with. They need
-                {needs} and encryption keys, which EtherPK creates with their first synced graph or from
+                {needs} and Encryption Keys, which EtherPK creates with their first synced graph or from
                 Sync settings.
             </p>
             <div>
@@ -218,7 +218,7 @@
         {:else if step === "done"}
             <p class="text-sm text-gray-600 dark:text-gray-400">
                 Invite sent to <span class="font-medium text-gray-900 dark:text-gray-200">{email}</span>.
-                They will see it under Pending invites on their Knowledge graphs page. Until they
+                They will see it under Pending invites on their Graphs page. Until they
                 accept, they are listed on this graph as Invited, where you can cancel the invite.
             </p>
         {/if}

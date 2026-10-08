@@ -1,8 +1,9 @@
 <script lang="ts">
     /**
-     * The Device Passcode on the Sync tab (ADR 0129): whether this device has one, and setting,
-     * entering, changing or turning it off. One passcode covers every server's keys on the device,
-     * so the card sits above the servers' tabs rather than on any one of them.
+     * The Device Passcode section of the This Device tab (ADR 0129): whether this device has one,
+     * and setting, entering, changing or turning it off. One passcode covers every server's
+     * Encryption Keys on the device, so it lives with what the device holds rather than on any
+     * one server's tab. A rule on the page, not a card border, separates it from the next section.
      */
     import DevicePasscodeDialog, {
         type DevicePasscodeDialogMode,
@@ -13,9 +14,9 @@
         ondone,
         onforgotten,
     }: {
-        /** The passcode was set, entered, changed or turned off from this card. */
+        /** The passcode was set, entered, changed or turned off from this section. */
         ondone: (mode: DevicePasscodeDialogMode) => void;
-        /** Forgot your passcode? removed the keys it protected. */
+        /** Forgot your passcode? removed the Encryption Keys it protected. */
         onforgotten: () => void;
     } = $props();
 
@@ -31,13 +32,13 @@
 <section
     data-testid="device-passcode"
     aria-labelledby="device-passcode-heading"
-    class="space-y-3 rounded-xl border border-gray-200 bg-white p-4 dark:border-white/10 dark:bg-white/5"
+    class="space-y-3"
 >
     <h2
         id="device-passcode-heading"
-        class="text-base font-semibold text-gray-950 dark:text-white"
+        class="text-lg font-semibold text-gray-950 dark:text-white"
     >
-        Passcode for this device
+        Device Passcode
     </h2>
     <!-- Polite: it changes when the passcode is set or turned off here or in another tab. -->
     <p
@@ -47,21 +48,23 @@
         aria-live="polite"
     >
         {#if passcode === "off"}
-            Off. The keys this device holds for your synced graphs, and the
-            access tokens for your own Sync Servers, are stored in this browser
+            Off. The Encryption Keys this device holds for your synced graphs,
+            and the access tokens for your own Sync Servers, are stored in this browser
             without encryption. A passcode keeps them encrypted, and you enter it
             once each time you open EtherPK in this browser.
         {:else if passcode === "locked"}
             On. The passcode has not been entered in this browser session, so
-            the keys it protects are not in use yet.
+            the Encryption Keys it protects are not in use yet.
         {:else}
-            On. The keys this device holds for your synced graphs, and the access
-            tokens for your own Sync Servers, are stored encrypted under the
+            On. The Encryption Keys this device holds for your synced graphs, and
+            the access tokens for your own Sync Servers, are stored encrypted under the
             passcode.
         {/if}
     </p>
     <p class="text-sm text-gray-600 dark:text-gray-400">
-        It protects keys, not the documents already stored on this device.
+        One passcode covers every Sync Server on this device. It protects
+        Encryption Keys and access tokens, not the documents already stored on
+        this device.
     </p>
     <div class="flex flex-wrap gap-2">
         {#if passcode === "off"}

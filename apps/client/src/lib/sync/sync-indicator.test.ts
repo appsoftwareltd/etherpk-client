@@ -72,7 +72,7 @@ describe('describeKeyWait', () => {
             identity: { publicKey: new Uint8Array(32), signingPublicKey: new Uint8Array(32) },
             fingerprint: 'AAAA',
         })
-        expect(reason).toBe('The copy that arrived is signed with new keys for owner@example.com. Compare their fingerprint on the Graphs page, and EtherPK uses it once you confirm it.')
+        expect(reason).toBe('The copy that arrived is signed with new Encryption Keys for owner@example.com. Compare their fingerprint on the Graphs page, and EtherPK uses it once you confirm it.')
     })
 
     it('says a copy whose signature does not check out was not used', () => {

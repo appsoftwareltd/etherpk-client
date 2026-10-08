@@ -3,7 +3,7 @@
     import type { PendingInvite } from "$lib/sync/sync-api";
     import type { SyncedGraphView, SyncedMember } from "./graph-picker-helpers";
 
-    /** What a server's group asks the Knowledge graphs page to do; the page owns every action. */
+    /** What a server's group asks the Graphs page to do; the page owns every action. */
     export interface SyncServerGroupActions {
         open(record: GraphRecord): void;
         add(view: SyncedGraphView): void;
@@ -34,6 +34,8 @@
         enterPasscode(): void;
         /** Open this server's sub-tab on the Sync tab: its account, plan and keys. */
         showSettings(): void;
+        /** Unlock this server's Encryption Keys on this device, as the Sync tab does. */
+        unlock(): void;
     }
 </script>
 
@@ -47,6 +49,7 @@
         PLAN_NOTICE_TEXT,
         formatBytes,
     } from "@appsoftwareltd/etherpk-shared";
+    import SyncPlusOffer from "@appsoftwareltd/etherpk-shared/sync-plus-offer";
     import SyncedGraphRow from "./SyncedGraphRow.svelte";
     import { keyCopyNotice } from "./graph-picker-helpers";
     import {
@@ -67,6 +70,7 @@
         checkingInvite,
         decliningInvite,
         corporateBillingUrl,
+        corporatePricingUrl,
         showPending,
         actions,
     }: {
@@ -85,6 +89,8 @@
         checkingInvite: string | null;
         decliningInvite: string | null;
         corporateBillingUrl: string | null;
+        /** Corporate's pricing page, where a Free account's offer leads. */
+        corporatePricingUrl: string | null;
         /** A plan being confirmed has taken long enough to say so (delayed, so a fast answer never flashes it). */
         showPending: boolean;
         actions: SyncServerGroupActions;
@@ -92,6 +98,16 @@
 
     const headingId = $props.id();
     const managed = $derived(server.connection.kind === "managed");
+
+    /**
+     * Signed in, with Encryption Keys on the server that are not unlocked on this device: every
+     * graph's name is hidden and none opens, so the group says so first and offers the unlock.
+     */
+    const keysLocked = $derived(
+        server.authState === "authenticated" &&
+            server.vaultExists === true &&
+            !server.vaultUnlocked,
+    );
 
     /**
      * One row per graph. While the server's list is to hand the rows are its memberships, each
@@ -145,7 +161,7 @@
     function nameNoteFor(view: SyncedGraphView): string | null {
         if (view.onDevice || view.nameSource !== "placeholder") return null;
         if (!server.vaultUnlocked)
-            return "Unlock keys on this device to see its name.";
+            return "Unlock Encryption Keys on this device to see its name.";
         switch (server.nameReads[view.id]) {
             case "reading":
                 return "Reading its name from the graph…";
@@ -163,6 +179,8 @@
     });
     const SECONDARY_BUTTON =
         "inline-flex items-center justify-center rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 pointer-coarse:min-h-11 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-white/5";
+    const PRIMARY_BUTTON =
+        "inline-flex items-center justify-center rounded-lg bg-gray-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-800 pointer-coarse:min-h-11 dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-gray-200";
 </script>
 
 <section
@@ -171,49 +189,65 @@
     aria-labelledby={headingId}
     class="space-y-3"
 >
-    <div class="flex flex-wrap items-end justify-between gap-3">
-        <div class="min-w-0">
-            <h2
-                id={headingId}
-                class="flex items-center gap-2 text-lg font-semibold text-gray-950 dark:text-white"
-            >
-                <span class="min-w-0 truncate"
-                    >Synced graphs on {server.host}</span
-                >
-                <svg
-                    class="h-5 w-5 shrink-0 text-gray-500 dark:text-gray-400"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="1.5"
-                    aria-hidden="true"
-                >
-                    <path
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        d={managed ? MANAGED_SERVER_ICON : CUSTOM_SERVER_ICON}
-                    />
-                </svg>
-            </h2>
-            <p
-                class="mt-1 text-sm text-gray-500 dark:text-gray-400"
-                data-testid="synced-graphs-account"
-            >
-                {accountLine}
-            </p>
-        </div>
-        <button
-            type="button"
-            data-testid="synced-graphs-settings"
-            onclick={actions.showSettings}
-            class="text-sm font-medium text-gray-700 underline underline-offset-2 hover:text-gray-950 pointer-coarse:min-h-11 dark:text-gray-300 dark:hover:text-white"
-            >Account and keys</button
+    <div class="min-w-0">
+        <h2
+            id={headingId}
+            class="flex items-center gap-2 text-lg font-semibold text-gray-950 dark:text-white"
         >
+            <span class="min-w-0 truncate"
+                >Synced graphs on {server.host}</span
+            >
+            <svg
+                class="h-5 w-5 shrink-0 text-gray-500 dark:text-gray-400"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.5"
+                aria-hidden="true"
+            >
+                <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d={managed ? MANAGED_SERVER_ICON : CUSTOM_SERVER_ICON}
+                />
+            </svg>
+        </h2>
+        <p
+            class="mt-1 text-sm text-gray-500 dark:text-gray-400"
+            data-testid="synced-graphs-account"
+        >
+            {accountLine}
+        </p>
     </div>
+
+    {#if keysLocked}
+        <div
+            data-testid="synced-graphs-keys-locked"
+            class="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-900/15 bg-white p-4 dark:border-gray-100/20 dark:bg-white/5"
+        >
+            <p class="text-sm text-gray-700 dark:text-gray-200">
+                Unlock Encryption Keys for the synced graphs or go to the <button
+                    type="button"
+                    onclick={actions.showSettings}
+                    class="font-medium text-gray-950 underline underline-offset-2 hover:no-underline dark:text-white"
+                    >Sync tab</button
+                > for more options.
+            </p>
+            <button type="button" onclick={actions.unlock} class={PRIMARY_BUTTON}
+                >Unlock Encryption Keys</button
+            >
+        </div>
+    {/if}
 
     <!-- What stands between this account and a new graph here, or a payment to fix. The Sync tab's
          account section carries the whole notice. -->
-    {#if server.showsPlanLine}
+    {#if server.showsPlanLine && server.shownPlanNotice === "upsell"}
+        <!-- Free: the offer every origin makes to a Free account. It also describes the disabled
+             New synced graph button, which points here. -->
+        <div id={planNoticeId} data-testid="graphs-plan-notice" data-kind="upsell">
+            <SyncPlusOffer pricingUrl={corporatePricingUrl} />
+        </div>
+    {:else if server.showsPlanLine}
         <div
             id={planNoticeId}
             data-testid="graphs-plan-notice"
@@ -270,9 +304,7 @@
                         href={corporateBillingUrl}
                         data-sveltekit-reload
                         class="font-medium underline underline-offset-2"
-                        >{server.shownPlanNotice === "ended"
-                            ? "Restart Sync+"
-                            : "See Sync+"}</a
+                        >Restart Sync+</a
                     >
                 {:else}
                     <button
@@ -378,15 +410,15 @@
     {#if server.authState === "signed-out"}
         <div
             data-testid="synced-graphs-signed-out"
-            class="rounded-xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-400/20 dark:bg-amber-400/10"
+            class="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-white/10 dark:bg-white/5"
         >
-            <p class="text-sm font-medium text-amber-900 dark:text-amber-100">
+            <p class="text-sm font-medium text-gray-900 dark:text-gray-100">
                 {managed
                     ? `You are signed out of ${server.host}.`
                     : `${server.host} did not accept this device's access token.`}
             </p>
             <p
-                class="mt-1 text-sm text-amber-900 dark:text-amber-100"
+                class="mt-1 text-sm text-gray-700 dark:text-gray-300"
                 data-testid="graphs-hidden"
             >
                 {managed
@@ -398,7 +430,7 @@
                     type="button"
                     data-testid="sync-sign-in"
                     onclick={actions.signIn}
-                    class="mt-3 rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-indigo-500"
+                    class="mt-3 rounded-lg bg-gray-900 px-3 py-1.5 text-sm font-semibold text-white hover:bg-gray-800 dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-gray-200"
                     >Sign in</button
                 >
             {:else}

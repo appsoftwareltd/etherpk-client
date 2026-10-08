@@ -27,7 +27,7 @@
         <p class="text-sm font-medium text-amber-900 dark:text-amber-100">{name}’s security key has changed</p>
         <p class="mt-1 text-sm text-amber-900 dark:text-amber-100">
             The key the server gives for {name} is not the one you checked before. They may have replaced their
-            keys, or someone may be trying to read what you share. Compare the new fingerprint below with theirs,
+            Encryption Keys, or someone may be trying to read what you share. Compare the new fingerprint below with theirs,
             in person or over a call you trust.
         </p>
     </div>

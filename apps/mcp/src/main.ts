@@ -83,8 +83,8 @@ const USAGE = `etherpk-mcp - EtherPK Headless Client (an MCP server over one syn
   ${CMD} login --sync-server <url> [--pat <token>] [--recovery-code]
       Sign this machine in as a device of your account. Prompts for a Personal Access
       Token (an account-wide one, from the Sync Server portal at <url>/account/tokens)
-      unless --pat or ETHERPK_PAT is given, then unlocks your keys by Device Approval:
-      open EtherPK in a browser connected to the account with its keys unlocked, approve
+      unless --pat or ETHERPK_PAT is given, then unlocks your Encryption Keys by Device Approval:
+      open EtherPK in a browser connected to the account with its Encryption Keys unlocked, approve
       there if it shows the same code, then press y. Press r while waiting, or pass
       --recovery-code, to type your Recovery Code instead (or ETHERPK_RECOVERY_CODE, for a
       scripted setup).
@@ -103,7 +103,7 @@ const USAGE = `etherpk-mcp - EtherPK Headless Client (an MCP server over one syn
       The folder must already be a graph (open it in EtherPK once) - its index is kept under
       the cache directory, never in the folder.
   ${CMD} logout [--sync-server <url> | --all]
-      Forget that server's token, keys and cached graphs on this machine.
+      Forget that server's token, Encryption Keys and cached graphs on this machine.
   ${CMD} semantic setup
       Let the agent search by meaning. Installs a ~300 MB native runtime (onnxruntime-node,
       with your npm) and downloads a 23 MB embedding model into the cache directory, once
@@ -222,7 +222,7 @@ async function login(args: { 'sync-server'?: string; pat?: string; 'recovery-cod
     const vaultKey = args['recovery-code'] ? await byRecoveryCode() : await approveOrFallBack(account, byRecoveryCode)
     config.servers[syncServer] = { pat, vaultKey: toBase64Url(vaultKey) }
     await writeConfig(path, config)
-    console.log(`Keys unlocked and cached in ${path} (owner-only). Anyone who can read your files on this machine can read this account, as with a signed-in browser.`)
+    console.log(`Encryption Keys unlocked and cached in ${path} (owner-only). Anyone who can read your files on this machine can read this account, as with a signed-in browser.`)
     const others = Object.keys(config.servers).filter((server) => server !== syncServer)
     if (others.length > 0) console.log(`Also logged in to ${others.join(', ')} - commands now need --sync-server <url> to say which.`)
 
@@ -346,14 +346,14 @@ async function openVaultFor(account: HeadlessAccount, login: ServerCredentials &
         return await openAccountVault(account.api, fromBase64Url(login.vaultKey))
     } catch (error) {
         if (error instanceof EnvelopeError) {
-            fail(`Your keys on ${login.syncServer} were replaced or reset on another device, so the key saved on this computer no longer opens them. Run: ${CMD} login --sync-server ${login.syncServer}`)
+            fail(`Your Encryption Keys on ${login.syncServer} were replaced or reset on another device, so the key saved on this computer no longer opens them. Run: ${CMD} login --sync-server ${login.syncServer}`)
         }
         throw error
     }
 }
 
 async function listGraphs(login: ServerCredentials, several: boolean): Promise<void> {
-    if (!login.vaultKey) fail(`Keys are not unlocked on this machine for ${login.syncServer}. Run: ${CMD} login --sync-server ${login.syncServer}`)
+    if (!login.vaultKey) fail(`Encryption Keys are not unlocked on this machine for ${login.syncServer}. Run: ${CMD} login --sync-server ${login.syncServer}`)
     const account = await connectAccount(login)
     const vault = await openVaultFor(account, { ...login, vaultKey: login.vaultKey })
     const graphs = await account.api.listGraphs()
@@ -538,7 +538,7 @@ async function openFolderForServe(folder: string, args: ServeArgs): Promise<{ gr
 
 async function openSyncedForServe(wanted: string, args: ServeArgs): Promise<{ graph: HeadlessGraph; graphName: string }> {
     const login = requireServer(await loadConfig(defaultConfigPath()), args['sync-server'])
-    if (!login.vaultKey) fail(`Keys are not unlocked on this machine for ${login.syncServer}. Run: ${CMD} login --sync-server ${login.syncServer}`)
+    if (!login.vaultKey) fail(`Encryption Keys are not unlocked on this machine for ${login.syncServer}. Run: ${CMD} login --sync-server ${login.syncServer}`)
     const account = await connectAccount(login)
     const vault = await openVaultFor(account, { ...login, vaultKey: login.vaultKey })
     const graphs = await account.api.listGraphs()
@@ -695,7 +695,7 @@ async function logout(args: { 'sync-server'?: string; all?: boolean }): Promise<
     } else {
         await writeConfig(path, config)
     }
-    console.log(`Forgot the token, keys and cached graphs for ${login.syncServer}. Revoke the Personal Access Token in its portal too if this machine is not yours to keep.`)
+    console.log(`Forgot the token, Encryption Keys and cached graphs for ${login.syncServer}. Revoke the Personal Access Token in its portal too if this machine is not yours to keep.`)
 }
 
 async function main(): Promise<void> {

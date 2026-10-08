@@ -1,17 +1,18 @@
 <script lang="ts">
     /**
      * Prompt to unlock the vault on this device. Two routes:
-     * - Approve from another device (ADR 0125): once an unlocked device answers, both screens show
-     *   the same code. The user approves there AND confirms the match here; only then is the vault
-     *   key that arrived used. The confirmation here is what catches a server that plays the
-     *   approving device itself. The Recovery Code stays in the drawer.
-     * - Enter the Recovery Code: the recovery route, and the only one on a first device.
+     * - Approve from another device (ADR 0125), the everyday route, so the dialog starts it as it
+     *   opens: once an unlocked device answers, both screens show the same code. The user approves
+     *   there AND confirms the match here; only then is the vault key that arrived used. The
+     *   confirmation here is what catches a server that plays the approving device itself.
+     * - Enter the Recovery Code: the recovery route, one step away beneath the wait, and where the
+     *   dialog falls back to when an approval cannot start (no connection, or the server refused).
      * Used before any action that needs decrypted keys (opening a synced graph, invites…).
      *
      * Keys belong to one Sync Server's account (ADR 0111): the dialog unlocks the keys of the server
      * it is given, and says which, because a Recovery Code from another server cannot open them.
      */
-    import { onDestroy, tick } from "svelte";
+    import { onDestroy, onMount, tick } from "svelte";
     import {
         beginDeviceApproval,
         createSyncApiFor,
@@ -65,8 +66,14 @@
     let pollTimer: ReturnType<typeof setInterval> | undefined;
     /** A poll in flight. Overlapping polls could claim the one-shot reply twice. */
     let polling = false;
+    /**
+     * Counts approval attempts, so a request that arrives after the user moved on (to the Recovery
+     * Code, or by closing) is cancelled rather than taking the dialog back to the wait.
+     */
+    let approvalAttempt = 0;
 
     function stopApproval(cancelServerSide: boolean) {
+        approvalAttempt++;
         if (pollTimer) clearInterval(pollTimer);
         pollTimer = undefined;
         if (cancelServerSide && approval && api) void rejectDeviceApproval(api, approval.id).catch(() => {});
@@ -89,13 +96,19 @@
         // disabled state, and a second call used to overwrite `pollTimer` while the first
         // interval kept running against an approval nothing would ever reject.
         if (!api || approval || startingApproval) return;
+        const attempt = ++approvalAttempt;
         startingApproval = true;
         error = null;
         approvalError = null;
         try {
-            approval = await beginDeviceApproval(api);
+            const started = await beginDeviceApproval(api);
+            if (attempt !== approvalAttempt) {
+                void rejectDeviceApproval(api, started.id).catch(() => {});
+                return;
+            }
+            approval = started;
         } catch (e) {
-            approvalError = describeSyncFailure(e, "start the approval");
+            if (attempt === approvalAttempt) approvalError = describeSyncFailure(e, "start the approval");
             return;
         } finally {
             startingApproval = false;
@@ -148,10 +161,16 @@
             "The codes did not match, so the request was cancelled. Something between your devices may have interfered. Start again, or enter your Recovery Code.";
     }
 
-    function cancelApproval() {
+    /** No other device unlocked: leave the wait for the Recovery Code field, ready to type into. */
+    async function useRecoveryCode() {
         stopApproval(true);
+        startingApproval = false;
+        await tick();
+        codeInput?.focus();
     }
 
+    // Device Approval is the everyday route (CONTEXT.md), so it starts as the dialog opens.
+    onMount(() => void startApproval());
     onDestroy(() => stopApproval(true));
 
     function close() {
@@ -163,7 +182,7 @@
     async function submit() {
         // Enter reaches this from the field as well as the button, so re-entry is guarded here
         // rather than relying on the button's disabled attribute alone.
-        if (busy || approval) return;
+        if (busy || approval || startingApproval) return;
         error = null;
         if (!code.trim()) {
             error = "Enter your Recovery Code.";
@@ -183,7 +202,7 @@
         } catch (e) {
             // A wrong code says it is wrong; a server that could not be reached says that instead.
             // What was typed stays in the field, so one wrong character is one fix away.
-            error = describeSyncFailure(e, "unlock your keys");
+            error = describeSyncFailure(e, "unlock your Encryption Keys");
             busy = false;
             await tick();
             codeInput?.focus();
@@ -193,12 +212,12 @@
     }
 </script>
 
-<Modal {open} title={`Unlock your keys on ${host}`} busy={busy} busyReason="Unlocking…" onclose={close} onsubmit={submit}>
+<Modal {open} title={`Unlock your Encryption Keys on ${host}`} busy={busy} busyReason="Unlocking…" onclose={close} onsubmit={submit}>
     {#snippet body()}
-        {#if approval}
+        {#if approval || startingApproval}
             {#if !approvalCode}
                 <p class="text-sm text-gray-600 dark:text-gray-400">
-                    On a device where your keys are already unlocked, an approval prompt will appear.
+                    On a device where your Encryption Keys are already unlocked, an approval prompt will appear.
                     This device then shows a code to compare with it.
                 </p>
                 <!-- The wait, and its outcome, are the only things happening here; a screen reader
@@ -224,10 +243,20 @@
             <p class="text-sm text-gray-500 dark:text-gray-400" data-testid="approval-expiry">
                 If nobody approves it within 10 minutes, the request expires and you can start again.
             </p>
+            <p class="text-sm text-gray-600 dark:text-gray-400">
+                No other device unlocked?
+                <button
+                    type="button"
+                    data-testid="unlock-use-recovery-code"
+                    onclick={useRecoveryCode}
+                    class="font-medium text-gray-950 underline underline-offset-2 hover:no-underline dark:text-gray-100"
+                    >Use your Recovery Code</button
+                >
+            </p>
         {:else}
             <p class="text-sm text-gray-600 dark:text-gray-400">
                 Enter the Recovery Code you saved for <span class="font-medium text-gray-950 dark:text-gray-100">{host}</span>
-                to unlock your encryption keys on this device. A code for another Sync Server does not
+                to unlock your Encryption Keys on this device. A code for another Sync Server does not
                 open them. It never leaves your browser and the sync server never sees it.
             </p>
             <div>
@@ -267,13 +296,13 @@
                 <summary class="cursor-pointer font-medium text-gray-950 dark:text-gray-100">Lost your Recovery Code?</summary>
                 <div class="mt-1.5 space-y-1.5">
                     <p>
-                        If another of your devices still has its keys unlocked, approve this one from
+                        If another of your devices still has its Encryption Keys unlocked, approve this one from
                         it, then make a new code there with <strong>Regenerate Recovery Code</strong>.
                         Nothing is lost.
                     </p>
                     <p>
                         With no unlocked device, nothing can decrypt your notes.
-                        <strong>Reset encryption keys</strong>, in Sync settings, starts over: it deletes
+                        <strong>Reset Encryption Keys</strong>, in Sync settings, starts over: it deletes
                         every graph you own, after offering to hand shared ones to a player.
                     </p>
                     <a
@@ -288,8 +317,8 @@
     {/snippet}
 
     {#snippet footer()}
-        {#if approval}
-            <button type="button" onclick={cancelApproval} data-testid="approval-cancel" class="rounded-lg px-3 py-1.5 text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300">Use my Recovery Code instead</button>
+        {#if approval || startingApproval}
+            <button type="button" onclick={close} class="rounded-lg px-3 py-1.5 text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300">Cancel</button>
             {#if approvalCode}
                 <button
                     type="button"

@@ -83,7 +83,7 @@ You need Node.js 24 or later and pnpm - `corepack enable` provides the pnpm vers
 
 ```bash
 pnpm install --frozen-lockfile
-pnpm dev          # the Client on http://localhost:5174
+pnpm dev          # the Client on http://localhost:5173
 pnpm check        # type check
 pnpm lint
 pnpm test         # Vitest unit suites

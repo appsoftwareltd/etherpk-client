@@ -6,7 +6,7 @@
         COMMUNITY_DISCORD_URL,
         PUBLIC_BLOG_URL,
     } from "../deployment-navigation";
-    import TypedWord from "./TypedWord.svelte";
+    import MarketingHeadline from "./MarketingHeadline.svelte";
 
     /**
      * The public landing page, served by Corporate (www) and by the Client (app) so the two
@@ -96,7 +96,7 @@
             ? [
                   {
                       id: "pricing",
-                      label: "See pricing",
+                      label: "Sync+ Pricing",
                       href: pricingHref,
                       icon: "pricing" as const,
                   },
@@ -106,21 +106,6 @@
 
     /** The synced choice beside a folder graph: Sync+, or a self-hosted Client's own server. */
     const syncOption = $derived(managed ? "Sync+" : "your Sync Server");
-
-    // The headline's last word, typed over by each of the others in turn and then restored. Each
-    // must fit on one line of the headline on a phone.
-    const headlineWords = [
-        "Everything",
-        "Notes",
-        "Journalling",
-        "Docs",
-        "Blogging",
-        "Your Agents",
-        "Desktop",
-        "Mobile",
-        "Tasks",
-        "Kanban Boards",
-    ];
 
     /** Where EtherPK runs and how it keeps notes, as short labels beneath the hero's tagline. */
     const highlights = [
@@ -693,18 +678,7 @@
 <!-- ── Hero ───────────────────────────────────────────────────────── -->
 <section aria-labelledby="hero-heading">
     <div class="mx-auto max-w-7xl px-4 pt-16 text-center sm:px-6 sm:pt-24">
-        <p
-            class="text-sm font-semibold uppercase tracking-[0.2em] text-gray-950 dark:text-white"
-        >
-            Ether Personal Knowledge
-        </p>
-        <h1
-            id="hero-heading"
-            class="mx-auto mt-5 max-w-4xl text-balance text-4xl font-semibold leading-[1.1] tracking-tight text-gray-950 sm:text-6xl dark:text-white"
-        >
-            One Markdown PKMS For
-            <TypedWord words={headlineWords} testId="marketing-headline-word" />
-        </h1>
+        <MarketingHeadline id="hero-heading" />
         <p
             class="mx-auto mt-5 max-w-3xl text-balance text-xl font-medium leading-8 text-gray-800 sm:text-2xl sm:leading-9 dark:text-gray-100"
         >
@@ -1061,6 +1035,8 @@
                 >Open the app</a
             >
         </article>
+        <!-- The Sync+ and Sync Server cards are dark in both themes. dark:bg-white keeps their
+             bullets white: each app.css repaints a plain bg-white as the page surface in the dark theme. -->
         {#if managed}
             <article
                 class="flex flex-col rounded-3xl border border-gray-950 bg-gray-950 p-8 text-white shadow-xl dark:border-white/10"
@@ -1085,25 +1061,25 @@
                 >
                     <li class="flex items-start gap-3">
                         <span
-                            class="mt-2.5 h-1.5 w-1.5 shrink-0 rounded-full bg-white"
+                            class="mt-2.5 h-1.5 w-1.5 shrink-0 rounded-full bg-white dark:bg-white"
                             aria-hidden="true"
                         ></span>Works on phones, Safari and Firefox too
                     </li>
                     <li class="flex items-start gap-3">
                         <span
-                            class="mt-2.5 h-1.5 w-1.5 shrink-0 rounded-full bg-white"
+                            class="mt-2.5 h-1.5 w-1.5 shrink-0 rounded-full bg-white dark:bg-white"
                             aria-hidden="true"
                         ></span>Share a graph and edit it together, live
                     </li>
                     <li class="flex items-start gap-3">
                         <span
-                            class="mt-2.5 h-1.5 w-1.5 shrink-0 rounded-full bg-white"
+                            class="mt-2.5 h-1.5 w-1.5 shrink-0 rounded-full bg-white dark:bg-white"
                             aria-hidden="true"
                         ></span>Managed storage for images and files
                     </li>
                     <li class="flex items-start gap-3">
                         <span
-                            class="mt-2.5 h-1.5 w-1.5 shrink-0 rounded-full bg-white"
+                            class="mt-2.5 h-1.5 w-1.5 shrink-0 rounded-full bg-white dark:bg-white"
                             aria-hidden="true"
                         ></span>One flat monthly price, with a free trial
                     </li>
@@ -1112,7 +1088,7 @@
                     <a
                         href={pricingHref}
                         class="mt-6 inline-flex h-11 items-center justify-center rounded-xl bg-white px-5 text-sm font-semibold text-gray-950 transition-colors hover:bg-gray-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
-                        >See Sync+ pricing</a
+                        >Sync+ Pricing</a
                     >
                 {/if}
             </article>
@@ -1140,19 +1116,19 @@
                 >
                     <li class="flex items-start gap-3">
                         <span
-                            class="mt-2.5 h-1.5 w-1.5 shrink-0 rounded-full bg-white"
+                            class="mt-2.5 h-1.5 w-1.5 shrink-0 rounded-full bg-white dark:bg-white"
                             aria-hidden="true"
                         ></span>Works on phones, Safari and Firefox too
                     </li>
                     <li class="flex items-start gap-3">
                         <span
-                            class="mt-2.5 h-1.5 w-1.5 shrink-0 rounded-full bg-white"
+                            class="mt-2.5 h-1.5 w-1.5 shrink-0 rounded-full bg-white dark:bg-white"
                             aria-hidden="true"
                         ></span>Share a graph and edit it together, live
                     </li>
                     <li class="flex items-start gap-3">
                         <span
-                            class="mt-2.5 h-1.5 w-1.5 shrink-0 rounded-full bg-white"
+                            class="mt-2.5 h-1.5 w-1.5 shrink-0 rounded-full bg-white dark:bg-white"
                             aria-hidden="true"
                         ></span>An account on the server, and an access token
                         for each device

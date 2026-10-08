@@ -34,7 +34,7 @@ export interface AccountIdentityCheck {
  */
 export class ForeignIdentityError extends Error {
     constructor() {
-        super('The Sync Server publishes a security key for this account that does not match your keys, and refused to replace it.')
+        super('The Sync Server publishes a security key for this account that does not match your Encryption Keys, and refused to replace it.')
         this.name = 'ForeignIdentityError'
     }
 }

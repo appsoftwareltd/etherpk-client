@@ -296,7 +296,7 @@
 {:else if phase === 'needs-unlock'}
     <div class="notice" data-testid="graph-needs-unlock">
         <h2>Unlock your notes</h2>
-        <p>Enter your Recovery Code to unlock the encryption keys on this device.</p>
+        <p>Approve this device from another device that is unlocked, or use your Recovery Code, to unlock your Encryption Keys here.</p>
         {@render shareWaits()}
     </div>
 {:else if phase === 'access-lost' && accessLost}

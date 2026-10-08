@@ -60,7 +60,7 @@ export async function connectAccount(config: Pick<ServerCredentials, 'syncServer
 export async function openAccountVault(api: SyncApi, vaultKey: Uint8Array): Promise<KeyVault> {
     const stored = await api.getVault()
     if (!stored) {
-        throw new Error('This account has no encryption keys yet. Open EtherPK, create or accept a synced graph, and save the Recovery Code first.')
+        throw new Error('This account has no Encryption Keys yet. Open EtherPK, create or accept a synced graph, and save the Recovery Code first.')
     }
     return (await openVault(fromBase64Url(stored.vault), vaultKey)).vault
 }
