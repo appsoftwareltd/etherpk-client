@@ -9,12 +9,17 @@
  * 0072). A Filesystem Backend graph is a folder, and its `AGENTS.md` is the whole integration,
  * so the tab explains that file and where the folder is; a synced graph has no folder, so the
  * agent runs the Headless Client on its own machine and the tab shows the two commands that set
- * it up, with this graph's id filled in. Nothing here is secret and nothing here is a setting:
- * the Personal Access Token is minted at the Sync Server portal, never shown here.
+ * it up, with this graph's id filled in. Nothing here is a setting. The one secret is a setup
+ * code the person asks for (ADR 0132): it works once, for ten minutes, and the login command
+ * carries it, so no long-lived token is ever made or shown for an agent.
  *
  * Every command runs the package spec in `headlessClient` (`headlessClientPackage`), which the
  * workspace pins to this Client's release on a self-hosted Client.
  */
+
+// The package and the login spelling are shared with the Sync Server's Access tokens page, which
+// prints the same command (headless-client-command.ts in the shared package).
+import { headlessClientLoginCommand } from '@appsoftwareltd/etherpk-shared'
 
 export type AgentsTabProps =
     | {
@@ -25,6 +30,14 @@ export type AgentsTabProps =
           serverBaseUrl: string
           /** What the commands run with `npx`: `headlessClientPackage`. */
           headlessClient: string
+          /**
+           * Ask the Sync Server for a one-time setup code over this graph's managed connection.
+           * Rejects with a `SyncApiError` (a 404 from a server that predates setup codes). Null on
+           * a custom server: this device holds only an access token for it, and a token may not
+           * make a setup code (ADR 0132), so the tab sends the person to the server's own
+           * Access tokens page, which makes one for a signed-in session.
+           */
+          createSetupCode: (() => Promise<{ code: string; expiresAt: string }>) | null
       }
     | {
           kind: 'local'
@@ -36,18 +49,7 @@ export type AgentsTabProps =
           headlessClient: string
       }
 
-/** The npm package the commands invoke. One place, so the docs and the tab cannot disagree. */
-export const HEADLESS_CLIENT_PACKAGE = '@appsoftwareltd/etherpk-mcp'
-
-/**
- * The package spec the commands run: `version` pinned, or the bare name, which npm resolves to
- * its latest release. The Client, the Sync Server and the Headless Client of one release share a
- * version, so pinning to the Client's own keeps an agent on the Headless Client that was released
- * with the server the operator runs, whatever npm has published since.
- */
-export function headlessClientPackage(version: string | null): string {
-    return version ? `${HEADLESS_CLIENT_PACKAGE}@${version}` : HEADLESS_CLIENT_PACKAGE
-}
+export { HEADLESS_CLIENT_PACKAGE, headlessClientPackage } from '@appsoftwareltd/etherpk-shared'
 
 export type AgentTool = 'claude' | 'codex' | 'cursor' | 'other'
 
@@ -58,9 +60,12 @@ export const AGENT_TOOLS: ReadonlyArray<{ id: AgentTool; label: string }> = [
     { id: 'other', label: 'Other' },
 ]
 
-/** The one-time sign-in on the agent's machine. */
-export function loginCommand(serverBaseUrl: string, headlessClient: string): string {
-    return `npx ${headlessClient} login --sync-server ${serverBaseUrl}`
+/**
+ * The one-time sign-in on the agent's machine. With a setup code from the tab (ADR 0132) it is the
+ * whole sign-in; without one, `login` asks for an access token from the portal instead.
+ */
+export function loginCommand(serverBaseUrl: string, headlessClient: string, setupCode?: string): string {
+    return headlessClientLoginCommand(serverBaseUrl, headlessClient, setupCode)
 }
 
 /**

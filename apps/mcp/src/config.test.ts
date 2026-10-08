@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, stat } from 'node:fs/promises'
+import { mkdtemp, readdir, readFile, rm, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -23,6 +23,9 @@ const two: HeadlessConfig = {
     },
 }
 
+/** A login whose secrets are in the system keychain: the file names only the server. */
+const inKeychain: HeadlessConfig = { servers: { 'https://sync.example.com': { keychain: true } } }
+
 describe('the config file', () => {
     it('lives under the user config directory unless overridden', () => {
         expect(defaultConfigPath({ HOME: '/home/x' } as NodeJS.ProcessEnv).endsWith('/etherpk/mcp.json')).toBe(true)
@@ -35,10 +38,18 @@ describe('the config file', () => {
         expect(parseConfig('{"servers":{"https://s/":{"pat":"p","vaultKey":""}}}')).toEqual({ servers: { 'https://s': { pat: 'p' } } })
     })
 
+    it('round-trips a login kept in the keychain, which holds no secret in the file', () => {
+        const text = serialiseConfig(inKeychain)
+        expect(parseConfig(text)).toEqual(inKeychain)
+        expect(text).not.toContain('pat')
+        expect(text).not.toContain('vaultKey')
+    })
+
     it('refuses a file it cannot trust rather than half-reading it', () => {
         expect(parseConfig('not json')).toBeNull()
         expect(parseConfig('[]')).toBeNull()
         expect(parseConfig('{"servers":{"https://s":{}}}')).toBeNull()
+        expect(parseConfig('{"servers":{"https://s":{"keychain":"yes"}}}')).toBeNull()
         expect(parseConfig('{"servers":{"ftp://s":{"pat":"p"}}}')).toBeNull()
         expect(parseConfig('{"servers":[]}')).toBeNull()
     })
@@ -51,18 +62,45 @@ describe('the config file', () => {
         expect(await readConfig(path)).toEqual(two)
         expect(await readFile(path, 'utf8')).toContain('"vaultKey"')
     })
+
+    it('is replaced whole, so it is never found part written, and leaves nothing beside it', async () => {
+        const dir = await scratch()
+        const path = join(dir, 'mcp.json')
+        // Large enough that writing it in place takes more than one step.
+        const many = (tag: string): HeadlessConfig => ({
+            servers: Object.fromEntries(
+                Array.from({ length: 200 }, (_, n) => [`https://sync${n}.${tag}.example`, { pat: `pat_${tag}_${n}`, vaultKey: `key_${tag}_${n}` }]),
+            ),
+        })
+        const [a, b] = [many('a'), many('b')]
+        await writeConfig(path, a)
+        let writing = true
+        const reads: Array<HeadlessConfig | null> = []
+        const reader = (async () => {
+            while (writing) reads.push(await readConfig(path))
+        })()
+        for (let n = 0; n < 50; n++) await writeConfig(path, n % 2 === 0 ? b : a)
+        writing = false
+        await reader
+        expect(reads.length).toBeGreaterThan(0)
+        for (const read of reads) expect([a, b]).toContainEqual(read)
+        expect(await readdir(dir)).toEqual(['mcp.json'])
+        expect((await stat(path)).mode & 0o777).toBe(0o600)
+    })
 })
 
 describe('choosing the server a command means', () => {
     it('is the only login when there is one and none is named', () => {
         const one: HeadlessConfig = { servers: { 'https://sync.example.com': { pat: 'p', vaultKey: 'k' } } }
-        expect(selectServer(one)).toEqual({ ok: true, credentials: { syncServer: 'https://sync.example.com', pat: 'p', vaultKey: 'k' } })
+        expect(selectServer(one)).toEqual({ ok: true, syncServer: 'https://sync.example.com', stored: { pat: 'p', vaultKey: 'k' } })
+        expect(selectServer(inKeychain)).toEqual({ ok: true, syncServer: 'https://sync.example.com', stored: { keychain: true } })
     })
 
     it('is the named login, however the name is spelled at the end', () => {
         expect(selectServer(two, 'https://sync.private.example/')).toEqual({
             ok: true,
-            credentials: { syncServer: 'https://sync.private.example', pat: 'pat_b' },
+            syncServer: 'https://sync.private.example',
+            stored: { pat: 'pat_b' },
         })
     })
 

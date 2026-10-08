@@ -14,10 +14,12 @@ import {
 } from './agents-tab'
 
 const LATEST = HEADLESS_CLIENT_PACKAGE
+const noSetupCode = () => Promise.reject(new Error('not asked for in these tests'))
 
 describe('the Agents tab commands', () => {
     it('spell login for the connected server and serve for this graph', () => {
         expect(loginCommand('https://sync.example.test', LATEST)).toBe('npx @appsoftwareltd/etherpk-mcp login --sync-server https://sync.example.test')
+        expect(loginCommand('https://sync.example.test', LATEST, 'epk_setup_abc')).toBe('npx @appsoftwareltd/etherpk-mcp login --sync-server https://sync.example.test --code epk_setup_abc')
         expect(registerCommand('claude', 'g-1', 'https://sync.example.test/', LATEST)).toBe('claude mcp add etherpk -- npx @appsoftwareltd/etherpk-mcp serve --sync-server https://sync.example.test --graph g-1')
         expect(registerCommand('codex', 'g-1', 'https://sync.example.test', LATEST)).toBe('codex mcp add etherpk -- npx @appsoftwareltd/etherpk-mcp serve --sync-server https://sync.example.test --graph g-1')
     })
@@ -67,7 +69,7 @@ describe('a pinned Headless Client', () => {
         expect(registerFolderCommand('codex', '/n', pinned)).toBe('codex mcp add etherpk -- npx @appsoftwareltd/etherpk-mcp@0.8.1 serve --folder /n')
         expect(semanticSetupCommand(pinned)).toBe('npx @appsoftwareltd/etherpk-mcp@0.8.1 semantic setup')
         expect(diagramsSetupCommand(pinned)).toBe('npx @appsoftwareltd/etherpk-mcp@0.8.1 diagrams setup')
-        expect(publishCommand({ kind: 'synced', graphId: 'g-1', serverBaseUrl: 'https://s', headlessClient: pinned }))
+        expect(publishCommand({ kind: 'synced', graphId: 'g-1', serverBaseUrl: 'https://s', headlessClient: pinned, createSetupCode: noSetupCode }))
             .toBe('npx @appsoftwareltd/etherpk-mcp@0.8.1 publish --sync-server https://s --graph g-1 --publication <publication> --out <folder>')
     })
 })
@@ -76,7 +78,7 @@ describe('the optional setups and the publish command', () => {
     it('spell the setups once per computer and the publish command for this graph', () => {
         expect(semanticSetupCommand(LATEST)).toBe('npx @appsoftwareltd/etherpk-mcp semantic setup')
         expect(diagramsSetupCommand(LATEST)).toBe('npx @appsoftwareltd/etherpk-mcp diagrams setup')
-        expect(publishCommand({ kind: 'synced', graphId: 'g-1', serverBaseUrl: 'https://sync.example.com/', headlessClient: LATEST })).toBe(
+        expect(publishCommand({ kind: 'synced', graphId: 'g-1', serverBaseUrl: 'https://sync.example.com/', headlessClient: LATEST, createSetupCode: noSetupCode })).toBe(
             'npx @appsoftwareltd/etherpk-mcp publish --sync-server https://sync.example.com --graph g-1 --publication <publication> --out <folder>',
         )
         expect(publishCommand({ kind: 'local', folderName: 'Notes', folderPath: '/home/me/My Notes', headlessClient: LATEST })).toBe(

@@ -2411,6 +2411,11 @@
     // The deep-link + seed step runs on the FIRST mount only; a presenter swap
     // carries live state and keeps its current Visit.
     let seeded = false;
+    // Settings asked for before that seed, opened just after it (openGraphSettings).
+    let settingsAskedBeforeSeed: {
+        tab?: SettingsTab;
+        options: { publishReport?: string };
+    } | null = null;
 
     // Debounced layout persistence. Fed by the controller's onChange (open/close/
     // focus/collapse) and the dockview renderer's onGeometryChange (drag/resize),
@@ -3013,7 +3018,15 @@
                 ? syncConnectionFor(graphServerOrigin)
                 : primarySyncConnection();
             if (!connection) return null;
-            return { kind: "synced", graphId, serverBaseUrl: connection.serverBaseUrl, headlessClient };
+            return {
+                kind: "synced",
+                graphId,
+                serverBaseUrl: connection.serverBaseUrl,
+                headlessClient,
+                // The managed sign-in makes the code. A custom server's access token may not
+                // (ADR 0132), so its tab points at the server's Access tokens page instead.
+                createSetupCode: connection.kind === "managed" ? () => syncApiFor(connection).createAgentSetupCode() : null,
+            };
         }
         return {
             kind: "local",
@@ -4430,7 +4443,12 @@
             navEngine?.seed();
             adoptSettingsFromUrl();
             seeded = true;
-            focusInitialDocument();
+            // Settings asked for while the Layout was mounting opens now, on an entry after the
+            // seeded one, and takes focus in place of the document.
+            const asked = settingsAskedBeforeSeed;
+            settingsAskedBeforeSeed = null;
+            if (asked) openGraphSettings(asked.tab, asked.options);
+            else focusInitialDocument();
         } else {
             suppressNav = false;
         }
@@ -4508,6 +4526,8 @@
         shareWaiting = peekPendingShare()?.graphId === graphId;
         shareLanded = false;
         revealQuickNotesOnMount = false;
+        // A Settings request held by an open that failed is not carried into this one.
+        settingsAskedBeforeSeed = null;
         try {
             if (!(await openGraph(attempt))) {
                 attempt.discard();
@@ -5288,6 +5308,14 @@
      * if the tab is not offered (a Filesystem graph has no Mirror tab) and says so.
      */
     function openGraphSettings(tab?: SettingsTab, options: { publishReport?: string } = {}) {
+        // The toolbar shows before the first Layout has mounted, and seed() then writes the first
+        // Visit's address by replacing the history entry in front. An entry pushed for Settings
+        // before that is the one it replaces, which closes Settings as it opens, so a request
+        // that early is held and opened just after the seed (mountPresenter).
+        if (!seeded) {
+            settingsAskedBeforeSeed = { tab, options };
+            return;
+        }
         const target = tab ?? readSettingsTab(graphId) ?? "general";
         if (page.state.etherpkSettings) {
             // Open already: the Publish tab is mounted and read its report request once, so a

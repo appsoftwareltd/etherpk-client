@@ -336,12 +336,16 @@ export function createSyncApi(deps: SyncApiDeps) {
                 method: 'POST',
                 body: JSON.stringify({ newOwnerUserId }),
             }),
+        /** A one-time code the Headless Client's `login` trades for an agent token (ADR 0132). */
+        createAgentSetupCode: () =>
+            call<{ code: string; expiresAt: string }>('/api/v1/sync/agent-setup-codes', { method: 'POST' }),
         resetPreview: () =>
             call<{ graphs: Array<{ graphId: string; otherMembers: Array<{ userId: string; email: string; role: string }>; solo: boolean }> }>(
                 '/api/v1/sync/reset',
             ).then((r) => r.graphs),
+        // `agentTokensRevoked` is absent from a server older than agent tokens.
         resetAccount: () =>
-            call<{ ownedGraphsDeleted: number; membershipsDropped: number; hadVault: boolean }>('/api/v1/sync/reset', {
+            call<{ ownedGraphsDeleted: number; membershipsDropped: number; hadVault: boolean; agentTokensRevoked?: number }>('/api/v1/sync/reset', {
                 method: 'POST',
             }),
         // Device approval (ADR 0125) — the server brokers blind: a commitment, two one-time

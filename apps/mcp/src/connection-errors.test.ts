@@ -16,9 +16,9 @@ describe('describeConnectionFailure', () => {
         )
     })
 
-    it('says a refused token was refused, and where to make a new one', () => {
+    it('says a refused token was refused, and how to sign in again', () => {
         expect(describeConnectionFailure(new SyncApiError('Unauthorized', 401), SERVER)).toBe(
-            'https://sync.example.com did not accept the access token: it may be revoked, expired or mistyped. Create one at https://sync.example.com/account/tokens and run login again.',
+            'https://sync.example.com did not accept the token: it may have been revoked, mistyped, or left unused for 30 days. Make a setup code in EtherPK (a synced graph\'s Settings > Agents) and run login again.',
         )
     })
 

@@ -76,6 +76,9 @@ const REFUSAL_COPY: Record<string, string> = {
     // Key Replacement (ADR 0128).
     new_identity_signature_refused: 'The Sync Server did not accept the signature made with your new Encryption Keys. Nothing changed. Try again.',
     identity_unchanged: 'The new Encryption Keys matched the old ones, so the Sync Server refused them. Nothing changed. Try again.',
+    // Agent tokens and Account Reset (ADR 0132, ADR 0133).
+    agent_token_refused: 'This device is using an agent token, which only the Headless Client can use. Add an access token from the Sync Server portal in Sync settings instead.',
+    reset_needs_recent_sign_in: 'An access token cannot reset Encryption Keys. Reset them from the Sync Server portal, where you sign in again first.',
 }
 
 function isQuotaCode(code: string | undefined): code is QuotaErrorCode {

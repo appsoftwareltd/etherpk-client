@@ -24,7 +24,8 @@ export function describeConnectionFailure(error: unknown, syncServer: string): s
             return `${syncServer} is not a Sync Server (it may be the EtherPK app). Use the Sync Server address shown in EtherPK under a synced graph's Settings > Agents.`
         }
         if (error.status === 401) {
-            return `${syncServer} did not accept the access token: it may be revoked, expired or mistyped. Create one at ${syncServer}/account/tokens and run login again.`
+            // An agent token also stops working after 30 days unused (ADR 0132).
+            return `${syncServer} did not accept the token: it may have been revoked, mistyped, or left unused for 30 days. Make a setup code in EtherPK (a synced graph's Settings > Agents) and run login again.`
         }
         return null
     }

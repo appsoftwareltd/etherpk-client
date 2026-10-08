@@ -1,10 +1,12 @@
 /**
  * `etherpk-mcp`: the [[Headless Client]]'s command line (ADR 0072).
  *
- *   etherpk-mcp login  --sync-server <url> [--pat <token>] [--recovery-code]
+ *   etherpk-mcp login  --sync-server <url> [--code <setup code> | --pat <token>] [--recovery-code]
  *   etherpk-mcp graphs [--sync-server <url>]
  *   etherpk-mcp serve  --graph <id or name> [--sync-server <url>] [--no-semantic]
  *   etherpk-mcp serve  --folder <path> [--no-semantic]
+ *   etherpk-mcp running
+ *   etherpk-mcp stop   [--graph <id or name> [--sync-server <url>] | --folder <path> | --all]
  *   etherpk-mcp logout [--sync-server <url> | --all]
  *   etherpk-mcp semantic setup | status | remove
  *   etherpk-mcp publish (--graph <id or name> | --folder <path>) --publication <id> [--out <dir>]
@@ -15,15 +17,21 @@
  *
  * `serve` speaks MCP over stdio, so everything for the human goes to stderr; stdout belongs
  * to the agent. `login` and `graphs` are interactive and print to stdout.
+ *
+ * A graph is served on a computer by one background process, the graph's host, however many
+ * agents use it (ADR 0072, amended 2026-10-08). `serve` relays its agent's session to the host and
+ * starts the host when none is running; `host` is the command it starts, not one for people.
  */
 
 import { createInterface } from 'node:readline/promises'
 import { hostname } from 'node:os'
-import { basename, resolve } from 'node:path'
+import { basename, dirname, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 import { unlink } from 'node:fs/promises'
 
+import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
+import { accessTokenKind, looksLikeAgentSetupCode } from '@appsoftwareltd/etherpk-shared'
 
 // Inlined by Vite at build time, so the bundle carries the version and needs no file at runtime.
 import pkg from '../package.json'
@@ -33,6 +41,7 @@ import { createGraphNamePublisher } from '$lib/sync/graph-name-envelope'
 import { readKeyHandouts } from '$lib/sync/key-handouts'
 
 import { connectAccount, openAccountVault, resolveGraphById, type HeadlessAccount } from './account'
+import { exchangeForAgentToken, redeemSetupCode, revokeHeldToken } from './agent-token'
 import {
     defaultConfigPath,
     emptyConfig,
@@ -44,13 +53,23 @@ import {
     type HeadlessConfig,
     type ServerCredentials,
     type ServerSelection,
+    type StoredLogin,
 } from './config'
-import { MODEL, SemanticUnavailable, loadEmbeddingModel, removeSemantic, semanticSetupStatus, setupSemantic, whenSemanticSetUp } from './embedder'
+import { describeConnectionFailure } from './connection-errors'
+import { forgetLoginSecrets, loginCredentials, saveLogin, upgradeToAgentToken } from './logins'
+import { systemSecretStore } from './secret-store'
+
+import { MODEL, loadEmbeddingModel, removeSemantic, semanticSetupStatus, setupSemantic, whenSemanticSetUp } from './embedder'
 import { watchFolder } from './folder-watch'
-import { describeGraphLabel, findGraphByName, resolveGraphLabel, type MetaNameReader } from './graph-labels'
+import { describeGraphLabel, findGraphByName, graphLabel, resolveGraphLabel, type MetaNameReader } from './graph-labels'
 import { readGraphName } from './graph-names'
+import { runGraphHost, type HostedGraph, type PublishRequest } from './graph-host'
 import { openHeadlessFolder } from './headless-folder'
 import { openHeadlessGraph, type HeadlessGraph } from './headless-graph'
+import { requestHost, runningHosts, spawnHostProcess, stopHosts, type HostLauncher } from './host-client'
+import { hostEndpoint, hostLogPath, type HostTarget } from './host-endpoint'
+import { HOST_PROTOCOL, publishSettings, withPublishSettings, type HostReply, type HostStatus } from './host-protocol'
+import { createRelay, type Backend } from './host-relay'
 import {
     ApprovalAbandoned,
     approvalWaitControls,
@@ -67,6 +86,7 @@ import { ToolError } from './tools'
 import { createNodeDirectoryAdapter, isGraphFolder } from './node-directory-adapter'
 import { describeGraphStore, folderCacheDir, folderKey, graphCacheDir, listGraphStores, removeCacheRoot, removeServerCache, removeUnlistedGraphCaches, stampGraphCacheOwner } from './persistence'
 import { bindServeLifetime } from './serve-lifetime'
+import { SocketTransport } from './socket-transport'
 
 const VERSION: string = pkg.version
 
@@ -80,14 +100,19 @@ const CMD = /[\\/]_npx[\\/]/.test(process.argv[1] ?? '') ? 'npx @appsoftwareltd/
 
 const USAGE = `etherpk-mcp - EtherPK Headless Client (an MCP server over one synced graph)
 
-  ${CMD} login --sync-server <url> [--pat <token>] [--recovery-code]
-      Sign this machine in as a device of your account. Prompts for a Personal Access
-      Token (an account-wide one, from the Sync Server portal at <url>/account/tokens)
-      unless --pat or ETHERPK_PAT is given, then unlocks your Encryption Keys by Device Approval:
-      open EtherPK in a browser connected to the account with its Encryption Keys unlocked, approve
-      there if it shows the same code, then press y. Press r while waiting, or pass
-      --recovery-code, to type your Recovery Code instead (or ETHERPK_RECOVERY_CODE, for a
-      scripted setup).
+  ${CMD} login --sync-server <url> [--code <setup code>] [--recovery-code]
+      Sign this machine in as a device of your account. Make a setup code in EtherPK
+      (a synced graph's Settings > Agents, or <url>/account/tokens) and pass it with --code:
+      it works once, within 10 minutes, and gets this machine an agent token of its own,
+      which can do only what an agent needs. Then unlock your Encryption Keys by Device
+      Approval: open EtherPK in a browser connected to the account with its Encryption Keys
+      unlocked, approve there if it shows the same code, then press y. Press r while waiting,
+      or pass --recovery-code, to type your Recovery Code instead (or ETHERPK_RECOVERY_CODE,
+      for a scripted setup).
+      For a script, --pat <token> or ETHERPK_PAT takes an account-wide access token instead,
+      which login swaps for an agent token and revokes.
+      The token and Encryption Keys are kept in the system keychain where there is one (macOS
+      Keychain, or a Linux desktop's keyring through secret-tool), else in the config file below.
   ${CMD} graphs [--sync-server <url>]
       List the synced graphs each logged-in account can reach, by name and id.
   ${CMD} serve --graph <id or name> [--sync-server <url>] [--no-semantic]
@@ -96,14 +121,26 @@ const USAGE = `etherpk-mcp - EtherPK Headless Client (an MCP server over one syn
       Once "semantic setup" has run on this computer, serve also keeps a search-by-meaning
       store of the graph current (the agent's search tool gains mode: semantic) - pass
       --no-semantic to leave it off for this registration.
+      Any number of agents can serve the same graph at once. The first one starts the graph's
+      background process, which holds the graph open, and every serve passes its agent's
+      session to that process.
   ${CMD} serve --folder <path> [--no-semantic]
       Serve a local graph folder the same way: no sign-in, no server. The agent gets search,
       backlinks, tasks and format-safe edits over the folder's markdown, alongside the files
       themselves. Edits made in an editor or by the agent directly are picked up as they land.
       The folder must already be a graph (open it in EtherPK once) - its index is kept under
       the cache directory, never in the folder.
+  ${CMD} running
+      List the graphs served on this computer: each one's background process, its agents and
+      its log. A background process stops on its own once no agent has used it for five
+      minutes (ETHERPK_MCP_HOST_IDLE_SECONDS sets another time).
+  ${CMD} stop [--graph <id or name> [--sync-server <url>] | --folder <path> | --all]
+      Stop the background process of one graph, or of every graph (the default). Each saves
+      its graph first. An agent still connected starts a new one on its next call.
   ${CMD} logout [--sync-server <url> | --all]
-      Forget that server's token, Encryption Keys and cached graphs on this machine.
+      Revoke that server's token on the server, and forget it, the Encryption Keys and the
+      cached graphs on this machine. The background processes serving that server's graphs
+      stop first.
   ${CMD} semantic setup
       Let the agent search by meaning. Installs a ~300 MB native runtime (onnxruntime-node,
       with your npm) and downloads a 23 MB embedding model into the cache directory, once
@@ -131,7 +168,8 @@ This machine can hold logins for several Sync Servers at once. The --sync-server
 which one a command means, and can be left out while there is only one. The config file is
 ${defaultConfigPath()} (override with
 ETHERPK_MCP_CONFIG) - cached graphs live under ~/.cache/etherpk/mcp (override with
-ETHERPK_MCP_CACHE_DIR).
+ETHERPK_MCP_CACHE_DIR). ETHERPK_MCP_SECRETS=file keeps tokens and Encryption Keys in the config file
+even where there is a keychain.
 Docs: https://docs.etherpk.com/using-ai-agents-with-your-notes
 `
 
@@ -187,21 +225,88 @@ async function loadConfig(path: string): Promise<HeadlessConfig> {
     return config
 }
 
-/** The login a command means, or the reason there is none - in words the user can act on. */
-function requireServer(config: HeadlessConfig, wanted: string | undefined): ServerCredentials {
+/** The login a command means, or an error saying why there is none, in words the user can act on. */
+function selectLogin(config: HeadlessConfig, wanted: string | undefined): { syncServer: string; stored: StoredLogin } {
     const selection: ServerSelection = selectServer(config, wanted)
-    if (selection.ok) return selection.credentials
+    if (selection.ok) return { syncServer: selection.syncServer, stored: selection.stored }
     switch (selection.reason) {
         case 'none':
-            return fail(`Not logged in on this machine. Run: ${CMD} login --sync-server <url>`)
+            throw new Error(`Not logged in on this machine. Run: ${CMD} login --sync-server <url>`)
         case 'unknown':
-            return fail(`Not logged in to ${selection.syncServer}. Logged in to: ${selection.known.join(', ') || '(none)'}. Run: ${CMD} login --sync-server ${selection.syncServer}`)
+            throw new Error(`Not logged in to ${selection.syncServer}. Logged in to: ${selection.known.join(', ') || '(none)'}. Run: ${CMD} login --sync-server ${selection.syncServer}`)
         case 'ambiguous':
-            return fail(`Logged in to more than one Sync Server here: ${selection.known.join(', ')}. Say which with --sync-server <url>.`)
+            throw new Error(`Logged in to more than one Sync Server here: ${selection.known.join(', ')}. Say which with --sync-server <url>.`)
     }
 }
 
-async function login(args: { 'sync-server'?: string; pat?: string; 'recovery-code'?: boolean }): Promise<void> {
+/** `selectLogin` for a command, which says why and exits. */
+function requireServer(config: HeadlessConfig, wanted: string | undefined): { syncServer: string; stored: StoredLogin } {
+    try {
+        return selectLogin(config, wanted)
+    } catch (error) {
+        return fail(describeError(error))
+    }
+}
+
+/** The config file, or an error saying it cannot be read: for a process with nobody to exit to. */
+async function readConfigOrThrow(path: string): Promise<HeadlessConfig> {
+    const config = await readConfig(path)
+    if (!config) throw new Error(`${path} is not a config file this version understands. Run: ${CMD} login --sync-server <url>`)
+    return config
+}
+
+function describeError(error: unknown): string {
+    return error instanceof Error ? error.message : String(error)
+}
+
+/** The keychain this process keeps logins in, or null for the config file (`secret-store.ts`). */
+function keychain() {
+    return systemSecretStore({ platform: process.platform, env: process.env })
+}
+
+/**
+ * What the agent token is called on the Access tokens page and in presence: "Agent on <host>",
+ * cut to the 100 characters a token name may have.
+ */
+function agentTokenName(): string {
+    return `Agent on ${hostname()}`.slice(0, 100)
+}
+
+/**
+ * A stored login's token and keys, for a command that uses them. A standard token left by an
+ * older version is swapped for an agent token on the way (ADR 0132): the first run of a newer
+ * Headless Client narrows what an older login can do, with nothing for the person to do.
+ */
+async function credentialsFor(login: { syncServer: string; stored: StoredLogin }): Promise<ServerCredentials> {
+    const store = keychain()
+    const credentials = await loginCredentials(login.syncServer, login.stored, store)
+    return upgradeToAgentToken({
+        path: defaultConfigPath(),
+        credentials,
+        keychain: store,
+        name: agentTokenName(),
+        say: (line) => console.error(line),
+        stillWorks: (token) => tokenStillWorks(login.syncServer, token),
+    })
+}
+
+/** Does the Sync Server still accept this token? A probe after a failed exchange. */
+async function tokenStillWorks(syncServer: string, token: string): Promise<boolean> {
+    try {
+        const response = await fetch(`${syncServer}/api/v1/sync/me`, { headers: { authorization: `Bearer ${token}` } })
+        return response.ok
+    } catch {
+        // Unreachable: no evidence the token was revoked, so say what was true when it last worked.
+        return true
+    }
+}
+
+/** A failed login request in words: the server's own refusal, or why it could not be reached. */
+function describeLoginFailure(error: unknown, syncServer: string): string {
+    return describeConnectionFailure(error, syncServer) ?? (error instanceof Error ? error.message : String(error))
+}
+
+async function login(args: { 'sync-server'?: string; pat?: string; code?: string; 'recovery-code'?: boolean }): Promise<void> {
     const path = defaultConfigPath()
     // A file this version cannot read is replaced, not refused: the old shape held one login,
     // and the user is about to make one.
@@ -209,24 +314,87 @@ async function login(args: { 'sync-server'?: string; pat?: string; 'recovery-cod
     const known = Object.keys(config.servers)
     const syncServer = normaliseSyncServer(args['sync-server'] ?? (known.length === 1 ? known[0] : await ask('Sync Server URL: ', { hint: 'pass --sync-server <url>' })))
     if (!/^https?:\/\//.test(syncServer)) fail('The Sync Server must be an http(s) URL.')
-    const pat = args.pat ?? process.env.ETHERPK_PAT ?? (await ask(`Personal Access Token (account-wide, from ${syncServer}/account/tokens): `, { secret: true, hint: 'set ETHERPK_PAT or pass --pat <token>' }))
-    if (!pat) fail('A Personal Access Token is required.')
+    const previous = config.servers[syncServer]
+    const given = (
+        args.code ??
+        args.pat ??
+        process.env.ETHERPK_PAT ??
+        (await ask("Setup code (make one in EtherPK: a synced graph's Settings > Agents): ", { secret: true, hint: 'pass --code <setup code>' }))
+    ).trim()
+    if (!given) fail("A setup code is required. Make one in EtherPK: a synced graph's Settings > Agents.")
 
-    const account = await connectAccount({ syncServer, pat })
+    // A setup code is the usual way in, and becomes this computer's agent token at once. An
+    // access token (a script, or a server from before setup codes) is used to unlock and then
+    // exchanged, so the long-lived token a person pasted is revoked once the agent has its own.
+    const name = agentTokenName()
+    let token: string
+    let redeemed = false
+    if (looksLikeAgentSetupCode(given)) {
+        token = await redeemSetupCode({ syncServer, code: given, name }).catch((error: unknown) => fail(describeLoginFailure(error, syncServer)))
+        redeemed = true
+    } else if (accessTokenKind(given) !== null) {
+        token = given
+    } else {
+        fail("That is neither a setup code (epk_setup_...) nor an access token (epk_pat_...). Make a setup code in EtherPK: a synced graph's Settings > Agents.")
+    }
+
+    // A token minted for this login and not kept is revoked, so a failed login leaves none behind.
+    const abandon = async (error: unknown): Promise<never> => {
+        if (redeemed) await revokeHeldToken({ syncServer, token })
+        throw error
+    }
+    const account = await connectAccount({ syncServer, pat: token }).catch(abandon)
     console.log(`Connected to ${syncServer} as ${account.principal.email ?? account.principal.name ?? account.principal.id}.`)
 
     // ETHERPK_RECOVERY_CODE serves a box set up by a script, where there is no terminal to type
     // into and no tab to approve from; the variable is read once and never written anywhere.
     const byRecoveryCode = async () =>
         unlockByRecoveryCode(account.api, process.env.ETHERPK_RECOVERY_CODE ?? (await ask('Recovery Code: ', { secret: true, hint: 'set ETHERPK_RECOVERY_CODE' })))
-    const vaultKey = args['recovery-code'] ? await byRecoveryCode() : await approveOrFallBack(account, byRecoveryCode)
-    config.servers[syncServer] = { pat, vaultKey: toBase64Url(vaultKey) }
-    await writeConfig(path, config)
-    console.log(`Encryption Keys unlocked and cached in ${path} (owner-only). Anyone who can read your files on this machine can read this account, as with a signed-in browser.`)
+    const vaultKey = await (args['recovery-code'] ? byRecoveryCode() : approveOrFallBack(account, byRecoveryCode)).catch(abandon)
+
+    if (accessTokenKind(token) === 'standard') {
+        const given = token
+        const agentToken = await exchangeForAgentToken({ syncServer, token, name }).catch(async (error: unknown) => {
+            // The exchange may have reached the server and revoked the token before failing.
+            if (!(await tokenStillWorks(syncServer, given))) {
+                fail(`Could not swap the access token for an agent token (${describeLoginFailure(error, syncServer)}), and the access token you gave no longer works. Run login again with a setup code.`)
+            }
+            console.log(`Could not swap the access token for an agent token (${describeLoginFailure(error, syncServer)}), so this computer keeps the access token you gave. Run login again to try again.`)
+            return undefined
+        })
+        if (agentToken) {
+            token = agentToken
+            console.log(`The access token you gave has been revoked. This computer now holds an agent token of its own, which can do only what an agent needs. If you used that access token anywhere else, make a new one at ${syncServer}/account/tokens.`)
+        } else if (agentToken === null) {
+            console.log('This Sync Server runs an older version of EtherPK that cannot give agent tokens, so this computer keeps the access token you gave.')
+        }
+    }
+
+    // The token this computer held before, if it held one for this server, is not needed now.
+    if (previous) {
+        const before = await loginCredentials(syncServer, previous, keychain()).catch(() => null)
+        if (before && before.pat !== token && (await revokeHeldToken({ syncServer, token: before.pat }))) {
+            console.log(`Revoked the token this computer held for ${syncServer} before this login.`)
+        }
+    }
+
+    const where = await saveLogin({ config, path, syncServer, secrets: { token, vaultKey: toBase64Url(vaultKey) }, keychain: keychain() })
+    console.log(
+        where === path
+            ? `Encryption Keys unlocked and kept in ${path} (owner-only). Anyone who can read your files on this machine can read this account, as with a signed-in browser. Never let an agent read, print or search that file.`
+            : `Encryption Keys unlocked and kept in ${where}; ${path} names only the server. A program you run can still ask ${where} for them, so run only agents you trust with this account.`,
+    )
     const others = Object.keys(config.servers).filter((server) => server !== syncServer)
     if (others.length > 0) console.log(`Also logged in to ${others.join(', ')} - commands now need --sync-server <url> to say which.`)
 
-    await listGraphs({ syncServer, pat, vaultKey: toBase64Url(vaultKey) }, others.length > 0)
+    // The hosts serving this server's graphs hold the token and keys this login replaces; an agent
+    // still connected starts a new host, with this login, on its next call.
+    const restarted = await stopHosts(process.env, 'a new login for its server', ({ status }) => status.target.kind === 'synced' && status.target.server === syncServer)
+    if (restarted.length > 0) {
+        console.log(`Stopped the background process of ${restarted.length === 1 ? 'one graph' : `${restarted.length} graphs`} served with the previous login. Agents start a new one with this login on their next call.`)
+    }
+
+    await listGraphs({ syncServer, pat: token, vaultKey: toBase64Url(vaultKey) }, others.length > 0)
 }
 
 /**
@@ -310,7 +478,7 @@ async function graphsCommand(args: { 'sync-server'?: string }): Promise<void> {
     const config = await loadConfig(defaultConfigPath())
     const logins = args['sync-server'] ? [requireServer(config, args['sync-server'])] : listLogins(config)
     if (logins.length === 0) fail(`Not logged in on this machine. Run: ${CMD} login --sync-server <url>`)
-    for (const login of logins) await listGraphs(login, logins.length > 1)
+    for (const login of logins) await listGraphs(await credentialsFor(login), logins.length > 1)
 }
 
 /**
@@ -346,7 +514,7 @@ async function openVaultFor(account: HeadlessAccount, login: ServerCredentials &
         return await openAccountVault(account.api, fromBase64Url(login.vaultKey))
     } catch (error) {
         if (error instanceof EnvelopeError) {
-            fail(`Your Encryption Keys on ${login.syncServer} were replaced or reset on another device, so the key saved on this computer no longer opens them. Run: ${CMD} login --sync-server ${login.syncServer}`)
+            throw new Error(`Your Encryption Keys on ${login.syncServer} were replaced or reset on another device, so the key saved on this computer no longer opens them. Run: ${CMD} login --sync-server ${login.syncServer}`)
         }
         throw error
     }
@@ -417,41 +585,67 @@ async function diagramsCommand(what: string | undefined): Promise<void> {
 }
 
 /**
- * Publish from the command line: the same tool the agent has, over a graph opened for the
- * duration of the command (ADR 0086). `--out` is how a person sets the Publish Folder; the
- * tool never takes one.
+ * Publish from the command line: the same tool the agent has, run by the graph's host, which this
+ * starts when none is running (ADR 0086; ADR 0072, amended 2026-10-08). The host holds the graph
+ * open, so a publish while agents work reads what they wrote and writes no copy of its own.
+ * `--out` is how a person sets the Publish Folder; the tool never takes one.
  */
 async function publishCommand(args: ServeArgs & { publication?: string; out?: string }): Promise<void> {
-    const folder = args.folder?.trim()
-    const wanted = args.graph?.trim()
-    if (folder && (wanted || args['sync-server'])) fail('publish takes either --folder <path> or --graph <id or name> (with an optional --sync-server), not both.')
-    if (!folder && !wanted) fail('publish needs --graph <id or name>, or --folder <path> for a local graph folder.')
+    const request = graphRequest('publish', args)
     const publication = args.publication?.trim()
     if (!publication) fail('publish needs --publication <id>. The agent\'s list_publications tool, or Settings → Publish in EtherPK, shows the ids.')
-    const quiet = { ...args, 'no-semantic': true }
-    const { graph, graphName } = folder ? await openFolderForServe(folder, quiet) : await openSyncedForServe(wanted!, quiet)
-    const host = { env: process.env, cmd: CMD, via: 'cli' as const }
+    const found = await findGraph(request).catch((error: unknown) => fail(`etherpk-mcp: ${describeError(error)}`))
+    const out = args.out?.trim()
+    const { reply, socket } = await requestHost(launcherFor(found), {
+        etherpk: 'publish',
+        protocol: HOST_PROTOCOL,
+        publication,
+        ...(out ? { out: resolve(out) } : {}),
+        env: publishSettings(process.env),
+    }).catch((error: unknown) => fail(`etherpk-mcp: ${describeError(error)}`))
+    socket.destroy()
+    switch (reply.etherpk) {
+        case 'published':
+            for (const note of reply.notes) console.error(note)
+            console.log(JSON.stringify(reply.output, null, 2))
+            process.exitCode = reply.exitCode
+            return
+        case 'refused':
+            return fail(reply.message)
+        case 'failed':
+            return fail(`etherpk-mcp: ${reply.message}`)
+        case 'unsupported':
+            return fail(`etherpk-mcp: this graph is served on this computer by etherpk-mcp ${reply.version}, which cannot run a publish for this version (${VERSION}). Run: ${CMD} stop, then publish again.`)
+        default:
+            return fail(`etherpk-mcp: the graph's background process gave an answer this version does not know ("${reply.etherpk}").`)
+    }
+}
+
+/**
+ * A command-line publish, as the graph's host runs it: the publication first, so a mistyped id is
+ * never remembered as a publish folder, then `--out` remembered, then the publish the agent's
+ * tool runs. The answer is what the command prints, in its own words.
+ */
+async function publishInHost(graph: HeadlessGraph, request: PublishRequest): Promise<HostReply> {
+    const env = withPublishSettings(process.env, request.env ?? {})
+    const host = { env, cmd: CMD, via: 'cli' as const }
+    const notes: string[] = []
     try {
-        // The publication first: a mistyped id must not be remembered as a publish folder.
-        await findPublication(graph, publication, host)
-        const configPath = defaultPublishFoldersPath(process.env)
+        await findPublication(graph, request.publication, host)
+        const configPath = defaultPublishFoldersPath(env)
         const key = publishGraphKey(graph.backend, graph.graphId)
-        if (args.out?.trim()) {
-            const out = resolve(args.out.trim())
-            await writePublishFolders(configPath, withPublishFolder(await readPublishFolders(configPath), key, publication, out))
-            console.error(`etherpk-mcp: publish folder for "${publication}" of "${graphName}" set to ${out} (remembered in ${configPath}).`)
-        } else if (!publishFolderOf(await readPublishFolders(configPath), key, publication)) {
-            fail(`No publish folder is set for "${publication}" of "${graphName}" on this machine. Pass --out <dir> once - it is remembered.`)
+        if (request.out) {
+            await writePublishFolders(configPath, withPublishFolder(await readPublishFolders(configPath), key, request.publication, request.out))
+            notes.push(`etherpk-mcp: publish folder for "${request.publication}" of "${graph.name}" set to ${request.out} (remembered in ${configPath}).`)
+        } else if (!publishFolderOf(await readPublishFolders(configPath), key, request.publication)) {
+            return { etherpk: 'refused', message: `No publish folder is set for "${request.publication}" of "${graph.name}" on this machine. Pass --out <dir> once - it is remembered.` }
         }
-        const result = await publishTool(graph, { id: publication }, host)
+        const result = await publishTool(graph, { id: request.publication }, host)
         // Names nothing the site leaves out: this output often lands in a scheduled job's log.
-        console.log(JSON.stringify(cliPublishOutput(result), null, 2))
-        if (!result.ok) process.exitCode = 1
+        return { etherpk: 'published', output: cliPublishOutput(result), notes, exitCode: result.ok ? 0 : 1 }
     } catch (error) {
-        if (error instanceof ToolError) fail(`etherpk-mcp: ${error.message}`)
+        if (error instanceof ToolError) return { etherpk: 'refused', message: `etherpk-mcp: ${error.message}` }
         throw error
-    } finally {
-        await graph.dispose().catch(() => {})
     }
 }
 
@@ -488,25 +682,224 @@ interface ServeArgs {
     'no-semantic'?: boolean
 }
 
-/**
- * The embedding model for a serve, whichever backend: refused with the reason when the agent's
- * registration turned it off, else loaded on first semantic use. Always wired, so a semantic
- * search on a machine without setup is refused with the command to run - and once it has run,
- * the next search loads the model with no restart.
- */
-function embeddingModelFor(args: ServeArgs): () => Promise<Awaited<ReturnType<typeof loadEmbeddingModel>>> {
-    return args['no-semantic']
-        ? () => Promise.reject(new SemanticUnavailable('Semantic search is off for this agent: serve was started with --no-semantic.'))
-        : () => loadEmbeddingModel(process.env)
-}
+/** A graph `serve` or `publish` is asked for, before anything is read: a folder, or a synced graph by id or name. */
+type GraphRequest = { kind: 'folder'; path: string } | { kind: 'synced'; wanted: string; server: string | undefined }
 
-async function serve(args: ServeArgs): Promise<void> {
+/** The flags of `serve` and `publish`, checked. */
+function graphRequest(command: 'serve' | 'publish', args: ServeArgs): GraphRequest {
     const folder = args.folder?.trim()
     const wanted = args.graph?.trim()
-    if (folder && (wanted || args['sync-server'])) fail('serve takes either --folder <path> or --graph <id or name> (with an optional --sync-server), not both.')
-    if (!folder && !wanted) fail('serve needs --graph <id or name>, or --folder <path> for a local graph folder.')
-    const { graph, graphName } = folder ? await openFolderForServe(folder, args) : await openSyncedForServe(wanted!, args)
-    await serveGraph(graph, graphName, args)
+    if (folder && (wanted || args['sync-server'])) fail(`${command} takes either --folder <path> or --graph <id or name> (with an optional --sync-server), not both.`)
+    if (!folder && !wanted) fail(`${command} needs --graph <id or name>, or --folder <path> for a local graph folder.`)
+    return folder ? { kind: 'folder', path: resolve(folder) } : { kind: 'synced', wanted: wanted!, server: args['sync-server'] }
+}
+
+/** What a request is called until its host says: the folder's name, or the id or name given. */
+function requestLabel(request: GraphRequest): string {
+    return request.kind === 'folder' ? basename(request.path) : request.wanted
+}
+
+/** A graph found, not opened: what its host serves, where it keeps its claim, and how to start one. */
+interface FoundGraph {
+    target: HostTarget
+    cacheDir: string
+    /** The `host` command's arguments for this graph. */
+    hostArgs: string[]
+}
+
+/** A graph id as the Sync Server makes them. Anything else given to --graph is looked up as a name. */
+const GRAPH_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+type NameLookups = Map<string, { graphId: string; name: string | null }>
+
+/**
+ * Find the graph a request names, without opening it. A folder must already be a graph. A synced
+ * graph needs a login for its server, read from the config file each time, so an agent that
+ * reconnects after a `logout` starts no host. Only a graph given by name needs the server, to
+ * look the name up, and `names` keeps what was found for the next time.
+ */
+async function findGraph(request: GraphRequest, names: NameLookups = new Map()): Promise<FoundGraph> {
+    if (request.kind === 'folder') {
+        if (!(await isGraphFolder(request.path))) {
+            throw new Error(`${request.path} is not an EtherPK graph folder: it has no pages/ and journals/ directories. Open the folder in EtherPK once to make it one, then serve it.`)
+        }
+        return { target: { kind: 'folder', path: request.path }, cacheDir: folderCacheDir(process.env, request.path), hostArgs: ['--folder', request.path] }
+    }
+    const login = selectLogin(await readConfigOrThrow(defaultConfigPath()), request.server)
+    let graphId = request.wanted
+    let name: string | null = null
+    if (!GRAPH_ID.test(request.wanted)) {
+        const key = `${login.syncServer}\n${request.wanted.toLowerCase()}`
+        const found = names.get(key) ?? (await findGraphOnServer(login, request.wanted))
+        names.set(key, found)
+        graphId = found.graphId
+        name = found.name
+    }
+    return {
+        target: { kind: 'synced', server: login.syncServer, graphId },
+        cacheDir: graphCacheDir(process.env, login.syncServer, graphId),
+        hostArgs: ['--sync-server', login.syncServer, '--graph', graphId, ...(name ? ['--name', name] : [])],
+    }
+}
+
+/** The synced graph a login's server lists as `wanted`, by id or else by name. */
+async function findGraphOnServer(login: { syncServer: string; stored: StoredLogin }, wanted: string): Promise<{ graphId: string; name: string | null }> {
+    const credentials = await credentialsFor(login)
+    if (!credentials.vaultKey) throw new Error(`Encryption Keys are not unlocked on this machine for ${login.syncServer}. Run: ${CMD} login --sync-server ${login.syncServer}`)
+    const account = await connectAccount(credentials)
+    const vault = await openVaultFor(account, { ...credentials, vaultKey: credentials.vaultKey })
+    const graphs = await account.api.listGraphs()
+    const byId = graphs.find((graph) => graph.id === wanted)
+    if (byId) return { graphId: byId.id, name: null }
+    // By name: the server's name envelope, or one read of the root document for a graph without
+    // one (graph-labels.ts).
+    const match = await findGraphByName(graphs, vault, wanted, metaNameReader(account))
+    if (!match) throw new Error(`No synced graph on ${login.syncServer} is named or identified by "${wanted}". Run: ${CMD} graphs`)
+    return { graphId: match.record.id, name: match.name }
+}
+
+/** How to reach the host of a graph found, or start one. */
+function launcherFor(found: FoundGraph): HostLauncher {
+    return { cacheDir: found.cacheDir, spawn: () => spawnHostProcess({ args: found.hostArgs, env: process.env, logPath: hostLogPath(found.cacheDir) }) }
+}
+
+/** `work`, or an error saying `message` when it has not settled within `ms`. */
+function within<T>(work: Promise<T>, ms: number, message: string): Promise<T> {
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const late = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(message)), ms)
+    })
+    return Promise.race([work, late]).finally(() => clearTimeout(timer))
+}
+
+/**
+ * `serve`: the agent's MCP session over stdio, relayed to the graph's host, which this starts when
+ * none is running (ADR 0072, amended 2026-10-08). The relay answers nothing itself, so the agent's
+ * `initialize` waits only for a host to listen, and the host answers it before the graph has
+ * opened. When there is no host to be had, a stand-in answers each tool with the reason, and a
+ * later call tries again.
+ */
+async function serve(args: ServeArgs): Promise<void> {
+    const request = graphRequest('serve', args)
+    const noSemantic = args['no-semantic'] === true
+    const names: NameLookups = new Map()
+    let served = false
+    const connect = async (): Promise<Backend> => {
+        try {
+            const found = await within(findGraph(request, names), 30_000, `Could not find "${requestLabel(request)}" within 30 seconds: its Sync Server did not answer.`)
+            const { reply, socket } = await requestHost(launcherFor(found), { etherpk: 'session', protocol: HOST_PROTOCOL, version: VERSION, noSemantic }, { answerTimeoutMs: 20_000 })
+            switch (reply.etherpk) {
+                case 'ok':
+                    console.error(
+                        `etherpk-mcp: ${served ? 'reconnected: serving' : 'serving'} "${reply.status.graph.name}" over stdio as "Agent on ${hostname()}", through the graph's background process (process ${reply.status.pid}, version ${reply.status.version}, log ${hostLogPath(found.cacheDir)}).`,
+                    )
+                    served = true
+                    return { kind: 'host', transport: new SocketTransport(socket) }
+                case 'failed':
+                    socket.destroy()
+                    return unavailable(request, reply.message)
+                case 'unsupported':
+                    socket.destroy()
+                    return unavailable(request, `This graph is served on this computer by etherpk-mcp ${reply.version}, which cannot share it with this version (${VERSION}). Run: ${CMD} stop, then restart your agents.`)
+                default:
+                    socket.destroy()
+                    return unavailable(request, `The graph's background process gave an answer this version does not know ("${reply.etherpk}"). Run: ${CMD} stop, then restart your agents.`)
+            }
+        } catch (error) {
+            return unavailable(request, describeError(error))
+        }
+    }
+    const transport = new StdioServerTransport()
+    let agentClosed = () => {}
+    const relay = createRelay({ agent: transport, connect, log: (line) => console.error(`etherpk-mcp: ${line}`), onAgentClose: () => agentClosed() })
+    // Bound before the relay starts reading, which follows at once: the first byte on stdin is
+    // then read by the lifetime and the transport in the same event (serve-lifetime.ts).
+    bindServeLifetime({
+        signals: process,
+        stdin: process.stdin,
+        transportClosed: (listener) => {
+            agentClosed = listener
+        },
+        async shutdown(end) {
+            console.error(`etherpk-mcp: ${end} - exiting.`)
+            await relay.close()
+            process.exit(0)
+        },
+    })
+    await relay.start()
+}
+
+/**
+ * A stand-in for the graph's host, in this process: it answers `initialize` as a host would and
+ * every tool with `graph_unavailable` and the reason, so the agent can tell the person what to do.
+ */
+async function unavailable(request: GraphRequest, message: string): Promise<Backend> {
+    console.error(`etherpk-mcp: ${message}`)
+    const server = createMcpServer(Promise.reject(new ToolError('graph_unavailable', message)), {
+        graphName: requestLabel(request),
+        version: VERSION,
+        cmd: CMD,
+        credentialsDir: dirname(defaultConfigPath()),
+        backendKind: request.kind,
+    })
+    const [relaySide, serverSide] = InMemoryTransport.createLinkedPair()
+    await server.connect(serverSide)
+    return { kind: 'unavailable', transport: relaySide }
+}
+
+/** `ETHERPK_MCP_HOST_IDLE_SECONDS`: how long a graph's host stays once its last agent has gone. */
+function hostIdleSeconds(env: NodeJS.ProcessEnv): number {
+    const given = Number.parseInt(env.ETHERPK_MCP_HOST_IDLE_SECONDS?.trim() ?? '', 10)
+    return Number.isFinite(given) && given >= 0 ? given : 300
+}
+
+/**
+ * `host`: a graph's background process (graph-host.ts), started by `serve` and `publish`. Its
+ * stdout carries one line, for the process that started it, and its stderr is the graph's log.
+ */
+async function hostCommand(args: ServeArgs & { name?: string }): Promise<void> {
+    // The reader of stdout leaves once it has the announcement, so nothing else may go there,
+    // and every log line says when it was written and by which process.
+    process.stdout.on('error', () => {})
+    const write = console.error.bind(console)
+    console.error = (...items: unknown[]) => write(new Date().toISOString(), `[${process.pid}]`, ...items)
+    console.log = console.error
+    const folder = args.folder?.trim()
+    const graphId = args.graph?.trim()
+    const server = args['sync-server']?.trim()
+    if (folder ? graphId || server : !graphId || !server) fail('host is started by serve and publish, with --folder <path>, or with --sync-server <url> and --graph <id>.')
+    const target: HostTarget = folder ? { kind: 'folder', path: resolve(folder) } : { kind: 'synced', server: normaliseSyncServer(server!), graphId: graphId! }
+    const cacheDir = target.kind === 'folder' ? folderCacheDir(process.env, target.path) : graphCacheDir(process.env, target.server, target.graphId)
+    const handle = await runGraphHost({
+        cacheDir,
+        endpoint: hostEndpoint(cacheDir, process.env),
+        version: VERSION,
+        target,
+        provisionalName: target.kind === 'folder' ? basename(target.path) : args.name?.trim() || null,
+        backendKind: target.kind,
+        idleMs: hostIdleSeconds(process.env) * 1000,
+        cmd: CMD,
+        credentialsDir: dirname(defaultConfigPath()),
+        open: (named) => (target.kind === 'folder' ? openFolderGraph(target.path) : openSyncedGraph(target.server, target.graphId, named)),
+        publish: publishInHost,
+        log: (line) => console.error(`etherpk-mcp: ${line}`),
+        announce: (message) => process.stdout.write(`${JSON.stringify(message)}\n`),
+        exit: (code) => {
+            // On some systems a pipe is written asynchronously: the announcement leaves first.
+            const leave = () => process.exit(code)
+            process.stdout.write('', leave)
+            setTimeout(leave, 1_000).unref()
+        },
+    })
+    for (const signal of ['SIGINT', 'SIGTERM'] as const) process.on(signal, () => void handle.stop(signal))
+    // A hangup is meant for a terminal, and this process has none.
+    process.on('SIGHUP', () => {})
+    // Said once at start, so the first a person hears of the browser is not a refused publish: a
+    // publication with Mermaid diagrams cannot be published or previewed without one (ADR 0084).
+    void chromiumStatus(process.env, CMD).then((chromium) => {
+        if (chromium.executable) return
+        console.error(`etherpk-mcp: no browser for diagrams (run: ${chromium.setupCommand}, or set ETHERPK_CHROMIUM) - a publish or theme preview with Mermaid diagrams refuses until then.`)
+    })
 }
 
 /**
@@ -514,31 +907,34 @@ async function serve(args: ServeArgs): Promise<void> {
  * Folder]]). The folder is what it is; the CLI never creates a skeleton in whatever directory
  * was mistyped. The index lives under the cache root, keyed by the folder's path.
  */
-async function openFolderForServe(folder: string, args: ServeArgs): Promise<{ graph: HeadlessGraph; graphName: string }> {
-    const path = resolve(folder)
+async function openFolderGraph(path: string): Promise<HostedGraph> {
     if (!(await isGraphFolder(path))) {
-        fail(`${path} is not an EtherPK graph folder: it has no pages/ and journals/ directories. Open the folder in EtherPK once to make it one, then serve it.`)
+        throw new Error(`${path} is not an EtherPK graph folder: it has no pages/ and journals/ directories. Open the folder in EtherPK once to make it one, then serve it.`)
     }
-    const name = basename(path)
     console.error(`etherpk-mcp: opening folder ${path}…`)
     const graph = await openHeadlessFolder({
         adapter: createNodeDirectoryAdapter(path),
-        name,
+        name: basename(path),
         path,
         graphId: folderKey(path),
         persistDir: folderCacheDir(process.env, path),
-        embeddingModel: embeddingModelFor(args),
+        embeddingModel: () => loadEmbeddingModel(process.env),
         onSemanticProgress: reportSemanticProgress,
         onError: (error) => console.error(`etherpk-mcp: ${error.message}`),
         onWarning: (line) => console.error(`etherpk-mcp: ${line}`),
         watch: watchFolder(path, (error) => console.error(`etherpk-mcp: not watching the folder for changes (${error.message}) - edits made outside are still picked up before each tool call.`)),
     })
-    return { graph, graphName: name }
+    return hostedGraph(graph)
 }
 
-async function openSyncedForServe(wanted: string, args: ServeArgs): Promise<{ graph: HeadlessGraph; graphName: string }> {
-    const login = requireServer(await loadConfig(defaultConfigPath()), args['sync-server'])
-    if (!login.vaultKey) fail(`Encryption Keys are not unlocked on this machine for ${login.syncServer}. Run: ${CMD} login --sync-server ${login.syncServer}`)
+/**
+ * A synced graph by id, on a server this machine is logged in to. `named` hears the graph's name
+ * from the server's name envelope as soon as the listing has it, which is well before the graph
+ * has opened: a session that starts meanwhile is told the name, not the id.
+ */
+async function openSyncedGraph(syncServer: string, graphId: string, named: (name: string) => void): Promise<HostedGraph> {
+    const login = await credentialsFor(selectLogin(await readConfigOrThrow(defaultConfigPath()), syncServer))
+    if (!login.vaultKey) throw new Error(`Encryption Keys are not unlocked on this machine for ${login.syncServer}. Run: ${CMD} login --sync-server ${login.syncServer}`)
     const account = await connectAccount(login)
     const vault = await openVaultFor(account, { ...login, vaultKey: login.vaultKey })
     const graphs = await account.api.listGraphs()
@@ -547,25 +943,17 @@ async function openSyncedForServe(wanted: string, args: ServeArgs): Promise<{ gr
     // listing that just succeeded (a failed one threw above and removes nothing), and only
     // caches stamped for this account (another account may share the cache root).
     const swept = await removeUnlistedGraphCaches(process.env, account.serverBaseUrl, account.principal.id, graphs.map((graph) => graph.id)).catch((error: unknown) => {
-        console.error(`etherpk-mcp: could not tidy the cache of graphs this server no longer lists: ${error instanceof Error ? error.message : String(error)}`)
+        console.error(`etherpk-mcp: could not tidy the cache of graphs this server no longer lists: ${describeError(error)}`)
         return [] as string[]
     })
     if (swept.length > 0) {
         console.error(`etherpk-mcp: removed this computer's copy of ${swept.length === 1 ? 'a graph' : `${swept.length} graphs`} ${account.serverBaseUrl} no longer lists for you: ${swept.join(', ')}.`)
     }
+    const listed = graphs.find((graph) => graph.id === graphId)
+    if (!listed) throw new Error(`No synced graph on ${login.syncServer} is identified by "${graphId}". Run: ${CMD} graphs`)
+    const label = await graphLabel(listed, vault).catch(() => null)
+    if (label?.kind === 'named') named(label.name)
 
-    // By id first; else by name - the server's name envelope, or one read of the root
-    // document for a graph without one (graph-labels.ts).
-    let graphId = graphs.find((graph) => graph.id === wanted)?.id
-    let graphName: string | null = null
-    if (!graphId) {
-        const match = await findGraphByName(graphs, vault, wanted, metaNameReader(account))
-        if (match) {
-            graphId = match.record.id
-            graphName = match.name
-        }
-    }
-    if (!graphId) fail(`No synced graph on ${login.syncServer} is named or identified by "${wanted}". Run: ${CMD} graphs`)
     const { record, keyring: held } = resolveGraphById(graphs, vault, graphId)
     // The copies of the graph's newest key waiting for this account (ADR 0127), read in memory: a
     // browser of the account collects them into the vault, and this process never writes it.
@@ -597,7 +985,7 @@ async function openSyncedForServe(wanted: string, args: ServeArgs): Promise<{ gr
         persistDir,
         // The encrypted asset store over the same server, for upload_asset / read_asset (ADR 0085).
         assets: { baseUrl: account.serverBaseUrl },
-        embeddingModel: embeddingModelFor(args),
+        embeddingModel: () => loadEmbeddingModel(process.env),
         onSemanticProgress: reportSemanticProgress,
         onError: (error) => console.error(`etherpk-mcp: ${error.message}`),
         // One line, once, and the sync loop stops rather than retrying in silence. The tools
@@ -612,63 +1000,123 @@ async function openSyncedForServe(wanted: string, args: ServeArgs): Promise<{ gr
         // labels itself on every device (ADR 0031, amended).
         publishName: createGraphNamePublisher({ api: account.api, keyring: () => keyring, graphId }).publish,
     })
-    return { graph, graphName: graphName ?? graph.name }
+    return hostedGraph(graph)
 }
 
-/** Speak MCP over stdio for an open graph until the transport closes or a signal arrives. */
-async function serveGraph(graph: HeadlessGraph, graphName: string, args: ServeArgs): Promise<void> {
-    // Semantic mode is on whenever setup has been done here and not declined: a text-only agent
-    // on a machine that never ran setup pays nothing, and one that did asked for it.
-    const semanticReady = await semanticSetupStatus(process.env)
-    const semanticOn = !args['no-semantic'] && semanticReady.runtime && semanticReady.model
-    const server = createMcpServer(graph, { graphName, version: VERSION, cmd: CMD })
-    const transport = new StdioServerTransport()
-    // Bound before connect, which follows at once: the transport's close has to reach the SDK's
-    // own wrapper of it, and the first byte on stdin is then read by the lifetime and the
-    // transport in the same event (serve-lifetime.ts).
-    bindServeLifetime({
-        signals: process,
-        stdin: process.stdin,
-        transportClosed: (listener) => {
-            transport.onclose = listener
+/**
+ * The open graph as its host holds it. Semantic search starts with the first session that allows
+ * it: a host whose agents all passed --no-semantic, or that runs only a command-line publish,
+ * never loads the model.
+ */
+function hostedGraph(graph: HeadlessGraph): HostedGraph {
+    let wanted = false
+    return {
+        graph,
+        wantSemantic() {
+            if (wanted) return
+            wanted = true
+            void startSemantic(graph)
         },
-        async shutdown(end) {
-            console.error(`etherpk-mcp: ${end} - flushing and exiting.`)
-            await graph.settle().catch(() => {})
-            await graph.dispose().catch(() => {})
-            process.exit(0)
-        },
-    })
-    await server.connect(transport)
-    console.error(`etherpk-mcp: serving "${graphName}" over stdio as "Agent on ${hostname()}".`)
-    // Said once at start, as for semantic search, so the first a person hears of the browser is
-    // not a refused publish: a publication with Mermaid diagrams cannot be published or previewed
-    // without one (ADR 0084). Off the agent's path; the tools check again when they need it.
-    void chromiumStatus(process.env, CMD).then((chromium) => {
-        if (chromium.executable) return
-        console.error(`etherpk-mcp: no browser for diagrams (run: ${chromium.setupCommand}, or set ETHERPK_CHROMIUM) - a publish or theme preview with Mermaid diagrams refuses until then.`)
-    })
-    // Off the agent's path: the model loads and the store catches up in the background, and a
-    // semantic search meanwhile answers from what is built so far, marked incomplete.
-    const startSemantic = () =>
+    }
+}
+
+/**
+ * Semantic search for the graph, off any agent's path: the model loads and the store catches up
+ * in the background, and a semantic search meanwhile answers from what is built so far, marked
+ * incomplete. On a computer where setup has not run, it starts once setup is found, with no
+ * restart; a semantic search before then is refused with the command to run.
+ */
+async function startSemantic(graph: HeadlessGraph): Promise<void> {
+    const start = () =>
         graph
             .semantic()
             .then(async (semantic) => {
                 const status = await semantic.status()
                 console.error(`etherpk-mcp: semantic search on (${semantic.model.id}) - ${status.embedded} of ${status.total} passages embedded, building the rest in the background.`)
             })
-            .catch((error: unknown) => console.error(`etherpk-mcp: semantic search unavailable: ${error instanceof Error ? error.message : String(error)}`))
-    if (semanticOn) {
-        void startSemantic()
-    } else if (!args['no-semantic']) {
-        console.error(`etherpk-mcp: semantic search is not set up on this computer (run: ${CMD} semantic setup - this process will notice within half a minute, no restart needed). Search answers by text only until then.`)
-        // Setup run while this process serves is noticed and acted on, so the store is building
-        // by the time the agent first asks by meaning - and a search before then loads it anyway.
-        whenSemanticSetUp(process.env, () => {
-            console.error('etherpk-mcp: semantic setup found - loading the model and building the store.')
-            void startSemantic()
-        })
+            .catch((error: unknown) => console.error(`etherpk-mcp: semantic search unavailable: ${describeError(error)}`))
+    const ready = await semanticSetupStatus(process.env)
+    if (ready.runtime && ready.model) {
+        void start()
+        return
     }
+    console.error(`etherpk-mcp: semantic search is not set up on this computer (run: ${CMD} semantic setup - this process will notice within half a minute, no restart needed). Search answers by text only until then.`)
+    whenSemanticSetUp(process.env, () => {
+        console.error('etherpk-mcp: semantic setup found - loading the model and building the store.')
+        void start()
+    })
+}
+
+/** A host's graph in words: a folder by its path, a synced graph by id and server. */
+function describeHostTarget(target: HostTarget): string {
+    return target.kind === 'folder' ? `folder ${target.path}` : `graph ${target.graphId} on ${target.server}`
+}
+
+/** `running`: the graphs served on this computer, each by its host. */
+async function runningCommand(): Promise<void> {
+    const hosts = await runningHosts(process.env)
+    if (hosts.length === 0) {
+        console.log('No graph is being served on this computer.')
+        return
+    }
+    for (const { cacheDir, status } of hosts) {
+        const graph = status.graph.state === 'open' ? 'open' : status.graph.state === 'opening' ? 'opening' : `could not be opened: ${status.graph.message ?? 'see the log'}`
+        console.log(`"${status.graph.name}" (${describeHostTarget(status.target)})`)
+        console.log(`  ${status.sessions === 1 ? '1 agent' : `${status.sessions} agents`} connected, graph ${graph}`)
+        console.log(`  process ${status.pid}, version ${status.version}, running since ${status.startedAt}`)
+        console.log(`  log: ${hostLogPath(cacheDir)}`)
+    }
+}
+
+/** `stop`: stop the hosts of one graph, or of all of them. */
+async function stopCommand(args: ServeArgs & { all?: boolean }): Promise<void> {
+    const folder = args.folder?.trim()
+    const wanted = args.graph?.trim()
+    const server = args['sync-server']?.trim()
+    if ([folder, wanted, args.all].filter(Boolean).length > 1 || (server && !wanted)) {
+        fail('stop takes --graph <id or name> (with an optional --sync-server), or --folder <path>, or --all (the default).')
+    }
+    const path = folder ? resolve(folder) : null
+    const serverKey = server ? normaliseSyncServer(server) : null
+    const which = ({ status }: { status: HostStatus }) => {
+        const target = status.target
+        if (path) return target.kind === 'folder' && target.path === path
+        if (wanted) {
+            if (target.kind !== 'synced' || (serverKey && target.server !== serverKey)) return false
+            return target.graphId === wanted || status.graph.name.toLowerCase() === wanted.toLowerCase()
+        }
+        return true
+    }
+    const stopped = await stopHosts(process.env, 'stop was run', which)
+    if (stopped.length === 0) {
+        console.log(path || wanted ? 'That graph is not being served on this computer.' : 'No graph is being served on this computer.')
+        return
+    }
+    for (const host of stopped) {
+        console.log(`${host.stopped ? 'Stopped' : 'Could not stop'} the background process of "${host.status.graph.name}" (${describeHostTarget(host.status.target)}, process ${host.status.pid}).`)
+    }
+    if (stopped.some((host) => !host.stopped)) process.exitCode = 1
+}
+
+/**
+ * Revoke each login's token on its server and forget its keychain item. A token the server could
+ * not revoke (unreachable, or already revoked) is named, so the person can revoke it in the portal.
+ */
+async function revokeAndForget(logins: Array<{ syncServer: string; stored: StoredLogin }>): Promise<string[]> {
+    const store = keychain()
+    const notRevoked: string[] = []
+    for (const { syncServer, stored } of logins) {
+        const credentials = await loginCredentials(syncServer, stored, store).catch(() => null)
+        if (!credentials || !(await revokeHeldToken({ syncServer, token: credentials.pat }))) notRevoked.push(syncServer)
+        await forgetLoginSecrets(syncServer, stored, store).catch(() => {})
+    }
+    return notRevoked
+}
+
+function revocationNote(notRevoked: string[]): string {
+    return notRevoked.length === 0
+        ? ' Its token was revoked on the server.'
+        : ` The token for ${notRevoked.join(', ')} could not be revoked on the server (it may be offline, or the token already revoked): revoke it on that server's Access tokens page if this machine is not yours to keep.`
 }
 
 async function logout(args: { 'sync-server'?: string; all?: boolean }): Promise<void> {
@@ -676,26 +1124,35 @@ async function logout(args: { 'sync-server'?: string; all?: boolean }): Promise<
     const config = await readConfig(path)
     // Everything, or a file this version cannot read: remove the file and every cached graph.
     // The cached graphs are plaintext; they go with the keys that made them readable.
+    //
+    // The login goes first, then the graphs' hosts, then their caches. A host flushes its graph as
+    // it stops, so a cache removed before it stopped would be written again; and an agent that
+    // reconnects finds no login for the server, so no new host starts for the cache to go under.
     if (args.all || !config) {
+        const notRevoked = config ? await revokeAndForget(listLogins(config)) : []
         await unlink(path).catch((error: NodeJS.ErrnoException) => {
             if (error.code !== 'ENOENT') throw error
         })
+        await stopHosts(process.env, 'logout')
         await removeCacheRoot(process.env)
-        console.log(`Forgot every token and key in ${path} and the cached graphs (and the semantic runtime and model, if set up). Revoke the Personal Access Tokens in each Sync Server portal too if this machine is not yours to keep.`)
+        console.log(`Forgot every token and key in ${path} and the cached graphs (and the semantic runtime and model, if set up).${revocationNote(notRevoked)}`)
         return
     }
     const login = requireServer(config, args['sync-server'])
+    const notRevoked = await revokeAndForget([login])
     delete config.servers[login.syncServer]
-    await removeServerCache(process.env, login.syncServer)
-    if (Object.keys(config.servers).length === 0) {
+    const last = Object.keys(config.servers).length === 0
+    if (last) {
         await unlink(path).catch((error: NodeJS.ErrnoException) => {
             if (error.code !== 'ENOENT') throw error
         })
-        await removeCacheRoot(process.env)
     } else {
         await writeConfig(path, config)
     }
-    console.log(`Forgot the token, Encryption Keys and cached graphs for ${login.syncServer}. Revoke the Personal Access Token in its portal too if this machine is not yours to keep.`)
+    await stopHosts(process.env, 'logout', last ? undefined : ({ status }) => status.target.kind === 'synced' && status.target.server === login.syncServer)
+    if (last) await removeCacheRoot(process.env)
+    else await removeServerCache(process.env, login.syncServer)
+    console.log(`Forgot the token, Encryption Keys and cached graphs for ${login.syncServer}.${revocationNote(notRevoked)}`)
 }
 
 async function main(): Promise<void> {
@@ -705,6 +1162,7 @@ async function main(): Promise<void> {
         options: {
             'sync-server': { type: 'string' },
             pat: { type: 'string' },
+            code: { type: 'string' },
             'recovery-code': { type: 'boolean' },
             graph: { type: 'string' },
             folder: { type: 'string' },
@@ -712,6 +1170,7 @@ async function main(): Promise<void> {
             publication: { type: 'string' },
             out: { type: 'string' },
             all: { type: 'boolean' },
+            name: { type: 'string' },
             help: { type: 'boolean', short: 'h' },
             version: { type: 'boolean', short: 'v' },
         },
@@ -732,6 +1191,12 @@ async function main(): Promise<void> {
             return graphsCommand(values)
         case 'serve':
             return serve(values)
+        case 'host':
+            return hostCommand(values)
+        case 'running':
+            return runningCommand()
+        case 'stop':
+            return stopCommand(values)
         case 'logout':
             return logout(values)
         case 'semantic':

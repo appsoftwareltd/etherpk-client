@@ -9,6 +9,7 @@ import { fixedSyncToken } from '$lib/sync/sync-token'
 
 import { openHeadlessGraph, type HeadlessGraph } from './headless-graph'
 import { createMcpServer } from './mcp-server'
+import { ToolError } from './tools'
 
 /**
  * The MCP surface end to end in one process: a real client over an in-memory transport pair,
@@ -19,10 +20,12 @@ const ROOT = '018f47a0-7b5d-7cc5-b5c1-f0fbcde22000'
 const cleanup: Array<() => Promise<void>> = []
 
 afterEach(async () => {
-    for (const fn of cleanup.splice(0)) await fn()
+    // Last in, first out: the client and server close before the graph they used is disposed.
+    for (const fn of cleanup.splice(0).reverse()) await fn()
 })
 
-async function connected(): Promise<{ client: Client; graph: HeadlessGraph }> {
+/** A synced graph over the loopback relay, disposed after the test. */
+async function openTestGraph(): Promise<HeadlessGraph> {
     const relay = createLoopbackRelay()
     const graph = await openHeadlessGraph({
         graphId: `g-mcp-${Math.floor(performance.now() * 1000)}`,
@@ -33,7 +36,13 @@ async function connected(): Promise<{ client: Client; graph: HeadlessGraph }> {
         presenceName: 'Agent on test',
         connect: relay.connect,
     })
-    const server = createMcpServer(graph, { graphName: 'Notes', version: '0.0.0-test' })
+    cleanup.push(() => graph.dispose())
+    return graph
+}
+
+async function connected(extra: { credentialsDir?: string } = {}): Promise<{ client: Client; graph: HeadlessGraph }> {
+    const graph = await openTestGraph()
+    const server = createMcpServer(graph, { graphName: 'Notes', version: '0.0.0-test', ...extra })
     const [clientSide, serverSide] = InMemoryTransport.createLinkedPair()
     await server.connect(serverSide)
     const client = new Client({ name: 'test-agent', version: '0.0.0' })
@@ -41,7 +50,6 @@ async function connected(): Promise<{ client: Client; graph: HeadlessGraph }> {
     cleanup.push(async () => {
         await client.close()
         await server.close()
-        await graph.dispose()
     })
     return { client, graph }
 }
@@ -95,6 +103,70 @@ describe('the MCP server', () => {
         ])
         expect(client.getInstructions()).toContain('"Notes"')
         expect(client.getInstructions()).toContain('protected')
+    })
+
+    // An agent that goes looking for the notes on disk finds the sign-in instead, so the
+    // instructions say where the graph is not, and which directory to leave alone.
+    it('tells the agent a synced graph has no folder and that its sign-in is not to be read', async () => {
+        const { client } = await connected()
+        const instructions = client.getInstructions() ?? ''
+        expect(instructions).toContain('no folder on this computer')
+        expect(instructions).toContain('Never read, print, copy or search ~/.config/etherpk')
+    })
+
+    // XDG_CONFIG_HOME and ETHERPK_MCP_CONFIG move the login file, so the folder named is the real one.
+    it('names the folder this process keeps its sign-in in, wherever that is', async () => {
+        const { client } = await connected({ credentialsDir: '/srv/agent/cfg/etherpk' })
+        expect(client.getInstructions()).toContain('Never read, print, copy or search /srv/agent/cfg/etherpk')
+    })
+
+    // A graph can take longer to open than a client waits for `initialize` (30 seconds in Claude
+    // Code), so the server answers at once and each tool waits for the graph.
+    it('answers initialize and lists its tools before the graph has opened, and a tool waits for it', async () => {
+        const opened = await openTestGraph()
+        let open!: (graph: HeadlessGraph) => void
+        const opening = new Promise<HeadlessGraph>((resolve) => {
+            open = resolve
+        })
+        const server = createMcpServer(opening, { graphName: 'Notes', version: '0.0.0-test', backendKind: 'synced' })
+        const [clientSide, serverSide] = InMemoryTransport.createLinkedPair()
+        await server.connect(serverSide)
+        const client = new Client({ name: 'test-agent', version: '0.0.0' })
+        cleanup.push(async () => {
+            await client.close()
+            await server.close()
+        })
+
+        await client.connect(clientSide)
+        expect(client.getInstructions()).toContain('no folder on this computer')
+        expect((await client.listTools()).tools.length).toBeGreaterThan(10)
+
+        let answered = false
+        const call = client.callTool({ name: 'create_page', arguments: { title: 'Plan', text: '- one' } }).then((result) => {
+            answered = true
+            return result
+        })
+        await new Promise((resolve) => setTimeout(resolve, 100))
+        expect(answered).toBe(false)
+        open(opened)
+        expect(text(await call)).toEqual({ concept: 'Plan', created: true })
+    })
+
+    it('answers every tool with the reason when the graph could not be opened', async () => {
+        const failed = Promise.reject(new ToolError('graph_unavailable', 'Not logged in on this machine.'))
+        const server = createMcpServer(failed, { graphName: 'Notes', version: '0.0.0-test', backendKind: 'folder' })
+        const [clientSide, serverSide] = InMemoryTransport.createLinkedPair()
+        await server.connect(serverSide)
+        const client = new Client({ name: 'test-agent', version: '0.0.0' })
+        cleanup.push(async () => {
+            await client.close()
+            await server.close()
+        })
+        await client.connect(clientSide)
+
+        const result = await client.callTool({ name: 'list_documents', arguments: {} })
+        expect(result.isError).toBe(true)
+        expect(text(result)).toEqual({ error: 'graph_unavailable', message: 'Not logged in on this machine.' })
     })
 
     it('creates, reads, edits and lists through the wire', async () => {

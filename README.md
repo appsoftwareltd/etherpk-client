@@ -103,6 +103,8 @@ Copy `apps/client/.env.example` to `apps/client/.env` to change the development 
 - The Client and the Headless Client share one version number with EtherPK's Sync Server, and
   only matching versions are tested together. A Client and a Sync Server on different sync
   protocol versions refuse to sync, and the Client says which side needs upgrading.
+- [CHANGELOG.md](CHANGELOG.md) lists what changed in the Client and the Headless Client in each
+  release.
 
 ## How this repository is maintained
 

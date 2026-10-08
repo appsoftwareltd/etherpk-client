@@ -22,7 +22,9 @@
      * than settings — whereas the General tab holds the actual Graph Settings, which do travel in
      * an [[Export]]. Naming it "Graph" would invert the glossary.
      */
-    import { onMount } from "svelte";
+    import { onDestroy, onMount, tick } from "svelte";
+    import { SyncApiError } from "$lib/sync/sync-api";
+    import { describeSyncFailure } from "$lib/sync/sync-error-copy";
     import { normalizeDisplaySize } from "$lib/document";
     import { formatBytes } from "@appsoftwareltd/etherpk-shared";
     import {
@@ -169,6 +171,57 @@
     type AgentCopyKey = "login" | "register" | "semantic" | "diagrams" | "publish";
     let agentCopied = $state<AgentCopyKey | null>(null);
     let agentCopyError = $state<string | null>(null);
+    /**
+     * The setup code step 1's login command carries (ADR 0132). It lives here and nowhere else:
+     * never stored, gone when the dialog closes, and replaced by "expired" when its time is up so
+     * the screen never offers a command that can no longer work.
+     */
+    type SetupCodeState =
+        | { phase: "idle" }
+        | { phase: "making" }
+        | { phase: "ready"; code: string; expiresAt: string }
+        | { phase: "expired" }
+        | { phase: "failed"; message: string }
+        /** A Sync Server from before setup codes: the login falls back to an access token. */
+        | { phase: "unsupported" };
+    let setupCode = $state<SetupCodeState>({ phase: "idle" });
+    let setupCodeRequest = 0;
+    let setupCodeTimer: ReturnType<typeof setTimeout> | undefined;
+    let loginCopyButton = $state<HTMLButtonElement>();
+    onDestroy(() => clearTimeout(setupCodeTimer));
+
+    async function makeSetupCode() {
+        const create = agents?.kind === "synced" ? agents.createSetupCode : null;
+        if (!create || setupCode.phase === "making") return;
+        const request = ++setupCodeRequest;
+        clearTimeout(setupCodeTimer);
+        setupCode = { phase: "making" };
+        try {
+            const made = await create();
+            if (request !== setupCodeRequest) return;
+            setupCode = { phase: "ready", ...made };
+            // The next thing to do is copy the command: put that a key press away.
+            await tick();
+            loginCopyButton?.focus();
+            setupCodeTimer = setTimeout(
+                () => {
+                    if (request === setupCodeRequest) setupCode = { phase: "expired" };
+                },
+                Math.max(0, new Date(made.expiresAt).getTime() - Date.now()),
+            );
+        } catch (error) {
+            if (request !== setupCodeRequest) return;
+            if (error instanceof SyncApiError && error.status === 404) {
+                setupCode = { phase: "unsupported" };
+            } else if (error instanceof SyncApiError && error.status === 409) {
+                // The server's own words say how many codes are waiting and how long to wait.
+                setupCode = { phase: "failed", message: error.message };
+            } else {
+                setupCode = { phase: "failed", message: describeSyncFailure(error, "make a setup code") };
+            }
+        }
+    }
+
     async function copyAgentCommand(which: AgentCopyKey, text: string) {
         agentCopyError = null;
         try {
@@ -937,8 +990,9 @@
                     </p>
                 </div>
             {:else if activeTab === "agents" && agents && agents.kind === "synced"}
-                <!-- Nothing here is a setting: two commands to copy and a link. The token itself
-                     is minted at the portal and never passes through this dialog. -->
+                <!-- Nothing here is a setting: two commands to copy and a link. The only secret is
+                     the one-time setup code step 1 asks for; the agent's token is made from it on
+                     the agent's machine and never passes through this dialog (ADR 0132). -->
                 <div class="space-y-4" data-testid="agents-tab">
                     <p class="text-sm text-gray-600 dark:text-gray-400">
                         An AI agent reaches a synced graph through the EtherPK
@@ -952,36 +1006,108 @@
                         documents are listed by name only and never served.
                     </p>
                     <ol class="space-y-3 text-sm text-gray-950 dark:text-gray-100">
-                        <li class="space-y-1">
-                            <p>
-                                <span class="font-medium">1. Sign the machine in</span>
-                                once. You'll need an account-wide Personal
-                                Access Token from
-                                <a
-                                    href={tokensPageUrl(agents.serverBaseUrl)}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    class="underline decoration-gray-400 underline-offset-2 hover:decoration-gray-950 dark:hover:decoration-gray-100"
-                                    data-testid="agents-tokens-link">the Sync Server portal</a
-                                >, then you confirm a code in any unlocked
-                                EtherPK tab.
-                            </p>
-                            <div class="flex items-start gap-2">
-                                <pre
-                                    class="min-w-0 flex-1 overflow-x-auto rounded-md border border-gray-900/10 dark:border-gray-100/15 bg-gray-50 dark:bg-white/5 p-3 font-mono text-sm"
-                                    data-testid="agents-login-command">{loginCommand(agents.serverBaseUrl, agents.headlessClient)}</pre>
+                        <li class="space-y-2">
+                            {#if agents.createSetupCode === null}
+                                <p>
+                                    <span class="font-medium">1. Sign the machine in</span>
+                                    once. Make a setup code on
+                                    <a
+                                        href={tokensPageUrl(agents.serverBaseUrl)}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        class="underline decoration-gray-400 underline-offset-2 hover:decoration-gray-950 dark:hover:decoration-gray-100"
+                                        data-testid="agents-setup-on-portal">the Sync Server's Access tokens page</a
+                                    >, under <strong>Set up an agent</strong>, and run the command it shows on
+                                    the agent's computer. The code works once, within 10 minutes, and gets the
+                                    agent a token of its own that can do only what an agent needs. Then you
+                                    confirm a code in any unlocked EtherPK tab. If that page has no such
+                                    button, the server is older: run the command below, which asks for an
+                                    account-wide access token from the same page.
+                                </p>
+                                <div class="flex items-start gap-2">
+                                    <pre
+                                        class="min-w-0 flex-1 overflow-x-auto rounded-md border border-gray-900/10 dark:border-gray-100/15 bg-gray-50 dark:bg-white/5 p-3 font-mono text-sm"
+                                        data-testid="agents-login-command">{loginCommand(agents.serverBaseUrl, agents.headlessClient)}</pre>
+                                    <button
+                                        type="button"
+                                        onclick={() => copyAgentCommand("login", loginCommand(agents!.serverBaseUrl, agents!.headlessClient))}
+                                        class="shrink-0 rounded-lg border border-gray-300 dark:border-gray-700 px-4 py-2 text-sm font-medium text-gray-950 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800"
+                                        data-testid="agents-copy-login"
+                                        >{agentCopied === "login" ? "Copied" : "Copy"}</button
+                                    >
+                                </div>
+                            {:else if setupCode.phase === "unsupported"}
+                                <p>
+                                    <span class="font-medium">1. Sign the machine in</span>
+                                    once. This Sync Server is older and cannot make setup codes,
+                                    so the command asks for an account-wide access token from
+                                    <a
+                                        href={tokensPageUrl(agents.serverBaseUrl)}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        class="underline decoration-gray-400 underline-offset-2 hover:decoration-gray-950 dark:hover:decoration-gray-100"
+                                        >the Sync Server portal</a
+                                    >. Then you confirm a code in any unlocked EtherPK tab.
+                                </p>
+                            {:else}
+                                <p>
+                                    <span class="font-medium">1. Sign the machine in</span>
+                                    once. Make a setup code and run the command on the agent's
+                                    computer. The code works once, within 10 minutes, and gets the
+                                    agent a token of its own that can do only what an agent needs.
+                                    Then you confirm a code in any unlocked EtherPK tab.
+                                </p>
+                            {/if}
+                            {#if agents.createSetupCode !== null && (setupCode.phase === "ready" || setupCode.phase === "unsupported")}
+                                {@const command =
+                                    setupCode.phase === "ready"
+                                        ? loginCommand(agents.serverBaseUrl, agents.headlessClient, setupCode.code)
+                                        : loginCommand(agents.serverBaseUrl, agents.headlessClient)}
+                                <div class="flex items-start gap-2">
+                                    <pre
+                                        class="min-w-0 flex-1 overflow-x-auto rounded-md border border-gray-900/10 dark:border-gray-100/15 bg-gray-50 dark:bg-white/5 p-3 font-mono text-sm"
+                                        data-testid="agents-login-command">{command}</pre>
+                                    <button
+                                        type="button"
+                                        bind:this={loginCopyButton}
+                                        onclick={() => copyAgentCommand("login", command)}
+                                        class="shrink-0 rounded-lg border border-gray-300 dark:border-gray-700 px-4 py-2 text-sm font-medium text-gray-950 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800"
+                                        data-testid="agents-copy-login"
+                                        >{agentCopied === "login" ? "Copied" : "Copy"}</button
+                                    >
+                                </div>
+                            {/if}
+                            {#if setupCode.phase === "ready"}
+                                <p class="text-sm text-gray-600 dark:text-gray-400" data-testid="agents-setup-code-expiry">
+                                    Works once, until {new Date(setupCode.expiresAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}.
+                                    Treat it like a password until then.
+                                </p>
+                            {:else if setupCode.phase === "expired"}
+                                <p role="status" class="text-sm text-gray-600 dark:text-gray-400" data-testid="agents-setup-code-expired">
+                                    That setup code has expired. Make a new one when you are ready to run the command.
+                                </p>
+                            {:else if setupCode.phase === "failed"}
+                                <p role="alert" class="text-sm text-red-700 dark:text-red-400" data-testid="agents-setup-code-error">
+                                    {setupCode.message}
+                                </p>
+                            {/if}
+                            {#if agents.createSetupCode !== null && setupCode.phase !== "unsupported"}
                                 <button
                                     type="button"
-                                    onclick={() =>
-                                        copyAgentCommand(
-                                            "login",
-                                            loginCommand(agents!.serverBaseUrl, agents!.headlessClient),
-                                        )}
-                                    class="shrink-0 rounded-lg border border-gray-300 dark:border-gray-700 px-4 py-2 text-sm font-medium text-gray-950 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800"
-                                    data-testid="agents-copy-login"
-                                    >{agentCopied === "login" ? "Copied" : "Copy"}</button
+                                    onclick={makeSetupCode}
+                                    disabled={setupCode.phase === "making"}
+                                    class="rounded-lg bg-gray-950 dark:bg-white px-4 py-2 text-sm font-medium text-white dark:text-gray-950 hover:bg-gray-800 dark:hover:bg-gray-200 disabled:opacity-60"
+                                    data-testid="agents-make-setup-code"
                                 >
-                            </div>
+                                    {setupCode.phase === "making"
+                                        ? "Making a setup code…"
+                                        : setupCode.phase === "idle"
+                                          ? "Make a setup code"
+                                          : setupCode.phase === "failed"
+                                            ? "Try again"
+                                            : "Make a new setup code"}
+                                </button>
+                            {/if}
                         </li>
                         <li class="space-y-1">
                             <div class="flex flex-wrap items-center gap-2">
@@ -1023,7 +1149,14 @@
                     {@render agentExtras(agents)}
                     <p class="text-sm text-gray-600 dark:text-gray-400">
                         This graph's id is <code class="font-mono" data-testid="agents-graph-id">{agents.graphId}</code>.
-                        Revoke the token at the portal to cut the agent off.
+                        Each agent's token is listed as "Agent on" its computer's name on
+                        <a
+                            href={tokensPageUrl(agents.serverBaseUrl)}
+                            target="_blank"
+                            rel="noreferrer"
+                            class="underline decoration-gray-400 underline-offset-2 hover:decoration-gray-950 dark:hover:decoration-gray-100"
+                            data-testid="agents-tokens-link">the Sync Server's Access tokens page</a
+                        >. Revoke it there to cut the agent off.
                         <a
                             href="https://docs.etherpk.com/using-ai-agents-with-your-notes"
                             target="_blank"

@@ -475,9 +475,28 @@ export function describeGraphStore(store: GraphStoreStatus, now = Date.now()): s
         : `paused - ${count} (${percent}%) embedded, last snapshot ${age}. Nothing is building it now, it continues when serve next runs`
 }
 
+/**
+ * Remove a directory tree in one step as far as anyone else can see: it is renamed aside, then
+ * deleted. `logout` stops the graphs' hosts first, and an agent that reconnects at once starts a
+ * new host, which must find either the old tree whole or none at all: a host that claimed its
+ * graph in a directory being deleted would lose its `host.json` (graph-host.ts), and the next
+ * host would claim the graph a second time.
+ */
+async function removeTree(dir: string): Promise<void> {
+    const aside = `${dir}.removing-${process.pid}-${Date.now()}`
+    try {
+        await rename(dir, aside)
+    } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') return
+        await rm(dir, { recursive: true, force: true })
+        return
+    }
+    await rm(aside, { recursive: true, force: true })
+}
+
 /** Remove every persisted graph under the cache root (logout of the last server). */
 export async function removeCacheRoot(env: NodeJS.ProcessEnv): Promise<void> {
-    await rm(cacheRoot(env), { recursive: true, force: true })
+    await removeTree(cacheRoot(env))
 }
 
 const GRAPH_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -540,5 +559,5 @@ export async function removeUnlistedGraphCaches(env: NodeJS.ProcessEnv, serverBa
 
 /** Remove one server's persisted graphs (logout of that server while others stay). */
 export async function removeServerCache(env: NodeJS.ProcessEnv, serverBaseUrl: string): Promise<void> {
-    await rm(dirname(graphCacheDir(env, serverBaseUrl, 'x')), { recursive: true, force: true })
+    await removeTree(dirname(graphCacheDir(env, serverBaseUrl, 'x')))
 }

@@ -3,9 +3,15 @@
      * Account Reset (ADR 0029): the "burn it down" flow. Shows exactly what will be lost — owned
      * graphs, split into shared (offer transfer to a player to preserve them) and solo (deleted).
      * A type-to-confirm gate guards the irreversible final step.
+     *
+     * On a custom server the final step happens on the server's own Reset Encryption Keys page
+     * (ADR 0133): the reset route accepts no access token, which is all this device holds for it,
+     * and needs a recent sign-in there. The dialog opens that page and watches for the vault to
+     * go, then finishes the reset on this device as it would have after running it itself.
      */
+    import { onDestroy } from "svelte";
     import { delayedFlag } from "@appsoftwareltd/etherpk-shared/delayed";
-    import { createSyncApiFor, serverHost, type SyncApi } from "$lib/sync";
+    import { createSyncApiFor, serverHost, syncConnectionFor, type SyncApi } from "$lib/sync";
     import { describeSyncFailure } from "$lib/sync/sync-error-copy";
     import Modal from "@appsoftwareltd/etherpk-shared/dialog";
     import TransferOwnershipDialog from "./TransferOwnershipDialog.svelte";
@@ -33,7 +39,15 @@
     }
 
     let open = $state(true);
-    let step = $state<"review" | "confirm" | "done">("review");
+    let step = $state<"review" | "confirm" | "portal" | "done">("review");
+    /**
+     * On the portal step: whether the account had a vault when the step began. Only then can the
+     * dialog tell the reset happened (the vault is gone); without one it waits to be closed.
+     */
+    let portalWatchesVault = $state(false);
+    let portalCheckError = $state<string | null>(null);
+    /** Asking whether the account has a vault before handing over: a moment, not the reset itself. */
+    let checkingVault = $state(false);
     let loading = $state(true);
     let error = $state<string | null>(null);
     let owned = $state<OwnedGraph[]>([]);
@@ -46,6 +60,8 @@
     let summary = $state<{
         ownedGraphsDeleted: number;
         membershipsDropped: number;
+        /** Absent from a server older than agent tokens. */
+        agentTokensRevoked?: number;
     } | null>(null);
     let transferFor = $state<OwnedGraph | null>(null);
 
@@ -54,6 +70,10 @@
     const host = serverHost(serverOrigin);
     // svelte-ignore state_referenced_locally
     const api: SyncApi | null = createSyncApiFor(serverOrigin);
+    // svelte-ignore state_referenced_locally
+    const resetsOnPortal = syncConnectionFor(serverOrigin)?.kind === "custom";
+    // svelte-ignore state_referenced_locally
+    const portalResetUrl = `${serverOrigin.replace(/\/$/, "")}/account/reset-keys`;
 
     const shared = $derived(owned.filter((g) => !g.solo));
     const solo = $derived(owned.filter((g) => g.solo));
@@ -113,7 +133,69 @@
         }
     }
 
+    /** Review done on a custom server: hand the reset to its portal and start watching for it. */
+    async function continueOnPortal() {
+        if (!api || checkingVault) return;
+        checkingVault = true;
+        error = null;
+        try {
+            portalWatchesVault = (await api.getVault()) !== null;
+            step = "portal";
+            if (portalWatchesVault) watchForPortalReset(api);
+        } catch (e) {
+            error = describeSyncFailure(e, "check your Encryption Keys on the server");
+        } finally {
+            checkingVault = false;
+        }
+    }
+
+    /**
+     * While the portal step shows, look every few seconds, and at once when this window gets the
+     * focus back, for the vault to be gone: the reset ran on the portal. A failed look says so and
+     * keeps looking; the reset itself is not this device's to retry.
+     */
+    let stopWatching: (() => void) | null = null;
+    function watchForPortalReset(watched: SyncApi) {
+        stopWatchingForPortalReset();
+        let stopped = false;
+        const check = async () => {
+            try {
+                const vault = await watched.getVault();
+                if (stopped || vault !== null) {
+                    if (!stopped) portalCheckError = null;
+                    return;
+                }
+                // A 404 for the vault could be a proxy's, not the server's. A reset also leaves
+                // the account owning nothing, so ask that too before forgetting this server's
+                // graphs on the device.
+                const owned = await watched.resetPreview();
+                if (stopped) return;
+                portalCheckError = null;
+                if (owned.length === 0) {
+                    stopWatchingForPortalReset();
+                    step = "done";
+                }
+            } catch (e) {
+                if (!stopped) portalCheckError = describeSyncFailure(e, "check whether the reset is done");
+            }
+        };
+        const timer = setInterval(check, 3000);
+        const onFocus = () => void check();
+        window.addEventListener("focus", onFocus);
+        stopWatching = () => {
+            stopped = true;
+            clearInterval(timer);
+            window.removeEventListener("focus", onFocus);
+        };
+    }
+    function stopWatchingForPortalReset() {
+        stopWatching?.();
+        stopWatching = null;
+    }
+    onDestroy(stopWatchingForPortalReset);
+
     function close(done = false) {
+        stopWatchingForPortalReset();
         open = false;
         if (done) oncomplete();
         else onclose();
@@ -162,7 +244,8 @@
                 Resetting deletes your Encryption Keys, and creating new ones
                 afterwards gives you a new identity and Recovery Code. Everything below that you
                 own will be affected. Graphs you only take part in as a player
-                are not touched, you simply leave them.
+                are not touched, you simply leave them. Every agent is signed out,
+                and logs in again with a new setup code.
             </p>
 
             {#if shared.length > 0}
@@ -240,12 +323,47 @@
                     class="block w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-gray-950 dark:text-gray-100"
                 />
             </div>
-        {:else if step === "done"}
+        {:else if step === "portal"}
             <p class="text-sm text-gray-600 dark:text-gray-400">
-                Your Encryption Keys have been reset. {summary?.ownedGraphsDeleted ?? 0} owned
-                graph{(summary?.ownedGraphsDeleted ?? 0) === 1 ? "" : "s"}
-                deleted. Create a new synced graph to start fresh with a new Recovery
-                Code.
+                {host} needs you to sign in to it again before a reset, so the last
+                step is on its own page. Open it, sign in if it asks, and type the
+                phrase it shows.
+            </p>
+            <a
+                href={portalResetUrl}
+                target="_blank"
+                rel="noopener"
+                data-testid="reset-open-portal"
+                class="inline-flex min-h-11 items-center rounded-lg bg-red-600 px-4 text-sm font-medium text-white hover:bg-red-700"
+                >Open the reset page on {host}</a
+            >
+            {#if portalWatchesVault}
+                <p role="status" class="text-sm text-gray-600 dark:text-gray-400" data-testid="reset-portal-waiting">
+                    This dialog finishes by itself once the reset is done.
+                </p>
+            {:else}
+                <p class="text-sm text-gray-600 dark:text-gray-400">
+                    This account has no Encryption Keys on {host} yet, so this dialog
+                    cannot tell when the reset is done. Close it when you have finished.
+                </p>
+            {/if}
+            {#if portalCheckError}
+                <p role="alert" class="text-sm text-red-600">{portalCheckError}</p>
+            {/if}
+        {:else if step === "done"}
+            <p class="text-sm text-gray-600 dark:text-gray-400" data-testid="reset-summary">
+                {#if summary}
+                    Your Encryption Keys have been reset. {summary.ownedGraphsDeleted} owned
+                    graph{summary.ownedGraphsDeleted === 1 ? "" : "s"}
+                    deleted.
+                    {#if summary.agentTokensRevoked}
+                        {summary.agentTokensRevoked} agent{summary.agentTokensRevoked === 1 ? " was" : "s were"}
+                        signed out.
+                    {/if}
+                {:else}
+                    Your Encryption Keys on {host} have been reset.
+                {/if}
+                Create a new synced graph to start fresh with a new Recovery Code.
             </p>
         {/if}
         <!-- The review step renders its own failure panel above; this is the in-flight case. -->
@@ -277,8 +395,8 @@
             {:else}
                 <button
                     type="button"
-                    onclick={() => (step = "confirm")}
-                    disabled={loading}
+                    onclick={() => (resetsOnPortal ? void continueOnPortal() : (step = "confirm"))}
+                    disabled={loading || checkingVault}
                     data-testid="reset-continue"
                     class="rounded-lg bg-red-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-40"
                     >Continue to reset</button
@@ -297,6 +415,22 @@
                 data-testid="reset-execute"
                 class="min-w-44 rounded-lg bg-red-600 px-4 py-1.5 text-center text-sm font-medium text-white hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed"
                 >{busy ? "Resetting…" : "Permanently reset"}</button
+            >
+        {:else if step === "portal"}
+            <button
+                type="button"
+                onclick={() => {
+                    stopWatchingForPortalReset();
+                    step = "review";
+                }}
+                class="rounded-lg px-3 py-1.5 text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
+                >Back</button
+            >
+            <button
+                type="button"
+                onclick={() => close()}
+                class="rounded-lg px-3 py-1.5 text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
+                >Close</button
             >
         {:else}
             <button

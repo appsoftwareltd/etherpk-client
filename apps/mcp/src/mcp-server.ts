@@ -7,7 +7,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
 
-import type { HeadlessGraph } from './headless-graph'
+import type { HeadlessBackend, HeadlessGraph } from './headless-graph'
 import { createPublication, listPublications, publish, publishingInfo, updatePublication } from './publish-tools'
 import { createTheme, customisePublicationTheme, deleteTheme, deleteThemeFile, importThemeFolder, listThemes, previewTheme, readTheme, readThemeFile, writeThemeFile } from './theme-tools'
 import {
@@ -46,6 +46,13 @@ export interface McpServerInfo {
     version: string
     /** How this CLI is spelled for the user in a refusal that names a command; `etherpk-mcp` by default. */
     cmd?: string
+    /** The folder holding the login file, which the agent is told never to read; `~/.config/etherpk` by default. */
+    credentialsDir?: string
+    /**
+     * Whether the graph is synced or a folder, for the instructions. Needed only when the graph
+     * is still opening (a promise); an open graph says so itself.
+     */
+    backendKind?: HeadlessBackend['kind']
 }
 
 type ToolResult = { content: Array<{ type: 'text'; text: string }>; isError?: boolean }
@@ -87,19 +94,39 @@ const offset = z.number().int().nonnegative().optional().describe('Skip this man
 /** A frontmatter value as JSON carries it; the writer turns it into YAML. */
 const frontmatterValue = z.union([z.string(), z.number(), z.boolean(), z.null(), z.array(z.unknown()), z.record(z.string(), z.unknown())])
 
-export function createMcpServer(graph: HeadlessGraph, info: McpServerInfo): McpServer {
-    // Every tool goes through this: once access has ended, it refuses before touching the graph.
-    const run = (work: () => Promise<unknown> | unknown): Promise<ToolResult> =>
-        runTool(() => {
+/**
+ * The MCP server over one graph. The graph may still be opening: the server answers `initialize`
+ * and lists its tools at once, and each tool waits for the graph, because a cold open can take
+ * longer than a client waits for `initialize` (ADR 0072, amended 2026-10-08). A graph that fails
+ * to open answers every tool with the reason. Given a function, the server asks it for the graph
+ * on every tool call, so a graph's host can try a failed open again (`graph-host.ts`).
+ */
+export function createMcpServer(source: HeadlessGraph | Promise<HeadlessGraph> | (() => Promise<HeadlessGraph>), info: McpServerInfo): McpServer {
+    const ready = typeof source === 'function' ? null : Promise.resolve(source)
+    // Marked as handled at once: a graph that fails to open before any tool asks for it must not
+    // end the process as an unhandled rejection. Each tool still sees the failure.
+    ready?.catch(() => {})
+    const backendKind = typeof source === 'function' || source instanceof Promise ? info.backendKind : source.backend.kind
+    // Every tool goes through this: it waits for the graph, and once access has ended, it refuses
+    // before touching it.
+    const run = (work: (graph: HeadlessGraph) => Promise<unknown> | unknown): Promise<ToolResult> =>
+        runTool(async () => {
+            const graph = await (ready ?? (source as () => Promise<HeadlessGraph>)())
             const ended = accessEndedError(graph, info.cmd ?? 'etherpk-mcp')
             if (ended) throw ended
-            return work()
+            return work(graph)
         })
     const server = new McpServer(
         { name: 'etherpk', version: info.version },
         {
             instructions: [
                 `You are connected to the EtherPK knowledge graph "${info.graphName}": daily journal entries and titled pages in plain markdown, linked with [[wikilinks]].`,
+                // An agent that searches the disk for the notes finds the login file instead, so
+                // say where a synced graph is not, and that the sign-in is not the agent's to read.
+                ...(backendKind === 'synced'
+                    ? ['This graph is synced and encrypted: it has no folder on this computer, so reach it only through these tools.']
+                    : []),
+                `This process holds the EtherPK sign-in and Encryption Keys it needs. Never read, print, copy or search ${info.credentialsDir ?? '~/.config/etherpk'}, or any keychain entry named etherpk-mcp: they are credentials that open the whole account, not notes.`,
                 'Concept names are case-insensitive. A protected document is listed with protected: true and cannot be read or written here - tell the user to unlock it in EtherPK if a task needs it.',
                 'Bullets are "- " with two-space nesting. Tasks are "- [ ]" / "- [x]" with task tags (#P1 #P2 #P3, #W #D #C, #D-YYYY-MM-DD due, #S-YYYY-MM-DD scheduled) right after the checkbox.',
                 'read_document returns a document\'s body as text and its frontmatter block as data (the "frontmatter" object) - the block is never in the text, so line numbers from search, backlinks and tasks match the text. Set frontmatter keys with set_frontmatter (public, publications, date, author, description and any other key) - a document\'s title and aliases and a publication page\'s definition are not frontmatter here and have tools of their own.',
@@ -130,7 +157,7 @@ export function createMcpServer(graph: HeadlessGraph, info: McpServerInfo): McpS
                 limit: z.number().int().positive().max(LIST_PAGE_LIMIT).optional(),
             },
         },
-        async (args) => run(() => listDocuments(graph, args)),
+        async (args) => run((graph) => listDocuments(graph, args)),
     )
 
     server.registerTool(
@@ -140,7 +167,7 @@ export function createMcpServer(graph: HeadlessGraph, info: McpServerInfo): McpS
             description: 'One document: its body as "text" (the markdown after any frontmatter block) and its frontmatter as the "frontmatter" object, minus title and aliases (its identity) and any publication definition. Refuses a protected document with error "protected_document". Long documents are cut and marked truncated: true.',
             inputSchema: { concept },
         },
-        async (args) => run(() => readDocument(graph, args.concept)),
+        async (args) => run((graph) => readDocument(graph, args.concept)),
     )
 
     server.registerTool(
@@ -150,7 +177,7 @@ export function createMcpServer(graph: HeadlessGraph, info: McpServerInfo): McpS
             description: `Up to ${READ_MANY_LIMIT} documents in one call, each as read_document returns it. A protected or unknown document is reported in its place with an error code rather than failing the call. Long texts are cut and marked truncated.`,
             inputSchema: { concepts: z.array(concept).min(1).max(READ_MANY_LIMIT) },
         },
-        async (args) => run(() => readDocuments(graph, args)),
+        async (args) => run((graph) => readDocuments(graph, args)),
     )
 
     server.registerTool(
@@ -165,7 +192,7 @@ export function createMcpServer(graph: HeadlessGraph, info: McpServerInfo): McpS
                 limit: z.number().int().positive().max(SEARCH_PAGE_LIMIT).optional(),
             },
         },
-        async (args) => run(() => search(graph, args)),
+        async (args) => run((graph) => search(graph, args)),
     )
 
     server.registerTool(
@@ -176,7 +203,7 @@ export function createMcpServer(graph: HeadlessGraph, info: McpServerInfo): McpS
                 'Every document that links to a concept with [[Concept]], with the linking block or paragraph, and every document scoped by it (a title such as "[[Concept]] Notes" is a reference of kind "title"). Aliases are pooled: linking an alias counts.',
             inputSchema: { concept },
         },
-        async (args) => run(() => backlinks(graph, args.concept)),
+        async (args) => run((graph) => backlinks(graph, args.concept)),
     )
 
     const journals = z.boolean().optional().describe('Count journal entries as part of the graph (default true).')
@@ -194,7 +221,7 @@ export function createMcpServer(graph: HeadlessGraph, info: McpServerInfo): McpS
                     .describe('Which pageless concepts the clusters and bridges consider: those two or more documents mention (default), all, or none.'),
             },
         },
-        async (args) => run(() => graphInsights(graph, args)),
+        async (args) => run((graph) => graphInsights(graph, args)),
     )
 
     server.registerTool(
@@ -205,7 +232,7 @@ export function createMcpServer(graph: HeadlessGraph, info: McpServerInfo): McpS
                 'The fewest wikilink steps between two concepts, in either direction, as the list of concepts passed through; path is null when nothing joins them. Answers "how is this connected to that?".',
             inputSchema: { from: concept, to: concept, journals },
         },
-        async (args) => run(() => graphPath(graph, args)),
+        async (args) => run((graph) => graphPath(graph, args)),
     )
 
     server.registerTool(
@@ -222,7 +249,7 @@ export function createMcpServer(graph: HeadlessGraph, info: McpServerInfo): McpS
                 limit: z.number().int().positive().max(TASK_PAGE_LIMIT).optional(),
             },
         },
-        async (args) => run(() => tasks(graph, args)),
+        async (args) => run((graph) => tasks(graph, args)),
     )
 
     server.registerTool(
@@ -232,7 +259,7 @@ export function createMcpServer(graph: HeadlessGraph, info: McpServerInfo): McpS
             description: 'The task a task reference names: its text, status, priority, due and scheduled days, its document and current 0-based line, its breadcrumb (the headings and bullets above it), its detail (its continuation lines and everything nested under it), foundBy (at_line, moved or other_document) and its current reference. Errors: task_not_found (its words were edited or it was deleted), task_ambiguous (two tasks have its words; the message names them), other_graph (the reference is from another graph).',
             inputSchema: { reference: z.string().min(1).describe('The task reference as the user gave it: the two lines, or the address alone.') },
         },
-        async (args) => run(() => readTask(graph, args)),
+        async (args) => run((graph) => readTask(graph, args)),
     )
 
     server.registerTool(
@@ -245,7 +272,7 @@ export function createMcpServer(graph: HeadlessGraph, info: McpServerInfo): McpS
                 text: z.string().min(1).describe('Markdown: a line, or "- " bullets.'),
             },
         },
-        async (args) => run(() => addTaskNote(graph, args)),
+        async (args) => run((graph) => addTaskNote(graph, args)),
     )
 
     server.registerTool(
@@ -266,7 +293,7 @@ export function createMcpServer(graph: HeadlessGraph, info: McpServerInfo): McpS
                 expect: z.string().optional().describe('The task text as tasks returned it.'),
             },
         },
-        async (args) => run(() => setTask(graph, args)),
+        async (args) => run((graph) => setTask(graph, args)),
     )
 
     server.registerTool(
@@ -280,7 +307,7 @@ export function createMcpServer(graph: HeadlessGraph, info: McpServerInfo): McpS
                 new: z.string().describe('The replacement text. Empty deletes the old text.'),
             },
         },
-        async (args) => run(() => editDocument(graph, args)),
+        async (args) => run((graph) => editDocument(graph, args)),
     )
 
     server.registerTool(
@@ -293,7 +320,7 @@ export function createMcpServer(graph: HeadlessGraph, info: McpServerInfo): McpS
                 text: z.string().min(1),
             },
         },
-        async (args) => run(() => appendDocument(graph, args)),
+        async (args) => run((graph) => appendDocument(graph, args)),
     )
 
     server.registerTool(
@@ -307,7 +334,7 @@ export function createMcpServer(graph: HeadlessGraph, info: McpServerInfo): McpS
                 frontmatter: z.record(z.string(), frontmatterValue).optional().describe('Frontmatter keys for the new page, e.g. {"public": true, "publications": ["blog"], "date": "2026-01-31"}.'),
             },
         },
-        async (args) => run(() => createPage(graph, args)),
+        async (args) => run((graph) => createPage(graph, args)),
     )
 
     server.registerTool(
@@ -320,7 +347,7 @@ export function createMcpServer(graph: HeadlessGraph, info: McpServerInfo): McpS
                 to: z.string().min(1).describe('The new name.'),
             },
         },
-        async (args) => run(() => planRename(graph, args)),
+        async (args) => run((graph) => planRename(graph, args)),
     )
 
     server.registerTool(
@@ -335,7 +362,7 @@ export function createMcpServer(graph: HeadlessGraph, info: McpServerInfo): McpS
                 confirm_merge: z.boolean().optional().describe('Allow the rename to merge into an existing document.'),
             },
         },
-        async (args) => run(() => rename(graph, args)),
+        async (args) => run((graph) => rename(graph, args)),
     )
 
     server.registerTool(
@@ -348,7 +375,7 @@ export function createMcpServer(graph: HeadlessGraph, info: McpServerInfo): McpS
                 aliases: z.array(z.string()).describe('Every alias the document should have - an empty list removes them all.'),
             },
         },
-        async (args) => run(() => setAliases(graph, args)),
+        async (args) => run((graph) => setAliases(graph, args)),
     )
 
     server.registerTool(
@@ -361,7 +388,7 @@ export function createMcpServer(graph: HeadlessGraph, info: McpServerInfo): McpS
                 patch: z.record(z.string(), frontmatterValue).describe('Keys to set - null removes a key. Example: {"public": true, "publications": ["blog"], "date": "2026-01-31", "draft": null}.'),
             },
         },
-        async (args) => run(() => setFrontmatter(graph, args)),
+        async (args) => run((graph) => setFrontmatter(graph, args)),
     )
 
     server.registerTool(
@@ -374,7 +401,7 @@ export function createMcpServer(graph: HeadlessGraph, info: McpServerInfo): McpS
                 name: z.string().min(1).optional().describe('The name to store it under - the file\'s own name by default.'),
             },
         },
-        async (args) => run(() => uploadAsset(graph, args)),
+        async (args) => run((graph) => uploadAsset(graph, args)),
     )
 
     server.registerTool(
@@ -387,7 +414,7 @@ export function createMcpServer(graph: HeadlessGraph, info: McpServerInfo): McpS
                 out_dir: z.string().min(1).optional().describe('A folder under the graph\'s downloads directory, relative to it - the downloads directory itself by default. A folder outside it is refused.'),
             },
         },
-        async (args) => run(() => readAsset(graph, args)),
+        async (args) => run((graph) => readAsset(graph, args)),
     )
 
     server.registerTool(
@@ -399,7 +426,7 @@ export function createMcpServer(graph: HeadlessGraph, info: McpServerInfo): McpS
                 concept: concept.optional(),
             },
         },
-        async (args) => run(() => listAssets(graph, args)),
+        async (args) => run((graph) => listAssets(graph, args)),
     )
 
     const host = { env: process.env, cmd: info.cmd }
@@ -411,7 +438,7 @@ export function createMcpServer(graph: HeadlessGraph, info: McpServerInfo): McpS
             description: 'The publications this graph defines - id, name, the page that defines each, kind (docs or blog), selection (named: documents that list it in publications, all-public: every public document), home, url, theme, include slots, and the publish folder set for it on this machine (null when none) - with any issues in their pages and the public documents no publication takes.',
             inputSchema: {},
         },
-        async () => run(() => listPublications(graph, host)),
+        async () => run((graph) => listPublications(graph, host)),
     )
 
     server.registerTool(
@@ -429,7 +456,7 @@ export function createMcpServer(graph: HeadlessGraph, info: McpServerInfo): McpS
                 theme: z.string().min(1).optional(),
             },
         },
-        async (args) => run(() => createPublication(graph, args, host)),
+        async (args) => run((graph) => createPublication(graph, args, host)),
     )
 
     server.registerTool(
@@ -450,7 +477,7 @@ export function createMcpServer(graph: HeadlessGraph, info: McpServerInfo): McpS
                 }),
             },
         },
-        async (args) => run(() => updatePublication(graph, args, host)),
+        async (args) => run((graph) => updatePublication(graph, args, host)),
     )
 
     server.registerTool(
@@ -460,7 +487,7 @@ export function createMcpServer(graph: HeadlessGraph, info: McpServerInfo): McpS
             description: 'Render a publication to its publish folder on this machine and return the report: what was included and why documents were left out, missing links, assets, warnings. The folder is the one the user set with "etherpk-mcp publish --publication <id> --out <dir>" (error "no_publish_folder" until then - the tool never chooses a folder). Pages with Mermaid diagrams need the browser from "diagrams setup" (error "chromium_unavailable"). The report is this result, trimmed to counts and first entries - nothing of it is written into the folder, so the site never names the documents it leaves out. Publishing writes files - it does not deploy them.',
             inputSchema: { id: z.string().min(1) },
         },
-        async (args) => run(() => publish(graph, args, host)),
+        async (args) => run((graph) => publish(graph, args, host)),
     )
 
     server.registerTool(
@@ -470,7 +497,7 @@ export function createMcpServer(graph: HeadlessGraph, info: McpServerInfo): McpS
             description: "Every theme a publication here can use: the bundled ones (etherpk-docs and etherpk-blog, read-only, with their files and manifest) and the graph's own (editable, with id, name, origin, files, manifest, validation errors, and which publications use each).",
             inputSchema: {},
         },
-        async () => run(() => listThemes(graph)),
+        async () => run((graph) => listThemes(graph)),
     )
 
     server.registerTool(
@@ -483,7 +510,7 @@ export function createMcpServer(graph: HeadlessGraph, info: McpServerInfo): McpS
                 out_dir: z.string().min(1).optional().describe("A folder under the graph's downloads directory, relative to it - themes/<ref> there by default. A folder outside it is refused."),
             },
         },
-        async (args) => run(() => readTheme(graph, args)),
+        async (args) => run((graph) => readTheme(graph, args)),
     )
 
     server.registerTool(
@@ -493,7 +520,7 @@ export function createMcpServer(graph: HeadlessGraph, info: McpServerInfo): McpS
             description: 'One file of a theme, as text: theme.json, or a path under layouts/, partials/ or assets/.',
             inputSchema: { ref: z.string().min(1), path: z.string().min(1) },
         },
-        async (args) => run(() => readThemeFile(graph, args)),
+        async (args) => run((graph) => readThemeFile(graph, args)),
     )
 
     server.registerTool(
@@ -507,7 +534,7 @@ export function createMcpServer(graph: HeadlessGraph, info: McpServerInfo): McpS
                 name: z.string().min(1).optional(),
             },
         },
-        async (args) => run(() => createTheme(graph, args)),
+        async (args) => run((graph) => createTheme(graph, args)),
     )
 
     server.registerTool(
@@ -521,7 +548,7 @@ export function createMcpServer(graph: HeadlessGraph, info: McpServerInfo): McpS
                 name: z.string().min(1).optional(),
             },
         },
-        async (args) => run(() => customisePublicationTheme(graph, args)),
+        async (args) => run((graph) => customisePublicationTheme(graph, args)),
     )
 
     server.registerTool(
@@ -531,7 +558,7 @@ export function createMcpServer(graph: HeadlessGraph, info: McpServerInfo): McpS
             description: 'Set one file of a graph theme (creating it if new): theme.json, or a path under layouts/, partials/ or assets/. The theme is validated afterwards and any problem returned as errors, so a broken manifest or a missing layouts/page.html is reported on the write, not on the next publish. Refused for a bundled theme with error "theme_not_editable".',
             inputSchema: { id: z.string().min(1), path: z.string().min(1), text: z.string() },
         },
-        async (args) => run(() => writeThemeFile(graph, args)),
+        async (args) => run((graph) => writeThemeFile(graph, args)),
     )
 
     server.registerTool(
@@ -541,7 +568,7 @@ export function createMcpServer(graph: HeadlessGraph, info: McpServerInfo): McpS
             description: 'Remove one file from a graph theme - the theme is validated afterwards and problems returned as errors.',
             inputSchema: { id: z.string().min(1), path: z.string().min(1) },
         },
-        async (args) => run(() => deleteThemeFile(graph, args)),
+        async (args) => run((graph) => deleteThemeFile(graph, args)),
     )
 
     server.registerTool(
@@ -551,7 +578,7 @@ export function createMcpServer(graph: HeadlessGraph, info: McpServerInfo): McpS
             description: "Replace a graph theme's files with a folder's contents - the way back after editing what read_theme wrote. Files the folder no longer has are removed from the theme - the folder needs a theme.json at its top. dir is the folder read_theme returned, or another under the graph's downloads directory - a folder outside it is refused, and symbolic links in it are skipped. Validated afterwards.",
             inputSchema: { id: z.string().min(1), dir: z.string().min(1) },
         },
-        async (args) => run(() => importThemeFolder(graph, args)),
+        async (args) => run((graph) => importThemeFolder(graph, args)),
     )
 
     server.registerTool(
@@ -561,7 +588,7 @@ export function createMcpServer(graph: HeadlessGraph, info: McpServerInfo): McpS
             description: "Remove a graph theme. Refused with error \"theme_in_use\" while a publication's saved settings name it - point the publication at another theme first.",
             inputSchema: { id: z.string().min(1) },
         },
-        async (args) => run(() => deleteTheme(graph, args)),
+        async (args) => run((graph) => deleteTheme(graph, args)),
     )
 
     server.registerTool(
@@ -576,7 +603,7 @@ export function createMcpServer(graph: HeadlessGraph, info: McpServerInfo): McpS
                 screenshots: z.boolean().optional(),
             },
         },
-        async (args) => run(() => previewTheme(graph, args, host)),
+        async (args) => run((graph) => previewTheme(graph, args, host)),
     )
 
     server.registerTool(
@@ -586,7 +613,7 @@ export function createMcpServer(graph: HeadlessGraph, info: McpServerInfo): McpS
             description: 'What you are connected to: the graph\'s name, whether it is a synced graph (and on which server) or a folder, how many pages and journal entries it has and how many are protected, the state of semantic search, whether assets are available, the publications with the publish folder set for each on this machine, and whether Mermaid diagrams can be drawn here.',
             inputSchema: {},
         },
-        async () => run(async () => ({ ...(await graphInfo(graph)), publishing: await publishingInfo(graph, host) })),
+        async () => run(async (graph) => ({ ...(await graphInfo(graph)), publishing: await publishingInfo(graph, host) })),
     )
 
     return server

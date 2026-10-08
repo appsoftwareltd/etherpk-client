@@ -1,33 +1,43 @@
 /**
  * What `login` leaves behind and `serve` reads: for each Sync Server this machine is signed in
- * to, keyed by origin, the account-wide [[Personal Access Token]] and the vault key that opens
- * the account's keys here. One file holds every login (ADR 0075), so a dev instance beside a
- * production one, or a self-hosted server beside the managed service, need no second file and
- * no environment variable to keep them apart; a command names its server with `--sync-server`
- * and may leave it out while only one is signed in.
+ * to, keyed by origin, the agent token (ADR 0132) and the vault key that opens the account's keys
+ * here. One file holds every login (ADR 0075), so a dev instance beside a production one, or a
+ * self-hosted server beside the managed service, need no second file and no environment variable
+ * to keep them apart; a command names its server with `--sync-server` and may leave it out while
+ * only one is signed in.
  *
- * The file is the same trust class as the browser's `localStorage` cache of the same key
+ * Where the system keychain can be reached, the two secrets live there (`secret-store.ts`) and
+ * the file names only the server: `{ "keychain": true }`. Elsewhere they are in the file itself,
+ * which is then the same trust class as the browser's `localStorage` cache of the same key
  * (DESIGN.md → Key storage between sessions): whoever can read this user's files can read the
- * accounts. It is written `0600` in the user's config directory, never anywhere a project
- * checkout could pick it up, and `ETHERPK_MCP_CONFIG` overrides the path for tests and for a
- * box that keeps its secrets elsewhere. An OS keychain would be the next step (ADR 0072).
+ * account. Either way the file is written `0600` in the user's config directory, never anywhere a
+ * project checkout could pick it up, and `ETHERPK_MCP_CONFIG` overrides the path for tests and for
+ * a box that keeps its secrets elsewhere.
  */
 
-import { chmod, mkdir, readFile, writeFile } from 'node:fs/promises'
+import { randomUUID } from 'node:crypto'
+import { mkdir, open, readFile, rename, rm } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 
-/** One Sync Server's login. */
+/** One Sync Server's login: its two secrets. */
 export interface ServerLogin {
-    /** The account-wide PAT (a graph-scoped one cannot reach the vault). */
+    /** The access token: an agent token, or a standard one left by an older version or server. */
     pat: string
     /** The vault key, base64url. Absent until `login` has unlocked the account. */
     vaultKey?: string
 }
 
+/** A login as the file holds it: its secrets, or word that they are in the system keychain. */
+export type StoredLogin = ServerLogin | { keychain: true }
+
+export function inKeychain(stored: StoredLogin): stored is { keychain: true } {
+    return 'keychain' in stored
+}
+
 /** Every login on this machine, keyed by Sync Server origin (`https://…`, no trailing slash). */
 export interface HeadlessConfig {
-    servers: Record<string, ServerLogin>
+    servers: Record<string, StoredLogin>
 }
 
 /** A login together with the server it belongs to: what every command works from. */
@@ -81,9 +91,14 @@ export function parseConfig(raw: string): HeadlessConfig | null {
     for (const [key, entry] of Object.entries(servers as Record<string, unknown>)) {
         if (typeof entry !== 'object' || entry === null) return null
         const login = entry as Record<string, unknown>
-        if (typeof login.pat !== 'string' || login.pat === '') return null
         const syncServer = normaliseSyncServer(key)
         if (!/^https?:\/\//.test(syncServer)) return null
+        if ('keychain' in login) {
+            if (login.keychain !== true) return null
+            out.servers[syncServer] = { keychain: true }
+            continue
+        }
+        if (typeof login.pat !== 'string' || login.pat === '') return null
         const kept: ServerLogin = { pat: login.pat }
         if (typeof login.vaultKey === 'string' && login.vaultKey !== '') kept.vaultKey = login.vaultKey
         out.servers[syncServer] = kept
@@ -104,20 +119,39 @@ export async function readConfig(path: string): Promise<HeadlessConfig | null> {
     }
 }
 
-/** Write with owner-only permissions, creating the directory; the mode is set even on overwrite. */
+/**
+ * Write with owner-only permissions, creating the directory. The file is replaced whole: written
+ * beside it under a name of its own, flushed to disk, then renamed over it. A crash or a full disk
+ * part way through therefore leaves the previous file, never a part-written one, which `login`
+ * would not understand and would replace, losing every login it held. A reader sees the old file
+ * or the new one.
+ */
 export async function writeConfig(path: string, config: HeadlessConfig): Promise<void> {
     await mkdir(dirname(path), { recursive: true, mode: 0o700 })
-    await writeFile(path, serialiseConfig(config), { mode: 0o600 })
-    await chmod(path, 0o600)
+    const temp = `${path}.${randomUUID()}.tmp`
+    try {
+        // Created owner-only, so the renamed file is owner-only too, whatever the old one was.
+        const handle = await open(temp, 'wx', 0o600)
+        try {
+            await handle.writeFile(serialiseConfig(config))
+            await handle.sync()
+        } finally {
+            await handle.close()
+        }
+        await rename(temp, path)
+    } catch (error) {
+        await rm(temp, { force: true }).catch(() => {})
+        throw error
+    }
 }
 
-/** The logins as a list, in file order, each carrying its server. */
-export function listLogins(config: HeadlessConfig): ServerCredentials[] {
-    return Object.entries(config.servers).map(([syncServer, login]) => ({ syncServer, ...login }))
+/** The logins as a list, in file order, each with its server. */
+export function listLogins(config: HeadlessConfig): Array<{ syncServer: string; stored: StoredLogin }> {
+    return Object.entries(config.servers).map(([syncServer, stored]) => ({ syncServer, stored }))
 }
 
 export type ServerSelection =
-    | { ok: true; credentials: ServerCredentials }
+    | { ok: true; syncServer: string; stored: StoredLogin }
     | { ok: false; reason: 'none' }
     | { ok: false; reason: 'unknown'; syncServer: string; known: string[] }
     | { ok: false; reason: 'ambiguous'; known: string[] }
@@ -131,11 +165,11 @@ export function selectServer(config: HeadlessConfig, wanted?: string): ServerSel
     const known = Object.keys(config.servers)
     if (wanted !== undefined && wanted.trim() !== '') {
         const syncServer = normaliseSyncServer(wanted)
-        const login = config.servers[syncServer]
-        return login ? { ok: true, credentials: { syncServer, ...login } } : { ok: false, reason: 'unknown', syncServer, known }
+        const stored = config.servers[syncServer]
+        return stored ? { ok: true, syncServer, stored } : { ok: false, reason: 'unknown', syncServer, known }
     }
     if (known.length === 0) return { ok: false, reason: 'none' }
     if (known.length > 1) return { ok: false, reason: 'ambiguous', known }
     const syncServer = known[0]
-    return { ok: true, credentials: { syncServer, ...config.servers[syncServer] } }
+    return { ok: true, syncServer, stored: config.servers[syncServer] }
 }

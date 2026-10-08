@@ -73,6 +73,8 @@ export const TASK_PAGE_LIMIT = 200
 export const READ_TEXT_CAP = 200_000
 
 export type ToolErrorCode =
+    /** The graph could not be opened (not logged in, the keys no longer open the vault, no such graph); the message says why. */
+    | 'graph_unavailable'
     | 'semantic_unavailable'
     | 'not_found'
     | 'protected_document'
