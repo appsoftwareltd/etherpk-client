@@ -43,6 +43,15 @@ export interface ParsedAlt {
     maxHeight?: number
 }
 
+/**
+ * The CSS `max-width` for a hinted width: the hint, but never wider than the container. Both the
+ * editor and the publisher set it inline, and an inline value outranks a stylesheet's
+ * `img { max-width: 100% }`, so a bare `${px}px` would push a wide image out of a narrower column.
+ */
+export function displayMaxWidth(px: number): string {
+    return `min(${px}px, 100%)`
+}
+
 /** Parse the alt text into its clean label and any display-size hint. A width < 1 (or no hint) yields no dimensions. */
 export function parseImageDisplaySizeHint(alt: string): ParsedAlt {
     const match = DISPLAY_SIZE_HINT_REGEX.exec(alt)

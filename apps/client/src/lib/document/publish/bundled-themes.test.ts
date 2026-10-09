@@ -5,6 +5,8 @@
  * Mustache), which survive a stylesheet tweak.
  */
 
+import { readFileSync } from 'node:fs'
+
 import { describe, expect, it } from 'vitest'
 
 import { bundledTheme, bundledThemeNames } from '@appsoftwareltd/etherpk-themes'
@@ -149,6 +151,31 @@ describe.each(bundledThemeNames())('bundled theme %s', (name) => {
         const swapped = withLogo.bundle.get('guide.html') as string
         expect(swapped).toContain('<img src="https://example.com/logo.png" alt="Example">')
         expect(swapped).not.toContain('site-logo')
+    })
+
+    it('links the EtherPK favicon on every page, from a favicon partial a publication can replace', async () => {
+        // As a docs site and as a blog, whichever the theme takes: the two kinds render different
+        // layouts (a contents page, a post list), and every one of them must carry the icon.
+        const kinds = (JSON.parse(bundledTheme(name)?.files.get('theme.json') ?? '{}') as { kinds?: string[] }).kinds ?? []
+        for (const kind of kinds) {
+            const { bundle } = await publishPublication(source, kind === 'blog' ? { ...blog, theme: name } : { ...docs, theme: name }, env)
+            for (const [path, content] of bundle) {
+                if (!path.endsWith('.html')) continue
+                expect(content as string, `${kind} ${path}`).toContain('<link rel="icon" href="theme/favicon.svg" type="image/svg+xml">')
+            }
+            // The same icon the apps show in their tabs, copied in with the theme's other assets.
+            expect(bundle.get('theme/favicon.svg'), kind).toBe(readFileSync(new URL('../../../../static/favicon.svg', import.meta.url), 'utf8'))
+        }
+        const { theme } = await env.loadTheme(name)
+        expect(theme.manifest.includes.map((s) => s.name)).toContain('favicon')
+        const withIcon = await publishPublication(
+            { ...source, documents: [...source.documents, { ...pageNamed('Site Icon'), text: '---\npublic: true\npublications: [docs, blog]\n---\n<link rel="icon" href="https://example.com/icon.png">\n' }] },
+            { ...publication, includes: { ...publication.includes, favicon: 'Site Icon' } },
+            env,
+        )
+        const swapped = withIcon.bundle.get('guide.html') as string
+        expect(swapped).toContain('<link rel="icon" href="https://example.com/icon.png">')
+        expect(swapped).not.toContain('theme/favicon.svg')
     })
 
     it('carries a hamburger toggle for the drawer on small screens outside the header include', async () => {

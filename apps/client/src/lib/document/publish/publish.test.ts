@@ -97,7 +97,7 @@ describe('publishPublication', () => {
         expect(guide).toContain('class="katex"')
         expect(guide).toContain('<figure class="diagram diagram-mermaid"><svg data-src="graph TD; A-->B;"></svg></figure>')
         expect(guide).toContain('<span class="tok-keyword">const</span>')
-        expect(guide).toContain('<img src="assets/chart.png" alt="Chart" style="max-width:300px">')
+        expect(guide).toContain('<img src="assets/chart.png" alt="Chart" style="max-width:min(300px, 100%)">')
         expect(guide).toContain('<h2 id="setup">Setup</h2>')
         expect(guide).toContain('<nav class="toc"><ul><li class="toc-level-2"><a href="#setup">Setup</a></li></ul></nav>')
         expect(guide).toContain('<title>Guide · Docs Site</title>')

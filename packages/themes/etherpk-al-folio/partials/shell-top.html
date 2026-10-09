@@ -11,6 +11,7 @@
     {{#site.hasCustomCss}}<link rel="stylesheet" href="theme/custom.css">{{/site.hasCustomCss}}
     {{#site.hasFeed}}<link rel="alternate" type="application/rss+xml" title="{{site.title}}" href="feed.xml">{{/site.hasFeed}}
     <script>try{var t=localStorage.getItem('etherpk-theme');if(t==='dark'||t==='light')document.documentElement.setAttribute('data-theme',t)}catch(e){}</script>
+    {{> favicon}}
     {{> head}}
 </head>
 <body class="layout-al-folio{{#page.isHome}} is-home{{/page.isHome}}{{#page.isJournal}} is-journal{{/page.isJournal}}">

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { normalizeDisplaySize, parseDisplaySize, parseImageDisplaySizeHint } from './image-display-size'
+import { displayMaxWidth, normalizeDisplaySize, parseDisplaySize, parseImageDisplaySizeHint } from './image-display-size'
 
 describe('parseImageDisplaySizeHint', () => {
     it('returns the alt unchanged when there is no hint', () => {
@@ -48,5 +48,11 @@ describe('normalizeDisplaySize', () => {
         expect(normalizeDisplaySize('300')).toBe('300')
         expect(normalizeDisplaySize('640X480')).toBe('640x480')
         expect(normalizeDisplaySize('nope')).toBeNull()
+    })
+})
+
+describe('displayMaxWidth', () => {
+    it('caps at the hint and at the container, whichever is narrower', () => {
+        expect(displayMaxWidth(1000)).toBe('min(1000px, 100%)')
     })
 })

@@ -12,7 +12,7 @@
 import MarkdownIt, { type Token } from 'markdown-it'
 
 import { isSafeAssetName } from '../../../storage/fs/asset-names'
-import { parseImageDisplaySizeHint } from '../../view/augmentations/image-display-size'
+import { displayMaxWidth, parseImageDisplaySizeHint } from '../../view/augmentations/image-display-size'
 import { publishSlug } from '../../wikilink/derive'
 import { listItemEndRule } from './list-item-end-rule'
 import { markRule } from './mark-rule'
@@ -144,12 +144,13 @@ export function createDocumentRenderer(options: RendererOptions): DocumentRender
                 if (!state.assets.includes(name)) state.assets.push(name)
             }
         }
-        // The alt as the editor shows it: the display-size hint stripped, and applied as a cap.
+        // The alt as the editor shows it: the display-size hint stripped, and applied as a cap
+        // that, as in the editor, never reaches past the theme's content column.
         const alt = self.renderInlineAsText(token.children ?? [], opts, env)
         const parsed = parseImageDisplaySizeHint(alt)
         token.attrSet('alt', parsed.cleanAlt)
         if (parsed.maxWidth !== undefined) {
-            const style = [`max-width:${parsed.maxWidth}px`]
+            const style = [`max-width:${displayMaxWidth(parsed.maxWidth)}`]
             if (parsed.maxHeight !== undefined) style.push(`max-height:${parsed.maxHeight}px`)
             token.attrSet('style', style.join(';'))
         }

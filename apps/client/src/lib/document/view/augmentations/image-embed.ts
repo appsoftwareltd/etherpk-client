@@ -45,7 +45,7 @@ import { AssetUnavailableError, type ResolvedAsset, assetNameFromRef } from '$li
 import { assetTargetAt, attachAssetContextMenu, buildAssetActions } from './asset-actions'
 import { loadAssetWithRetry } from './asset-load-retry'
 import { BLOCK_WIDGET_SPACING, BULLET_BLOCK_DROP, blockWidgetIndent, proseTextInset } from './content-clamp'
-import { parseImageDisplaySizeHint } from './image-display-size'
+import { displayMaxWidth, parseImageDisplaySizeHint } from './image-display-size'
 import { isDirectImageUrl } from './image-target'
 import { pinReveal, pinnedRevealField, pinnedRevealFrom, revealInputsChanged, revealedLines } from './reveal-policy'
 import { isBulletImageLine, isImageLine, parseImageLine } from '../../image-line'
@@ -251,8 +251,8 @@ class ImageWidget extends WidgetType {
         img.alt = this.alt
         // The hint is a *maximum*: cap with max-width/max-height and leave width/height auto,
         // so the image scales down to fit (keeping its aspect ratio) but is never upscaled.
-        // Width is also capped to the editor (min with 100%) so a large hint can't overflow.
-        if (this.maxWidth !== undefined) img.style.maxWidth = `min(${this.maxWidth}px, 100%)`
+        // Width is also capped to the editor (`displayMaxWidth`) so a large hint can't overflow.
+        if (this.maxWidth !== undefined) img.style.maxWidth = displayMaxWidth(this.maxWidth)
         if (this.maxHeight !== undefined) img.style.maxHeight = `${this.maxHeight}px`
 
         const placeholder = wrap.appendChild(this.buildPlaceholder())

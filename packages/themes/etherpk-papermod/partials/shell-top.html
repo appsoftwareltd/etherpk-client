@@ -12,6 +12,7 @@
     {{#site.hasFeed}}<link rel="alternate" type="application/rss+xml" title="{{site.title}}" href="feed.xml">{{/site.hasFeed}}
     <!-- The remembered light / dark choice, applied before the first paint (theme.js owns the toggle). -->
     <script>try{var t=localStorage.getItem('etherpk-theme');if(t==='dark'||t==='light')document.documentElement.setAttribute('data-theme',t)}catch(e){}</script>
+    {{> favicon}}
     {{> head}}
 </head>
 <body class="layout-papermod{{#page.isHome}} is-home{{/page.isHome}}{{#page.isJournal}} is-journal{{/page.isJournal}}" id="top">

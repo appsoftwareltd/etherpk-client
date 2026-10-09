@@ -23,6 +23,8 @@
     /* The header is exactly this tall, so the sticky sidebar and the drawer toggle can be
        measured against it rather than guessing at the search box's height. */
     --header-height: 3.5rem;
+    /* The width of the text column beside the sidebar. Pictures are capped to it as well. */
+    --content-width: 52rem;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -136,7 +138,8 @@ a:hover { color: var(--agent-600); }
 .nav-toggle { display: none; }
 .nav-backdrop { display: none; }
 
-.content { padding: 2rem 3rem 4rem; max-width: 52rem; width: 100%; }
+/* The padding sits outside the text column (border-box would take it from inside). */
+.content { padding: 2rem 3rem 4rem; max-width: calc(var(--content-width) + 6rem); width: 100%; }
 .page-header h1 { font-size: 2rem; line-height: 1.2; margin: 0 0 0.5rem; color: var(--text-strong); }
 .page-header h1 .wikilink { color: inherit; text-decoration: none; }
 .page-header h1 .wikilink:hover { text-decoration: underline; }

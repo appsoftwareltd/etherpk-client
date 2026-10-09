@@ -163,9 +163,17 @@ describe('createDocumentRenderer', () => {
 
     it('rewrites asset references, applies the display-size hint as a cap, and lists the assets', () => {
         const r = renderer().render('![Chart|300x200](../assets/chart.a1b2c3d4.png)\n\n[Report](../assets/q3%20report.5e6f.pdf)\n')
-        expect(r.html).toContain('<img src="assets/chart.a1b2c3d4.png" alt="Chart" style="max-width:300px;max-height:200px">')
+        expect(r.html).toContain('<img src="assets/chart.a1b2c3d4.png" alt="Chart" style="max-width:min(300px, 100%);max-height:200px">')
         expect(r.html).toContain('<a href="assets/q3%20report.5e6f.pdf">Report</a>')
         expect(r.assets).toEqual(['chart.a1b2c3d4.png', 'q3 report.5e6f.pdf'])
+    })
+
+    it('never lets the display-size hint widen an image past its column', () => {
+        // An inline style outranks the theme's `img { max-width: 100% }`, so a bare
+        // `max-width:1000px` pushed a wide screenshot out of a narrower column in every theme.
+        const r = renderer().render('![Board|1000](../assets/board.a1b2c3d4.webp)\n')
+        expect(r.html).toContain('style="max-width:min(1000px, 100%)"')
+        expect(r.html).not.toMatch(/max-width:\d+px/)
     })
 
     it('leaves a web image and a file link alone', () => {

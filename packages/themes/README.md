@@ -25,7 +25,9 @@ the rendered content carries are documented in the user guide
 
 Both put the EtherPK icon (inline in `partials/logo.html`)
 before the site title, declared as the `logo` include slot so a publication swaps it from a
-page. The docs theme's sidebar is a drawer on a small screen: the hamburger button sits in
+page. Every theme also ships the EtherPK apps' `favicon.svg` in `assets/` and links it from
+`partials/favicon.html`, the `favicon` include slot, so a publication swaps the tab icon the same
+way. The docs theme's sidebar is a drawer on a small screen: the hamburger button sits in
 `shell-top.html` rather than the `header` partial, so a replaced header keeps the drawer
 reachable, and `assets/search.js` runs both the drawer and search.
 
