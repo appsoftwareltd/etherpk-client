@@ -1,8 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
 import type { RenamePlan, RenameResult } from '$lib/storage/rename'
-import { registerBoard, type RenamedDocument, takeBoardHandover } from '$lib/kanban/board-actions'
-import type { BoardState } from '$lib/kanban/board-state'
 
 import {
     INDEX_CATCH_UP_MS,
@@ -350,7 +348,7 @@ describe('workspace document mutations', () => {
     })
 })
 
-/** A layout of one Pane holding the Views named by `keys` (`kanban:Acme`, `document:Notes`), `front` at the front. */
+/** A layout of one Pane holding the Views named by `keys` (`kanban.board:Acme`, `document:Notes`), `front` at the front. */
 function layoutOf(keys: string[], front: string | null) {
     const key = (view: { kind: string; target: string }) => `${view.kind}:${view.target}`
     return {
@@ -363,8 +361,12 @@ function layoutOf(keys: string[], front: string | null) {
     }
 }
 
-function controllerOver(layout: ReturnType<typeof layoutOf>, renamedTo = 'New') {
+/** A board is about a concept, as its registry entry says (ADR 0113). */
+const boards = (kind: string) => kind === 'kanban.board'
+
+function controllerOver(layout: ReturnType<typeof layoutOf>, renamedTo = 'New', followsConcept: (kind: string) => boolean = boards) {
     return createDocumentMutationController({
+        followsConcept,
         store: () => ({
             planRename: vi.fn(),
             renamePage: vi.fn().mockResolvedValue({ concept: renamedTo, rewritten: 0, cascaded: 0, merged: 0 }),
@@ -380,137 +382,153 @@ function controllerOver(layout: ReturnType<typeof layoutOf>, renamedTo = 'New') 
 // A Kanban Board follows its concept through a rename and is retitled in place (ADR 0113).
 describe('boards follow their concept', () => {
     it('re-keys an open board in its own Pane, keeping it at the front, and opens the new one before closing the old', async () => {
-        const layout = layoutOf(['document:Notes', 'kanban:Old'], 'kanban:Old')
+        const layout = layoutOf(['document:Notes', 'kanban.board:Old'], 'kanban.board:Old')
         await controllerOver(layout).rename('Old', plan, 'New', 'rewrite')
-        expect(layout.openView).toHaveBeenCalledWith({ kind: 'kanban', target: 'New' }, { activate: true, paneId: 'main-1' })
-        expect(layout.closeView).toHaveBeenCalledWith({ kind: 'kanban', target: 'Old' })
+        expect(layout.openView).toHaveBeenCalledWith({ kind: 'kanban.board', target: 'New' }, { activate: true, paneId: 'main-1' })
+        expect(layout.closeView).toHaveBeenCalledWith({ kind: 'kanban.board', target: 'Old' })
         // A board with a Pane to itself leaves it only once its successor is there.
-        const opened = layout.openView.mock.calls.findIndex(([view]) => view.kind === 'kanban')
-        const closed = layout.closeView.mock.calls.findIndex(([view]) => view.kind === 'kanban')
+        const opened = layout.openView.mock.calls.findIndex(([view]) => view.kind === 'kanban.board')
+        const closed = layout.closeView.mock.calls.findIndex(([view]) => view.kind === 'kanban.board')
         expect(layout.openView.mock.invocationCallOrder[opened]).toBeLessThan(layout.closeView.mock.invocationCallOrder[closed])
     })
 
     it('leaves a board in the background there, and matches its concept whatever the case', async () => {
-        const layout = layoutOf(['document:Notes', 'kanban:old'], 'document:Notes')
+        const layout = layoutOf(['document:Notes', 'kanban.board:old'], 'document:Notes')
         await controllerOver(layout).rename('Old', plan, 'New', 'rewrite')
-        expect(layout.openView).toHaveBeenCalledWith({ kind: 'kanban', target: 'New' }, { activate: false, paneId: 'main-1' })
-        expect(layout.closeView).toHaveBeenCalledWith({ kind: 'kanban', target: 'old' })
+        expect(layout.openView).toHaveBeenCalledWith({ kind: 'kanban.board', target: 'New' }, { activate: false, paneId: 'main-1' })
+        expect(layout.closeView).toHaveBeenCalledWith({ kind: 'kanban.board', target: 'old' })
     })
 
     it('carries a board over a concept the renamed one scopes, and leaves other boards alone', async () => {
-        const layout = layoutOf(['kanban:[[Old]] Website', 'kanban:Other'], 'kanban:Other')
+        const layout = layoutOf(['kanban.board:[[Old]] Website', 'kanban.board:Other'], 'kanban.board:Other')
         await controllerOver(layout).rename('Old', plan, 'New', 'rewrite')
-        expect(layout.openView).toHaveBeenCalledWith({ kind: 'kanban', target: '[[New]] Website' }, { activate: false, paneId: 'main-1' })
-        expect(layout.closeView).not.toHaveBeenCalledWith({ kind: 'kanban', target: 'Other' })
+        expect(layout.openView).toHaveBeenCalledWith({ kind: 'kanban.board', target: '[[New]] Website' }, { activate: false, paneId: 'main-1' })
+        expect(layout.closeView).not.toHaveBeenCalledWith({ kind: 'kanban.board', target: 'Other' })
     })
 
     it('follows a rename made elsewhere, and a concept moved by its only link', async () => {
-        const elsewhere = layoutOf(['kanban:Old'], 'kanban:Old')
+        const elsewhere = layoutOf(['kanban.board:Old'], 'kanban.board:Old')
         await controllerOver(elsewhere).followRename('Old', 'New')
-        expect(elsewhere.openView).toHaveBeenCalledWith({ kind: 'kanban', target: 'New' }, { activate: true, paneId: 'main-1' })
-        expect(elsewhere.closeView).toHaveBeenCalledWith({ kind: 'kanban', target: 'Old' })
+        expect(elsewhere.openView).toHaveBeenCalledWith({ kind: 'kanban.board', target: 'New' }, { activate: true, paneId: 'main-1' })
+        expect(elsewhere.closeView).toHaveBeenCalledWith({ kind: 'kanban.board', target: 'Old' })
 
-        const moved = layoutOf(['kanban:Old', 'kanban:[[Old]] Idea'], null)
+        const moved = layoutOf(['kanban.board:Old', 'kanban.board:[[Old]] Idea'], null)
         await controllerOver(moved).followConceptMove('Old', 'New')
-        expect(moved.openView).toHaveBeenCalledWith({ kind: 'kanban', target: 'New' }, { activate: false, paneId: 'main-1' })
-        expect(moved.openView).toHaveBeenCalledWith({ kind: 'kanban', target: '[[New]] Idea' }, { activate: false, paneId: 'main-1' })
+        expect(moved.openView).toHaveBeenCalledWith({ kind: 'kanban.board', target: 'New' }, { activate: false, paneId: 'main-1' })
+        expect(moved.openView).toHaveBeenCalledWith({ kind: 'kanban.board', target: '[[New]] Idea' }, { activate: false, paneId: 'main-1' })
     })
 
     it('keeps a board open when its document is deleted: its tasks can still answer to the concept', async () => {
-        const layout = layoutOf(['document:Old', 'kanban:Old'], 'document:Old')
+        const layout = layoutOf(['document:Old', 'kanban.board:Old'], 'document:Old')
         await controllerOver(layout).delete('Old')
         expect(layout.closeView).toHaveBeenCalledTimes(1)
         expect(layout.closeView).toHaveBeenCalledWith({ kind: 'document', target: 'Old' })
     })
 })
 
-/** A board registered as KanbanView registers one, recording what the renames asked of it. */
-function boardOver(concept: string) {
-    const board = {
-        renamed: [] as RenamedDocument[],
-        /** What the board was asked, in order. */
-        asked: [] as string[],
-        /** Its Task Detail's document, which a rename it hears moves, as KanbanView's does. */
-        detailDocument: 'Old',
+// Any View an extension says is about a concept follows it the same way: a Map View (ADR 0118).
+describe('other concept Views follow their concept', () => {
+    const maps = (kind: string) => kind === 'maps.map'
+
+    it('re-keys a Map View through a rename, a rename made elsewhere and a moved concept', async () => {
+        const renamed = layoutOf(['document:Notes', 'maps.map:Old', 'maps.map:[[Old]] Website'], 'maps.map:Old')
+        await controllerOver(renamed, 'New', maps).rename('Old', plan, 'New', 'rewrite')
+        expect(renamed.openView).toHaveBeenCalledWith({ kind: 'maps.map', target: 'New' }, { activate: true, paneId: 'main-1' })
+        expect(renamed.openView).toHaveBeenCalledWith({ kind: 'maps.map', target: '[[New]] Website' }, { activate: false, paneId: 'main-1' })
+        expect(renamed.closeView).toHaveBeenCalledWith({ kind: 'maps.map', target: 'Old' })
+
+        const elsewhere = layoutOf(['maps.map:Old'], null)
+        await controllerOver(elsewhere, 'New', maps).followRename('Old', 'New')
+        expect(elsewhere.openView).toHaveBeenCalledWith({ kind: 'maps.map', target: 'New' }, { activate: false, paneId: 'main-1' })
+
+        const moved = layoutOf(['maps.map:Old'], 'maps.map:Old')
+        await controllerOver(moved, 'New', maps).followConceptMove('Old', 'New')
+        expect(moved.openView).toHaveBeenCalledWith({ kind: 'maps.map', target: 'New' }, { activate: true, paneId: 'main-1' })
+    })
+
+    it('leaves alone a View whose kind is not about a concept', async () => {
+        const layout = layoutOf(['asset:Old', 'maps.whole:whole'], 'asset:Old')
+        await controllerOver(layout, 'New', maps).rename('Old', plan, 'New', 'rewrite')
+        expect(layout.openView).not.toHaveBeenCalled()
+        expect(layout.closeView).not.toHaveBeenCalledWith(expect.objectContaining({ kind: 'asset' }))
+    })
+})
+
+// Extensions hear each concept a rename moved, as the `concept:renamed` Event (ADR 0121), before
+// the Views about it follow, so one keeping state under the old name hands it over first.
+describe('extensions hear each concept a rename moved', () => {
+    function reporting(layout: ReturnType<typeof layoutOf>, planned: RenamePlan | null = null) {
+        const heard: string[] = []
+        const controller = createDocumentMutationController({
+            conceptRenamed: (from, to) => heard.push(`${from} -> ${to}`),
+            followsConcept: (kind) => kind === 'maps.map',
+            store: () => ({
+                planRename: vi.fn().mockResolvedValue(planned),
+                renamePage: vi.fn().mockResolvedValue({ concept: 'New', rewritten: 0, cascaded: 1, merged: 0 }),
+                deleteDocument: vi.fn(),
+            }),
+            index: () => undefined,
+            layout: () => layout,
+            recents: () => null,
+            renameFavourite: vi.fn().mockResolvedValue(undefined),
+        })
+        layout.openView.mockImplementation((view: { kind: string; target: string }) => heard.push(`opened ${view.kind}:${view.target}`))
+        return { controller, heard }
     }
-    const unregister = registerBoard(
-        `board-${concept}`,
-        { open: () => {}, openInTab: () => {}, copyReference: () => {}, move: () => {} },
-        {
-            concept,
-            documentsRenamed: (renamed) => {
-                board.asked.push('renamed')
-                board.renamed.push(renamed)
-                board.detailDocument = renamed(board.detailDocument) ?? board.detailDocument
-            },
-            documentRemoved: () => {},
-            state: (): BoardState => {
-                board.asked.push('state')
-                return { collapsed: ['done'], detail: { document: board.detailDocument, line: 3, label: 'Send the quote' }, detailHeight: 0.4 }
-            },
-        },
-    )
-    return { board, unregister }
-}
 
-// A Kanban Board's Task Detail follows its document through a rename, and a board re-keyed by one
-// carries on where it was (ADR 0113).
-describe('a Task Detail follows its document', () => {
-    it('tells every open board the new name of each document a rename moved, scoped ones included', async () => {
-        const { board, unregister } = boardOver('Other')
-        try {
-            await controllerOver(layoutOf(['kanban:Other'], null)).rename('Old', plan, 'New', 'rewrite')
-            const [renamed] = board.renamed
-            expect(renamed('Old')).toBe('New')
-            expect(renamed('old')).toBe('New')
-            expect(renamed('[[Old]] Child')).toBe('[[New]] Child')
-            expect(renamed('[[Old]] Website')).toBe('[[New]] Website')
-            expect(renamed('Notes')).toBeUndefined()
-        } finally {
-            unregister()
-        }
+    it('reports each concept the cascade moved and then the renamed one, before a View about one moves', async () => {
+        const { controller, heard } = reporting(layoutOf(['maps.map:Old'], 'maps.map:Old'))
+        await controller.rename('Old', plan, 'New', 'rewrite')
+        expect(heard).toEqual(['[[Old]] Child -> [[New]] Child', 'Old -> New', 'opened maps.map:New'])
     })
 
-    it('tells them of a rename made elsewhere, and of none when a pageless concept moves', async () => {
-        const { board, unregister } = boardOver('Other')
-        try {
-            await controllerOver(layoutOf(['kanban:Other'], null)).followRename('Old', 'New')
-            expect(board.renamed).toHaveLength(1)
-            expect(board.renamed[0]('Old')).toBe('New')
-            expect(board.renamed[0]('[[Old]] Child')).toBeUndefined() // the store reports each one it moved
-            await controllerOver(layoutOf(['kanban:Other'], null)).followConceptMove('Old', 'New')
-            expect(board.renamed).toHaveLength(1)
-        } finally {
-            unregister()
-        }
+    it('reports a rename made elsewhere, and a Pageless Concept moved by its only link', async () => {
+        const elsewhere = reporting(layoutOf([], null))
+        await elsewhere.controller.followRename('Old', 'New')
+        expect(elsewhere.heard).toEqual(['Old -> New'])
+        const moved = reporting(layoutOf([], null))
+        await moved.controller.followConceptMove('Old', 'New')
+        expect(moved.heard).toEqual(['Old -> New'])
     })
 
-    it('hands a board re-keyed by a rename the state of the board it replaces, once', async () => {
-        const { unregister } = boardOver('Old')
-        try {
-            await controllerOver(layoutOf(['kanban:Old'], 'kanban:Old')).rename('Old', plan, 'New', 'rewrite')
-            expect(takeBoardHandover('new')).toEqual({
-                collapsed: ['done'],
-                detail: { document: 'New', line: 3, label: 'Send the quote' },
-                detailHeight: 0.4,
-            })
-            expect(takeBoardHandover('New')).toBeUndefined()
-        } finally {
-            unregister()
-        }
+    it('reports nothing for a rename that changed nothing', async () => {
+        const { controller, heard } = reporting(layoutOf([], null))
+        await controller.followConceptMove('Same', 'Same')
+        expect(heard).toEqual([])
     })
 
-    it('tells a board of the rename before taking its state, so the rename is applied once', async () => {
-        // A new name the old one scopes (`Old` to `[[Old]] Archive`) would be renamed again if
-        // the handover applied the rename to a Task Detail that had already followed it.
-        const { board, unregister } = boardOver('Old')
-        try {
-            await controllerOver(layoutOf(['kanban:Old'], 'kanban:Old'), '[[Old]] Archive').rename('Old', null, '[[Old]] Archive', 'rewrite')
-            expect(board.asked).toEqual(['renamed', 'state'])
-            expect(takeBoardHandover('[[Old]] Archive')?.detail?.document).toBe('[[Old]] Archive')
-        } finally {
-            unregister()
-        }
+    // A listener moves what it keeps by exact name, Event by Event, so every concept that moved
+    // is reported once: one the plan cannot name, a pageless concept a View is about, included.
+    it('reports a View over a scoped concept no plan names, under the name the View moves to', async () => {
+        const { controller, heard } = reporting(layoutOf(['maps.map:[[Old]] Website'], null))
+        await controller.rename('Old', plan, 'New', 'rewrite')
+        expect(heard).toEqual(['[[Old]] Child -> [[New]] Child', '[[Old]] Website -> [[New]] Website', 'Old -> New', 'opened maps.map:[[New]] Website'])
+    })
+
+    it('moves a View over a cascaded concept to where the rename put it, and reports it there', async () => {
+        // The scoped page landed on another document's alias, so it lives on under that title.
+        const landed: RenamePlan = { ...plan, cascade: [{ ...plan.cascade[0], merges: true, into: 'Kid' }] }
+        const { controller, heard } = reporting(layoutOf(['maps.map:[[Old]] Child'], null))
+        await controller.rename('Old', landed, 'New', 'rewrite')
+        expect(heard).toEqual(['[[Old]] Child -> Kid', 'Old -> New', 'opened maps.map:Kid'])
+    })
+
+    it('reports each concept once, however the plan and the open Views spell it', async () => {
+        const { controller, heard } = reporting(layoutOf(['maps.map:[[old]] child', 'maps.map:old'], null))
+        await controller.rename('Old', plan, 'New', 'rewrite')
+        expect(heard.filter((line) => !line.startsWith('opened'))).toEqual(['[[Old]] Child -> [[New]] Child', 'Old -> New'])
+    })
+
+    it('reports what a moved concept carried, an open Draft and a View scoped by it, before the concept', async () => {
+        const { controller, heard } = reporting(layoutOf(['document:[[Old]] Idea', 'maps.map:[[Old]] Spot'], null))
+        await controller.followConceptMove('Old', 'New')
+        expect(heard.filter((line) => !line.startsWith('opened'))).toEqual(['[[Old]] Idea -> [[New]] Idea', '[[Old]] Spot -> [[New]] Spot', 'Old -> New'])
+    })
+
+    it('plans the rename itself when handed no plan, so the scoped documents are still reported', async () => {
+        const { controller, heard } = reporting(layoutOf([], null), plan)
+        await controller.rename('Old', null, 'New', 'rewrite')
+        expect(heard).toEqual(['[[Old]] Child -> [[New]] Child', 'Old -> New'])
     })
 })
 

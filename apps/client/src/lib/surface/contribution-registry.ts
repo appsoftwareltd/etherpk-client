@@ -36,6 +36,12 @@ export interface ContributionRegistry {
     has(kind: string, id: string): boolean
     /** Every contribution registered under `kind`, in registration order. */
     list(kind: string): ContributionEntry[]
+    /**
+     * Call `listener` after each contribution of `kind` is registered or withdrawn, for a reader
+     * that keeps what it read: an editor drawing interactive fences, as an extension starts or
+     * stops (ADR 0121). Returns the unsubscribe.
+     */
+    subscribe(kind: string, listener: () => void): () => void
 }
 
 /** Registerable kinds and ids are non-empty and contain no `:` (the viewKey separator). */
@@ -46,6 +52,18 @@ export function isRegisterableContributionId(value: string): boolean {
 export function createContributionRegistry(): ContributionRegistry {
     // kind → (id → value), insertion-ordered by Map semantics.
     const byKind = new Map<string, Map<string, unknown>>()
+    const listeners = new Map<string, Set<() => void>>()
+
+    /** Tell a kind's listeners it changed. A listener that throws stops none of the others. */
+    function changed(kind: string): void {
+        for (const listener of [...(listeners.get(kind) ?? [])]) {
+            try {
+                listener()
+            } catch (error) {
+                console.error(`[contributions] a listener of "${kind}" failed`, error)
+            }
+        }
+    }
 
     function bucket(kind: string): Map<string, unknown> {
         let m = byKind.get(kind)
@@ -69,12 +87,15 @@ export function createContributionRegistry(): ContributionRegistry {
                 throw new Error(`Contribution "${kind}/${id}" is already registered.`)
             }
             m.set(id, value)
+            changed(kind)
             return () => {
-                if (m.get(id) === value) m.delete(id)
+                if (m.get(id) !== value) return
+                m.delete(id)
+                changed(kind)
             }
         },
         unregister(kind, id) {
-            byKind.get(kind)?.delete(id)
+            if (byKind.get(kind)?.delete(id)) changed(kind)
         },
         get(kind, id) {
             return byKind.get(kind)?.get(id)
@@ -86,6 +107,17 @@ export function createContributionRegistry(): ContributionRegistry {
             const m = byKind.get(kind)
             if (!m) return []
             return [...m.entries()].map(([id, value]) => ({ id, value }))
+        },
+        subscribe(kind, listener) {
+            let set = listeners.get(kind)
+            if (!set) {
+                set = new Set()
+                listeners.set(kind, set)
+            }
+            set.add(listener)
+            return () => {
+                set.delete(listener)
+            }
         },
     }
 }

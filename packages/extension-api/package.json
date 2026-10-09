@@ -1,0 +1,49 @@
+{
+    "name": "@appsoftwareltd/etherpk-extension-api",
+    "version": "0.9.3",
+    "license": "MIT",
+    "description": "The API an EtherPK extension is written against: the context it is started with, its manifest, and the contract its Views follow.",
+    "type": "module",
+    "sideEffects": false,
+    "exports": {
+        ".": {
+            "types": "./src/index.ts",
+            "default": "./src/index.ts"
+        }
+    },
+    "publishConfig": {
+        "access": "public",
+        "exports": {
+            ".": {
+                "types": "./dist/index.d.ts",
+                "default": "./dist/index.js"
+            }
+        }
+    },
+    "files": [
+        "dist",
+        "LICENSE",
+        "README.md"
+    ],
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/appsoftwareltd/etherpk-client.git",
+        "directory": "packages/extension-api"
+    },
+    "scripts": {
+        "check": "tsc --noEmit && pnpm api:check",
+        "build": "tsc -p tsconfig.build.json",
+        "prepack": "pnpm build",
+        "api": "pnpm build && api-extractor run --local",
+        "api:check": "pnpm build && api-extractor run",
+        "test": "vitest run",
+        "test:watch": "vitest",
+        "test:coverage": "vitest run --coverage"
+    },
+    "devDependencies": {
+        "@microsoft/api-extractor": "^7.59.2",
+        "@vitest/coverage-v8": "^4.1.4",
+        "typescript": "^6.0.2",
+        "vitest": "^4.1.4"
+    }
+}

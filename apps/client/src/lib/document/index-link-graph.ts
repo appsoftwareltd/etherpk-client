@@ -11,39 +11,17 @@
  * from plaintext documents and none out. Its title scopes still draw a line, because a page's
  * name is visible wherever the page is.
  */
-import { activeIndexGeneration, type SqlDb } from './index-db'
+import type { LinkGraph, LinkGraphConcept, LinkGraphLink } from '@appsoftwareltd/etherpk-extension-api'
 
-/** One dot: a page, a journal entry, or a concept no page resolves to yet. */
-export interface LinkGraphConcept {
-    /** Case-insensitive identity (ADR 0011), the same key every other index answer uses. */
-    key: string
-    /** The page's title, or for a Pageless Concept the casing most of its mentions use. */
-    name: string
-    kind: 'page' | 'journal' | 'pageless'
-    /** Present, and true, only for a [[Protected Document]]. */
-    protected?: true
-}
+import { activeIndexGeneration, type SqlDb } from './index-db'
+import { isJournalConcept } from './journal-concept'
 
 /**
- * One line, from the document whose text holds the wikilinks to the concept they name. Both
- * ends are positions in {@link LinkGraph.concepts}: a whole graph's names would otherwise be
- * repeated once per line in a message that crosses the worker boundary.
+ * The answer's shape is the Extension API's (ADR 0120), since extensions ask this question: one
+ * dot per concept, one line per pair, both ends of a line positions in the concept list so a whole
+ * graph's names are not repeated once per line in a message that crosses the worker boundary.
  */
-export interface LinkGraphLink {
-    source: number
-    target: number
-    /** How many wikilinks in the source name the target, under its name or any alias. */
-    mentions: number
-    /** Present, and true, when the source's own name scopes it by the target (ADR 0083). */
-    inTitle?: true
-}
-
-export interface LinkGraph {
-    /** Sorted by key, so two answers over the same index are identical. */
-    concepts: LinkGraphConcept[]
-    /** Sorted by source, then target. A pair linked both ways is two links. */
-    links: LinkGraphLink[]
-}
+export type { LinkGraph, LinkGraphConcept, LinkGraphLink }
 
 /** One wikilink as the JSON rows carry it: target key, target as written, in the source's own name. */
 type WrittenLink = [key: string, written: string, inTitle: number]
@@ -73,6 +51,9 @@ export function linkGraph(db: SqlDb): LinkGraph {
     for (const page of pages) {
         if (concepts.has(page.key)) continue
         const concept: LinkGraphConcept = { key: page.key, name: page.concept, kind: page.kind }
+        // Only a journal entry named for a day that exists is dated (CONTEXT.md, Journal Concept),
+        // said here so no reader of the answer needs the calendar rule.
+        if (page.kind === 'journal' && isJournalConcept(page.concept)) concept.day = page.concept
         concepts.set(page.key, page.protected ? { ...concept, protected: true } : concept)
     }
     // An alias names its page, so a link written through one is a line to that page. A page's

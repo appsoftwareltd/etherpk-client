@@ -34,6 +34,8 @@ source one.
 | `apps/mcp` | The Headless Client / MCP Server, published to npm as [`@appsoftwareltd/etherpk-mcp`](https://www.npmjs.com/package/@appsoftwareltd/etherpk-mcp) ([README](apps/mcp/README.md)) |
 | `packages/shared` | Code the Client shares with the Sync Server: the sync protocol, UI components and auth pages |
 | `packages/themes` | The site themes the publisher bundles |
+| `packages/extension-api` | The Extension API every EtherPK extension is written against, MIT licensed, published to npm as [`@appsoftwareltd/etherpk-extension-api`](https://www.npmjs.com/package/@appsoftwareltd/etherpk-extension-api) |
+| `extensions` | The extensions that come with the Client: the Graph View, Kanban boards and maps |
 
 ## Run it
 
@@ -93,13 +95,21 @@ docker build -f apps/client/Dockerfile -t etherpk-client .
 
 Copy `apps/client/.env.example` to `apps/client/.env` to change the development settings.
 
+To develop an extension against the Client, build it and start the development server with its
+folder named in `ETHERPK_DEV_EXTENSIONS` (several are separated by commas). It is loaded like an
+extension the Client ships, and one with the same id replaces it:
+
+```bash
+ETHERPK_DEV_EXTENSIONS=/path/to/my-extension pnpm dev
+```
+
 ## Versions and releases
 
 - Every commit on `main` publishes images tagged `edge` and `sha-<commit>`. The image of a commit
   that is not a release is deleted after 30 days, except the newest three, so pin a version tag.
 - A release is a `v<version>` tag. It publishes images tagged `<version>`, `<major>.<minor>` and
-  `latest`, a GitHub Release with the Node bundle attached, and `@appsoftwareltd/etherpk-mcp` at
-  the same version on npm.
+  `latest`, a GitHub Release with the Node bundle attached, and `@appsoftwareltd/etherpk-mcp` and
+  `@appsoftwareltd/etherpk-extension-api` at the same version on npm.
 - The Client and the Headless Client share one version number with EtherPK's Sync Server, and
   only matching versions are tested together. A Client and a Sync Server on different sync
   protocol versions refuse to sync, and the Client says which side needs upgrading.

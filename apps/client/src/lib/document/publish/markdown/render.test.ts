@@ -233,6 +233,47 @@ describe('createDocumentRenderer', () => {
     })
 })
 
+// A Map Block is published as a picture of the map, never as its data (ADR 0118).
+describe('a Map Block', () => {
+    const map = '```map\nSeal Bay @ 50.74860, -1.07890\nCoast walk @ 50.7, -1.3 > 50.71, -1.31 (../assets/walk.gpx)\n```\n'
+    const picture = { src: 'maps/0123456789abcdef.webp', alt: 'Map of Seal Bay and Coast walk', width: 800, height: 450 }
+
+    it('is drawn as the picture the host made of it, named by its places and routes', () => {
+        const r = renderer({ mapPicture: (source) => (source.includes('Seal Bay') ? picture : undefined) }).render(map)
+        expect(r.html).toBe(
+            '<figure class="map"><img src="maps/0123456789abcdef.webp" alt="Map of Seal Bay and Coast walk" width="800" height="450" loading="lazy"></figure>\n',
+        )
+    })
+
+    it('never puts a coordinate or a recording in the page, its text or its assets', () => {
+        for (const options of [{ mapPicture: () => picture }, {}]) {
+            const r = renderer(options).render(`Before\n\n${map}\nAfter\n`)
+            expect(r.html).not.toMatch(/50\.7|walk\.gpx/)
+            expect(r.text).not.toMatch(/50\.7|walk\.gpx/)
+            expect(r.assets).toEqual([])
+        }
+    })
+
+    it('gives the search index the names on the map', () => {
+        expect(renderer({ mapPicture: () => picture }).render(map).text).toBe('Seal Bay, Coast walk')
+    })
+
+    it('is left out of the page when the host drew no picture of it', () => {
+        expect(renderer().render(`Before\n\n${map}\nAfter\n`).html).toBe('<p>Before</p>\n<p>After</p>\n')
+    })
+
+    it("is drawn the same where it opens on a bullet's line, as /map writes one on an empty bullet", () => {
+        const body = 'Seal Bay @ 50.74860, -1.07890\nCoast walk @ 50.7, -1.3 > 50.71, -1.31 (../assets/walk.gpx)\n'
+        const bullet = `- \`\`\`map\n${body.replace(/^/gm, '  ').trimEnd()}\n  \`\`\`\n`
+        // The publisher draws a picture for each fence the probe lists, keyed by its body.
+        const r = renderer({ mapPicture: (source) => (source === body ? picture : undefined) })
+        expect(r.fences(bullet)).toEqual([{ lang: 'map', code: body }])
+        const html = r.render(bullet).html
+        expect(html).toContain('<figure class="map"><img src="maps/0123456789abcdef.webp" alt="Map of Seal Bay and Coast walk"')
+        expect(html).not.toMatch(/50\.7|walk\.gpx/)
+    })
+})
+
 describe('excerptOf', () => {
     it('cuts on a word boundary with an ellipsis', () => {
         const long = 'word '.repeat(60)

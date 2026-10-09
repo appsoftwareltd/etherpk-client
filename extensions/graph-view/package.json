@@ -1,0 +1,76 @@
+{
+    "name": "@appsoftwareltd/etherpk-extension-graph-view",
+    "version": "0.9.3",
+    "license": "Elastic-2.0",
+    "description": "Every concept in a graph as a dot and every wikilink as a line, the active document's neighbourhood beside the editor, and the whole graph with its hubs, clusters and bridges.",
+    "private": true,
+    "type": "module",
+    "exports": {
+        "./model": {
+            "types": "./src/model/index.ts",
+            "default": "./src/model/index.ts"
+        },
+        "./package.json": "./package.json"
+    },
+    "scripts": {
+        "build": "vite build",
+        "check": "svelte-check --tsconfig ./tsconfig.json",
+        "test": "vitest run",
+        "test:watch": "vitest"
+    },
+    "etherpk": {
+        "id": "graph-view",
+        "displayName": "Graph View",
+        "publisher": "App Software",
+        "minClientVersion": "0.8.54",
+        "main": "./dist/main.js",
+        "styles": [
+            "./dist/main.css"
+        ],
+        "icons": {
+            "graph-view": "<circle cx=\"8\" cy=\"8\" r=\"2.2\"/><circle cx=\"3\" cy=\"3.5\" r=\"1.2\"/><circle cx=\"13\" cy=\"3\" r=\"1.2\"/><circle cx=\"2.8\" cy=\"12.5\" r=\"1.2\"/><circle cx=\"13\" cy=\"12.8\" r=\"1.2\"/><path d=\"M4 4.4 6.4 6.6M12.1 3.9 9.7 6.5M3.8 11.6l2.6-2.3M12.1 11.9 9.6 9.5\"/>"
+        },
+        "views": [
+            {
+                "kind": "graph-view.local",
+                "target": "local",
+                "title": "Graph View",
+                "icon": "graph-view",
+                "region": "right-sidebar",
+                "resident": {
+                    "side": "right",
+                    "desktopOnly": true
+                }
+            },
+            {
+                "kind": "graph-view.whole",
+                "target": "whole",
+                "title": "Whole graph",
+                "icon": "graph-view",
+                "region": "main",
+                "address": {
+                    "segment": "graph-view"
+                }
+            }
+        ]
+    },
+    "dependencies": {
+        "@sigma/node-border": "^3.0.0",
+        "graphology": "^0.26.0",
+        "graphology-communities-louvain": "^2.0.2",
+        "graphology-layout-forceatlas2": "^0.10.1",
+        "graphology-types": "^0.24.8",
+        "sigma": "^3.0.3"
+    },
+    "devDependencies": {
+        "@appsoftwareltd/etherpk-extension-api": "workspace:*",
+        "@sveltejs/vite-plugin-svelte": "^7.0.0",
+        "@tailwindcss/vite": "^4.2.2",
+        "svelte": "^5.57.1",
+        "svelte-check": "^4.4.6",
+        "tailwindcss": "^4.2.2",
+        "typescript": "^6.0.2",
+        "vite": "^8.0.8",
+        "vitest": "^4.1.4"
+    }
+}

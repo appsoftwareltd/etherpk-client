@@ -70,7 +70,75 @@ export function parseSerializedLayout(raw: unknown): SerializedLayout | null {
     const result = serializedLayoutSchema.safeParse(raw)
     if (!result.success) return null
     if (result.data.version !== LAYOUT_VERSION) return null
-    return result.data as SerializedLayout
+    return renameViewKinds(result.data as SerializedLayout, RENAMED_VIEW_KINDS)
+}
+
+/**
+ * View kinds renamed since a Layout may have been saved, old name to new. Read on every load, so a
+ * Layout saved before keeps its open tabs, which a version bump would have discarded with every
+ * pane arrangement.
+ *
+ * `kanban` became `kanban.board` when the Kanban Board moved into an extension package, whose View
+ * kinds sit under its id (ADR 0113's amendment, ADR 0121).
+ */
+export const RENAMED_VIEW_KINDS: Readonly<Record<string, string>> = { kanban: 'kanban.board' }
+
+/**
+ * The Layout with each renamed kind's Views, their panel ids and every reference to those ids
+ * renamed, in the model and in the renderer's own geometry (dockview's `toJSON()`, which names
+ * panels by id and keeps each panel's kind in its params). A Layout with nothing to rename is
+ * returned as it was.
+ */
+function renameViewKinds(layout: SerializedLayout, renames: Readonly<Record<string, string>>): SerializedLayout {
+    // Panel id old to new: a singleton's id is its view key, and a forced copy's is `<key>::<n>`.
+    const ids = new Map<string, string>()
+    for (const region of Object.values(layout.model.regions)) {
+        for (const pane of region.panes) {
+            for (const instance of pane.views) {
+                const to = renames[instance.view.kind]
+                if (to === undefined) continue
+                const from = instance.view.kind
+                ids.set(instance.panelId, instance.panelId.startsWith(`${from}:`) ? `${to}${instance.panelId.slice(from.length)}` : instance.panelId)
+            }
+        }
+    }
+    if (ids.size === 0) return layout
+    const id = (panelId: string | null) => (panelId === null ? null : (ids.get(panelId) ?? panelId))
+    const model: LayoutModel = {
+        ...layout.model,
+        activePanelId: id(layout.model.activePanelId),
+        regions: Object.fromEntries(
+            Object.entries(layout.model.regions).map(([name, region]) => [
+                name,
+                {
+                    ...region,
+                    panes: region.panes.map((pane) => ({
+                        ...pane,
+                        activePanelId: id(pane.activePanelId),
+                        views: pane.views.map((instance) => {
+                            const to = renames[instance.view.kind]
+                            return to === undefined ? instance : { ...instance, panelId: id(instance.panelId)!, view: { ...instance.view, kind: to } }
+                        }),
+                    })),
+                },
+            ]),
+        ) as LayoutModel['regions'],
+    }
+    return layout.renderer === undefined ? { ...layout, model } : { ...layout, model, renderer: renameInRenderer(layout.renderer, ids, renames) }
+}
+
+/** The renderer's opaque JSON with every renamed panel id, as a key or a value, and kind renamed. */
+function renameInRenderer(value: unknown, ids: ReadonlyMap<string, string>, renames: Readonly<Record<string, string>>): unknown {
+    if (typeof value === 'string') return ids.get(value) ?? value
+    if (Array.isArray(value)) return value.map((item) => renameInRenderer(item, ids, renames))
+    if (value === null || typeof value !== 'object') return value
+    return Object.fromEntries(
+        Object.entries(value).map(([key, item]) => {
+            // A panel's params carry its kind, which is a kind name rather than a panel id.
+            const renamed = key === 'kind' && typeof item === 'string' && renames[item] !== undefined ? renames[item] : renameInRenderer(item, ids, renames)
+            return [ids.get(key) ?? key, renamed]
+        }),
+    )
 }
 
 // ── First-run default ─────────────────────────────────────────────────────────

@@ -2,6 +2,8 @@ import { defineConfig } from 'vitest/config'
 import { fileURLToPath } from 'url'
 import { resolve } from 'path'
 
+import { compiledInExtensionFolders } from './compiled-in-extensions'
+
 const __dirname = fileURLToPath(new URL('.', import.meta.url))
 
 export default defineConfig({
@@ -45,7 +47,9 @@ export default defineConfig({
         // the publish tests while the real build carried them. Only the raw reads are let through.
         css: { include: [/\.css\?raw$/] },
         globals: true,
-        include: ['src/**/*.test.ts'],
+        // The compiled-in Built-in Extensions' tests too (ADR 0121): they are compiled with the Client
+        // and import its modules, so they run with its aliases and settings.
+        include: ['src/**/*.test.ts', ...compiledInExtensionFolders().map((folder) => `../../extensions/${folder}/src/**/*.test.ts`)],
         // Records each test's declaration line so the generated report can point at
         // file:line rather than just the file.
         includeTaskLocation: true,

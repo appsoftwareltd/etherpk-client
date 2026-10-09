@@ -3,6 +3,10 @@
 /* Broadened when components and pages moved into the package: Tailwind v4 does not scan
    node_modules by default, and the workspace package is injected there. */
 @source "../../../packages/shared/src";
+/* The compiled-in Built-in Extensions draw in the page with the Client's stylesheet (ADR 0121).
+   A loaded one ships a stylesheet of its own for its shadow roots, so its build output is not
+   scanned. */
+@source "../../../extensions/*/src";
 
 /* Use class-based dark mode (.dark on <html>) instead of @media (prefers-color-scheme) */
 @custom-variant dark (&:where(.dark, .dark *));

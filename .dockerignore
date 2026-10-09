@@ -40,6 +40,9 @@ handoff/
 # Spell check dictionary builds (served from R2, never part of an image)
 .dictionaries/
 
+# Postcode builds (served from the map host, never part of an image)
+.postcodes/
+
 # Test files
 **/*.test.ts
 **/vitest.config.ts

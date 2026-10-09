@@ -14,11 +14,15 @@
  * displays for it, the caret deciding which lines reveal their source, as in the editor.
  */
 
-import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { TransactionSpec } from '@codemirror/state'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { type Transaction, type TransactionSpec } from '@codemirror/state'
 import { EditorView, keymap, showTooltip, type WidgetType } from '@codemirror/view'
 
+import { createContributionRegistry, setActiveContributionRegistry } from '$lib/surface'
+
 import { hiddenSyntax, type HiddenSyntaxSpec, hiddenSyntaxPieces } from './augmentations/base-renderer'
+import { followFenceRegistrations, interactiveFenceAugmentation } from './augmentations/interactive-fence'
+import { type InteractiveFence, registerInteractiveFence } from './augmentations/interactive-fence-contract'
 import { markdownWithCodeHighlight } from './augmentations/code-highlight'
 import { markdownFormatSpec, RULE_LINE_CLASS } from './augmentations/markdown-format'
 import { markdownLinkSpec } from './augmentations/markdown-link'
@@ -1601,3 +1605,195 @@ table('format toggles', [
     { rule: 'refused in the frontmatter', precedent: 'EtherPK', before: '---\ntitle: «x»\n---\n', key: 'Mod-b', after: '---\ntitle: «x»\n---\n' },
     { rule: 'refused across lines', precedent: 'EtherPK', before: 'one «two\nthree» four', key: 'Mod-b', after: 'one «two\nthree» four' },
 ])
+
+// Interactive fences (Editor Content Rules → Interactive fences, ADR 0118): a Map Block is a fenced
+// block drawn as its widget while no selection touches it, as a rendered fence is (ADR 0022). The
+// caret on its lines, or a selection reaching it, shows its text, where every fenced-code rule
+// applies, and beside it the keys are a code block's. A map opened on a bullet's line is drawn after
+// the marker, beside the dot.
+describe('the caret at an interactive fence', () => {
+    const widget: InteractiveFence = { height: () => 320, mount: () => ({ update: () => {}, destroy: () => {} }) }
+    beforeEach(() => {
+        const registry = createContributionRegistry()
+        registerInteractiveFence(registry, 'map', widget)
+        setActiveContributionRegistry(registry)
+    })
+    afterEach(() => setActiveContributionRegistry(null))
+
+    const map = '```map\nGarden @ 50.7, -1.0\n```'
+    /** The same map beneath a bullet, at its content column. */
+    const nested = map.replaceAll('\n', '\n  ')
+    const open = (doc: string) => editorFixture(doc, { extensions: [interactiveFenceAugmentation()] })
+
+    /**
+     * A key as the editor runs it: every binding for it in precedence order, then the default. The
+     * map's arrows run ahead of the view's own vertical motion, which no headless editor has.
+     */
+    function pressKey(editor: ReturnType<typeof open>, key: string): void {
+        for (const binding of editor.state.facet(keymap).flat()) {
+            if (binding.key === key && binding.run?.(editor as never)) return
+        }
+        editor.key(key)
+    }
+
+    /** What each widget stands in for, `block` over whole lines or `inline` after a bullet's marker. */
+    function drawn(editor: ReturnType<typeof open>): string[] {
+        const out: string[] = []
+        for (const source of editor.state.facet(EditorView.decorations)) {
+            if (typeof source === 'function') continue
+            source.between(0, editor.state.doc.length, (from, to, value) => {
+                if (value.spec.widget) out.push(`${value.spec.block ? 'block' : 'inline'}: ${editor.state.sliceDoc(from, to)}`)
+            })
+        }
+        return out
+    }
+
+    // A fence drawn while the caret is elsewhere and shown as text while it is in it is Obsidian's
+    // Live Preview. Opened on a bullet's line, it is drawn after the marker, the form-1 convention of
+    // the rendered fences (ADR 0022).
+    const shows: { rule: string; precedent: Rule['precedent']; doc: string; drawn: string[] }[] = [
+        { rule: 'a map is drawn as its widget while the caret is on another line', precedent: 'Obsidian', doc: `Int|ro\n${map}\nAfter`, drawn: [`block: ${map}`] },
+        { rule: 'the caret at the end of the line above leaves it drawn', precedent: 'Obsidian', doc: `Intro|\n${map}\nAfter`, drawn: [`block: ${map}`] },
+        { rule: 'the caret at the start of the line below leaves it drawn', precedent: 'Obsidian', doc: `Intro\n${map}\n|After`, drawn: [`block: ${map}`] },
+        { rule: 'the caret on its opening fence shows its text', precedent: 'Obsidian', doc: `Intro\n|${map}\nAfter`, drawn: [] },
+        { rule: 'the caret at the end of its closing fence shows its text', precedent: 'Obsidian', doc: `Intro\n${map}|\nAfter`, drawn: [] },
+        { rule: 'a selection reaching into it shows its text', precedent: 'Obsidian', doc: 'In«tro\n```map\nGar»den @ 50.7, -1.0\n```\nAfter', drawn: [] },
+        { rule: 'beneath a bullet it is drawn over its own lines, from the content column', precedent: 'EtherPK', doc: `- Trip|\n  ${nested}\n- After`, drawn: [`block:   ${nested}`] },
+        { rule: 'a map opened on a bullet’s line is drawn after the marker, beside the dot', precedent: 'EtherPK', doc: `- Int|ro\n- ${nested}\n- After`, drawn: [`inline: ${nested}`] },
+        { rule: 'the caret on that bullet’s line shows its text', precedent: 'EtherPK', doc: `- Intro\n- |${nested}\n- After`, drawn: [] },
+        { rule: 'the caret at the end of the line above that bullet leaves it drawn', precedent: 'EtherPK', doc: `- Intro|\n- ${nested}\n- After`, drawn: [`inline: ${nested}`] },
+    ]
+    for (const row of shows) {
+        it(`${row.rule} (${row.precedent})`, () => {
+            expect(drawn(open(row.doc))).toEqual(row.drawn)
+        })
+    }
+
+    const keyRows: Rule[] = [
+        { rule: 'ArrowDown from the line above a map shows its text, the caret on its opening fence', precedent: 'Obsidian', before: `Int|ro\n${map}\nAfter`, key: 'ArrowDown', after: `Intro\n|${map}\nAfter` },
+        { rule: 'ArrowUp from the line below a map shows its text, the caret at the end of its closing fence', precedent: 'Obsidian', before: `Intro\n${map}\nAf|ter`, key: 'ArrowUp', after: `Intro\n${map}|\nAfter` },
+        { rule: 'beneath a bullet, ArrowDown lands on the opening fence at the content column', precedent: 'Obsidian', before: `- Tr|ip\n  ${nested}\n- After`, key: 'ArrowDown', after: `- Trip\n  |${nested}\n- After` },
+        { rule: 'Backspace at the start of the line after a map changes nothing, as after any code block', precedent: 'Logseq', before: `Intro\n${map}\n|After`, key: 'Backspace', after: `Intro\n${map}\n|After` },
+        { rule: 'Delete at the end of the line before a map changes nothing, as before any code block', precedent: 'Logseq', before: `Intro|\n${map}\nAfter`, key: 'Delete', after: `Intro|\n${map}\nAfter` },
+        // Over a form-1 map's inline widget the view's motion would land by which half of the widget
+        // the caret's column is under: the same two places as a block's are given instead.
+        { rule: 'ArrowDown from the bullet above a map on a bullet’s line lands on its fence column', precedent: 'EtherPK', before: `- Garden pat|h\n- ${nested}\n- After`, key: 'ArrowDown', after: `- Garden path\n- |${nested}\n- After` },
+        { rule: 'ArrowUp from the bullet below a map on a bullet’s line lands at the end of its closing fence', precedent: 'EtherPK', before: `- Intro\n- ${nested}\n- Af|ter`, key: 'ArrowUp', after: `- Intro\n- ${nested}|\n- After` },
+        { rule: 'Delete at the end of the bullet above a map on a bullet’s line changes nothing', precedent: 'Logseq', before: `- Intro|\n- ${nested}\n- After`, key: 'Delete', after: `- Intro|\n- ${nested}\n- After` },
+        { rule: 'Backspace at the start of the bullet below a map on a bullet’s line changes nothing', precedent: 'Logseq', before: `- Intro\n- ${nested}\n- |After`, key: 'Backspace', after: `- Intro\n- ${nested}\n- |After` },
+    ]
+    for (const row of keyRows) {
+        it(`${row.key}: ${row.rule} (${row.precedent})`, () => {
+            const editor = open(row.before)
+            pressKey(editor, row.key)
+            expect(editor.fixture()).toBe(row.after)
+        })
+    }
+
+    it('ArrowDown or ArrowUp further from a map is left to the view (EtherPK)', () => {
+        for (const [doc, key] of [[`Fir|st\nIntro\n${map}`, 'ArrowDown'], [`${map}\nAfter\nLa|st`, 'ArrowUp']] as const) {
+            const editor = open(doc)
+            pressKey(editor, key)
+            expect(editor.fixture()).toBe(doc)
+        }
+    })
+})
+
+// Interactive fences (Editor Content Rules → Interactive fences, ADR 0121): a fence is drawn as its
+// widget for as long as an extension draws its info word, so switching that extension off shows the
+// fence as its text at once, and switching it on draws the widget again, with no edit in between.
+describe('an interactive fence follows its widget’s registration (EtherPK)', () => {
+    const widget: InteractiveFence = { height: () => 320, mount: () => ({ update: () => {}, destroy: () => {} }) }
+    let registry: ReturnType<typeof createContributionRegistry>
+    beforeEach(() => {
+        registry = createContributionRegistry()
+        setActiveContributionRegistry(registry)
+    })
+    afterEach(() => setActiveContributionRegistry(null))
+
+    const map = '```map\nGarden @ 50.7, -1.0\n```'
+    const doc = `Intro\n\n${map}\n\nAfter|`
+    /** The transactions the registry sent an editor, to see what each carried. */
+    let sent: Transaction[] = []
+    /** An editor over `text` that hears the registry as an open editor does. */
+    const open = (text = doc) => {
+        const editor = editorFixture(text, { extensions: [interactiveFenceAugmentation()] })
+        sent = []
+        followFenceRegistrations(registry, {
+            get state() {
+                return editor.state
+            },
+            dispatch(tr) {
+                sent.push(tr)
+                editor.dispatch(tr)
+            },
+        })
+        return editor
+    }
+    /** The editor is told on a microtask, once whatever registered has finished. */
+    const told = () => new Promise((resolve) => setTimeout(resolve, 0))
+    /** The blocks the editor draws as a widget: each block-replacing decoration, as its lines. */
+    const drawn = (editor: ReturnType<typeof open>) => {
+        const out: string[] = []
+        for (const source of editor.state.facet(EditorView.decorations)) {
+            if (typeof source === 'function') continue
+            source.between(0, editor.state.doc.length, (from, to, value) => {
+                if (value.spec.block) out.push(editor.state.sliceDoc(from, to))
+            })
+        }
+        return out
+    }
+
+    it('draws a fence as its widget once one is registered for its word', async () => {
+        const editor = open()
+        expect(drawn(editor)).toEqual([])
+        registerInteractiveFence(registry, 'map', widget)
+        await told()
+        expect(drawn(editor)).toEqual([map])
+        expect(editor.fixture()).toBe(doc)
+        // No caret move: nothing that follows the caret (a completion menu, the undo grouping) hears one.
+        expect(sent.map((tr) => tr.selection)).toEqual([undefined])
+    })
+
+    it('shows the fence as its text once its widget is withdrawn', async () => {
+        const withdraw = registerInteractiveFence(registry, 'map', widget)
+        const editor = open()
+        expect(drawn(editor)).toHaveLength(1)
+        withdraw()
+        await told()
+        expect(drawn(editor)).toEqual([])
+        expect(editor.fixture()).toBe(doc)
+    })
+
+    it('keeps a fence the caret is inside as its text until the caret leaves it', async () => {
+        const inside = `Intro\n\n\`\`\`map\nGarden |@ 50.7, -1.0\n\`\`\`\n\nAfter`
+        const editor = open(inside)
+        registerInteractiveFence(registry, 'map', widget)
+        await told()
+        expect(drawn(editor)).toEqual([])
+        editor.type('X')
+        expect(editor.fixture()).toBe(`Intro\n\n\`\`\`map\nGarden X|@ 50.7, -1.0\n\`\`\`\n\nAfter`)
+        editor.dispatch(editor.state.update({ selection: { anchor: editor.state.doc.length } }))
+        expect(drawn(editor)).toEqual(['```map\nGarden X@ 50.7, -1.0\n```'])
+    })
+
+    it('leaves the caret where it was when a widget is registered or withdrawn', async () => {
+        const nested = '- Place\n  |```map\n  Garden @ 50.7, -1.0\n  ```\n- After'
+        const editor = open(nested)
+        const withdraw = registerInteractiveFence(registry, 'map', widget)
+        await told()
+        withdraw()
+        await told()
+        expect(editor.fixture()).toBe(nested)
+    })
+
+    it('stops hearing the registry once the editor is taken down', async () => {
+        const editor = editorFixture(doc, { extensions: [interactiveFenceAugmentation()] })
+        const stop = followFenceRegistrations(registry, editor)
+        stop()
+        registerInteractiveFence(registry, 'map', widget)
+        await told()
+        // Nothing told it, so it draws nothing until a transaction of its own reads the fences again.
+        expect(drawn(editor)).toEqual([])
+    })
+})

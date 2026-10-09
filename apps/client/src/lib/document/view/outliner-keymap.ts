@@ -195,13 +195,24 @@ function selectedBranchRoots(view: Target, lines: string[]): { roots: number[]; 
  * the selection through the change would leave its start after the inserted indent (a range's
  * `from` maps forward past an insertion at its position), so it is re-anchored explicitly.
  */
-function dispatchBranchShift(view: Target, changes: ChangeSpec[], firstLine: number, lastLine: number): void {
+function dispatchBranchShift(view: Target, changes: ChangeSpec[], firstLine: number, lastLine: number, userEvent: ShiftEvent): void {
     const { state } = view
     const set = state.changes(changes)
     const from = set.mapPos(state.doc.line(firstLine + 1).from, -1)
     const to = set.mapPos(state.doc.line(lastLine + 1).to, 1)
     const forward = state.selection.main.head >= state.selection.main.anchor
-    dispatchKeeping(view, { changes: set, selection: EditorSelection.single(forward ? from : to, forward ? to : from) })
+    dispatchKeeping(view, { changes: set, selection: EditorSelection.single(forward ? from : to, forward ? to : from), userEvent })
+}
+
+/**
+ * The user event an indent or outdent carries, CodeMirror's own names for the two (`indentMore`,
+ * `indentLess`). Marked, Tab and Shift+Tab read as this person's editing to every guard, which in a
+ * shared document is how a change is told from a member's (`isOwnEditing`).
+ */
+type ShiftEvent = 'input.indent' | 'delete.dedent'
+
+function shiftEvent(delta: number): ShiftEvent {
+    return delta > 0 ? 'input.indent' : 'delete.dedent'
 }
 
 /**
@@ -240,7 +251,7 @@ export const indentBranch: StateCommand = (view) => {
         if (!selected.roots.every((root) => canIndent(lines, root))) return true // consume — never move focus
         const changes: ChangeSpec[] = []
         for (const root of selected.roots) changes.push(...branchShift(view, lines, root, indentDelta(lines, root)))
-        dispatchBranchShift(view, changes, selected.firstLine, selected.lastLine)
+        dispatchBranchShift(view, changes, selected.firstLine, selected.lastLine, 'input.indent')
         return true
     }
     // A range across lines of one block acts on the block, as a caret on its bullet line does
@@ -258,7 +269,7 @@ export const indentBranch: StateCommand = (view) => {
         return true
     }
     if (!canIndent(lines, at)) return true // consume — never move focus
-    dispatch(view, { changes: branchShift(view, lines, at, indentDelta(lines, at)) })
+    dispatch(view, { changes: branchShift(view, lines, at, indentDelta(lines, at)), userEvent: 'input.indent' })
     return true
 }
 
@@ -279,7 +290,7 @@ export const outdentBranch: StateCommand = (view) => {
         if (!selected.roots.every((root) => canOutdent(lines, root))) return true // consume
         const changes: ChangeSpec[] = []
         for (const root of selected.roots) changes.push(...branchShift(view, lines, root, outdentDelta(root)))
-        dispatchBranchShift(view, changes, selected.firstLine, selected.lastLine) // refused where a fence would pair anew
+        dispatchBranchShift(view, changes, selected.firstLine, selected.lastLine, 'delete.dedent') // refused where a fence would pair anew
         return true
     }
     const at = rangeBlockOwner(view.state) ?? index // a range inside one block lifts the block, as for Tab
@@ -293,7 +304,7 @@ export const outdentBranch: StateCommand = (view) => {
         // a line short of the column is prose, and outdents like prose.
         const floor = continuationColumn(lines, index)
         const n = Math.max(0, Math.min(INDENT_UNIT, lineIndent(line) - floor))
-        if (n > 0) dispatch(view, { changes: { from: lineFrom, to: lineFrom + n } })
+        if (n > 0) dispatch(view, { changes: { from: lineFrom, to: lineFrom + n }, userEvent: 'delete.dedent' })
         return true
     }
     if (!canOutdent(lines, at)) {
@@ -301,7 +312,7 @@ export const outdentBranch: StateCommand = (view) => {
         return true
     }
     // A bullet whose text is a fence pairs at its new column, perhaps with another block's fence.
-    dispatchKeeping(view, { changes: branchShift(view, lines, at, outdentDelta(at)) })
+    dispatchKeeping(view, { changes: branchShift(view, lines, at, outdentDelta(at)), userEvent: 'delete.dedent' })
     return true
 }
 
@@ -325,7 +336,7 @@ function outdentPastRoot(view: Target, lines: string[], root: number): boolean {
     })
     const set = state.changes(changes)
     const sel = state.selection.main
-    return dispatchKeeping(view, { changes: set, selection: EditorSelection.range(set.mapPos(sel.anchor, -1), set.mapPos(sel.head, -1)) })
+    return dispatchKeeping(view, { changes: set, selection: EditorSelection.range(set.mapPos(sel.anchor, -1), set.mapPos(sel.head, -1)), userEvent: 'delete.dedent' })
 }
 
 /** The caret's line as a continuation of a block: its owner and floor, or null on a bullet, prose or code line. */
@@ -645,7 +656,7 @@ function shiftFencedBlock(view: Target, block: FencedBlock, delta: number, floor
     // Map the selection through the change set (assoc 1 keeps an end after spaces inserted at it).
     const set = state.changes(changes)
     const sel = state.selection.main
-    dispatchKeeping(view, { changes: set, selection: EditorSelection.range(set.mapPos(sel.anchor, 1), set.mapPos(sel.head, 1)) })
+    dispatchKeeping(view, { changes: set, selection: EditorSelection.range(set.mapPos(sel.anchor, 1), set.mapPos(sel.head, 1)), userEvent: shiftEvent(delta) })
 }
 
 /** Whether the main selection (a caret included) reaches the block's opening or closing fence line. */
@@ -695,7 +706,7 @@ function indentCodeLines(view: Target, block: FencedBlock, delta: number): void 
     const set = state.changes(changes)
     // Re-indenting code edits code, but never which lines are code: a fence-like line of a code sample
     // moved onto or off its partner's column would pair the fences differently.
-    dispatchKeeping(view, { changes: set, selection: EditorSelection.range(set.mapPos(sel.anchor, 1), set.mapPos(sel.head, 1)) })
+    dispatchKeeping(view, { changes: set, selection: EditorSelection.range(set.mapPos(sel.anchor, 1), set.mapPos(sel.head, 1)), userEvent: shiftEvent(delta) })
 }
 
 /**
@@ -732,7 +743,7 @@ const tabInCode: StateCommand = (view) => {
             return true
         }
         if (!canIndent(lines, owner)) return true // consume — never move focus
-        dispatch(view, { changes: branchShift(view, lines, owner, indentDelta(lines, owner)) })
+        dispatch(view, { changes: branchShift(view, lines, owner, indentDelta(lines, owner)), userEvent: 'input.indent' })
         return true
     }
     indentCodeLines(view, block, INDENT_UNIT)
@@ -774,7 +785,7 @@ const shiftTabInCode: StateCommand = (view) => {
             return true
         }
         if (canOutdent(lines, owner)) {
-            dispatchKeeping(view, { changes: branchShift(view, lines, owner, outdentTarget(lines, owner) - lineIndent(lines[owner])) })
+            dispatchKeeping(view, { changes: branchShift(view, lines, owner, outdentTarget(lines, owner) - lineIndent(lines[owner])), userEvent: 'delete.dedent' })
         } else {
             outdentPastRoot(view, lines, owner)
         }

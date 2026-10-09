@@ -15,7 +15,7 @@
      * (the backend owns document text); it does reset per-editor undo/cursor/scroll
      * — a known, accepted limitation.
      */
-    import { onMount, tick, untrack } from "svelte";
+    import { type Component, onMount, tick, untrack } from "svelte";
 
     import { dev } from "$app/environment";
     import {
@@ -45,6 +45,7 @@
         type LayoutModel,
         type LayoutRenderer,
         type LayoutStore,
+        type ViewProps,
         type ViewRef,
         createLayoutController,
         createLocalLayoutStore,
@@ -99,12 +100,6 @@
     import { type LinkRenameChoice, type LinkRenameRow, previewPlans, runInOrder, type RunStatus, scopeRenamesInTypedName, usesScopeBeyondPage } from "$lib/document/view/link-renames";
     import SearchModal from "$lib/document/view/SearchModal.svelte";
     import TasksView from "$lib/document/view/TasksView.svelte";
-    import KanbanView from "$lib/kanban/KanbanView.svelte";
-    import { documentRemoved } from "$lib/kanban/board-actions";
-    import { KANBAN_TITLE_PREFIX, KANBAN_VIEW_KIND } from "$lib/kanban/board-model";
-    import { registerKanbanCommands } from "$lib/kanban/kanban-commands";
-    import { GRAPH_VIEW_EXTENSION_ID, GRAPH_VIEW_LOCAL, GRAPH_VIEW_RESIDENT, GRAPH_VIEW_WHOLE } from "$lib/graph-view/identity";
-    import { registerGraphView } from "$lib/graph-view/register";
     import { registerTaskReferenceCommands } from "$lib/document/commands/task-reference-commands";
     import { everyIndexedTask, parseTaskReference, resolveTaskReference, type TaskReference } from "$lib/document/task-reference";
     import { taskDateKey } from "$lib/document/index-db";
@@ -207,6 +202,8 @@
     import { readMembership } from "$lib/document/publish/publication";
     import { createThemeLoader } from "$lib/document/publish/theme/sources";
     import { createBrowserPublishEnvironment } from "$lib/document/publish/host/browser-environment";
+    import { MAP_PICTURE_KIND, type MapPictureRenderer } from "$lib/document/publish/map-picture-renderer";
+    import { MAP_FENCE_INFO } from "$lib/document/map-text";
     import { writeSiteToDirectory } from "$lib/document/publish/host/site-writer";
     import { downloadZip, zipSite } from "$lib/document/publish/host/zip";
     import type { Publication, PublishSource } from "$lib/document/publish/types";
@@ -315,6 +312,17 @@
         createContributionRegistry,
         createEventBus,
     } from "$lib/surface";
+    import { iconSvg, registerIcons } from "$lib/surface/icons";
+    import { personSettings } from "$lib/person-settings/person-settings";
+    import { createKeybindingTable } from "$lib/surface/keybindings";
+    import { builtInCatalogue } from "$lib/extensions/built-ins";
+    import ExtensionView from "$lib/extensions/ExtensionView.svelte";
+    import { createExtensionHost } from "$lib/extensions/host";
+    import type { GraphServices } from "$lib/extensions/services";
+    import { createExtensionSwitches } from "$lib/extensions/switches";
+    import { openBeside } from "$lib/layout/open-beside";
+    import { setExtensionAddresses } from "$lib/navigation/extension-addresses";
+    import { getAppliedResolvedTheme, THEME_CHANGE_EVENT } from "@appsoftwareltd/etherpk-shared/theme";
     import { describeFilesystemSaveFailure } from "$lib/storage/fs/save-error-copy";
     import {
         type AssetStore,
@@ -446,7 +454,7 @@
     import WorkspaceOpenState from "./WorkspaceOpenState.svelte";
     import WorkspaceToolbar from "./WorkspaceToolbar.svelte";
     import KeyboardShortcutsDialog from "./KeyboardShortcutsDialog.svelte";
-    import { APP_KEYBINDINGS } from "./keyboard-shortcuts";
+    import { APP_KEYBINDINGS, type ShortcutBinding } from "./keyboard-shortcuts";
     import {
         createDocumentMutationController,
         deleteDocumentMessage,
@@ -1295,6 +1303,7 @@
     let detachDocsBridge: (() => void) | undefined;
     let detachDocRemoved: (() => void) | undefined;
     let detachDocRenamed: (() => void) | undefined;
+    let detachThemeEvents: (() => void) | undefined;
     let detachActiveForProtection: (() => void) | undefined;
     let detachActiveForBacklinks: (() => void) | undefined;
     let commandRegistry: CommandRegistry | undefined;
@@ -1302,8 +1311,6 @@
     let detachEditorCommands: (() => void) | undefined;
     let detachLinkCommands: (() => void) | undefined;
     let detachDocumentCommands: (() => void) | undefined;
-    let detachKanbanCommands: (() => void) | undefined;
-    let detachGraphView: (() => void) | undefined;
     let detachTaskReferenceCommands: (() => void) | undefined;
     let detachQuickNotesCommands: (() => void) | undefined;
     let detachSpellingCommands: (() => void) | undefined;
@@ -1331,6 +1338,10 @@
         layout: () => controller,
         recents: () => recents,
         renameFavourite,
+        // A kind registered as being about a concept (a board, a Map View) follows a rename.
+        followsConcept: (kind) => registry.get(kind)?.conceptTarget === true,
+        // Extensions hear each concept a rename moved before their Views follow it (ADR 0121).
+        conceptRenamed: (from, to) => bus?.emit("concept:renamed", { from, to }),
     });
 
     // ── Protection (ADR 0057-0059) ──────────────────────────────────────────────────────────
@@ -2604,16 +2615,48 @@
         naturalRegion: "right-sidebar",
         title: () => "Tasks",
     });
-    // A [[Kanban Board]] in the main region, one per concept (ADR 0113). The target is the
-    // concept, canonical when opened, so the title needs nothing the View has to look up.
-    registry.register({
-        kind: KANBAN_VIEW_KIND,
-        component: KanbanView,
-        naturalRegion: "main",
-        title: (view) => `${KANBAN_TITLE_PREFIX}${view.target}`,
-        titlePrefix: KANBAN_TITLE_PREFIX,
-        icon: "kanban",
+
+    // The chords the window listens with: the app's own, and those extensions add as they start.
+    const keybindingTable = createKeybindingTable<ShortcutBinding>(APP_KEYBINDINGS);
+
+    // The Built-in Extensions (ADR 0121). The host is made here, with the registry, so every View
+    // kind an extension declares is registered before any Layout is restored: a tab for one always
+    // has its title and icon, and shows that it is loading, or why it cannot draw, until its
+    // extension supplies the View. The extensions themselves start as each graph opens.
+    const extensionHost = createExtensionHost({
+        catalogue: builtInCatalogue,
+        switches: createExtensionSwitches(),
+        client: {
+            clientVersion: RELEASE_VERSION,
+            dev,
+            isDark: () => getAppliedResolvedTheme() === "dark",
+            iconSvg,
+            storage: typeof localStorage === "undefined" ? undefined : localStorage,
+            settings: personSettings(),
+        },
     });
+    registerIcons(extensionHost.icons());
+    setExtensionAddresses(extensionHost.addresses);
+    for (const declared of extensionHost.views()) {
+        registry.register({
+            kind: declared.declaration.kind,
+            // Its own props (`slot`, `host`) arrive through `props`, which every presenter mounts it with.
+            component: ExtensionView as unknown as Component<ViewProps>,
+            naturalRegion: declared.declaration.region,
+            title: declared.title,
+            ...(declared.titlePrefix === undefined ? {} : { titlePrefix: declared.titlePrefix }),
+            ...(declared.icon === undefined ? {} : { icon: declared.icon }),
+            conceptTarget: declared.conceptTarget,
+            props: { slot: declared.slot, host: extensionHost },
+        });
+    }
+    /** The residents extensions declare for one Sidebar, the desktop's only ones on a desktop. */
+    function extensionResidents(side: "left" | "right"): Resident[] {
+        return extensionHost
+            .residents()
+            .filter((resident) => resident.side === side && !(resident.desktopOnly && useMobile))
+            .map(({ kind, side: residentSide, fallback }) => ({ kind, side: residentSide, fallback: () => fallback }));
+    }
 
     // Browser Back/Forward over shallow entries: the popped entry's Visit arrives
     // via page.state. (Our own pushUrl also lands here; apply() is id-idempotent.)
@@ -3580,6 +3623,10 @@
             identityIndex = null;
             bus?.emit("documents:changed", {});
         });
+        // A switch of theme, for extensions that draw outside CSS, on a canvas (ADR 0121).
+        const announceTheme = () => bus?.emit("theme:changed", { dark: getAppliedResolvedTheme() === "dark" });
+        window.addEventListener(THEME_CHANGE_EVENT, announceTheme);
+        detachThemeEvents = () => window.removeEventListener(THEME_CHANGE_EVENT, announceTheme);
         // A rename that already happened: a `title` edited outside the app on a Filesystem
         // Backend (ADR 0061), or a synced document renamed on another device or by an agent. The
         // store has re-keyed the document, and everything keyed by its old name follows. Renames
@@ -3633,9 +3680,9 @@
             },
         );
         detachDocRemoved = s.onDocumentRemoved((target) => {
-            // A Kanban Board's Task Detail over the document closes on the same terms, judged
-            // by the board, which knows whether it is being typed in (board-actions.ts).
-            documentRemoved(target);
+            // Extensions hear it first: a Kanban Board's Task Detail over the document closes
+            // on the same terms, judged by the board, which knows whether it is being typed in.
+            bus?.emit("document:deleted", { documentId: target });
             // The document the user is IN stays put. A removal that arrives from elsewhere is
             // a proposal, not a fact: ADR 0039 §4 gives their next keystroke the last word,
             // and a View that has already been closed can no longer be typed in — which made
@@ -3784,16 +3831,17 @@
         // Each Sidebar toggle brings its resident back first if it has been closed (residents.ts):
         // a chord that expanded an empty Sidebar was the only way to lose a View for good.
         commandRegistry.register("layout.toggleSidebar", () => {
-            if (controller) toggleResidentSidebar(controller, [RESIDENTS.graph, RESIDENTS.quickNotes]);
+            if (controller) toggleResidentSidebar(controller, [RESIDENTS.graph, RESIDENTS.quickNotes, ...extensionResidents("left")]);
         });
         commandRegistry.register("layout.toggleBacklinks", () => {
-            // The Graph View is the right Sidebar's third resident on a desktop, so a Sidebar
-            // holding only it is not empty and the toggle collapses it rather than restoring Backlinks.
+            // An extension's resident (the Graph View's, on a desktop) is one of the right Sidebar's
+            // too, so a Sidebar holding only it is not empty and the toggle collapses it rather than
+            // restoring Backlinks.
             if (controller)
                 toggleResidentSidebar(controller, [
                     RESIDENTS.backlinks,
                     RESIDENTS.tasks,
-                    ...(useMobile ? [] : [GRAPH_VIEW_RESIDENT]),
+                    ...extensionResidents("right"),
                 ]);
         });
         // The reveal commands (Alt+G / Alt+B): the resident in front of an expanded Sidebar.
@@ -3899,34 +3947,55 @@
                 copyFilePath: (concept) => void copyDocumentFilePath(concept),
             },
         );
-        // Open Kanban board on a document tab (ADR 0113): a board for the tab's concept, in the
-        // tab's Pane, under the name the concept resolves to. Desktop only.
-        detachKanbanCommands = registerKanbanCommands(commandRegistry, contributions, {
-            openBoard: (concept, sourcePanelId) =>
-                void openViewInPaneOf({ kind: KANBAN_VIEW_KIND, target: canonicalConceptName(concept) }, sourcePanelId),
-            openPage: (concept, sourcePanelId) => openConcept(concept, sourcePanelId),
-            isDesktop: () => !useMobile,
-        });
-        // The [[Graph View]]: a built-in extension, handed the narrow context an extension may
-        // use (surface/extension-context.ts) rather than these services, and taken back whole by
-        // its one disposer as the graph closes. Registered before the presenter mounts, so a
-        // restored Layout finds its two View kinds. The index is read through `graphIndex` at
-        // call time because the open can swap it for an inline one (see `useGraphIndex`).
-        detachGraphView = registerGraphView({
-            extensionId: GRAPH_VIEW_EXTENSION_ID,
-            views: registry,
+        // The index is read through `graphIndex` at call time because the open can swap it for an
+        // inline one (see `useGraphIndex`).
+        const indexClosed = () => Promise.reject(new Error("The graph's index is not open."));
+        // Both are set by now; held as constants so the extensions' contexts keep them.
+        const extensionCommands = commandRegistry;
+        const extensionEvents = bus;
+        // The Built-in Extensions (ADR 0121) start in this graph, each with a context scoped to it.
+        // A compiled-in one starts before the presenter mounts, so a restored Layout finds its Views
+        // supplied and its Commands registered; a loaded one starts when its bundle arrives, its
+        // tabs saying they are loading until then.
+        const extensionGraph: GraphServices = {
+            graphId,
+            commands: extensionCommands,
             contributions,
-            commands: commandRegistry,
-            events: bus,
+            events: extensionEvents,
             index: {
                 allConcepts: () => graphIndex?.allConcepts() ?? [],
-                linkGraph: () => (graphIndex ? graphIndex.linkGraph() : Promise.reject(new Error("The graph's index is not open."))),
+                linkGraph: () => (graphIndex ? graphIndex.linkGraph() : indexClosed()),
                 onUpdated: (listener) => graphIndex?.onUpdated(listener) ?? (() => {}),
             },
-            layout: () => controller,
-            activeDocument: () => getActiveDocument(),
-            isDesktop: () => !useMobile,
-        });
+            layout: {
+                openView(view, options = {}) {
+                    if (options.inPaneOf !== undefined) void openViewInPaneOf(view, options.inPaneOf);
+                    else if (options.beside !== undefined && controller) openBeside(controller, view, options.beside);
+                    else controller?.openView(view);
+                },
+                reveal(kind) {
+                    const resident = extensionHost.residents().find((candidate) => candidate.kind === kind);
+                    if (controller && resident) revealResident(controller, { kind, side: resident.side, fallback: () => resident.fallback });
+                },
+                openDocument(concept, options = {}) {
+                    const target = canonicalConceptName(concept);
+                    if (options.beside !== undefined && controller) {
+                        openBeside(controller, { kind: "document", target }, options.beside);
+                        if (options.line !== undefined) revealLine(target, options.line);
+                    } else if (options.line !== undefined) {
+                        openConceptAtLine(target, options.line, options.inPaneOf);
+                    } else {
+                        openConcept(target, options.inPaneOf);
+                    }
+                },
+                activeDocument: () => getActiveDocument(),
+                isDesktop: () => !useMobile,
+            },
+            concepts: { key: conceptKey, canonicalName: canonicalConceptName },
+            keybindings: keybindingTable,
+            notify: (text) => notify(text),
+        };
+        void extensionHost.start(extensionGraph);
         // Copy task reference (ADR 0114): the task on the caret's line, or a card's, on the
         // clipboard as its words and an address, to hand to an agent. Said, since a clipboard
         // shows nothing of its own.
@@ -4005,8 +4074,9 @@
         );
         // The built-in Augmentation renderers (mermaid, math) — ADR 0022.
         detachRenderers = registerAugmentationRenderers(contributions);
-        // The one list: the same rows the Keyboard Shortcuts card shows (keyboard-shortcuts.ts).
-        detachKeybindings = attachKeybindings(commandRegistry, APP_KEYBINDINGS);
+        // The one list: the same rows the Keyboard Shortcuts card shows (keyboard-shortcuts.ts),
+        // live, so a chord an extension adds as it starts works at once.
+        detachKeybindings = attachKeybindings(commandRegistry, keybindingTable.bindings);
 
         // The graph opened successfully: remember it so a root visit resumes here.
         setLastGraphId(graphId);
@@ -4232,6 +4302,13 @@
             taskFilter,
             backlinksPreferences,
             backend: isServerStore ? "server" : "filesystem",
+            // The Sync Server a request for this graph goes to: its own for a synced graph, the
+            // device's main connection for a graph kept on this device. Read at each request, as
+            // the graph's connection can change while it is open.
+            syncServer: () => {
+                const connection = graphServerOrigin ? syncConnectionFor(graphServerOrigin) : primarySyncConnection();
+                return connection ? { origin: connection.origin, api: syncApiFor(connection) } : null;
+            },
             publishing: {
                 readSource: () => readGraphForPublishing(),
                 environment: () => publishEnvironment(),
@@ -4413,11 +4490,13 @@
         // Quick Notes is the left Sidebar's resident (ADR 0078), ensured the same way.
         if (!controller.isOpen(QUICK_NOTES_VIEW))
             controller.openView(QUICK_NOTES_VIEW, { activate: false });
-        // The Graph View is the right Sidebar's third resident on a desktop or tablet only
-        // (CONTEXT.md → Sidebar): a phone has no room to draw it, so it is not added there. Ensured
-        // like Tasks, which also gives every Layout saved before it existed the tab, behind the others.
-        if (!useMobile && !controller.isOpen(GRAPH_VIEW_LOCAL))
-            controller.openView(GRAPH_VIEW_LOCAL, { activate: false });
+        // Every resident an extension declares is ensured the same way, behind the others: the Graph
+        // View's on a desktop or tablet only (CONTEXT.md → Sidebar), since a phone has no room to draw
+        // it. It also gives every Layout saved before a resident existed its tab.
+        for (const resident of [...extensionResidents("left"), ...extensionResidents("right")]) {
+            const view = resident.fallback();
+            if (!controller.isOpen(view)) controller.openView(view, { activate: false });
+        }
         // A share that landed while the graph was opening (ADR 0087, amended) is shown now: in
         // front of its Sidebar, expanded, and BEFORE the baseline save below, so the layout is
         // persisted with Quick Notes in front and a reload finds it there. Revealing after this
@@ -4468,11 +4547,14 @@
         if (assetId) return { kind: "asset", target: assetId };
         const themeId = page.params.themeId;
         if (themeId) return { kind: "theme", target: themeId };
-        // A [[Kanban Board]]'s address carries its concept, resolved like a document's.
-        const board = page.params.board;
-        if (board) return { kind: KANBAN_VIEW_KIND, target: canonicalConceptName(board) };
-        // The whole-graph Graph View's address has no param, so its route names it.
-        if (page.route.id?.endsWith("/(workspace)/graph-view")) return GRAPH_VIEW_WHOLE;
+        // An address an extension declares (ADR 0121): the address book says which View it names,
+        // and a concept in it is resolved like a document's.
+        const address = page.params.address;
+        if (address) {
+            const view = extensionHost.addresses.view(address, page.params.target ?? "");
+            if (!view) return null;
+            return extensionHost.addresses.takesConcept(view.kind) ? { ...view, target: canonicalConceptName(view.target) } : view;
+        }
         return null;
     }
 
@@ -5067,6 +5149,9 @@
     function publishEnvironment() {
         return createBrowserPublishEnvironment({
             graphTheme: async (id) => getGraphTheme(id),
+            // Whatever an extension contributed to draw a Map Block with (ADR 0121), read as a
+            // publish needs it, so a switch made since the graph opened is respected.
+            mapPicture: () => contributions.get(MAP_PICTURE_KIND, MAP_FENCE_INFO) as MapPictureRenderer | undefined,
         });
     }
 
@@ -6200,10 +6285,10 @@
         backlinksPreferences = undefined;
         detachDocumentCommands?.();
         detachDocumentCommands = undefined;
-        detachKanbanCommands?.();
-        detachKanbanCommands = undefined;
-        detachGraphView?.();
-        detachGraphView = undefined;
+        // Everything every packaged extension added to this graph is taken back (ADR 0121).
+        extensionHost.stop();
+        detachThemeEvents?.();
+        detachThemeEvents = undefined;
         detachTaskReferenceCommands?.();
         detachTaskReferenceCommands = undefined;
         detachQuickNotesCommands?.();
@@ -6540,7 +6625,7 @@
 {/if}
 
 {#if shortcutsDialogOpen}
-    <KeyboardShortcutsDialog onclose={() => (shortcutsDialogOpen = false)} />
+    <KeyboardShortcutsDialog bindings={keybindingTable.bindings} onclose={() => (shortcutsDialogOpen = false)} />
 {/if}
 
 {#if resetDialogOpen}
@@ -6578,6 +6663,7 @@
         indexProgress={indexed}
         onrebuildindex={rebuildIndex}
         assetTools={mirrorAwareAssetTools()}
+        extensions={extensionHost}
         tab={graphSettingsDialog.tab}
         nameHelp={isServerStore
             ? "Changes the graph name for all members."

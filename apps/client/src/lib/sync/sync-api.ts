@@ -1,4 +1,4 @@
-import type { SyncAccountSummary } from '@appsoftwareltd/etherpk-shared'
+import type { PlaceSearchRequest, SyncAccountSummary } from '@appsoftwareltd/etherpk-shared'
 
 // This module imports no other module of the Client: the Playwright fixtures reach it by relative
 // path and resolve no `$lib` alias, so anything it named would have to be importable the same way.
@@ -226,6 +226,13 @@ export function createSyncApi(deps: SyncApiDeps) {
     return {
         /** Resolve the authenticated service-local account before loading account-scoped data. */
         me: () => call<SyncAccountSummary>('/api/v1/sync/me'),
+        /**
+         * Search for a place by name, address or postcode (ADR 0119). The query travels in the
+         * body, so no request log holds it. The answer is unchecked JSON in Photon's form, which
+         * the caller reads with `readPlaceFeatures`; a refusal carries a `PLACE_SEARCH_REFUSAL` code.
+         */
+        searchPlaces: (request: PlaceSearchRequest, signal?: AbortSignal) =>
+            call<{ features?: unknown; credits?: unknown }>('/api/v1/sync/maps/search', { method: 'POST', body: JSON.stringify(request), signal }),
         createGraph: () => call<ServerGraphRecord>('/api/v1/sync/graphs', { method: 'POST' }),
         listGraphs: () => call<{ graphs: ServerGraphRecord[] }>('/api/v1/sync/graphs').then((r) => r.graphs),
         /** Graphs plus the owned-storage rollup (one request - same endpoint as listGraphs). */

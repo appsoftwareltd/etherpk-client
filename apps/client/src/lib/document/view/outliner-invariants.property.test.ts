@@ -8,8 +8,11 @@
  * from Editor Content Rules.md.
  */
 
+import { keymap } from '@codemirror/view'
 import fc from 'fast-check'
-import { describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+
+import { createContributionRegistry, setActiveContributionRegistry } from '$lib/surface'
 
 import { frontmatterLines } from '$lib/storage/fs/frontmatter-span'
 
@@ -17,6 +20,9 @@ import { fencedBlocks, fenceLineInfo } from '../fenced-code'
 import { normaliseIndentUnit, outlineLines } from '../indent-unit'
 import { bulletContent, contentStart, formOneOpeners, isBulletLine, lineIndent, markerLength, opaqueLineFlags, parentIndex } from '../outliner'
 import { analysisFor } from './analysis/editor-analysis'
+import { interactiveFenceAugmentation } from './augmentations/interactive-fence'
+import { type InteractiveFence, registerInteractiveFence } from './augmentations/interactive-fence-contract'
+import { collapsedInteractiveFences, interactiveFences } from './augmentations/interactive-fence-state'
 import { clampColumn } from './caret-clamp'
 import { toggleBullet } from './outliner-keymap'
 import { bulletToggleable } from './task-toggleable'
@@ -752,6 +758,135 @@ describe('outliner invariants under random key sequences', { timeout: 30_000 }, 
                 }
             }),
             fuzz(200),
+        )
+    })
+})
+
+// ── Map widgets ──────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Maps (ADR 0118) drawn over some of the generated code blocks, and over prose maps at the edges of
+ * the body: at its start (after the frontmatter, when there is one) and at its end. A map is drawn
+ * while no selection touches it and shows its text while one does, as a rendered fence (ADR 0022),
+ * so a key may show a map's text and edit it there, but a map the key leaves drawn must hold the text
+ * of a map before it: no key changes text the person cannot see. The keys are pressed as the live
+ * editor runs them, the map's own keys first, so the property hunts what neither keymap's rows pin
+ * down alone.
+ */
+describe('map widgets under random key sequences', () => {
+    const widget: InteractiveFence = { height: () => 320, mount: () => ({ update: () => {}, destroy: () => {} }) }
+    beforeEach(() => {
+        const registry = createContributionRegistry()
+        registerInteractiveFence(registry, 'map', widget)
+        setActiveContributionRegistry(registry)
+    })
+    afterEach(() => setActiveContributionRegistry(null))
+
+    /** Prose maps around the outline: touching it, or with a line between. */
+    const mapMarginArb: fc.Arbitrary<Margin> = fc.record({
+        above: fc.constantFrom<string[]>([], ['```map', 'Top @ 1, 2', '```'], ['```map', 'Top @ 1, 2', '```', '']),
+        below: fc.constantFrom<string[]>([], ['```map', 'End @ 3, 4', '```'], ['', '```map', 'End @ 3, 4', '```']),
+    })
+    /** Which of the outline's code blocks are maps, in order. */
+    const asMapArb = fc.array(fc.boolean(), { minLength: 7, maxLength: 7 })
+    /** Which maps have a second map straight after them, with no line between. */
+    const doubledArb = fc.array(fc.boolean(), { minLength: 7, maxLength: 7 })
+    const MAP_KEYS = [...STRUCTURAL_KEYS, 'Shift-Backspace', 'Mod-Backspace', 'Mod-Delete', 'Mod-]', 'Mod-[', 'ArrowLeft', 'ArrowRight']
+    /**
+     * CodeMirror's own commands the outliner leaves bound, which do not know the outline: its deletes
+     * for a caret take a bullet's marker or join a child's line onto it, and its Mod-] and Mod-[
+     * indent lines with no regard for their parents, whether or not a map is near (a gap of the
+     * outliner's, not of the maps). After one of them only the maps are judged.
+     */
+    const PAST_THE_OUTLINER = new Set(['Shift-Backspace', 'Mod-Backspace', 'Mod-Delete', 'Mod-]', 'Mod-['])
+    const mapScenarioArb = fc.record({
+        outline: outlineArb,
+        caretAt: fc.double({ min: 0, max: 1, noNaN: true }),
+        selectTo: fc.option(fc.double({ min: 0, max: 1, noNaN: true }), { nil: undefined }),
+        keys: fc.array(fc.constantFrom(...MAP_KEYS), { minLength: 1, maxLength: 6 }),
+    })
+
+    /** A key as the live editor runs it: every binding in precedence order, then the default; an arrow as the one-character move CodeMirror makes. */
+    function pressLive(editor: HeadlessEditor, key: string): void {
+        const head = editor.state.selection.main.head
+        if (key === 'ArrowLeft') return editor.select(Math.max(0, head - 1))
+        if (key === 'ArrowRight') return editor.select(Math.min(editor.state.doc.length, head + 1))
+        for (const binding of editor.state.facet(keymap).flat()) {
+            if (binding.key === key && binding.run?.(editor as never)) return
+        }
+        editor.key(key)
+    }
+
+    /** A key deleting a code block's own fence characters, which dissolves it on purpose, as the plain properties skip. */
+    function editsCodeFenceText(editor: HeadlessEditor, key: string): boolean {
+        return editsFenceText(editor, key === 'Shift-Backspace' ? 'Backspace' : key)
+    }
+
+    /** Each map's text, or each drawn map's: what a key may move, indent or delete whole, but never change unseen. */
+    const mapTexts = (editor: HeadlessEditor) => interactiveFences(editor.state).map((f) => f.body.join('\n'))
+    const drawnTexts = (editor: HeadlessEditor) => collapsedInteractiveFences(editor.state).map((f) => f.body.join('\n'))
+
+    /** Whether every text in `after` was one in `before`, as many times over. */
+    function keptFrom(after: string[], before: string[]): boolean {
+        const left = [...before]
+        return after.every((text) => {
+            const i = left.indexOf(text)
+            if (i < 0) return false
+            left.splice(i, 1)
+            return true
+        })
+    }
+
+    it('no key changes a map it leaves drawn, and the outline keeps its invariants', () => {
+        fc.assert(
+            fc.property(mapScenarioArb, asMapArb, doubledArb, mapMarginArb, frontmatterArb, formOneArb, ({ outline, caretAt, selectTo, keys }, asMap, doubled, margin, frontmatter, formOne) => {
+                const lines = render(outline, 'unit', [], [], [], formOne, frontmatter, [], margin).split('\n')
+                const body = frontmatterLines(lines)
+                let n = 0
+                const maps: { start: number; end: number; double: boolean }[] = []
+                for (const block of fencedBlocks(lines)) {
+                    if (block.start < body || /```map\s*$/.test(lines[block.start])) continue
+                    const k = n++ % asMap.length
+                    if (!asMap[k]) continue
+                    // The info word is the map's, whatever the fence had (a form-1 opener may carry one).
+                    lines[block.start] = lines[block.start].replace(/(`{3,})\S*\s*$/, '$1map')
+                    maps.push({ start: block.start, end: block.end, double: doubled[k] })
+                }
+                // From the last up, so the earlier blocks' lines stay where they were.
+                for (const map of maps.reverse()) {
+                    if (map.double) lines.splice(map.end + 1, 0, ...lines.slice(map.start, map.end + 1))
+                }
+                const doc = lines.join('\n')
+                const from = frontmatter.length ? frontmatter.join('\n').length + 1 : 0
+                const pos = Math.round(from + caretAt * (doc.length - from))
+                // The caret starts at the body's start and is placed through a selection, as a click
+                // places it: the fixture's own caret bypasses the filters.
+                const editor = editorFixture(`${doc.slice(0, from)}|${doc.slice(from)}`, { extensions: [interactiveFenceAugmentation()] })
+                editor.select(pos)
+                if (selectTo !== undefined) editor.select(pos, pos + Math.round(selectTo * (doc.length - pos)))
+                let outlineJudged = true
+                for (const key of keys) {
+                    if (editsCodeFenceText(editor, key) || editsFrontmatter(editor)) return
+                    if (PAST_THE_OUTLINER.has(key)) outlineJudged = false
+                    const texts = mapTexts(editor)
+                    pressLive(editor, key)
+                    const now = editor.text().split('\n')
+                    if (outlineJudged) {
+                        expect(noOrphans(now)).toBe(true)
+                        expect(indentsOnGrid(now)).toBe(true)
+                        expect(markersIntact(now)).toBe(true)
+                    }
+                    // A map the key leaves drawn holds the text of a map before it: a key that edits a
+                    // map's text leaves the caret in it, which shows the text.
+                    const drawn = drawnTexts(editor)
+                    expect(keptFrom(drawn, texts), `${key}: ${JSON.stringify(texts)} -> ${JSON.stringify(drawn)}`).toBe(true)
+                    const sel = editor.state.selection.main
+                    if (!sel.empty || !outlineJudged) continue
+                    const line = editor.state.doc.lineAt(sel.head)
+                    expect(sel.head - line.from, key).toBeGreaterThanOrEqual(clampColumn(now, line.number - 1))
+                }
+            }),
+            fuzz(400),
         )
     })
 })

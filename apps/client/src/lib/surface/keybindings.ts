@@ -75,6 +75,35 @@ export function eventMatches(spec: string, event: KeyEventLike): boolean {
     return true
 }
 
+/** Whether two chord specs name the same keys: `Alt+Shift+P` and `shift+alt+p` do. */
+export function sameChord(a: string, b: string): boolean {
+    const left = parseChord(a)
+    const right = parseChord(b)
+    return left.key === right.key && left.mod === right.mod && left.ctrl === right.ctrl && left.alt === right.alt && left.shift === right.shift
+}
+
+/**
+ * The app's chords as one live list, which extensions add to as they start (ADR 0121) and which
+ * `attachKeybindings` reads on every key, so an added chord works at once. Two bindings for one
+ * chord would leave which one runs to the order they were added in, so a second is refused.
+ */
+export function createKeybindingTable<B extends Keybinding>(initial: readonly B[]) {
+    const bindings: B[] = [...initial]
+    return {
+        bindings,
+        /** Add a binding. Throws if its chord is bound already. Returns the removal. */
+        add(binding: B): () => void {
+            const taken = bindings.find((bound) => sameChord(bound.key, binding.key))
+            if (taken) throw new Error(`${binding.key} is bound already, to ${taken.command}.`)
+            bindings.push(binding)
+            return () => {
+                const at = bindings.indexOf(binding)
+                if (at >= 0) bindings.splice(at, 1)
+            }
+        },
+    }
+}
+
 /**
  * Attach the bindings to `window`, dispatching matches through the registry. Returns
  * a teardown fn. A binding whose command is missing is skipped (no throw).

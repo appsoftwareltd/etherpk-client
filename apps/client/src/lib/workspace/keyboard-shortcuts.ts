@@ -24,6 +24,15 @@ export interface AppKeybinding extends Keybinding {
     group: AppShortcutGroup
 }
 
+/**
+ * A chord in the live table the window listens with: the app's own, and each one an extension
+ * adds as it starts (ADR 0121), whose section is whatever it names, or none.
+ */
+export interface ShortcutBinding extends Keybinding {
+    label: string
+    group?: string
+}
+
 /** The card's app-level sections, in the order they are shown. */
 export const APP_SHORTCUT_GROUPS = ['Go to', 'Sidebars', 'Editor', 'Publish', 'Help'] as const
 export type AppShortcutGroup = (typeof APP_SHORTCUT_GROUPS)[number]
@@ -50,21 +59,26 @@ export const APP_KEYBINDINGS: AppKeybinding[] = [
     // about that.
     { key: 'Mod+K', command: 'search.open', label: 'Search the graph', group: 'Go to' },
     // ── Sidebars ──────────────────────────────────────────────────────────────────────────
-    // One letter per Sidebar (L, R) to toggle it, and one per resident (G, N, B, T, M) to get to
-    // it: a reveal ends with the View in front of an expanded Sidebar, a toggle collapses as often
-    // as it expands, and each brings a closed resident back (workspace/residents.ts, 2026-09-18).
-    // "Graph Sidebar", not "Graph", since the Graph View (M, for map) arrived beside it.
+    // One letter per Sidebar (L, R) to toggle it, and one per resident (G, N, B, T) to get to it: a
+    // reveal ends with the View in front of an expanded Sidebar, a toggle collapses as often as it
+    // expands, and each brings a closed resident back (workspace/residents.ts, 2026-09-18). An
+    // extension's resident binds its own letter as it starts (ADR 0121): the Graph View's is M,
+    // for map, which is why this one is "Graph Sidebar" rather than "Graph".
     { key: 'Alt+G', command: 'graph.open', label: 'Graph Sidebar', group: 'Sidebars' },
     { key: 'Alt+N', command: 'quickNotes.open', label: 'Quick notes, ready to type', group: 'Sidebars' },
     { key: 'Alt+B', command: 'backlinks.open', label: 'Backlinks', group: 'Sidebars' },
     { key: 'Alt+T', command: 'tasks.open', label: 'Tasks', group: 'Sidebars' },
-    { key: 'Alt+M', command: 'graph-view.reveal', label: 'Graph View (desktop)', group: 'Sidebars' },
     { key: 'Alt+L', command: 'layout.toggleSidebar', label: 'Show or hide the left sidebar', group: 'Sidebars' },
     { key: 'Alt+R', command: 'layout.toggleBacklinks', label: 'Show or hide the right sidebar', group: 'Sidebars' },
     // ── Editor ────────────────────────────────────────────────────────────────────────────
     // Spell Check is a device preference, so the chord works with no editor focused. Alt+S was
     // the left sidebar's toggle until 2026-09-18 (Alt+L now); reused for spell check on 2026-09-23.
     { key: 'Alt+S', command: 'editor.toggleSpellCheck', label: 'Turn spell check on or off (this device)', group: 'Editor' },
+    // The text size is a device preference as well. On Alt because the browser zooms the page with
+    // Ctrl and + or -, and with Ctrl and the wheel, which a map in a document takes for its own zoom.
+    // Ctrl+wheel over an editor was this zoom until 2026-10-09.
+    { key: 'Alt+=', command: 'editor.zoomIn', label: 'Increase font size (this device)', group: 'Editor' },
+    { key: 'Alt+-', command: 'editor.zoomOut', label: 'Decrease font size (this device)', group: 'Editor' },
     // ── Publish ───────────────────────────────────────────────────────────────────────────
     // After an edit: P opens the publication's settings (the Publish tab of Settings), Shift+P
     // publishes the last publication published from this device again, to its folder, with no

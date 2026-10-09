@@ -342,6 +342,21 @@ describe('index core', () => {
         expect(await core.handle({ type: 'ingest', docs: [], removed: ['Nowhere'] })).toEqual([])
     })
 
+    it('says the maps changed when a removed document held one, and leaves none of its places', async () => {
+        const { host } = persistentHost()
+        const core = createIndexCore(host)
+        await core.handle({ type: 'open', graphId: 'g1' })
+        await rebuild(core, [doc('Campsites', '```map\nSeal Bay @ 50.7486, -1.0789\n```'), doc('Notes', '- nothing to see')])
+
+        const [plain] = await core.handle({ type: 'ingest', docs: [], removed: ['Notes'] })
+        expect(plain).toMatchObject({ type: 'delta', mapsChanged: false })
+
+        const [withMap] = await core.handle({ type: 'ingest', docs: [], removed: ['Campsites'] })
+        expect(withMap).toMatchObject({ type: 'delta', mapsChanged: true })
+        const [places] = await core.handle({ type: 'map-items', id: 1, concept: null })
+        expect(places).toEqual({ type: 'map-items', id: 1, result: { items: [], truncated: false } })
+    })
+
     // A title whose case alone changed has the same key and the same text: still a change, or the
     // index would go on showing the old spelling.
     it('takes a document whose title changed only in case', async () => {
@@ -1909,6 +1924,7 @@ describe('remote graph index', () => {
             candidateUpserts: [],
             candidateRemoved: [],
             backlinkTargetsChanged: [],
+            mapsChanged: false,
         })
 
         expect(sent.at(-1)).toEqual({ type: 'snapshot-request' })
@@ -2096,6 +2112,64 @@ describe('the Graph View query', () => {
             const name = (position: number) => graph.concepts[position].name
             expect(graph.concepts.map((c) => [c.name, c.kind])).toContainEqual(['Foo', 'page'])
             expect(graph.links.map((l) => `${name(l.source)} -> ${name(l.target)}`)).toEqual(['Foo -> Other', 'Other -> Foo'])
+            index.dispose()
+        } finally {
+            vi.useRealTimers()
+        }
+    })
+})
+
+describe('the Map View query', () => {
+    it('answers a concept\'s places and routes in one round trip, and follows an edit', async () => {
+        vi.useFakeTimers()
+        try {
+            const map = (...lines: string[]) => ['```map', ...lines, '```'].join('\n')
+            const s = fakeSource([doc('Campsites', map('Seal Bay @ 50.7486, -1.0789')), doc('Pubs', map('The Ship @ 50, -1'))])
+            const index = createRemoteGraphIndex(s.source, inlineTransport(), { graphId: 'g1', debounceMs: 10 })
+            await index.refresh()
+            await vi.advanceTimersByTimeAsync(20)
+
+            const before = await index.mapItems('Campsites')
+            expect(before.items.map((hit) => hit.item.name)).toEqual(['Seal Bay'])
+            expect((await index.mapItems(null)).items.map((hit) => hit.item.name)).toEqual(['Seal Bay', 'The Ship'])
+
+            s.setText('Campsites', map('Seal Bay @ 50.7486, -1.0789', 'Wild Haven @ 51.1, -2.1'))
+            s.fire({ concept: 'Campsites' })
+            await vi.advanceTimersByTimeAsync(20)
+
+            const after = await index.mapItems('Campsites')
+            expect(after).toMatchObject({ truncated: false, items: [{ line: 1, item: { name: 'Seal Bay' } }, { line: 2, item: { name: 'Wild Haven' } }] })
+            index.dispose()
+        } finally {
+            vi.useRealTimers()
+        }
+    })
+
+    it('says which updates touched a map, so an open Map View reads again only after those', async () => {
+        vi.useFakeTimers()
+        try {
+            const map = (...lines: string[]) => ['```map', ...lines, '```'].join('\n')
+            const s = fakeSource([doc('Campsites', map('Seal Bay @ 50.7486, -1.0789')), doc('Notes', '- nothing to see')])
+            const index = createRemoteGraphIndex(s.source, inlineTransport(), { graphId: 'g1', debounceMs: 10 })
+            const updates: { full: boolean; mapsChanged: boolean }[] = []
+            index.onUpdated((update) => updates.push({ full: update.full, mapsChanged: update.mapsChanged }))
+            await index.refresh()
+            await vi.advanceTimersByTimeAsync(20)
+            // A whole new snapshot may hold any change at all.
+            expect(updates.filter((update) => update.full).every((update) => update.mapsChanged)).toBe(true)
+
+            const edit = async (concept: string, text: string) => {
+                updates.length = 0
+                s.setText(concept, text)
+                s.fire({ concept })
+                await vi.advanceTimersByTimeAsync(20)
+                return updates.map((update) => update.mapsChanged)
+            }
+            expect(await edit('Notes', '- still nothing')).toEqual([false])
+            expect(await edit('Campsites', map('Seal Bay @ 50.7486, -1.0789', 'Wild Haven @ 51.1, -2.1'))).toEqual([true])
+            // The map is gone: its rows were, so the change is one.
+            expect(await edit('Campsites', '- no map now')).toEqual([true])
+            expect(await edit('Campsites', '- still no map')).toEqual([false])
             index.dispose()
         } finally {
             vi.useRealTimers()

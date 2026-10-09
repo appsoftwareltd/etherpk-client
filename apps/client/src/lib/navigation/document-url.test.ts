@@ -1,6 +1,36 @@
 import { describe, expect, it } from 'vitest'
 
-import { assetUrl, documentUrl, encodeConceptPath, graphUrl, graphViewUrl, kanbanUrl, themeUrl, viewUrl } from './document-url'
+import { createAddressBook } from '$lib/extensions/addresses'
+
+import { assetUrl, documentUrl, encodeConceptPath, graphUrl, themeUrl, viewUrl } from './document-url'
+import { setExtensionAddresses } from './extension-addresses'
+
+describe("an extension View's address", () => {
+    it('is what its manifest declares, once a workspace has handed the address book over', () => {
+        const view = { kind: 'timeline.day', target: '2026-10-02' }
+        expect(viewUrl('g1', view)).toBeNull()
+        setExtensionAddresses(
+            createAddressBook([
+                {
+                    package: {
+                        manifest: {
+                            id: 'timeline',
+                            displayName: 'Timeline',
+                            publisher: 'App Software',
+                            main: './src/extension.ts',
+                            views: [{ kind: 'timeline.day', title: 'Day: {target}', region: 'main', address: { segment: 'day', target: 'concept' } }],
+                        },
+                    },
+                },
+            ]),
+        )
+        try {
+            expect(viewUrl('g1', view)).toBe('/g/g1/day/2026-10-02')
+        } finally {
+            setExtensionAddresses(null)
+        }
+    })
+})
 
 describe('encodeConceptPath', () => {
     it('encodes each segment but preserves slashes as path separators', () => {
@@ -54,15 +84,6 @@ describe('viewUrl', () => {
     })
 })
 
-describe('graphViewUrl', () => {
-    // The whole-graph Graph View is a place you go, one per graph, so its address has no target.
-    // The Sidebar's local copy is a resident and has none (above).
-    it('addresses the whole graph', () => {
-        expect(graphViewUrl('g1')).toBe('/g/g1/graph-view')
-        expect(viewUrl('g1', { kind: 'graph-view.whole', target: 'whole' })).toBe('/g/g1/graph-view')
-    })
-})
-
 describe('themeUrl', () => {
     // A Theme in its editor is a main-region View like an Asset tab, and before it had an
     // address opening one pushed no history entry, so Back walked straight past it (ADR 0023,
@@ -77,22 +98,5 @@ describe('themeUrl', () => {
 
     it('is what viewUrl gives a theme View', () => {
         expect(viewUrl('g1', { kind: 'theme', target: 'docs-theme' })).toBe('/g/g1/t/docs-theme')
-    })
-})
-
-describe('kanbanUrl', () => {
-    // A Kanban Board is a place you go, so it is a Visit with an address (ADR 0113). It is keyed
-    // by its concept like a document, under its own segment, so a concept's page and its board
-    // are two addresses.
-    it('addresses a board by its concept', () => {
-        expect(kanbanUrl('g1', 'Acme Rebuild')).toBe('/g/g1/k/Acme%20Rebuild')
-    })
-
-    it('keeps a slash in the concept as a path separator, as a Document URL does', () => {
-        expect(kanbanUrl('g1', 'a/b c')).toBe('/g/g1/k/a/b%20c')
-    })
-
-    it('is what viewUrl gives a kanban View', () => {
-        expect(viewUrl('g1', { kind: 'kanban', target: 'Acme' })).toBe('/g/g1/k/Acme')
     })
 })

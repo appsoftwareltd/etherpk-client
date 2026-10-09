@@ -5,6 +5,11 @@ node_modules/
 **/build/
 # The Headless Client's Vite bundle (apps/mcp), built by CI and by the e2e spec that drives it.
 apps/mcp/dist/
+# The Extension API's built declarations and API Extractor's scratch folder (its reports, in
+# etc/, are committed), and each built extension's bundle.
+packages/extension-api/dist/
+packages/extension-api/temp/
+extensions/*/dist/
 **/.svelte-kit/
 
 # Environment variables -- never commit secrets.
@@ -78,3 +83,8 @@ reports/
 # files, published to R2 rather than committed.
 
 .dictionaries/
+
+# Postcode sets built by `pnpm postcodes:build`: about 50 MB of ONS and Census data, published to the
+# map host rather than committed.
+
+.postcodes/

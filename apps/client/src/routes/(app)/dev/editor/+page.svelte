@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { getAppliedResolvedTheme } from '@appsoftwareltd/etherpk-shared/theme'
     import { onMount } from 'svelte'
     import * as Y from 'yjs'
 
@@ -23,9 +24,17 @@
     import {
         createCommandRegistry,
         createContributionRegistry,
+        createEventBus,
         setActiveCommandRegistry,
         setActiveContributionRegistry,
     } from '$lib/surface'
+    import { iconSvg, registerIcons } from '$lib/surface/icons'
+    import { personSettings } from '$lib/person-settings/person-settings'
+    import { conceptKey } from '$lib/document/backlinks'
+    import { builtInCatalogue } from '$lib/extensions/built-ins'
+    import { createExtensionHost } from '$lib/extensions/host'
+    import { createExtensionSwitches } from '$lib/extensions/switches'
+    import { RELEASE_VERSION } from '$lib/release'
     import { createAssetStore, createMemoryDirectoryAdapter } from '$lib/storage'
     import { performanceRecorder } from '$lib/diagnostics/performance'
     import {
@@ -72,6 +81,22 @@
     const detachLinkCommands = registerLinkCommands(commandRegistry, contributions)
     // The built-in Augmentation renderers (mermaid, math) — ADR 0022.
     const detachRenderers = registerAugmentationRenderers(contributions)
+    // The compiled-in Built-in Extensions (ADR 0121), started as a graph starts them, so a Map
+    // Block draws over its `map` fence and `/map` is offered. A loaded extension is left out: none
+    // adds to the editor. The harness has no Layout, so a View an extension supplies is never drawn,
+    // and no Sync Server, so a map's search says what can be typed instead.
+    const extensionHost = createExtensionHost({
+        catalogue: { ...builtInCatalogue, extensions: builtInCatalogue.extensions.filter((entry) => entry.source === 'compiled-in') },
+        switches: createExtensionSwitches(),
+        client: {
+            clientVersion: RELEASE_VERSION,
+            dev: true,
+            isDark: () => getAppliedResolvedTheme() === 'dark',
+            iconSvg,
+            storage: typeof localStorage === 'undefined' ? undefined : localStorage,
+            settings: personSettings(),
+        },
+    })
 
     // A fixed graph index so the wikilink-completion popover has concepts to offer:
     // existing pages + an alias + a journal, plus a "pageless" concept referenced
@@ -162,9 +187,9 @@
         w.__caret = () => {
             const view = getActiveEditorView()
             if (!view) return null
-            const head = view.state.selection.main.head
+            const { head, anchor } = view.state.selection.main
             const line = view.state.doc.lineAt(head)
-            return { head, lineFrom: line.from, lineTo: line.to, col: head - line.from, lineText: line.text }
+            return { head, anchor, lineFrom: line.from, lineTo: line.to, col: head - line.from, lineText: line.text }
         }
         // Override the default code language used by fence completion (ADR 0018).
         w.__setDefaultCodeLanguage = (lang: string) => {
@@ -229,6 +254,30 @@
             for (const listener of indexListeners) listener({ concept })
         }
 
+        const detachExtensionIcons = registerIcons(extensionHost.icons())
+        const media = window.matchMedia('(min-width: 1024px)')
+        void extensionHost.start({
+            graphId: 'dev-editor',
+            commands: commandRegistry,
+            contributions,
+            events: createEventBus('dev-editor'),
+            index: {
+                allConcepts: () => graphIndex?.allConcepts() ?? [],
+                linkGraph: () => (graphIndex ? graphIndex.linkGraph() : Promise.reject(new Error("The harness's index is not open."))),
+                onUpdated: (listener) => graphIndex?.onUpdated(listener) ?? (() => {}),
+            },
+            layout: {
+                openView: (view) => console.debug('[dev-editor] open view', view),
+                reveal: () => {},
+                openDocument: (concept) => console.debug('[dev-editor] open document', concept),
+                activeDocument: () => 'doc-a',
+                isDesktop: () => media.matches,
+            },
+            concepts: { key: conceptKey, canonicalName: (name) => name },
+            keybindings: { add: () => () => {} },
+            notify: (text) => console.debug(text),
+        })
+
         void (async () => {
             graphIndex = createRemoteGraphIndex(indexSource, inlineTransport(), { graphId: 'dev-editor' })
             await graphIndex.refresh()
@@ -237,6 +286,8 @@
         })()
         return () => {
             detachRenderers()
+            extensionHost.stop()
+            detachExtensionIcons()
             detachEditorCommands()
             detachLinkCommands()
             setActiveGraphIndex(null)

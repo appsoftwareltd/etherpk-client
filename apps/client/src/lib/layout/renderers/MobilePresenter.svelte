@@ -69,6 +69,11 @@
         return renderer.registry.get(kind)?.component
     }
 
+    /** The extra props a kind's entry gives its component (ViewRegistryEntry.props). */
+    function entryProps(kind: string) {
+        return renderer.registry.get(kind)?.props ?? {}
+    }
+
     /**
      * The [[Context Menu]] target an open main-region View stands for, from the document control
      * or its row in the list - the same mapping the dockview adapter makes for a desktop tab: a
@@ -335,7 +340,7 @@
         </div>
     {/if}
     <div class="drawer-body">
-        {#if inst}{@const C = component(inst.view.kind)}{#if C}<C view={inst.view} {visibility} />
+        {#if inst}{@const C = component(inst.view.kind)}{#if C}<C view={inst.view} {visibility} {...entryProps(inst.view.kind)} />
         {:else}<p class="empty" data-testid="view-unavailable">{unavailableViewMessage(inst.view.kind)}</p>{/if}{/if}
     </div>
 {/snippet}
@@ -458,7 +463,7 @@
             {#if activeMain}
                 {@const Active = component(activeMain.view.kind)}
                 {#if Active}
-                    {#key activeMain.panelId}<Active view={activeMain.view} {visibility} />{/key}
+                    {#key activeMain.panelId}<Active view={activeMain.view} {visibility} {...entryProps(activeMain.view.kind)} />{/key}
                 {:else}<p class="empty" data-testid="view-unavailable">{unavailableViewMessage(activeMain.view.kind)}</p>{/if}
             {:else}
                 <p class="empty" data-testid="no-page-open">{NO_PAGE_OPEN}</p>

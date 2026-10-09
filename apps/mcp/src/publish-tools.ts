@@ -26,6 +26,7 @@ import {
 } from '$lib/workspace/publish-service'
 
 import { chromiumStatus, openDiagramRenderer } from './diagrams'
+import { needsMaps, openMapRenderer } from './map-pictures'
 import type { HeadlessGraph } from './headless-graph'
 import { createNodePublishEnvironment, needsMermaid, nodeSiteFolder } from './publish-environment'
 import { defaultPublishFoldersPath, publishFolderOf, publishGraphKey, readPublishFolders } from './publish-folders'
@@ -250,8 +251,9 @@ export async function publish(graph: HeadlessGraph, args: PublishArgs, host?: Pu
     const selected = selectDocuments(source.documents, publication, summary.publications)
     const includeTexts = Object.values(publication.includes)
         .map((concept) => source.documents.find((d) => d.concept.toLowerCase() === concept.toLowerCase())?.text ?? '')
+    const bodies = [...selected.included.map((d) => d.text), ...includeTexts]
     let renderer = null
-    if (needsMermaid([...selected.included.map((d) => d.text), ...includeTexts])) {
+    if (needsMermaid(bodies)) {
         renderer = await openDiagramRenderer(env)
         if (!renderer) {
             const status = await chromiumStatus(env, cmd)
@@ -261,8 +263,20 @@ export async function publish(graph: HeadlessGraph, args: PublishArgs, host?: Pu
             )
         }
     }
+    let maps = null
+    if (needsMaps(bodies)) {
+        maps = await openMapRenderer(env)
+        if (!maps) {
+            await renderer?.dispose()
+            const status = await chromiumStatus(env, cmd)
+            throw new ToolError(
+                'chromium_unavailable',
+                `"${publication.name}" has maps, which a publish draws as pictures with a browser, and none is set up on this computer. Ask the user to run: ${status.setupCommand} (or set ETHERPK_CHROMIUM to a Chromium on this machine). Nothing was published.`,
+            )
+        }
+    }
     try {
-        const environment = createNodePublishEnvironment({ graphTheme: (id) => graph.publishing.graphTheme(id), renderer })
+        const environment = createNodePublishEnvironment({ graphTheme: (id) => graph.publishing.graphTheme(id), renderer, maps })
         const run = await runPublish(publication, { source, environment, unsettled })
         const written = run.report.ok ? await writeSite(nodeSiteFolder(folder), run.bundle, { seeded: run.seeded, agentsMd: run.agentsMd }) : null
         const excludedByReason: Record<string, number> = {}
@@ -284,6 +298,7 @@ export async function publish(graph: HeadlessGraph, args: PublishArgs, host?: Pu
         }
     } finally {
         await renderer?.dispose()
+        await maps?.dispose()
     }
 }
 

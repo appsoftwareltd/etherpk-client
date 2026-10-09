@@ -2,7 +2,8 @@
 
 This repository holds the EtherPK Client (`apps/client`, SvelteKit 2 with Svelte 5 runes), the
 Headless Client (`apps/mcp`, a Node MCP server that bundles `apps/client/src/lib` through a `$lib`
-alias), and the packages both use (`packages/shared`, `packages/themes`).
+alias), the packages both use (`packages/shared`, `packages/themes`), the Extension API
+(`packages/extension-api`) and the extensions that come with the Client (`extensions/`).
 
 ## Before you change anything
 
@@ -33,7 +34,13 @@ Run one package's tests with `pnpm --filter @appsoftwareltd/etherpk-client exec 
   `apps/client/src/env-example.test.ts` fails when the two disagree. Add a new setting to both.
 - The sync protocol lives in `packages/shared/src/sync-protocol.ts` and is shared with the Sync
   Server. Changing a message shape means a new `SYNC_PROTOCOL_VERSION`.
+- An extension reaches the Client only through `@appsoftwareltd/etherpk-extension-api`, and the
+  Client imports no extension. `eslint.config.js` enforces both, and lists the Client imports the
+  compiled-in extensions still make. A change to the API updates its reports
+  (`pnpm --filter @appsoftwareltd/etherpk-extension-api api`), or `pnpm check` fails.
 - The Client enforces Trusted Types. Write HTML only through
   `apps/client/src/lib/security/trusted-types.ts` (`setTrustedMarkup`, `parseInertHtml`,
   `setSandboxedSrcdoc`). ESLint refuses `innerHTML`, `outerHTML`, `srcdoc`, `insertAdjacentHTML`,
-  `parseFromString` and `document.write` elsewhere in `apps/client/src`.
+  `parseFromString` and `document.write` elsewhere in `apps/client/src`. Extension code writes no
+  HTML and creates no Trusted Types policy: ESLint refuses every sink in `extensions/`, and
+  `createPolicy` too.

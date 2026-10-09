@@ -95,13 +95,13 @@ describe('context-menu contribution point', () => {
     })
 
     it('takes only the document kinds for a document, never a kind added later', () => {
-        // The guard listed the kinds that are NOT documents, so a new kind (a Kanban card)
-        // passed as a document and the Favourites rows read a concept it does not have.
+        // The guard listed the kinds that are NOT documents, so a new kind (a Kanban card, now an
+        // extension's) passed as a document and the Favourites rows read a concept it does not have.
         for (const kind of ['document-tab', 'favourite', 'recent', 'document-row'] as const) {
             expect(isDocumentTarget({ kind, concept: 'Physics' })).toBe(true)
         }
         expect(
-            isDocumentTarget({ kind: 'kanban-card', board: 'b', card: 'Acme:0', label: 'x', status: 'open', priority: null }),
+            isDocumentTarget({ kind: 'kanban.card', board: 'b', card: 'Acme:0', label: 'x', status: 'open', priority: null }),
         ).toBe(false)
         expect(isDocumentTarget({ kind: 'tab', panelId: 'p' })).toBe(false)
     })

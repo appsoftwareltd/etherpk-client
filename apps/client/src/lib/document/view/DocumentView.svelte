@@ -33,7 +33,7 @@
     import { clearActiveEditorView, getActiveEditorView, setActiveEditorView } from '../active-editor'
     import { markEditorTornDown, recordEditorSuccessor } from './editor-succession'
     import { refreshEditorContext } from '../editor-context.svelte'
-    import { initEditorFont, zoomEditorFont } from '../editor-font'
+    import { initEditorFont } from '../editor-font'
     import { getActiveDocumentStore } from '../active-store'
     import { getActiveGraphIndex } from '../backlinks'
     import { draftConceptNowExists } from '../draft-presence'
@@ -46,6 +46,7 @@
     import { DocumentNotFoundError, type EditorDocument } from '../types'
     import { currentWorkspaceServices, type ProtectionControls } from '$lib/workspace/workspace-services'
     import { createDocumentEditor, type DocumentEditor } from './cm-document'
+    import { caretBesideFence } from './augmentations/interactive-fence'
     import { frontmatterIdentityTick } from './augmentations/frontmatter'
     import { carrySpellCheck, spellCheckChanged } from './augmentations/spell-check'
     import { analysisFor } from './analysis/editor-analysis'
@@ -398,7 +399,10 @@
         // The line's START; `caretClamp` (a transaction filter, so programmatic moves go
         // through it too) then nudges it right to the content column, past a bullet marker.
         // Scrolled into view rather than to a remembered offset — see revealEditorPosition.
-        revealEditorPosition(cm, cm.state.doc.line(documentLine(cm, line)).from, align)
+        const from = cm.state.doc.line(documentLine(cm, line)).from
+        // On a map's lines the caret goes beside the map and the line still comes into view, so
+        // Show in document finds the map drawn with its place chosen, never the map's text.
+        revealEditorPosition(cm, caretBesideFence(cm.state, from), align, from)
     }
 
     /**
@@ -826,15 +830,9 @@
             setActiveEditorView(editor.view)
             refreshEditorContext(editor.view)
         }
-        // Desktop zoom: Ctrl+wheel over the editor changes the (shared) editor font size.
-        // A manual non-passive listener so preventDefault stops the browser page-zoom.
+        // The font size zooms with Alt+= and Alt+- (keyboard-shortcuts.ts) and the Command Bar.
+        // Ctrl+wheel over the editor is the browser's own, and over a map in it the map's.
         const dom = editor.view.dom
-        const onWheelZoom = (event: WheelEvent) => {
-            if (!event.ctrlKey) return
-            event.preventDefault()
-            zoomEditorFont(event.deltaY < 0 ? 1 : -1)
-        }
-        dom.addEventListener('wheel', onWheelZoom, { passive: false })
         // A key or a press in this editor is the user taking over from a held reveal. The
         // transactions say so too (`onUpdate`), but not all of them: on a synced graph Mod-z
         // reaches the editor with no user event, and the reveal put the caret back after it.
@@ -842,7 +840,6 @@
         const takeover = ['keydown', 'pointerdown', 'touchstart'] as const
         for (const type of takeover) dom.addEventListener(type, letGoOfReveal, { capture: true, passive: true })
         detachEditorListeners = () => {
-            dom.removeEventListener('wheel', onWheelZoom)
             for (const type of takeover) dom.removeEventListener(type, letGoOfReveal, { capture: true })
         }
         observeScrollbar(editor.view.scrollDOM)

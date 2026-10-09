@@ -1,0 +1,42 @@
+{
+    "name": "@appsoftwareltd/etherpk-extension-kanban",
+    "version": "0.9.3",
+    "license": "Elastic-2.0",
+    "description": "A board for the tasks that answer to one concept: a lane per status, a section per priority, and the task itself beside them.",
+    "private": true,
+    "type": "module",
+    "etherpk": {
+        "id": "kanban",
+        "displayName": "Kanban",
+        "publisher": "App Software",
+        "main": "./src/extension.ts",
+        "icons": {
+            "kanban": "<rect x=\"2.5\" y=\"2.5\" width=\"3\" height=\"11\" rx=\"1\"/><rect x=\"6.5\" y=\"2.5\" width=\"3\" height=\"7\" rx=\"1\"/><rect x=\"10.5\" y=\"2.5\" width=\"3\" height=\"9\" rx=\"1\"/>",
+            "collapse-lane": "<path d=\"M8 3v10\"/><path d=\"M2.5 8H6M4.3 6.2 6 8 4.3 9.8M13.5 8H10M11.7 6.2 10 8l1.7 1.8\"/>",
+            "expand-lane": "<path d=\"M8 3v10\"/><path d=\"M6 8H2.5M4.2 6.2 2.5 8l1.7 1.8M10 8h3.5M11.8 6.2 13.5 8l-1.7 1.8\"/>"
+        },
+        "views": [
+            {
+                "kind": "kanban.board",
+                "title": "Kanban: {target}",
+                "icon": "kanban",
+                "region": "main",
+                "address": {
+                    "segment": "k",
+                    "target": "concept"
+                }
+            }
+        ]
+    },
+    "dependencies": {
+        "@appsoftwareltd/etherpk-extension-api": "workspace:*",
+        "svelte": "^5.57.1",
+        "zod": "^4.3.6"
+    },
+    "devDependencies": {
+        "@codemirror/state": "^6.6.0",
+        "@codemirror/view": "^6.43.0",
+        "@sqlite.org/sqlite-wasm": "3.53.0-build1",
+        "vitest": "^4.1.4"
+    }
+}

@@ -38,6 +38,7 @@ export {
     COMMAND_MENU_KIND,
     registerCommandMenuItem,
     commandMenuItemsInOrder,
+    commandMenuDetail,
     listCommandMenuItems,
 } from './command-menu'
 export {
@@ -93,3 +94,4 @@ export {
     parseChord,
     suppressBrowserChords,
 } from './keybindings'
+export { GRAPH_SIDEBAR_BUTTON_KIND, type GraphSidebarButton, graphSidebarButtons, registerGraphSidebarButton } from './graph-sidebar-buttons'

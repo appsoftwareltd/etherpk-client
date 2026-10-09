@@ -12,6 +12,9 @@
  * - {@link renderFailed} / {@link markRenderFailed} — a hard render failure must drop
  *   the replace decoration IMMEDIATELY (the raw source is the fallback, ADR 0022); the
  *   effect is the rebuild trigger, the bounded key set is the memory.
+ * - {@link arrowIntoCollapsedFence} / {@link pressBesideFormOne} — how the caret gets into a
+ *   fence drawn as a widget, by keyboard and by pointer, for the rendered and the interactive
+ *   fences alike, so the two hosts can never step into a fence differently.
  * - {@link fenceRenderResults} / {@link renderedSizes} / the failure set - the host's three
  *   caches, and {@link clearRenderCaches} to empty them in one call. A lock on a
  *   [[Protected Document]] promises that no plaintext for protected content is left on the
@@ -20,12 +23,14 @@
  *   outlive a document carry a hash of the source, never the source.
  */
 
-import { type EditorState, Facet, StateEffect } from '@codemirror/state'
+import { type EditorState, Facet, type SelectionRange, StateEffect, type Transaction } from '@codemirror/state'
 import { EditorView, ViewPlugin } from '@codemirror/view'
 
 import { THEME_CHANGE_EVENT } from '@appsoftwareltd/etherpk-shared/theme'
 
 import { type RenderableFence } from './fence-render-core'
+import { fenceRegistrationsChanged } from './interactive-fence-contract'
+import { collapsedInteractiveFences } from './interactive-fence-state'
 import { rangeRevealed } from './reveal-policy'
 import { type AugmentationRenderer, lookupAugmentationRenderer } from './renderers/contract'
 import { analysisFor } from '../analysis/editor-analysis'
@@ -44,6 +49,16 @@ export const renderFailed = StateEffect.define<null>()
  * stale and clicks below the widget landing on the wrong block.
  */
 export const renderCompleted = StateEffect.define<null>()
+
+/**
+ * Whether a transaction may change which fenced blocks are collapsed to a widget without changing
+ * the document: the theme switched, an async render landed, or an interactive fence's widget was
+ * registered or withdrawn. What keeps per-block layout (the code panel, the clamp, the code scroll
+ * bars) reads the blocks again then.
+ */
+export function collapseMayHaveChanged(tr: Transaction): boolean {
+    return tr.effects.some((e) => e.is(themeTick) || e.is(renderCompleted) || e.is(fenceRegistrationsChanged))
+}
 
 /**
  * Which editor a render result belongs to. `fenceRenderAugmentation()` mints a fresh owner per
@@ -238,6 +253,88 @@ export function rendererCollapsedFences(state: EditorState): DispatchedFence[] {
 /** 0-based opener line indices of the collapsed fences — the cheap membership test for the panel/clamp skips. */
 export function rendererCollapsedStarts(state: EditorState): Set<number> {
     return new Set(rendererCollapsedFences(state).map((f) => f.start))
+}
+
+/**
+ * 0-based opener line indices of every fence drawn as a widget rather than as text: a collapsed
+ * rendered fence, or an interactive fence whose text is not being shown (interactive-fence-state.ts).
+ * What the code panel, the content clamp and the code scroll bar skip, so none of them draws behind
+ * or beside a widget. An interactive fence changes state with the selection, the document, or a
+ * widget for its word registered or withdrawn, and every one of them rebuilds on all three
+ * ({@link collapseMayHaveChanged}).
+ */
+export function collapsedFenceStarts(state: EditorState): Set<number> {
+    const starts = rendererCollapsedStarts(state)
+    for (const fence of collapsedInteractiveFences(state)) starts.add(fence.start)
+    return starts
+}
+
+/** What stepping the caret into a fence drawn as a widget reads of it. */
+export interface CollapsedFenceLines {
+    /** 0-based lines of its opener and closer. */
+    readonly start: number
+    readonly end: number
+    readonly fenceColumn: number
+    /** It opens on a bullet's line (form 1), where it is drawn inline after the marker. */
+    readonly bulletOpener: boolean
+    /** The end of its closer line. */
+    readonly blockTo: number
+}
+
+/** The editor a caret step reads and dispatches to: a view, or a headless editor in the Node tier. */
+interface CaretTarget {
+    readonly state: EditorState
+    dispatch(tr: Transaction): void
+    /** The view's own vertical motion (`EditorView.moveVertically`). A headless editor has no layout to move by. */
+    moveVertically?(start: SelectionRange, forward: boolean): SelectionRange
+}
+
+/**
+ * ArrowDown or ArrowUp from the line beside a fence drawn as a widget, which shows its text
+ * (range-kind reveal): down from the line above lands on the opener's fence column, up from the line
+ * below at the end of the closer. Over a block widget (prose, form 2) the view's own motion would step
+ * over it whole. Over a form-1 fence's inline widget it would land at the widget's start or end by
+ * which half of the widget the caret's column is under, so the same two places are given there too.
+ * On a wrapped line the arrow first moves a row at a time, as anywhere: only a motion that would
+ * leave the caret's line steps in. Shared by the rendered fences (fence-render.ts) and the
+ * interactive ones (interactive-fence.ts), each over its own collapsed fences.
+ */
+export function arrowIntoCollapsedFence(dir: 1 | -1, collapsed: (state: EditorState) => readonly CollapsedFenceLines[]) {
+    return (target: CaretTarget): boolean => {
+        const { state } = target
+        const sel = state.selection.main
+        if (!sel.empty || state.selection.ranges.length > 1) return false
+        const caretLine = state.doc.lineAt(sel.head).number // 1-based
+        // The fence on the arrow's side of the caret's line: its opener the line below, or its closer the line above.
+        const fence = collapsed(state).find((f) => (dir === 1 ? caretLine === f.start : caretLine === f.end + 2))
+        if (!fence) return false
+        // Asked only beside a fence: the view's motion costs a layout read, on every arrow press.
+        if (target.moveVertically && state.doc.lineAt(target.moveVertically(sel, dir === 1).head).number === caretLine) return false
+        const anchor = dir === 1 ? state.doc.line(fence.start + 1).from + fence.fenceColumn : fence.blockTo
+        target.dispatch(state.update({ selection: { anchor }, scrollIntoView: true, userEvent: 'select' }))
+        return true
+    }
+}
+
+/**
+ * A press on a collapsed form-1 fence's line but not on its widget (the bullet's dot, the gap above
+ * the widget): the caret goes to the fence column, which shows the fence's text. CodeMirror's
+ * coordinate model drifts beside a widget as tall as a diagram or a map, as beside a tall bullet
+ * image (image-embed.ts), so such a press is never left to it. Only a plain press with the main
+ * button: a right-click opens a menu and a modified press extends or adds a selection, so both are
+ * left to the editor. True when it was such a press.
+ */
+export function pressBesideFormOne(event: MouseEvent, view: EditorView, collapsed: (state: EditorState) => readonly CollapsedFenceLines[]): boolean {
+    if (event.button !== 0 || event.shiftKey || event.ctrlKey || event.metaKey || event.altKey) return false
+    const lineEl = (event.target as HTMLElement | null)?.closest('.cm-line')
+    if (!lineEl) return false
+    const line = view.state.doc.lineAt(view.posAtDOM(lineEl, 0))
+    const fence = collapsed(view.state).find((f) => f.bulletOpener && f.start + 1 === line.number)
+    if (!fence) return false
+    event.preventDefault()
+    view.dispatch({ selection: { anchor: line.from + fence.fenceColumn }, scrollIntoView: true })
+    view.focus()
+    return true
 }
 
 /**

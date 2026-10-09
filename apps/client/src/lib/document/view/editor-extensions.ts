@@ -37,6 +37,7 @@ import { conceptPicker } from './augmentations/concept-picker'
 import { dateCalendar } from './augmentations/date-calendar'
 import { tableSizePicker } from './augmentations/table-size-picker'
 import { fenceRenderAugmentation } from './augmentations/fence-render'
+import { interactiveFenceAugmentation } from './augmentations/interactive-fence'
 import { protectedFenceAugmentation } from './augmentations/protected-fence'
 import { imageEmbedAugmentation } from './augmentations/image-embed'
 import { linkCursorAugmentation } from './augmentations/link-cursor'
@@ -205,6 +206,9 @@ export function editorFeatures(services: EditorExtensionServices): EditorFeature
         },
         // Rendered fences and inline maths dispatch to the registered renderers (ADR 0022).
         { name: 'fence-render', extension: fenceRenderAugmentation() },
+        // Interactive fences: a widget that lives over its fence and changes its text, the Map
+        // Block first (ADR 0118), drawn while no selection touches the fence, as a rendered fence is.
+        { name: 'interactive-fence', extension: interactiveFenceAugmentation() },
         { name: 'math-inline', extension: mathInlineAugmentation() },
         // Assets: images resolve through the store; asset links download. Asset-link MUST precede
         // markdown-link, which skips any target the asset augmentation owns.

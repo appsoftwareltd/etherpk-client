@@ -14,16 +14,21 @@ import type { Extension } from '@codemirror/state'
 import type { EditorView } from '@codemirror/view'
 
 import {
+    type CommandMenuContext,
     type CommandMenuItem,
+    commandMenuDetail,
     listCommandMenuItems,
     tryGetActiveCommandRegistry,
     tryGetActiveContributionRegistry,
 } from '../../../surface'
+import { caretConcepts } from '../../caret-concepts'
 import { isInCode } from '../../wikilink/code-ranges'
 import { fileLinkForCaret } from '../file-link-context'
 import { analysisFor } from '../analysis/editor-analysis'
 import { bodyWritable } from '../body-writable'
 import { caretTask } from '../caret-task'
+import { editorDocument } from '../editor-document'
+import { isProtectedDocumentFacet } from './protected-document'
 import { tableAtCaret, tableInsertable } from '../table-context'
 import { type PopoverBase, type PopoverRow, popoverMenu } from './popover-menu'
 import { iconSvg } from '$lib/surface/icons'
@@ -31,8 +36,11 @@ import { iconSvg } from '$lib/surface/icons'
 import { openWikilinkContext } from './wikilink-complete-core'
 import { openSlashContext, rankCommandMenu } from './slash-complete-core'
 
+/** A row as the menu shows it: its help text worked out for this caret. */
+type MenuRow = Omit<CommandMenuItem, 'detail'> & { detail?: string }
+
 interface MenuState extends PopoverBase {
-    items: CommandMenuItem[]
+    items: MenuRow[]
 }
 
 export function slashCompletion(): Extension {
@@ -56,14 +64,23 @@ export function slashCompletion(): Extension {
         if (!registry) return null
         // The same readings the Commands act on (table-context.ts): a hidden row and a refusing
         // Command always agree.
-        const applicable = listCommandMenuItems(registry, {
+        // The concepts at the caret walk the document's outline, so they are read only when a row's
+        // help text asks for them (`/kanban`'s "For Garden"), once per opening.
+        let concepts: readonly string[] | undefined
+        const context: CommandMenuContext = {
             inTable: tableAtCaret(state) !== null,
             tableInsertable: tableInsertable(state),
             bodyWritable: bodyWritable(state),
             fileLinkOnLine: fileLinkForCaret(state) !== null,
             taskOnLine: caretTask(state) !== null,
-        })
-        const items = rankCommandMenu(applicable, ctx.query)
+            protectedDocument: state.facet(isProtectedDocumentFacet)(),
+            get conceptsAtCaret() {
+                concepts ??= caretConcepts(state.doc.toString(), line.number - 1, state.facet(editorDocument)?.concept ?? null).map((found) => found.concept)
+                return concepts
+            },
+        }
+        const applicable = listCommandMenuItems(registry, context)
+        const items = rankCommandMenu(applicable, ctx.query).map((item) => ({ ...item, detail: commandMenuDetail(item, context) }))
         if (items.length === 0) return null
         return { anchor, items, selected: 0 }
     }

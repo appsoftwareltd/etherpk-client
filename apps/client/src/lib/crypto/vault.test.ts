@@ -190,6 +190,19 @@ describe('vault format v3 (ADR 0126)', () => {
         expect(reopened.vault.keyrings.map((k) => k.graphId)).toEqual(['g1', 'g2', 'g3'])
     })
 
+    it("keeps the person's settings (ADR 0134), with fields it does not know inside one", async () => {
+        const wrapKey = randomBytes(32)
+        const settings = {
+            'extension.maps.mapbox-token': { value: 'pk.one', changedAt: 2_000 },
+            'extension.maps.other': { value: null, changedAt: 3_000, futureSettingField: 'kept' },
+        }
+        const { envelope } = await encryptVault({ ...someVault(), settings }, wrapKey)
+
+        const opened = await openVault(envelope, wrapKey)
+        expect(opened.vault.settings).toEqual(settings)
+        expect(opened.vault.otherFields).toBeUndefined()
+    })
+
     it('keeps unknown fields inside a pin', async () => {
         const wrapKey = randomBytes(32)
         const withExtra = { ...pin, futurePinField: 'kept' }

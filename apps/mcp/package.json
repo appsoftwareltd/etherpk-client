@@ -14,7 +14,7 @@
     ],
     "scripts": {
         "client-tsconfig": "pnpm --dir ../client exec svelte-kit sync",
-        "build": "pnpm client-tsconfig && vite build",
+        "build": "pnpm client-tsconfig && vite build && vite build --config vite.map-page.config.ts",
         "check": "tsc -p tsconfig.json --noEmit",
         "test": "pnpm client-tsconfig && vitest run",
         "test:watch": "pnpm client-tsconfig && vitest",
@@ -36,6 +36,7 @@
         "graphology-types": "^0.24.8",
         "katex": "^0.18.2",
         "lib0": "0.2.117",
+        "maplibre-gl": "6.11.2",
         "markdown-it": "15.0.2",
         "mermaid": "^11.16.1",
         "mustache": "4.2.0",
@@ -46,6 +47,8 @@
         "zod": "^4.3.6"
     },
     "devDependencies": {
+        "@appsoftwareltd/etherpk-extension-graph-view": "workspace:*",
+        "@appsoftwareltd/etherpk-extension-maps": "workspace:*",
         "@appsoftwareltd/etherpk-shared": "workspace:*",
         "@appsoftwareltd/etherpk-themes": "workspace:*",
         "@codemirror/view": "^6.43.0",

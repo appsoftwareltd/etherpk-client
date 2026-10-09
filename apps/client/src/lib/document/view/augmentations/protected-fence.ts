@@ -23,7 +23,7 @@
  * With no graph open every fence reads as locked, which is the safe default: a graph whose
  * protection has not loaded yet must not imply the content is someone else's.
  */
-import { EditorSelection, EditorState, type Extension, Facet, type Range, StateEffect, StateField, type Text } from '@codemirror/state'
+import { EditorSelection, EditorState, type Extension, type Range, StateEffect, StateField, type Text } from '@codemirror/state'
 import { Decoration, type DecorationSet, EditorView, ViewPlugin, WidgetType } from '@codemirror/view'
 
 import {
@@ -51,26 +51,14 @@ import {
 } from './protected-fence-core'
 import { type GuardedChange, frontmatterWouldVanish } from '$lib/document/frontmatter/boundary'
 
-/**
- * Whether this editor's document is a [[Protected Document]].
- *
- * Supplied per editor by the View, from the document itself, because the editor cannot tell on
- * its own once unlocked: the projected text is frontmatter followed by ordinary plaintext, with
- * no fence left to find. The frontmatter of a Protected Document is editable in both states
- * (ADR 0061) - it is the part that is *not* protected - and the one thing an edit may not do is
- * make the block vanish, because the title line would then be sealed into the ciphertext.
- */
-export type IsProtectedDocument = () => boolean
+import { type IsProtectedDocument, isProtectedDocumentFacet } from './protected-document'
 
-/**
- * The document's own answer to "am I a Protected Document?", readable from any editor state. What
- * a Command or an upload asks before writing to the body (`view/body-writable.ts`), since the
- * active-view accessor cannot say which pane a drop landed on. Combined so that any provider
- * saying protected wins; an editor with no augmentation reads as not protected.
- */
-export const isProtectedDocumentFacet = Facet.define<IsProtectedDocument, IsProtectedDocument>({
-    combine: (values) => () => values.some((isProtected) => isProtected()),
-})
+// Whether this editor's document is a [[Protected Document]], defined beside nothing else so the
+// shared augmentation modules can read it (protected-document.ts). The frontmatter of a Protected
+// Document is editable in both states (ADR 0061) - it is the part that is *not* protected - and the
+// one thing an edit may not do is make the block vanish, because the title line would then be
+// sealed into the ciphertext.
+export { type IsProtectedDocument, isProtectedDocumentFacet }
 
 export interface ProtectedFenceOptions {
     isProtected?: IsProtectedDocument

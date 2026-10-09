@@ -43,6 +43,7 @@ import {
     tasksMatchingCount,
 } from '../index-db'
 import { linkGraph } from '../index-link-graph'
+import { mapItems, pageHasMapItems } from '../index-map-items'
 import { conceptKey } from '../backlinks/backlink-index'
 import {
     type EmbeddingMatrix,
@@ -195,6 +196,7 @@ export function createIndexCore(host: IndexDbHost): IndexCore {
         before: Map<string, ConceptCandidate>,
         after: Map<string, ConceptCandidate>,
         backlinkTargetsChanged: Set<string>,
+        mapsChanged: boolean,
     ): IndexDelta {
         const existingAdded: string[] = []
         const existingRemoved: string[] = []
@@ -215,6 +217,7 @@ export function createIndexCore(host: IndexDbHost): IndexCore {
             candidateUpserts,
             candidateRemoved,
             backlinkTargetsChanged: [...backlinkTargetsChanged],
+            mapsChanged,
         }
     }
 
@@ -393,14 +396,27 @@ export function createIndexCore(host: IndexDbHost): IndexCore {
                     // cache which predates a partially-applied batch.
                     const previousSnapshot = visibleSnapshot
                     visibleSnapshot = undefined
-                    for (const key of removed) removeDocument(db, key)
-                    for (const doc of changed) ingestOne(db, doc)
+                    // Asked of each document before and after it is indexed again, or before it
+                    // is removed: rows that came, went or changed all mean an open Map View has
+                    // something to read.
+                    let mapsChanged = false
+                    for (const key of removed) {
+                        mapsChanged ||= pageHasMapItems(db, key)
+                        removeDocument(db, key)
+                    }
+                    for (const doc of changed) {
+                        const key = conceptKey(doc.concept)
+                        const hadMaps = pageHasMapItems(db, key)
+                        ingestOne(db, doc)
+                        mapsChanged ||= hadMaps || pageHasMapItems(db, key)
+                    }
                     const after = conceptCandidatesForKeys(db, affected)
                     const delta = deltaFor(
                         advanceIndexRevision(db),
                         before,
                         after,
                         backlinkTargetsChanged,
+                        mapsChanged,
                     )
                     applyDeltaToSnapshot(previousSnapshot, delta)
                     return [{ type: 'delta', ...delta }]
@@ -488,6 +504,11 @@ export function createIndexCore(host: IndexDbHost): IndexCore {
                     // another page's alias would be lost from the picture after the next edit.
                     const graph = db ? linkGraph(db) : { concepts: [], links: [] }
                     return [{ type: 'link-graph', id: request.id, graph }]
+                }
+
+                case 'map-items': {
+                    const result = db ? mapItems(db, request.concept) : { items: [], truncated: false }
+                    return [{ type: 'map-items', id: request.id, result }]
                 }
 
                 case 'semantic-status': {

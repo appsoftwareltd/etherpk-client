@@ -27,6 +27,7 @@
      * glance at; the tab, where the state matters, stays immediate.
      */
     import { onDestroy, onMount, tick } from "svelte";
+    import { createSubscriber } from "svelte/reactivity";
 
     import {
         getActiveDocument,
@@ -48,8 +49,12 @@
     import { recentCountOf } from "$lib/storage/fs/graph-settings";
     import {
         attachContextMenu,
+        GRAPH_SIDEBAR_BUTTON_KIND,
+        type GraphSidebarButton,
+        graphSidebarButtons,
         openContextMenu,
         tryGetActiveCommandRegistry,
+        tryGetActiveContributionRegistry,
         tryGetActiveEventBus,
         type DocumentContextMenuTarget,
     } from "$lib/surface";
@@ -197,6 +202,33 @@
     function openToday() {
         open(todayISO());
     }
+
+    // ---- The extensions' buttons under Today's journal -------------------------------
+    /**
+     * The buttons extensions add under Today's journal (the maps extension's Graph Map View),
+     * read again whenever one is added or taken back, as an extension starts or is switched off.
+     */
+    const contributions = tryGetActiveContributionRegistry();
+    const watchButtons = createSubscriber((update) => contributions?.subscribe(GRAPH_SIDEBAR_BUTTON_KIND, update) ?? (() => {}));
+    const extensionButtons = $derived.by<GraphSidebarButton[]>(() => {
+        watchButtons();
+        return contributions ? graphSidebarButtons(contributions) : [];
+    });
+
+    /** Run a button's Command, as the Command Menu runs a row's. A Command gone with its extension does nothing. */
+    function runButton(button: GraphSidebarButton) {
+        const commands = tryGetActiveCommandRegistry();
+        if (commands?.has(button.command)) void commands.execute(button.command, button.args);
+    }
+
+    /**
+     * Today's journal and every extension button: one look, one spacing. A solid grey fill and no
+     * visible border, so a button never reads as a field like Quick Find's above it. Hover tints it
+     * further from the sidebar's own colour: darker in the light theme, lighter in the dark. The
+     * border stays, transparent, for the outline a forced-colours mode draws.
+     */
+    const sidebarButton =
+        "flex w-full items-center gap-2 rounded-md border border-transparent bg-(--gk-surface-2) px-3 py-1.5 text-left text-sm font-medium text-(--gk-text-strong) hover:bg-(--gk-border-strong) pointer-coarse:min-h-11";
 
     // ---- Quick Find -----------------------------------------------------------------
     function rank() {
@@ -722,12 +754,13 @@
         </p>
     </div>
 
-    <!-- ── Today's journal ────────────────────────────────────────────────────── -->
+    <!-- ── Today's journal, and the buttons extensions add under it ─────────────── -->
+    <div class="flex flex-col gap-2" data-testid="sidebar-buttons">
     <button
         type="button"
         data-testid="sidebar-today"
         onclick={openToday}
-        class="flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm font-medium hover:bg-(--gk-surface-2) pointer-coarse:min-h-11"
+        class={sidebarButton}
     >
         <svg
             class="h-4 w-4 shrink-0 text-(--gk-text-subtle)"
@@ -745,6 +778,23 @@
         </svg>
         Today's journal
     </button>
+    {#each extensionButtons as button (button.id)}
+        <button
+            type="button"
+            data-testid="sidebar-extension-button"
+            data-command={button.command}
+            onclick={() => runButton(button)}
+            class={sidebarButton}
+        >
+            <span class="inline-flex shrink-0 text-(--gk-text-subtle)" aria-hidden="true">
+                <!-- Markup from the icon table: the Client's own, or an extension's, sanitised as it was registered. -->
+                <!-- eslint-disable-next-line svelte/no-at-html-tags -->
+                {@html iconSvg(button.icon ?? "default", { size: 16 })}
+            </span>
+            {button.title}
+        </button>
+    {/each}
+    </div>
 
     <!-- ── Journal Calendar ───────────────────────────────────────────────────── -->
     <section>

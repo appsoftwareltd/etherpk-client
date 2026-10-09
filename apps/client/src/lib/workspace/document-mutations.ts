@@ -4,14 +4,16 @@
  * Both storage backends expose the same mutation seam. Keeping the orchestration here makes the
  * Svelte workspace responsible for dialog state while this framework-free controller owns the
  * cross-service consequences: favourites, recents and open Views follow the document mutation.
+ *
+ * Views about a concept follow a rename of it too: any kind registered with `conceptTarget`, such
+ * as a [[Kanban Board]] (ADR 0113) or a [[Map View]] (ADR 0118). State an extension keeps under a
+ * concept's name follows through the `concept:renamed` Event, reported before the Views move.
  */
 import type { RenameLinkStrategy, RenameOptions, RenamePlan, RenameResult } from '$lib/storage/rename'
 import { renameSteps } from '$lib/storage/rename'
 import { type DbBacklinkGroup, referencedInBody } from '$lib/document/index-db'
 import { reachedWithin } from '$lib/reached-within'
-import { cascadeFor, isScopedBy } from '$lib/document/wikilink/rename'
-import { documentsRenamed, handOverBoard, type RenamedDocument } from '$lib/kanban/board-actions'
-import { KANBAN_VIEW_KIND } from '$lib/kanban/board-model'
+import { cascadeFor, isScopedBy, movedConcept } from '$lib/document/wikilink/rename'
 import { parseViewKey, viewKey } from '$lib/layout/view-ref'
 import { conceptKey } from '$lib/storage/fs/identity'
 
@@ -69,21 +71,25 @@ function openDocumentTargets(layout: DocumentMutationLayout): string[] {
     return out
 }
 
-/** An open [[Kanban Board]]: its concept, the Pane holding it, and whether it is that Pane's front tab. */
-interface OpenBoard {
+/**
+ * An open View about a concept, a [[Kanban Board]] or a [[Map View]]: its kind and concept, the
+ * Pane holding it, and whether it is that Pane's front tab.
+ */
+interface OpenConceptView {
+    kind: string
     target: string
     paneId: string
     front: boolean
 }
 
-/** Every board open anywhere, read before a rename moves anything. */
-function openBoards(layout: DocumentMutationLayout): OpenBoard[] {
-    const out: OpenBoard[] = []
+/** Every View about a concept open anywhere, read before a rename moves anything. */
+function openConceptViews(layout: DocumentMutationLayout, followsConcept: (kind: string) => boolean): OpenConceptView[] {
+    const out: OpenConceptView[] = []
     for (const region of Object.values(layout.serialize().model.regions)) {
         for (const pane of region.panes) {
             for (const v of pane.views) {
                 const ref = parseViewKey(v.panelId)
-                if (ref.kind === KANBAN_VIEW_KIND) out.push({ target: ref.target, paneId: pane.id, front: pane.activePanelId === v.panelId })
+                if (followsConcept(ref.kind)) out.push({ kind: ref.kind, target: ref.target, paneId: pane.id, front: pane.activePanelId === v.panelId })
             }
         }
     }
@@ -91,29 +97,18 @@ function openBoards(layout: DocumentMutationLayout): OpenBoard[] {
 }
 
 /**
- * The name a concept has after `from` became `to`: `to` for the concept itself, whatever the
- * case it was written in, and the rewritten name for one `from` scopes (ADR 0083). Undefined for
- * a concept the move leaves alone.
+ * Re-key each View in `views` whose concept `moved` names a new name for (ADR 0113): the View
+ * is retitled in place, in the same Pane, and one at the front stays at the front. The new View
+ * opens before the old one closes, so a Pane the View had to itself is never emptied and removed
+ * from under it. Extensions hear the rename first (`conceptRenamed`), so a View that starts from
+ * state its extension keeps under the old name (a Kanban Board's) finds it handed over.
  */
-function movedConcept(concept: string, from: string, to: string): string | undefined {
-    if (conceptKey(concept) === conceptKey(from)) return to
-    return cascadeFor([concept], from, to)[0]?.to
-}
-
-/**
- * Re-key each board in `boards` whose concept `moved` names a new name for (ADR 0113): the board
- * is retitled in place, in the same Pane, and one at the front stays at the front. The new board
- * opens before the old one closes, so a Pane the board had to itself is never emptied and
- * removed from under it. It starts from the old board's state (board-actions.ts), so the boards
- * are told of any documents renamed first, and the old board's Task Detail has followed them.
- */
-function moveBoards(layout: DocumentMutationLayout, boards: readonly OpenBoard[], moved: (concept: string) => string | undefined): void {
-    for (const board of boards) {
-        const to = moved(board.target)
-        if (to === undefined || to === board.target) continue
-        handOverBoard(board.target, to)
-        layout.openView({ kind: KANBAN_VIEW_KIND, target: to }, { activate: board.front, paneId: board.paneId })
-        layout.closeView({ kind: KANBAN_VIEW_KIND, target: board.target })
+function moveConceptViews(layout: DocumentMutationLayout, views: readonly OpenConceptView[], moved: (concept: string) => string | undefined): void {
+    for (const view of views) {
+        const to = moved(view.target)
+        if (to === undefined || to === view.target) continue
+        layout.openView({ kind: view.kind, target: to }, { activate: view.front, paneId: view.paneId })
+        layout.closeView({ kind: view.kind, target: view.target })
     }
 }
 
@@ -139,6 +134,23 @@ export interface DocumentMutationDependencies {
     layout(): DocumentMutationLayout | undefined
     recents(): DocumentMutationRecents | null
     renameFavourite(from: string, to: string): Promise<void>
+    /**
+     * Whether an open View of `kind` is about a concept and follows it through a rename: a kind
+     * registered with `conceptTarget`, a Kanban Board or a Map View.
+     */
+    followsConcept?(kind: string): boolean
+    /**
+     * A concept moved: told once for each concept that moved, before any View about one follows
+     * it. The workspace emits it as the `concept:renamed` Event (ADR 0121), so an extension
+     * keeping state under the old name hands it over first.
+     *
+     * Each concept is told under the exact name it lives on as (a scoped page that landed on
+     * another document's alias takes that document's title), so a listener moves what it keeps by
+     * exact name and never applies the cascade rule itself. The concepts scoped by the renamed one
+     * come first and the renamed one last: a listener applying them in turn then moves each thing
+     * once, even when the new name is one the old name scopes (`Acme` to `[[Acme]] Archive`).
+     */
+    conceptRenamed?(from: string, to: string): void
 }
 
 /** The exact confirmation copy for a destructive document removal. */
@@ -188,6 +200,9 @@ export function renameDocumentSummary(result: RenameResult): string {
 }
 
 export function createDocumentMutationController(dependencies: DocumentMutationDependencies) {
+    const followsConcept = (kind: string) => dependencies.followsConcept?.(kind) ?? false
+    const conceptViewsOf = (layout: DocumentMutationLayout | undefined) => (layout ? openConceptViews(layout, followsConcept) : [])
+
     /** Whether the index has taken in every change it has seen, waiting up to `waitMs`. */
     async function indexCaughtUp(index: DocumentMutationIndex, waitMs: number): Promise<boolean> {
         return index.settled ? reachedWithin(index.settled(), waitMs) : true
@@ -242,6 +257,20 @@ export function createDocumentMutationController(dependencies: DocumentMutationD
         return groups ? bodyReferences(groups, concept).length : undefined
     }
 
+    /**
+     * Report each concept in `moves` that moved, once each, then `from` itself as the last
+     * (`conceptRenamed`). `moves` may name a concept twice, in any case, or name `from`.
+     */
+    function reportMoves(moves: Iterable<readonly [string, string | undefined]>, from: string, to: string): void {
+        const told = new Set([conceptKey(from)])
+        for (const [movedFrom, movedTo] of moves) {
+            if (movedTo === undefined || movedTo === movedFrom || told.has(conceptKey(movedFrom))) continue
+            told.add(conceptKey(movedFrom))
+            dependencies.conceptRenamed?.(movedFrom, movedTo)
+        }
+        if (from !== to) dependencies.conceptRenamed?.(from, to)
+    }
+
     return {
         referenceCount,
         backlinksCaughtUp,
@@ -264,13 +293,18 @@ export function createDocumentMutationController(dependencies: DocumentMutationD
 
         async rename(
             concept: string,
-            plan: RenamePlan | null,
+            given: RenamePlan | null,
             next: string,
             strategy: RenameLinkStrategy,
         ): Promise<RenameResult> {
             const store = dependencies.store()
             if (!store) throw new Error('No document store is available for rename.')
             const layout = dependencies.layout()
+            // The dialog hands over its last preview, which is missing when the preview failed or
+            // had not arrived. Planned here instead, so the scoped documents the rename moves are
+            // still known, and an extension still hears of each one; a plan that cannot be made
+            // leaves only the open ones known, as before.
+            const plan = given ?? (await store.planRename(concept, next, await referenceCount(concept)).catch(() => null))
 
             // A rename never navigates (ADR 0065): it changes neither which documents are open
             // nor which is in front. Every open View of a document the rename moves - the one
@@ -292,7 +326,7 @@ export function createDocumentMutationController(dependencies: DocumentMutationD
                 open: layout?.isOpen({ kind: 'document', target: from }) ?? false,
                 active: layout ? isFrontTab(layout, from) : false,
             }))
-            const boards = layout ? openBoards(layout) : []
+            const conceptViews = conceptViewsOf(layout)
 
             // The index says which documents the rewrite has to read; the store brings those
             // current before it splices and refuses if one cannot be (ADR 0038, note of
@@ -317,15 +351,16 @@ export function createDocumentMutationController(dependencies: DocumentMutationD
                 layout?.closeView({ kind: 'document', target: entry.from })
                 if (entry.open) layout?.openView({ kind: 'document', target: to }, { activate: entry.active })
             }
-            // The name each document the rename moved has now: one planned or open by its entry,
-            // any other the renamed concept scopes by the cascade rule. A board's Task Detail
-            // showing one follows it (board-actions.ts).
-            const renamedDocument: RenamedDocument = (document) => {
-                for (const [from, to] of renamedTo) if (conceptKey(from) === conceptKey(document)) return to
-                return movedConcept(document, concept, result.concept)
+            // Where a concept the rename moved lives on: one planned or open under the name
+            // `renamedTo` gives it, any other one the renamed concept scopes by the cascade rule
+            // (a View over a pageless concept, which no plan names). Extensions hear each one, a
+            // View's included, under the name its View moves to.
+            const moved = (target: string) => {
+                for (const [from, to] of renamedTo) if (conceptKey(from) === conceptKey(target)) return to
+                return movedConcept(target, concept, result.concept)
             }
-            documentsRenamed(renamedDocument)
-            if (layout) moveBoards(layout, boards, (target) => movedConcept(target, concept, result.concept))
+            reportMoves([...renamedTo, ...conceptViews.map((view) => [view.target, moved(view.target)] as const)], concept, result.concept)
+            if (layout) moveConceptViews(layout, conceptViews, moved)
             return result
         },
 
@@ -347,15 +382,18 @@ export function createDocumentMutationController(dependencies: DocumentMutationD
                 ...targets.filter((t) => conceptKey(t) === conceptKey(before)).map((from) => ({ from, to: after })),
                 ...cascadeFor(targets, before, after),
             ]
-            const boards = layout ? openBoards(layout) : []
+            const conceptViews = conceptViewsOf(layout)
             for (const step of moves) {
                 if (step.from === step.to) continue
                 const front = layout ? isFrontTab(layout, step.from) : false
                 layout?.closeView({ kind: 'document', target: step.from })
                 layout?.openView({ kind: 'document', target: step.to }, { activate: front })
             }
-            // A pageless concept moved with its only link: no document was renamed.
-            if (layout) moveBoards(layout, boards, (target) => movedConcept(target, before, after))
+            // A pageless concept moved with its only link: no document was renamed. Extensions
+            // hear of each open Draft and View it carried, then of the concept.
+            const moved = (target: string) => movedConcept(target, before, after)
+            reportMoves([...moves.map((step) => [step.from, step.to] as const), ...conceptViews.map((view) => [view.target, moved(view.target)] as const)], before, after)
+            if (layout) moveConceptViews(layout, conceptViews, moved)
             dependencies.recents()?.rename(before, after)
             return dependencies.renameFavourite(before, after)
         },
@@ -374,14 +412,13 @@ export function createDocumentMutationController(dependencies: DocumentMutationD
             // write is awaited, so a caller that goes on to save the layout saves the new name.
             const wasOpen = layout?.isOpen({ kind: 'document', target: from }) ?? false
             const wasFront = layout ? isFrontTab(layout, from) : false
-            const boards = layout ? openBoards(layout) : []
+            const conceptViews = conceptViewsOf(layout)
             layout?.closeView({ kind: 'document', target: from })
             if (wasOpen) layout?.openView({ kind: 'document', target: to }, { activate: wasFront })
-            // The store reports each document it moved, scoped ones included, so only the board
-            // over this one concept, and a Task Detail showing this one document, follow here.
-            const renamedDocument: RenamedDocument = (document) => (conceptKey(document) === conceptKey(from) ? to : undefined)
-            documentsRenamed(renamedDocument)
-            if (layout) moveBoards(layout, boards, renamedDocument)
+            // The store reports each document it moved, scoped ones included, so only the Views
+            // over this one concept follow here.
+            if (from !== to) dependencies.conceptRenamed?.(from, to)
+            if (layout) moveConceptViews(layout, conceptViews, (target) => (conceptKey(target) === conceptKey(from) ? to : undefined))
             dependencies.recents()?.rename(from, to)
             await dependencies.renameFavourite(from, to)
         },

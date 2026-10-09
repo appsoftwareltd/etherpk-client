@@ -42,13 +42,15 @@
 import { type EditorState, type Extension, Prec, type Range, StateField, type TransactionSpec } from '@codemirror/state'
 import { Decoration, type DecorationSet, EditorView, keymap, ViewPlugin, type ViewUpdate, WidgetType } from '@codemirror/view'
 
-import { BLOCK_WIDGET_SPACING, blockWidgetIndent } from './content-clamp'
+import { BLOCK_WIDGET_SPACING, BULLET_BLOCK_DROP, blockWidgetIndent } from './content-clamp'
 import {
+    arrowIntoCollapsedFence,
     type DispatchedFence,
     type FenceRenderResult,
     fenceRenderResults,
     fenceResultKey,
     isDark,
+    pressBesideFormOne,
     renderCompleted,
     renderedSizes,
     renderedThemePlugin,
@@ -59,10 +61,6 @@ import {
     themeTick,
     trackRenderCoordinator,
 } from './rendered-common'
-
-/** Matches the bullet image's drop (image-embed.ts BULLET_IMAGE_DROP) so a form-1 widget sits
- *  just below the row top and the dot reads as the block's top-left corner. */
-const BULLET_DROP = '0.35em'
 
 /** Debounce for the live preview re-render while the source is edited. */
 const PREVIEW_DEBOUNCE_MS = 200
@@ -385,36 +383,6 @@ export class FenceRenderCoordinator {
 
 const renderCoordinator = ViewPlugin.define((view) => new FenceRenderCoordinator(view))
 
-/**
- * ArrowDown/Up from the line adjacent to a collapsed BLOCK-form widget (prose / form-2): CM's
- * vertical motion skips a block replace entirely, so step the caret INTO the fence instead —
- * landing inside reveals it (invariant 4). Form-1 needs no handler: ArrowDown lands on the
- * opener line and the caret clamp snaps to the fence column, which touches the replace range.
- */
-function arrowIntoCollapsed(dir: 1 | -1) {
-    return (view: EditorView): boolean => {
-        const { state } = view
-        const sel = state.selection.main
-        if (!sel.empty) return false
-        const caretLine = state.doc.lineAt(sel.head).number // 1-based
-        for (const f of rendererCollapsedFences(state)) {
-            if (f.bulletOpener) continue
-            // Down from the line above the opener → opener's content start; up from the line
-            // below the closer → the closer line's end.
-            if (dir === 1 && caretLine === f.start) {
-                const target = state.doc.line(f.start + 1).from + f.fenceColumn
-                view.dispatch({ selection: { anchor: target }, scrollIntoView: true, userEvent: 'select' })
-                return true
-            }
-            if (dir === -1 && caretLine === f.end + 2) {
-                view.dispatch({ selection: { anchor: f.blockTo }, scrollIntoView: true, userEvent: 'select' })
-                return true
-            }
-        }
-        return false
-    }
-}
-
 /** The fence containing `pos`, among the currently-dispatched set. */
 function fenceAt(state: EditorState, pos: number): DispatchedFence | null {
     for (const f of rendererDispatchedFences(state)) {
@@ -439,22 +407,9 @@ const pointer = EditorView.domEventHandlers({
             view.focus()
             return true
         }
-        // A click BESIDE a collapsed form-1 widget lands on its (diagram-tall) line — CM's
-        // coordinate model drifts there exactly as it does beside a tall bullet image
-        // (image-embed.ts), so never let it fall through: reveal with the caret at the
-        // fence source start instead.
-        const lineEl = target?.closest('.cm-line')
-        if (!lineEl) return false
-        const line = view.state.doc.lineAt(view.posAtDOM(lineEl, 0))
-        for (const f of rendererCollapsedFences(view.state)) {
-            if (f.bulletOpener && f.start + 1 === line.number) {
-                event.preventDefault()
-                view.dispatch({ selection: { anchor: line.from + f.fenceColumn }, scrollIntoView: true })
-                view.focus()
-                return true
-            }
-        }
-        return false
+        // A click BESIDE a collapsed form-1 widget lands on its (diagram-tall) line: reveal with
+        // the caret at the fence source start, never CM's drifting coordinates.
+        return pressBesideFormOne(event, view, rendererCollapsedFences)
     },
 })
 
@@ -469,7 +424,8 @@ const theme = EditorView.baseTheme({
     '.gk-rendered': { textIndent: '0', whiteSpace: 'normal' },
     // Form-1: sits right after the real `- ` marker, dropped like a bullet image so the dot
     // reads as the block's top-left corner.
-    '.gk-rendered--inline': { display: 'inline-block', verticalAlign: 'top', margin: `${BULLET_DROP} 0 0` },
+    // The bullet image's drop and the form-1 map's (`BULLET_BLOCK_DROP`), so the dot reads as the block's top-left corner.
+    '.gk-rendered--inline': { display: 'inline-block', verticalAlign: 'top', margin: `${BULLET_BLOCK_DROP} 0 0` },
     '.gk-mermaid svg': { maxWidth: '100%', height: 'auto' },
     '.gk-math--block': { margin: '0.2em 0' },
     '.gk-rendered-error': {
@@ -516,8 +472,8 @@ export function fenceRenderAugmentation(): Extension {
 
     const arrows = Prec.high(
         keymap.of([
-            { key: 'ArrowDown', run: arrowIntoCollapsed(1) },
-            { key: 'ArrowUp', run: arrowIntoCollapsed(-1) },
+            { key: 'ArrowDown', run: arrowIntoCollapsedFence(1, rendererCollapsedFences) },
+            { key: 'ArrowUp', run: arrowIntoCollapsedFence(-1, rendererCollapsedFences) },
         ]),
     )
 

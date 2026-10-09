@@ -265,7 +265,7 @@ export function createDockviewRenderer(options: DockviewRendererOptions): Dockvi
                     stopWatching = [() => tabWatch.dispose(), watchViewSize(visibility, element), watchPageVisibility(visibility)]
                     // The panel id travels in as a prop: a View that learns its own name late
                     // retitles by it, and a forceNew copy's id (`key::n`) is not its view key.
-                    instance = mount(entry.component, { target: element, props: { view, panelId: component.id, visibility } })
+                    instance = mount(entry.component, { target: element, props: { ...entry.props, view, panelId: component.id, visibility } })
                 },
                 dispose() {
                     for (const stop of stopWatching) stop()

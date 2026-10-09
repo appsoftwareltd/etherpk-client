@@ -333,6 +333,18 @@ export interface ViewRegistryEntry {
      * a strip wants to know. Absent for most kinds; the title carries them.
      */
     icon?: string
+    /**
+     * The target is a [[Concept]]'s name and the View is about that concept: a rename re-keys it in
+     * place, as it does the concept's document tab (workspace/document-mutations.ts). A
+     * [[Kanban Board]] and a [[Map View]] are.
+     */
+    conceptTarget?: boolean
+    /**
+     * More props every presenter mounts the component with, beside the ones every View gets. One
+     * component then serves many kinds: each extension View kind mounts the extension host's
+     * component with that kind's slot (extensions/ExtensionView.svelte, ADR 0121).
+     */
+    props?: Record<string, unknown>
 }
 
 export interface ViewRegistry {

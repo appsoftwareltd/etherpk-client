@@ -1,7 +1,28 @@
 import { describe, expect, it } from 'vitest'
 
 import { createCommandRegistry } from './command-registry'
-import { attachKeybindings, eventMatches, formatChord, type KeyEventLike, suppressBrowserChords } from './keybindings'
+import { attachKeybindings, createKeybindingTable, eventMatches, formatChord, type KeyEventLike, sameChord, suppressBrowserChords } from './keybindings'
+
+describe('the keybinding table extensions add to', () => {
+    it('adds a chord to the live list the window listens with, and takes it out again', () => {
+        const table = createKeybindingTable([{ key: 'Alt+J', command: 'document.openTodayJournal' }])
+        const remove = table.add({ key: 'Alt+M', command: 'graph-view.reveal' })
+        expect(table.bindings.map((binding) => binding.key)).toEqual(['Alt+J', 'Alt+M'])
+        remove()
+        expect(table.bindings.map((binding) => binding.key)).toEqual(['Alt+J'])
+    })
+
+    it('refuses a chord already bound, however it is spelt', () => {
+        const table = createKeybindingTable([{ key: 'Alt+Shift+P', command: 'publish.run' }])
+        expect(() => table.add({ key: 'shift+alt+p', command: 'kanban.publish' })).toThrow('shift+alt+p is bound already, to publish.run.')
+    })
+
+    it('tells chords apart by their modifiers', () => {
+        expect(sameChord('Mod+K', 'mod+k')).toBe(true)
+        expect(sameChord('Mod+K', 'Ctrl+K')).toBe(false)
+        expect(sameChord('Alt+M', 'Alt+Shift+M')).toBe(false)
+    })
+})
 
 const ev = (partial: Partial<KeyEventLike> & { key: string }): KeyEventLike => ({
     ctrlKey: false,

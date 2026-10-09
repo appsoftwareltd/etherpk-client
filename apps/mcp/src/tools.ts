@@ -57,8 +57,8 @@ import {
     taskReferenceUrl,
 } from '$lib/document/task-reference'
 import { ancestorChain, bulletLabel, deriveDoc } from '$lib/document/index-derive'
-import { type ConceptFacts, createGraphModel, type GraphFilter, shortestPath, visibleGraph } from '$lib/graph-view/model/graph-model'
-import { bridges, findClusters, hubs, isolatedDocuments, pagelessByDocuments, type RankedConcept } from '$lib/graph-view/model/insights'
+import { type ConceptFacts, createGraphModel, type GraphFilter, shortestPath, visibleGraph } from '@appsoftwareltd/etherpk-extension-graph-view/model'
+import { bridges, findClusters, hubs, isolatedDocuments, pagelessByDocuments, type RankedConcept } from '@appsoftwareltd/etherpk-extension-graph-view/model'
 import { taskLineWith } from '$lib/document/task-write'
 import { minimalReplacement } from '$lib/document/view/minimal-replacement'
 

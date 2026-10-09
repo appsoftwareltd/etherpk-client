@@ -445,3 +445,50 @@ describe('asset references that would leave assets/', () => {
         expect(asked.sort()).toEqual(['../assets/a%252F..%252Fb.png', '../assets/fine%20name.png'])
     })
 })
+
+// A Map Block is published as a picture the host draws (ADR 0118), and a map that cannot be drawn
+// stops the publish rather than be left out of a page without a word (ADR 0084's rule).
+describe('a Map Block in a published page', () => {
+    const page = (concept: string, text: string): PublishDocument => ({ concept, kind: 'page', text, aliases: [] })
+    const mapDocs = [
+        page('Site', '---\npublication:\n  id: site\n---\n- [[Trips]]\n'),
+        page('Trips', '---\npublic: true\npublications: [site]\n---\nPlaces we liked.\n\n```map\nSeal Bay @ 50.74860, -1.07890\n```\n'),
+    ]
+    const mapSource: PublishSource = { documents: mapDocs, readAsset: async () => null }
+    const site = discoverPublications(mapDocs).publications.find((p) => p.id === 'site')!
+    const drawn = { bytes: new Uint8Array([7, 7, 7]), type: 'image/webp' as const, width: 800, height: 450 }
+
+    it('publishes the picture the host drew, and no coordinate anywhere in the site', async () => {
+        const asked: string[] = []
+        const { bundle, report } = await publishPublication(mapSource, site, environment({ renderMap: async (source) => (asked.push(source), drawn) }))
+        expect(report.errors).toEqual([])
+        expect(asked).toEqual(['Seal Bay @ 50.74860, -1.07890\n'])
+        const picture = [...bundle.keys()].find((path) => path.startsWith('maps/'))
+        expect(picture).toMatch(/^maps\/[0-9a-f]{16}\.webp$/)
+        expect(bundle.get(picture!)).toEqual(drawn.bytes)
+        expect(bundle.get('trips.html')).toContain(`<img src="${picture}" alt="Map of Seal Bay" width="800" height="450" loading="lazy">`)
+        for (const [path, content] of bundle) if (typeof content === 'string') expect(content, path).not.toContain('50.7486')
+    })
+
+    it('names a picture by what the map holds, so an unchanged map publishes the same file', async () => {
+        const first = await publishPublication(mapSource, site, environment({ renderMap: async () => drawn }))
+        const again = await publishPublication(mapSource, site, environment({ renderMap: async () => drawn }))
+        const pictures = (bundle: Map<string, unknown>) => [...bundle.keys()].filter((path) => path.startsWith('maps/'))
+        expect(pictures(first.bundle)).toHaveLength(1)
+        expect(pictures(again.bundle)).toEqual(pictures(first.bundle))
+    })
+
+    it('stops when the host cannot draw maps, naming the document', async () => {
+        const { bundle, report } = await publishPublication(mapSource, site, environment({ renderMap: undefined }))
+        expect(report.ok).toBe(false)
+        expect(bundle.size).toBe(0)
+        expect(report.errors).toEqual([expect.objectContaining({ code: 'map-not-drawn', concept: 'Trips' })])
+    })
+
+    it('stops when a map cannot be drawn, naming the document and why', async () => {
+        const { bundle, report } = await publishPublication(mapSource, site, environment({ renderMap: async () => Promise.reject(new Error('the map tiles did not load')) }))
+        expect(report.ok).toBe(false)
+        expect(bundle.size).toBe(0)
+        expect(report.errors).toEqual([expect.objectContaining({ code: 'map-not-drawn', concept: 'Trips', message: expect.stringContaining('the map tiles did not load') })])
+    })
+})

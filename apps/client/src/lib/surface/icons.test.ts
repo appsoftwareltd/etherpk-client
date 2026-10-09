@@ -1,10 +1,55 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { iconSvg } from './icons'
+import { sanitizedIconMarkup, trustedIconMarkup } from '$lib/security/trusted-types'
+import { iconSvg, registerIcons } from './icons'
+
+// Spies on the two ways an icon becomes trusted markup, each still doing its real work.
+vi.mock('$lib/security/trusted-types', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('$lib/security/trusted-types')>()
+    return {
+        ...actual,
+        trustedIconMarkup: vi.fn(actual.trustedIconMarkup),
+        sanitizedIconMarkup: vi.fn(actual.sanitizedIconMarkup),
+    }
+})
+
+afterEach(() => vi.clearAllMocks())
+
+describe('extension icons under Trusted Types (ADR 0130)', () => {
+    it("sends an extension's icon through DOMPurify, never through the Client's pass-through icon policy", () => {
+        const undo = registerIcons({ 'kanban.lanes': '<rect x="1" y="1" width="3" height="9"/>' })
+        iconSvg('kanban.lanes')
+        expect(sanitizedIconMarkup).toHaveBeenCalledWith(expect.stringContaining('<rect x="1" y="1" width="3" height="9"/>'))
+        expect(trustedIconMarkup).not.toHaveBeenCalled()
+        undo()
+    })
+
+    it("keeps the Client's own icons, constant text in this repository, on the pass-through policy", () => {
+        iconSvg('task')
+        iconSvg('backlinks')
+        iconSvg('no-such-icon')
+        expect(trustedIconMarkup).toHaveBeenCalledTimes(3)
+        expect(sanitizedIconMarkup).not.toHaveBeenCalled()
+    })
+})
+
+describe('extension icons', () => {
+    it("draws an icon an extension's manifest added, under its own name, on the 16-unit grid", () => {
+        const undo = registerIcons({ 'kanban.lanes': '<rect x="1" y="1" width="3" height="9"/>' })
+        expect(iconSvg('kanban.lanes')).toContain('<rect x="1" y="1" width="3" height="9"/>')
+        expect(iconSvg('kanban.lanes')).toContain('viewBox="0 0 16 16"')
+        undo()
+        expect(iconSvg('kanban.lanes')).toContain('<circle cx="8" cy="8" r="2"')
+    })
+
+    it("never lets an extension's icon replace one of the Client's", () => {
+        expect(() => registerIcons({ close: '<path d="M1 1"/>' })).toThrow('The icon "close" is the Client\'s own.')
+    })
+})
 
 describe('iconSvg', () => {
     it('draws the table’s own icons on its 16-unit grid', () => {
-        const svg = iconSvg('kanban')
+        const svg = iconSvg('task')
         expect(svg).toContain('viewBox="0 0 16 16"')
         expect(svg).toContain('stroke-width="1.4"')
     })

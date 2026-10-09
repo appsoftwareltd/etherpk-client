@@ -13,7 +13,17 @@ import type { DocumentKind } from '$lib/storage'
 
 import { conceptKey } from './backlinks'
 import { fencedBlocks } from './fenced-code'
-import { blockContent, type BlockRow, deriveDoc, deriveTitleLinks, documentTaskConcepts, type TaskConceptRow, type TaskRow } from './index-derive'
+import {
+    blockContent,
+    type BlockRow,
+    deriveDoc,
+    deriveTitleLinks,
+    documentTaskConcepts,
+    type MapConceptRow,
+    type MapItemRow,
+    type TaskConceptRow,
+    type TaskRow,
+} from './index-derive'
 import type { IndexProperty } from './properties'
 import { containsCipherFence } from './protection/fence-info'
 import { derivePassages } from './semantic/passages'
@@ -138,9 +148,11 @@ export interface SqlDb {
  * A bump can also rebuild files whose content is still right: 13 (ADR 0097) changed neither
  * schema nor derivation, and rebuilds every index so that each one has been through
  * `purgeDeletedText`. 14 added the `properties` table (ADR 0107). 15 puts the [[Scope]]s in a
- * document's name among its tasks' `task_concepts` (ADR 0051, amended 2026-09-29).
+ * document's name among its tasks' `task_concepts` (ADR 0051, amended 2026-09-29). 16 adds
+ * `map_items` and `map_concepts`, and reads a [[Map Block]]'s names instead of its coordinates
+ * into `block_fts` and `passages` (ADR 0118).
  */
-export const INDEX_SCHEMA_VERSION = 15
+export const INDEX_SCHEMA_VERSION = 16
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS index_metadata (
@@ -182,6 +194,15 @@ CREATE TABLE IF NOT EXISTS tasks (
 -- the canonical name in would go stale the moment a page is renamed.
 CREATE TABLE IF NOT EXISTS task_concepts (
   page_id INTEGER NOT NULL, block_local_id INTEGER NOT NULL, concept_key TEXT NOT NULL);
+-- [[Place]]s and [[Route]]s (ADR 0118): one row per line of a [[Map Block]] that reads, under the
+-- block its fence belongs to. text is the line as written; the query reads its points from it.
+CREATE TABLE IF NOT EXISTS map_items (
+  page_id INTEGER NOT NULL, block_local_id INTEGER NOT NULL, fence_line INTEGER NOT NULL,
+  line INTEGER NOT NULL, kind TEXT NOT NULL, name TEXT NOT NULL, text TEXT NOT NULL);
+-- The [[Block Concept]]s of each block holding a Map Block, as task_concepts holds a task's, so a
+-- [[Map View]] and a [[Kanban Board]] for one concept agree on what lies under it.
+CREATE TABLE IF NOT EXISTS map_concepts (
+  page_id INTEGER NOT NULL, block_local_id INTEGER NOT NULL, concept_key TEXT NOT NULL);
 -- [[Passage]]s for [[Semantic Search]] (ADR 0076): the pieces of a document that get an
 -- [[Embedding]] each, keyed by the hash of their text (semantic/passages.ts). The vectors
 -- themselves live in the ATTACHed embeddings schema (semantic/embedding-db.ts), OUTSIDE this
@@ -216,6 +237,7 @@ CREATE INDEX IF NOT EXISTS tasks_page ON tasks(page_id);
 -- The Name Filter's whole selectivity: without it, filtering to a concept scans every task
 -- row in the graph. Mirrors links_concept_key, and like it stays put during a bulk rebuild.
 CREATE INDEX IF NOT EXISTS task_concepts_key ON task_concepts(concept_key);
+CREATE INDEX IF NOT EXISTS map_concepts_key ON map_concepts(concept_key);
 -- Search's text index. One row per block, so a document's rank can be "how many blocks
 -- mention this" - the ordering the results actually display. See the block_fts notes above
 -- createSchema for why unicode61 rather than trigram, and why the rowid encodes the block.
@@ -419,18 +441,16 @@ function insertDerived(db: SqlDb, pageId: number, doc: IndexDoc): string[] {
             [pageId, t.concept, conceptKey(t.concept), 0, doc.concept, t.matchStart, t.matchEnd, null],
         )
     }
-    const { blocks, links, tasks, taskConcepts } = deriveDoc(doc.text)
+    const { blocks, links, tasks, taskConcepts, mapItems, mapConcepts, searchText } = deriveDoc(doc.text)
     for (const b of blocks) {
         db.run(
             'INSERT INTO blocks (page_id, local_id, parent_local_id, ord, kind, depth, done, start_line, end_line, label, text) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
             [pageId, b.localId, b.parentId, b.ord, b.kind, b.depth, b.done == null ? null : b.done ? 1 : 0, b.startLine, b.endLine, b.label, b.text],
         )
         if (isTextSearchable(b) && b.localId < BLOCK_FTS_STRIDE) {
-            db.run('INSERT INTO block_fts (rowid, text) VALUES (?,?)', [
-                pageId * BLOCK_FTS_STRIDE + b.localId,
-                b.text,
-            ])
-            searchable.push(b.text)
+            const text = searchText.get(b.localId) ?? b.text
+            db.run('INSERT INTO block_fts (rowid, text) VALUES (?,?)', [pageId * BLOCK_FTS_STRIDE + b.localId, text])
+            searchable.push(text)
         }
     }
     for (const l of links) {
@@ -461,7 +481,10 @@ function insertDerived(db: SqlDb, pageId: number, doc: IndexDoc): string[] {
         )
     }
     insertTaskConcepts(db, pageId, doc, tasks, taskConcepts)
-    for (const passage of derivePassages(doc.concept, blocks)) {
+    insertMapRows(db, pageId, doc, mapItems, mapConcepts)
+    // A Map Block's coordinates are no more use to Semantic Search than to text search.
+    const passageBlocks = searchText.size === 0 ? blocks : blocks.map((b) => ({ ...b, text: searchText.get(b.localId) ?? b.text }))
+    for (const passage of derivePassages(doc.concept, passageBlocks)) {
         db.run(
             'INSERT INTO passages (page_id, ord, start_line, end_line, first_block_local_id, content_hash, text) VALUES (?,?,?,?,?,?,?)',
             [pageId, passage.ord, passage.startLine, passage.endLine, passage.firstBlockLocalId, hashText(passage.text), passage.text],
@@ -533,6 +556,36 @@ function insertTaskConcepts(
 }
 
 /**
+ * Write one document's [[Map Block]] rows (ADR 0118): its items, and the [[Block Concept]]s of
+ * each block holding a Map Block. The document's own concept and the scopes in its name sit at
+ * the root of every block's chain, added here as {@link insertTaskConcepts} adds them for tasks.
+ */
+function insertMapRows(db: SqlDb, pageId: number, doc: IndexDoc, mapItems: readonly MapItemRow[], mapConcepts: readonly MapConceptRow[]): void {
+    if (mapItems.length === 0) return
+    for (const item of mapItems) {
+        db.run('INSERT INTO map_items (page_id, block_local_id, fence_line, line, kind, name, text) VALUES (?,?,?,?,?,?,?)', [
+            pageId,
+            item.blockLocalId,
+            item.fenceLine,
+            item.line,
+            item.kind,
+            item.name,
+            item.text,
+        ])
+    }
+    const written = new Set<string>()
+    const write = (blockLocalId: number, key: string) => {
+        const seen = `${blockLocalId} ${key}`
+        if (written.has(seen)) return
+        written.add(seen)
+        db.run('INSERT INTO map_concepts (page_id, block_local_id, concept_key) VALUES (?,?,?)', [pageId, blockLocalId, key])
+    }
+    const rootKeys = documentTaskConcepts(doc.concept).map(conceptKey)
+    for (const blockLocalId of new Set(mapItems.map((item) => item.blockLocalId))) for (const key of rootKeys) write(blockLocalId, key)
+    for (const row of mapConcepts) write(row.blockLocalId, conceptKey(row.concept))
+}
+
+/**
  * Run `work` as ONE transaction. Without this every INSERT is its own implicit transaction,
  * which is most of what made a full rebuild cost seconds rather than milliseconds.
  */
@@ -560,6 +613,8 @@ const MAINTENANCE_INDEXES = [
     'links_page',
     'tasks_page',
     'task_concepts_page',
+    'map_items_page',
+    'map_concepts_page',
     'passages_page',
     'properties_page',
 ]
@@ -572,6 +627,8 @@ CREATE INDEX IF NOT EXISTS publication_includes_page ON publication_includes(pag
 CREATE INDEX IF NOT EXISTS links_page ON links(page_id);
 CREATE INDEX IF NOT EXISTS tasks_page ON tasks(page_id);
 CREATE INDEX IF NOT EXISTS task_concepts_page ON task_concepts(page_id);
+CREATE INDEX IF NOT EXISTS map_items_page ON map_items(page_id);
+CREATE INDEX IF NOT EXISTS map_concepts_page ON map_concepts(page_id);
 CREATE INDEX IF NOT EXISTS passages_page ON passages(page_id);
 CREATE INDEX IF NOT EXISTS properties_page ON properties(page_id);`
 
@@ -611,7 +668,7 @@ function purgeIfProtected(db: SqlDb, generation: number): void {
 
 function clearForRebuild(db: SqlDb): void {
     db.exec(
-        'DELETE FROM pages; DELETE FROM aliases; DELETE FROM publication_includes; DELETE FROM blocks; DELETE FROM links; DELETE FROM tasks; DELETE FROM task_concepts; DELETE FROM passages; DELETE FROM properties; DELETE FROM block_fts;',
+        'DELETE FROM pages; DELETE FROM aliases; DELETE FROM publication_includes; DELETE FROM blocks; DELETE FROM links; DELETE FROM tasks; DELETE FROM task_concepts; DELETE FROM map_items; DELETE FROM map_concepts; DELETE FROM passages; DELETE FROM properties; DELETE FROM block_fts;',
     )
     for (const name of MAINTENANCE_INDEXES) db.exec(`DROP INDEX IF EXISTS ${name}`)
 }
@@ -694,7 +751,7 @@ function deleteGeneration(db: SqlDb, generation: number): void {
            JOIN pages p ON p.id = b.page_id WHERE p.generation = ?)`,
         [generation],
     )
-    for (const table of ['aliases', 'publication_includes', 'blocks', 'links', 'tasks', 'task_concepts', 'passages', 'properties']) {
+    for (const table of ['aliases', 'publication_includes', 'blocks', 'links', 'tasks', 'task_concepts', 'map_items', 'map_concepts', 'passages', 'properties']) {
         db.run(
             `DELETE FROM ${table} WHERE page_id IN (SELECT id FROM pages WHERE generation = ?)`,
             [generation],
@@ -838,6 +895,8 @@ function deleteDerivedRows(db: SqlDb, pageId: number): void {
     db.run('DELETE FROM links WHERE page_id = ?', [pageId])
     db.run('DELETE FROM tasks WHERE page_id = ?', [pageId])
     db.run('DELETE FROM task_concepts WHERE page_id = ?', [pageId])
+    db.run('DELETE FROM map_items WHERE page_id = ?', [pageId])
+    db.run('DELETE FROM map_concepts WHERE page_id = ?', [pageId])
     db.run('DELETE FROM passages WHERE page_id = ?', [pageId])
     db.run('DELETE FROM properties WHERE page_id = ?', [pageId])
 }

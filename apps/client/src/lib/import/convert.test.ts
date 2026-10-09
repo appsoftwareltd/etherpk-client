@@ -46,3 +46,25 @@ describe('convertSource normalises to the Indent Unit', () => {
         expect(doc(graph, 'Bar')).toBe(text)
     })
 })
+
+// A Map Block (ADR 0118) is a fenced block every source format already carries: each converter
+// leaves its lines as written, in prose and beneath a bullet, so no import rewrites a place.
+describe('convertSource keeps Map Blocks as written', () => {
+    const body = ['Places we liked.', '', '```map', 'Seal Bay @ 50.74860, -1.07890', 'Coast walk @ 50.6623, -1.5887 > 50.67000, -1.55000', '```', '', '- Day 1', '  ```map', '  The Needles @ 50.66230, -1.58870', '  ```'].join('\n')
+
+    it.each([
+        ['obsidian', 'Trips.md'],
+        ['logseq', 'pages/Trips.md'],
+        ['etherpk', 'pages/Trips.md'],
+        ['markdown', 'Trips.md'],
+    ] as const)('from %s', async (format, path) => {
+        const graph = await convertSource([src(path, body)], format)
+        // Some formats gain a title in frontmatter above it, which is not the map's business.
+        expect(doc(graph, 'Trips').endsWith(body)).toBe(true)
+    })
+
+    it('from AS Notes', async () => {
+        const graph = await convertSource([src('.asnotes/index.db', ''), src('pages/Trips.md', body)], 'asnotes')
+        expect(doc(graph, 'Trips').endsWith(body)).toBe(true)
+    })
+})

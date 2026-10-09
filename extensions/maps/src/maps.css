@@ -1,0 +1,684 @@
+/*
+ * A Map Block's widget (MapBlock.svelte), a Map View (MapViewPanel.svelte) and the pins MapEngine
+ * draws for both. Global, because the pins and MapLibre's own controls are made outside Svelte, so
+ * every class carries the `gk-map-` prefix. Text is 14px or more and recedes by colour, never by
+ * opacity (ADR 0106), MapLibre's own 12px included.
+ */
+
+.gk-map-block {
+    position: relative;
+    height: 100%;
+    overflow: hidden;
+    border: 1px solid var(--gk-border-soft);
+    border-radius: 8px;
+    background: var(--gk-surface-1);
+    color: var(--gk-text-default);
+    font-family: var(--gk-sans, ui-sans-serif, system-ui, sans-serif);
+    font-size: 0.875rem;
+    line-height: 1.4;
+    container-type: inline-size;
+}
+
+:is(.gk-map-block, .gk-map-view) .maplibregl-map {
+    font: 0.875rem / 1.4 var(--gk-sans, ui-sans-serif, system-ui, sans-serif);
+}
+
+.gk-map-canvas,
+.gk-map-resting {
+    position: absolute;
+    inset: 0;
+}
+
+.gk-map-top {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    right: 8px;
+    z-index: 2;
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    pointer-events: none;
+}
+
+.gk-map-top > *,
+.gk-map-notices > *,
+.gk-map-bottom > * {
+    pointer-events: auto;
+}
+
+.gk-map-title {
+    padding: 5px 10px;
+    border-radius: 6px;
+    background: var(--gk-surface-0);
+    font-weight: 600;
+}
+
+.gk-map-search {
+    display: flex;
+    flex: 1 1 auto;
+    align-items: center;
+    gap: 6px;
+    max-width: 26rem;
+    padding: 0 8px;
+    border: 1px solid var(--gk-border-strong);
+    border-radius: 6px;
+    background: var(--gk-surface-0);
+    box-shadow: 0 1px 3px var(--gk-shadow);
+}
+
+.gk-map-search:focus-within {
+    outline: 2px solid var(--gk-accent);
+    outline-offset: 1px;
+}
+
+.gk-map-search input {
+    flex: 1;
+    min-width: 0;
+    padding: 6px 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    outline: none;
+}
+
+.gk-map-search-icon {
+    display: flex;
+    color: var(--gk-text-muted);
+}
+
+.gk-map-search-busy {
+    width: 14px;
+    height: 14px;
+    flex: none;
+    border: 2px solid var(--gk-border-strong);
+    border-top-color: var(--gk-accent);
+    border-radius: 50%;
+    animation: gk-map-spin 800ms linear infinite;
+}
+
+@keyframes gk-map-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.gk-map-actions {
+    position: relative;
+    display: flex;
+    gap: 4px;
+    margin-left: auto;
+}
+
+.gk-map-icon-button {
+    display: inline-flex;
+    width: 32px;
+    height: 32px;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--gk-border-strong);
+    border-radius: 6px;
+    background: var(--gk-surface-0);
+    color: var(--gk-text-default);
+    box-shadow: 0 1px 3px var(--gk-shadow);
+    cursor: pointer;
+}
+
+.gk-map-icon-button:hover {
+    background: var(--gk-surface-2);
+}
+
+.gk-map-icon-button[aria-pressed='true'],
+.gk-map-button[aria-pressed='true'] {
+    background: var(--gk-surface-3);
+}
+
+/* Mapbox's logo (mapbox.ts), in the lower right with the credits while a Mapbox style draws. */
+.gk-mapbox-logo {
+    display: block;
+    width: 88px;
+    height: 23px;
+    margin: 0 10px 4px 0;
+    line-height: 0;
+}
+
+.gk-map-icon-button:focus-visible,
+.gk-map-button:focus-visible,
+.gk-map-link-button:focus-visible,
+.gk-map-folded-open:focus-visible,
+.gk-map-results button:focus-visible,
+.gk-map-list button:focus-visible {
+    outline: 2px solid var(--gk-accent);
+    outline-offset: 2px;
+}
+
+.gk-map-menu {
+    position: absolute;
+    top: 36px;
+    right: 0;
+    z-index: 3;
+    display: flex;
+    min-width: 13rem;
+    flex-direction: column;
+    padding: 4px;
+    border: 1px solid var(--gk-border-strong);
+    border-radius: 8px;
+    background: var(--gk-surface-0);
+    box-shadow: 0 6px 20px var(--gk-shadow);
+}
+
+.gk-map-menu button {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    border: 0;
+    border-radius: 5px;
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.gk-map-menu button:hover,
+.gk-map-menu button:focus-visible {
+    background: var(--gk-surface-2);
+    outline: none;
+}
+
+:is(.gk-map-block, .gk-map-view) .gk-map-danger {
+    color: var(--gk-text-danger);
+}
+
+.gk-map-notices {
+    position: absolute;
+    top: 48px;
+    left: 8px;
+    z-index: 2;
+    display: flex;
+    max-width: min(26rem, calc(100% - 16px));
+    flex-direction: column;
+    gap: 6px;
+    pointer-events: none;
+}
+
+.gk-map-notice {
+    margin: 0;
+    padding: 6px 10px;
+    border: 1px solid var(--gk-border-soft);
+    border-radius: 6px;
+    background: var(--gk-surface-0);
+    box-shadow: 0 1px 3px var(--gk-shadow);
+}
+
+.gk-map-notice--warn {
+    background: var(--gk-warning-surface);
+    color: var(--gk-text-warning);
+}
+
+.gk-map-link-button {
+    margin-left: 4px;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--gk-accent);
+    font: inherit;
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+.gk-map-results,
+.gk-map-list ul {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.gk-map-results {
+    max-height: 12rem;
+    overflow: auto;
+    padding: 4px;
+    border: 1px solid var(--gk-border-strong);
+    border-radius: 6px;
+    background: var(--gk-surface-0);
+    box-shadow: 0 6px 20px var(--gk-shadow);
+}
+
+.gk-map-results button,
+.gk-map-list button {
+    display: flex;
+    width: 100%;
+    gap: 6px;
+    padding: 6px 8px;
+    border: 0;
+    border-radius: 4px;
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.gk-map-results button {
+    flex-direction: column;
+    gap: 0;
+}
+
+.gk-map-results button:hover,
+.gk-map-list button:hover,
+.gk-map-list button[aria-pressed='true'] {
+    background: var(--gk-surface-2);
+}
+
+.gk-map-result-name {
+    font-weight: 600;
+}
+
+/* Under postcode results: the data's credits, a link to them in full. */
+.gk-map-results-credit {
+    margin: 0;
+    padding: 4px 8px;
+    border-radius: 6px;
+    background: var(--gk-surface-0);
+    color: var(--gk-text-muted);
+}
+
+.gk-map-results-credit a {
+    color: inherit;
+}
+
+.gk-map-result-detail {
+    color: var(--gk-text-muted);
+}
+
+.gk-map-list {
+    position: absolute;
+    top: 48px;
+    right: 8px;
+    z-index: 2;
+    width: min(16rem, calc(100% - 16px));
+    max-height: calc(100% - 120px);
+    overflow: auto;
+    padding: 4px;
+    border: 1px solid var(--gk-border-strong);
+    border-radius: 8px;
+    background: var(--gk-surface-0);
+    box-shadow: 0 6px 20px var(--gk-shadow);
+}
+
+.gk-map-list p {
+    margin: 0;
+    padding: 6px 8px;
+    color: var(--gk-text-muted);
+}
+
+/* Room on the right for MapLibre's zoom buttons and the map's credit. */
+.gk-map-bottom {
+    position: absolute;
+    right: 56px;
+    bottom: 8px;
+    left: 8px;
+    z-index: 2;
+    display: flex;
+    pointer-events: none;
+}
+
+.gk-map-tools {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+}
+
+.gk-map-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 10px;
+    border: 1px solid var(--gk-border-strong);
+    border-radius: 6px;
+    background: var(--gk-surface-0);
+    color: var(--gk-text-default);
+    box-shadow: 0 1px 3px var(--gk-shadow);
+    font: inherit;
+    font-weight: 500;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.gk-map-button:hover {
+    background: var(--gk-surface-2);
+}
+
+.gk-map-button:disabled {
+    color: var(--gk-text-subtle);
+    cursor: not-allowed;
+}
+
+.gk-map-button--primary {
+    border-color: var(--gk-accent);
+    background: var(--gk-accent);
+    color: var(--gk-surface-0);
+}
+
+.gk-map-button--primary:hover {
+    background: var(--gk-accent-hover);
+}
+
+.gk-map-sheet {
+    display: flex;
+    max-width: 34rem;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px 12px;
+    border: 1px solid var(--gk-border-strong);
+    border-radius: 8px;
+    background: var(--gk-surface-0);
+    box-shadow: 0 6px 20px var(--gk-shadow);
+}
+
+.gk-map-sheet-detail {
+    margin: 0;
+    color: var(--gk-text-muted);
+    font-variant-numeric: tabular-nums;
+}
+
+.gk-map-sheet-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.gk-map-rename {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.gk-map-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.gk-map-field span {
+    font-weight: 600;
+}
+
+.gk-map-field input {
+    padding: 5px 8px;
+    border: 1px solid var(--gk-border-strong);
+    border-radius: 6px;
+    background: var(--gk-surface-0);
+    color: inherit;
+    font: inherit;
+}
+
+.gk-map-field input:focus-visible {
+    outline: 2px solid var(--gk-accent);
+    outline-offset: 1px;
+}
+
+.gk-map-selected-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 4px 8px;
+}
+
+.gk-map-selected-name {
+    font-weight: 600;
+}
+
+.gk-map-close {
+    width: 28px;
+    height: 28px;
+    margin-left: auto;
+    border-color: transparent;
+    box-shadow: none;
+}
+
+.gk-map-folded {
+    display: flex;
+    height: 100%;
+}
+
+.gk-map-folded-open {
+    display: flex;
+    flex: 1;
+    align-items: center;
+    gap: 8px;
+    padding: 0 12px;
+    border: 0;
+    background: var(--gk-surface-1);
+    color: var(--gk-text-default);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.gk-map-folded-open:hover {
+    background: var(--gk-surface-2);
+}
+
+.gk-map-folded-hint {
+    margin-left: auto;
+    color: var(--gk-accent);
+    font-weight: 500;
+}
+
+.gk-map-fallback {
+    position: absolute;
+    inset: 0;
+    overflow: auto;
+    padding: 56px 12px 12px;
+}
+
+.gk-map-fallback p {
+    margin: 0 0 8px;
+}
+
+.gk-map-sr {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    margin: -1px;
+    padding: 0;
+    border: 0;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+}
+
+.gk-map-block--dropping::after {
+    position: absolute;
+    inset: 0;
+    z-index: 4;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 2px dashed var(--gk-accent);
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--gk-surface-0) 85%, transparent);
+    content: 'Drop the GPX file to add its routes';
+    font-weight: 600;
+}
+
+/* The block while its widget's code loads (map-fence.svelte.ts): the same frame, saying so only if it takes a while. */
+.gk-map-placeholder {
+    display: flex;
+    height: 100%;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    border: 1px solid var(--gk-border-soft);
+    border-radius: 8px;
+    background: var(--gk-surface-1);
+    color: var(--gk-text-muted);
+    font-size: 0.875rem;
+}
+
+.gk-map-placeholder p {
+    margin: 0;
+    animation: gk-map-appear 160ms ease-out 400ms both;
+}
+
+.gk-map-placeholder--failed p {
+    animation: none;
+}
+
+@keyframes gk-map-appear {
+    from {
+        visibility: hidden;
+    }
+    to {
+        visibility: visible;
+    }
+}
+
+/* Pins: real buttons, drawn by MapEngine as MapLibre markers. */
+/* No position here: MapLibre's marker rule makes each pin absolute at the map's top left and moves it
+   by a transform. A pin left in the flow sat below the pins before it, 32 pixels lower for each one,
+   which zoomed out put places kilometres away. Absolute, the pin is also where its label is placed from. */
+.gk-map-pin {
+    display: block;
+    width: 24px;
+    height: 32px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    cursor: pointer;
+}
+
+.gk-map-pin svg {
+    display: block;
+    filter: drop-shadow(0 1px 1px rgb(0 0 0 / 0.35));
+}
+
+.gk-map-pin-body {
+    fill: var(--gk-accent);
+    stroke: var(--gk-surface-0);
+    stroke-width: 1.5;
+}
+
+.gk-map-pin-dot {
+    fill: var(--gk-surface-0);
+}
+
+.gk-map-pin--selected .gk-map-pin-body {
+    fill: var(--gk-text-warning);
+}
+
+.gk-map-pin--movable {
+    cursor: grab;
+}
+
+.gk-map-pin:focus-visible {
+    outline: 2px solid var(--gk-accent);
+    outline-offset: 2px;
+    border-radius: 4px;
+}
+
+.gk-map-pin-label {
+    position: absolute;
+    top: 2px;
+    left: 26px;
+    display: none;
+    padding: 1px 6px;
+    border-radius: 4px;
+    background: var(--gk-surface-0);
+    box-shadow: 0 1px 2px var(--gk-shadow);
+    color: var(--gk-text-strong);
+    font: 600 0.875rem / 1.3 var(--gk-sans, ui-sans-serif, system-ui, sans-serif);
+    white-space: nowrap;
+}
+
+.gk-map-pin--named .gk-map-pin-label,
+.gk-map-pin--selected .gk-map-pin-label,
+.gk-map-pin:hover .gk-map-pin-label,
+.gk-map-pin:focus-visible .gk-map-pin-label {
+    display: block;
+}
+
+.gk-map-pin .gk-map-pin-label:empty {
+    display: none;
+}
+
+/* A group of places in a Map View (map-pins.ts): how many, and a zoom in when chosen. */
+.gk-map-cluster {
+    display: grid;
+    min-width: 34px;
+    height: 34px;
+    margin: 0;
+    padding: 0 9px;
+    place-items: center;
+    border: 2px solid var(--gk-surface-0);
+    border-radius: 17px;
+    background: var(--gk-accent);
+    box-shadow: 0 1px 3px var(--gk-shadow);
+    color: var(--gk-surface-0);
+    font: 600 0.875rem / 1 var(--gk-sans, ui-sans-serif, system-ui, sans-serif);
+    font-variant-numeric: tabular-nums;
+    cursor: pointer;
+}
+
+.gk-map-cluster:hover {
+    background: var(--gk-accent-hover);
+}
+
+.gk-map-cluster:focus-visible {
+    outline: 2px solid var(--gk-accent);
+    outline-offset: 2px;
+}
+
+/* A narrow map (a phone, a split pane): the tools keep their icons, and their names for screen readers. */
+@container (max-width: 520px) {
+    .gk-map-tools .gk-map-button span {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+    }
+
+    .gk-map-search {
+        max-width: none;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .gk-map-search-busy {
+        animation: none;
+    }
+}
+
+/* MapLibre's own controls (the zoom buttons and the map's credit) in the app's colours, so they
+   follow the theme rather than staying white in the dark. */
+:is(.gk-map-block, .gk-map-view) .maplibregl-ctrl-group,
+:is(.gk-map-block, .gk-map-view) .maplibregl-ctrl-attrib.maplibregl-compact,
+:is(.gk-map-block, .gk-map-view) .maplibregl-ctrl-attrib {
+    background: var(--gk-surface-0);
+    color: var(--gk-text-default);
+}
+
+:is(.gk-map-block, .gk-map-view) .maplibregl-ctrl-group:not(:empty) {
+    box-shadow: 0 1px 3px var(--gk-shadow);
+}
+
+:is(.gk-map-block, .gk-map-view) .maplibregl-ctrl-group button + button {
+    border-top-color: var(--gk-border-soft);
+}
+
+:is(.gk-map-block, .gk-map-view) .maplibregl-ctrl-attrib a {
+    color: var(--gk-text-default);
+}
+
+:root[data-theme='dark'] :is(.gk-map-block, .gk-map-view) .maplibregl-ctrl-icon,
+:root[data-theme='dark'] :is(.gk-map-block, .gk-map-view) .maplibregl-ctrl-attrib-button {
+    filter: invert(0.9);
+}

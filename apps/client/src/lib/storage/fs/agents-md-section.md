@@ -187,6 +187,27 @@ and `tex` are not), and ` ```etherpk-cipher ` is a protected document (below). T
 inside a block, open it with four. Inline maths is `$...$` on one line - there is no `$$`
 block form.
 
+**Maps.** A ` ```map ` block is a map EtherPK draws in place. It holds one line for each place
+or route and nothing else:
+
+````markdown
+```map
+Seal Bay Campsite @ 50.74860, -1.07890
+Coast walk @ 50.74860, -1.07890 > 50.75112, -1.08240 > 50.75300, -1.09000
+Ridge walk @ 54.60120, -3.13410 > 54.60500, -3.14000 (../assets/ridge-walk.a1b2c3d4.gpx)
+```
+````
+
+- A line is a name, then ` @ `, then a latitude and a longitude in decimal degrees, latitude
+  first, separated by a comma. Write five decimal places. Points joined by ` > ` make a route.
+- A route imported from a GPX file ends with the file's asset path in brackets. Keep it, since
+  the file is the full recording.
+- The name is plain text. A wikilink in a map is not a link: a place belongs to the concepts of
+  the line or bullet its map sits under, as a task does.
+- Open the fence on a line of its own, at the bullet's content column inside a bullet, or on the
+  bullet's own line (`- ```map`), where the map is drawn beside the bullet's dot.
+- A line EtherPK cannot read is kept as written and reported on the map, never rewritten.
+
 **Tables.** GFM pipe tables. Leave a blank line between two tables or they read as one. A
 table cannot sit inside a code block or the frontmatter.
 

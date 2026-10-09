@@ -19,6 +19,11 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
 COPY apps/client/package.json apps/client/package.json
 COPY packages/shared/ packages/shared/
 COPY packages/themes/ packages/themes/
+# The Extension API is TypeScript source too. The Built-in Extensions built in this repository
+# come whole: a compiled-in one is compiled with the Client, and a loaded one is built by the
+# Client's build (build-extensions.mjs) before Vite copies its bundle into the output (ADR 0121).
+COPY packages/extension-api/ packages/extension-api/
+COPY extensions/ extensions/
 
 RUN pnpm install --frozen-lockfile
 

@@ -7,6 +7,8 @@ import {
     parseEnvExampleKeys,
 } from '@appsoftwareltd/etherpk-shared/env-example'
 
+import { compiledInExtensionFolders } from '../compiled-in-extensions'
+
 /** A path relative to `apps/client`. */
 const fromApp = (path: string) => fileURLToPath(new URL(`../${path}`, import.meta.url))
 
@@ -14,7 +16,9 @@ describe('.env.example', () => {
     it('names every setting the Client reads, and nothing it does not', () => {
         const result = compareEnvExample({
             exampleKeys: parseEnvExampleKeys(readFileSync(fromApp('.env.example'), 'utf8')),
-            sourceNames: environmentNamesInTree([fromApp('src')]),
+            // The compiled-in Built-in Extensions are part of the Client's build (ADR 0121), and a
+            // setting one reads is the Client's to document.
+            sourceNames: environmentNamesInTree([fromApp('src'), ...compiledInExtensionFolders().map((folder) => fromApp(`../../extensions/${folder}/src`))]),
             notEnvironment: {
                 BAD_INDENT: 'an error code of the yaml parser, read to word a frontmatter problem',
                 BLOCK_AS_IMPLICIT_KEY: 'an error code of the yaml parser, read to word a frontmatter problem',

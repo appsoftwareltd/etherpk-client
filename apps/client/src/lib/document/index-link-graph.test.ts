@@ -51,6 +51,16 @@ describe('linkGraph', () => {
         expect(graph.concepts.map((c) => c.key)).toEqual(['2026-09-15', 'gardening', 'plants', 'soil'])
     })
 
+    it("gives a journal entry named for a day that exists its day, and one named for none no day", () => {
+        ingest(db, [journal('2026-09-15', '[[Plants]]'), journal('2026-02-30', '[[Plants]]'), page('Plants')])
+        const graph = linkGraph(db)
+        expect(graph.concepts.map((c) => [c.name, c.day])).toEqual([
+            ['2026-02-30', undefined],
+            ['2026-09-15', '2026-09-15'],
+            ['Plants', undefined],
+        ])
+    })
+
     it('draws one line per pair, counting every mention under any name', () => {
         ingest(db, [page('Plants', '[[Gardening]] then [[greenery]] and [[GARDENING]]\n- [[Soil]]'), page('Gardening', '', ['Greenery'])])
         const graph = linkGraph(db)

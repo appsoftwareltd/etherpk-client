@@ -17,7 +17,7 @@ export const SETTINGS_TAB_KEY_PREFIX = 'etherpk-settings-tab:'
 export const LAST_PUBLICATION_KEY_PREFIX = 'etherpk-last-publication:'
 export const ADD_FRONTMATTER_KEYS_PREFIX = 'etherpk-add-frontmatter-keys:'
 
-export const SETTINGS_TABS = ['general', 'spelling', 'protection', 'mirror', 'agents', 'publish', 'maintenance'] as const
+export const SETTINGS_TABS = ['general', 'spelling', 'protection', 'mirror', 'agents', 'publish', 'extensions', 'maintenance'] as const
 export type SettingsTab = (typeof SETTINGS_TABS)[number]
 
 function read(key: string, storage: Storage | undefined): string | null {

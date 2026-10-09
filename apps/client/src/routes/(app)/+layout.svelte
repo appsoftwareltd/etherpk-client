@@ -10,6 +10,7 @@
     import { buildApplicationNavigation } from "@appsoftwareltd/etherpk-shared";
     import ApplicationHeader from "@appsoftwareltd/etherpk-shared/application-header";
     import { suppressBrowserChords } from "$lib/surface";
+    import { startPersonSettingsSync } from "$lib/person-settings/person-settings-sync";
 
     let { data, children } = $props();
 
@@ -17,6 +18,9 @@
     // the browser's "Save page" dialog. Swallowed app-wide, not per workspace, so the graph
     // list and settings pages behave the same as an open document.
     $effect(() => suppressBrowserChords(["Mod+S"]));
+
+    // The person's settings follow them through their account (ADR 0134) while the Client runs.
+    $effect(() => startPersonSettingsSync());
 
     const navItems = $derived(buildApplicationNavigation({
         managed: data.managedService,

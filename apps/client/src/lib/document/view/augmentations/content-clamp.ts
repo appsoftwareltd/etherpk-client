@@ -53,7 +53,7 @@ import { fencedBlockAtIn, insideFencedBlockIn, visibleFencedBlocks } from '../ou
 import { treeChanged } from './base-renderer'
 import { blockquoteLines } from './blockquote-core'
 import { CODE_FONT_SCALE, CODE_PANEL_PAD_LEFT } from './code-highlight'
-import { renderCompleted, rendererCollapsedStarts, themeTick } from './rendered-common'
+import { collapsedFenceStarts, collapseMayHaveChanged } from './rendered-common'
 import { CHECKBOX_SLOT } from './task-checkbox'
 import { analysisFor } from '../analysis/editor-analysis'
 
@@ -499,7 +499,7 @@ function buildClamp(view: EditorView): DecorationSet {
     const { state } = view
     const codeShifts = state.field(codeShiftsField)
     const units = measuredUnits(state.field(proseMetricsField))
-    const collapsedStarts = rendererCollapsedStarts(state)
+    const collapsedStarts = collapsedFenceStarts(state)
     const visibleBlocks = visibleFencedBlocks(state)
     const { frontmatterEnd, outline } = analysisFor(state)
     const docLines = analysisFor(state).lines as string[] // the shared analysis lines; read only
@@ -646,11 +646,10 @@ export function contentClampAugmentation(): Extension {
                 const shiftsChanged =
                     update.startState.field(codeShiftsField) !== update.state.field(codeShiftsField) ||
                     update.startState.field(proseMetricsField) !== update.state.field(proseMetricsField)
-                // themeTick / renderCompleted change the rendered-fence collapse state without a doc
-                // or selection change — the opener declassification must follow (rendered-common.ts).
-                const ticked = update.transactions.some((tr) =>
-                    tr.effects.some((e) => e.is(themeTick) || e.is(renderCompleted)),
-                )
+                // A theme switch, a landed render or a fence widget coming or going changes the
+                // collapse state without a doc or selection change, and the opener declassification
+                // must follow (rendered-common.ts).
+                const ticked = update.transactions.some(collapseMayHaveChanged)
                 // The quote inset reads the syntax tree, which the parser can advance in a transaction that
                 // changes nothing else (base-renderer.ts → hiddenSyntaxPlugin).
                 if (

@@ -1,0 +1,23 @@
+{
+    "$schema": "https://developer.microsoft.com/json-schemas/api-extractor/v7/api-extractor.schema.json",
+    // The built declarations: `pnpm api` builds them first.
+    "mainEntryPointFilePath": "<projectFolder>/dist/index.d.ts",
+    "apiReport": {
+        "enabled": true,
+        // One report per release tag (ADR 0120): `public` is the Stable API, `beta` the Proposed API
+        // with the Stable part included. Both are committed, and CI fails when the API changes
+        // without them.
+        "reportVariants": ["public", "beta"],
+        "reportFolder": "<projectFolder>/etc/",
+        "reportTempFolder": "<projectFolder>/temp/"
+    },
+    "docModel": { "enabled": false },
+    "dtsRollup": { "enabled": false },
+    "tsdocMetadata": { "enabled": false },
+    "messages": {
+        "extractorMessageReporting": {
+            // Every exported declaration says which promise it is under.
+            "ae-missing-release-tag": { "logLevel": "error", "addToApiReportFile": false }
+        }
+    }
+}

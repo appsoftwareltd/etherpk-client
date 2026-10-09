@@ -3,8 +3,9 @@
  * synced; localStorage, not a cookie, because it is purely client-side and never needed at
  * SSR). It is applied as the `--editor-font-size` CSS custom property on the document root, for
  * everything sized off it, and each open editor takes it as its own font-size theme when told
- * ({@link onEditorFontSizeChange}). Adjusted by the Command Bar zoom buttons and by Ctrl+wheel
- * over an editor.
+ * ({@link onEditorFontSizeChange}). Adjusted by the Command Bar zoom buttons and by Alt+= and
+ * Alt+- (`workspace/keyboard-shortcuts.ts`), never by the wheel: the browser keeps Ctrl+wheel for
+ * its own zoom, and a map in a document takes it for the map's.
  */
 
 const STORAGE_KEY = 'etherpk:editor-font-size'

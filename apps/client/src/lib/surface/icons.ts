@@ -16,14 +16,15 @@
  * The markup here is in-repo constant text, never user or document content, which is what
  * makes rendering it with `{@html}` (and `innerHTML` in the CodeMirror widgets) safe. Under the
  * Client's Trusted Types policy (ADR 0130) this module alone makes it trusted markup, through
- * `etherpk-icons`, which passes it as it is: every icon in the Client comes from this table.
+ * `etherpk-icons`, which passes it as it is. The icons extensions add (`registerIcons`) are not
+ * text in this repository, so DOMPurify cleans each of those instead.
  *
  * A few icons are Heroicons (MIT) instead, kept on their own 24-unit grid with their paths copied
  * verbatim from the package's `24/outline/<name>.svg` (`HEROICON_PATHS`), so either can be
  * checked against the other.
  */
 
-import { trustedIconMarkup, type TrustedMarkup } from '$lib/security/trusted-types'
+import { sanitizedIconMarkup, trustedIconMarkup, type TrustedMarkup } from '$lib/security/trusted-types'
 
 /** Inner markup for each named icon; `default` is the fallback for an unknown name. */
 export const ICON_PATHS: Record<string, string> = {
@@ -40,12 +41,6 @@ export const ICON_PATHS: Record<string, string> = {
     /** A filled dot, as the editor draws a bullet: the bullet toggle. Larger than the `default` dot. */
     bullet: '<circle cx="8" cy="8" r="3" fill="currentColor" stroke="none"/>',
     task: '<rect x="2.5" y="2.5" width="11" height="11" rx="2"/><path d="M5.5 8 7.3 10 10.5 5.8"/>',
-    /** Three columns of different depths: a [[Kanban Board]]'s lanes, on its tab. */
-    kanban: '<rect x="2.5" y="2.5" width="3" height="11" rx="1"/><rect x="6.5" y="2.5" width="3" height="7" rx="1"/><rect x="10.5" y="2.5" width="3" height="9" rx="1"/>',
-    /** Two arrows closing on a line: fold a board's lane down to a narrow strip. */
-    'collapse-lane': '<path d="M8 3v10"/><path d="M2.5 8H6M4.3 6.2 6 8 4.3 9.8M13.5 8H10M11.7 6.2 10 8l1.7 1.8"/>',
-    /** The same arrows pointing away from the line: open a folded lane out again. */
-    'expand-lane': '<path d="M8 3v10"/><path d="M6 8H2.5M4.2 6.2 2.5 8l1.7 1.8M10 8h3.5M11.8 6.2 13.5 8l-1.7 1.8"/>',
     /** Two arrows chasing round a circle: put it back the way it started (Reset workspace). */
     reset: '<path d="M13 8a5 5 0 0 1-8.7 3.4M3 8a5 5 0 0 1 8.7-3.4"/><path d="M11.7 2v2.6H9.1M4.3 14v-2.6h2.6"/>',
     /** "abc" over a tick: the spell check preference (its Command Menu rows). */
@@ -134,12 +129,16 @@ export const ICON_PATHS: Record<string, string> = {
     // Sidebar
     /** Three linked nodes: a knowledge graph. Leads the Graph Sidebar's tab, before the graph's name. */
     graph: '<circle cx="4" cy="4.5" r="1.8"/><circle cx="12" cy="5.5" r="1.8"/><circle cx="7.5" cy="12" r="1.8"/><path d="M5.8 4.7 10.2 5.3M5 6.1l1.7 4.3M8.6 10.6l2.6-3.6"/>',
-    /**
-     * A large dot with four smaller ones linked to it: the [[Graph View]], on its tab and its rows.
-     * Drawn apart from `graph` (three equal dots), which is the Graph Sidebar's.
-     */
-    'graph-view':
-        '<circle cx="8" cy="8" r="2.2"/><circle cx="3" cy="3.5" r="1.2"/><circle cx="13" cy="3" r="1.2"/><circle cx="2.8" cy="12.5" r="1.2"/><circle cx="13" cy="12.8" r="1.2"/><path d="M4 4.4 6.4 6.6M12.1 3.9 9.7 6.5M3.8 11.6l2.6-2.3M12.1 11.9 9.6 9.5"/>',
+    /** Three dots in a row: a menu of further actions. */
+    more: [3.5, 8, 12.5].map((x) => `<circle cx="${x}" cy="8" r="1.15" fill="currentColor" stroke="none"/>`).join(''),
+    /** A pencil: rename. */
+    rename: '<path d="M10.6 2.9 13.1 5.4 6 12.5l-3.1.6.6-3.1z"/><path d="M9.3 4.2 11.8 6.7"/>',
+    /** Four arrows from the middle: move something to another place. */
+    move: '<path d="M8 2.2v11.6M2.2 8h11.6M6.4 3.8 8 2.2l1.6 1.6M6.4 12.2 8 13.8l1.6-1.6M3.8 6.4 2.2 8l1.6 1.6M12.2 6.4 13.8 8l-1.6 1.6"/>',
+    /** An arrow rising out of a tray: bring a file in. */
+    import: '<path d="M8 10.5V2.8M5.2 5.6 8 2.8l2.8 2.8"/><path d="M2.8 10.2v3h10.4v-3"/>',
+    /** Three lines: a list. */
+    list: '<path d="M5.5 4h8M5.5 8h8M5.5 12h8"/><circle cx="2.8" cy="4" r=".9" fill="currentColor" stroke="none"/><circle cx="2.8" cy="8" r=".9" fill="currentColor" stroke="none"/><circle cx="2.8" cy="12" r=".9" fill="currentColor" stroke="none"/>',
     /** Four corners: fit the whole picture in view. */
     fit: '<path d="M2.5 6V2.5H6M10 2.5h3.5V6M13.5 10v3.5H10M6 13.5H2.5V10"/>',
     /** Six dots: the grip of a row that can be dragged to reorder. */
@@ -168,6 +167,24 @@ export interface IconOptions {
     label?: string
 }
 
+/**
+ * Icons extensions' manifests add (ADR 0121), each under `<extension id>.<name>`, drawn on the
+ * table's 16-unit grid. Kept apart from the table so an extension can never redraw one of the
+ * Client's icons.
+ */
+const EXTENSION_ICONS = new Map<string, string>()
+
+/** Add extension icons by their registered names. Returns the undo. */
+export function registerIcons(icons: Record<string, string>): () => void {
+    for (const name of Object.keys(icons)) {
+        if (name in ICON_PATHS || name in HEROICON_PATHS) throw new Error(`The icon "${name}" is the Client's own.`)
+    }
+    for (const [name, markup] of Object.entries(icons)) EXTENSION_ICONS.set(name, markup)
+    return () => {
+        for (const name of Object.keys(icons)) EXTENSION_ICONS.delete(name)
+    }
+}
+
 /** The `<svg>` markup for a named icon, falling back to a neutral dot for an unknown name. */
 export function iconSvg(name: string, options: IconOptions = {}): TrustedMarkup {
     const { size = 16, strokeWidth = 1.4, label } = options
@@ -178,11 +195,15 @@ export function iconSvg(name: string, options: IconOptions = {}): TrustedMarkup 
     const hero = HEROICON_PATHS[name]
     const grid = hero === undefined ? 16 : 24
     const stroke = Math.round(((strokeWidth * grid) / 16) * 1000) / 1000
-    return trustedIconMarkup(
+    const svg = (body: string) =>
         `<svg viewBox="0 0 ${grid} ${grid}" width="${Number(size)}" height="${Number(size)}" fill="none" stroke="currentColor" ` +
-            `stroke-width="${stroke}" stroke-linecap="round" stroke-linejoin="round" ${a11y}>` +
-            `${hero ?? ICON_PATHS[name] ?? ICON_PATHS.default}</svg>`,
-    )
+        `stroke-width="${stroke}" stroke-linecap="round" stroke-linejoin="round" ${a11y}>${body}</svg>`
+    const own = hero ?? ICON_PATHS[name]
+    const extension = own === undefined ? EXTENSION_ICONS.get(name) : undefined
+    // An extension's icon came from its manifest, not this file, so DOMPurify cleans it. Only the
+    // Client's own table goes through `etherpk-icons`, which passes markup as it is.
+    if (extension !== undefined) return sanitizedIconMarkup(svg(extension))
+    return trustedIconMarkup(svg(own ?? ICON_PATHS.default))
 }
 
 function escapeAttribute(value: string): string {

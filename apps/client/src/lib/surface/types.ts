@@ -45,6 +45,18 @@ export interface EventPayloads {
     /** The set of documents in the graph changed (create / delete). Consumer: the document tree. */
     'documents:changed': { graphId: string }
     /**
+     * A concept was renamed: by the rename dialog, outside the app, or by editing the only link
+     * naming a Pageless Concept. One Event per concept the rename moved, cascaded ones included.
+     * Emitted before the Views about it follow the new name, so a listener holding state under the
+     * old name hands it over first. Consumer: the extensions (ADR 0121), the Kanban Board among
+     * them.
+     */
+    'concept:renamed': { graphId: string; from: string; to: string }
+    /** A document was deleted. Consumer: the extensions (ADR 0121), the Kanban Board among them. */
+    'document:deleted': { graphId: string; documentId: string }
+    /** The light or dark theme was switched on. Consumer: the extensions (ADR 0121). */
+    'theme:changed': { graphId: string; dark: boolean }
+    /**
      * The user asked for the [[Quick Notes View]]'s box (the `quickNotes.open` Command, Alt+N).
      * The workspace has already focused the tab and expanded the Sidebar; the View puts the
      * caret in its textarea. An Event because the View is mounted through the layout renderer

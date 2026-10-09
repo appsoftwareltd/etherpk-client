@@ -191,11 +191,18 @@ export async function hostRequest(endpoint: string, request: HostRequest, option
 
 /**
  * The settings a publish reads, which the command line decides even when the graph's host runs
- * the publish: where the publish folders are remembered, and which browser draws diagrams. The
- * host was started from another environment (an agent's), and a scheduled publish may name its
- * own browser.
+ * the publish: where the publish folders are remembered, which browser draws diagrams and maps,
+ * and which style a map's picture is drawn over. The host was started from another environment
+ * (an agent's), and a scheduled publish may name its own browser or its own map host.
  */
-const PUBLISH_SETTINGS = ['ETHERPK_MCP_PUBLISH_CONFIG', 'XDG_CONFIG_HOME', 'ETHERPK_CHROMIUM', 'PLAYWRIGHT_BROWSERS_PATH', 'PLAYWRIGHT_CHROMIUM_EXECUTABLE'] as const
+const PUBLISH_SETTINGS = [
+    'ETHERPK_MCP_PUBLISH_CONFIG',
+    'XDG_CONFIG_HOME',
+    'ETHERPK_CHROMIUM',
+    'PLAYWRIGHT_BROWSERS_PATH',
+    'PLAYWRIGHT_CHROMIUM_EXECUTABLE',
+    'ETHERPK_MAP_STYLE_URL',
+] as const
 
 /** The publish settings in `env`, for a `publish` request. */
 export function publishSettings(env: NodeJS.ProcessEnv): Record<string, string> {

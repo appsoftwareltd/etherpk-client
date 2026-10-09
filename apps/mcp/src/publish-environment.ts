@@ -1,8 +1,8 @@
 /**
  * The publisher's environment in Node (ADR 0082, ADR 0084): themes resolved the way the Client
  * resolves them (bundled, the graph's own, a url), KaTeX's stylesheet and fonts read from the
- * package this depends on, Mermaid through a real browser when one is available, and a site
- * folder over `fs` under the same rules as the browser's directory handle. Browser-free
+ * package this depends on, Mermaid and map pictures through a real browser when one is available,
+ * and a site folder over `fs` under the same rules as the browser's directory handle. Browser-free
  * counterpart of `host/browser-environment.ts`; the core is shared.
  */
 
@@ -16,6 +16,7 @@ import type { GraphTheme } from '$lib/document/publish/theme/graph-theme'
 import { createThemeLoader } from '$lib/document/publish/theme/sources'
 
 import type { DiagramRenderer } from './diagrams'
+import type { MapPictureRenderer } from './map-pictures'
 import { fetchPublicText } from './public-fetch'
 
 const require = createRequire(import.meta.url)
@@ -50,6 +51,8 @@ export interface NodeEnvironmentDeps {
     graphTheme(id: string): Promise<GraphTheme | null>
     /** A browser to draw Mermaid with; absent, the environment offers no renderer and the caller must not publish diagrams. */
     renderer?: DiagramRenderer | null
+    /** A browser to draw map pictures with; absent, a publication holding a map stops (ADR 0118). */
+    maps?: MapPictureRenderer | null
 }
 
 export function createNodePublishEnvironment(deps: NodeEnvironmentDeps): PublishEnvironment {
@@ -57,6 +60,7 @@ export function createNodePublishEnvironment(deps: NodeEnvironmentDeps): Publish
     return {
         loadTheme: createThemeLoader({ fetchText, graphTheme: deps.graphTheme }),
         ...(renderer ? { renderMermaid: (source: string) => renderer.render(source) } : {}),
+        ...(deps.maps ? { renderMap: (source: string) => deps.maps!.render(source) } : {}),
         katexAssets,
     }
 }

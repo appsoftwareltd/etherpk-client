@@ -15,6 +15,7 @@ import type { RemoteGraphIndex } from '$lib/document/index-worker/client'
 import type { DocumentStore } from '$lib/document/types'
 import type { EpisodeEnd } from '$lib/document/view/augmentations/frontmatter-episode'
 import type { AssetStore } from '$lib/storage/fs/asset-store'
+import type { SyncApi } from '$lib/sync/sync-api'
 import type { SyncIndicator, SyncStatusAction } from '$lib/sync/sync-indicator'
 import type { GraphSettings } from '$lib/storage/fs/graph-settings'
 import type { CommandRegistry } from '$lib/surface/command-registry'
@@ -172,6 +173,12 @@ export interface WorkspaceServices {
     backend?: Backend
     /** Publishing over the open graph, for the Theme editor's preview. */
     publishing?: PublishingService
+    /**
+     * The Sync Server a request for this graph goes to, read at each request: the graph's own for
+     * a synced graph, the device's main connection for a graph kept on this device, or null when
+     * there is none. What place search asks through (ADR 0119).
+     */
+    syncServer?: () => { origin: string; api: SyncApi } | null
 }
 
 export type WorkspaceGeneration = number

@@ -1,0 +1,5 @@
+/* The Graph View's own stylesheet, adopted into the shadow root of each Graph View tab (ADR 0121):
+   Tailwind's reset, theme and the utilities these components use. The Client's `--gk-*` tokens
+   reach in from the page, so colours follow its theme without anything here naming one. */
+@import "tailwindcss";
+@source "./";

@@ -23,7 +23,7 @@ import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate
 import { isBulletLine } from '../../outliner'
 import { visibleFencedBlocks } from '../outliner-context'
 import { CODE_TOKEN_STYLES } from './code-token-styles'
-import { renderCompleted, rendererCollapsedStarts, themeTick } from './rendered-common'
+import { collapsedFenceStarts, collapseMayHaveChanged } from './rendered-common'
 import { editorMarkdownExtensions } from './scheme-url-autolink'
 
 /** Code renders slightly smaller than prose: 14px at the default 16px zoom, the app's floor for
@@ -234,7 +234,7 @@ function buildCodeBlockDecorations(view: EditorView): DecorationSet {
     // (so the incomplete-fence neutralisation below must not touch them) but must get NO panel,
     // dim, or prefix styling — for a collapsed form-1 the opener line stays visible, and a shaded
     // diagram-tall code panel behind the widget is exactly what suppression prevents.
-    const collapsed = rendererCollapsedStarts(state)
+    const collapsed = collapsedFenceStarts(state)
     for (const block of visibleFencedBlocks(state)) {
         const startLine = state.doc.line(block.start + 1)
         const endLine = state.doc.line(block.end + 1)
@@ -313,11 +313,10 @@ const codeBlockPlugin = ViewPlugin.fromClass(
             this.decorations = buildCodeBlockDecorations(view)
         }
         update(update: ViewUpdate) {
-            // themeTick / renderCompleted change the rendered-fence collapse state without a doc or
-            // selection change — the panel suppression must follow it (rendered-common.ts).
-            const ticked = update.transactions.some((tr) =>
-                tr.effects.some((e) => e.is(themeTick) || e.is(renderCompleted)),
-            )
+            // A theme switch, a landed render or a fence widget coming or going changes which
+            // blocks are collapsed without a doc or selection change, and the panel suppression must
+            // follow (rendered-common.ts).
+            const ticked = update.transactions.some(collapseMayHaveChanged)
             if (update.docChanged || update.viewportChanged || update.selectionSet || ticked) {
                 this.decorations = buildCodeBlockDecorations(update.view)
             }

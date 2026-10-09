@@ -13,6 +13,7 @@
 import { parseFrontmatter } from '$lib/storage/fs/frontmatter'
 
 import { backlinksFor, conceptKey } from '../backlinks/backlink-index'
+import { MAP_FENCE_INFO, mapAltText } from '../map-text'
 import { wikilinkOccurrencesInSource } from '../wikilink/source'
 import { searchIndexJson, searchIndexScript, sitemapXml, feedXml, type SearchEntry, type FeedItem, type SitemapEntry } from './derived'
 import {
@@ -57,7 +58,39 @@ export interface PublishEnvironment {
     highlightCode?(lang: string, code: string): Promise<string | null>
     /** KaTeX's stylesheet and fonts, path under `theme/katex/` → content, copied in when the publication has maths. */
     katexAssets?(): Promise<ReadonlyMap<string, string | Uint8Array>>
+    /**
+     * Draw a [[Map Block]], by its fence's body, as a picture: its places, routes and their names
+     * over the basemap, framed as the map opens, in the light style, with the basemap's credit.
+     * Rejects with why it could not. Absent where the host cannot draw maps, and then a
+     * publication holding one stops: a map is never left out of a page without a word, and never
+     * printed as its lines, which hold where each place is (ADR 0118).
+     */
+    renderMap?(source: string): Promise<MapPicture>
     now?(): Date
+}
+
+/** A Map Block drawn by the host. */
+export interface MapPicture {
+    bytes: Uint8Array
+    type: 'image/png' | 'image/webp'
+    /** The picture's size in CSS pixels, which the page reserves before it loads. */
+    width: number
+    height: number
+}
+
+/**
+ * Bumped when the way a map is drawn changes, so a site published again holds the new picture
+ * under a new name rather than a cached one under the old.
+ */
+const MAP_PICTURE_VERSION = 1
+
+/** A picture's file name: from what the map holds and how it is drawn, so an unchanged map publishes the same file. */
+async function mapPictureName(source: string): Promise<string> {
+    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`${MAP_PICTURE_VERSION}\n${source}`))
+    return [...new Uint8Array(digest)]
+        .slice(0, 8)
+        .map((byte) => byte.toString(16).padStart(2, '0'))
+        .join('')
 }
 
 export interface PublishProgress {
@@ -270,6 +303,7 @@ export async function publishPublication(
         includeDocs.set(slot, doc)
     }
     const mermaidSvg = new Map<string, string>()
+    const mapPictures = new Map<string, MapPicture & { path: string; alt: string }>()
     const highlighted = new Map<string, string>()
     const highlight = env.highlightCode ?? defaultHighlight
     const probe = createDocumentRenderer({ resolve: resolver.resolve, assetHref: assetHrefOf })
@@ -283,6 +317,20 @@ export async function publishPublication(
                 } catch (error) {
                     warnings.push({ level: 'warning', code: 'mermaid-render-failed', message: `A diagram in "${doc.concept}" could not be rendered: ${error instanceof Error ? error.message : String(error)}. It is left as its source for a script to draw.`, concept: doc.concept })
                 }
+            } else if (fence.lang === MAP_FENCE_INFO) {
+                if (mapPictures.has(fence.code) || errors.some((e) => e.code === 'map-not-drawn' && e.concept === doc.concept)) continue
+                if (!env.renderMap) {
+                    errors.push({ level: 'error', code: 'map-not-drawn', message: `"${doc.concept}" holds a map, which this publisher can't draw. Publish the site from EtherPK in a browser, where maps are drawn.`, concept: doc.concept })
+                    continue
+                }
+                try {
+                    const picture = await env.renderMap(fence.code)
+                    const path = `maps/${await mapPictureName(fence.code)}.${picture.type === 'image/webp' ? 'webp' : 'png'}`
+                    mapPictures.set(fence.code, { ...picture, path, alt: mapAltText(fence.code.split('\n')) })
+                } catch (error) {
+                    const why = error instanceof Error ? error.message : String(error)
+                    errors.push({ level: 'error', code: 'map-not-drawn', message: `The map in "${doc.concept}" could not be drawn: ${why}. Nothing was published, so try again once it can be.`, concept: doc.concept })
+                }
             } else if (fence.lang !== '' && fence.lang !== 'math' && fence.lang !== 'etherpk-cipher') {
                 const key = `${fence.lang}\n${fence.code}`
                 if (highlighted.has(key)) continue
@@ -291,6 +339,9 @@ export async function publishPublication(
             }
         }
     }
+    // A map that could not be drawn stops the publish (ADR 0084's rule): the alternative is a
+    // page that silently lacks it.
+    if (errors.length > 0) return { bundle, report }
     // Each drawn diagram gets an id of its own where it is placed (diagram-id.ts):
     // `mermaid_<page slug>_<n>` in a page's body and `mermaid__<slot>_<n>` in an include. A slug
     // is never empty and never holds `_`, so the two forms cannot meet on one page, and neither
@@ -309,6 +360,10 @@ export async function publishPublication(
             return svg === undefined ? undefined : withDiagramId(svg, `${diagramScope.prefix}_${++diagramScope.n}`)
         },
         highlighted: (lang, code) => highlighted.get(`${lang}\n${code}`),
+        mapPicture: (src) => {
+            const picture = mapPictures.get(src)
+            return picture && { src: picture.path, alt: picture.alt, width: picture.width, height: picture.height }
+        },
     })
 
     // 5. Render every document.
@@ -518,6 +573,7 @@ export async function publishPublication(
         bundle.set(`assets/${name}`, asset.bytes)
         report.assets.copied.push(name)
     }
+    for (const picture of mapPictures.values()) bundle.set(picture.path, picture.bytes)
     for (const [path, text] of theme.files) {
         if (path.startsWith('assets/')) bundle.set(`theme/${path.slice('assets/'.length)}`, text)
     }

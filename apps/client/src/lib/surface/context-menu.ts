@@ -35,24 +35,18 @@ export type ContextMenuTarget =
     | TabContextMenuTarget
     | WikilinkContextMenuTarget
     | MisspellingContextMenuTarget
-    | KanbanCardContextMenuTarget
+    | ExtensionContextMenuTarget
 
 /**
- * A card on a [[Kanban Board]] (ADR 0113). The board that raised the menu keeps the moves the
- * index has not confirmed yet, so a row acts through that board, named by `board`, rather than
- * writing to the document itself.
+ * A thing an extension raised the menu on, of a kind it names under its own id, such as a card on
+ * a [[Kanban Board]] (`kanban.card`, ADR 0121). Only the extension's own rows check for its kind,
+ * and the Client's rows never apply to it.
  */
-export interface KanbanCardContextMenuTarget {
-    kind: 'kanban-card'
-    /** The board's own id, as it registered itself. */
-    board: string
-    /** The card's key on that board: its document and line. */
-    card: string
-    /** What the card says, for a row that names it. */
-    label: string
-    /** The lane and section the card is in, so the rows leave out where it already is. */
-    status: 'open' | 'doing' | 'waiting' | 'done' | 'cancelled'
-    priority: 1 | 2 | 3 | null
+export interface ExtensionContextMenuTarget {
+    /** `<extension id>.<name>`. */
+    kind: `${string}.${string}`
+    /** Whatever the extension's own rows need to know about the thing. */
+    [field: string]: unknown
 }
 
 /**
@@ -145,11 +139,6 @@ export interface AssetContextMenuTarget {
 
 /** An asset target that carries the position an edit needs. */
 export type EditableAssetTarget = AssetContextMenuTarget & { line: number; occurrence: number }
-
-/** Narrowing for a row that acts on a document. */
-export function isKanbanCardTarget(target: ContextMenuTarget): target is KanbanCardContextMenuTarget {
-    return target.kind === 'kanban-card'
-}
 
 /**
  * The document kinds, named rather than inferred from what is left: a guard that excluded the

@@ -23,6 +23,7 @@ import type {
     TaskQuery,
 } from '../index-db'
 import type { LinkGraph } from '../index-link-graph'
+import type { MapItemsResult } from '../index-map-items'
 import type { NamedDocument } from '../backlinks/live-index'
 import type { PropertyFilter } from '../search-query'
 import type { EmbeddingRow, PendingPassage, SemanticDocumentGroup, SemanticStatus } from '../semantic/embedding-db'
@@ -34,6 +35,12 @@ export interface IndexDelta {
     candidateUpserts: ConceptCandidate[]
     candidateRemoved: string[]
     backlinkTargetsChanged: string[]
+    /**
+     * A document the delta re-indexed held a place or route before it, or holds one now, so a
+     * Map View on screen has something to read again. False for the typing in documents without
+     * maps that makes up nearly every delta.
+     */
+    mapsChanged: boolean
 }
 
 export type IndexRequest =
@@ -93,6 +100,12 @@ export type IndexRequest =
     | { type: 'link-graph'; id: number }
     /** Every document the index holds, by its names, for reconciling a change to the graph's names. */
     | { type: 'names'; id: number }
+    /**
+     * A [[Map View]]'s places and routes (ADR 0118): every item held in a [[Map Block]] answering
+     * to `concept` by [[Block Concept]], or every one in the graph when it is null
+     * (index-map-items.ts). Asked while a Map View is on screen, never per keystroke.
+     */
+    | { type: 'map-items'; id: number; concept: string | null }
     /**
      * [[Semantic Search]] (ADR 0076). The worker holds the vectors and the scan and knows no
      * model: the caller embeds, both the passages it is handed and the query it asks with, so
@@ -173,6 +186,7 @@ export type IndexResponse =
     | { type: 'tasks'; id: number; hits: TaskHit[]; hasMore: boolean; total: number }
     | { type: 'asset-usage'; id: number; usage: AssetUsage }
     | { type: 'link-graph'; id: number; graph: LinkGraph }
+    | { type: 'map-items'; id: number; result: MapItemsResult }
     | { type: 'names'; id: number; documents: NamedDocument[] }
     | { type: 'semantic-status'; id: number; status: SemanticStatus }
     | { type: 'semantic-pending'; id: number; passages: PendingPassage[] }

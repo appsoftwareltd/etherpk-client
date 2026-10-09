@@ -49,7 +49,7 @@ import {
     thumbGeometry,
     wheelHorizontalDelta,
 } from './code-scroll-core'
-import { renderCompleted, rendererCollapsedStarts, themeTick } from './rendered-common'
+import { collapsedFenceStarts, collapseMayHaveChanged } from './rendered-common'
 
 /** The thumb never shrinks below this, so a very long line still leaves something to grab. */
 const MIN_THUMB_PX = 24
@@ -73,7 +73,7 @@ interface ScrollableBlock {
 }
 
 function scrollableBlocks(state: EditorState): ScrollableBlock[] {
-    const collapsed = rendererCollapsedStarts(state)
+    const collapsed = collapsedFenceStarts(state)
     const out: ScrollableBlock[] = []
     for (const block of visibleFencedBlocks(state)) {
         // A block collapsed to its rendered widget shows no lines to scroll (ADR 0022).
@@ -220,9 +220,10 @@ const barsField = StateField.define<DecorationSet>({
     create: buildBars,
     update(decos, tr) {
         const overflowChanged = tr.startState.field(overflowingField) !== tr.state.field(overflowingField)
-        // themeTick / renderCompleted change which blocks are collapsed to a rendered widget, and
-        // the block scan is caret-aware (a half-typed fence), so a selection change can move a bar.
-        const ticked = tr.effects.some((e) => e.is(themeTick) || e.is(renderCompleted))
+        // A theme switch, a landed render or a fence widget coming or going changes which blocks are
+        // collapsed to a widget, and the block scan is caret-aware (a half-typed fence), so a
+        // selection change can move a bar.
+        const ticked = collapseMayHaveChanged(tr)
         if (tr.docChanged || tr.selection || overflowChanged || ticked) return buildBars(tr.state)
         return decos
     },
@@ -395,7 +396,7 @@ const containersPlugin = ViewPlugin.fromClass(
             this.decorations = buildContainers(view)
         }
         update(update: ViewUpdate) {
-            const ticked = update.transactions.some((tr) => tr.effects.some((e) => e.is(themeTick) || e.is(renderCompleted)))
+            const ticked = update.transactions.some(collapseMayHaveChanged)
             if (update.docChanged || update.viewportChanged || update.selectionSet || ticked) {
                 this.decorations = buildContainers(update.view)
             }
@@ -423,7 +424,7 @@ class CodeScrollController {
             this.blocks.clear()
             for (const [opener, metrics] of moved) this.blocks.set(opener, metrics)
         }
-        const ticked = update.transactions.some((tr) => tr.effects.some((e) => e.is(themeTick) || e.is(renderCompleted)))
+        const ticked = update.transactions.some(collapseMayHaveChanged)
         // Typing and the cursor commands ask for the caret to be shown; a click never needs it.
         if (update.transactions.some((tr) => tr.scrollIntoView)) this.revealPending = true
         const overflowChanged = update.startState.field(overflowingField) !== update.state.field(overflowingField)

@@ -50,6 +50,15 @@ export interface PinnedIdentity {
     verified: boolean
 }
 
+/**
+ * One of the person's settings as the vault keeps it (ADR 0134): its value, or null once cleared,
+ * and when it was changed, in milliseconds since 1970, which decides between two devices.
+ */
+export interface VaultSetting {
+    value: string | null
+    changedAt: number
+}
+
 export interface KeyVault {
     identityPrivateKey: Uint8Array
     identityPublicKey: Uint8Array
@@ -73,6 +82,11 @@ export interface KeyVault {
     protection?: Record<string, ProtectionRecord>
     /** Pinned Identities by account id (ADR 0126). */
     pins?: Record<string, PinnedIdentity>
+    /**
+     * The person's settings by key (ADR 0134), Extension Settings among them, so they follow the
+     * person to every device of the account. Written back as read, like the pins.
+     */
+    settings?: Record<string, VaultSetting>
     /** Top-level fields this version does not know, written back unchanged. */
     otherFields?: Record<string, unknown>
 }
@@ -93,6 +107,7 @@ const KNOWN_FIELDS = [
     'keyrings',
     'protection',
     'pins',
+    'settings',
 ] as const
 
 interface VaultJson {
@@ -105,6 +120,7 @@ interface VaultJson {
     /** Absent in every vault written before protection existed — read as "no protected graphs". */
     protection?: Record<string, ProtectionRecord>
     pins?: Record<string, PinnedIdentity>
+    settings?: Record<string, VaultSetting>
 }
 
 export interface EncryptedVault {
@@ -134,6 +150,7 @@ async function sealContent(vault: KeyVault, vaultKey: Uint8Array): Promise<Uint8
         // Omitted when empty, so a vault holding no protected graph or pin says nothing about them.
         ...(nonEmpty(vault.protection) ? { protection: vault.protection } : {}),
         ...(nonEmpty(vault.pins) ? { pins: vault.pins } : {}),
+        ...(nonEmpty(vault.settings) ? { settings: vault.settings } : {}),
     }
     // Known fields are written last, so an unknown field can never shadow one.
     const content = { ...vault.otherFields, ...json }
@@ -156,6 +173,7 @@ async function openContent(envelope: Uint8Array, vaultKey: Uint8Array, aad: Uint
         keyrings: deserializeKeyrings(utf8(content.keyrings)),
         ...(content.protection ? { protection: content.protection } : {}),
         ...(content.pins ? { pins: content.pins } : {}),
+        ...(content.settings ? { settings: content.settings } : {}),
         ...(Object.keys(otherFields).length > 0 ? { otherFields } : {}),
     }
 }

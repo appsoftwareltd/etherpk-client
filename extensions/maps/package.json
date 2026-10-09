@@ -1,0 +1,72 @@
+{
+    "name": "@appsoftwareltd/etherpk-extension-maps",
+    "version": "0.9.3",
+    "license": "Elastic-2.0",
+    "description": "Maps in any document: places and routes kept as lines of text, and a map of every place that belongs to a concept, or to the whole graph.",
+    "private": true,
+    "type": "module",
+    "exports": {
+        "./picture": {
+            "types": "./src/picture.ts",
+            "default": "./src/picture.ts"
+        },
+        "./package.json": "./package.json"
+    },
+    "etherpk": {
+        "id": "maps",
+        "displayName": "Maps",
+        "publisher": "App Software",
+        "main": "./src/extension.ts",
+        "icons": {
+            "map": "<path d=\"M2.5 4.2 6 2.7l4 1.6 3.5-1.5v9l-3.5 1.5-4-1.6-3.5 1.5z\"/><path d=\"M6 2.7v9M10 4.3v9\"/>",
+            "route": "<circle cx=\"3.8\" cy=\"12.2\" r=\"1.5\"/><circle cx=\"12.2\" cy=\"3.8\" r=\"1.5\"/><path d=\"M5.2 11.5c3.5-1 1.3-5.4 5.6-7\"/>",
+            "layers": "<path d=\"M8 2.8 13.6 6 8 9.2 2.4 6z\"/><path d=\"M2.4 9.4 8 12.6l5.6-3.2\"/>"
+        },
+        "views": [
+            {
+                "kind": "maps.map",
+                "title": "Map: {target}",
+                "icon": "map",
+                "region": "main",
+                "address": {
+                    "segment": "m",
+                    "target": "concept"
+                }
+            },
+            {
+                "kind": "maps.whole",
+                "target": "whole",
+                "title": "Graph Map View",
+                "icon": "map",
+                "region": "main",
+                "address": {
+                    "segment": "map"
+                }
+            }
+        ],
+        "settings": [
+            {
+                "id": "mapbox-token",
+                "type": "secret",
+                "title": "Mapbox access token",
+                "description": "With your own Mapbox token, maps are drawn over Mapbox's street map, with a switch to satellite imagery. It needs a Mapbox account with a payment card, and a public token restricted to EtherPK's address. You are responsible for following Mapbox's terms when you use it.",
+                "placeholder": "pk.eyJ1Ijoi…",
+                "link": {
+                    "title": "Setting up Mapbox",
+                    "url": "https://docs.etherpk.com/maps#use-your-own-mapbox-token"
+                }
+            }
+        ]
+    },
+    "dependencies": {
+        "@appsoftwareltd/etherpk-extension-api": "workspace:*",
+        "@appsoftwareltd/etherpk-shared": "workspace:*",
+        "maplibre-gl": "6.11.2",
+        "svelte": "^5.57.1"
+    },
+    "devDependencies": {
+        "@codemirror/state": "^6.6.0",
+        "@codemirror/view": "^6.43.0",
+        "vitest": "^4.1.4"
+    }
+}

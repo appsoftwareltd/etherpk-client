@@ -71,6 +71,35 @@ describe('contribution registry', () => {
         off() // must not remove the newer value
         expect(reg.get('command-menu', 'x')).toBe(2)
     })
+
+    // What reads a kind once and keeps the answer, an editor drawing interactive fences, hears when
+    // the kind changes, as an extension starts or stops (ADR 0121).
+    it('tells a listener of a kind each time one of its contributions comes or goes, and no other', () => {
+        const reg = createContributionRegistry()
+        const heard: string[] = []
+        const stop = reg.subscribe('interactive-fence', () => heard.push('fence'))
+        const off = reg.register('interactive-fence', 'map', 1)
+        reg.register('command-menu', 'x', 1)
+        off()
+        reg.register('interactive-fence', 'map', 2)
+        reg.unregister('interactive-fence', 'map')
+        reg.unregister('interactive-fence', 'map') // nothing left to withdraw
+        expect(heard).toEqual(['fence', 'fence', 'fence', 'fence'])
+        stop()
+        reg.register('interactive-fence', 'map', 3)
+        expect(heard).toHaveLength(4)
+    })
+
+    it('does not tell a listener of an unregister fn that finds its value replaced', () => {
+        const reg = createContributionRegistry()
+        const off = reg.register('interactive-fence', 'map', 1)
+        reg.unregister('interactive-fence', 'map')
+        reg.register('interactive-fence', 'map', 2)
+        const heard: number[] = []
+        reg.subscribe('interactive-fence', () => heard.push(1))
+        off()
+        expect(heard).toEqual([])
+    })
 })
 
 describe('command-menu helpers', () => {

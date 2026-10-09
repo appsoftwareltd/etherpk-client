@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url'
 // config loader before Vite resolves workspace packages, and cspDirectives reads app.html
 // from disk, so it must stay a Node-only module out of the browser barrel.
 import { cspDirectives } from '../../packages/shared/src/security/csp.ts'
+import { compiledInExtensionFolders } from './compiled-in-extensions.ts'
 import { CLIENT_TRUSTED_TYPES_POLICIES } from './src/lib/security/trusted-types-policies.ts'
 
 const appHtmlPath = fileURLToPath(new URL('./src/app.html', import.meta.url))
@@ -37,6 +38,16 @@ const config: Config = {
                 trustedTypesPolicies: CLIENT_TRUSTED_TYPES_POLICIES,
                 reportUri: '/api/csp-report',
             }),
+        },
+        typescript: {
+            // The compiled-in Built-in Extensions are type-checked with the Client, as its own
+            // code is (ADR 0121): they compile with it, and the Client reaches them only through a
+            // glob, which the type checker does not follow. Paths are relative to .svelte-kit.
+            config(tsconfig) {
+                for (const folder of compiledInExtensionFolders()) {
+                    tsconfig.include.push(`../../../extensions/${folder}/src/**/*.ts`, `../../../extensions/${folder}/src/**/*.svelte`)
+                }
+            },
         },
         version: {
             // Assets are content-hashed by the build already; this closes the OTHER

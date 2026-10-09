@@ -24,6 +24,8 @@ import {
     deleteCharForward,
     deleteGroupBackward,
     deleteGroupForward,
+    indentLess,
+    indentMore,
     insertBlankLine,
     insertNewlineAndIndent,
     moveLineDown,
@@ -122,6 +124,9 @@ const DEFAULT_KEY_HANDLERS: Record<string, StateCommand> = {
     'Mod-Delete': stateOnly(deleteGroupForward),
     'Alt-ArrowUp': stateOnly(moveLineUp),
     'Alt-ArrowDown': stateOnly(moveLineDown),
+    // CodeMirror's indent of the caret's lines, which the outliner leaves bound.
+    'Mod-]': indentMore,
+    'Mod-[': indentLess,
     'Mod-z': undo,
     'Mod-y': redo,
     // CodeMirror's own, which the frontmatter's select-all declines to in a document with no block.

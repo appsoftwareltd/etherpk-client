@@ -31,6 +31,15 @@ export interface CommandMenuContext {
     fileLinkOnLine?: boolean
     /** The caret's line is a [[Task]] outside a [[Protected Document]] (gates Copy task reference). Absent reads as false. */
     taskOnLine?: boolean
+    /** The document is a [[Protected Document]], locked or not (hides `/map`: no map is drawn in one, ADR 0118). Absent reads as false. */
+    protectedDocument?: boolean
+    /**
+     * The concepts a View about one concept can be opened for from the caret, nearest first: the
+     * caret line's links, the links above it in the outline, the document's own concept, then the
+     * scopes in its name (`caret-concepts.ts`). Names are as written, an alias as the alias.
+     * Worked out only when a row reads it. Absent reads as none.
+     */
+    readonly conceptsAtCaret?: readonly string[]
 }
 
 /** One Command Menu row. `command` is the Command id selecting the row executes. */
@@ -39,8 +48,11 @@ export interface CommandMenuItem {
     id: string
     /** Shown in the menu and matched against the typed query. */
     title: string
-    /** Secondary, right-aligned hint (e.g. `Insert [[2026-06-25]]`). */
-    detail?: string
+    /**
+     * Secondary, right-aligned hint (e.g. `Insert [[2026-06-25]]`), or a function that works it out
+     * from the editor the menu opened in each time it opens (`/kanban`'s "For Garden").
+     */
+    detail?: string | ((ctx: CommandMenuContext) => string | undefined)
     /** Icon name resolved to an SVG by the popover (unknown ⇒ a default glyph). */
     icon?: string
     /** Section label (e.g. `Date`, `Table`). */
@@ -76,6 +88,19 @@ export function commandMenuItemsInOrder(registry: ContributionRegistry): Command
         .list(COMMAND_MENU_KIND)
         .map((e) => e.value as CommandMenuItem)
         .sort((a, b) => menuOrder(a) - menuOrder(b))
+}
+
+/**
+ * A row's help text in `ctx`: the row's own, or what its function works out. A function that throws
+ * gives none, so one row never takes the menu down.
+ */
+export function commandMenuDetail(item: CommandMenuItem, ctx: CommandMenuContext): string | undefined {
+    if (typeof item.detail !== 'function') return item.detail
+    try {
+        return item.detail(ctx)
+    } catch {
+        return undefined
+    }
 }
 
 /** Every registered item in menu order, filtered to those applicable in `ctx`. */

@@ -12,6 +12,7 @@
 import MarkdownIt, { type Token } from 'markdown-it'
 
 import { isSafeAssetName } from '../../../storage/fs/asset-names'
+import { MAP_FENCE_INFO, readMapBody } from '../../map-text'
 import { displayMaxWidth, parseImageDisplaySizeHint } from '../../view/augmentations/image-display-size'
 import { publishSlug } from '../../wikilink/derive'
 import { listItemEndRule } from './list-item-end-rule'
@@ -28,6 +29,30 @@ export interface RendererOptions {
     mermaidSvg?(source: string): string | undefined
     /** Pre-highlighted HTML (the `<code>` element's inner HTML) for a fence, when the host could highlight it. */
     highlighted?(lang: string, code: string): string | undefined
+    /**
+     * The picture the host drew of a Map Block, by its fence's body, written into the site beside
+     * the pages. A Map Block is published as its picture or not at all, never as its lines, which
+     * hold where each place is (ADR 0118).
+     */
+    mapPicture?(source: string): MapPictureRef | undefined
+}
+
+/** A drawn Map Block, as a page shows it. */
+export interface MapPictureRef {
+    /** The picture's site-relative address. */
+    src: string
+    /** What is on the map, by name and never by where (`mapAltText`). */
+    alt: string
+    width: number
+    height: number
+}
+
+/** The names on a Map Block, one line for the search index and the excerpt; never its coordinates. */
+function mapNames(source: string): string {
+    return readMapBody(source.split('\n'))
+        .items.map((item) => item.name)
+        .filter((name) => name !== '')
+        .join(', ')
 }
 
 export interface TocItem {
@@ -111,7 +136,11 @@ function plainText(tokens: readonly Token[]): string {
             }
             if (line.trim() !== '') lines.push(line.trim())
         } else if (token.type === 'fence' || token.type === 'code_block') {
-            if (token.info.trim() !== 'mermaid' && token.info.trim() !== 'math') lines.push(token.content.trim())
+            const info = token.info.trim().split(/\s+/)[0] ?? ''
+            if (info === MAP_FENCE_INFO) {
+                const names = mapNames(token.content)
+                if (names !== '') lines.push(names)
+            } else if (info !== 'mermaid' && info !== 'math') lines.push(token.content.trim())
         }
     }
     return lines.join('\n')
@@ -191,6 +220,13 @@ export function createDocumentRenderer(options: RendererOptions): DocumentRender
             return `<div class="math math-block">${renderMath(code.replace(/\n$/, ''), true)}</div>\n`
         }
         if (lang === 'etherpk-cipher') return '' // never reached: such a document is excluded before rendering
+        if (lang === MAP_FENCE_INFO) {
+            // The publisher stops before rendering a page whose map it could not draw, so a map
+            // without a picture here is one no host was asked for: it is left out, never printed.
+            const picture = options.mapPicture?.(code)
+            if (!picture) return ''
+            return `<figure class="map"><img src="${escapeHtml(picture.src)}" alt="${escapeHtml(picture.alt)}" width="${picture.width}" height="${picture.height}" loading="lazy"></figure>\n`
+        }
         const highlighted = options.highlighted?.(lang, code)
         const cls = lang === '' ? '' : ` class="language-${escapeHtml(lang)}"`
         const inner = highlighted ?? escapeHtml(code)

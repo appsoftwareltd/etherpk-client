@@ -55,6 +55,19 @@ describe('APP_KEYBINDINGS', () => {
         expect(spell.map((b) => [b.command, b.group])).toEqual([['editor.toggleSpellCheck', 'Editor']])
     })
 
+    it('zooms the document text on Alt+= and Alt+-, listed under Editor, leaving Ctrl with + and - to the browser', () => {
+        // Ctrl+wheel was the zoom until 2026-10-09, and a map in a document takes Ctrl+wheel for its own.
+        const zoom = APP_KEYBINDINGS.filter((b) => b.command.startsWith('editor.zoom'))
+        expect(zoom.map((b) => [b.key, b.command, b.group])).toEqual([
+            ['Alt+=', 'editor.zoomIn', 'Editor'],
+            ['Alt+-', 'editor.zoomOut', 'Editor'],
+        ])
+        const key = (k: string) => ({ key: k, altKey: true, ctrlKey: false, metaKey: false, shiftKey: false })
+        expect(eventMatches('Alt+=', key('='))).toBe(true)
+        expect(eventMatches('Alt+-', key('-'))).toBe(true)
+        expect(eventMatches('Alt+=', { ...key('='), altKey: false, ctrlKey: true })).toBe(false)
+    })
+
     it('has a chord that opens the card itself', () => {
         expect(APP_KEYBINDINGS.some((b) => b.command === 'help.openShortcuts')).toBe(true)
     })

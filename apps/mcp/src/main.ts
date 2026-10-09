@@ -157,9 +157,9 @@ const USAGE = `etherpk-mcp - EtherPK Headless Client (an MCP server over one syn
       removed - everything else in it is left alone. Publishing writes files - deploying them
       (a git push, say) is yours. Run it from cron for a site that republishes itself.
   ${CMD} diagrams setup
-      Let a publish draw Mermaid diagrams. Downloads a Chromium (about 170 MB) into the cache
-      directory with Playwright's installer, once per computer - a publish whose pages hold
-      diagrams refuses until this has run. Set ETHERPK_CHROMIUM=<path> to use a browser
+      Let a publish draw Mermaid diagrams and maps. Downloads a Chromium (about 170 MB) into the
+      cache directory with Playwright's installer, once per computer - a publish whose pages hold
+      diagrams or maps refuses until this has run. Set ETHERPK_CHROMIUM=<path> to use a browser
       already on this machine instead (NixOS needs this).
   ${CMD} diagrams status
       Which browser a publish would use, if any.
@@ -575,7 +575,7 @@ async function diagramsCommand(what: string | undefined): Promise<void> {
             return
         case 'status': {
             const status = await chromiumStatus(process.env, CMD)
-            if (status.executable) console.log(`Chromium: ${status.executable} (${status.source === 'env' ? 'from ETHERPK_CHROMIUM' : 'installed by diagrams setup'}). A publish can draw Mermaid diagrams.`)
+            if (status.executable) console.log(`Chromium: ${status.executable} (${status.source === 'env' ? 'from ETHERPK_CHROMIUM' : 'installed by diagrams setup'}). A publish can draw Mermaid diagrams and maps.`)
             else console.log(status.source === 'env' ? `ETHERPK_CHROMIUM is set but names no file: ${process.env.ETHERPK_CHROMIUM}` : `No browser is set up. Run: ${status.setupCommand}`)
             return
         }
@@ -895,10 +895,11 @@ async function hostCommand(args: ServeArgs & { name?: string }): Promise<void> {
     // A hangup is meant for a terminal, and this process has none.
     process.on('SIGHUP', () => {})
     // Said once at start, so the first a person hears of the browser is not a refused publish: a
-    // publication with Mermaid diagrams cannot be published or previewed without one (ADR 0084).
+    // publication with Mermaid diagrams or maps cannot be published without one, nor one with
+    // diagrams previewed (ADR 0084, ADR 0118).
     void chromiumStatus(process.env, CMD).then((chromium) => {
         if (chromium.executable) return
-        console.error(`etherpk-mcp: no browser for diagrams (run: ${chromium.setupCommand}, or set ETHERPK_CHROMIUM) - a publish or theme preview with Mermaid diagrams refuses until then.`)
+        console.error(`etherpk-mcp: no browser for diagrams or maps (run: ${chromium.setupCommand}, or set ETHERPK_CHROMIUM) - a publish with Mermaid diagrams or maps, or a theme preview with diagrams, refuses until then.`)
     })
 }
 

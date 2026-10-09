@@ -55,6 +55,7 @@ describe('editor feature stack', () => {
             'frontmatter-assist',
             'protected-fence',
             'fence-render',
+            'interactive-fence',
             'math-inline',
             'image-embed',
             'asset-link',

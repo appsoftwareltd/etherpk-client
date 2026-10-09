@@ -1,13 +1,14 @@
 /**
  * The publisher's environment in the browser (ADR 0082): Mermaid pre-rendered by the app's own
  * renderer (so a diagram on the site is drawn by the same version that draws it in the editor),
- * KaTeX's stylesheet and fonts fetched from the app's own bundle to be copied into the site,
- * and themes fetched over the network. Browser-only; the Headless Client has its own.
+ * a Map Block drawn as a picture by whatever extension contributed one (ADR 0118, ADR 0121), KaTeX's stylesheet and fonts fetched from the app's own bundle to be copied into the
+ * site, and themes fetched over the network. Browser-only; the Headless Client has its own.
  */
 
 import katexCss from 'katex/dist/katex.min.css?raw'
 
 import { mermaidRenderer } from '../../view/augmentations/renderers/mermaid-renderer'
+import type { MapPictureRenderer } from '../map-picture-renderer'
 import type { PublishEnvironment } from '../publish'
 import type { GraphTheme } from '../theme/graph-theme'
 import { createThemeLoader } from '../theme/sources'
@@ -62,6 +63,11 @@ async function katexAssets(): Promise<Map<string, string | Uint8Array>> {
 export interface BrowserEnvironmentDeps {
     /** The graph's theme container lookup. */
     graphTheme(id: string): Promise<GraphTheme | null>
+    /**
+     * What draws a Map Block as a picture, read as a publish needs one: the renderer an extension
+     * contributed (`map-picture-renderer.ts`), or undefined when none did.
+     */
+    mapPicture?(): MapPictureRenderer | undefined
 }
 
 export function createBrowserPublishEnvironment(deps: BrowserEnvironmentDeps): PublishEnvironment {
@@ -77,6 +83,12 @@ export function createBrowserPublishEnvironment(deps: BrowserEnvironmentDeps): P
             // renames it to one unique on the page (publish/diagram-id.ts).
             svg.setAttribute('role', 'img')
             return svg.outerHTML
+        },
+        async renderMap(source) {
+            const draw = deps.mapPicture?.()
+            // A browser can draw maps, so the publish is told why this one did not, and what to do.
+            if (!draw) throw new Error('no extension on this device draws maps. Check that Maps is switched on under Settings > Extensions')
+            return draw(source)
         },
         katexAssets,
     }

@@ -93,7 +93,16 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # The builder's own image and the Dockerfile's base image come through Google's mirror of
+      # Docker Hub, which serves the same images by digest: Docker Hub refuses anonymous pulls once
+      # GitHub's shared runner addresses reach its limit. BuildKit asks Docker Hub when the mirror
+      # lacks an image.
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        with:
+          driver-opts: image=mirror.gcr.io/moby/buildkit:buildx-stable-1
+          buildkitd-config-inline: |
+            [registry."docker.io"]
+              mirrors = ["mirror.gcr.io"]
       - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         if: env.PUSH == 'true'
         with:
@@ -131,8 +140,10 @@ jobs:
   # Publishing is two jobs so that no dependency code runs where an npm credential can be minted:
   # npm-pack installs and builds with read access only, and npm-publish, which holds the OIDC
   # permission, has no checkout and no install; it publishes the tarball npm-pack produced.
+  # Two packages ship at the Client's version: the Headless Client and the Extension API (ADR 0120).
+  # Each is packed only when npm does not have that version yet.
   npm-pack:
-    name: Pack the Headless Client
+    name: Pack the Headless Client and the Extension API
     needs: [verify, version]
     if: needs.version.outputs.release == 'true'
     runs-on: ubuntu-latest
@@ -147,12 +158,18 @@ jobs:
         id: registry
         run: |
           set -euo pipefail
-          if npm view "@appsoftwareltd/etherpk-mcp@${VERSION}" version >/dev/null 2>&1; then
-            echo "@appsoftwareltd/etherpk-mcp@${VERSION} is already on npm"
-            echo "publish=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "publish=true" >> "$GITHUB_OUTPUT"
-          fi
+          folders=""
+          for entry in "@appsoftwareltd/etherpk-mcp apps/mcp" "@appsoftwareltd/etherpk-extension-api packages/extension-api"; do
+            name="${entry%% *}"
+            folder="${entry#* }"
+            if npm view "${name}@${VERSION}" version >/dev/null 2>&1; then
+              echo "${name}@${VERSION} is already on npm"
+            else
+              folders="${folders} ${folder}"
+            fi
+          done
+          echo "folders=${folders# }" >> "$GITHUB_OUTPUT"
+          if [ -n "${folders}" ]; then echo "publish=true" >> "$GITHUB_OUTPUT"; else echo "publish=false" >> "$GITHUB_OUTPUT"; fi
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: steps.registry.outputs.publish == 'true'
         with:
@@ -166,20 +183,27 @@ jobs:
           cache: pnpm
       - if: steps.registry.outputs.publish == 'true'
         run: pnpm install --frozen-lockfile
-      # pnpm packs: prepack builds the bundle and pnpm rewrites the workspace: ranges.
+      # pnpm packs: prepack builds each package, pnpm rewrites the workspace: ranges, and the
+      # Extension API's publishConfig points its exports at the built files.
       - name: Pack
         if: steps.registry.outputs.publish == 'true'
-        run: cd apps/mcp && pnpm pack --pack-destination "$RUNNER_TEMP/npm"
+        env:
+          FOLDERS: ${{ steps.registry.outputs.folders }}
+        run: |
+          set -euo pipefail
+          for folder in ${FOLDERS}; do
+            (cd "$folder" && pnpm pack --pack-destination "$RUNNER_TEMP/npm")
+          done
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: steps.registry.outputs.publish == 'true'
         with:
           name: npm-package
-          path: ${{ runner.temp }}/npm/appsoftwareltd-etherpk-mcp-${{ needs.version.outputs.version }}.tgz
+          path: ${{ runner.temp }}/npm/*.tgz
           if-no-files-found: error
           retention-days: 7
 
   npm-publish:
-    name: Publish the Headless Client to npm
+    name: Publish the Headless Client and the Extension API to npm
     needs: [version, npm-pack]
     if: needs.npm-pack.outputs.publish == 'true'
     runs-on: ubuntu-latest
@@ -204,7 +228,12 @@ jobs:
       # Trusted publishing needs npm 11.5.1 or later. Pinned exactly, so the publish does not depend on
       # the npm version the runner's Node ships.
       - run: npm install -g npm@11.20.0
-      - run: npm publish "$RUNNER_TEMP/npm/appsoftwareltd-etherpk-mcp-${VERSION}.tgz" --access public
+      # Each tarball npm-pack made: a package npm already had at this version was never packed.
+      - run: |
+          set -euo pipefail
+          for tarball in "$RUNNER_TEMP"/npm/*.tgz; do
+            npm publish "$tarball" --access public
+          done
 
   release:
     name: Tag and GitHub Release with the Node bundle

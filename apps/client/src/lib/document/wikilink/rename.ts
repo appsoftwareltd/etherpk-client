@@ -177,3 +177,14 @@ export function cascadeFor(
     }
     return out
 }
+
+/**
+ * The name a concept has after `from` became `to`: `to` for the concept itself, whatever the
+ * case it was written in, and the rewritten name for one `from` scopes (ADR 0083). Undefined for
+ * a concept the move leaves alone. What a View about a concept, or state an extension keeps under
+ * one, follows through a rename (workspace/document-mutations.ts, the Kanban Board's boards).
+ */
+export function movedConcept(concept: string, from: string, to: string): string | undefined {
+    if (concept.toLowerCase() === from.toLowerCase()) return to
+    return cascadeFor([concept], from, to)[0]?.to
+}

@@ -8,6 +8,7 @@ import {
     pinnedRevealField,
     pinnedRevealLine,
     rangeRevealed,
+    rangeTouches,
     revealInputsChanged,
     revealedLines,
 } from './reveal-policy'
@@ -43,6 +44,13 @@ describe('range-kind reveal', () => {
     it('counts an overlapping selection', () => {
         expect(rangeRevealed(state('x $a$ y', 0, 3), 2, 5)).toBe(true)
         expect(rangeRevealed(state('x $a$ y', 0, 1), 2, 5)).toBe(false)
+    })
+
+    it('answers for one range, or for a caret before it is placed, by the same rule', () => {
+        expect(rangeTouches({ from: 2, to: 2 }, 2, 5)).toBe(true)
+        expect(rangeTouches({ from: 5, to: 5 }, 2, 5)).toBe(true)
+        expect(rangeTouches({ from: 6, to: 6 }, 2, 5)).toBe(false)
+        expect(rangeTouches({ from: 0, to: 3 }, 2, 5)).toBe(true)
     })
 })
 

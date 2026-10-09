@@ -11,9 +11,13 @@
     import Modal from "@appsoftwareltd/etherpk-shared/dialog";
     import { formatChord, isApplePlatform } from "$lib/surface";
 
-    import { APP_KEYBINDINGS, APP_SHORTCUT_GROUPS, EDITOR_SHORTCUTS, type AppShortcutGroup } from "./keyboard-shortcuts";
+    import { APP_KEYBINDINGS, APP_SHORTCUT_GROUPS, EDITOR_SHORTCUTS, type AppShortcutGroup, type ShortcutBinding } from "./keyboard-shortcuts";
 
-    let { onclose }: { onclose: () => void } = $props();
+    /**
+     * `bindings` is the live table the window listens with, which holds the chords extensions add
+     * as they start (ADR 0121) beside the app's own.
+     */
+    let { onclose, bindings = APP_KEYBINDINGS }: { onclose: () => void; bindings?: readonly ShortcutBinding[] } = $props();
 
     const apple = isApplePlatform();
 
@@ -32,17 +36,29 @@
         Help: "",
     };
 
-    /** App rows by section, each section's rows grouped by command in first-appearance order. */
-    const appGroups = APP_SHORTCUT_GROUPS.map((group) => {
-        const byCommand = new Map<string, Row>();
-        for (const binding of APP_KEYBINDINGS) {
-            if (binding.group !== group) continue;
-            const row = byCommand.get(binding.command) ?? { label: binding.label, chords: [] };
-            row.chords.push(formatChord(binding.key, apple));
-            byCommand.set(binding.command, row);
-        }
-        return { title: group, note: APP_GROUP_NOTES[group], rows: [...byCommand.values()] };
-    }).filter((group) => group.rows.length > 0);
+    /**
+     * App rows by section, each section's rows grouped by command in first-appearance order. An
+     * extension's chord joins the section it names, or one of its own after the app's when the
+     * card has no such section, or "Extensions" when it names none.
+     */
+    const appGroups = $derived.by(() => {
+        const sectionOf = (binding: ShortcutBinding) => binding.group ?? "Extensions";
+        const titles: string[] = [...APP_SHORTCUT_GROUPS];
+        for (const binding of bindings) if (!titles.includes(sectionOf(binding))) titles.push(sectionOf(binding));
+        return titles
+            .map((title) => {
+                const byCommand = new Map<string, Row>();
+                for (const binding of bindings) {
+                    if (sectionOf(binding) !== title) continue;
+                    const row = byCommand.get(binding.command) ?? { label: binding.label, chords: [] };
+                    row.chords.push(formatChord(binding.key, apple));
+                    byCommand.set(binding.command, row);
+                }
+                const note = (APP_GROUP_NOTES as Record<string, string>)[title] ?? "";
+                return { title, note, rows: [...byCommand.values()] };
+            })
+            .filter((group) => group.rows.length > 0);
+    });
 
     const editorGroups = EDITOR_SHORTCUTS.map((group) => ({
         ...group,

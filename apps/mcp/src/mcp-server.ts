@@ -484,7 +484,7 @@ export function createMcpServer(source: HeadlessGraph | Promise<HeadlessGraph> |
         'publish',
         {
             title: 'Publish',
-            description: 'Render a publication to its publish folder on this machine and return the report: what was included and why documents were left out, missing links, assets, warnings. The folder is the one the user set with "etherpk-mcp publish --publication <id> --out <dir>" (error "no_publish_folder" until then - the tool never chooses a folder). Pages with Mermaid diagrams need the browser from "diagrams setup" (error "chromium_unavailable"). The report is this result, trimmed to counts and first entries - nothing of it is written into the folder, so the site never names the documents it leaves out. Publishing writes files - it does not deploy them.',
+            description: 'Render a publication to its publish folder on this machine and return the report: what was included and why documents were left out, missing links, assets, warnings. The folder is the one the user set with "etherpk-mcp publish --publication <id> --out <dir>" (error "no_publish_folder" until then - the tool never chooses a folder). Pages with Mermaid diagrams or maps need the browser from "diagrams setup" (error "chromium_unavailable"). The report is this result, trimmed to counts and first entries - nothing of it is written into the folder, so the site never names the documents it leaves out. Publishing writes files - it does not deploy them.',
             inputSchema: { id: z.string().min(1) },
         },
         async (args) => run((graph) => publish(graph, args, host)),

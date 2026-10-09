@@ -97,3 +97,71 @@ describe('pinned tabs in the persisted shape', () => {
         expect(views.every((v) => v.pinned === undefined)).toBe(true)
     })
 })
+
+// The Kanban Board's View kind became `kanban.board` when it moved into an extension package,
+// whose kinds sit under its id (ADR 0113's amendment, ADR 0121). A Layout saved before keeps its
+// open boards: the kind is renamed once, as the Layout is read, in the model and in dockview's
+// own geometry alike.
+describe('a View kind renamed since the Layout was saved', () => {
+    const saved = (): unknown => ({
+        version: LAYOUT_VERSION,
+        model: {
+            regions: {
+                main: {
+                    panes: [
+                        {
+                            id: 'main-1',
+                            views: [
+                                { panelId: 'document:Notes', view: { kind: 'document', target: 'Notes' } },
+                                { panelId: 'kanban:Acme', view: { kind: 'kanban', target: 'Acme' }, pinned: true },
+                                { panelId: 'kanban:Acme::2', view: { kind: 'kanban', target: 'Acme' } },
+                            ],
+                            activePanelId: 'kanban:Acme',
+                        },
+                    ],
+                    collapsed: false,
+                },
+                'left-sidebar': { panes: [], collapsed: false },
+                'right-sidebar': { panes: [], collapsed: true },
+            },
+            activePanelId: 'kanban:Acme::2',
+        },
+        renderer: {
+            grid: { root: { type: 'branch', data: [{ type: 'leaf', data: { views: ['document:Notes', 'kanban:Acme', 'kanban:Acme::2'], activeView: 'kanban:Acme', id: '1' } }] } },
+            panels: {
+                'document:Notes': { id: 'document:Notes', contentComponent: 'view', params: { kind: 'document', target: 'Notes' } },
+                'kanban:Acme': { id: 'kanban:Acme', contentComponent: 'view', params: { kind: 'kanban', target: 'Acme' }, title: 'Kanban: Acme' },
+                'kanban:Acme::2': { id: 'kanban:Acme::2', contentComponent: 'view', params: { kind: 'kanban', target: 'Acme' } },
+            },
+            activeGroup: '1',
+        },
+    })
+
+    it('renames the kind, its panel ids and every reference to them, in the model', () => {
+        const layout = parseSerializedLayout(saved())!
+        const pane = layout.model.regions.main.panes[0]
+        expect(pane.views).toEqual([
+            { panelId: 'document:Notes', view: { kind: 'document', target: 'Notes' } },
+            { panelId: 'kanban.board:Acme', view: { kind: 'kanban.board', target: 'Acme' }, pinned: true },
+            { panelId: 'kanban.board:Acme::2', view: { kind: 'kanban.board', target: 'Acme' } },
+        ])
+        expect(pane.activePanelId).toBe('kanban.board:Acme')
+        expect(layout.model.activePanelId).toBe('kanban.board:Acme::2')
+    })
+
+    it("renames them in dockview's geometry too, so the arrangement survives", () => {
+        const renderer = parseSerializedLayout(saved())!.renderer as {
+            grid: { root: { data: { data: { views: string[]; activeView: string } }[] } }
+            panels: Record<string, { id: string; params: { kind: string; target: string }; title?: string }>
+        }
+        expect(renderer.grid.root.data[0].data.views).toEqual(['document:Notes', 'kanban.board:Acme', 'kanban.board:Acme::2'])
+        expect(renderer.grid.root.data[0].data.activeView).toBe('kanban.board:Acme')
+        expect(Object.keys(renderer.panels)).toEqual(['document:Notes', 'kanban.board:Acme', 'kanban.board:Acme::2'])
+        expect(renderer.panels['kanban.board:Acme']).toEqual({ id: 'kanban.board:Acme', contentComponent: 'view', params: { kind: 'kanban.board', target: 'Acme' }, title: 'Kanban: Acme' })
+    })
+
+    it('leaves a Layout with no renamed kind exactly as it was', () => {
+        const layout = defaultLayout({ journalTarget: '2026-10-02' })
+        expect(parseSerializedLayout(JSON.parse(JSON.stringify(layout)))).toEqual(layout)
+    })
+})

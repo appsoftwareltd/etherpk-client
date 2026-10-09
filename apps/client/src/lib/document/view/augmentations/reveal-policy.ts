@@ -11,7 +11,7 @@
  * - **line** — revealed while any selection range touches the syntax's line (formatting marks,
  *   markdown links, tables, images). {@link revealedLines} / {@link lineRevealed}.
  * - **range** — revealed while any selection range touches the syntax's own span, boundaries
- *   inclusive (inline math, rendered fences). {@link rangeRevealed}.
+ *   inclusive (inline math, rendered fences, interactive fences). {@link rangeRevealed}.
  * - **block** — revealed while any selection range touches any of the construct's lines (a block
  *   widget's source; a setext heading's underline, which shows while the caret is in the heading).
  *   {@link linesAllHidden}.
@@ -48,7 +48,15 @@ export function lineRevealed(state: EditorState, n: number, active: Set<number> 
  * edge of a rendered span always gets the source back.
  */
 export function rangeRevealed(state: EditorState, from: number, to: number): boolean {
-    return state.selection.ranges.some((r) => r.from <= to && r.to >= from)
+    return state.selection.ranges.some((r) => rangeTouches(r, from, to))
+}
+
+/**
+ * Range-kind reveal for one range, or for a caret at `range.from === range.to`: does it touch
+ * `[from, to]`, boundaries inclusive? For a caller asking where the caret may go before it is there.
+ */
+export function rangeTouches(range: { readonly from: number; readonly to: number }, from: number, to: number): boolean {
+    return range.from <= to && range.to >= from
 }
 
 /** Whether every line in the 1-based inclusive range `[first, last]` is hidden — the block-widget test. */

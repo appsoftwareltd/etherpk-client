@@ -24,6 +24,7 @@ import type {
     TaskQuery,
 } from '../index-db'
 import type { LinkGraph } from '../index-link-graph'
+import type { MapItemsResult } from '../index-map-items'
 import type { PropertyFilter } from '../search-query'
 import type { EmbeddingRow, PendingPassage, SemanticDocumentGroup, SemanticStatus } from '../semantic/embedding-db'
 import { conceptKey } from '../backlinks/backlink-index'
@@ -110,6 +111,12 @@ export interface RemoteGraphIndex {
      * after an `onUpdated`, never speculatively.
      */
     linkGraph(): Promise<LinkGraph>
+    /**
+     * The [[Place]]s and [[Route]]s answering to a concept, or in the whole graph when it is null,
+     * for a [[Map View]] (index-map-items.ts). A round trip asked while the View is on screen and
+     * after an `onUpdated`, never speculatively.
+     */
+    mapItems(concept: string | null): Promise<MapItemsResult>
     /**
      * One page of the [[Tasks View]]'s list, with its total. A round trip like `backlinks` —
      * the Tasks View re-issues it when a filter changes or the index updates, never per
@@ -225,6 +232,8 @@ export interface IndexUpdate {
     full: boolean
     changedConceptKeys: ReadonlySet<string>
     backlinkTargetsChanged: ReadonlySet<string>
+    /** A place or route may have changed: always true for a full update (`IndexDelta.mapsChanged`). */
+    mapsChanged: boolean
 }
 
 export interface RemoteIndexOptions {
@@ -363,6 +372,7 @@ export function createRemoteGraphIndex(
                         full: true,
                         changedConceptKeys,
                         backlinkTargetsChanged: new Set(),
+                        mapsChanged: true,
                     })
                 }
                 if (response.rebuildId && activeRebuildId) {
@@ -417,6 +427,7 @@ export function createRemoteGraphIndex(
                     full: false,
                     changedConceptKeys,
                     backlinkTargetsChanged: new Set(response.backlinkTargetsChanged),
+                    mapsChanged: response.mapsChanged,
                 }
                 performanceRecorder.mark('index.delta.received', {
                     bytes: new TextEncoder().encode(JSON.stringify(response)).byteLength,
@@ -1146,6 +1157,10 @@ export function createRemoteGraphIndex(
         async linkGraph() {
             const response = await request<Extract<IndexResponse, { type: 'link-graph' }>>((id) => ({ type: 'link-graph', id }))
             return response.graph
+        },
+        async mapItems(concept) {
+            const response = await request<Extract<IndexResponse, { type: 'map-items' }>>((id) => ({ type: 'map-items', id, concept }))
+            return response.result
         },
         async searchText(query, offset, limit, filters) {
             const response = await request<Extract<IndexResponse, { type: 'search-text' }>>(

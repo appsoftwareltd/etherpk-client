@@ -1,6 +1,9 @@
 <script lang="ts">
     /**
-     * The one **Settings** modal, in up to seven tabs.
+     * The one **Settings and Extensions** modal, in two areas: **Settings**, in up to seven
+     * section tabs (below), and **Extensions**, an area of its own because what extensions offer
+     * there will grow (ADR 0121). The address names a section or `extensions` (`tab`), so every
+     * entry point and the browser's history work as they did when Extensions was a section.
      *
      * - **General** — the graph name and the shared [[Graph Settings]] (ADR 0031). Both live in
      *   the encrypted root-doc meta map: the name is canonical (any member may rename — it renames
@@ -48,6 +51,8 @@
     import Modal from "@appsoftwareltd/etherpk-shared/dialog";
     import ProtectionSettingsTab from "$lib/document/protection/ui/ProtectionSettingsTab.svelte";
     import SpellingSettingsTab from "$lib/document/spelling/ui/SpellingSettingsTab.svelte";
+    import ExtensionsSettingsTab from "$lib/extensions/ExtensionsSettingsTab.svelte";
+    import type { ExtensionHost } from "$lib/extensions/host";
     import type { SpellingTabProps } from "$lib/document/spelling/ui/spelling-tab";
     import type { ProtectionTabProps } from "$lib/document/protection/ui/protection-tab";
     import type { MirrorTabProps } from "./mirror-tab";
@@ -86,6 +91,7 @@
         publish = null,
         folderPath = null,
         formatting = null,
+        extensions = null,
         tab = undefined,
         onchangetab = undefined,
         onsave,
@@ -138,19 +144,24 @@
          */
         formatting?: FormattingSectionProps | null;
         /**
+         * The Extensions tab (ADR 0121): the open graph's extension host. Null hides it, outside
+         * an open graph, as the other tabs about this device are.
+         */
+        extensions?: ExtensionHost | null;
+        /**
          * The tab to be on: the one the address names while the workspace hosts this dialog
          * (ADR 0023, 2026-09-20), which is the tab an entry point asked for, else the one this
          * graph's Settings was last on (remembered per device, 2026-09-19). Followed while open,
          * so the Publish chord or a history step can move an open dialog to another tab.
          * Omitted, or not offered for this graph, lands on General.
          */
-        tab?: "general" | "spelling" | "protection" | "mirror" | "agents" | "publish" | "maintenance";
+        tab?: "general" | "spelling" | "protection" | "mirror" | "agents" | "publish" | "extensions" | "maintenance";
         /**
          * The tab the dialog is on changed: the user picked one (click or arrow keys), or the
          * tab asked for is not offered on this graph and it opened on General instead. The
          * workspace remembers it and keeps the address honest.
          */
-        onchangetab?: (tab: "general" | "spelling" | "protection" | "mirror" | "agents" | "publish" | "maintenance") => void;
+        onchangetab?: (tab: "general" | "spelling" | "protection" | "mirror" | "agents" | "publish" | "extensions" | "maintenance") => void;
         onsave: (result: { name: string; settings: GraphSettings; folderPath?: string }) => void;
         onclose: () => void;
     } = $props();
@@ -270,7 +281,7 @@
         installDismissed = (await promptInstall()) === "dismissed";
     }
 
-    type Tab = "general" | "spelling" | "protection" | "mirror" | "agents" | "publish" | "maintenance";
+    type Tab = "general" | "spelling" | "protection" | "mirror" | "agents" | "publish" | "extensions" | "maintenance";
     const tabs = $derived(
         [
             { id: "general" as const, label: "General", shown: true },
@@ -299,7 +310,48 @@
     // graph does not offer (Mirror on a Filesystem graph, a stale address) falls back to General
     // rather than an empty panel. Derived, not seeded once: the workspace moves an open dialog
     // by changing the prop, and a pick here is an assignment the next prop change overrides.
-    let activeTab = $derived<Tab>(tab && tabs.some((t) => t.id === tab) ? tab : "general");
+    let activeTab = $derived<Tab>(tab && (tab === "extensions" ? extensions !== null : tabs.some((t) => t.id === tab)) ? tab : "general");
+
+    /** The dialog's two areas: Settings, holding the sections above, and Extensions. */
+    type Area = "settings" | "extensions";
+    const areas = $derived(
+        [
+            { id: "settings" as const, label: "Settings", shown: true },
+            { id: "extensions" as const, label: "Extensions", shown: extensions !== null },
+        ].filter((a) => a.shown),
+    );
+    const area = $derived<Area>(activeTab === "extensions" ? "extensions" : "settings");
+
+    /**
+     * The section shown last, so going back to Settings from Extensions lands where the person left
+     * it. Recorded as a section is chosen, and seeded with the one the dialog opened on. Read only
+     * when the area changes, so it is a plain variable, not state.
+     */
+    // svelte-ignore state_referenced_locally
+    let lastSection: Tab = activeTab === "extensions" ? "general" : activeTab;
+
+    function selectArea(next: Area) {
+        if (next === "extensions") selectTab("extensions");
+        else selectTab(activeTab !== "extensions" ? activeTab : lastSection);
+    }
+
+    /** Left/Right/Home/End between the two areas, moving focus with the selection (ARIA tabs). */
+    function onAreaKeydown(event: KeyboardEvent) {
+        if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+        event.preventDefault();
+        const index = areas.findIndex((a) => a.id === area);
+        const next =
+            event.key === "Home"
+                ? 0
+                : event.key === "End"
+                  ? areas.length - 1
+                  : (index + (event.key === "ArrowRight" ? 1 : -1) + areas.length) % areas.length;
+        selectArea(areas[next].id);
+        (event.currentTarget as HTMLElement)
+            .closest('[role="tablist"]')
+            ?.querySelector<HTMLElement>(`#${CSS.escape(`${uid}-area-${areas[next].id}`)}`)
+            ?.focus();
+    }
 
     // Opened on a tab other than the one asked for (the fallback above): say so once, so the
     // workspace can remember General and correct an address that named the other one.
@@ -309,6 +361,7 @@
 
     /** A tab the user chose, as opposed to the one the dialog was asked to be on. */
     function selectTab(next: Tab) {
+        if (next !== "extensions") lastSection = next;
         activeTab = next;
         onchangetab?.(next);
     }
@@ -451,7 +504,7 @@
      width, and the Maintenance tools wrapped their result lines. A phone is unaffected. -->
 <Modal
     {open}
-    title="Settings"
+    title="Settings and Extensions"
     size="xl"
     placement="top"
     onclose={close}
@@ -459,7 +512,45 @@
     tools={activeTab === "general" ? installTools : undefined}
 >
     {#snippet body()}
-        {#if tabs.length > 1}
+        {#if areas.length > 1}
+            <!--
+                The two areas, above the sections: a segmented switch rather than a second strip of
+                underlined tabs, so the two levels never read as one row. ARIA tabs, as the strip
+                below is: one Tab stop, and the arrow keys move between them.
+            -->
+            <div
+                class="mb-4 inline-flex gap-1 rounded-lg bg-gray-100 p-1 dark:bg-white/10"
+                role="tablist"
+                aria-label="Settings and Extensions"
+            >
+                {#each areas as entry (entry.id)}
+                    <button
+                        type="button"
+                        role="tab"
+                        id="{uid}-area-{entry.id}"
+                        aria-selected={area === entry.id}
+                        aria-controls="{uid}-area-panel"
+                        tabindex={area === entry.id ? 0 : -1}
+                        data-testid="settings-area-{entry.id}"
+                        onclick={() => selectArea(entry.id)}
+                        onkeydown={onAreaKeydown}
+                        class="rounded-md px-4 py-1.5 text-sm font-semibold transition-colors pointer-coarse:min-h-11 {area ===
+                        entry.id
+                            ? 'bg-white text-gray-950 shadow-sm dark:bg-white/15 dark:text-gray-100'
+                            : 'text-gray-600 hover:text-gray-950 dark:text-gray-400 dark:hover:text-gray-100'}"
+                        >{entry.label}</button
+                    >
+                {/each}
+            </div>
+        {/if}
+
+        <div
+            id="{uid}-area-panel"
+            role={areas.length > 1 ? "tabpanel" : undefined}
+            aria-labelledby={areas.length > 1 ? `${uid}-area-${area}` : undefined}
+            class="space-y-4"
+        >
+        {#if area === "settings" && tabs.length > 1}
             <!--
                 Below the md breakpoint the strip does not fit: six tabs at phone width scrolled
                 the whole dialog sideways. A native select stands in there, the strip above it.
@@ -518,8 +609,8 @@
 
         <div
             id="{uid}-panel"
-            role={tabs.length > 1 ? "tabpanel" : undefined}
-            aria-labelledby={tabs.length > 1 ? `${uid}-tab-${activeTab}` : undefined}
+            role={area === "settings" && tabs.length > 1 ? "tabpanel" : undefined}
+            aria-labelledby={area === "settings" && tabs.length > 1 ? `${uid}-tab-${activeTab}` : undefined}
             class="space-y-4"
         >
             {#snippet mirrorList(
@@ -553,6 +644,9 @@
                 <SpellingSettingsTab {...spelling} />
             {:else if activeTab === "protection" && protection}
                 <ProtectionSettingsTab {...protection} />
+            {:else if activeTab === "extensions" && extensions}
+                <!-- Each switch applies at once and is per device: nothing for Save to apply. -->
+                <ExtensionsSettingsTab host={extensions} />
             {:else if activeTab === "publish" && publish}
                 <!-- Nothing here is a setting the footer saves: each publication card has a Save of
                  its own (it writes a page), and the folder is per device. -->
@@ -1372,6 +1466,7 @@
                         {error}
                     </p>{/if}
             {/if}
+        </div>
         </div>
     {/snippet}
 

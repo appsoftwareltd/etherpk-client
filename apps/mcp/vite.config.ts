@@ -11,7 +11,17 @@ const here = fileURLToPath(new URL('.', import.meta.url))
  * Everything else that is a real package stays external and is installed with this one; the
  * shared workspace package exports TypeScript source, so it has to be bundled too.
  */
-const bundled = new Set(['@appsoftwareltd/etherpk-shared', '@appsoftwareltd/etherpk-themes'])
+const bundled = new Set([
+    '@appsoftwareltd/etherpk-shared',
+    '@appsoftwareltd/etherpk-themes',
+    // The Graph View's model, for graph_insights and graph_path (ADR 0122): TypeScript source while
+    // the extension is built in this repository.
+    '@appsoftwareltd/etherpk-extension-graph-view',
+    // The maps extension's `/picture`, for the basemap a published map is drawn over (ADR 0118).
+    '@appsoftwareltd/etherpk-extension-maps',
+])
+/** A bundled package, or one of its entry points (`@appsoftwareltd/etherpk-extension-graph-view/model`). */
+const isBundled = (id: string) => [...bundled].some((name) => id === name || id.startsWith(`${name}/`))
 
 export default defineConfig({
     resolve: {
@@ -32,7 +42,7 @@ export default defineConfig({
             external: (id) =>
                 builtinModules.includes(id) ||
                 id.startsWith('node:') ||
-                (!id.startsWith('.') && !id.startsWith('/') && !id.startsWith('$lib') && !bundled.has(id) && !id.includes('/client/src/lib')),
+                (!id.startsWith('.') && !id.startsWith('/') && !id.startsWith('$lib') && !isBundled(id) && !id.includes('/client/src/lib')),
         },
     },
     ssr: {

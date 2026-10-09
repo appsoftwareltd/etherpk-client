@@ -11,7 +11,8 @@
 
 import { conceptKey } from './backlinks/backlink-index'
 import { type Block, parseBlocks } from './block-model'
-import { fencedBlocks } from './fenced-code'
+import { codeLineText, fenceLineInfo, fencedBlocks, fencedBlockTree } from './fenced-code'
+import { MAP_FENCE_INFO, readMapBody } from './map-text'
 import { containsCipherFence } from './protection/fence-info'
 import { parseTaskTags, type TaskPriority } from './task-tags'
 import { wikilinkOccurrencesInSource } from './wikilink'
@@ -69,11 +70,47 @@ export interface TaskConceptRow {
     concept: string
 }
 
+/**
+ * One [[Place]] or [[Route]] a [[Map Block]] holds (ADR 0118): a line of the block's fence that
+ * reads, with the block the fence belongs to, whose [[Block Concept]]s it answers to.
+ */
+export interface MapItemRow {
+    /** The block holding the fence's opening line, which a complete fence belongs to whole. */
+    blockLocalId: number
+    /** 0-based line of the Map Block's opening fence. */
+    fenceLine: number
+    /** 0-based line of the item. */
+    line: number
+    kind: 'place' | 'route'
+    name: string
+    /** The item's line as written, less the indentation up to the fence's column. */
+    text: string
+}
+
+/**
+ * One [[Block Concept]] of a block holding a Map Block, from a wikilink on the block or on an
+ * ancestor, exactly as {@link TaskConceptRow} is for a task. The document's own concept and the
+ * scopes in its name are added by the index.
+ */
+export interface MapConceptRow {
+    blockLocalId: number
+    concept: string
+}
+
 export interface DerivedRows {
     blocks: BlockRow[]
     links: LinkRow[]
     tasks: TaskRow[]
     taskConcepts: TaskConceptRow[]
+    mapItems: MapItemRow[]
+    mapConcepts: MapConceptRow[]
+    /**
+     * What text search and Semantic Search read for each block holding a Map Block, where that
+     * differs from the block's text: each item's line becomes its name, so a place can be found
+     * by name and its coordinates never reach either index (ADR 0118). Other blocks read as
+     * written.
+     */
+    searchText: Map<number, string>
 }
 
 /**
@@ -199,7 +236,7 @@ function blocksAndLinks(text: string): { blocks: BlockRow[]; links: LinkRow[]; l
 
 /** Derive the index rows for a single document's text. Pure. */
 export function deriveDoc(text: string): DerivedRows {
-    const { blocks, links } = blocksAndLinks(text)
+    const { blocks, links, lineToBlock } = blocksAndLinks(text)
 
     // Scanning for fences costs a regex per line of the document, so it is worth deciding
     // whether there is anything to exclude first. Most documents hold no tasks at all, and on
@@ -224,7 +261,72 @@ export function deriveDoc(text: string): DerivedRows {
         }
     })
 
-    return { blocks, links, tasks, taskConcepts: deriveTaskConcepts(blocks, links, taskBlocks) }
+    return {
+        blocks,
+        links,
+        tasks,
+        taskConcepts: deriveTaskConcepts(blocks, links, taskBlocks),
+        ...deriveMaps(text, blocks, links, lineToBlock),
+    }
+}
+
+/**
+ * The [[Place]]s and [[Route]]s a document's [[Map Block]]s hold (ADR 0118), the [[Block
+ * Concept]]s of the blocks they sit in, and what text search reads for those blocks instead of
+ * their coordinates.
+ *
+ * A Map Block is a complete, outermost fence whose info word is `map`: one shown as an example
+ * inside another fence is text. A document holding any protected content gives nothing, as the
+ * Map View leaves Protected Documents out: the index is plaintext at rest, and the conservative
+ * reading of a page with a cipher fence beside other text is the only safe one.
+ */
+function deriveMaps(
+    text: string,
+    blocks: readonly BlockRow[],
+    links: readonly LinkRow[],
+    lineToBlock: ReadonlyMap<number, number>,
+): Pick<DerivedRows, 'mapItems' | 'mapConcepts' | 'searchText'> {
+    const searchText = new Map<number, string>()
+    // Most documents hold no map, and the fence scan below costs a pass over every line.
+    if (!text.includes('```' + MAP_FENCE_INFO) || containsCipherFence(text)) return { mapItems: [], mapConcepts: [], searchText }
+
+    const lines = text.split('\n')
+    const { sorted, parent } = fencedBlockTree(fencedBlocks(lines))
+    const mapItems: MapItemRow[] = []
+    const mapBlocks = new Set<number>()
+    // What search reads on each line of a Map Block's body: an item's name, or nothing. A line
+    // that did not read may hold coordinates too, so it is left out as well.
+    const searchLines = new Map<number, string>()
+    sorted.forEach((fence, i) => {
+        if (parent[i] !== -1 || fenceLineInfo(lines[fence.start])?.info !== MAP_FENCE_INFO) return
+        const blockLocalId = lineToBlock.get(fence.start)
+        if (blockLocalId === undefined) return
+        mapBlocks.add(blockLocalId)
+        const body = lines.slice(fence.start + 1, fence.end).map((line) => codeLineText(line, fence.fenceColumn))
+        body.forEach((_, n) => searchLines.set(fence.start + 1 + n, ''))
+        for (const item of readMapBody(body).items) {
+            const line = fence.start + 1 + item.line
+            searchLines.set(line, item.name)
+            mapItems.push({ blockLocalId, fenceLine: fence.start, line, kind: item.kind, name: item.name, text: body[item.line] })
+        }
+    })
+
+    // A block's text holds one line per source line from its first to its last (block-model.ts),
+    // so a Map Block's lines are found in it by position.
+    for (const id of mapBlocks) {
+        const block = blocks[id]
+        const read = block.text.split('\n').map((line, n) => searchLines.get(block.startLine + n) ?? line)
+        searchText.set(id, read.join('\n'))
+    }
+
+    const byBlock = linksByBlock(links)
+    const mapConcepts: MapConceptRow[] = []
+    if (byBlock.size > 0) {
+        for (const id of mapBlocks) {
+            for (const { concept } of conceptChain(blocks, byBlock, id)) mapConcepts.push({ blockLocalId: id, concept })
+        }
+    }
+    return { mapItems, mapConcepts, searchText }
 }
 
 /**
