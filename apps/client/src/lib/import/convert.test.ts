@@ -50,7 +50,7 @@ describe('convertSource normalises to the Indent Unit', () => {
 // A Map Block (ADR 0118) is a fenced block every source format already carries: each converter
 // leaves its lines as written, in prose and beneath a bullet, so no import rewrites a place.
 describe('convertSource keeps Map Blocks as written', () => {
-    const body = ['Places we liked.', '', '```map', 'Seal Bay @ 50.74860, -1.07890', 'Coast walk @ 50.6623, -1.5887 > 50.67000, -1.55000', '```', '', '- Day 1', '  ```map', '  The Needles @ 50.66230, -1.58870', '  ```'].join('\n')
+    const body = ['Places we liked.', '', '```map', 'Pebble Cove @ 50.74860, -4.07890', 'Coast walk @ 50.6623, -4.5887 > 50.67000, -1.55000', '```', '', '- Day 1', '  ```map', '  Chalk Point @ 50.66230, -4.58870', '  ```'].join('\n')
 
     it.each([
         ['obsidian', 'Trips.md'],

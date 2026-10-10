@@ -35,7 +35,7 @@ interface Found {
 }
 
 /** What a person can always do instead of searching by name. */
-const INSTEAD = 'Type coordinates such as 50.7486, -1.0789, a Plus Code, or paste a link from Google Maps, Apple Maps or OpenStreetMap.'
+const INSTEAD = 'Type coordinates such as 50.7486, -4.0789, a Plus Code, or paste a link from Google Maps, Apple Maps or OpenStreetMap.'
 
 /** A Sync Server to search through. */
 export interface PlaceSearchServer {
@@ -73,7 +73,7 @@ export function placeResults(features: readonly PlaceSearchFeature[], query: str
         const [lon, lat] = feature.geometry.coordinates
         const street = [p.housenumber, p.street].filter(Boolean).join(' ')
         const name = p.name ?? (street || p.postcode || p.city || p.district || p.county || p.state || p.country || 'Unnamed place')
-        // The county only where there is no town to name: "Ventnor, Isle of Wight", not "London, Greater London".
+        // The county only where there is no town to name: "Brookmouth, Westshire", not "London, Greater London".
         const detail = [...new Set([street, p.district, p.city ?? p.county, p.postcode, p.state, p.country])].filter((part) => part && part !== name).join(', ')
         return { name, detail, point: { lat, lon }, postcode: p.postcode }
     })

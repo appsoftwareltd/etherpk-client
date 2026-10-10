@@ -394,7 +394,7 @@
         }
         const availability = services.search?.availability() ?? {
             available: false,
-            reason: "Searching by name isn't set up here. Type coordinates such as 50.7486, -1.0789, a Plus Code, or paste a link from Google Maps, Apple Maps or OpenStreetMap.",
+            reason: "Searching by name isn't set up here. Type coordinates such as 50.7486, -4.0789, a Plus Code, or paste a link from Google Maps, Apple Maps or OpenStreetMap.",
         }
         if (!availability.available) {
             searchNote = unanswered ?? availability.reason

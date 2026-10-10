@@ -7,7 +7,7 @@ import { appendFenceLine, applyFenceBodyEdit, removeFenceLine, replaceFenceLine,
 // it expects on its line, so a widget acting on an old reading never lands on another edit.
 
 describe('changing a fence body', () => {
-    const body = ['Seal Bay @ 50.7486, -1.0789', 'Walk @ 50, -1 > 51, -1', '', '']
+    const body = ['Pebble Cove @ 50.7486, -4.0789', 'Walk @ 50, -1 > 51, -1', '', '']
 
     it('adds a line after the last line that holds anything', () => {
         expect(appendFenceLine(body, 'Pub @ 1, 2')).toEqual({ kind: 'insert', line: 2, text: 'Pub @ 1, 2' })
@@ -16,8 +16,8 @@ describe('changing a fence body', () => {
     })
 
     it('replaces or removes a line only while it still says what was last read there', () => {
-        const rename = replaceFenceLine(0, body[0], 'Seal Bay Campsite @ 50.74860, -1.07890')
-        expect(applyFenceBodyEdit(body, rename)?.[0]).toBe('Seal Bay Campsite @ 50.74860, -1.07890')
+        const rename = replaceFenceLine(0, body[0], 'Pebble Cove Campsite @ 50.74860, -4.07890')
+        expect(applyFenceBodyEdit(body, rename)?.[0]).toBe('Pebble Cove Campsite @ 50.74860, -4.07890')
         expect(applyFenceBodyEdit(['Something else', ...body.slice(1)], rename)).toBeNull()
 
         const removal = removeFenceLine(1, body[1])
@@ -32,7 +32,7 @@ describe('changing a fence body', () => {
 
 describe('a line that may sit in a fence', () => {
     it('is one line', () => {
-        expect(safeFenceLine('Seal\nBay\r\nCampsite')).toBe('Seal Bay Campsite')
+        expect(safeFenceLine('Pebble\nCove\r\nCampsite')).toBe('Pebble Cove Campsite')
     })
 
     it('is never a line the fence analysis reads as a fence, which would close or split the block', () => {

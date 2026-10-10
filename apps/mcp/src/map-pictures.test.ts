@@ -12,9 +12,9 @@ import { needsMaps, openMapRenderer, publishMapStyle } from './map-pictures'
 
 describe('which publishes draw maps', () => {
     it('is any whose pages hold a map fence, in prose or on a bullet', () => {
-        expect(needsMaps(['Intro\n\n```map\nSeal Bay @ 50.7, -1.0\n```\n'])).toBe(true)
+        expect(needsMaps(['Intro\n\n```map\nPebble Cove @ 50.7, -1.0\n```\n'])).toBe(true)
         expect(needsMaps(['- Trip\n  ```map\n  ```'])).toBe(true)
-        expect(needsMaps(['- ```map\n  Seal Bay @ 50.7, -1.0\n  ```'])).toBe(true)
+        expect(needsMaps(['- ```map\n  Pebble Cove @ 50.7, -1.0\n  ```'])).toBe(true)
         expect(needsMaps(['```js\nconst map = 1\n```', 'A map of the world', '```mapping\n```'])).toBe(false)
     })
 })
@@ -54,7 +54,7 @@ describe.skipIf(!chromium)('drawing a map picture in Chromium', () => {
         const renderer = await openMapRenderer({ ...process.env, ETHERPK_CHROMIUM: chromium!, ETHERPK_MAP_STYLE_URL: '' })
         expect(renderer).not.toBeNull()
         try {
-            const picture = await renderer!.render('Seal Bay @ 50.74860, -1.07890\nCoast walk @ 50.6623, -1.5887 > 50.67, -1.55\n')
+            const picture = await renderer!.render('Pebble Cove @ 50.74860, -4.07890\nCoast walk @ 50.6623, -4.5887 > 50.67, -1.55\n')
             expect(picture).toMatchObject({ type: 'image/webp', width: 800, height: 450 })
             // RIFF....WEBP
             expect(String.fromCharCode(...picture.bytes.slice(0, 4))).toBe('RIFF')

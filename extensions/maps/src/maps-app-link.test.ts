@@ -7,19 +7,19 @@ import { readPlaceInput } from './place-input'
 // Open in maps app: the person's own maps app does the directions, so EtherPK needs no routing.
 
 describe('opening a place in a maps app', () => {
-    const point = { lat: 50.7486, lon: -1.0789 }
+    const point = { lat: 50.7486, lon: -4.0789 }
 
     it('opens Apple Maps on an Apple device, with the place named', () => {
-        expect(mapsAppUrl(point, 'Seal Bay', true)).toBe('https://maps.apple.com/?ll=50.7486%2C-1.0789&q=Seal+Bay')
+        expect(mapsAppUrl(point, 'Pebble Cove', true)).toBe('https://maps.apple.com/?ll=50.7486%2C-4.0789&q=Pebble+Cove')
     })
 
     it('opens Google Maps everywhere else', () => {
-        expect(mapsAppUrl(point, 'Seal Bay', false)).toBe('https://www.google.com/maps/search/?api=1&query=50.7486%2C-1.0789')
+        expect(mapsAppUrl(point, 'Pebble Cove', false)).toBe('https://www.google.com/maps/search/?api=1&query=50.7486%2C-4.0789')
     })
 
     it('gives addresses the search box reads back to the same place', () => {
-        expect(readPlaceInput(mapsAppUrl(point, 'Seal Bay', true))?.point).toEqual(point)
-        expect(readPlaceInput(mapsAppUrl(point, 'Seal Bay', false))?.point).toEqual(point)
+        expect(readPlaceInput(mapsAppUrl(point, 'Pebble Cove', true))?.point).toEqual(point)
+        expect(readPlaceInput(mapsAppUrl(point, 'Pebble Cove', false))?.point).toEqual(point)
     })
 
     it('knows an Apple device by its browser', () => {

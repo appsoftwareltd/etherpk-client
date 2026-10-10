@@ -346,7 +346,7 @@ describe('index core', () => {
         const { host } = persistentHost()
         const core = createIndexCore(host)
         await core.handle({ type: 'open', graphId: 'g1' })
-        await rebuild(core, [doc('Campsites', '```map\nSeal Bay @ 50.7486, -1.0789\n```'), doc('Notes', '- nothing to see')])
+        await rebuild(core, [doc('Campsites', '```map\nPebble Cove @ 50.7486, -4.0789\n```'), doc('Notes', '- nothing to see')])
 
         const [plain] = await core.handle({ type: 'ingest', docs: [], removed: ['Notes'] })
         expect(plain).toMatchObject({ type: 'delta', mapsChanged: false })
@@ -2124,21 +2124,21 @@ describe('the Map View query', () => {
         vi.useFakeTimers()
         try {
             const map = (...lines: string[]) => ['```map', ...lines, '```'].join('\n')
-            const s = fakeSource([doc('Campsites', map('Seal Bay @ 50.7486, -1.0789')), doc('Pubs', map('The Ship @ 50, -1'))])
+            const s = fakeSource([doc('Campsites', map('Pebble Cove @ 50.7486, -4.0789')), doc('Pubs', map('The Lantern @ 50, -1'))])
             const index = createRemoteGraphIndex(s.source, inlineTransport(), { graphId: 'g1', debounceMs: 10 })
             await index.refresh()
             await vi.advanceTimersByTimeAsync(20)
 
             const before = await index.mapItems('Campsites')
-            expect(before.items.map((hit) => hit.item.name)).toEqual(['Seal Bay'])
-            expect((await index.mapItems(null)).items.map((hit) => hit.item.name)).toEqual(['Seal Bay', 'The Ship'])
+            expect(before.items.map((hit) => hit.item.name)).toEqual(['Pebble Cove'])
+            expect((await index.mapItems(null)).items.map((hit) => hit.item.name)).toEqual(['Pebble Cove', 'The Lantern'])
 
-            s.setText('Campsites', map('Seal Bay @ 50.7486, -1.0789', 'Wild Haven @ 51.1, -2.1'))
+            s.setText('Campsites', map('Pebble Cove @ 50.7486, -4.0789', 'Fern Hollow @ 51.1, -2.1'))
             s.fire({ concept: 'Campsites' })
             await vi.advanceTimersByTimeAsync(20)
 
             const after = await index.mapItems('Campsites')
-            expect(after).toMatchObject({ truncated: false, items: [{ line: 1, item: { name: 'Seal Bay' } }, { line: 2, item: { name: 'Wild Haven' } }] })
+            expect(after).toMatchObject({ truncated: false, items: [{ line: 1, item: { name: 'Pebble Cove' } }, { line: 2, item: { name: 'Fern Hollow' } }] })
             index.dispose()
         } finally {
             vi.useRealTimers()
@@ -2149,7 +2149,7 @@ describe('the Map View query', () => {
         vi.useFakeTimers()
         try {
             const map = (...lines: string[]) => ['```map', ...lines, '```'].join('\n')
-            const s = fakeSource([doc('Campsites', map('Seal Bay @ 50.7486, -1.0789')), doc('Notes', '- nothing to see')])
+            const s = fakeSource([doc('Campsites', map('Pebble Cove @ 50.7486, -4.0789')), doc('Notes', '- nothing to see')])
             const index = createRemoteGraphIndex(s.source, inlineTransport(), { graphId: 'g1', debounceMs: 10 })
             const updates: { full: boolean; mapsChanged: boolean }[] = []
             index.onUpdated((update) => updates.push({ full: update.full, mapsChanged: update.mapsChanged }))
@@ -2166,7 +2166,7 @@ describe('the Map View query', () => {
                 return updates.map((update) => update.mapsChanged)
             }
             expect(await edit('Notes', '- still nothing')).toEqual([false])
-            expect(await edit('Campsites', map('Seal Bay @ 50.7486, -1.0789', 'Wild Haven @ 51.1, -2.1'))).toEqual([true])
+            expect(await edit('Campsites', map('Pebble Cove @ 50.7486, -4.0789', 'Fern Hollow @ 51.1, -2.1'))).toEqual([true])
             // The map is gone: its rows were, so the change is one.
             expect(await edit('Campsites', '- no map now')).toEqual([true])
             expect(await edit('Campsites', '- still no map')).toEqual([false])

@@ -1,6 +1,6 @@
 {
     "name": "@appsoftwareltd/etherpk-extension-graph-view",
-    "version": "0.9.3",
+    "version": "0.9.4",
     "license": "Elastic-2.0",
     "description": "Every concept in a graph as a dot and every wikilink as a line, the active document's neighbourhood beside the editor, and the whole graph with its hubs, clusters and bridges.",
     "private": true,

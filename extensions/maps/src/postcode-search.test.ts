@@ -35,7 +35,7 @@ describe('a typed postcode', () => {
     })
 
     it('is nothing else: a name, coordinates, a longer number', () => {
-        for (const typed of ['Ventnor', 'Seal Bay', '50.7, -1.3', '123456', 'PO30 1AB Newport', 'A']) {
+        for (const typed of ['Brookmouth', 'Pebble Cove', '50.7, -1.3', '123456', 'PO30 1AB Newport', 'A']) {
             expect(recognisePostcode(typed, 'US')).toBeNull()
         }
     })

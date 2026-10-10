@@ -3,8 +3,8 @@
  * document like any other text, so it syncs, merges, exports and is protected with it.
  *
  * ```map
- * Seal Bay Campsite @ 50.74860, -1.07890
- * Coast walk @ 50.74860, -1.07890 > 50.75112, -1.08240
+ * Pebble Cove Campsite @ 50.74860, -4.07890
+ * Coast walk @ 50.74860, -4.07890 > 50.75112, -4.08240
  * Ridge walk @ 54.60120, -3.13410 > 54.60500, -3.14000 (../assets/ridge-walk.a1b2c3d4.gpx)
  * ```
  *

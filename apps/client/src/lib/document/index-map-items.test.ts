@@ -29,9 +29,9 @@ const page = (concept: string, text = '', aliases: string[] = []): IndexDoc => (
 const journal = (day: string, text = ''): IndexDoc => ({ concept: day, kind: 'journal', aliases: [], text })
 
 const fence = (...lines: string[]) => ['```map', ...lines, '```'].join('\n')
-const seal = 'Seal Bay @ 50.74860, -1.07890'
-const haven = 'Wild Haven @ 51.12345, -2.12345'
-const walk = 'Coast walk @ 50.7486, -1.0789 > 50.75, -1.08'
+const seal = 'Pebble Cove @ 50.74860, -4.07890'
+const haven = 'Fern Hollow @ 51.12345, -2.12345'
+const walk = 'Coast walk @ 50.7486, -4.0789 > 50.75, -4.08'
 
 /** Each hit as `document: name`, so a failure says which place went missing or appeared. */
 function names(result: MapItemsResult): string[] {
@@ -42,19 +42,19 @@ describe('deriving map items', () => {
     it('reads each line of a map fence with its document line and its fence', () => {
         const derived = deriveDoc(['# Trip', '', fence(seal, 'not a place', walk)].join('\n'))
         expect(derived.mapItems.map((item) => [item.line, item.fenceLine, item.kind, item.name])).toEqual([
-            [3, 2, 'place', 'Seal Bay'],
+            [3, 2, 'place', 'Pebble Cove'],
             [5, 2, 'route', 'Coast walk'],
         ])
     })
 
     it('reads a map fence inside a bullet, de-indented to the fence column', () => {
         const text = ['- Ideas', '  ```map', `  ${seal}`, '  ```'].join('\n')
-        expect(deriveDoc(text).mapItems).toMatchObject([{ line: 2, fenceLine: 1, name: 'Seal Bay', text: seal }])
+        expect(deriveDoc(text).mapItems).toMatchObject([{ line: 2, fenceLine: 1, name: 'Pebble Cove', text: seal }])
     })
 
     it("reads a map fence opened on a bullet's line, as /map writes one on an empty bullet", () => {
         const text = ['- Ideas', '- ```map', `  ${seal}`, '  ```'].join('\n')
-        expect(deriveDoc(text).mapItems).toMatchObject([{ line: 2, fenceLine: 1, name: 'Seal Bay', text: seal }])
+        expect(deriveDoc(text).mapItems).toMatchObject([{ line: 2, fenceLine: 1, name: 'Pebble Cove', text: seal }])
     })
 
     it('ignores a map fence shown as an example inside another fence, and every other fence', () => {
@@ -70,27 +70,27 @@ describe('deriving map items', () => {
 
 describe('mapItems for one concept', () => {
     it('finds the Map Blocks on the concept\'s own page', () => {
-        ingest(db, [page('Campsites', fence(seal, haven)), page('Pubs', fence('The Ship @ 50, -1'))])
-        expect(names(mapItems(db, 'Campsites'))).toEqual(['Campsites: Seal Bay', 'Campsites: Wild Haven'])
+        ingest(db, [page('Campsites', fence(seal, haven)), page('Pubs', fence('The Lantern @ 50, -1'))])
+        expect(names(mapItems(db, 'Campsites'))).toEqual(['Campsites: Pebble Cove', 'Campsites: Fern Hollow'])
     })
 
     it('finds a Map Block nested under a bullet or a heading that links the concept, in any document', () => {
-        const under = ['- Shortlist for [[Campsites]]', '  ```map', `  ${seal}`, '  ```', '- Not this one', '  ```map', '  The Ship @ 50, -1', '  ```'].join('\n')
+        const under = ['- Shortlist for [[Campsites]]', '  ```map', `  ${seal}`, '  ```', '- Not this one', '  ```map', '  The Lantern @ 50, -1', '  ```'].join('\n')
         const heading = ['## [[Campsites]] to try', '', fence(haven)].join('\n')
         ingest(db, [journal('2026-07-14', under), page('Trip', heading)])
-        expect(names(mapItems(db, 'Campsites'))).toEqual(['2026-07-14: Seal Bay', 'Trip: Wild Haven'])
+        expect(names(mapItems(db, 'Campsites'))).toEqual(['2026-07-14: Pebble Cove', 'Trip: Fern Hollow'])
     })
 
     it('counts the scopes in a document\'s name, as a task does', () => {
         ingest(db, [page('[[Campsites]] Wales', fence(seal))])
-        expect(names(mapItems(db, 'Campsites'))).toEqual(['[[Campsites]] Wales: Seal Bay'])
+        expect(names(mapItems(db, 'Campsites'))).toEqual(['[[Campsites]] Wales: Pebble Cove'])
     })
 
     it('pools the concept\'s aliases and ignores case', () => {
         const text = ['- Ideas for [[camping]]', '  ```map', `  ${seal}`, '  ```'].join('\n')
         ingest(db, [page('Campsites', '', ['Camping']), journal('2026-07-14', text)])
-        expect(names(mapItems(db, 'campsites'))).toEqual(['2026-07-14: Seal Bay'])
-        expect(names(mapItems(db, 'CAMPING'))).toEqual(['2026-07-14: Seal Bay'])
+        expect(names(mapItems(db, 'campsites'))).toEqual(['2026-07-14: Pebble Cove'])
+        expect(names(mapItems(db, 'CAMPING'))).toEqual(['2026-07-14: Pebble Cove'])
     })
 
     it('returns places and routes with their points read again', () => {
@@ -102,7 +102,7 @@ describe('mapItems for one concept', () => {
                 line: 1,
                 fenceLine: 0,
                 text: seal,
-                item: { kind: 'place', name: 'Seal Bay', point: { lat: 50.7486, lon: -1.0789 } },
+                item: { kind: 'place', name: 'Pebble Cove', point: { lat: 50.7486, lon: -4.0789 } },
             },
             {
                 concept: 'Campsites',
@@ -110,7 +110,7 @@ describe('mapItems for one concept', () => {
                 line: 2,
                 fenceLine: 0,
                 text: walk,
-                item: { kind: 'route', name: 'Coast walk', points: [{ lat: 50.7486, lon: -1.0789 }, { lat: 50.75, lon: -1.08 }], track: null },
+                item: { kind: 'route', name: 'Coast walk', points: [{ lat: 50.7486, lon: -4.0789 }, { lat: 50.75, lon: -4.08 }], track: null },
             },
         ])
     })
@@ -124,8 +124,8 @@ describe('mapItems for one concept', () => {
 describe('mapItems for the whole graph', () => {
     it('lists every place and route in document order, leaving out protected documents', () => {
         const locked = ['```etherpk-cipher', 'v1:abc', '```'].join('\n')
-        ingest(db, [page('Pubs', fence('The Ship @ 50, -1')), page('Campsites', fence(seal)), page('Secret', locked), journal('2026-07-14', fence(walk))])
-        expect(names(mapItems(db, null))).toEqual(['2026-07-14: Coast walk', 'Campsites: Seal Bay', 'Pubs: The Ship'])
+        ingest(db, [page('Pubs', fence('The Lantern @ 50, -1')), page('Campsites', fence(seal)), page('Secret', locked), journal('2026-07-14', fence(walk))])
+        expect(names(mapItems(db, null))).toEqual(['2026-07-14: Coast walk', 'Campsites: Pebble Cove', 'Pubs: The Lantern'])
     })
 
     it('says when it stopped at its cap', () => {
@@ -138,7 +138,7 @@ describe('mapItems for the whole graph', () => {
     it('follows an edit to one document', () => {
         ingest(db, [page('Campsites', fence(seal, haven))])
         ingestOne(db, page('Campsites', fence(haven)))
-        expect(names(mapItems(db, null))).toEqual(['Campsites: Wild Haven'])
+        expect(names(mapItems(db, null))).toEqual(['Campsites: Fern Hollow'])
     })
 })
 
@@ -146,16 +146,16 @@ describe('what search can read', () => {
     it('keeps a Map Block\'s names in text search and leaves its coordinates out', () => {
         ingest(db, [page('Campsites', ['Places we liked', '', fence(seal, walk)].join('\n'))])
         const text = db.all<{ text: string }>('SELECT text FROM block_fts').map((row) => row.text).join('\n')
-        expect(text).toContain('Seal Bay')
+        expect(text).toContain('Pebble Cove')
         expect(text).toContain('Coast walk')
-        expect(text).not.toMatch(/50\.7486|1\.0789/)
+        expect(text).not.toMatch(/50\.7486|4\.0789/)
     })
 
     it('leaves the coordinates out of Semantic Search\'s passages', () => {
         ingest(db, [page('Campsites', ['Places we liked', '', fence(seal, walk)].join('\n'))])
         const text = db.all<{ text: string }>('SELECT text FROM passages').map((row) => row.text).join('\n')
-        expect(text).toContain('Seal Bay')
-        expect(text).not.toMatch(/50\.7486|1\.0789/)
+        expect(text).toContain('Pebble Cove')
+        expect(text).not.toMatch(/50\.7486|4\.0789/)
     })
 
     it('keeps the coordinates in the block text an asset usage scan reads', () => {

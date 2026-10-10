@@ -14,27 +14,27 @@ function hit(concept: string, line: number, text: string, fenceLine = 0): MapIte
     return { concept, kind: 'page', line, fenceLine, text, item }
 }
 
-const seal = hit('Campsites', 1, 'Seal Bay @ 50.74860, -1.07890')
-const needles = hit('Campsites', 2, 'The Needles @ 50.66230, -1.58870')
-const walk = hit('Isle of Wight', 4, 'Coast walk @ 50.7, -1.3 > 50.71, -1.31', 3)
-const ship = hit('Pubs', 1, 'The Ship @ 50.5, -1.2')
+const seal = hit('Campsites', 1, 'Pebble Cove @ 50.74860, -4.07890')
+const needles = hit('Campsites', 2, 'Chalk Point @ 50.66230, -4.58870')
+const walk = hit('Westshire', 4, 'Coast walk @ 50.7, -1.3 > 50.71, -1.31', 3)
+const ship = hit('Pubs', 1, 'The Lantern @ 50.5, -1.2')
 const hits = [seal, needles, walk, ship]
 
 describe('the list beside the map', () => {
     it('groups items by the document they are written in, in the order the index gave', () => {
         expect(groupByDocument(hits, [0, 1, 2, 3])).toEqual([
             { concept: 'Campsites', kind: 'page', keys: [0, 1] },
-            { concept: 'Isle of Wight', kind: 'page', keys: [2] },
+            { concept: 'Westshire', kind: 'page', keys: [2] },
             { concept: 'Pubs', kind: 'page', keys: [3] },
         ])
     })
 
     it('leaves out the documents the filter emptied', () => {
-        expect(groupByDocument(hits, [2])).toEqual([{ concept: 'Isle of Wight', kind: 'page', keys: [2] }])
+        expect(groupByDocument(hits, [2])).toEqual([{ concept: 'Westshire', kind: 'page', keys: [2] }])
     })
 
     it('names an unnamed item by what it is', () => {
-        expect(itemLabel(seal.item)).toBe('Seal Bay')
+        expect(itemLabel(seal.item)).toBe('Pebble Cove')
         expect(itemLabel(hit('A', 0, '@ 1, 2').item)).toBe('Unnamed place')
         expect(itemLabel(hit('A', 0, '@ 1, 2 > 3, 4').item)).toBe('Unnamed route')
     })
@@ -46,8 +46,9 @@ describe('filtering', () => {
     })
 
     it('matches an item by its name or its document, whatever the case', () => {
-        expect(filterKeys(hits, 'the')).toEqual([1, 3])
-        expect(filterKeys(hits, 'wight')).toEqual([2])
+        expect(filterKeys(hits, 'the')).toEqual([3])
+        expect(filterKeys(hits, 'POINT')).toEqual([1])
+        expect(filterKeys(hits, 'shire')).toEqual([2])
         expect(filterKeys(hits, 'campsites')).toEqual([0, 1])
     })
 })
@@ -108,7 +109,7 @@ describe('reading again', () => {
         const answer = (items: MapItemHit[], truncated = false): MapItemsResult => ({ items, truncated })
         expect(sameAnswer(answer([seal, needles]), answer([hit('Campsites', 1, seal.text), hit('Campsites', 2, needles.text)]))).toBe(true)
         expect(sameAnswer(answer([seal, needles]), answer([seal]))).toBe(false)
-        expect(sameAnswer(answer([seal]), answer([hit('Campsites', 1, 'Seal Bay @ 50.7, -1.0')]))).toBe(false)
+        expect(sameAnswer(answer([seal]), answer([hit('Campsites', 1, 'Pebble Cove @ 50.7, -1.0')]))).toBe(false)
         expect(sameAnswer(answer([seal]), answer([hit('Elsewhere', 1, seal.text)]))).toBe(false)
         expect(sameAnswer(answer([seal]), answer([seal], true))).toBe(false)
     })

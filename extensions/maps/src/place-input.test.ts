@@ -10,36 +10,36 @@ const near = (actual: number, expected: number, within = 1e-6) => expect(Math.ab
 
 describe('coordinates', () => {
     it('reads decimal degrees, latitude first, as Google Maps copies them', () => {
-        expect(readPlaceInput('50.7486, -1.0789')).toEqual({ point: { lat: 50.7486, lon: -1.0789 }, name: '', from: 'coordinates' })
-        expect(readPlaceInput('50.7486,-1.0789')?.point).toEqual({ lat: 50.7486, lon: -1.0789 })
-        expect(readPlaceInput('  50.7486   -1.0789 ')?.point).toEqual({ lat: 50.7486, lon: -1.0789 })
+        expect(readPlaceInput('50.7486, -4.0789')).toEqual({ point: { lat: 50.7486, lon: -4.0789 }, name: '', from: 'coordinates' })
+        expect(readPlaceInput('50.7486,-4.0789')?.point).toEqual({ lat: 50.7486, lon: -4.0789 })
+        expect(readPlaceInput('  50.7486   -4.0789 ')?.point).toEqual({ lat: 50.7486, lon: -4.0789 })
     })
 
     it('reads hemisphere letters before or after, in either order', () => {
-        expect(readPlaceInput('50.7486° N, 1.0789° W')?.point).toEqual({ lat: 50.7486, lon: -1.0789 })
-        expect(readPlaceInput('N 50.7486 W 1.0789')?.point).toEqual({ lat: 50.7486, lon: -1.0789 })
-        expect(readPlaceInput('50.7486N 1.0789W')?.point).toEqual({ lat: 50.7486, lon: -1.0789 })
-        expect(readPlaceInput('1.0789W, 50.7486N')?.point).toEqual({ lat: 50.7486, lon: -1.0789 })
+        expect(readPlaceInput('50.7486° N, 4.0789° W')?.point).toEqual({ lat: 50.7486, lon: -4.0789 })
+        expect(readPlaceInput('N 50.7486 W 4.0789')?.point).toEqual({ lat: 50.7486, lon: -4.0789 })
+        expect(readPlaceInput('50.7486N 4.0789W')?.point).toEqual({ lat: 50.7486, lon: -4.0789 })
+        expect(readPlaceInput('4.0789W, 50.7486N')?.point).toEqual({ lat: 50.7486, lon: -4.0789 })
         expect(readPlaceInput('33.86 s 151.21 e')?.point).toEqual({ lat: -33.86, lon: 151.21 })
     })
 
     it('reads degrees, minutes and seconds', () => {
-        const dms = readPlaceInput(`50°44'55.0"N 1°04'44.0"W`)?.point
+        const dms = readPlaceInput(`50°44'55.0"N 4°04'44.0"W`)?.point
         near(dms!.lat, 50 + 44 / 60 + 55 / 3600)
-        near(dms!.lon, -(1 + 4 / 60 + 44 / 3600))
-        const primes = readPlaceInput('50°44′55″N, 1°4′44″W')?.point
+        near(dms!.lon, -(4 + 4 / 60 + 44 / 3600))
+        const primes = readPlaceInput('50°44′55″N, 4°4′44″W')?.point
         near(primes!.lat, 50 + 44 / 60 + 55 / 3600)
-        near(primes!.lon, -(1 + 4 / 60 + 44 / 3600))
+        near(primes!.lon, -(4 + 4 / 60 + 44 / 3600))
     })
 
     it('reads degrees and decimal minutes', () => {
-        const ddm = readPlaceInput(`50°44.916'N 1°04.734'W`)?.point
+        const ddm = readPlaceInput(`50°44.916'N 4°04.734'W`)?.point
         near(ddm!.lat, 50.7486)
-        near(ddm!.lon, -1.0789)
+        near(ddm!.lon, -4.0789)
     })
 
     it('refuses what is not a pair of coordinates on the earth', () => {
-        expect(readPlaceInput('Seal Bay')).toBeNull()
+        expect(readPlaceInput('Pebble Cove')).toBeNull()
         expect(readPlaceInput('50.7486')).toBeNull()
         expect(readPlaceInput('91, 0')).toBeNull()
         expect(readPlaceInput('50, 200')).toBeNull()
@@ -110,48 +110,48 @@ describe('Plus Codes', () => {
 describe('links copied from other maps', () => {
     it('reads a Google Maps place link, preferring the place over the map centre, and its name', () => {
         const link =
-            'https://www.google.com/maps/place/Seal+Bay+Campsite/@50.7486,-1.0789,17z/data=!3m1!4b1!4m6!3m5!1s0x0:0x0!8m2!3d50.74871!4d-1.07902!16s'
-        expect(readPlaceInput(link)).toEqual({ point: { lat: 50.74871, lon: -1.07902 }, name: 'Seal Bay Campsite', from: 'link' })
+            'https://www.google.com/maps/place/Pebble+Cove+Campsite/@50.7486,-4.0789,17z/data=!3m1!4b1!4m6!3m5!1s0x0:0x0!8m2!3d50.74871!4d-4.07902!16s'
+        expect(readPlaceInput(link)).toEqual({ point: { lat: 50.74871, lon: -4.07902 }, name: 'Pebble Cove Campsite', from: 'link' })
     })
 
     it('reads the other Google Maps link forms', () => {
-        expect(readPlaceInput('https://www.google.com/maps/@50.7486,-1.0789,15z')?.point).toEqual({ lat: 50.7486, lon: -1.0789 })
-        expect(readPlaceInput('https://www.google.com/maps/search/?api=1&query=50.7486,-1.0789')?.point).toEqual({ lat: 50.7486, lon: -1.0789 })
-        expect(readPlaceInput('https://maps.google.co.uk/?q=50.7486,-1.0789')?.point).toEqual({ lat: 50.7486, lon: -1.0789 })
-        expect(readPlaceInput('https://www.google.com/maps?ll=50.7486,-1.0789&z=12')?.point).toEqual({ lat: 50.7486, lon: -1.0789 })
+        expect(readPlaceInput('https://www.google.com/maps/@50.7486,-4.0789,15z')?.point).toEqual({ lat: 50.7486, lon: -4.0789 })
+        expect(readPlaceInput('https://www.google.com/maps/search/?api=1&query=50.7486,-4.0789')?.point).toEqual({ lat: 50.7486, lon: -4.0789 })
+        expect(readPlaceInput('https://maps.google.co.uk/?q=50.7486,-4.0789')?.point).toEqual({ lat: 50.7486, lon: -4.0789 })
+        expect(readPlaceInput('https://www.google.com/maps?ll=50.7486,-4.0789&z=12')?.point).toEqual({ lat: 50.7486, lon: -4.0789 })
     })
 
     it('reads Apple Maps links with their names', () => {
-        expect(readPlaceInput('https://maps.apple.com/?ll=50.7486,-1.0789&q=Seal%20Bay')).toEqual({
-            point: { lat: 50.7486, lon: -1.0789 },
-            name: 'Seal Bay',
+        expect(readPlaceInput('https://maps.apple.com/?ll=50.7486,-4.0789&q=Pebble%20Cove')).toEqual({
+            point: { lat: 50.7486, lon: -4.0789 },
+            name: 'Pebble Cove',
             from: 'link',
         })
-        expect(readPlaceInput('https://maps.apple.com/place?coordinate=50.7486,-1.0789&name=Seal%20Bay')?.name).toBe('Seal Bay')
+        expect(readPlaceInput('https://maps.apple.com/place?coordinate=50.7486,-4.0789&name=Pebble%20Cove')?.name).toBe('Pebble Cove')
     })
 
     it('reads OpenStreetMap links, preferring the marker over the map centre', () => {
-        expect(readPlaceInput('https://www.openstreetmap.org/#map=17/50.74860/-1.07890')?.point).toEqual({ lat: 50.7486, lon: -1.0789 })
-        expect(readPlaceInput('https://www.openstreetmap.org/?mlat=50.75&mlon=-1.08#map=17/50.74860/-1.07890')?.point).toEqual({ lat: 50.75, lon: -1.08 })
+        expect(readPlaceInput('https://www.openstreetmap.org/#map=17/50.74860/-4.07890')?.point).toEqual({ lat: 50.7486, lon: -4.0789 })
+        expect(readPlaceInput('https://www.openstreetmap.org/?mlat=50.75&mlon=-4.08#map=17/50.74860/-4.07890')?.point).toEqual({ lat: 50.75, lon: -4.08 })
     })
 
     it('reads geo: links, with an Android label as the name', () => {
-        expect(readPlaceInput('geo:50.7486,-1.0789')?.point).toEqual({ lat: 50.7486, lon: -1.0789 })
-        expect(readPlaceInput('geo:50.7486,-1.0789;u=35')?.point).toEqual({ lat: 50.7486, lon: -1.0789 })
-        expect(readPlaceInput('geo:0,0?q=50.7486,-1.0789(Seal%20Bay)')).toEqual({ point: { lat: 50.7486, lon: -1.0789 }, name: 'Seal Bay', from: 'link' })
+        expect(readPlaceInput('geo:50.7486,-4.0789')?.point).toEqual({ lat: 50.7486, lon: -4.0789 })
+        expect(readPlaceInput('geo:50.7486,-4.0789;u=35')?.point).toEqual({ lat: 50.7486, lon: -4.0789 })
+        expect(readPlaceInput('geo:0,0?q=50.7486,-4.0789(Pebble%20Cove)')).toEqual({ point: { lat: 50.7486, lon: -4.0789 }, name: 'Pebble Cove', from: 'link' })
     })
 
     it('refuses a link that carries no coordinates', () => {
-        expect(readPlaceInput('https://www.google.com/maps?q=Seal+Bay')).toBeNull()
-        expect(readPlaceInput('https://maps.apple.com/?address=Seal%20Bay')).toBeNull()
-        expect(readPlaceInput('https://example.com/?q=50.7486,-1.0789')).toBeNull()
+        expect(readPlaceInput('https://www.google.com/maps?q=Pebble+Cove')).toBeNull()
+        expect(readPlaceInput('https://maps.apple.com/?address=Pebble%20Cove')).toBeNull()
+        expect(readPlaceInput('https://example.com/?q=50.7486,-4.0789')).toBeNull()
     })
 
     it('knows a short link, which has to be opened before its place can be read', () => {
         expect(isShortMapLink('https://maps.app.goo.gl/AbCdEf123')).toBe(true)
         expect(isShortMapLink('https://goo.gl/maps/AbCdEf123')).toBe(true)
         expect(isShortMapLink('https://osm.org/go/euu4XEhK--')).toBe(true)
-        expect(isShortMapLink('https://www.google.com/maps/@50.7486,-1.0789,15z')).toBe(false)
+        expect(isShortMapLink('https://www.google.com/maps/@50.7486,-4.0789,15z')).toBe(false)
         expect(readPlaceInput('https://maps.app.goo.gl/AbCdEf123')).toBeNull()
     })
 })

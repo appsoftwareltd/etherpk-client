@@ -21,8 +21,8 @@ const feature = (lon: number, lat: number, properties: Record<string, unknown> =
 
 describe('a place search request', () => {
     it('takes a query, where the map is looking and a language', () => {
-        expect(placeSearchRequestSchema.parse({ q: ' Ventnor ', near: { lat: 50.6, lon: -1.2 }, lang: 'en' })).toEqual({
-            q: 'Ventnor',
+        expect(placeSearchRequestSchema.parse({ q: ' Brookmouth ', near: { lat: 50.6, lon: -1.2 }, lang: 'en' })).toEqual({
+            q: 'Brookmouth',
             near: { lat: 50.6, lon: -1.2 },
             lang: 'en',
         })
@@ -31,21 +31,21 @@ describe('a place search request', () => {
     it('refuses an empty or overlong query, a point off the globe and any other field', () => {
         expect(placeSearchRequestSchema.safeParse({ q: '   ' }).success).toBe(false)
         expect(placeSearchRequestSchema.safeParse({ q: 'x'.repeat(201) }).success).toBe(false)
-        expect(placeSearchRequestSchema.safeParse({ q: 'Ventnor', near: { lat: 91, lon: 0 } }).success).toBe(false)
-        expect(placeSearchRequestSchema.safeParse({ q: 'Ventnor', apiKey: 'x' }).success).toBe(false)
+        expect(placeSearchRequestSchema.safeParse({ q: 'Brookmouth', near: { lat: 91, lon: 0 } }).success).toBe(false)
+        expect(placeSearchRequestSchema.safeParse({ q: 'Brookmouth', apiKey: 'x' }).success).toBe(false)
     })
 })
 
 describe('reading an answer', () => {
     it('keeps the address fields and drops what a service adds of its own', () => {
-        const [read] = readPlaceFeatures([feature(-1.2, 50.6, { name: 'Ventnor', city: 'Ventnor', osm_id: 1, extent: [1, 2, 3, 4] })])
-        expect(read.properties).toEqual({ name: 'Ventnor', city: 'Ventnor' })
+        const [read] = readPlaceFeatures([feature(-1.2, 50.6, { name: 'Brookmouth', city: 'Brookmouth', osm_id: 1, extent: [1, 2, 3, 4] })])
+        expect(read.properties).toEqual({ name: 'Brookmouth', city: 'Brookmouth' })
         expect(read.geometry.coordinates).toEqual([-1.2, 50.6])
     })
 
     it('drops a feature that does not read as a place, and keeps the rest', () => {
-        const read = readPlaceFeatures([feature(-1.2, 95), { type: 'Feature', geometry: null, properties: {} }, feature(-1.2, 50.6, { name: 'Ventnor' })])
-        expect(read.map((f) => f.properties.name)).toEqual(['Ventnor'])
+        const read = readPlaceFeatures([feature(-1.2, 95), { type: 'Feature', geometry: null, properties: {} }, feature(-1.2, 50.6, { name: 'Brookmouth' })])
+        expect(read.map((f) => f.properties.name)).toEqual(['Brookmouth'])
     })
 
     it('keeps at most the limit', () => {

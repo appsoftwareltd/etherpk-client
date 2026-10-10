@@ -1,6 +1,6 @@
 {
     "name": "@appsoftwareltd/etherpk-extension-api",
-    "version": "0.9.3",
+    "version": "0.9.4",
     "license": "MIT",
     "description": "The API an EtherPK extension is written against: the context it is started with, its manifest, and the contract its Views follow.",
     "type": "module",

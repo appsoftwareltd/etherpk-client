@@ -80,13 +80,13 @@ function splitPair(text: string): [string, string][] {
     const candidates: [string, string][] = []
     const comma = text.indexOf(',')
     if (comma >= 0) candidates.push([text.slice(0, comma), text.slice(comma + 1)])
-    // After a trailing letter: `50°44'55"N 1°04'44"W`, `50.7486N 1.0789W`.
+    // After a trailing letter: `50°44'55"N 4°04'44"W`, `50.7486N 4.0789W`.
     const trailing = /^(.*?\d[^NSEW]*[NSEW])\s+(.+)$/i.exec(text)
     if (trailing) candidates.push([trailing[1], trailing[2]])
-    // Before a second leading letter: `N 50.7486 W 1.0789`.
+    // Before a second leading letter: `N 50.7486 W 4.0789`.
     const leading = /^([NSEW]\s*[^NSEW]+?)\s+([NSEW].+)$/i.exec(text)
     if (leading) candidates.push([leading[1], leading[2]])
-    // Two bare numbers: `50.7486 -1.0789`.
+    // Two bare numbers: `50.7486 -4.0789`.
     const bare = new RegExp(String.raw`^(${NUMBER})\s+(${NUMBER})$`).exec(text)
     if (bare) candidates.push([bare[1], bare[2]])
     return candidates

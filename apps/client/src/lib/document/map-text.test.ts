@@ -8,21 +8,21 @@ import { formatMapPoint, readMapBody, readMapLine, writeMapPlace, writeMapRoute,
 
 describe('reading one line', () => {
     it('reads a place: a name, then the last " @ ", then latitude and longitude', () => {
-        expect(readMapLine('Seal Bay Campsite @ 50.74860, -1.07890')).toEqual({
+        expect(readMapLine('Pebble Cove Campsite @ 50.74860, -4.07890')).toEqual({
             kind: 'place',
-            name: 'Seal Bay Campsite',
-            point: { lat: 50.7486, lon: -1.0789 },
+            name: 'Pebble Cove Campsite',
+            point: { lat: 50.7486, lon: -4.0789 },
         })
     })
 
     it('reads a route: two or more points joined by ">"', () => {
-        expect(readMapLine('Coast walk @ 50.7486, -1.0789 > 50.75112, -1.0824 > 50.753, -1.09')).toEqual({
+        expect(readMapLine('Coast walk @ 50.7486, -4.0789 > 50.75112, -4.0824 > 50.753, -4.09')).toEqual({
             kind: 'route',
             name: 'Coast walk',
             points: [
-                { lat: 50.7486, lon: -1.0789 },
-                { lat: 50.75112, lon: -1.0824 },
-                { lat: 50.753, lon: -1.09 },
+                { lat: 50.7486, lon: -4.0789 },
+                { lat: 50.75112, lon: -4.0824 },
+                { lat: 50.753, lon: -4.09 },
             ],
             track: null,
         })
@@ -54,13 +54,13 @@ describe('reading one line', () => {
     })
 
     it('refuses what is not a place or a route', () => {
-        expect(readMapLine('Seal Bay')).toBeNull()
-        expect(readMapLine('Seal Bay @')).toBeNull()
-        expect(readMapLine('Seal Bay @ 50')).toBeNull()
-        expect(readMapLine('Seal Bay @ 50, -1 >')).toBeNull()
-        expect(readMapLine('Seal Bay @ 50, -1 > > 51, -1')).toBeNull()
-        expect(readMapLine('Seal Bay @ 50, -1, 3')).toBeNull()
-        expect(readMapLine('Seal Bay @ 1e3, 2')).toBeNull()
+        expect(readMapLine('Pebble Cove')).toBeNull()
+        expect(readMapLine('Pebble Cove @')).toBeNull()
+        expect(readMapLine('Pebble Cove @ 50')).toBeNull()
+        expect(readMapLine('Pebble Cove @ 50, -1 >')).toBeNull()
+        expect(readMapLine('Pebble Cove @ 50, -1 > > 51, -1')).toBeNull()
+        expect(readMapLine('Pebble Cove @ 50, -1, 3')).toBeNull()
+        expect(readMapLine('Pebble Cove @ 1e3, 2')).toBeNull()
     })
 
     it('refuses a latitude or longitude off the earth', () => {
@@ -77,9 +77,9 @@ describe('reading one line', () => {
 
 describe('reading a whole body', () => {
     it('numbers each item by its line, skips blank lines and keeps the lines it could not read', () => {
-        const body = readMapBody(['Seal Bay @ 50.7486, -1.0789', '', 'not a place', '  ', 'Walk @ 50, -1 > 51, -1'])
+        const body = readMapBody(['Pebble Cove @ 50.7486, -4.0789', '', 'not a place', '  ', 'Walk @ 50, -1 > 51, -1'])
         expect(body.items.map((item) => [item.line, item.name])).toEqual([
-            [0, 'Seal Bay'],
+            [0, 'Pebble Cove'],
             [4, 'Walk'],
         ])
         expect(body.unread).toEqual([{ line: 2, text: 'not a place' }])
@@ -92,7 +92,7 @@ describe('reading a whole body', () => {
 
 describe('writing', () => {
     it('writes five decimal places, about a metre', () => {
-        expect(formatMapPoint({ lat: 50.123456, lon: -1.0789 })).toBe('50.12346, -1.07890')
+        expect(formatMapPoint({ lat: 50.123456, lon: -4.0789 })).toBe('50.12346, -4.07890')
         expect(formatMapPoint({ lat: -0.000001, lon: 0 })).toBe('0.00000, 0.00000')
     })
 
@@ -102,12 +102,12 @@ describe('writing', () => {
     })
 
     it('writes a place and a route that read back as written', () => {
-        const place = writeMapPlace('Seal Bay Campsite', { lat: 50.7486, lon: -1.0789 })
-        expect(place).toBe('Seal Bay Campsite @ 50.74860, -1.07890')
-        expect(readMapLine(place)).toMatchObject({ kind: 'place', name: 'Seal Bay Campsite' })
+        const place = writeMapPlace('Pebble Cove Campsite', { lat: 50.7486, lon: -4.0789 })
+        expect(place).toBe('Pebble Cove Campsite @ 50.74860, -4.07890')
+        expect(readMapLine(place)).toMatchObject({ kind: 'place', name: 'Pebble Cove Campsite' })
 
-        const route = writeMapRoute('Coast walk', [{ lat: 50.7486, lon: -1.0789 }, { lat: 50.75, lon: -1.08 }], '../assets/walk.gpx')
-        expect(route).toBe('Coast walk @ 50.74860, -1.07890 > 50.75000, -1.08000 (../assets/walk.gpx)')
+        const route = writeMapRoute('Coast walk', [{ lat: 50.7486, lon: -4.0789 }, { lat: 50.75, lon: -4.08 }], '../assets/walk.gpx')
+        expect(route).toBe('Coast walk @ 50.74860, -4.07890 > 50.75000, -4.08000 (../assets/walk.gpx)')
         expect(readMapLine(route)).toMatchObject({ kind: 'route', name: 'Coast walk', track: '../assets/walk.gpx' })
     })
 
@@ -116,7 +116,7 @@ describe('writing', () => {
     })
 
     it('keeps a name on one line, whatever was typed or pasted into it', () => {
-        expect(writeMapPlace(' Seal\nBay \t Campsite ', { lat: 1, lon: 2 })).toBe('Seal Bay Campsite @ 1.00000, 2.00000')
+        expect(writeMapPlace(' Pebble\nCove \t Campsite ', { lat: 1, lon: 2 })).toBe('Pebble Cove Campsite @ 1.00000, 2.00000')
     })
 
     it('refuses a route with fewer than two points', () => {
@@ -127,13 +127,13 @@ describe('writing', () => {
 // A published Map Block is a picture (ADR 0118): its alt text names what is on it, never where.
 describe('the words for a picture of a map', () => {
     it('names its places and routes', () => {
-        expect(mapAltText(['Seal Bay @ 50.7486, -1.0789'])).toBe('Map of Seal Bay')
-        expect(mapAltText(['Seal Bay @ 50.7, -1.0', 'Coast walk @ 50.7, -1.0 > 50.8, -1.1'])).toBe('Map of Seal Bay and Coast walk')
+        expect(mapAltText(['Pebble Cove @ 50.7486, -4.0789'])).toBe('Map of Pebble Cove')
+        expect(mapAltText(['Pebble Cove @ 50.7, -1.0', 'Coast walk @ 50.7, -1.0 > 50.8, -1.1'])).toBe('Map of Pebble Cove and Coast walk')
         expect(mapAltText(['A @ 1, 2', 'B @ 1, 2', 'C @ 1, 2'])).toBe('Map of A, B and C')
     })
 
     it('counts what has no name, and what is past the first ten', () => {
-        expect(mapAltText(['Seal Bay @ 1, 2', '@ 3, 4', '@ 5, 6'])).toBe('Map of Seal Bay and 2 unnamed places')
+        expect(mapAltText(['Pebble Cove @ 1, 2', '@ 3, 4', '@ 5, 6'])).toBe('Map of Pebble Cove and 2 unnamed places')
         expect(mapAltText(['@ 1, 2 > 3, 4'])).toBe('Map of 1 unnamed route')
         const many = Array.from({ length: 13 }, (_, i) => `Place ${i + 1} @ 1, 2`)
         expect(mapAltText(many)).toBe('Map of Place 1, Place 2, Place 3, Place 4, Place 5, Place 6, Place 7, Place 8, Place 9, Place 10 and 3 more')
@@ -142,6 +142,6 @@ describe('the words for a picture of a map', () => {
     it('says a map with nothing on it is empty, and never holds a coordinate', () => {
         expect(mapAltText([])).toBe('An empty map')
         expect(mapAltText(['not a place'])).toBe('An empty map')
-        expect(mapAltText(['Seal Bay @ 50.7486, -1.0789'])).not.toMatch(/\d/)
+        expect(mapAltText(['Pebble Cove @ 50.7486, -4.0789'])).not.toMatch(/\d/)
     })
 })

@@ -93,16 +93,15 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      # The builder's own image and the Dockerfile's base image come through Google's mirror of
-      # Docker Hub, which serves the same images by digest: Docker Hub refuses anonymous pulls once
-      # GitHub's shared runner addresses reach its limit. BuildKit asks Docker Hub when the mirror
-      # lacks an image.
-      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      # Signed in to Docker Hub before the builder starts, so both the builder's own image and the
+      # Dockerfile's base image are signed-in pulls, with the DOCKERHUB_USERNAME variable and the
+      # DOCKERHUB_TOKEN secret: Docker Hub limits anonymous pulls by address, and GitHub's runners
+      # share theirs.
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
-          driver-opts: image=mirror.gcr.io/moby/buildkit:buildx-stable-1
-          buildkitd-config-inline: |
-            [registry."docker.io"]
-              mirrors = ["mirror.gcr.io"]
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         if: env.PUSH == 'true'
         with:
@@ -140,10 +139,12 @@ jobs:
   # Publishing is two jobs so that no dependency code runs where an npm credential can be minted:
   # npm-pack installs and builds with read access only, and npm-publish, which holds the OIDC
   # permission, has no checkout and no install; it publishes the tarball npm-pack produced.
-  # Two packages ship at the Client's version: the Headless Client and the Extension API (ADR 0120).
-  # Each is packed only when npm does not have that version yet.
+  # The Headless Client ships at the Client's version, packed only when npm does not have that
+  # version yet. The Extension API (ADR 0120) joins the list below once its first version is on npm:
+  # npm sets a trusted publisher only on a package that exists, so that version is published by hand,
+  # and until then a publish from here would fail and stop the release.
   npm-pack:
-    name: Pack the Headless Client and the Extension API
+    name: Pack the Headless Client
     needs: [verify, version]
     if: needs.version.outputs.release == 'true'
     runs-on: ubuntu-latest
@@ -159,7 +160,7 @@ jobs:
         run: |
           set -euo pipefail
           folders=""
-          for entry in "@appsoftwareltd/etherpk-mcp apps/mcp" "@appsoftwareltd/etherpk-extension-api packages/extension-api"; do
+          for entry in "@appsoftwareltd/etherpk-mcp apps/mcp"; do
             name="${entry%% *}"
             folder="${entry#* }"
             if npm view "${name}@${VERSION}" version >/dev/null 2>&1; then
@@ -203,7 +204,7 @@ jobs:
           retention-days: 7
 
   npm-publish:
-    name: Publish the Headless Client and the Extension API to npm
+    name: Publish the Headless Client to npm
     needs: [version, npm-pack]
     if: needs.npm-pack.outputs.publish == 'true'
     runs-on: ubuntu-latest

@@ -39,12 +39,12 @@ describe('/map', () => {
     })
 
     it("goes beneath a bullet at its content column, as the bullet's own lines", () => {
-        const result = insert(['- Shortlist', '  - Seal Bay', 'After'], 1)
-        expect(result.text).toBe('- Shortlist\n  - Seal Bay\n    ```map\n    ```\nAfter')
+        const result = insert(['- Shortlist', '  - Pebble Cove', 'After'], 1)
+        expect(result.text).toBe('- Shortlist\n  - Pebble Cove\n    ```map\n    ```\nAfter')
     })
 
     it("adds no line after a map put beneath the document's last line", () => {
-        expect(insert(['- Shortlist', '  - Seal Bay'], 1).text).toBe('- Shortlist\n  - Seal Bay\n    ```map\n    ```')
+        expect(insert(['- Shortlist', '  - Pebble Cove'], 1).text).toBe('- Shortlist\n  - Pebble Cove\n    ```map\n    ```')
         expect(insert(['Places near [[Campsites]]'], 0).text).toBe('Places near [[Campsites]]\n```map\n```')
     })
 

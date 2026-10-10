@@ -5,7 +5,7 @@ import { createMapSelectRequests } from './select-requests'
 // "Show in document" from a Map View hands the chosen item to its Map Block, which may mount
 // after the request is made or be drawn already.
 describe('a request to select an item in its Map Block', () => {
-    const body = ['Seal Bay @ 50.74860, -1.07890', 'The Needles @ 50.66230, -1.58870']
+    const body = ['Pebble Cove @ 50.74860, -4.07890', 'Chalk Point @ 50.66230, -4.58870']
 
     it('is taken by a block in that document whose body holds the line, once', () => {
         const requests = createMapSelectRequests()

@@ -20,13 +20,13 @@ describe('reading the places found', () => {
     it('names a place by its name, or by its address when it has none, and says where it is', () => {
         const results = placeResults(
             [
-                feature(-1.2, 50.6, { name: 'Ventnor', county: 'Isle of Wight', country: 'United Kingdom' }),
+                feature(-1.2, 50.6, { name: 'Brookmouth', county: 'Westshire', country: 'United Kingdom' }),
                 feature(-0.1276, 51.5034, { housenumber: '10', street: 'Downing Street', postcode: 'SW1A 2AA', city: 'London', country: 'United Kingdom' }),
             ],
             'anything',
         )
         expect(results).toEqual([
-            { name: 'Ventnor', detail: 'Isle of Wight, United Kingdom', point: { lat: 50.6, lon: -1.2 }, postcode: undefined },
+            { name: 'Brookmouth', detail: 'Westshire, United Kingdom', point: { lat: 50.6, lon: -1.2 }, postcode: undefined },
             { name: '10 Downing Street', detail: 'London, SW1A 2AA, United Kingdom', point: { lat: 51.5034, lon: -0.1276 }, postcode: 'SW1A 2AA' },
         ])
     })
@@ -46,7 +46,7 @@ describe('reading the places found', () => {
         expect(ukPostcode(' sw1a 2aa ')).toBe('SW1A2AA')
         expect(ukPostcode('M1 1AE')).toBe('M11AE')
         expect(ukPostcode('B33 8TH')).toBe('B338TH')
-        expect(ukPostcode('Ventnor')).toBeNull()
+        expect(ukPostcode('Brookmouth')).toBeNull()
         expect(ukPostcode('SW1A')).toBeNull()
     })
 })
@@ -61,13 +61,13 @@ describe('searching', () => {
             { text: 'Powered by Geoapify', url: 'https://www.geoapify.com/' },
             { text: '© OpenStreetMap', url: 'https://www.openstreetmap.org/copyright' },
         ]
-        const searchPlaces = vi.fn(async () => ({ type: 'FeatureCollection', features: [feature(-1.2, 50.6, { name: 'Ventnor' })], credits }))
+        const searchPlaces = vi.fn(async () => ({ type: 'FeatureCollection', features: [feature(-1.2, 50.6, { name: 'Brookmouth' })], credits }))
         const search = createPlaceSearch({ server: () => connection(searchPlaces), photonUrl: null, offersSyncPlus: true, language: () => 'en-GB' })
         expect(search.availability()).toEqual({ available: true })
         const signal = new AbortController().signal
-        const answer = await search.search('Ventnor', { lat: 50.6, lon: -1.2 }, signal)
-        expect(searchPlaces).toHaveBeenCalledWith({ q: 'Ventnor', near: { lat: 50.6, lon: -1.2 }, lang: 'en' }, signal)
-        expect(answer.results.map((r) => r.name)).toEqual(['Ventnor'])
+        const answer = await search.search('Brookmouth', { lat: 50.6, lon: -1.2 }, signal)
+        expect(searchPlaces).toHaveBeenCalledWith({ q: 'Brookmouth', near: { lat: 50.6, lon: -1.2 }, lang: 'en' }, signal)
+        expect(answer.results.map((r) => r.name)).toEqual(['Brookmouth'])
         // The credits the server's service asks for come with the places.
         expect(answer.credits).toEqual(credits)
     })
@@ -79,19 +79,19 @@ describe('searching', () => {
                 photonUrl: null,
                 offersSyncPlus: true,
                 language: () => 'en',
-            }).search('Ventnor', null, new AbortController().signal)
+            }).search('Brookmouth', null, new AbortController().signal)
         const openStreetMap = [{ text: '© OpenStreetMap', url: 'https://www.openstreetmap.org/copyright' }]
         expect((await answering(undefined)).credits).toEqual(openStreetMap)
         expect((await answering([{ text: 'Click me', url: 'javascript:alert(1)' }])).credits).toEqual(openStreetMap)
     })
 
     it('asks a Photon server a deployment names directly, needing no account', async () => {
-        const fetch = vi.fn(async (_url: RequestInfo | URL) => new Response(JSON.stringify({ type: 'FeatureCollection', features: [feature(-1.2, 50.6, { name: 'Ventnor' })] })))
+        const fetch = vi.fn(async (_url: RequestInfo | URL) => new Response(JSON.stringify({ type: 'FeatureCollection', features: [feature(-1.2, 50.6, { name: 'Brookmouth' })] })))
         const search = createPlaceSearch({ server: () => null, photonUrl: 'https://photon.example.com/api', offersSyncPlus: true, language: () => 'fr', fetch })
         expect(search.availability()).toEqual({ available: true })
-        const answer = await search.search('Ventnor', null, new AbortController().signal)
+        const answer = await search.search('Brookmouth', null, new AbortController().signal)
         const asked = new URL(String(fetch.mock.calls[0][0]))
-        expect(Object.fromEntries(asked.searchParams)).toEqual({ q: 'Ventnor', limit: '8', lang: 'fr' })
+        expect(Object.fromEntries(asked.searchParams)).toEqual({ q: 'Brookmouth', limit: '8', lang: 'fr' })
         expect(answer.credits).toEqual([{ text: '© OpenStreetMap', url: 'https://www.openstreetmap.org/copyright' }])
     })
 
@@ -105,7 +105,7 @@ describe('searching', () => {
     it("turns the server's refusals into what to do instead", async () => {
         const refusing = (error: unknown) =>
             createPlaceSearch({ server: () => connection(vi.fn(async () => Promise.reject(error))), photonUrl: null, offersSyncPlus: true, language: () => 'en' }).search(
-                'Ventnor',
+                'Brookmouth',
                 null,
                 new AbortController().signal,
             )
@@ -120,6 +120,6 @@ describe('searching', () => {
     it('lets a search the person replaced end quietly', async () => {
         const aborted = new DOMException('The operation was aborted.', 'AbortError')
         const search = createPlaceSearch({ server: () => connection(vi.fn(async () => Promise.reject(aborted))), photonUrl: null, offersSyncPlus: true, language: () => 'en' })
-        await expect(search.search('Ventnor', null, new AbortController().signal)).rejects.toBe(aborted)
+        await expect(search.search('Brookmouth', null, new AbortController().signal)).rejects.toBe(aborted)
     })
 })

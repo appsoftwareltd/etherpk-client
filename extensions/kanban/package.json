@@ -1,6 +1,6 @@
 {
     "name": "@appsoftwareltd/etherpk-extension-kanban",
-    "version": "0.9.3",
+    "version": "0.9.4",
     "license": "Elastic-2.0",
     "description": "A board for the tasks that answer to one concept: a lane per status, a section per priority, and the task itself beside them.",
     "private": true,

@@ -452,7 +452,7 @@ describe('a Map Block in a published page', () => {
     const page = (concept: string, text: string): PublishDocument => ({ concept, kind: 'page', text, aliases: [] })
     const mapDocs = [
         page('Site', '---\npublication:\n  id: site\n---\n- [[Trips]]\n'),
-        page('Trips', '---\npublic: true\npublications: [site]\n---\nPlaces we liked.\n\n```map\nSeal Bay @ 50.74860, -1.07890\n```\n'),
+        page('Trips', '---\npublic: true\npublications: [site]\n---\nPlaces we liked.\n\n```map\nPebble Cove @ 50.74860, -4.07890\n```\n'),
     ]
     const mapSource: PublishSource = { documents: mapDocs, readAsset: async () => null }
     const site = discoverPublications(mapDocs).publications.find((p) => p.id === 'site')!
@@ -462,11 +462,11 @@ describe('a Map Block in a published page', () => {
         const asked: string[] = []
         const { bundle, report } = await publishPublication(mapSource, site, environment({ renderMap: async (source) => (asked.push(source), drawn) }))
         expect(report.errors).toEqual([])
-        expect(asked).toEqual(['Seal Bay @ 50.74860, -1.07890\n'])
+        expect(asked).toEqual(['Pebble Cove @ 50.74860, -4.07890\n'])
         const picture = [...bundle.keys()].find((path) => path.startsWith('maps/'))
         expect(picture).toMatch(/^maps\/[0-9a-f]{16}\.webp$/)
         expect(bundle.get(picture!)).toEqual(drawn.bytes)
-        expect(bundle.get('trips.html')).toContain(`<img src="${picture}" alt="Map of Seal Bay" width="800" height="450" loading="lazy">`)
+        expect(bundle.get('trips.html')).toContain(`<img src="${picture}" alt="Map of Pebble Cove" width="800" height="450" loading="lazy">`)
         for (const [path, content] of bundle) if (typeof content === 'string') expect(content, path).not.toContain('50.7486')
     })
 

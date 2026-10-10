@@ -133,14 +133,14 @@ describe('the Map View row at the caret', () => {
 
     it('opens the map at once when the caret answers to one concept, beside the editor', async () => {
         const maps = setup()
-        focusedEditor('- Seal Bay was lovely', 'Trips')
+        focusedEditor('- Pebble Cove was lovely', 'Trips')
         await maps.commands.execute(MAPS_OPEN_AT_CARET)
         expect(maps.opened).toEqual([['Trips', 'document:Trips']])
     })
 
     it('offers a choice at the caret when it answers to several, and opens nothing yet', async () => {
         const maps = setup()
-        const view = focusedEditor('- [[Campsites]]\n  - Seal Bay was lovely', 'Trips')
+        const view = focusedEditor('- [[Campsites]]\n  - Pebble Cove was lovely', 'Trips')
         await maps.commands.execute(MAPS_OPEN_AT_CARET)
         expect(maps.opened).toEqual([])
         expect(view.state.facet(showTooltip).some(Boolean)).toBe(true)
@@ -148,7 +148,7 @@ describe('the Map View row at the caret', () => {
 
     it('does nothing from an editor that is not focused, where a list would get none of the keys', async () => {
         const maps = setup()
-        focusedEditor('- [[Campsites]]\n  - Seal Bay', 'Trips', false)
+        focusedEditor('- [[Campsites]]\n  - Pebble Cove', 'Trips', false)
         await maps.commands.execute(MAPS_OPEN_AT_CARET)
         expect(maps.opened).toEqual([])
     })
