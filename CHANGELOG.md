@@ -5,6 +5,17 @@ What changed in each release of the EtherPK Client and the Headless Client
 They are released together, under the version number they share with the Sync Server. This log
 starts at 0.9.3.
 
+## Unreleased
+
+### Client
+
+- **The Extension API on npm.** [`@appsoftwareltd/etherpk-extension-api`](https://www.npmjs.com/package/@appsoftwareltd/etherpk-extension-api),
+  the package an EtherPK extension is written against, is on npm from 0.9.5 and is published with
+  every release, at the Client's version.
+- **Screenshots on the home page.** The home page shows four screenshots of the demo graph in turn:
+  the Graph View, the editor, a Kanban board and a Map View. Choose one from the row of tabs under
+  them, swipe on a phone, or pause them. A browser set to reduce motion shows the first one, still.
+
 ## 0.9.5 - 2026-10-10
 
 ### Client

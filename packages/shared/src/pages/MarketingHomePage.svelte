@@ -7,6 +7,7 @@
         PUBLIC_BLOG_URL,
     } from "../deployment-navigation";
     import MarketingHeadline from "./MarketingHeadline.svelte";
+    import MarketingScreenshots from "./MarketingScreenshots.svelte";
 
     /**
      * The public landing page, served by Corporate (www) and by the Client (app) so the two
@@ -63,14 +64,6 @@
     const socialImageUrl = $derived(
         new URL("/marketing/social-card.png", page.url.origin).href,
     );
-
-    // The screenshot's own pixel size, declared on the element so the page reserves the space
-    // before the bytes arrive rather than jumping when they do.
-    const SCREENSHOT = {
-        src: "/marketing/graph-view-dark.webp",
-        width: 2317,
-        height: 1309,
-    };
 
     type Action = {
         id: string;
@@ -725,29 +718,10 @@
         </p>
     </div>
 
-    <!-- The app as it is, rather than an illustration of it: the demo graph in the whole Graph View. -->
-    <figure class="mx-auto mt-14 max-w-6xl px-4 sm:mt-20 sm:px-6">
-        <div
-            class="overflow-hidden rounded-xl bg-gray-950 shadow-2xl shadow-gray-950/15 ring-1 ring-gray-950/10 sm:rounded-2xl dark:shadow-black/40 dark:ring-white/10"
-        >
-            <img
-                src={SCREENSHOT.src}
-                width={SCREENSHOT.width}
-                height={SCREENSHOT.height}
-                alt="The EtherPK Client in the dark theme, showing the demo graph in the whole Graph View: each page is a dot, each wikilink a line, and each cluster of closely linked pages has its own colour, with place names drawn as rings. Beside it is the list of Hubs, and the Backlinks pane on the right lists everything that mentions the Plant page."
-                fetchpriority="high"
-                decoding="async"
-                class="block h-auto w-full"
-            />
-        </div>
-        <figcaption
-            class="mx-auto mt-4 max-w-3xl text-center text-sm leading-6 text-gray-500 dark:text-gray-400"
-        >
-            The EtherPK demo graph (dark mode).
-        </figcaption>
-    </figure>
+    <!-- The app as it is, rather than an illustration of it: the demo graph in four views. -->
+    <MarketingScreenshots />
 
-    <!-- What EtherPK offers, then where to read more and talk about it, beneath the screenshot. -->
+    <!-- What EtherPK offers, then where to read more and talk about it, beneath the screenshots. -->
     <div class="mx-auto max-w-7xl px-4 pt-12 text-center sm:px-6 sm:pt-16">
         <p
             class="mx-auto max-w-3xl text-balance text-xl font-medium leading-8 text-gray-800 sm:text-2xl sm:leading-9 dark:text-gray-100"

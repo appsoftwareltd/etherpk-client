@@ -1,9 +1,10 @@
 name: Build and release
 
 # Every push to main publishes `edge` images. A push whose apps/client/package.json version has no
-# `v<version>` tag yet is a release: versioned images, the Headless Client on npm, then the tag and
-# a GitHub Release with the Node bundle. Each publishing step can run twice without harm, and the
-# tag is created last, so a release that fails part-way completes on a re-run or the next push.
+# `v<version>` tag yet is a release: versioned images, the Headless Client and the Extension API on
+# npm, then the tag and a GitHub Release with the Node bundle. Each publishing step can run twice
+# without harm, and the tag is created last, so a release that fails part-way completes on a re-run
+# or the next push.
 
 on:
   push:
@@ -139,12 +140,11 @@ jobs:
   # Publishing is two jobs so that no dependency code runs where an npm credential can be minted:
   # npm-pack installs and builds with read access only, and npm-publish, which holds the OIDC
   # permission, has no checkout and no install; it publishes the tarball npm-pack produced.
-  # The Headless Client ships at the Client's version, packed only when npm does not have that
-  # version yet. The Extension API (ADR 0120) joins the list below once its first version is on npm:
-  # npm sets a trusted publisher only on a package that exists, so that version is published by hand,
-  # and until then a publish from here would fail and stop the release.
+  # The Headless Client and the Extension API (ADR 0120) ship at the Client's version, each packed
+  # only when npm does not have that version yet. Each package names this repository, build.yaml and
+  # the npm environment as its trusted publisher on npmjs.com.
   npm-pack:
-    name: Pack the Headless Client
+    name: Pack the Headless Client and the Extension API
     needs: [verify, version]
     if: needs.version.outputs.release == 'true'
     runs-on: ubuntu-latest
@@ -160,7 +160,7 @@ jobs:
         run: |
           set -euo pipefail
           folders=""
-          for entry in "@appsoftwareltd/etherpk-mcp apps/mcp"; do
+          for entry in "@appsoftwareltd/etherpk-mcp apps/mcp" "@appsoftwareltd/etherpk-extension-api packages/extension-api"; do
             name="${entry%% *}"
             folder="${entry#* }"
             if npm view "${name}@${VERSION}" version >/dev/null 2>&1; then
@@ -204,7 +204,7 @@ jobs:
           retention-days: 7
 
   npm-publish:
-    name: Publish the Headless Client to npm
+    name: Publish the Headless Client and the Extension API to npm
     needs: [version, npm-pack]
     if: needs.npm-pack.outputs.publish == 'true'
     runs-on: ubuntu-latest
