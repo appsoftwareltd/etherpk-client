@@ -152,7 +152,7 @@ export const ICON_PATHS: Record<string, string> = {
 const HEROICON_PATHS: Record<string, string> = {
     /**
      * heroicons/outline `link`, a chain: the documents that link to this one. On the Backlinks
-     * View's tab and the Show backlinks row.
+     * View's tab and the Show Backlinks row.
      */
     backlinks:
         '<path d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244"/>',

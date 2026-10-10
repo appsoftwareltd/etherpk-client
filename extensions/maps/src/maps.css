@@ -83,6 +83,36 @@
     outline: none;
 }
 
+/* Search: what Enter does, as a button. In the accent while there is something to search. */
+.gk-map-search-go {
+    display: flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    margin-right: -4px;
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--gk-accent);
+    cursor: pointer;
+}
+
+.gk-map-search-go:hover:not(:disabled) {
+    background: var(--gk-surface-2);
+}
+
+.gk-map-search-go:focus-visible {
+    outline: 2px solid var(--gk-accent);
+    outline-offset: 1px;
+}
+
+.gk-map-search-go:disabled {
+    color: var(--gk-text-subtle);
+    cursor: default;
+}
+
 .gk-map-search-icon {
     display: flex;
     color: var(--gk-text-muted);
@@ -385,6 +415,16 @@
     font-variant-numeric: tabular-nums;
 }
 
+/* The credits of the service that named a place, under where it is. */
+.gk-map-sheet-credit {
+    margin: 0;
+    color: var(--gk-text-muted);
+}
+
+.gk-map-sheet-credit a {
+    color: inherit;
+}
+
 .gk-map-sheet-actions {
     display: flex;
     flex-wrap: wrap;
@@ -676,6 +716,14 @@
 
 :is(.gk-map-block, .gk-map-view) .maplibregl-ctrl-attrib a {
     color: var(--gk-text-default);
+}
+
+/* MapLibre opens a compact credit with `visibility: visible`, which shows through any ancestor hidden
+   with `visibility: hidden`: a tab behind another, which the desktop keeps mounted that way, then
+   showed its map's credit over whatever was in front. Open or closed, the credit is drawn by its
+   `display`, so it can take its map's visibility. */
+:is(.gk-map-block, .gk-map-view) .maplibregl-ctrl-attrib.maplibregl-compact-show {
+    visibility: inherit;
 }
 
 :root[data-theme='dark'] :is(.gk-map-block, .gk-map-view) .maplibregl-ctrl-icon,

@@ -65,9 +65,25 @@ describe('registerGraphView', () => {
         dispose()
     })
 
+    it('offers it on a wikilink too, which centres the whole graph on the concept the link names', async () => {
+        const { context, rowsFor, layout, dispose } = setup()
+        const link = { kind: 'wikilink', concept: 'House plants', panelId: 'document:Notes' } as const
+        expect(rowsFor(link).find((item) => item.id === GRAPH_VIEW_SHOW_CONCEPT)?.label).toBe('Show in Graph View')
+
+        await context.commands.execute(GRAPH_VIEW_SHOW_CONCEPT, link)
+        expect(layout.openView).toHaveBeenCalledWith(GRAPH_VIEW_WHOLE)
+        const heard: string[] = []
+        const stop = onWholeGraphFocus((concept) => heard.push(concept))
+        // As written: the whole graph resolves an alias or another casing as it centres.
+        expect(heard).toEqual(['House plants'])
+        stop()
+        dispose()
+    })
+
     it('hides the row on a phone, where there is no Graph View', () => {
         const { rowsFor, dispose } = setup(false)
         expect(rowsFor(documentTab).some((item) => item.id === GRAPH_VIEW_SHOW_CONCEPT)).toBe(false)
+        expect(rowsFor({ kind: 'wikilink', concept: 'Plants' }).some((item) => item.id === GRAPH_VIEW_SHOW_CONCEPT)).toBe(false)
         dispose()
     })
 

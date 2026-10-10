@@ -1,7 +1,8 @@
 /**
  * The ways to a [[Map View]] (ADR 0118), all of them on every device:
  *
- * - Open Map View on a document tab's [[Context Menu]], for the tab's concept,
+ * - Open Map View on a document tab's or a wikilink's [[Context Menu]], for the tab's concept or
+ *   the one the link names,
  * - the Command Menu's Open Map View row, for the concept the caret's block answers to, or the
  *   choice at the caret when it answers to several, as `/kanban` offers a board,
  * - the Command Menu's Graph Map View row, and the Graph Sidebar's Graph Map View button under
@@ -19,7 +20,7 @@ import { showConceptPicker } from '$lib/document/view/augmentations/concept-pick
 import { editorDocument } from '$lib/document/view/editor-document'
 import { parseViewKey } from '$lib/layout/view-ref'
 
-import { MAP_VIEW_KIND, MAP_WHOLE, MAPS_OPEN_AT_CARET, MAPS_OPEN_FOR, MAPS_OPEN_FOR_TAB, MAPS_OPEN_PAGE, MAPS_OPEN_WHOLE, mapViewOf } from './identity'
+import { MAP_VIEW_KIND, MAP_WHOLE, MAPS_OPEN_AT_CARET, MAPS_OPEN_FOR, MAPS_OPEN_FROM_MENU, MAPS_OPEN_PAGE, MAPS_OPEN_WHOLE, mapViewOf } from './identity'
 
 /** The whole graph's Map View, by its name: its tab, its Command Menu row and its graph sidebar button. */
 const GRAPH_MAP_VIEW = 'Graph Map View'
@@ -31,9 +32,12 @@ function mapConcept(target: MenuTarget | undefined): string | null {
     return view.kind === MAP_VIEW_KIND ? view.target : null
 }
 
-/** A document's tab, the target Open Map View applies to. */
-function documentTab(target: MenuTarget | undefined): target is MenuTarget & { kind: 'document-tab'; concept: string; panelId?: string } {
-    return target?.kind === 'document-tab'
+/**
+ * A document's tab or a wikilink, the targets Open Map View applies to: the tab's concept, or the
+ * one the link names, with the panel of the tab or of the editor holding the link.
+ */
+function conceptTarget(target: MenuTarget | undefined): target is MenuTarget & { kind: 'document-tab' | 'wikilink'; concept: string; panelId?: string } {
+    return target?.kind === 'document-tab' || target?.kind === 'wikilink'
 }
 
 export function registerMapViewCommands(context: ExtensionContext): void {
@@ -46,19 +50,20 @@ export function registerMapViewCommands(context: ExtensionContext): void {
     const openMap = (concept: string | null, inPaneOf?: string) =>
         layout.openView(concept === null ? MAP_WHOLE : mapViewOf(context.concepts.canonicalName(concept)), inPaneOf === undefined ? {} : { inPaneOf })
 
-    commands.register(MAPS_OPEN_FOR_TAB, (arg) => {
+    commands.register(MAPS_OPEN_FROM_MENU, (arg) => {
         const target = arg as MenuTarget | undefined
-        if (documentTab(target)) openMap(target.concept, target.panelId)
+        // In the Pane of the tab, or of the editor the link is in, as a link clicked there opens.
+        if (conceptTarget(target)) openMap(target.concept, target.panelId)
     })
     contextMenu.register({
-        id: MAPS_OPEN_FOR_TAB,
+        id: MAPS_OPEN_FROM_MENU,
         label: 'Open Map View',
-        command: MAPS_OPEN_FOR_TAB,
+        command: MAPS_OPEN_FROM_MENU,
         icon: 'map',
-        // After Show backlinks (5), Open Kanban board (6) and Show in Graph View (7): the rows
-        // that show something about the tab's concept without changing anything.
+        // After Show Backlinks (5), Open Kanban Board (6) and Show in Graph View (7): the rows
+        // that show something about the concept without changing anything.
         order: 8,
-        when: (target) => documentTab(target),
+        when: (target) => conceptTarget(target),
     })
     commands.register(MAPS_OPEN_AT_CARET, () => {
         const view = getActiveEditorView()

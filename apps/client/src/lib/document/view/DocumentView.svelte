@@ -16,7 +16,7 @@
     import { onDestroy, onMount, untrack } from 'svelte'
 
     import LoadingSweep from '$lib/components/LoadingSweep.svelte'
-    import { viewKey, type ViewRef } from '$lib/layout'
+    import { viewKey, type ViewRef, type ViewVisibility } from '$lib/layout'
     import { NOTICE_AUTO_DISMISS_MS } from '$lib/notice-dismissal'
     import { registerPositionAdapter, tryGetActiveReadingPositions } from '$lib/navigation'
     import { openContextMenu, tryGetActiveEventBus } from '$lib/surface'
@@ -55,6 +55,7 @@
     import { EDIT_REFUSAL_MESSAGE, EDIT_REFUSAL_TITLE, type EditRefusal } from './edit-refused'
     import { applyEditorPosition, editorPosition, type RevealAlign, revealEditorPosition } from './view-position'
     import { createHeldReveal } from './held-reveal'
+    import { setEditorOnScreen } from './editor-on-screen'
     import type * as Y from 'yjs'
 
     // `ytext` opts the editor into the collaborative buffer (Server engine / ADR 0010
@@ -65,6 +66,7 @@
         panelId,
         embedded: embeddedProp = false,
         revealAt,
+        visibility: visibilityProp,
     }: {
         view: ViewRef
         ytext?: Y.Text
@@ -78,10 +80,19 @@
         embedded?: boolean
         /** Embedded only: the body line (0-based) put at the top when it opens. */
         revealAt?: number
+        /**
+         * Whether this View is on screen (view-visibility.ts), which every presenter passes, and a
+         * Kanban Board passes on to its Task Detail. The editor is told (editor-on-screen.ts), so a
+         * map in it lets its WebGL context go while the tab is behind another. Absent, the editor
+         * is always on screen.
+         */
+        visibility?: ViewVisibility
     } = $props()
 
     /** Fixed for the View's life, as its ref is. */
     const embedded = untrack(() => embeddedProp)
+    /** Fixed for the View's life: a presenter hands a View one visibility object. */
+    const visibility = untrack(() => visibilityProp)
     /** Embedded: the line last shown, which a remount (protection changing) shows again. */
     let embeddedLine = untrack(() => revealAt)
 
@@ -822,6 +833,8 @@
                 },
                 // Which document this editor shows, and where, for a Command holding only the view.
                 document: { concept: view.target, panelId },
+                // A tab restored behind another starts out of sight, so a map in it never draws.
+                onScreen: () => visibility?.onScreen ?? true,
             }),
         })
         // Command Menu handlers reach this editor through the active-view accessor. An embedded
@@ -965,6 +978,10 @@
         releaseDocument?.()
         releaseDocument = undefined
     }
+
+    // Tell the mounted editor each time this View comes on screen or goes out of sight, whichever
+    // editor a remount has made by then; the next one starts from `onScreen` (editorExtensions).
+    $effect(() => visibility?.subscribe((onScreen) => editor?.view.dispatch({ effects: setEditorOnScreen.of(onScreen) })))
 
     onDestroy(() => {
         clearRefusal()

@@ -5,6 +5,10 @@ aliases:
 ---
 *Aechmea fasciata*, in the [[Bromeliaceae]] family. Native to [[Brazil]].
 
+```map
+Rio de Janeiro, Brazil @ -22.41, -42.97
+```
+
 Silvery, banded leaves form a cup in the middle, and in the wild that cup holds rainwater. Water into the cup, not just the pot. The pink flower head lasts for months. Then the plant slowly dies and leaves its pups to carry on.
 
 - Light: bright, indirect

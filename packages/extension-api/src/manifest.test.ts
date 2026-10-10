@@ -126,9 +126,26 @@ describe('readExtensionPackage', () => {
         const settings = [
             { id: 'mapbox-token', type: 'secret', title: 'Mapbox key', description: 'For satellite imagery.', placeholder: 'pk.…', link: { title: 'How to get one', url: 'https://docs.etherpk.com/maps' } },
             { id: 'nickname', type: 'text', title: 'Nickname' },
+            { id: 'lookups', type: 'boolean', title: 'Look things up online', default: true },
         ]
         const result = readExtensionPackage(graphView({ settings }))
         expect(result.ok && result.extension.manifest.settings).toEqual(settings)
+    })
+
+    it('refuses a default that is not true or false, or on a setting that is not a switch', () => {
+        expect(
+            errorsOf(
+                graphView({
+                    settings: [
+                        { id: 'lookups', type: 'boolean', title: 'Look things up online', default: 'yes' },
+                        { id: 'nickname', type: 'text', title: 'Nickname', default: true },
+                    ],
+                }),
+            ),
+        ).toEqual([
+            '"etherpk.settings[0]".default must be true or false, and only on a boolean setting.',
+            '"etherpk.settings[1]".default must be true or false, and only on a boolean setting.',
+        ])
     })
 
     it('refuses a setting with a bad id, a type it does not know, no title, or a link that is not https', () => {
@@ -144,7 +161,7 @@ describe('readExtensionPackage', () => {
             ),
         ).toEqual([
             '"etherpk.settings[0]".id must be lowercase letters, digits and hyphens, starting with a letter.',
-            '"etherpk.settings[1]".type must be one of text, secret.',
+            '"etherpk.settings[1]".type must be one of text, secret, boolean.',
             '"etherpk.settings[1]".title must be a non-empty string.',
             '"etherpk.settings[2]".id "key" is declared twice.',
             '"etherpk.settings[2]".link must be { title, url }, the url an https address.',

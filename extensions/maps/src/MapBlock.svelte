@@ -29,11 +29,13 @@
     import { type BasemapProblem, type EngineItem, MapEngine } from './map-engine'
     import { formatDistance, routeLengthMeters, simplifyPath } from './map-geometry'
     import { mapsAppUrl } from './maps-app-link'
-    import { isShortMapLink, readPlaceInput } from './place-input'
+    import { readSearchBox, type SearchBoxReading } from './place-input'
     import { recognisePostcode } from './postcode-search'
     import './maps.css'
 
     let { context, services }: { context: InteractiveFenceContext; services: MapBlockServices } = $props()
+    /** This map's own, so two maps on one page never share an element id. */
+    const uid = $props.id()
 
     /** How long a map out of sight keeps its WebGL context, so scrolling past does not rebuild it. */
     const OFF_SCREEN_GRACE_MS = 8000
@@ -44,9 +46,25 @@
     /** And never kept at more points than this, so a long day's recording stays a short line of text. */
     const TRACK_MAX_POINTS = 2000
 
+    /**
+     * What waits for a name before it is added. A place keeps where it is in words (`detail`) and the
+     * credits of the service that named it, both shown under its name and neither written down.
+     */
     type Pending =
-        | { kind: 'place'; point: MapPoint; name: string }
+        | { kind: 'place'; point: MapPoint; name: string; detail: string; credits: PlaceSearchCredit[] }
         | { kind: 'route'; points: MapPoint[]; name: string; track: string | null }
+
+    /** A short link the device cannot open, where no Sync Server opened it either. */
+    const SHORT_LINK_NOTE = "A short link can't be read here. Open it, then copy the full address from your browser's address bar."
+    /** The same, where the person switched the search and link services off. */
+    const SHORT_LINK_OFF_NOTE = "Opening short links is switched off in the Maps extension's settings. Open the link, then copy the full address from your browser's address bar."
+    /** A map link that names a place without saying where it is, where it cannot be searched for. */
+    const NO_POSITION_NOTE = "This link doesn't say where the place is. Open it, then copy the full address from your browser's address bar."
+    const UNREADABLE_LINK_NOTE = 'No place can be read from this link. Paste a link from Google Maps, Apple Maps or OpenStreetMap, or type the coordinates.'
+    /** Searching as the person types waits this long after their last key, so a name is searched once, not a letter at a time. */
+    const TYPING_PAUSE_MS = 500
+    /** Shorter text finds too much to be worth searching before the person asks. */
+    const TYPING_MIN_LENGTH = 3
 
     type Mode = 'idle' | 'adding' | 'drawing' | 'moving'
 
@@ -101,6 +119,23 @@
     let resultsCredit = $state(false)
     /** The credits the search service asked for, shown under the places it found. */
     let searchCredits: PlaceSearchCredit[] = $state([])
+    /** The name a pasted link gave the place its results were searched for, which a picked result takes. */
+    let resultsName = ''
+    /** The name of the place nearest a place set down by hand is being looked up (ADR 0119, 2026-10-10). */
+    let naming = $state(false)
+    /** Bumped when a search or a lookup may have learned that searching by name is refused here. */
+    let searchChecked = $state(0)
+    // The person can switch the search and link services off, or on, while the map is open.
+    const watchSearch = createSubscriber((update) => services.search?.subscribe(update))
+    /** Whether the search box offers searching by name: until a server refuses it, or the person switches it off. */
+    const nameSearch = $derived.by(() => {
+        void searchChecked
+        watchSearch()
+        return services.search?.availability().available ?? false
+    })
+    const searchPrompt = $derived(
+        nameSearch ? 'Find a place, or paste coordinates or a map link' : services.postcodes ? 'Postcode, coordinates or a map link' : 'Coordinates or a map link',
+    )
     /** Between two credits. Written out, since the template would trim a space at a block's edge. */
     const CREDIT_SEPARATOR = ', '
     let searching = $state(false)
@@ -129,6 +164,12 @@
     let menuElement: HTMLElement | undefined = $state()
 
     let searchAbort: AbortController | null = null
+    let nameAbort: AbortController | null = null
+    let typingTimer: ReturnType<typeof setTimeout> | null = null
+    /** What was last searched for while the person typed, so a pause on the same text asks nothing more. */
+    let typedSearch: string | null = null
+    /** Which pending place a name lookup is for: a later one, or none, takes no answer meant for another. */
+    let pendingSerial = 0
     let undoTimer: ReturnType<typeof setTimeout> | null = null
 
     const selected: MapItem | null = $derived.by(() => {
@@ -169,12 +210,22 @@
 
     // ---- The map's life ------------------------------------------------------------------------
 
+    /** Settles whether the map is drawn, while the block is attached (`watchScreen`). */
+    let settleScreen: (() => void) | null = null
+    // The editor going behind another tab, or coming back, is told in `context.onScreen`.
+    $effect(() => {
+        void context.onScreen
+        untrack(() => settleScreen?.())
+    })
+
     /** Live while on screen, and for a grace after leaving it; not at all while folded. */
     function watchScreen(node: HTMLElement) {
         let intersecting = false
         let release: ReturnType<typeof setTimeout> | null = null
         const settle = () => {
-            const visible = intersecting && document.visibilityState === 'visible'
+            // In the editor's view, the browser tab shown, and the editor's own tab in front: a tab
+            // behind another is hidden, not scrolled away, so only the editor can say.
+            const visible = intersecting && document.visibilityState === 'visible' && untrack(() => context.onScreen)
             if (visible) {
                 if (release) clearTimeout(release)
                 release = null
@@ -192,7 +243,9 @@
         })
         observer.observe(node)
         document.addEventListener('visibilitychange', settle)
+        settleScreen = settle
         return () => {
+            settleScreen = null
             observer.disconnect()
             document.removeEventListener('visibilitychange', settle)
             if (release) clearTimeout(release)
@@ -276,6 +329,13 @@
         else showWhenReady = true
     }
 
+    // A search or a name lookup still running when the map goes has nothing left to answer.
+    $effect(() => () => {
+        stopTyping()
+        searchAbort?.abort()
+        nameAbort?.abort()
+    })
+
     function online() {
         if (basemapProblem === 'offline') engine?.retryBasemap(basemap)
     }
@@ -285,7 +345,7 @@
     function mapClicked(point: MapPoint): void {
         if (mode === 'adding') {
             mode = 'idle'
-            void startPending({ kind: 'place', point, name: '' }, false)
+            void startPending({ kind: 'place', point, name: '', detail: '', credits: [] }, false)
         } else if (mode === 'drawing') {
             draft = [...draft, point]
         } else if (mode === 'moving' && selected?.kind === 'place') {
@@ -307,6 +367,8 @@
     // ---- Adding a place ------------------------------------------------------------------------
 
     async function startPending(next: Pending, centre: boolean): Promise<void> {
+        stopNaming()
+        const serial = ++pendingSerial
         pending = next
         selectedKey = null
         results = []
@@ -314,6 +376,41 @@
         await tick()
         nameInput?.focus()
         nameInput?.select()
+        if (next.kind === 'place' && next.name === '' && nameSearch) void lookUpName(next.point, serial)
+    }
+
+    /**
+     * Offer the name of the place nearest a place set down without one: filled in when it arrives,
+     * unless the person has typed a name of their own by then, and never added without them.
+     */
+    async function lookUpName(point: MapPoint, serial: number): Promise<void> {
+        const abort = new AbortController()
+        nameAbort = abort
+        naming = true
+        try {
+            const found = await services.search!.reverse(point, abort.signal)
+            if (!found || serial !== pendingSerial || pending?.kind !== 'place' || pending.name.trim() !== '') return
+            pending.name = found.name
+            pending.detail = found.detail
+            pending.credits = found.credits
+            await tick()
+            // Typing replaces the offered name, as it would a name a search gave.
+            if (document.activeElement === nameInput) nameInput?.select()
+        } catch {
+            // Ended because the person moved on: nothing to offer.
+        } finally {
+            if (nameAbort === abort) {
+                nameAbort = null
+                naming = false
+            }
+            searchChecked++
+        }
+    }
+
+    function stopNaming(): void {
+        nameAbort?.abort()
+        nameAbort = null
+        naming = false
     }
 
     function savePending(event: SubmitEvent): void {
@@ -325,45 +422,133 @@
                 ? commit(appendFenceLine(context.body, writeMapPlace(name, pending.point)), `${name || 'The place'} added.`)
                 : commit(appendFenceLine(context.body, writeMapRoute(name, pending.points, pending.track)), `${name || 'The route'} added.`)
         if (ok) {
+            stopNaming()
             pending = null
             searchInput?.focus()
         }
     }
 
     function cancelPending(): void {
+        stopNaming()
         pending = null
         searchInput?.focus()
     }
 
+    /** Enter, or the search button: act on whatever the box holds. */
     async function submitSearch(event: SubmitEvent): Promise<void> {
         event.preventDefault()
+        stopTyping()
         const text = query.trim()
         if (text === '') return
         searchNote = null
-        results = []
-        resultsCredit = false
-        searchCredits = []
-        const found = readPlaceInput(text, engine?.centre())
-        if (found) {
-            query = ''
-            await startPending({ kind: 'place', point: found.point, name: found.name }, true)
-            return
-        }
-        if (isShortMapLink(text)) {
-            searchNote = "A short link can't be read here. Open it, then copy the full address from your browser's address bar."
-            return
-        }
+        await run((signal) => follow(readSearchBox(text, engine?.centre()), signal))
+    }
+
+    /**
+     * Run one search, dropping any still running, whose answer would be for other text. The places
+     * already listed stay, with the busy mark beside the box, until the new answer replaces them.
+     */
+    async function run(act: (signal: AbortSignal) => Promise<void>): Promise<void> {
         searchAbort?.abort()
         const abort = new AbortController()
         searchAbort = abort
         searching = true
         try {
-            await search(text, abort.signal)
+            await act(abort.signal)
         } finally {
             if (searchAbort === abort) {
                 searching = false
                 searchAbort = null
             }
+            searchChecked++
+        }
+    }
+
+    /**
+     * Each change to the search box: a search still running for the old text is dropped, and the
+     * new text is searched once the person pauses (`searchWhileTyping`).
+     */
+    function typed(): void {
+        stopTyping()
+        searchAbort?.abort()
+        searchNote = null
+        if (query.trim() === '') {
+            results = []
+            typedSearch = null
+            return
+        }
+        typingTimer = setTimeout(() => {
+            typingTimer = null
+            searchWhileTyping()
+        }, TYPING_PAUSE_MS)
+    }
+
+    function stopTyping(): void {
+        if (typingTimer) clearTimeout(typingTimer)
+        typingTimer = null
+    }
+
+    /**
+     * Search what was typed, before Enter, when it is words that can be answered now: a postcode the
+     * files hold, or a name where the search by name is open. A place or a link waits for Enter,
+     * since setting one down opens the sheet and takes the keyboard, and so does anything that
+     * cannot be answered, which Enter explains.
+     */
+    function searchWhileTyping(): void {
+        const text = query.trim()
+        if (text.length < TYPING_MIN_LENGTH || text === typedSearch) return
+        if (readSearchBox(text, engine?.centre()).kind !== 'words') return
+        const postcode = recognisePostcode(text, services.region())
+        const postcodeAnswers = postcode !== null && postcode.country !== 'northern-ireland' && services.postcodes !== null
+        if (!postcodeAnswers && !nameSearch) return
+        typedSearch = text
+        void run((signal) => search(text, signal))
+    }
+
+    /** List what a search found, in place of anything listed before. */
+    function listResults(found: PlaceSearchResult[], from: { postcodeCredit: boolean; credits: PlaceSearchCredit[]; linkName: string }): void {
+        results = found
+        resultsCredit = from.postcodeCredit
+        searchCredits = from.credits
+        resultsName = from.linkName
+        searchNote = null
+    }
+
+    /** Say why nothing is listed, in place of anything listed before. */
+    function noteInstead(text: string): void {
+        results = []
+        searchNote = text
+    }
+
+    /**
+     * Act on what the search box holds: set down a place read on the device, have the Sync Server
+     * open a short link and read what it leads to, search for the words of a link that names a
+     * place without saying where, or search for what was typed.
+     */
+    async function follow(reading: SearchBoxReading, signal: AbortSignal): Promise<void> {
+        if (reading.kind === 'place') {
+            query = ''
+            await startPending({ kind: 'place', point: reading.place.point, name: reading.place.name, detail: '', credits: [] }, true)
+        } else if (reading.kind === 'short-link') {
+            let full: string | null = null
+            try {
+                full = (await services.search?.openShortLink(reading.url, signal)) ?? null
+            } catch {
+                return
+            }
+            if (signal.aborted) return
+            const opened = full === null ? null : readSearchBox(full)
+            if (!opened || opened.kind === 'short-link') noteInstead(services.search?.switchedOff() ? SHORT_LINK_OFF_NOTE : SHORT_LINK_NOTE)
+            // The name shared with the short link, where the link it leads to carries none.
+            else if (opened.kind === 'place') await follow({ kind: 'place', place: { ...opened.place, name: opened.place.name || reading.name } }, signal)
+            else if (opened.kind === 'link-words') await follow({ ...opened, name: opened.name || reading.name }, signal)
+            else noteInstead(UNREADABLE_LINK_NOTE)
+        } else if (reading.kind === 'link-words') {
+            await search(reading.words, signal, reading.name)
+        } else if (reading.kind === 'unreadable-link') {
+            noteInstead(UNREADABLE_LINK_NOTE)
+        } else {
+            await search(reading.words, signal)
         }
     }
 
@@ -371,8 +556,11 @@
      * A postcode from the map host's files, for everyone (ADR 0119), and anything else, or a
      * postcode the files do not hold, through the search by name and address where the person has
      * it. A postcode the files answer never goes to the search service.
+     *
+     * `linkName` is set for the words of a pasted link, never a URL: the place the link named, which
+     * a picked result is called by.
      */
-    async function search(text: string, signal: AbortSignal): Promise<void> {
+    async function search(text: string, signal: AbortSignal, linkName?: string): Promise<void> {
         const postcode = recognisePostcode(text, services.region())
         // What to say when the search by name cannot help either.
         let unanswered: string | null = null
@@ -382,8 +570,7 @@
                 const place = await services.postcodes.find(postcode)
                 if (signal.aborted) return
                 if (place) {
-                    results = [place]
-                    resultsCredit = postcode.country === 'gb'
+                    listResults([place], { postcodeCredit: postcode.country === 'gb', credits: [], linkName: '' })
                     return
                 }
                 unanswered = `No postcode ${postcode.label} was found. Check it, or type the coordinates.`
@@ -394,27 +581,28 @@
         }
         const availability = services.search?.availability() ?? {
             available: false,
-            reason: "Searching by name isn't set up here. Type coordinates such as 50.7486, -4.0789, a Plus Code, or paste a link from Google Maps, Apple Maps or OpenStreetMap.",
+            reason: "Searching by place name isn't set up here. Type coordinates such as 50.7486, -4.0789, or a Plus Code, or paste a link from Google Maps, Apple Maps or OpenStreetMap.",
         }
         if (!availability.available) {
-            searchNote = unanswered ?? availability.reason
+            noteInstead(unanswered ?? (linkName === undefined ? availability.reason : NO_POSITION_NOTE))
             return
         }
         try {
             const found = await services.search!.search(text, engine?.centre() ?? null, signal)
             if (signal.aborted) return
-            results = found.results
-            searchCredits = found.credits
-            if (found.results.length === 0) searchNote = unanswered ?? `Nothing was found for "${text}". Try other words, or type the coordinates.`
+            if (found.results.length === 0) noteInstead(unanswered ?? `Nothing was found for "${text}". Try other words, or type the coordinates.`)
+            else listResults(found.results, { postcodeCredit: false, credits: found.credits, linkName: linkName ?? '' })
         } catch (error) {
             if (signal.aborted) return
-            searchNote = error instanceof Error ? error.message : 'The search did not finish. Try again.'
+            // A link's words the server will not search for: what helps is a link that says where.
+            if (linkName !== undefined && !services.search!.availability().available) noteInstead(NO_POSITION_NOTE)
+            else noteInstead(error instanceof Error ? error.message : 'The search did not finish. Try again.')
         }
     }
 
     function pickResult(result: PlaceSearchResult): void {
         query = ''
-        void startPending({ kind: 'place', point: result.point, name: result.name }, true)
+        void startPending({ kind: 'place', point: result.point, name: resultsName || result.name, detail: result.detail, credits: resultsCredit ? [] : searchCredits }, true)
     }
 
     // ---- Drawing a route -----------------------------------------------------------------------
@@ -736,15 +924,21 @@
                     <input
                         bind:this={searchInput}
                         bind:value={query}
+                        oninput={typed}
                         type="search"
-                        placeholder="Find a place, or paste coordinates or a map link"
-                        aria-label="Find a place, or paste coordinates or a map link"
-                        aria-describedby={searchNote ? 'gk-map-search-note' : undefined}
+                        enterkeyhint="search"
+                        placeholder={searchPrompt}
+                        aria-label={searchPrompt}
+                        aria-describedby={searchNote ? `${uid}-search-note` : undefined}
                         autocomplete="off"
                         spellcheck="false"
                         data-testid="map-search"
                     />
                     {#if searching}<span class="gk-map-search-busy" aria-label="Searching" role="status"></span>{/if}
+                    <!-- Enter does the same; the return key's mark says so. -->
+                    <button type="submit" class="gk-map-search-go" disabled={query.trim() === ''} title="Search (Enter)" aria-label="Search" data-testid="map-search-go">
+                        {@render icon('maps.enter')}
+                    </button>
                 </form>
             {:else}
                 <span class="gk-map-title">{summary()}</span>
@@ -799,7 +993,7 @@
 
         <div class="gk-map-notices">
             {#if searchNote}
-                <p id="gk-map-search-note" class="gk-map-notice" role="status" data-testid="map-search-note">{searchNote}</p>
+                <p id="{uid}-search-note" class="gk-map-notice" role="status" data-testid="map-search-note">{searchNote}</p>
             {/if}
             {#if results.length > 0}
                 <ul class="gk-map-results" aria-label="Search results" data-testid="map-results">
@@ -882,11 +1076,36 @@
                 <form class="gk-map-sheet" onsubmit={savePending} data-testid="map-pending">
                     <label class="gk-map-field">
                         <span>{pending.kind === 'place' ? 'Name this place' : 'Name this route'}</span>
-                        <input bind:this={nameInput} bind:value={pending.name} type="text" autocomplete="off" data-testid="map-pending-name" />
+                        <input
+                            bind:this={nameInput}
+                            bind:value={pending.name}
+                            type="text"
+                            autocomplete="off"
+                            aria-describedby="{uid}-pending-where"
+                            aria-busy={naming}
+                            data-testid="map-pending-name"
+                        />
                     </label>
-                    <p class="gk-map-sheet-detail">
-                        {pending.kind === 'place' ? formatMapPoint(pending.point) : formatDistance(routeLengthMeters(pending.points))}
-                    </p>
+                    <div id="{uid}-pending-where">
+                        <!-- Where the place is, in words: a search result's address, or the nearest place's,
+                             a line held open while that is looked up so the sheet barely moves. -->
+                        {#if pending.kind === 'place' && (pending.detail || naming)}
+                            <p class="gk-map-sheet-detail" data-testid="map-pending-detail">{pending.detail || 'Finding a name…'}</p>
+                        {/if}
+                        <p class="gk-map-sheet-detail">
+                            {pending.kind === 'place' ? formatMapPoint(pending.point) : formatDistance(routeLengthMeters(pending.points))}
+                        </p>
+                    </div>
+                    {#if pending.kind === 'place' && pending.credits.length > 0}
+                        <!-- The credits of the service that named the place, which its terms ask for beside its answers. -->
+                        <p class="gk-map-sheet-credit" data-testid="map-pending-credit">
+                            {#each pending.credits as credit, index (credit.url)}{#if index > 0}{CREDIT_SEPARATOR}{/if}<a
+                                    href={credit.url}
+                                    target="_blank"
+                                    rel="noopener noreferrer">{credit.text}</a
+                                >{/each}
+                        </p>
+                    {/if}
                     <div class="gk-map-sheet-actions">
                         <button type="submit" class="gk-map-button gk-map-button--primary" data-testid="map-pending-add">{pending.kind === 'place' ? 'Add place' : 'Add route'}</button>
                         <button type="button" class="gk-map-button" onclick={cancelPending}>Cancel</button>

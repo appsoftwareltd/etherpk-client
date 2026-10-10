@@ -59,10 +59,15 @@ export interface ViewDeclaration {
 export interface SettingDeclaration {
     /** Unique within the extension: lowercase letters, digits and hyphens, such as `mapbox-token`. */
     id: string
-    /** `text`, or `secret` for a key or a password, which is shown masked until the person asks to see it. */
-    type: 'text' | 'secret'
-    /** The field's label. */
+    /**
+     * `text`; `secret` for a key or a password, which is shown masked until the person asks to see
+     * it; or `boolean`, a switch, which `context.settings` reads as `'true'` or `'false'`.
+     */
+    type: 'text' | 'secret' | 'boolean'
+    /** The field's label, or for a switch what it turns on. */
     title: string
+    /** A switch's position until the person changes it. Only on a `boolean` setting, and off when left out. */
+    default?: boolean
     /** Plain text under the field: what the setting does, and what the person needs for it. */
     description?: string
     /** Example text shown in the empty field. */
@@ -202,7 +207,7 @@ export function readExtensionPackage(packageJson: unknown): ReadExtensionPackage
     }
 }
 
-const SETTING_TYPES: readonly SettingDeclaration['type'][] = ['text', 'secret']
+const SETTING_TYPES: readonly SettingDeclaration['type'][] = ['text', 'secret', 'boolean']
 
 function checkSetting(setting: unknown, index: number, ids: Set<string>, errors: string[]): void {
     const where = `"etherpk.settings[${index}]"`
@@ -217,6 +222,9 @@ function checkSetting(setting: unknown, index: number, ids: Set<string>, errors:
     if (typeof setting.title !== 'string' || setting.title.trim() === '') errors.push(`${where}.title must be a non-empty string.`)
     for (const key of ['description', 'placeholder'] as const) {
         if (setting[key] !== undefined && typeof setting[key] !== 'string') errors.push(`${where}.${key} must be a string.`)
+    }
+    if (setting.default !== undefined && (setting.type !== 'boolean' || typeof setting.default !== 'boolean')) {
+        errors.push(`${where}.default must be true or false, and only on a boolean setting.`)
     }
     if (setting.link !== undefined) {
         const link = setting.link

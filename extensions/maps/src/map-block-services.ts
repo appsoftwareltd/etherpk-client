@@ -31,6 +31,14 @@ export interface PlaceSearchAnswer {
     credits: PlaceSearchCredit[]
 }
 
+/** The name offered for a place set down by hand, from the place nearest it, with the credits it needs. */
+export interface NearestPlace {
+    name: string
+    /** Where it is, in words, without the name. */
+    detail: string
+    credits: PlaceSearchCredit[]
+}
+
 /**
  * Searching for a place by name, address or postcode (ADR 0119): Sync+, through the Sync Server,
  * or a Photon server a self-hosted deployment names. Absent where neither is set up.
@@ -38,8 +46,16 @@ export interface PlaceSearchAnswer {
 export interface PlaceSearch {
     /** Whether searching is open to this person here, and if not, what they can do instead. */
     availability(): { available: true } | { available: false; reason: string }
+    /** Whether the person switched the search and link services off in the Maps extension's settings. */
+    switchedOff(): boolean
+    /** Hear the person switch them on or off. Returns the way to stop. */
+    subscribe(listener: () => void): () => void
     /** Places matching the words, nearest to `near` first when the service can tell, and their credits. */
     search(query: string, near: MapPoint | null, signal: AbortSignal): Promise<PlaceSearchAnswer>
+    /** The name of the place nearest `point`, or null when there is none to offer or no search here. */
+    reverse(point: MapPoint, signal: AbortSignal): Promise<NearestPlace | null>
+    /** The full link a short map link leads to, opened by the Sync Server, or null when it cannot be. */
+    openShortLink(url: string, signal: AbortSignal): Promise<string | null>
 }
 
 export interface MapBlockServices {

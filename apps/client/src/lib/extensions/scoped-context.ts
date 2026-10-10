@@ -192,7 +192,13 @@ export function createScopedContext(
             },
         },
         settings: {
-            get: (setting) => client.settings.get(extensionSettingKey(id, setting)),
+            get: (setting) => {
+                const value = client.settings.get(extensionSettingKey(id, setting))
+                const declared = manifest.settings?.find((candidate) => candidate.id === setting)
+                if (declared?.type !== 'boolean') return value
+                // A switch reads as on or off, whatever was stored: its default until it is set.
+                return value === 'true' || value === 'false' ? value : String(declared.default ?? false)
+            },
             subscribe: (listener) => (disposed ? noop : keep(client.settings.subscribe(listener))),
         },
         theme: { isDark: () => client.isDark() },

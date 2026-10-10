@@ -63,7 +63,16 @@ export function defaultTaskFilter(): TaskFilterState {
 
 export interface TaskFilterStore {
     get(): TaskFilterState
+    /** The Tasks View's own write: nobody is told, because the View is the one that changed it. */
     set(filter: TaskFilterState): void
+    /**
+     * Show Tasks from outside the View: the [[Name Filter]] set to `concept`, the other filters
+     * left as they are. Subscribers hear it at once, as a View already open must change what it
+     * shows; a View the reveal mounts reads it through `get`.
+     */
+    show(concept: string): void
+    /** Hear every `show` from now on; returns an unsubscribe. */
+    subscribe(listener: (filter: TaskFilterState) => void): () => void
     /** Write any pending debounced save now (teardown). */
     flush(): void
 }
@@ -97,12 +106,24 @@ export function createTaskFilterStore(
         }
     }
 
+    const listeners = new Set<(filter: TaskFilterState) => void>()
+
+    function write(filter: TaskFilterState): void {
+        current = filter
+        if (saveTimer) clearTimeout(saveTimer)
+        saveTimer = setTimeout(save, SAVE_DEBOUNCE_MS)
+    }
+
     return {
         get: () => current,
-        set(filter) {
-            current = filter
-            if (saveTimer) clearTimeout(saveTimer)
-            saveTimer = setTimeout(save, SAVE_DEBOUNCE_MS)
+        set: write,
+        show(concept) {
+            write({ ...current, concept })
+            for (const listener of listeners) listener(current)
+        },
+        subscribe(listener) {
+            listeners.add(listener)
+            return () => listeners.delete(listener)
         },
         flush() {
             if (saveTimer) {

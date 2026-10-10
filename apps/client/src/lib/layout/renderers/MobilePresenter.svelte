@@ -51,7 +51,7 @@
     /**
      * The main region's tab in front: the globally focused View while that is a main one, else
      * the tab the region itself remembers as active. Focus leaves main whenever a Command
-     * reveals a drawer's View (Tasks, Show backlinks from a tab's menu), and falling back to the
+     * reveals a drawer's View (Tasks, Show Backlinks from a tab's menu), and falling back to the
      * FIRST tab there switched the editor behind the drawer, and the strip's mark, to whatever
      * was opened first (2026-09-22).
      */
@@ -139,7 +139,7 @@
         if (leftOpen && rightOpen) controller.toggleSidebar('right', false)
     })
 
-    // A Command that expands a Sidebar knows nothing of the rule: Alt+B, or Show backlinks from
+    // A Command that expands a Sidebar knows nothing of the rule: Alt+B, or Show Backlinks from
     // a tab's menu, which the strip above the drawers offers with a drawer open. Its drawer
     // opening beside the other must close the other, so whenever the model shows both open
     // after mount, the one the user did not just reach for closes. The toggles close the other
@@ -209,7 +209,7 @@
         if (!activeMain) menuOpen = false
     })
 
-    // A drawer opening while the list is up would open beneath it - Show backlinks from a row's
+    // A drawer opening while the list is up would open beneath it - Show Backlinks from a row's
     // menu does exactly that - so the list gets out of the way of the drawer asked for.
     $effect(() => {
         if (leftOpen || rightOpen) menuOpen = false

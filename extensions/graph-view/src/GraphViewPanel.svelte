@@ -198,7 +198,7 @@
         host?.focus(key);
     }
 
-    // "Show in Graph View" on a document tab: centre on it once the picture holds it.
+    // "Show in Graph View" on a document tab or a wikilink: centre on it once the picture holds it.
     let focusRequest = $state<string | null>(null);
     $effect(() => {
         if (mode !== "whole") return;

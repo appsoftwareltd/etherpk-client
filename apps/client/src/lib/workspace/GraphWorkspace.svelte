@@ -3653,7 +3653,7 @@
         // KNOWN documents count either way: the active document changes as a View mounts,
         // before its store document is open, and masking on that would hide the very
         // document the user is opening with nothing to bring it back.
-        // What Show backlinks asked the Backlinks View to show while it follows the editor
+        // What Show Backlinks asked the Backlinks View to show while it follows the editor
         // stands only while the editor stays put. The store is told of every move here rather
         // than by the View, which a phone's closed drawer has unmounted. Read lazily: Reset
         // workspace replaces the store.
@@ -3933,12 +3933,19 @@
                 promptRename: (concept) => startRename(concept),
                 promptDelete: (concept) => startDelete(concept),
                 promptPublish: (concept) => void startPublishDocument(concept),
-                // Show backlinks: tell the store what to show (the pin is left as it is, ADR
+                // Show Backlinks: tell the store what to show (the pin is left as it is, ADR
                 // 0088), then reveal the View. The store first, so a View the reveal mounts (a
                 // phone's drawer) reads it at mount; one already mounted hears it.
                 showBacklinks: (concept) => {
                     backlinksPreferences?.show(concept, getActiveDocument());
                     if (controller) revealResident(controller, RESIDENTS.backlinks);
+                },
+                // Show Tasks, the same way: the Name Filter set in the store first, under the
+                // name the concept resolves to (a wikilink may name an alias), then the View
+                // revealed.
+                showTasks: (concept) => {
+                    taskFilter?.show(canonicalConceptName(concept));
+                    if (controller) revealResident(controller, RESIDENTS.tasks);
                 },
                 onError: (text) => notify(text),
                 onCopied: (text) => notify(text),

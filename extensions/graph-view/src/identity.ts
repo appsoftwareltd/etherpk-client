@@ -31,7 +31,7 @@ export function graphViewMode(view: ViewRef): GraphViewMode {
 export const GRAPH_VIEW_REVEAL = 'graph-view.reveal'
 /** The whole graph, in the main region. */
 export const GRAPH_VIEW_OPEN_WHOLE = 'graph-view.openWhole'
-/** A document tab's row: the whole graph, centred on that document's concept. */
+/** A document tab's or a wikilink's Context Menu row: the whole graph, centred on the tab's concept or the link's. */
 export const GRAPH_VIEW_SHOW_CONCEPT = 'graph-view.showConcept'
 
 /** The width at and above which the Client shows its desktop presenter, and a Graph View draws. */

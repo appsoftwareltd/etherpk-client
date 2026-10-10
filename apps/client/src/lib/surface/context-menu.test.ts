@@ -37,7 +37,7 @@ describe('context-menu contribution point', () => {
 
     it('carries a row’s icon through, and none for a row without one', () => {
         const registry = createContributionRegistry()
-        registerContextMenuItem(registry, { id: 'k', label: 'Open Kanban board', command: 'kanban.open', icon: 'kanban', order: 1 })
+        registerContextMenuItem(registry, { id: 'k', label: 'Open Kanban Board', command: 'kanban.open', icon: 'kanban', order: 1 })
         registerContextMenuItem(registry, { id: 'r', label: 'Rename…', command: 'document.rename', order: 2 })
 
         const [kanban, rename] = listContextMenuItems(registry, tab('Physics'))

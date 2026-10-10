@@ -4,11 +4,14 @@
  * true, the code that depended on it has changed and this file should change with it.
  */
 
+import { undoDepth } from '@codemirror/commands'
 import { EditorState } from '@codemirror/state'
 import { describe, expect, it } from 'vitest'
 
 import { editorAnalysis } from './analysis/editor-analysis'
 import { editorDocument } from './editor-document'
+import { editorIsOnScreen, setEditorOnScreen } from './editor-on-screen'
+import { localHistoryExtension } from './editor-history'
 import { editorExtensions, editorFeatures, type EditorExtensionServices } from './editor-extensions'
 
 const services: EditorExtensionServices = {
@@ -76,6 +79,7 @@ describe('editor feature stack', () => {
             'placeholder',
             'edit-refusal',
             'editor-document',
+            'on-screen',
             'line-anchor',
             'view-hooks',
         ])
@@ -85,6 +89,27 @@ describe('editor feature stack', () => {
         const build = (host: EditorExtensionServices) => EditorState.create({ extensions: [editorAnalysis(), ...editorExtensions(host)] })
         expect(build({ ...services, document: { concept: 'Acme', panelId: 'p1' } }).facet(editorDocument)).toEqual({ concept: 'Acme', panelId: 'p1' })
         expect(build(services).facet(editorDocument)).toBeNull()
+    })
+
+    it('starts on screen, or not, as the host says', () => {
+        const build = (host: EditorExtensionServices) => EditorState.create({ extensions: [editorAnalysis(), ...editorExtensions(host)] })
+        expect(editorIsOnScreen(build({ ...services, onScreen: () => false }))).toBe(false)
+        expect(editorIsOnScreen(build(services))).toBe(true)
+    })
+
+    // Sent on every tab switch: whatever the stack does with it, the text, the caret and the undo
+    // history stay exactly as they were.
+    it('changes nothing in the document when told the editor went behind another tab and came back', () => {
+        const doc = ['- Garden', '  - ```map', '    Kitchen @ 50.7, -1.0', '    ```', '- water the beans'].join('\n')
+        let state = EditorState.create({ doc, selection: { anchor: 4 }, extensions: [localHistoryExtension(), editorAnalysis(), ...editorExtensions(services)] })
+        state = state.update({ changes: { from: 4, insert: 's' }, selection: { anchor: 5 }, userEvent: 'input.type' }).state
+        const before = { text: state.doc.toString(), selection: state.selection.toJSON(), undo: undoDepth(state) }
+        expect(before.undo).toBe(1)
+        for (const onScreen of [false, true, false]) {
+            state = state.update({ effects: setEditorOnScreen.of(onScreen) }).state
+            expect({ text: state.doc.toString(), selection: state.selection.toJSON(), undo: undoDepth(state) }).toEqual(before)
+        }
+        expect(editorIsOnScreen(state)).toBe(false)
     })
 
     it('runs the transaction filters before anything that decorates', () => {

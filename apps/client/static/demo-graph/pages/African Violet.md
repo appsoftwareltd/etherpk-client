@@ -6,6 +6,12 @@ aliases:
 ---
 *Streptocarpus ionanthus*, in the [[Gesneriaceae]] family. Native to [[East Africa]].
 
+```map
+Coastal Kenya @ -4.2, 39.4
+Usambara Mountains, Tanzania @ -4.8, 38.4
+Nguru Mountains, Tanzania @ -6.05, 37.5
+```
+
 Velvety leaves and violet, pink or white flowers almost all year round. Cold water on the leaves leaves pale spots, so water from below and let the pot drink. It was called Saintpaulia until botanists merged it into Streptocarpus.
 
 - Light: bright, indirect. An east window is ideal

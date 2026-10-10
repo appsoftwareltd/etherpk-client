@@ -1,9 +1,17 @@
 /**
  * Reading what a person types or pastes into a Map Block's search box, on the device (ADR 0119):
  * coordinates in any of the usual notations, a Plus Code, or a link copied from Google Maps,
- * Apple Maps, OpenStreetMap or a `geo:` URI. None of it leaves the device and all of it works
- * for every user. Only a name, an address or a postcode needs place search, which is Sync+.
+ * Apple Maps, OpenStreetMap or a `geo:` URI, OpenStreetMap's short links included. None of it
+ * leaves the device and all of it works for every user. A name or an address needs the search by
+ * name, which is Sync+, and a postcode the map host's files.
+ *
+ * Two kinds of link need more than the device (amendment of 2026-10-10): Google's short links,
+ * whose place is only in the address they redirect to, which the Sync Server opens, and a map link
+ * that names a place without saying where it is, whose words are searched for. A link is found
+ * anywhere in what is pasted, since a phone shares a place's name and address before its link.
  */
+import { isShortMapLink } from '@appsoftwareltd/etherpk-shared'
+
 import type { MapPoint } from '$lib/document/map-text'
 
 /** A place read from the search box: where it is, a name when the input carried one, and how. */
@@ -18,20 +26,56 @@ export interface PlaceInput {
 export function readPlaceInput(text: string, near?: MapPoint): PlaceInput | null {
     const input = text.trim()
     if (input === '') return null
-    if (/^(?:https?:\/\/|geo:)/i.test(input)) return readLink(input)
+    if (/^(?:https?:\/\/|geo:)/i.test(input)) {
+        const found = readLink(input)
+        return found ? { ...found, from: 'link' } : null
+    }
     const plus = readPlusCodeInput(input, near)
     if (plus) return { point: plus, name: '', from: 'plus-code' }
     const point = readCoordinates(input)
     return point ? { point, name: '', from: 'coordinates' } : null
 }
 
+/** What the search box holds, read on the device, and so what the Map Block does with it. */
+export type SearchBoxReading =
+    /** A place the device can set down: coordinates, a Plus Code, or a link that says where it is. */
+    | { kind: 'place'; place: PlaceInput }
+    /** A short link the Sync Server opens, and a name for the place from the text shared with it. */
+    | { kind: 'short-link'; url: string; name: string }
+    /** A map link that names a place without saying where it is: its words to search for, and its name. */
+    | { kind: 'link-words'; words: string; name: string }
+    /** A link no place can be read from: another site's, or a map link that names none. */
+    | { kind: 'unreadable-link' }
+    /** Anything else: words to search for. */
+    | { kind: 'words'; words: string }
+
 /**
- * A shortened link (Google's `maps.app.goo.gl`, OpenStreetMap's `osm.org/go/`): its place is only
- * in the page it redirects to, which a browser page may not fetch across origins, so the person
- * is asked to open it and copy the full address instead.
+ * Read the search box. A link is looked for anywhere in it, because a phone shares a place's name,
+ * and sometimes its address, before the link, and a one-line box joins those lines with a space or
+ * with nothing at all. The text before the link names the place when the link carries no name.
  */
-export function isShortMapLink(text: string): boolean {
-    return /^https?:\/\/(?:maps\.app\.goo\.gl|goo\.gl\/maps|(?:www\.)?osm\.org\/go)\//i.test(text.trim())
+export function readSearchBox(text: string, near?: MapPoint): SearchBoxReading {
+    const input = text.trim()
+    // Not anchored at a word boundary: a box that drops line breaks runs the name into the link.
+    const found = /https?:\/\/\S+|(?:^|\s)(geo:\S+)/i.exec(input)
+    if (!found) {
+        const place = readPlaceInput(input, near)
+        return place ? { kind: 'place', place } : { kind: 'words', words: input }
+    }
+    const link = found[1] ?? found[0]
+    const start = input.indexOf(link, found.index)
+    const hint = sharedName(input.slice(0, start)) || sharedName(input.slice(start + link.length))
+    if (isShortMapLink(link)) return { kind: 'short-link', url: link, name: hint }
+    const place = readLink(link)
+    if (place) return { kind: 'place', place: { point: place.point, name: place.name || hint, from: 'link' } }
+    const words = readLinkWords(link)
+    return words ? { kind: 'link-words', words: words.words, name: words.name || hint } : { kind: 'unreadable-link' }
+}
+
+/** The name shared beside a link: the first line of what came with it. */
+function sharedName(text: string): string {
+    const first = text.split(/[\r\n]+/).find((line) => line.trim() !== '') ?? ''
+    return first.replace(/\s+/g, ' ').trim()
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -240,7 +284,8 @@ function decodeName(text: string): string {
     }
 }
 
-function readLink(input: string): PlaceInput | null {
+/** A place a map link says where it is, with the name it carries, or null for a link that does not. */
+function readLink(input: string): { point: MapPoint; name: string } | null {
     if (/^geo:/i.test(input)) return readGeoUri(input)
     let url: URL
     try {
@@ -249,15 +294,55 @@ function readLink(input: string): PlaceInput | null {
         return null
     }
     const host = url.hostname.toLowerCase()
-    const found =
-        /(^|\.)google\.[a-z.]+$/.test(host) && (host.startsWith('maps.') || url.pathname.startsWith('/maps'))
-            ? readGoogleLink(url)
-            : host === 'maps.apple.com'
-              ? readAppleLink(url)
-              : /(^|\.)(openstreetmap\.org|osm\.org)$/.test(host)
-                ? readOsmLink(url)
-                : null
-    return found ? { ...found, from: 'link' } : null
+    if (isGoogleMaps(url)) return readGoogleLink(url)
+    if (host === 'maps.apple.com') return readAppleLink(url)
+    if (/(^|\.)(openstreetmap\.org|osm\.org)$/.test(host)) return readOsmLink(url)
+    return null
+}
+
+/**
+ * The words of a map link that names a place without saying where it is, to search for, and the
+ * place's name where the link gives one: a Google place or search, an Apple place or address, an
+ * OpenStreetMap search. Null for a link that names nothing (Google's `?cid=`, an OpenStreetMap
+ * node) or is not from a map.
+ */
+function readLinkWords(input: string): { words: string; name: string } | null {
+    let url: URL
+    try {
+        url = new URL(input)
+    } catch {
+        return null
+    }
+    const host = url.hostname.toLowerCase()
+    const param = (key: string) => (url.searchParams.get(key) ?? '').replace(/\s+/g, ' ').trim()
+    let words = ''
+    let name = ''
+    if (isGoogleMaps(url)) {
+        const place = googlePlaceName(url)
+        const search = /\/maps\/search\/([^/@]+)/.exec(url.pathname)
+        const q = readCommaPair(param('q')) ? '' : param('q')
+        words = q || param('query') || (search ? decodeName(search[1]) : '') || place
+        // A `q` shared from a phone is the place's name and then its address.
+        name = place || (q.split(',')[0] ?? '').trim()
+    } else if (host === 'maps.apple.com') {
+        name = param('name') || (readCommaPair(param('q')) ? '' : param('q'))
+        words = [name, param('address')].filter(Boolean).join(', ')
+    } else if (/(^|\.)(openstreetmap\.org|osm\.org)$/.test(host) && url.pathname === '/search') {
+        words = param('query')
+    }
+    return words ? { words, name } : null
+}
+
+function isGoogleMaps(url: URL): boolean {
+    const host = url.hostname.toLowerCase()
+    return /(^|\.)google\.[a-z.]+$/.test(host) && (host.startsWith('maps.') || url.pathname.startsWith('/maps'))
+}
+
+/** The name in a Google place link's path, unless it is only the place's own coordinates (a dropped pin). */
+function googlePlaceName(url: URL): string {
+    const match = /\/maps\/place\/([^/@]+)/.exec(url.pathname)
+    const name = match ? decodeName(match[1]) : ''
+    return name !== '' && readCoordinates(name) === null ? name : ''
 }
 
 /**
@@ -266,9 +351,13 @@ function readLink(input: string): PlaceInput | null {
  * `query`, `q`, `ll` or `center`.
  */
 function readGoogleLink(url: URL): { point: MapPoint; name: string } | null {
-    const decoded = decodeURIComponent(url.href)
-    const name = /\/maps\/place\/([^/@]+)/.exec(url.pathname)
-    const placeName = name ? decodeName(name[1]) : ''
+    let decoded = url.href
+    try {
+        decoded = decodeURIComponent(url.href)
+    } catch {
+        // A stray `%` in a name: the place's numbers are plain digits, which need no decoding.
+    }
+    const placeName = googlePlaceName(url)
     const places = [...decoded.matchAll(new RegExp(String.raw`!3d(${NUMBER})!4d(${NUMBER})`, 'g'))]
     const last = places.at(-1)
     if (last) {
@@ -299,8 +388,16 @@ function readAppleLink(url: URL): { point: MapPoint; name: string } | null {
     return null
 }
 
-/** OpenStreetMap's links carry a marker in `mlat`/`mlon` and the view in `#map=<zoom>/<lat>/<lon>`. */
+/**
+ * OpenStreetMap's links carry a marker in `mlat`/`mlon` and the view in `#map=<zoom>/<lat>/<lon>`,
+ * and its short links (`osm.org/go/<code>`) the view's centre in the code itself.
+ */
 function readOsmLink(url: URL): { point: MapPoint; name: string } | null {
+    const short = /^\/go\/([A-Za-z0-9_~@=-]+)$/.exec(url.pathname)
+    if (short) {
+        const point = decodeOsmShortCode(short[1])
+        return point ? { point, name: '' } : null
+    }
     const marker = readCommaPair(`${url.searchParams.get('mlat')},${url.searchParams.get('mlon')}`)
     if (marker) return { point: marker, name: '' }
     const view = new RegExp(String.raw`map=\d+/(${NUMBER})/(${NUMBER})`).exec(url.hash)
@@ -308,17 +405,45 @@ function readOsmLink(url: URL): { point: MapPoint; name: string } | null {
     return point ? { point, name: '' } : null
 }
 
+const OSM_SHORT_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_~'
+
+/**
+ * The centre an OpenStreetMap short code names, following OpenStreetMap's own decoder
+ * (`lib/short_link.rb` in openstreetmap-website): each character carries three bits of the
+ * longitude and three of the latitude, interleaved, of a 32-bit position across the globe, and a
+ * trailing `-` or `=` only lowers the zoom. An old code may use `@` for `~`.
+ */
+function decodeOsmShortCode(code: string): MapPoint | null {
+    let x = 0
+    let y = 0
+    let bits = 0
+    for (const c of code.replace(/@/g, '~')) {
+        if (c === '-' || c === '=') continue
+        const value = OSM_SHORT_ALPHABET.indexOf(c)
+        if (value < 0) return null
+        for (let bit = 5; bit > 0; bit -= 2) {
+            x = x * 2 + ((value >> bit) & 1)
+            y = y * 2 + ((value >> (bit - 1)) & 1)
+        }
+        bits += 3
+    }
+    if (bits === 0 || bits > 32) return null
+    // Arithmetic rather than shifts: JavaScript's shifts are 32-bit and signed.
+    const scale = 2 ** (32 - bits) / 2 ** 32
+    return { lat: y * scale * 180 - 90, lon: x * scale * 360 - 180 }
+}
+
 /**
  * RFC 5870's `geo:<lat>,<lon>[,<alt>][;params]`, and Android's `geo:0,0?q=<lat>,<lon>(<label>)`,
  * whose label becomes the name.
  */
-function readGeoUri(input: string): PlaceInput | null {
+function readGeoUri(input: string): { point: MapPoint; name: string } | null {
     const android = new RegExp(String.raw`[?&]q=(${NUMBER}),(${NUMBER})(?:\(([^)]*)\))?`, 'i').exec(input)
     if (android) {
         const point = readCommaPair(`${android[1]},${android[2]}`)
-        if (point) return { point, name: android[3] ? decodeName(android[3]) : '', from: 'link' }
+        if (point) return { point, name: android[3] ? decodeName(android[3]) : '' }
     }
     const plain = new RegExp(String.raw`^geo:(${NUMBER}),(${NUMBER})(?:,${NUMBER})?(?:[;?]|$)`, 'i').exec(input)
     const point = plain ? readCommaPair(`${plain[1]},${plain[2]}`) : null
-    return point ? { point, name: '', from: 'link' } : null
+    return point ? { point, name: '' } : null
 }

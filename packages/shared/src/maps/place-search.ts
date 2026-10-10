@@ -64,6 +64,41 @@ export const placeSearchRequestSchema = z.strictObject({
 
 export type PlaceSearchRequest = z.infer<typeof placeSearchRequestSchema>
 
+/**
+ * Asking for the place nearest a point (`POST /api/v1/sync/maps/reverse`), to offer a name for a
+ * place set down by hand or pasted without one. It is answered in the same form as a search, with
+ * at most one place, under the same checks, since it costs the same.
+ */
+export const placeReverseRequestSchema = z.strictObject({
+    point: z.strictObject({ lat: latitude, lon: longitude }),
+    /** The reader's language, two letters, for the name of the place. */
+    lang: z
+        .string()
+        .regex(/^[a-z]{2}$/)
+        .optional(),
+})
+
+export type PlaceReverseRequest = z.infer<typeof placeReverseRequestSchema>
+
+/** The languages a Photon server names places in. For any other it answers in each place's own. */
+const PHOTON_LANGUAGES: ReadonlySet<string> = new Set(['en', 'de', 'fr', 'it'])
+
+/** The `lang` to ask a Photon server for, or nothing for a language it does not have. */
+export function photonLanguage(lang: string | undefined): string | undefined {
+    return lang !== undefined && PHOTON_LANGUAGES.has(lang) ? lang : undefined
+}
+
+/**
+ * A Photon server's reverse lookup, from the address of its search API: Photon serves `/reverse`
+ * beside `/api`, so `https://photon.example.com/api` has `https://photon.example.com/reverse`.
+ */
+export function photonReverseUrl(searchUrl: string): string {
+    const url = new URL(searchUrl)
+    url.pathname = `${url.pathname.replace(/\/+$/, '').replace(/\/api$/, '')}/reverse`
+    url.search = ''
+    return url.toString()
+}
+
 /** A place's address fields, as Photon names them. Anything else a service sends is dropped. */
 const placeProperties = z.object({
     name: z.string().optional(),

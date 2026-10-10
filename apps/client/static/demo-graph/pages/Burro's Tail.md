@@ -6,6 +6,10 @@ aliases:
 ---
 *Sedum morganianum*, in the [[Crassulaceae]] family. Native to [[Mexico]].
 
+```map
+Veracruz, Mexico @ 19.5, -96.9
+```
+
 Long trailing stems packed with plump blue-green leaves. The leaves fall off at a touch, so find it a spot and do not move it. Every fallen leaf can root into a new plant.
 
 - Light: bright, with some direct sun

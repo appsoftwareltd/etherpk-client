@@ -5,6 +5,39 @@ What changed in each release of the EtherPK Client and the Headless Client
 They are released together, under the version number they share with the Sync Server. This log
 starts at 0.9.3.
 
+## 0.9.5 - 2026-10-10
+
+### Client
+
+- **A link's menu.** Right-click a link (long-press on a phone) for the same rows a document's tab
+  has for looking at a concept: **Show Backlinks**, **Open Kanban Board**, **Show in Graph View**,
+  **Open Map View** and **Show Tasks**, each for the concept the link names, without following the
+  link. The Kanban board and the Graph View open on a desktop only, as from a tab.
+- **Show Tasks.** A new row on a document's tab and on a link brings the Tasks view to the front,
+  filtered to that concept. Its state, priority and date filters stay as you left them.
+- **Map links.** A map's search box opens Google Maps short links (`maps.app.goo.gl`) through the
+  graph's Sync Server, reads OpenStreetMap's short links on the device, and accepts everything a
+  phone's Share gives, with the place's name before the link. A link that names a place but doesn't
+  say where it is is searched for by its name, where your plan includes search.
+- **Names for new places.** Where your plan includes search, a place you click on a map or type as
+  coordinates is offered the name of the place nearest it, with its address underneath. A name you
+  type first is kept.
+- The map's search box says when searching by place name needs Sync+, and offers postcodes,
+  coordinates and map links instead once a search is refused.
+- **Use search and link services**, a new switch in the Maps extension's settings, on by default.
+  Turned off, maps ask no search service and open no short links. Coordinates, Plus Codes, map
+  links, postcodes and your own Mapbox token still work.
+- A map's search box has a search button, and looks up a name or a postcode when you stop typing
+  for a moment. Coordinates and links still wait for Enter or the button.
+- A map's credit no longer shows over other panes when its tab is behind another.
+- A map in a tab behind another stops drawing after a few seconds and draws again when you come
+  back to it, so maps in many open tabs no longer stop each other from drawing.
+- **Extension API:** a setting can be a `boolean`, drawn as a checkbox, with an optional
+  `default`. `context.settings.get` reads it as `'true'` or `'false'`.
+- **Maps in the demo graph.** Every plant in the demo graph has a map of where it grows wild, and
+  the Where to Learn About Plants page gathers gardens noted across the graph into one Map View.
+  Today's journal has a map to try. **Reset demo** brings a demo you opened before up to date.
+
 ## 0.9.4 - 2026-10-09
 
 ### Client

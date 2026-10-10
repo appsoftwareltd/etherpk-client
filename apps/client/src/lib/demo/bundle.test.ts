@@ -4,6 +4,8 @@ import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 import { DEMO_BUNDLE_DIRECTORY, readDemoBundle } from '../../../demo-graph-plugin'
+import { deriveDoc } from '../document/index-derive'
+import { readMapBody } from '../document/map-text'
 import { onDiskName } from '../document/wikilink/derive'
 import { wikilinkOccurrencesInSource } from '../document/wikilink/source'
 import { parseFrontmatter } from '../storage/fs/frontmatter'
@@ -74,6 +76,13 @@ describe('the shipped demo bundle', () => {
         expect(claimedTwice).toEqual([])
     })
 
+    /** Every markdown document in the bundle, journals and pages, by its path. */
+    async function bundleDocuments() {
+        const sources = await readDemoBundle(resolve(__dirname, '../../..', DEMO_BUNDLE_DIRECTORY))
+        const decoder = new TextDecoder()
+        return sources.filter((source) => source.path.endsWith('.md')).map((source) => ({ path: source.path, text: decoder.decode(source.bytes) }))
+    }
+
     it('names every page file after its title', async () => {
         const misnamed = (await bundlePages())
             .filter((page) => page.fileName !== `${onDiskName(page.title)}.md`)
@@ -102,5 +111,84 @@ describe('the shipped demo bundle', () => {
         const species = new Set(groups.flatMap((group) => linksOf(group.text).map(conceptKey)))
         species.delete(conceptKey('Plant Index'))
         expect(species.size).toBeGreaterThanOrEqual(200)
+    })
+
+    /** The page of every species the Plant Index's groups list. */
+    async function speciesPages() {
+        const pages = await bundlePages()
+        const byName = new Map(pages.flatMap((page) => [page.title, ...page.aliases].map((name) => [conceptKey(name), page] as const)))
+        const groups = pages.filter((page) => page.title.startsWith('[[Plant Index]] '))
+        const keys = new Set(groups.flatMap((group) => wikilinkOccurrencesInSource(group.text).map((link) => conceptKey(link.concept))))
+        keys.delete(conceptKey('Plant Index'))
+        return [...keys].flatMap((key) => byName.get(key) ?? [])
+    }
+
+    it('maps where every species grows wild, in one to five places, as the first map on its page', async () => {
+        // The demo's showcase for the Map View: one pin per region, shared by every species
+        // native there, so the whole graph's map gathers them into one list per region.
+        const wrong = (await speciesPages()).flatMap((page) => {
+            const items = deriveDoc(page.text).mapItems
+            if (items.length === 0) return [`${page.title} has no map`]
+            const first = items.filter((item) => item.fenceLine === Math.min(...items.map((i) => i.fenceLine)))
+            if (first.some((item) => item.kind !== 'place')) return [`${page.title} has a route in its native range`]
+            return first.length > 5 ? [`${page.title} has ${first.length} places`] : []
+        })
+        expect(wrong).toEqual([])
+    })
+
+    it("shows a map in today's journal, first in its Maps section", async () => {
+        // Today's journal is the first page a visitor sees, so a map there shows maps before
+        // anyone goes looking for them.
+        const sources = await readDemoBundle(resolve(__dirname, '../../..', DEMO_BUNDLE_DIRECTORY))
+        const { anchor } = buildDemoBundleManifest(sources, assetHash)
+        const today = (await bundleDocuments()).find((doc) => doc.path === `journals/${anchor}.md`)?.text ?? ''
+        const lines = today.split('\n')
+        const heading = lines.indexOf('## Maps')
+        const end = lines.findIndex((line, n) => n > heading && line.startsWith('## '))
+        const section = lines.slice(heading + 1, end < 0 ? undefined : end)
+        expect(heading).toBeGreaterThanOrEqual(0)
+        // Above the section's bullets, so it is the first thing under the heading but a line of text.
+        const fence = section.indexOf('```map')
+        expect(fence).toBeGreaterThanOrEqual(0)
+        expect(fence).toBeLessThan(section.findIndex((line) => line.startsWith('- ')))
+        const items = deriveDoc(today).mapItems.filter((item) => item.fenceLine === heading + 1 + fence)
+        expect(items.some((item) => item.kind === 'place')).toBe(true)
+        expect(items.some((item) => item.kind === 'route')).toBe(true)
+    })
+
+    it('reads every line of every map', async () => {
+        // A line the Map Block cannot read is kept and counted, but never drawn: in the demo it
+        // would be a place that silently goes missing.
+        const unread = (await bundleDocuments()).flatMap(({ path, text }) => {
+            const lines = text.split('\n')
+            return lines.flatMap((line, start) => {
+                const open = /^(\s*)```map\s*$/.exec(line)
+                if (!open) return []
+                const end = lines.findIndex((closer, n) => n > start && /^\s*```\s*$/.test(closer))
+                if (end < 0) return [`${path}:${start + 1} has no closing fence`]
+                const body = lines.slice(start + 1, end).map((bodyLine) => bodyLine.slice(open[1].length))
+                return readMapBody(body).unread.map((miss) => `${path}:${start + 2 + miss.line} ${miss.text}`)
+            })
+        })
+        expect(unread).toEqual([])
+    })
+
+    it('gathers places to learn about plants from several documents, and draws a route', async () => {
+        // A place belongs to the concepts of the bullet its map sits under, so the Map View of
+        // [[Where to Learn About Plants]] collects the gardens noted on plant pages and in the
+        // journal, beside any on its own page.
+        const learning = conceptKey('Where to Learn About Plants')
+        const documents = (await bundleDocuments()).map(({ path, text }) => {
+            const { mapItems, mapConcepts } = deriveDoc(text)
+            const tagged = new Set(mapConcepts.filter((row) => conceptKey(row.concept) === learning).map((row) => row.blockLocalId))
+            return { path, mapItems, places: mapItems.filter((item) => item.kind === 'place' && tagged.has(item.blockLocalId)) }
+        })
+        const tagging = documents.filter((doc) => doc.places.length > 0)
+        expect(tagging.length).toBeGreaterThanOrEqual(5)
+        expect(tagging.some((doc) => doc.path.startsWith('journals/'))).toBe(true)
+        const page = documents.find((doc) => doc.path === 'pages/Where to Learn About Plants.md')
+        expect(page).toBeDefined()
+        expect(tagging.reduce((sum, doc) => sum + doc.places.length, page?.mapItems.length ?? 0)).toBeGreaterThanOrEqual(10)
+        expect(documents.some((doc) => doc.mapItems.some((item) => item.kind === 'route'))).toBe(true)
     })
 })

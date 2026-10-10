@@ -6,6 +6,10 @@ aliases:
 ---
 *Goeppertia insignis*, in the [[Marantaceae]] family. Native to [[Brazil]].
 
+```map
+Rio de Janeiro, Brazil @ -22.41, -42.97
+```
+
 Long, wavy leaves patterned in dark green on top and purple underneath. Like all calatheas it wants humid air and soft water, and it shows its displeasure with crispy brown edges.
 
 - Light: medium, indirect

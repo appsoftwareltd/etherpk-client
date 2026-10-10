@@ -121,7 +121,7 @@ describe('references preferences subscription', () => {
 
         expect(seen).toEqual([{ highlight: false, pinned: null, shown: null }])
 
-        // Show backlinks (document-commands.ts) moves the pin from outside the View: the mounted
+        // Show Backlinks (document-commands.ts) moves the pin from outside the View: the mounted
         // View has to hear it, which is the whole reason the store is observable.
         store.set({ pinned: 'Alpha' })
         store.set({ pinned: 'Beta' })
@@ -137,7 +137,7 @@ describe('references preferences subscription', () => {
     })
 })
 
-describe('Show backlinks and the pin', () => {
+describe('Show Backlinks and the pin', () => {
     it('pinned: the pin moves to the concept asked for', () => {
         const store = createBacklinksPreferencesStore(GRAPH, memoryStorage())
         store.set({ pinned: 'Alpha' })

@@ -32,7 +32,7 @@
      *   session follows the editor again. A pinned document that is renamed stays pinned under
      *   its old name until it is unpinned, which is the honest thing to show rather than a guess.
      *
-     * **Show backlinks** on a wikilink or a tab (`commands/document-commands.ts`, ADR 0088) changes
+     * **Show Backlinks** on a wikilink or a tab (`commands/document-commands.ts`, ADR 0088) changes
      * what the panel shows and leaves the pin as it is: pinned, the pin moves; following, the
      * concept asked for stands in for the editor's document until the editor moves on, captioned
      * "Showing X" meanwhile. The store holds that policy and is subscribed to rather than read
@@ -77,7 +77,7 @@
     let active = $state<string | null>(getActiveDocument());
     /** The document the panel is held on, or null while it follows the editor. */
     let pinned = $state<string | null>(preferences?.get().pinned ?? null);
-    /** What Show backlinks asked for while following; stands in for `active` until the editor moves on. */
+    /** What Show Backlinks asked for while following; stands in for `active` until the editor moves on. */
     let shown = $state<ShownConcept | null>(preferences?.get().shown ?? null);
     /** Whose references are shown. */
     const concept = $derived(pinned ?? shown?.concept ?? active);
@@ -131,7 +131,7 @@
     }
 
     // Fetched again whenever what is shown changes, whichever way it changed: the pin, what
-    // Show backlinks asked for, or the editor moving on. `recompute` reads `concept`, this
+    // Show Backlinks asked for, or the editor moving on. `recompute` reads `concept`, this
     // effect's one dependency; an index update re-fetches through `onUpdated` below.
     $effect(() => recompute());
 
@@ -167,7 +167,7 @@
         return concept !== null && conceptKey(linkConcept) === conceptKey(concept);
     }
 
-    /** The store's state, whoever wrote it: this View's controls, or Show backlinks from outside. */
+    /** The store's state, whoever wrote it: this View's controls, or Show Backlinks from outside. */
     function apply(next: BacklinksPreferences) {
         highlight = next.highlight;
         pinned = next.pinned;
@@ -257,7 +257,7 @@
     let unsubIndex: (() => void) | undefined;
     let unsubPreferences: (() => void) | undefined;
     onMount(() => {
-        // Only `active` is kept here. Whether the editor moving on drops what Show backlinks
+        // Only `active` is kept here. Whether the editor moving on drops what Show Backlinks
         // asked for is the store's call (the workspace tells it), so a phone's closed drawer,
         // with this View unmounted, reaches the same answer.
         unsubActive = tryGetActiveEventBus()?.on("document:active-changed", ({ documentId }) => {
@@ -377,7 +377,7 @@
     {#if pinned !== null}
         <p class="caption" data-testid="backlinks-pinned">Pinned to <strong>{pinned}</strong></p>
     {:else if shown !== null}
-        <!-- Not the editor's document, and not held either: what Show backlinks asked for, until the
+        <!-- Not the editor's document, and not held either: what Show Backlinks asked for, until the
              editor moves on. Said here because a phone's drawer tab is not retitled. -->
         <p class="caption" data-testid="backlinks-shown">Showing <strong>{shown.concept}</strong></p>
     {/if}

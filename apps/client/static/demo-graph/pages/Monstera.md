@@ -6,6 +6,13 @@ aliases:
 ---
 *Monstera deliciosa*, in the [[Araceae]] family. Native to [[Mexico]] and [[Central America]].
 
+```map
+Veracruz, Mexico @ 19.5, -96.9
+Oaxaca, Mexico @ 17, -96.7
+Chiapas, Mexico @ 16.6, -92.6
+Guatemala @ 15.5, -90.3
+```
+
 The one everybody starts with, and the one that rewards you for it. Big glossy leaves that split as the plant matures, a habit of climbing anything you give it, and a surprising tolerance for being forgotten about for a fortnight.
 
 ![Monstera leaves against a wall|420](../assets/monstera-leaves.5b1303c6.png)

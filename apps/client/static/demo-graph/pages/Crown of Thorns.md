@@ -5,6 +5,11 @@ aliases:
 ---
 *Euphorbia milii*, in the [[Euphorbiaceae]] family. Native to [[Madagascar]].
 
+```map
+Antananarivo, Madagascar @ -18.9, 47.52
+Fianarantsoa, Madagascar @ -21.45, 47.09
+```
+
 Spiny stems with a few leaves and small red, pink or yellow flowers nearly all year. It flowers best in hot sun. The milky sap irritates skin, so wear gloves.
 
 - Light: full sun

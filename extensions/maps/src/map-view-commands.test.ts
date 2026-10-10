@@ -17,8 +17,8 @@ import { mapsContext } from './testing'
 // a concept at the caret, its whole graph row, and Open page on a map's own tab. Every device.
 
 /** The Commands registered through the context the Client builds, and where they asked to open things. */
-function setup() {
-    const { context, services } = mapsContext()
+function setup(options: { desktop?: boolean } = {}) {
+    const { context, services } = mapsContext(options)
     registerMapViewCommands(context)
     type Opened = [{ kind: string; target: string } | string, { inPaneOf?: string; beside?: string } | undefined]
     const calls = (mock: unknown) => (mock as { mock: { calls: Opened[] } }).mock.calls
@@ -36,6 +36,8 @@ function setup() {
         get pages() {
             return calls(services.layout.openDocument).map(([concept, options]) => [concept as string, options?.inPaneOf])
         },
+        /** How the graph resolves names, which a test may change. */
+        concepts: services.concepts,
     }
 }
 
@@ -53,6 +55,19 @@ describe("a document tab's Open Map View row", () => {
     it('is not offered on a favourite or a recent, which are not tabs', () => {
         const { contributions } = setup()
         expect(listContextMenuItems(contributions, { kind: 'favourite', concept: 'Campsites' }).map((r) => r.label)).not.toContain('Open Map View')
+    })
+})
+
+describe("a wikilink's Open Map View row", () => {
+    it('opens the Map View of the concept the link names, under the name it resolves to, in the Pane of the editor holding the link, on a phone as on a desktop', async () => {
+        const maps = setup({ desktop: false })
+        // An alias, resolved to its page, as following the link would.
+        maps.concepts.canonicalName = (name) => (name === 'camping' ? 'Campsites' : name)
+        const link = { kind: 'wikilink', concept: 'camping', panelId: 'document:Trips' } as const
+        const row = listContextMenuItems(maps.contributions, link).find((r) => r.label === 'Open Map View')
+        expect(row?.icon).toBe('maps.map')
+        await maps.commands.execute(row!.command, link)
+        expect(maps.opened).toEqual([['Campsites', 'document:Trips']])
     })
 })
 

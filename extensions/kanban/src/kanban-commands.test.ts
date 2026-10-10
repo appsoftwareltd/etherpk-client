@@ -11,7 +11,7 @@ import { commandMenuDetail, commandMenuItemsInOrder, listCommandMenuItems } from
 import { listContextMenuItems } from '$lib/surface/context-menu'
 import { type BoardActions, registerBoard } from './board-actions'
 import type { BoardCell } from './board-model'
-import { KANBAN_OPEN_AT_CARET, KANBAN_OPEN_BOARD_FOR, type KanbanCardTarget, registerKanbanCommands } from './kanban-commands'
+import { KANBAN_OPEN_AT_CARET, KANBAN_OPEN_BOARD, KANBAN_OPEN_BOARD_FOR, type KanbanCardTarget, registerKanbanCommands } from './kanban-commands'
 import { kanbanContext } from './testing'
 
 // The rows a [[Kanban Board]] card's context menu offers, and how they reach the board that raised
@@ -31,6 +31,8 @@ function setup(isDesktop = true) {
         /** Each page opened: its concept and the panel whose Pane it was asked into. */
         pagesOpened: () => opened(services.layout.openDocument).map(([concept, options]) => [concept as string, options?.inPaneOf]),
         openView: services.layout.openView,
+        /** How the graph resolves names, which a test may change. */
+        concepts: services.concepts,
     }
 }
 
@@ -83,19 +85,48 @@ describe("a card's context menu", () => {
         unregister()
     })
 
-    it("gives the tab's Open Kanban board row the board's own icon", () => {
+    it("gives the tab's Open Kanban Board row the board's own icon", () => {
         const { contributions } = setup()
-        const row = listContextMenuItems(contributions, { kind: 'document-tab', concept: 'Acme' }).find((r) => r.label === 'Open Kanban board')
+        const row = listContextMenuItems(contributions, { kind: 'document-tab', concept: 'Acme' }).find((r) => r.label === 'Open Kanban Board')
         // The manifest's icon, which the Client holds under the extension's id.
         expect(row?.icon).toBe('kanban.kanban')
     })
 
-    it("offers nothing on a card, nor the tab's Open Kanban board row, when the phone layout is showing", () => {
+    it("offers nothing on a card, nor the tab's Open Kanban Board row, when the phone layout is showing", () => {
         const { contributions } = setup(false)
         expect(listContextMenuItems(contributions, card('open', 1))).toEqual([])
         expect(listContextMenuItems(contributions, { kind: 'document-tab', concept: 'Acme' }).map((r) => r.label)).not.toContain(
-            'Open Kanban board',
+            'Open Kanban Board',
         )
+    })
+})
+
+describe('the Open Kanban Board row', () => {
+    it("opens the board of a tab's concept, in the tab's Pane", async () => {
+        const kanban = setup()
+        const tab = { kind: 'document-tab', concept: 'Acme', panelId: 'document:Acme' } as const
+        const row = listContextMenuItems(kanban.contributions, tab).find((r) => r.label === 'Open Kanban Board')
+        await kanban.commands.execute(row!.command, tab)
+        expect(kanban.boardsOpened()).toEqual([['Acme', 'document:Acme']])
+    })
+
+    it('opens the board of the concept a wikilink names, under the name it resolves to, in the Pane of the editor holding the link', async () => {
+        const kanban = setup()
+        // An alias, resolved to its page, as following the link would.
+        kanban.concepts.canonicalName = (name) => (name === 'the rebuild' ? 'Acme Rebuild' : name)
+        const link = { kind: 'wikilink', concept: 'the rebuild', panelId: 'document:Notes' } as const
+        const row = listContextMenuItems(kanban.contributions, link).find((r) => r.label === 'Open Kanban Board')
+        expect(row?.icon).toBe('kanban.kanban')
+        await kanban.commands.execute(row!.command, link)
+        expect(kanban.boardsOpened()).toEqual([['Acme Rebuild', 'document:Notes']])
+    })
+
+    it('is not offered on a wikilink when the phone layout is showing, where no board can show', async () => {
+        const kanban = setup(false)
+        const link = { kind: 'wikilink', concept: 'Acme', panelId: 'document:Notes' } as const
+        expect(listContextMenuItems(kanban.contributions, link).map((r) => r.label)).not.toContain('Open Kanban Board')
+        await kanban.commands.execute(KANBAN_OPEN_BOARD, link)
+        expect(kanban.boardsOpened()).toEqual([])
     })
 })
 

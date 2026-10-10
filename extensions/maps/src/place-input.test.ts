@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { decodePlusCode, isShortMapLink, readPlaceInput, recoverPlusCode } from './place-input'
+import { decodePlusCode, readPlaceInput, readSearchBox, recoverPlusCode } from './place-input'
 
 // What a person types or pastes into a Map Block's search box is read on the device first
 // (ADR 0119): coordinates, Plus Codes and links copied from other maps never leave it, and they
@@ -145,13 +145,80 @@ describe('links copied from other maps', () => {
         expect(readPlaceInput('https://www.google.com/maps?q=Pebble+Cove')).toBeNull()
         expect(readPlaceInput('https://maps.apple.com/?address=Pebble%20Cove')).toBeNull()
         expect(readPlaceInput('https://example.com/?q=50.7486,-4.0789')).toBeNull()
+        expect(readPlaceInput('https://maps.app.goo.gl/AbCdEf123')).toBeNull()
     })
 
-    it('knows a short link, which has to be opened before its place can be read', () => {
-        expect(isShortMapLink('https://maps.app.goo.gl/AbCdEf123')).toBe(true)
-        expect(isShortMapLink('https://goo.gl/maps/AbCdEf123')).toBe(true)
-        expect(isShortMapLink('https://osm.org/go/euu4XEhK--')).toBe(true)
-        expect(isShortMapLink('https://www.google.com/maps/@50.7486,-4.0789,15z')).toBe(false)
-        expect(readPlaceInput('https://maps.app.goo.gl/AbCdEf123')).toBeNull()
+    // Positions OpenStreetMap's own site gives for these short links, as its /go/ redirect.
+    it.each([
+        ['https://osm.org/go/0EEQjE--', 51.510772705078125, 0.054931640625],
+        ['https://www.openstreetmap.org/go/0EEQjEEb', 51.510998010635376, 0.05499601364135742],
+        ['https://osm.org/go/euu4XEhK--?m', 51.5438175201416, -0.16404390335083008],
+    ])('decodes the OpenStreetMap short link %s on the device', (link, lat, lon) => {
+        const place = readPlaceInput(link)
+        expect(place).toMatchObject({ name: '', from: 'link' })
+        near(place!.point.lat, lat, 1e-9)
+        near(place!.point.lon, lon, 1e-9)
+    })
+
+    it('reads a link with a stray % in its name', () => {
+        expect(readPlaceInput('https://www.google.com/maps/place/100%+Garden/@50.6,-1.2,17z')).toEqual({ point: { lat: 50.6, lon: -1.2 }, name: '100% Garden', from: 'link' })
+    })
+
+    it("gives no name for a dropped pin, whose link names it by its own coordinates", () => {
+        const pin = "https://www.google.com/maps/place/50%C2%B044'55.0%22N+4%C2%B004'44.0%22W/@50.7486,-4.0789,17z/data=!3m1!4b1!4m4!3m3!8m2!3d50.74861!4d-4.07889"
+        expect(readPlaceInput(pin)).toEqual({ point: { lat: 50.74861, lon: -4.07889 }, name: '', from: 'link' })
+    })
+})
+
+describe('what the search box holds', () => {
+    it('is a place, read on the device, or words to search for', () => {
+        expect(readSearchBox(' 50.7486, -4.0789 ')).toEqual({ kind: 'place', place: { point: { lat: 50.7486, lon: -4.0789 }, name: '', from: 'coordinates' } })
+        expect(readSearchBox('Garden Centre')).toEqual({ kind: 'words', words: 'Garden Centre' })
+    })
+
+    it('is a short link, which the Sync Server opens', () => {
+        expect(readSearchBox('https://maps.app.goo.gl/AbCdEf123')).toEqual({ kind: 'short-link', url: 'https://maps.app.goo.gl/AbCdEf123', name: '' })
+        expect(readSearchBox('https://goo.gl/maps/AbCdEf123')).toMatchObject({ kind: 'short-link' })
+    })
+
+    // A phone's Share gives the place's name before its link. A one-line box joins the lines with a
+    // space, or with nothing at all, depending on the browser.
+    it.each([
+        ['Garden Centre\nhttps://maps.app.goo.gl/AbCdEf123'],
+        ['Garden Centre https://maps.app.goo.gl/AbCdEf123'],
+        ['Garden Centrehttps://maps.app.goo.gl/AbCdEf123'],
+        ['Garden Centre\n1 High Street, Brookmouth\nhttps://maps.app.goo.gl/AbCdEf123'],
+    ])('finds the link in shared text, and names the place with the line before it: %j', (text) => {
+        expect(readSearchBox(text)).toEqual({ kind: 'short-link', url: 'https://maps.app.goo.gl/AbCdEf123', name: 'Garden Centre' })
+    })
+
+    it("prefers a link's own name to the text shared with it", () => {
+        const shared = 'Kitchen\nhttps://www.google.com/maps/place/Garden+Centre/@50.6,-1.2,17z'
+        expect(readSearchBox(shared)).toEqual({ kind: 'place', place: { point: { lat: 50.6, lon: -1.2 }, name: 'Garden Centre', from: 'link' } })
+        expect(readSearchBox('Kitchen\nhttps://www.openstreetmap.org/#map=17/50.6/-1.2')).toMatchObject({ kind: 'place', place: { name: 'Kitchen' } })
+    })
+
+    it('is the words of a map link that names a place but does not say where it is', () => {
+        expect(readSearchBox('https://www.google.com/maps/place/Garden+Centre/data=!4m2!3m1!1s0x0:0x1')).toEqual({ kind: 'link-words', words: 'Garden Centre', name: 'Garden Centre' })
+        // What a phone's short link leads to: the name and the address, and no coordinates.
+        expect(readSearchBox('https://maps.google.com/?q=Garden+Centre,+1+High+Street,+Brookmouth&ftid=0x1:0x2&entry=gps')).toEqual({
+            kind: 'link-words',
+            words: 'Garden Centre, 1 High Street, Brookmouth',
+            name: 'Garden Centre',
+        })
+        expect(readSearchBox('https://www.google.com/maps/search/?api=1&query=Garden+Centre')).toEqual({ kind: 'link-words', words: 'Garden Centre', name: '' })
+        expect(readSearchBox('https://www.google.com/maps/search/Garden+Centre/')).toEqual({ kind: 'link-words', words: 'Garden Centre', name: '' })
+        expect(readSearchBox('https://maps.apple.com/?q=Garden%20Centre&address=1%20High%20Street,%20Brookmouth')).toEqual({
+            kind: 'link-words',
+            words: 'Garden Centre, 1 High Street, Brookmouth',
+            name: 'Garden Centre',
+        })
+        expect(readSearchBox('https://www.openstreetmap.org/search?query=Garden%20Centre')).toEqual({ kind: 'link-words', words: 'Garden Centre', name: '' })
+    })
+
+    it('is a link nothing can be read from: another site, or a map link that names no place', () => {
+        expect(readSearchBox('https://example.com/?q=50.7486,-4.0789')).toEqual({ kind: 'unreadable-link' })
+        expect(readSearchBox('https://maps.google.com/?cid=1234567890')).toEqual({ kind: 'unreadable-link' })
+        expect(readSearchBox('https://www.openstreetmap.org/node/123')).toEqual({ kind: 'unreadable-link' })
     })
 })

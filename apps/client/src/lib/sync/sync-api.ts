@@ -1,4 +1,4 @@
-import type { PlaceSearchRequest, SyncAccountSummary } from '@appsoftwareltd/etherpk-shared'
+import type { MapLinkRequest, MapLinkResponse, PlaceReverseRequest, PlaceSearchRequest, SyncAccountSummary } from '@appsoftwareltd/etherpk-shared'
 
 // This module imports no other module of the Client: the Playwright fixtures reach it by relative
 // path and resolve no `$lib` alias, so anything it named would have to be importable the same way.
@@ -233,6 +233,18 @@ export function createSyncApi(deps: SyncApiDeps) {
          */
         searchPlaces: (request: PlaceSearchRequest, signal?: AbortSignal) =>
             call<{ features?: unknown; credits?: unknown }>('/api/v1/sync/maps/search', { method: 'POST', body: JSON.stringify(request), signal }),
+        /**
+         * The place nearest a point, to offer a name for a place set down by hand (ADR 0119,
+         * amendment of 2026-10-10). Answered and refused as `searchPlaces` is, with at most one place.
+         */
+        reversePlace: (request: PlaceReverseRequest, signal?: AbortSignal) =>
+            call<{ features?: unknown; credits?: unknown }>('/api/v1/sync/maps/reverse', { method: 'POST', body: JSON.stringify(request), signal }),
+        /**
+         * The full link a short map link leads to, which a browser page cannot follow itself (ADR
+         * 0119, amendment of 2026-10-10). Any signed-in account may ask.
+         */
+        openMapLink: (request: MapLinkRequest, signal?: AbortSignal) =>
+            call<MapLinkResponse>('/api/v1/sync/maps/link', { method: 'POST', body: JSON.stringify(request), signal }),
         createGraph: () => call<ServerGraphRecord>('/api/v1/sync/graphs', { method: 'POST' }),
         listGraphs: () => call<{ graphs: ServerGraphRecord[] }>('/api/v1/sync/graphs').then((r) => r.graphs),
         /** Graphs plus the owned-storage rollup (one request - same endpoint as listGraphs). */

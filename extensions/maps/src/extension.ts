@@ -21,7 +21,11 @@ import { workspaceService } from '$lib/workspace/workspace-services'
 import MapViewShell from './MapViewShell.svelte'
 import { createPlaceSearch } from './place-search'
 import { placeSearchPhotonUrl } from './place-search-url'
+import { postcodesUrl } from './postcode-search'
 import { registerMaps } from './register'
+
+/** The Maps extension's switch for its search and link services, declared in its manifest. */
+const SEARCH_SERVICES_SETTING = 'search-services'
 
 export function activate(context: ExtensionContext): () => void {
     return registerMaps(context, svelteView(MapViewShell), {
@@ -35,6 +39,11 @@ export function activate(context: ExtensionContext): () => void {
             server: () => workspaceService('syncServer')?.() ?? null,
             photonUrl: placeSearchPhotonUrl(),
             offersSyncPlus: managedSyncOrigin(env) !== null,
+            postcodes: postcodesUrl() !== null,
+            // The person's switch for every call to a search service or to Google (`search-services`
+            // in the manifest). A Mapbox token is its own consent, so it is not covered.
+            enabled: () => context.settings.get(SEARCH_SERVICES_SETTING) !== 'false',
+            subscribe: (listener) => context.settings.subscribe(listener),
             language: () => navigator.language,
         }),
         mapItems: (concept) => {

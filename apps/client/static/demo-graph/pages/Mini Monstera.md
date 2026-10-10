@@ -5,6 +5,11 @@ aliases:
 ---
 *Rhaphidophora tetrasperma*, in the [[Araceae]] family. Native to [[Southeast Asia]].
 
+```map
+Southern Thailand @ 8.4, 99.7
+Peninsular Malaysia @ 3.8, 102.5
+```
+
 Sold as a mini monstera, and not a monstera at all. The split leaves are a good impression, though, and it climbs faster than the real thing. Give it something to climb and it will cover it within a summer.
 
 - Light: bright, indirect

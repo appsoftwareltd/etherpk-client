@@ -6,6 +6,11 @@ aliases:
 ---
 *Cucurbita maxima*, in the [[Cucurbitaceae]] family. Native to [[South America]].
 
+```map
+Buenos Aires, Argentina @ -36.5, -60
+Uruguay @ -32.8, -56
+```
+
 A trailing plant that needs a lot of space, rich soil and plenty of water. The giant show pumpkins are this species. Let the fruit ripen fully on the plant and cure in the sun, and it stores for months. With [[Sweetcorn]] and [[French Bean]] it is one of the Three Sisters, grown together in the Americas for centuries.
 
 - Grow: sow indoors in late spring

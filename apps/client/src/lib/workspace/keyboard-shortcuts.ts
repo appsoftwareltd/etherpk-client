@@ -122,7 +122,7 @@ export const EDITOR_SHORTCUTS: ShortcutGroup[] = [
             { key: '/', label: 'Open the command menu' },
             { key: '[[', label: 'Link to a document' },
             { key: 'Alt+Enter', label: 'On a link: open the page it names' },
-            { key: 'Shift+F10', label: 'On a link: its menu (Show backlinks, Rename…)' },
+            { key: 'Shift+F10', label: 'On a link: its menu (Show Backlinks, Rename…)' },
             { key: '#', label: 'Add a task tag (on a task line)' },
             { key: '* _ ~ = [ ( `', label: 'Over selected text: wrap it (press again to add a layer, e.g. ** or [[)' },
             { key: 'Mod+B', label: 'Bold the selection, or unbold it' },

@@ -28,8 +28,8 @@ export function mapViewConcept(view: ViewRef): string | null {
 
 /** Insert an empty [[Map Block]] at the caret (`/map`). */
 export const MAPS_INSERT = 'maps.insert'
-/** A document tab's row: the Map View of the tab's concept. */
-export const MAPS_OPEN_FOR_TAB = 'maps.openForTab'
+/** A document tab's or a wikilink's Context Menu row: the Map View of the tab's concept, or the link's. */
+export const MAPS_OPEN_FROM_MENU = 'maps.openFromMenu'
 /**
  * The Command Menu's Map View row: the map of the concept the caret's block answers to, or the
  * choice at the caret when it answers to several.

@@ -38,3 +38,12 @@ There are roughly 390,000 known species. You'll probably end up with a [[Monster
 ## Seasons
 
 A [[Houseplant]] responds to the seasons and may slow down, drop leaves or look frankly alarming in winter. This is usually fine. Consult the [[Season Guide]] before binning anything in January.
+
+## Seeing more of them
+
+[[Where to Learn About Plants]] lists gardens worth a visit.
+
+- The botanical garden in Padua was planted in 1545, and it is the oldest university garden still in the place it began [[Where to Learn About Plants]]
+  ```map
+  Orto Botanico di Padova @ 45.39856, 11.88085
+  ```

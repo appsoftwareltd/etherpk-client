@@ -163,7 +163,11 @@ export interface ExtensionStorage {
  * @beta
  */
 export interface ExtensionSettings {
-    /** A setting's value, by its id in the manifest, or undefined when the person has not set it. */
+    /**
+     * A setting's value, by its id in the manifest, or undefined when the person has not set it. A
+     * `boolean` setting is always `'true'` or `'false'`: its manifest's `default` until the person
+     * changes it.
+     */
     get(id: string): string | undefined
     /**
      * Hear every change to the person's settings, made on this device or arriving from another.

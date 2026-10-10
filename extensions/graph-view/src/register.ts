@@ -5,7 +5,7 @@
  *   Sidebar's resident, which shows the active document's neighbourhood, and `graph-view.whole`,
  *   the whole graph in the main region,
  * - the Commands that reach them, and Alt+M for the first,
- * - the "Show in Graph View" row of a document tab's [[Context Menu]].
+ * - the "Show in Graph View" row of a document tab's and a wikilink's [[Context Menu]].
  *
  * The Client takes all of it back when the graph closes or the extension is switched off; what
  * this returns clears what the extension holds itself.
@@ -23,9 +23,12 @@ import type { ExtensionContext, MenuTarget, ViewContribution } from '@appsoftwar
 import { GRAPH_VIEW_LOCAL_KIND, GRAPH_VIEW_OPEN_WHOLE, GRAPH_VIEW_REVEAL, GRAPH_VIEW_SHOW_CONCEPT, GRAPH_VIEW_WHOLE, GRAPH_VIEW_WHOLE_KIND } from './identity'
 import { clearWholeGraphFocus, graphViewContext, requestWholeGraphFocus, setGraphViewContext } from './services'
 
-/** A document's tab, the only target the Graph View's row applies to. */
-function documentTab(target: MenuTarget | undefined): target is MenuTarget & { kind: 'document-tab'; concept: string } {
-    return target?.kind === 'document-tab' && typeof (target as { concept?: unknown }).concept === 'string'
+/**
+ * A document's tab or a wikilink, the targets the Graph View's row applies to: the tab's concept, or
+ * the one the link names. The whole graph resolves an alias or another casing as it centres.
+ */
+function conceptTarget(target: MenuTarget | undefined): target is MenuTarget & { kind: 'document-tab' | 'wikilink'; concept: string } {
+    return (target?.kind === 'document-tab' || target?.kind === 'wikilink') && typeof (target as { concept?: unknown }).concept === 'string'
 }
 
 export function registerGraphView(context: ExtensionContext, views: { local: ViewContribution; whole: ViewContribution }): () => void {
@@ -43,7 +46,7 @@ export function registerGraphView(context: ExtensionContext, views: { local: Vie
     context.commands.register(GRAPH_VIEW_OPEN_WHOLE, openWhole)
     context.commands.register(GRAPH_VIEW_SHOW_CONCEPT, (arg) => {
         const target = arg as MenuTarget | undefined
-        if (!documentTab(target) || !context.layout.isDesktop()) return
+        if (!conceptTarget(target) || !context.layout.isDesktop()) return
         requestWholeGraphFocus(target.concept)
         openWhole()
     })
@@ -52,10 +55,10 @@ export function registerGraphView(context: ExtensionContext, views: { local: Vie
         label: 'Show in Graph View',
         command: GRAPH_VIEW_SHOW_CONCEPT,
         icon: 'graph-view',
-        // After Show backlinks (5) and Open Kanban board (6): the rows that show something
-        // about the tab's concept without changing anything.
+        // After Show Backlinks (5) and Open Kanban Board (6): the rows that show something
+        // about the concept without changing anything.
         order: 7,
-        when: (target) => documentTab(target) && context.layout.isDesktop(),
+        when: (target) => conceptTarget(target) && context.layout.isDesktop(),
     })
     // M for map, beside the Client's one letter per Sidebar resident.
     context.keybindings.register({ key: 'Alt+M', command: GRAPH_VIEW_REVEAL, label: 'Graph View (desktop)', group: 'Sidebars' })

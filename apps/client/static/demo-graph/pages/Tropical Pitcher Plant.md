@@ -6,6 +6,10 @@ aliases:
 ---
 *Nepenthes alata*, in the [[Nepenthaceae]] family. Native to [[Southeast Asia]].
 
+```map
+Luzon, Philippines @ 16.5, 121.1
+```
+
 A climber whose leaves end in tendrils, and the tendrils end in hanging pitchers full of digestive fluid. It is not related to the [[Trumpet Pitcher]], which found the same trick on another continent. The biggest species are large enough to catch the odd rat.
 
 - Light: bright, indirect

@@ -50,10 +50,12 @@ draws it under the extension's entry in Settings and Extensions → Extensions:
 ]
 ```
 
-`type` is `text` or `secret`, and a secret stays masked until the person shows it. The person can
+`type` is `text`, `secret` or `boolean`. A secret stays masked until the person shows it. A
+`boolean` is a switch, which may name its starting position with `"default": true`. The person can
 set them while the extension is switched off. The extension reads the value with
 `context.settings.get('api-key')`, which is undefined until it is set, and hears every change with
-`context.settings.subscribe`. Settings belong to the person rather than a graph. Where their
+`context.settings.subscribe`. A switch always reads `'true'` or `'false'`, its default until the
+person changes it. Settings belong to the person rather than a graph. Where their
 account syncs a graph, they follow the person to their other devices, encrypted so only those
 devices can read them.
 

@@ -1,8 +1,8 @@
 /**
  * The Commands, [[Context Menu]] rows and [[Command Menu]] row of a [[Kanban Board]] (ADR 0113):
- * Open Kanban board on a document tab, `/kanban` in the editor, Open page on the board's own tab,
- * and the rows of a card's own menu. Desktop only, but for Open page: under the phone layout a
- * board cannot show, and its tab's one row opens the page it is about.
+ * Open Kanban Board on a document tab or a wikilink, `/kanban` in the editor, Open page on the
+ * board's own tab, and the rows of a card's own menu. Desktop only, but for Open page: under the
+ * phone layout a board cannot show, and its tab's one row opens the page it is about.
  *
  * All of it goes through the extension's context (ADR 0121), which takes it back as the graph
  * closes. A card's rows act through the board that raised the menu (`board-actions.ts`), which
@@ -20,7 +20,7 @@ import { parseViewKey } from '$lib/layout/view-ref'
 import { boardActions } from './board-actions'
 import { BOARD_LANES, BOARD_SECTIONS, KANBAN_VIEW_KIND } from './board-model'
 
-/** Open the board for a concept: the document tab's row runs it with the tab as its target. */
+/** Open the board for a concept: a document tab's or a wikilink's row runs it with the tab or the link as its target. */
 export const KANBAN_OPEN_BOARD = 'kanban.openBoard'
 /**
  * `/kanban`: open the board for the concept the caret's block answers to, or offer the choice at
@@ -68,9 +68,12 @@ function boardConcept(target: MenuTarget | undefined): string | null {
     return view.kind === KANBAN_VIEW_KIND ? view.target : null
 }
 
-/** A document's tab, the target Open Kanban board applies to. */
-function documentTab(target: MenuTarget | undefined): target is MenuTarget & { kind: 'document-tab'; concept: string; panelId?: string } {
-    return target?.kind === 'document-tab'
+/**
+ * A document's tab or a wikilink, the targets Open Kanban Board applies to: the tab's concept, or
+ * the one the link names, with the panel of the tab or of the editor holding the link.
+ */
+function conceptTarget(target: MenuTarget | undefined): target is MenuTarget & { kind: 'document-tab' | 'wikilink'; concept: string; panelId?: string } {
+    return target?.kind === 'document-tab' || target?.kind === 'wikilink'
 }
 
 /** The id a section's row and Command share: `none` for the No priority section. */
@@ -94,19 +97,20 @@ export function registerKanbanCommands(context: ExtensionContext): void {
 
     commands.register(KANBAN_OPEN_BOARD, (arg) => {
         const target = arg as MenuTarget | undefined
-        if (!documentTab(target) || !layout.isDesktop()) return
+        if (!conceptTarget(target) || !layout.isDesktop()) return
+        // In the Pane of the tab, or of the editor the link is in, as a link clicked there opens.
         openBoard(target.concept, target.panelId)
     })
     contextMenu.register({
         id: KANBAN_OPEN_BOARD,
-        label: 'Open Kanban board',
+        label: 'Open Kanban Board',
         command: KANBAN_OPEN_BOARD,
         // The board's own icon, the one on its tab.
         icon: 'kanban',
-        // Straight after Show backlinks (5), the other row that shows something about the tab's
+        // Straight after Show Backlinks (5), among the rows that show something about the
         // concept without changing anything.
         order: 6,
-        when: (target) => documentTab(target) && layout.isDesktop(),
+        when: (target) => conceptTarget(target) && layout.isDesktop(),
     })
     commands.register(KANBAN_OPEN_AT_CARET, () => {
         const view = getActiveEditorView()

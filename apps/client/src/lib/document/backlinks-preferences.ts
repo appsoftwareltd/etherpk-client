@@ -1,7 +1,7 @@
 /**
  * The Backlinks [[View]]'s own state, per device and per [[Knowledge Graph]]: whether a quoted
  * line **highlights** the reference by dimming everything else, which document the panel is
- * **pinned** to, and what **Show backlinks** asked it to show while it follows the editor.
+ * **pinned** to, and what **Show Backlinks** asked it to show while it follows the editor.
  *
  * Per-device presentation state, exactly like the [[Tasks View]]'s filter — never synced, never in
  * an [[Export]] (ADR 0013), and deliberately NOT in the Layout model, where a per-View state slot
@@ -13,7 +13,7 @@
  * here rather than in the component because the mobile presenter unmounts a drawer's View every
  * time the drawer closes, and a pin that did not survive that would be no pin at all.
  *
- * **Show backlinks** on a wikilink or a tab (`commands/document-commands.ts`, ADR 0088) changes
+ * **Show Backlinks** on a wikilink or a tab (`commands/document-commands.ts`, ADR 0088) changes
  * what the panel shows and leaves the pin as it is: pinned, the pin moves to the concept asked
  * for; following the editor, the concept stands in for the editor's document until the editor
  * moves on, at which point the panel is following again. That policy is {@link show} and
@@ -33,7 +33,7 @@ const VERSION = 1
 const SAVE_DEBOUNCE_MS = 300
 
 /**
- * What Show backlinks asked for while the panel was following the editor: shown in place of the
+ * What Show Backlinks asked for while the panel was following the editor: shown in place of the
  * editor's document for as long as the editor stays on `activeDocument`.
  */
 export interface ShownConcept {

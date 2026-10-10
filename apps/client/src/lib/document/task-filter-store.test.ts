@@ -69,3 +69,40 @@ describe('the Tasks View filter store', () => {
         expect(() => store.flush()).not.toThrow()
     })
 })
+
+describe('Show Tasks, through the store', () => {
+    it('names the concept and leaves the other filters as the View left them, remembered like any change', () => {
+        const storage = fakeStorage()
+        const store = createTaskFilterStore('g', storage)
+        store.set({ ...defaultTaskFilter(), concept: 'Acme', statuses: ['doing'], due: 'overdue', groupBy: 'due' })
+
+        store.show('Physics')
+
+        const shown = { ...defaultTaskFilter(), concept: 'Physics', statuses: ['doing'], due: 'overdue', groupBy: 'due' }
+        expect(store.get()).toEqual(shown)
+        store.flush()
+        expect(createTaskFilterStore('g', storage).get()).toEqual(shown)
+    })
+
+    it('tells a View already open, so it changes what it shows', () => {
+        const store = createTaskFilterStore('g', fakeStorage())
+        const heard: (string | null)[] = []
+        const unsubscribe = store.subscribe((filter) => heard.push(filter.concept))
+
+        store.show('Physics')
+        expect(heard).toEqual(['Physics'])
+
+        unsubscribe()
+        store.show('Chemistry')
+        expect(heard).toEqual(['Physics'])
+    })
+
+    it("tells no one of the View's own changes, which the View made itself", () => {
+        const store = createTaskFilterStore('g', fakeStorage())
+        const heard: (string | null)[] = []
+        store.subscribe((filter) => heard.push(filter.concept))
+
+        store.set({ ...defaultTaskFilter(), concept: 'Acme' })
+        expect(heard).toEqual([])
+    })
+})

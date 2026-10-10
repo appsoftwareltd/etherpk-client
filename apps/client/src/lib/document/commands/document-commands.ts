@@ -1,6 +1,7 @@
 /**
- * Document-scoped [[Command]]s reachable from a [[Context Menu]]: showing a document's backlinks,
- * favouriting, renaming, deleting, and copying a document's name or its full path on disk.
+ * Document-scoped [[Command]]s reachable from a [[Context Menu]]: showing a document's backlinks or
+ * its tasks, favouriting, renaming, deleting, and copying a document's name or its full path on
+ * disk.
  *
  * These are Commands rather than inline handlers so the [[Context Menu]] stays a
  * *presentation surface* over the Command registry - the same relationship the
@@ -43,6 +44,12 @@ export const DOCUMENT_PUBLISH = 'document.publish'
  * showing.
  */
 export const BACKLINKS_SHOW = 'backlinks.show'
+/**
+ * Show a concept's tasks: the Tasks View's [[Name Filter]] set to the concept, its other filters
+ * left as they are, and the View brought to the front. Beside `tasks.open` (Alt+T), which reveals
+ * the View on whatever it is filtered to.
+ */
+export const TASKS_SHOW = 'tasks.show'
 
 function conceptOf(arg: unknown): string {
     const target = arg as ContextMenuTarget | undefined
@@ -79,6 +86,11 @@ export interface DocumentCommandDeps {
      * there is no Backlinks View.
      */
     showBacklinks?: (concept: string) => void
+    /**
+     * Filter the Tasks View to a concept and bring it to the front. The workspace owns the
+     * filter (`task-filter-store.ts`) and the reveal; absent where there is no Tasks View.
+     */
+    showTasks?: (concept: string) => void
     /** Surfaces a failure to the user (the workspace's status line). */
     onError?: (message: string) => void
     /**
@@ -168,23 +180,40 @@ export function registerDocumentCommands(
             const concept = conceptOf(arg)
             if (concept !== '') deps.showBacklinks?.(concept)
         }),
+        commands.register(TASKS_SHOW, (arg) => {
+            const concept = conceptOf(arg)
+            if (concept !== '') deps.showTasks?.(concept)
+        }),
     )
 
     disposers.push(
         registerContextMenuItem(contributions, {
             id: BACKLINKS_SHOW,
-            label: 'Show backlinks',
+            label: 'Show Backlinks',
             command: BACKLINKS_SHOW,
             // The Backlinks View's own icon, on its tab too.
             icon: 'backlinks',
-            // First: a read, and the one row that changes nothing. On a tab it acts on the tab's
-            // document whether or not that tab is in front; on a wikilink, on the concept the
-            // link names - the innermost link under the pointer, as a click resolves it. The
-            // Sidebar rows (Favourites, Recents, All Documents) could carry it too, but have
-            // not been asked for.
+            // First of the rows that show something about a concept and change nothing: Show
+            // Backlinks (5), the extensions' Open Kanban Board (6), Show in Graph View (7) and
+            // Open Map View (8), then Show Tasks (9). On a tab each acts on the tab's document
+            // whether or not that tab is in front; on a wikilink, on the concept the link names -
+            // the innermost link under the pointer, as a click resolves it. The Sidebar rows
+            // (Favourites, Recents, All Documents) could carry them too, but have not been asked
+            // for.
             order: 5,
             when: (target) =>
                 (target.kind === 'document-tab' || isWikilinkTarget(target)) && deps.showBacklinks !== undefined,
+        }),
+        registerContextMenuItem(contributions, {
+            id: TASKS_SHOW,
+            label: 'Show Tasks',
+            command: TASKS_SHOW,
+            // The checkbox a task is drawn with in the editor.
+            icon: 'task',
+            // Last of the rows that show something about a concept (see Show Backlinks).
+            order: 9,
+            when: (target) =>
+                (target.kind === 'document-tab' || isWikilinkTarget(target)) && deps.showTasks !== undefined,
         }),
         registerContextMenuItem(contributions, {
             id: FAVOURITE_ADD,

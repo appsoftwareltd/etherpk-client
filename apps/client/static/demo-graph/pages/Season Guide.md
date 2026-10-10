@@ -17,6 +17,10 @@ Everything wakes up. This is your busiest season.
 - The time for [[Repotting]] - plants bounce back fastest when they're growing
 - Take cuttings - they root quickly in warmth and light. [[Golden Pothos]] and [[Tradescantia]] root in a glass of water
 - Check for [[Pests]] - they wake up too
+- [[Bluebell]] woods flower from mid-April to mid-May, and Dockey Wood on the Ashridge Estate is one of the best known
+  ```map
+  Dockey Wood, Ashridge @ 51.82347, -0.58681
+  ```
 
 ## ☀️ Summer
 
@@ -27,6 +31,10 @@ Peak growing season. Your job is to keep up.
 - Shade from harsh afternoon sun - even a [[Succulent]] can burn against glass
 - Open a window. Airflow keeps fungal problems away
 - Sow [[Basil]] and [[Coriander]] a little at a time, every few weeks
+- [[Lavender]] fields around Valensole, in Provence, flower from late June into July
+  ```map
+  Valensole @ 43.83793, 5.98399
+  ```
 
 ## 🍂 Autumn
 
@@ -38,6 +46,10 @@ Everything slows down. So should you.
 - Bring anything outdoors inside before the first frost - around 2026-11-01 here
 - Plant spring bulbs: [[Daffodil]] early, [[Tulip]] late. See [[Bulb]]
 - Long, dark nights now give a [[Christmas Cactus]] or [[Poinsettia]] flowers for midwinter
+- [[Japanese Maple]] leaves turn in October, and Westonbirt, the national arboretum, has a whole glade of them
+  ```map
+  Westonbirt Arboretum @ 51.60580, -2.22374
+  ```
 
 ## ❄️ Winter
 
@@ -48,3 +60,7 @@ Dormancy. The plant is fine. You're the risk.
 - Keep leaves off cold glass and away from radiators
 - A [[Succulent]] wants next to no water until spring
 - If something looks dead, wait. Decide in March, not January.
+- [[Snowdrop]] gardens open in February, and Colesbourne Park in Gloucestershire grows hundreds of kinds
+  ```map
+  Colesbourne Park @ 51.82015, -1.99474
+  ```

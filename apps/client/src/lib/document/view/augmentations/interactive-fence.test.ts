@@ -1,4 +1,5 @@
 import { EditorState, Transaction } from '@codemirror/state'
+import { type Decoration, EditorView } from '@codemirror/view'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import { createContributionRegistry, setActiveContributionRegistry } from '$lib/surface'
@@ -11,6 +12,7 @@ import { type InteractiveFence, registerInteractiveFence } from './interactive-f
 import { collapsedInteractiveFences, fenceById, fenceIdAt, interactiveFences } from './interactive-fence-state'
 import { isProtectedDocumentFacet } from './protected-document'
 import { EXTERNAL } from '../cm-document'
+import { editorOnScreen, setEditorOnScreen } from '../editor-on-screen'
 import { collapsedFenceStarts } from './rendered-common'
 
 // The interactive fence host (ADR 0118): a fence whose info word has a registered widget is drawn
@@ -399,5 +401,42 @@ describe('where Edit as text puts the caret', () => {
         const e = editor(['|- Shortlist', '  ```map', '', '  A @ 1, 2', '  ```'].join('\n'))
         show(e)
         expect(e.fixture()).toBe(['- Shortlist', '  ```map', '|', '  A @ 1, 2', '  ```'].join('\n'))
+    })
+})
+
+describe('telling a widget whether anyone can see it', () => {
+    // The caret starts on the first line, so a line above the map leaves it drawn as a widget.
+
+    /** The widgets the host draws, as CodeMirror is given them. */
+    function widgets(s: EditorState): { id: number; onScreen: boolean; eq(other: unknown): boolean }[] {
+        const found: { id: number; onScreen: boolean; eq(other: unknown): boolean }[] = []
+        for (const source of s.facet(EditorView.decorations)) {
+            if (typeof source === 'function') continue
+            source.between(0, s.doc.length, (_from, _to, decoration: Decoration) => {
+                if (decoration.spec.widget) found.push(decoration.spec.widget)
+            })
+        }
+        return found
+    }
+
+    it('draws the same fence again, told the editor is behind another tab, and again when it is back', () => {
+        const start = EditorState.create({ doc: `Intro\n\n${map('Garden @ 50.7, -1.0')}`, extensions: [editorAnalysis(), interactiveFenceAugmentation(), editorOnScreen] })
+        const [shown] = widgets(start)
+        expect(shown.onScreen).toBe(true)
+
+        const behind = start.update({ effects: setEditorOnScreen.of(false) }).state
+        const [hidden] = widgets(behind)
+        expect(hidden.onScreen).toBe(false)
+        // A different widget, so CodeMirror hands the mounted DOM to updateDOM, which keeps the
+        // map when the fence's id is the same.
+        expect(hidden.eq(shown)).toBe(false)
+        expect(hidden.id).toBe(shown.id)
+
+        expect(widgets(behind.update({ effects: setEditorOnScreen.of(true) }).state)[0].onScreen).toBe(true)
+    })
+
+    it('starts a widget hidden in an editor that opens behind another tab', () => {
+        const behind = EditorState.create({ doc: `Intro\n\n${map('Garden @ 50.7, -1.0')}`, extensions: [editorAnalysis(), interactiveFenceAugmentation(), editorOnScreen.init(() => false)] })
+        expect(widgets(behind)[0].onScreen).toBe(false)
     })
 })

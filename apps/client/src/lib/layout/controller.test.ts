@@ -256,7 +256,7 @@ describe('LayoutController — sidebars', () => {
     })
 
     it('opening a sidebar that is already open changes nothing: no renderer call, no hook, no change', () => {
-        // A reveal (Alt+B, Show backlinks) opens the Sidebar unconditionally. Told to re-open an
+        // A reveal (Alt+B, Show Backlinks) opens the Sidebar unconditionally. Told to re-open an
         // open one, the dockview adapter re-pinned it to its remembered width and a width dragged
         // during the session was lost; the model had not changed, so nothing should have been told.
         const renderer = createStubRenderer()

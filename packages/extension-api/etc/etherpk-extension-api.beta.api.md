@@ -328,6 +328,7 @@ export type ReadExtensionPackageResult = {
 
 // @beta
 export interface SettingDeclaration {
+    default?: boolean;
     description?: string;
     id: string;
     link?: {
@@ -336,7 +337,7 @@ export interface SettingDeclaration {
     };
     placeholder?: string;
     title: string;
-    type: 'text' | 'secret';
+    type: 'text' | 'secret' | 'boolean';
 }
 
 // @beta

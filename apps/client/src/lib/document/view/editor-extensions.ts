@@ -61,6 +61,7 @@ import { fenceDeleteGuard, fencePad } from './fence-guard'
 import { type EditRefusal, editRefusalReporter } from './edit-refused'
 import { type EditorDocumentInfo, editorDocument } from './editor-document'
 import { lineAnchor } from './line-anchor'
+import { editorOnScreen } from './editor-on-screen'
 import { wrapSelectionInput } from './wrap-selection'
 
 export interface EditorExtensionServices {
@@ -110,6 +111,11 @@ export interface EditorExtensionServices {
     placeholder?: PlaceholderSource
     /** Which document the editor shows and the panel it sits in (editor-document.ts). Absent outside a workspace. */
     document?: EditorDocumentInfo
+    /**
+     * Whether the View holding the editor is on screen as the editor is made (editor-on-screen.ts),
+     * which it then keeps up to date with `setEditorOnScreen`. Absent, the editor is on screen.
+     */
+    onScreen?: () => boolean
 }
 
 /** One named feature of the stack: the name is what the order test asserts on. */
@@ -273,6 +279,8 @@ export function editorFeatures(services: EditorExtensionServices): EditorFeature
         // Which document this editor shows and where, for a Command holding only the view
         // (`/kanban`), and the line a Task Detail was asked to show, followed through edits.
         { name: 'editor-document', extension: services.document ? editorDocument.of(services.document) : [] },
+        // Read by the interactive fences, so a widget behind another tab lets go of what it holds.
+        { name: 'on-screen', extension: editorOnScreen.init(() => services.onScreen?.() ?? true) },
         { name: 'line-anchor', extension: lineAnchor() },
         // The View's own hooks last: focus makes this editor the active one; updates keep the
         // Command Bar context, reading position and pending reveals in step.

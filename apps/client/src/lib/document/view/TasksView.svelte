@@ -510,6 +510,7 @@
     // ── Lifecycle ──────────────────────────────────────────────────────────
     let unsubActive: (() => void) | undefined;
     let unsubIndex: (() => void) | undefined;
+    let unsubShow: (() => void) | undefined;
     onMount(() => {
         // The bus has no replay: read what is active NOW, then follow. Following only
         // relabels the link — the filter itself never moves without a press.
@@ -518,11 +519,16 @@
             activeConcept = documentId;
         });
         unsubIndex = getActiveGraphIndex()?.onUpdated(() => indexRefresh.schedule());
+        // Show Tasks on a tab or a wikilink is that press made from outside: the box and the
+        // list take the concept as if it had been chosen here. A View the reveal mounts read it
+        // already, through the store.
+        unsubShow = store?.subscribe((shown) => selectName(shown.concept));
         void recompute();
     });
     onDestroy(() => {
         unsubActive?.();
         unsubIndex?.();
+        unsubShow?.();
         indexRefresh.cancel();
         store?.flush();
     });

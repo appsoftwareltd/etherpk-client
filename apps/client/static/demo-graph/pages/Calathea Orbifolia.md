@@ -5,6 +5,11 @@ aliases:
 ---
 *Goeppertia orbifolia*, in the [[Marantaceae]] family. Native to [[South America]].
 
+```map
+Bahia, Brazil @ -12.5, -41.7
+Espírito Santo, Brazil @ -19.6, -40.6
+```
+
 Big round leaves with silver stripes. It is beautiful and fussy: dry air, cold draughts or hard tap water all show up as brown edges. A bathroom with a window suits it well.
 
 - Light: medium, indirect

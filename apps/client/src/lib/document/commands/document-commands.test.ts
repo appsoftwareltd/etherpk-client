@@ -10,6 +10,7 @@ import {
     DOCUMENT_COPY_NAME,
     FAVOURITE_MOVE,
     registerDocumentCommands,
+    TASKS_SHOW,
 } from './document-commands'
 
 const tab = (concept: string): ContextMenuTarget => ({ kind: 'document-tab', concept, panelId: `document:${concept}` })
@@ -123,19 +124,19 @@ describe('Copy name', () => {
     })
 })
 
-describe('Show backlinks', () => {
+describe('Show Backlinks', () => {
     it('is not offered where the workspace has no Backlinks panel to show (a harness)', () => {
         const { labels } = setup()
-        expect(labels(tab('Alpha'))).not.toContain('Show backlinks')
-        expect(labels({ kind: 'wikilink', concept: 'Alpha' })).not.toContain('Show backlinks')
+        expect(labels(tab('Alpha'))).not.toContain('Show Backlinks')
+        expect(labels({ kind: 'wikilink', concept: 'Alpha' })).not.toContain('Show Backlinks')
     })
 
     it('is the first row on a document tab and on a wikilink, and shows the target concept', async () => {
         const showBacklinks = vi.fn()
         const { commands, labels } = setup({ showBacklinks })
 
-        expect(labels(tab('Alpha'))[0]).toBe('Show backlinks')
-        expect(labels({ kind: 'wikilink', concept: 'Physics' })[0]).toBe('Show backlinks')
+        expect(labels(tab('Alpha'))[0]).toBe('Show Backlinks')
+        expect(labels({ kind: 'wikilink', concept: 'Physics' })[0]).toBe('Show Backlinks')
 
         await commands.execute(BACKLINKS_SHOW, tab('Alpha'))
         expect(showBacklinks).toHaveBeenLastCalledWith('Alpha')
@@ -146,16 +147,16 @@ describe('Show backlinks', () => {
 
     it('carries the backlinks icon, the one on the Backlinks View’s tab', () => {
         const { contributions } = setup({ showBacklinks: vi.fn() })
-        const row = listContextMenuItems(contributions, tab('Alpha')).find((r) => r.label === 'Show backlinks')
+        const row = listContextMenuItems(contributions, tab('Alpha')).find((r) => r.label === 'Show Backlinks')
         expect(row?.icon).toBe('backlinks')
     })
 
     it('is a tab and link row: the Sidebar rows of the same document do not carry it', () => {
         const { labels } = setup({ showBacklinks: vi.fn() })
-        expect(labels({ kind: 'favourite', concept: 'Alpha' })).not.toContain('Show backlinks')
-        expect(labels({ kind: 'recent', concept: 'Alpha' })).not.toContain('Show backlinks')
-        expect(labels({ kind: 'document-row', concept: 'Alpha' })).not.toContain('Show backlinks')
-        expect(labels({ kind: 'tab', panelId: 'asset:x' })).not.toContain('Show backlinks')
+        expect(labels({ kind: 'favourite', concept: 'Alpha' })).not.toContain('Show Backlinks')
+        expect(labels({ kind: 'recent', concept: 'Alpha' })).not.toContain('Show Backlinks')
+        expect(labels({ kind: 'document-row', concept: 'Alpha' })).not.toContain('Show Backlinks')
+        expect(labels({ kind: 'tab', panelId: 'asset:x' })).not.toContain('Show Backlinks')
     })
 
     it('does nothing for a target that names no concept', async () => {
@@ -164,6 +165,50 @@ describe('Show backlinks', () => {
         await commands.execute(BACKLINKS_SHOW, { kind: 'tab', panelId: 'asset:x' })
         await commands.execute(BACKLINKS_SHOW, undefined)
         expect(showBacklinks).not.toHaveBeenCalled()
+    })
+})
+
+describe('Show Tasks', () => {
+    it('is not offered where the workspace has no Tasks View to show (a harness)', () => {
+        const { labels } = setup()
+        expect(labels(tab('Alpha'))).not.toContain('Show Tasks')
+        expect(labels({ kind: 'wikilink', concept: 'Alpha' })).not.toContain('Show Tasks')
+    })
+
+    it('follows Show Backlinks on a document tab and on a wikilink, and filters the Tasks View to the target concept', async () => {
+        const showTasks = vi.fn()
+        const { commands, labels } = setup({ showBacklinks: vi.fn(), showTasks })
+
+        // The extensions' rows (6 to 8) sit between the two; none is registered here.
+        expect(labels({ kind: 'wikilink', concept: 'Physics' })).toEqual(['Show Backlinks', 'Show Tasks', 'Rename…'])
+        expect(labels(tab('Alpha')).slice(0, 2)).toEqual(['Show Backlinks', 'Show Tasks'])
+
+        await commands.execute(TASKS_SHOW, tab('Alpha'))
+        expect(showTasks).toHaveBeenLastCalledWith('Alpha')
+        await commands.execute(TASKS_SHOW, { kind: 'wikilink', concept: 'Physics', panelId: 'document:Notes' })
+        expect(showTasks).toHaveBeenLastCalledWith('Physics')
+    })
+
+    it('carries the checkbox a task is drawn with in the editor', () => {
+        const { contributions } = setup({ showTasks: vi.fn() })
+        const row = listContextMenuItems(contributions, tab('Alpha')).find((r) => r.label === 'Show Tasks')
+        expect(row?.icon).toBe('task')
+    })
+
+    it('is a tab and link row: the Sidebar rows of the same document do not carry it', () => {
+        const { labels } = setup({ showTasks: vi.fn() })
+        expect(labels({ kind: 'favourite', concept: 'Alpha' })).not.toContain('Show Tasks')
+        expect(labels({ kind: 'recent', concept: 'Alpha' })).not.toContain('Show Tasks')
+        expect(labels({ kind: 'document-row', concept: 'Alpha' })).not.toContain('Show Tasks')
+        expect(labels({ kind: 'tab', panelId: 'asset:x' })).not.toContain('Show Tasks')
+    })
+
+    it('does nothing for a target that names no concept', async () => {
+        const showTasks = vi.fn()
+        const { commands } = setup({ showTasks })
+        await commands.execute(TASKS_SHOW, { kind: 'tab', panelId: 'asset:x' })
+        await commands.execute(TASKS_SHOW, undefined)
+        expect(showTasks).not.toHaveBeenCalled()
     })
 })
 

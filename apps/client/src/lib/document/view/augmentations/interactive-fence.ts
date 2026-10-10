@@ -9,11 +9,11 @@
  *
  * - **The widget's life.** CodeMirror builds the widget's DOM when its block comes into the
  *   viewport and destroys it when the block leaves or is deleted, or when the caret shows the
- *   fence's text. Between those, a change to the fence's body, the theme or whether it can be
- *   written reaches the mounted widget through `updateDOM`, so the widget and whatever it holds (a
- *   map, with its WebGL context) survive the edit. The widget's height is its own declared height,
- *   reserved before it mounts, and a change of it rides a decoration redraw so the height map never
- *   drifts (ADR 0022's rule).
+ *   fence's text. Between those, a change to the fence's body, the theme, whether it can be
+ *   written or whether the editor is on screen (editor-on-screen.ts) reaches the mounted widget
+ *   through `updateDOM`, so the widget and whatever it holds (a map, with its WebGL context)
+ *   survive the edit. The widget's height is its own declared height, reserved before it mounts,
+ *   and a change of it rides a decoration redraw so the height map never drifts (ADR 0022's rule).
  * - **Which fence is which.** Every fence keeps an id across edits (`fenceIdentity`). A widget's
  *   DOM is only ever handed back to the same fence, and a widget's edits find their fence by its
  *   id, so nothing a widget does can land in another one.
@@ -39,6 +39,7 @@ import { type ContributionRegistry, tryGetActiveContributionRegistry } from '$li
 
 import { analysisFor } from '../analysis/editor-analysis'
 import { editorDocument } from '../editor-document'
+import { editorIsOnScreen, setEditorOnScreen } from '../editor-on-screen'
 import { bodyWritable } from '../body-writable'
 import { refusalIn } from '../edit-refused'
 import { type FenceBodyEdit, fenceBodyEditApplies, safeFenceLine } from '../../fence-body'
@@ -143,6 +144,8 @@ class InteractiveFenceWidget extends WidgetType {
         readonly info: InteractiveFenceInfo,
         readonly writable: boolean,
         readonly dark: boolean,
+        /** Whether anyone can see the editor (editor-on-screen.ts). */
+        readonly onScreen: boolean,
         readonly height: number,
         /** Drawn after a bullet's marker, for a form-1 fence, rather than over whole lines. */
         readonly inline: boolean,
@@ -159,6 +162,7 @@ class InteractiveFenceWidget extends WidgetType {
             sameInfo(other.info, this.info) &&
             other.writable === this.writable &&
             other.dark === this.dark &&
+            other.onScreen === this.onScreen &&
             other.height === this.height &&
             other.inline === this.inline &&
             other.indent === this.indent
@@ -234,6 +238,7 @@ class InteractiveFenceWidget extends WidgetType {
             ...this.info,
             writable: this.writable,
             dark: this.dark,
+            onScreen: this.onScreen,
             edit: (change) => applyEdit(view, id, change),
             editAsText: () => showText(view, id),
             remove: () => removeBlock(view, id),
@@ -360,6 +365,7 @@ function buildDecorations(state: EditorState): DecorationSet {
     if (fences.length === 0) return Decoration.none
     const writable = !state.readOnly && bodyWritable(state)
     const dark = isDark()
+    const onScreen = editorIsOnScreen(state)
     const decos: Range<Decoration>[] = []
     for (const f of fences) {
         const id = fenceIdAt(state, f.blockFrom)
@@ -369,10 +375,10 @@ function buildDecorations(state: EditorState): DecorationSet {
         if (f.bulletOpener) {
             // Form 1: from the fence column, so the bullet's marker stays text and its dot, thread and
             // fold control are drawn as on any bullet, the widget beside the dot (as fence-render.ts).
-            const widget = new InteractiveFenceWidget(id, f.fence, info, writable, dark, height, true, null)
+            const widget = new InteractiveFenceWidget(id, f.fence, info, writable, dark, onScreen, height, true, null)
             decos.push(Decoration.replace({ widget }).range(f.blockFrom + f.fenceColumn, f.blockTo))
         } else {
-            const widget = new InteractiveFenceWidget(id, f.fence, info, writable, dark, height, false, blockWidgetIndent(state, f.blockFrom))
+            const widget = new InteractiveFenceWidget(id, f.fence, info, writable, dark, onScreen, height, false, blockWidgetIndent(state, f.blockFrom))
             decos.push(Decoration.replace({ widget, block: true }).range(f.blockFrom, f.blockTo))
         }
     }
@@ -391,7 +397,7 @@ function sameDrawn(a: readonly InteractiveFenceRange[], b: readonly InteractiveF
 const interactiveFenceField = StateField.define<DecorationSet>({
     create: (state) => buildDecorations(state),
     update(deco, tr) {
-        const redraw = tr.effects.some((e) => e.is(fenceResized) || e.is(themeTick) || e.is(fenceRegistrationsChanged))
+        const redraw = tr.effects.some((e) => e.is(fenceResized) || e.is(themeTick) || e.is(fenceRegistrationsChanged) || e.is(setEditorOnScreen))
         if (tr.docChanged || tr.reconfigured || redraw) return buildDecorations(tr.state)
         // A caret move redraws only when it shows a fence's text or leaves one, drawing it again.
         if (tr.selection && !sameDrawn(collapsedInteractiveFences(tr.startState), collapsedInteractiveFences(tr.state))) return buildDecorations(tr.state)

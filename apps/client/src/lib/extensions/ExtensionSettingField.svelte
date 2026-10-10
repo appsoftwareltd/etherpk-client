@@ -1,8 +1,10 @@
 <script lang="ts">
     /**
-     * One of an extension's settings (ADR 0134), as its manifest declares it: a text field, or a
-     * secret one shown masked until asked. What is typed is a draft until Save; Remove clears the
-     * setting. A value that arrives from another device or tab replaces the draft.
+     * One of an extension's settings (ADR 0134), as its manifest declares it: a text field, a
+     * secret one shown masked until asked, or a switch. What is typed is a draft until Save; Remove
+     * clears the setting. A switch is saved as soon as it is changed, as the extension's own switch
+     * is, and shows its manifest's default until then. A value that arrives from another device or
+     * tab replaces the draft.
      */
     import type { SettingDeclaration } from "@appsoftwareltd/etherpk-extension-api";
     import { createSubscriber } from "svelte/reactivity";
@@ -25,6 +27,9 @@
     let draft = $derived(saved);
     let revealed = $state(false);
     const secret = $derived(setting.type === "secret");
+    /** A switch's position: what the person chose, or the manifest's default. */
+    const on = $derived(saved === "true" || (saved !== "false" && setting.default === true));
+    const descriptionId = $derived(`${inputId}-description`);
 
     function save() {
         settings.set(key, draft);
@@ -42,48 +47,66 @@
 </script>
 
 <div data-testid="extension-setting" data-setting={setting.id}>
-    <label for={inputId} class="mb-1 block text-sm font-medium text-gray-950 dark:text-gray-100">{setting.title}</label>
-    {#if setting.description}
-        <p class="mb-1.5 text-sm text-gray-600 dark:text-gray-400">{setting.description}</p>
+    {#if setting.type === "boolean"}
+        <label class="flex items-start gap-2 text-sm text-gray-950 dark:text-gray-100">
+            <input
+                id={inputId}
+                type="checkbox"
+                checked={on}
+                onchange={(e) => settings.set(key, e.currentTarget.checked ? "true" : "false")}
+                aria-describedby={setting.description ? descriptionId : undefined}
+                data-testid="extension-setting-switch"
+                class="mt-0.5 h-4 w-4 rounded border-gray-300 dark:border-gray-700"
+            />
+            <span class="font-medium">{setting.title}</span>
+        </label>
+        {#if setting.description}
+            <p id={descriptionId} class="mt-1 text-sm text-gray-600 dark:text-gray-400">{setting.description}</p>
+        {/if}
+    {:else}
+        <label for={inputId} class="mb-1 block text-sm font-medium text-gray-950 dark:text-gray-100">{setting.title}</label>
+        {#if setting.description}
+            <p class="mb-1.5 text-sm text-gray-600 dark:text-gray-400">{setting.description}</p>
+        {/if}
+        <div class="flex flex-wrap items-center gap-2">
+            <input
+                id={inputId}
+                type={secret && !revealed ? "password" : "text"}
+                class={[
+                    "block min-w-0 flex-1 basis-60 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-950 dark:border-gray-700 dark:bg-white/10 dark:text-gray-100",
+                    // A key or a token is read character by character.
+                    { "font-mono": secret },
+                ]}
+                bind:value={draft}
+                placeholder={setting.placeholder}
+                maxlength={MAX_LENGTH}
+                autocomplete="off"
+                autocapitalize="off"
+                spellcheck="false"
+                data-1p-ignore
+                data-lpignore="true"
+                onkeydown={(e) => {
+                    if (e.key === "Enter") save();
+                }}
+                data-testid="extension-setting-input"
+            />
+            {#if secret}
+                <button
+                    type="button"
+                    class={secondaryButton}
+                    aria-label={revealed ? `Hide ${setting.title}` : `Show ${setting.title}`}
+                    onclick={() => (revealed = !revealed)}
+                    data-testid="extension-setting-reveal"
+                >
+                    {revealed ? "Hide" : "Show"}
+                </button>
+            {/if}
+            <button type="button" class={primaryButton} disabled={draft.trim() === saved} onclick={save} data-testid="extension-setting-save">Save</button>
+            {#if saved !== ""}
+                <button type="button" class={secondaryButton} onclick={remove} data-testid="extension-setting-remove">Remove</button>
+            {/if}
+        </div>
     {/if}
-    <div class="flex flex-wrap items-center gap-2">
-        <input
-            id={inputId}
-            type={secret && !revealed ? "password" : "text"}
-            class={[
-                "block min-w-0 flex-1 basis-60 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-950 dark:border-gray-700 dark:bg-white/10 dark:text-gray-100",
-                // A key or a token is read character by character.
-                { "font-mono": secret },
-            ]}
-            bind:value={draft}
-            placeholder={setting.placeholder}
-            maxlength={MAX_LENGTH}
-            autocomplete="off"
-            autocapitalize="off"
-            spellcheck="false"
-            data-1p-ignore
-            data-lpignore="true"
-            onkeydown={(e) => {
-                if (e.key === "Enter") save();
-            }}
-            data-testid="extension-setting-input"
-        />
-        {#if secret}
-            <button
-                type="button"
-                class={secondaryButton}
-                aria-label={revealed ? `Hide ${setting.title}` : `Show ${setting.title}`}
-                onclick={() => (revealed = !revealed)}
-                data-testid="extension-setting-reveal"
-            >
-                {revealed ? "Hide" : "Show"}
-            </button>
-        {/if}
-        <button type="button" class={primaryButton} disabled={draft.trim() === saved} onclick={save} data-testid="extension-setting-save">Save</button>
-        {#if saved !== ""}
-            <button type="button" class={secondaryButton} onclick={remove} data-testid="extension-setting-remove">Remove</button>
-        {/if}
-    </div>
     {#if setting.link}
         <p class="mt-1.5 text-sm">
             <a href={setting.link.url} target="_blank" rel="noopener noreferrer" class="font-medium text-agent-600 hover:underline dark:text-agent-300">{setting.link.title}</a>

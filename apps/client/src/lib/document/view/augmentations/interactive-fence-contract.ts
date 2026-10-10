@@ -46,6 +46,15 @@ export interface InteractiveFenceContext extends InteractiveFenceInfo {
     /** The app theme the widget should draw in. */
     readonly dark: boolean
     /**
+     * Whether anyone can see the editor: false while its tab is behind another, its Pane is
+     * collapsed or the browser tab is hidden (editor-on-screen.ts). A widget holding something
+     * costly while drawn, such as a map's WebGL context, lets it go while this is false. A widget
+     * scrolled out of the editor's sight is still on screen by this: it watches that itself.
+     * It changes while the widget is mounted (an `update`), and on the desktop an editor starts
+     * off screen until its pane is first measured, so a widget reads it at each update, never once.
+     */
+    readonly onScreen: boolean
+    /**
      * Change one line of the body, as one undoable editor change, in this widget's own fence even
      * when asked after the widget was taken down. False when it was refused: the document cannot be
      * written, the fence is gone, the line no longer says what the change expects (the widget is

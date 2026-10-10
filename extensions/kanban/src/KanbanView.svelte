@@ -25,7 +25,7 @@
     import type { DocumentStore } from "$lib/document/types";
     import { TASK_COPY_REFERENCE } from "$lib/document/commands/task-reference-commands";
     import DocumentView from "$lib/document/view/DocumentView.svelte";
-    import type { ViewRef } from "$lib/layout";
+    import type { ViewRef, ViewVisibility } from "$lib/layout";
     import { DESKTOP_MEDIA_QUERY } from "$lib/layout/breakpoint";
     import { attachContextMenu, openContextMenu } from "$lib/surface/context-menu-store";
     import { tryGetActiveEventBus } from "$lib/surface/active-bus";
@@ -57,7 +57,8 @@
     import type { KanbanCardTarget } from "./kanban-commands";
     import { edgeStep, pastThreshold } from "./pointer-drag";
 
-    const { view, panelId }: { view: ViewRef; panelId?: string } = $props();
+    // `visibility` reaches the Task Detail's editor, so a map in it lets go behind another tab.
+    const { view, panelId, visibility }: { view: ViewRef; panelId?: string; visibility?: ViewVisibility } = $props();
 
     const uid = $props.id();
     const concept = $derived(view.target);
@@ -1224,6 +1225,7 @@
                             bind:this={detailView}
                             view={{ kind: "document", target: detail.document }}
                             {panelId}
+                            {visibility}
                             embedded
                             revealAt={detail.line}
                         />

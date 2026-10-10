@@ -12,6 +12,7 @@ This is the demo graph. It's about houseplants, because everyone has killed at l
 - Press Tab / Shift+Tab on a bullet to indent and outdent. Alt + Up / Down moves a block with its children.
 - Look at [[Watering]] for maths, a diagram and a code block rendered in place, and [[Monstera]] for images and a PDF.
 - Open the whole **Graph View**: right-click this tab and choose **Show in Graph View**. Every page is a dot, every link a line, and each cluster of closely linked pages gets a colour of its own.
+- Open any plant, such as [[Coffee]], to see where it grows wild on a map. Right-click its tab and choose **Open Map View** for its map alone, or open the Map View of [[Where to Learn About Plants]] for gardens gathered from across the graph.
 - [[Where I hide the good fertiliser]] is a protected page. The passphrase is `monstera`. Unlock it from the padlock, have a read, then lock it again.
 
 **The pages**
@@ -23,6 +24,7 @@ This is the demo graph. It's about houseplants, because everyone has killed at l
 - [[Watering]] - more nuanced than "pour water on it"
 - [[Repotting]] - because roots need space too
 - [[Season Guide]] - what to do and when
+- [[Where to Learn About Plants]] - gardens worth a visit, gathered onto one map
 - [[Plant Index]] - every species in the graph, a page each, from [[Aloe Vera]] to [[ZZ Plant]]
 
 - [ ] #P2 Add a page for [[Yellow Leaves]] before the [[Monstera]] notices

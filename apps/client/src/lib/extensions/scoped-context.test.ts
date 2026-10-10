@@ -22,6 +22,11 @@ const graphView: ExtensionPackage = {
         main: './dist/main.js',
         icons: { 'graph-view': '<circle cx="8" cy="8" r="2"/>' },
         views: [{ kind: 'graph-view.whole', target: 'whole', title: 'Whole graph', region: 'main', address: { segment: 'graph-view' } }],
+        settings: [
+            { id: 'depth', type: 'text', title: 'Depth' },
+            { id: 'labels', type: 'boolean', title: 'Show labels', default: true },
+            { id: 'clusters', type: 'boolean', title: 'Show clusters' },
+        ],
     },
 }
 
@@ -138,6 +143,17 @@ describe('an extension context', () => {
         context.settings.subscribe(heard)
         settings.set('extension.graph-view.depth', '5')
         expect(heard).toHaveBeenCalledTimes(2)
+    })
+
+    it("reads a switch as 'true' or 'false', its manifest's default until the person sets it", () => {
+        const { context, settings } = setUp()
+        expect(context.settings.get('labels')).toBe('true')
+        expect(context.settings.get('clusters')).toBe('false')
+        settings.set('extension.graph-view.labels', 'false')
+        expect(context.settings.get('labels')).toBe('false')
+        // Anything else stored for a switch reads as its default.
+        settings.set('extension.graph-view.clusters', 'maybe')
+        expect(context.settings.get('clusters')).toBe('false')
     })
 
     it('takes back everything it added when disposed, and adds nothing after', () => {
