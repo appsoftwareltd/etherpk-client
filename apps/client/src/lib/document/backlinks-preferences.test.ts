@@ -36,7 +36,7 @@ describe('references preferences', () => {
         const store = createBacklinksPreferencesStore(GRAPH, memoryStorage())
 
         expect(store.get()).toEqual(defaultBacklinksPreferences())
-        expect(store.get()).toEqual({ highlight: false, pinned: null, shown: null })
+        expect(store.get()).toEqual({ highlight: false, collapsedBelowDocuments: false, pinned: null, shown: null })
     })
 
     it('remembers the highlight toggle for the graph', () => {
@@ -47,6 +47,25 @@ describe('references preferences', () => {
         vi.runAllTimers()
 
         expect(createBacklinksPreferencesStore(GRAPH, storage).get().highlight).toBe(true)
+    })
+
+    // One setting for every document's section, not one per document (ADR 0135).
+    it('remembers whether the backlinks below documents are collapsed', () => {
+        const storage = memoryStorage()
+        const store = createBacklinksPreferencesStore(GRAPH, storage)
+
+        store.set({ collapsedBelowDocuments: true })
+        vi.runAllTimers()
+
+        expect(createBacklinksPreferencesStore(GRAPH, storage).get()).toMatchObject({ collapsedBelowDocuments: true, highlight: false })
+    })
+
+    // Saved before the setting existed: the highlight it holds is kept.
+    it('reads a saved payload that has no collapse setting', () => {
+        const storage = memoryStorage()
+        storage.setItem(KEY, JSON.stringify({ version: 1, preferences: { highlight: true } }))
+
+        expect(createBacklinksPreferencesStore(GRAPH, storage).get()).toMatchObject({ highlight: true, collapsedBelowDocuments: false })
     })
 
     it('keeps graphs apart', () => {
@@ -79,7 +98,7 @@ describe('references preferences', () => {
         expect(storage.getItem(KEY)).toBeNull()
 
         store.flush()
-        expect(JSON.parse(storage.getItem(KEY)!)).toEqual({ version: 1, preferences: { highlight: true } })
+        expect(JSON.parse(storage.getItem(KEY)!)).toEqual({ version: 1, preferences: { highlight: true, collapsedBelowDocuments: false } })
     })
 
     it('degrades a corrupt or incompatible payload to the defaults', () => {
@@ -109,7 +128,7 @@ describe('references preferences', () => {
         store.set({ highlight: true, pinned: 'Alpha' })
         store.flush()
 
-        expect(store.get()).toEqual({ highlight: true, pinned: 'Alpha', shown: null })
+        expect(store.get()).toEqual({ highlight: true, collapsedBelowDocuments: false, pinned: 'Alpha', shown: null })
     })
 })
 
@@ -119,16 +138,16 @@ describe('references preferences subscription', () => {
         const seen: unknown[] = []
         const unsubscribe = store.subscribe((preferences) => seen.push({ ...preferences }))
 
-        expect(seen).toEqual([{ highlight: false, pinned: null, shown: null }])
+        expect(seen).toEqual([{ highlight: false, collapsedBelowDocuments: false, pinned: null, shown: null }])
 
         // Show Backlinks (document-commands.ts) moves the pin from outside the View: the mounted
         // View has to hear it, which is the whole reason the store is observable.
         store.set({ pinned: 'Alpha' })
         store.set({ pinned: 'Beta' })
         expect(seen).toEqual([
-            { highlight: false, pinned: null, shown: null },
-            { highlight: false, pinned: 'Alpha', shown: null },
-            { highlight: false, pinned: 'Beta', shown: null },
+            { highlight: false, collapsedBelowDocuments: false, pinned: null, shown: null },
+            { highlight: false, collapsedBelowDocuments: false, pinned: 'Alpha', shown: null },
+            { highlight: false, collapsedBelowDocuments: false, pinned: 'Beta', shown: null },
         ])
 
         unsubscribe()

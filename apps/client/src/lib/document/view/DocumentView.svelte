@@ -13,7 +13,7 @@
      * harness). CodeMirror is bound to the backend, which owns the text.
      */
     import { Transaction } from '@codemirror/state'
-    import { onDestroy, onMount, untrack } from 'svelte'
+    import { mount, onDestroy, onMount, unmount, untrack } from 'svelte'
 
     import LoadingSweep from '$lib/components/LoadingSweep.svelte'
     import { viewKey, type ViewRef, type ViewVisibility } from '$lib/layout'
@@ -56,6 +56,9 @@
     import { applyEditorPosition, editorPosition, type RevealAlign, revealEditorPosition } from './view-position'
     import { createHeldReveal } from './held-reveal'
     import { setEditorOnScreen } from './editor-on-screen'
+    import DocumentBacklinks from './DocumentBacklinks.svelte'
+    import { handleEventsBelowText } from './below-text-events'
+    import { DOCUMENT_BACKLINKS_ATTRIBUTE } from './document-backlinks'
     import type * as Y from 'yjs'
 
     // `ytext` opts the editor into the collaborative buffer (Server engine / ADR 0010
@@ -116,6 +119,48 @@
     const view = untrack(() => viewProp)
 
     let host = $state<HTMLDivElement>()
+    /**
+     * The [[Backlink]]s beneath the text (ADR 0135), in the editor's scroller after its content, so
+     * they scroll with the text without being part of it. Mounted once for the View's life into a
+     * holder of their own, and the holder is put into each editor's scroller as it is built (a
+     * [[Draft]] promotion and a protection change build a new one): the references the first
+     * keystroke of a Draft promotes under do not blink out and back while the new editor asks the
+     * index again. The holder is `display: contents`, so the section is the scroller's flex item.
+     * None when embedded: a [[Task Detail]] shows one task, not a document's references.
+     */
+    let backlinksHolder: HTMLDivElement | undefined
+    let backlinksSection: ReturnType<typeof mount> | undefined
+    /** Whether the section is drawn: it has backlinks, or failed to load them. */
+    let backlinksDrawn = $state(false)
+    /** Set once the View is gone, so a remount still on its way (a Draft promotion) builds nothing. */
+    let destroyed = false
+
+    /** Put the section after `scroller`'s content, mounting it the first time. */
+    function placeBacklinks(scroller: HTMLElement): void {
+        if (embedded) return
+        if (!backlinksHolder) {
+            backlinksHolder = document.createElement('div')
+            backlinksHolder.style.display = 'contents'
+            backlinksSection = mount(DocumentBacklinks, {
+                target: backlinksHolder,
+                props: {
+                    concept: view.target,
+                    visibility,
+                    sourcePanelId: panelId,
+                    ondrawnchange: (drawn: boolean) => (backlinksDrawn = drawn),
+                },
+            })
+        }
+        scroller.appendChild(backlinksHolder)
+    }
+
+    function unmountBacklinks(): void {
+        if (backlinksSection) void unmount(backlinksSection)
+        backlinksSection = undefined
+        backlinksHolder?.remove()
+        backlinksHolder = undefined
+        backlinksDrawn = false
+    }
     let mountIndex = $state(0)
     // True while the document's backing content is still loading (a Server Backend cache
     // seed queued behind the background materialisation walk) — the editor would otherwise
@@ -195,6 +240,7 @@
     let collabBound = false
     let unsubscribe: (() => void) | undefined
     let detachEditorListeners: (() => void) | undefined
+    let detachBelowText: (() => void) | undefined
     let detachPositionAdapter: (() => void) | undefined
     let detachScrollReport: (() => void) | undefined
     let reportTimer: ReturnType<typeof setTimeout> | undefined
@@ -484,10 +530,19 @@
         focusEditor()
     }
 
-    /** Whether the focus is free for this editor to take: on nothing, on the page itself, or already here. */
+    /**
+     * Whether the focus is free for this editor to take: on nothing, on the page itself, or already
+     * here. The backlinks beneath the text are inside the editor's DOM but are not the text: focus
+     * on one of their buttons is the user's, and a held reveal must not take it back.
+     */
     function focusIsFree(): boolean {
         const active = document.activeElement
-        return !active || active === document.body || (editor?.view.dom.contains(active) ?? false)
+        return !active || active === document.body || inEditorText(active)
+    }
+
+    /** Whether `element` is in this editor and not in the backlinks beneath its text. */
+    function inEditorText(element: Element): boolean {
+        return (editor?.view.dom.contains(element) ?? false) && !element.closest(`[${DOCUMENT_BACKLINKS_ATTRIBUTE}]`)
     }
 
     /**
@@ -507,7 +562,7 @@
         const tryFocus = () => {
             if (!view.dom.isConnected) return
             const now = document.activeElement
-            if (now && now !== from && now !== document.body && !view.dom.contains(now)) return
+            if (now && now !== from && now !== document.body && !inEditorText(now)) return
             view.focus()
             if (!view.hasFocus && --attempts > 0) requestAnimationFrame(tryFocus)
         }
@@ -572,6 +627,8 @@
      * clamped into the new body instead (editor-succession.ts).
      */
     function remount(shift = 0): void {
+        // A promotion finishing after its tab closed: there is no View to build an editor into.
+        if (destroyed) return
         const bridge = (
             getActiveDocumentStore() as { retainDocument?: (target: string) => () => void }
         ).retainDocument?.(view.target)
@@ -856,6 +913,10 @@
             for (const type of takeover) dom.removeEventListener(type, letGoOfReveal, { capture: true })
         }
         observeScrollbar(editor.view.scrollDOM)
+        // The backlinks beneath the text, after the content in the scroller (ADR 0135), and the
+        // presses and drops on the scroller outside the text, which CodeMirror does not hear.
+        placeBacklinks(editor.view.scrollDOM)
+        if (!embedded) detachBelowText = handleEventsBelowText(editor.view, { store: () => tryGetActiveAssetStore() })
         // Reflect external/remote changes into the editor — but NOT in collab mode, where
         // yCollab already reflects remote Y.Text updates; a setExternalText whole-buffer
         // rewrite would be seen as a local edit and echo-storm the sync engine.
@@ -973,6 +1034,10 @@
             markEditorTornDown(editor.view)
             if (wasActive) refreshEditorContext(null)
         }
+        detachBelowText?.()
+        detachBelowText = undefined
+        // Kept for the next editor; out of this one's scroller before it goes.
+        backlinksHolder?.remove()
         editor?.destroy()
         editor = undefined
         releaseDocument?.()
@@ -984,16 +1049,18 @@
     $effect(() => visibility?.subscribe((onScreen) => editor?.view.dispatch({ effects: setEditorOnScreen.of(onScreen) })))
 
     onDestroy(() => {
+        destroyed = true
         clearRefusal()
         detachRetry?.()
         detachDraftWatch?.()
         detachReveal?.()
         teardownEditor({ capturePosition: !embedded })
+        unmountBacklinks()
     })
 </script>
 
 <div
-    class={['document-view', showLock && 'document-view--lock']}
+    class={['document-view', showLock && 'document-view--lock', backlinksDrawn && 'document-view--backlinks']}
     data-testid="document-view"
     data-doc-target={view.target}
     data-embedded={embedded || undefined}
@@ -1170,6 +1237,27 @@
        sit under it, unreadable and unclickable. Only while the button is showing. */
     .document-view--lock .document-view__editor :global(.cm-content) {
         padding-bottom: 4.5rem;
+    }
+    /*
+     * The backlinks beneath the text (ADR 0135), mounted into the editor's scroller after its
+     * content. CodeMirror lays the scroller out as a flex row, so while the section is drawn the
+     * row wraps, the section takes a row of its own (DocumentBacklinks.svelte), and the rows do not
+     * stretch to share the pane's height. The content gives up its full pane height for one line
+     * of room under the last line, where a click still puts the caret at the end, so the section
+     * follows the text instead of starting below the fold.
+     */
+    .document-view--backlinks .document-view__editor :global(.cm-scroller) {
+        flex-wrap: wrap;
+        align-content: flex-start;
+    }
+    /* After the Lock button's rule, which it replaces while the section is drawn: the button's
+       room moves to the section's foot, below the last thing in the scroller. */
+    .document-view--backlinks .document-view__editor :global(.cm-content) {
+        min-height: 0;
+        padding-bottom: calc(0.75rem + var(--gk-line-pitch));
+    }
+    .document-view--lock .document-view__editor :global([data-document-backlinks]) {
+        padding-bottom: 3.75rem;
     }
     .document-view__lock:hover {
         background: var(--gk-surface-2);

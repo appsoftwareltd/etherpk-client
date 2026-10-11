@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { commandMenuItemsInOrder, createCommandRegistry, createContributionRegistry } from '../../surface'
+import { registerBacklinksCommands } from './backlinks-commands'
 import { registerEditorCommands } from './editor-commands'
 import { registerFrontmatterCommands } from './frontmatter-commands'
 import { registerLinkCommands } from './link-commands'
@@ -32,9 +33,11 @@ describe('the Command Menu order', () => {
         registerQuickNotesCommands(commands, contributions, unused)
         registerProtectionCommands(commands, contributions, unused)
         registerFrontmatterCommands(commands, contributions, unused)
+        registerBacklinksCommands(commands, contributions, unused)
 
         expect(commandMenuItemsInOrder(contributions).map((item) => item.title)).toEqual([
             'Search',
+            'Go to backlinks',
             'Today',
             'Upload asset',
             'Date Picker',
@@ -60,6 +63,8 @@ describe('the Command Menu order', () => {
             'Copy task reference',
             "Move quick notes to today's journal",
             'Add frontmatter',
+            'Backlinks below documents: hide',
+            'Backlinks below documents: show',
             'Spell check: turn off',
             'Spell check: turn on',
             'Spelling languages',

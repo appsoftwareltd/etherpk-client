@@ -117,6 +117,7 @@
         type SearchController,
     } from "$lib/document/search";
     import { registerDocumentCommands } from "$lib/document/commands/document-commands";
+    import { registerBacklinksCommands } from "$lib/document/commands/backlinks-commands";
     import {
         copyFailureMessage,
         writeClipboardText,
@@ -1320,6 +1321,7 @@
     let detachTaskReferenceCommands: (() => void) | undefined;
     let detachQuickNotesCommands: (() => void) | undefined;
     let detachSpellingCommands: (() => void) | undefined;
+    let detachBacklinksCommands: (() => void) | undefined;
     let detachProtectionCommands: (() => void) | undefined;
     let detachFrontmatterCommands: (() => void) | undefined;
     let detachAssetCommands: (() => void) | undefined;
@@ -3914,6 +3916,11 @@
         // Fix spelling button and the `/` row.
         commandRegistry.register(SPELLING_OPEN_SETTINGS, () => openGraphSettings("spelling"));
         detachSpellingCommands = registerSpellingCommands(commandRegistry, contributions);
+        // The backlinks beneath every document (ADR 0135): the collapse rows and Go to backlinks.
+        detachBacklinksCommands = registerBacklinksCommands(commandRegistry, contributions, {
+            preferences: () => backlinksPreferences,
+            notify,
+        });
         commandRegistry.register("publish.run", () => void publishAgain());
         // Registered so a keybinding or a menu row can reach it later; today it is offered from
         // Graph Settings → Storage, beside the orphaned-asset scan it belongs with.
@@ -6312,6 +6319,8 @@
         detachQuickNotesCommands = undefined;
         detachSpellingCommands?.();
         detachSpellingCommands = undefined;
+        detachBacklinksCommands?.();
+        detachBacklinksCommands = undefined;
         detachProtectionCommands?.();
         detachProtectionCommands = undefined;
         detachFrontmatterCommands?.();

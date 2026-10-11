@@ -17,6 +17,15 @@ export {
     conceptKey,
 } from './backlink-index'
 export { createIndexResolver } from './index-resolver'
+export {
+    type BacklinksIndex,
+    type BacklinksLoader,
+    type BacklinksState,
+    type BacklinksStatus,
+    createBacklinksLoader,
+    linksToConcept,
+    updateNamesConcept,
+} from './backlinks-loader'
 export { nestSubtree, type SubtreeBranch } from './subtree'
 export { type GraphIndex, type IndexSource, createGraphIndex } from './live-index'
 export {

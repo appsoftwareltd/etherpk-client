@@ -111,6 +111,11 @@ export interface DbBacklinkGroup {
      * cannot say this.
      */
     bodyNames: string[]
+    /**
+     * The source is the page the query resolved to: a document linking to its own name. Kept,
+     * because a rename rewrites those links too, and marked, so a view can leave it out (ADR 0135).
+     */
+    sourceIsTarget: boolean
 }
 
 /**
@@ -1454,7 +1459,13 @@ export function backlinksFor(db: SqlDb, concept: string): DbBacklinkGroup[] {
     for (const h of hits) {
         let group = groups.get(h.sourceConcept)
         if (!group) {
-            group = { sourceConcept: h.sourceConcept, sourceKind: h.sourceKind, refs: [], bodyNames: [] }
+            group = {
+                sourceConcept: h.sourceConcept,
+                sourceKind: h.sourceKind,
+                refs: [],
+                bodyNames: [],
+                sourceIsTarget: h.page_id === pageId,
+            }
             groups.set(h.sourceConcept, group)
         }
         // Every link, before places are merged: a place naming the page by two names says both.

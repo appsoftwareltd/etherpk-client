@@ -40,10 +40,16 @@
          * mounting this today and what its e2e suite keys on; a second host passes its own.
          */
         wikilinkTestId = "backlinks-wikilink",
+        /**
+         * The panel the line is shown in, so a wikilink opens in its Pane: the section beneath a
+         * document passes the document's. Absent, the Layout places it (the Backlinks panel).
+         */
+        sourcePanelId,
     }: {
         text: string;
         matches?: (concept: string) => boolean;
         wikilinkTestId?: string;
+        sourcePanelId?: string;
     } = $props();
 
     const parts = $derived(inlineParts(text));
@@ -70,7 +76,7 @@
     function openWikilink(concept: string, event: Event) {
         // These sit inside a clickable reference row; a link's activation is about the link.
         event.stopPropagation();
-        void openConcept(concept);
+        void openConcept(concept, sourcePanelId);
     }
 
     /** Right-click and long press on a reference raise the same actions its icons offer. */

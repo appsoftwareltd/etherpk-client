@@ -53,8 +53,8 @@ export const collaborative = Facet.define<boolean, boolean>({ combine: (values) 
  */
 export const SELECTION_PAD = 6
 
-/** The editor content's horizontal padding. */
-const CONTENT_PAD_X = '1.25rem'
+/** The editor content's horizontal padding; the backlinks beneath a document line up with it. */
+export const CONTENT_PAD_X = '1.25rem'
 
 /**
  * The editor's font size, as a theme of its own that a zoom swaps. The size also lives on the

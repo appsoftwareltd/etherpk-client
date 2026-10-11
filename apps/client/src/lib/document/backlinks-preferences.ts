@@ -1,13 +1,15 @@
 /**
  * The Backlinks [[View]]'s own state, per device and per [[Knowledge Graph]]: whether a quoted
- * line **highlights** the reference by dimming everything else, which document the panel is
- * **pinned** to, and what **Show Backlinks** asked it to show while it follows the editor.
+ * line **highlights** the reference by dimming everything else, whether the backlinks beneath
+ * every document are **collapsed** (ADR 0135), which document the panel is **pinned** to, and what
+ * **Show Backlinks** asked it to show while it follows the editor. Highlight and the collapse
+ * setting apply to the panel and to every document's section alike.
  *
  * Per-device presentation state, exactly like the [[Tasks View]]'s filter — never synced, never in
  * an [[Export]] (ADR 0013), and deliberately NOT in the Layout model, where a per-View state slot
  * would bump `LAYOUT_VERSION` and discard everyone's saved pane arrangement to remember a toggle.
  *
- * Only `highlight` is written to storage. The pin is held for the graph session and no longer:
+ * Only `highlight` and `collapsedBelowDocuments` are written to storage. The pin is held for the graph session and no longer:
  * a panel that came back after a reload silently stuck on last week's document would read as
  * broken, whereas one that has gone back to following the editor reads as a fresh start. It lives
  * here rather than in the component because the mobile presenter unmounts a drawer's View every
@@ -44,19 +46,24 @@ export interface ShownConcept {
 export interface BacklinksPreferences {
     /** Dim everything in a quoted line except the link to the document being viewed. */
     highlight: boolean
+    /** The backlinks beneath every document show as their header line alone (ADR 0135). */
+    collapsedBelowDocuments: boolean
     /** The document the panel is held on, or `null` when it follows the active editor. */
     pinned: string | null
     /** Standing in for the editor's document while it stays put; never set while pinned. */
     shown: ShownConcept | null
 }
 
-/** The part that is remembered across sessions. */
-const persistedSchema = z.object({ highlight: z.boolean() })
+/**
+ * The part that is remembered across sessions. The collapse setting came later than highlight,
+ * so a payload saved before it reads as expanded rather than failing and losing the highlight.
+ */
+const persistedSchema = z.object({ highlight: z.boolean(), collapsedBelowDocuments: z.boolean().default(false) })
 const payloadSchema = z.object({ version: z.number(), preferences: persistedSchema })
 
-/** Standard colours and nothing pinned: the panel follows the editor and reads like the document. */
+/** Standard colours, expanded, nothing pinned: the panel follows the editor and reads like the document. */
 export function defaultBacklinksPreferences(): BacklinksPreferences {
-    return { highlight: false, pinned: null, shown: null }
+    return { highlight: false, collapsedBelowDocuments: false, pinned: null, shown: null }
 }
 
 export interface BacklinksPreferencesStore {
@@ -102,7 +109,8 @@ export function createBacklinksPreferencesStore(
     function save(): void {
         saveTimer = undefined
         try {
-            storage?.setItem(key, JSON.stringify({ version: VERSION, preferences: { highlight: current.highlight } }))
+            const { highlight, collapsedBelowDocuments } = current
+            storage?.setItem(key, JSON.stringify({ version: VERSION, preferences: { highlight, collapsedBelowDocuments } }))
         } catch {
             // A full or blocked quota costs a remembered toggle, never the View.
         }

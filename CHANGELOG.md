@@ -23,6 +23,15 @@ starts at 0.9.3.
   right drawer's button opens today's journal, without opening the left drawer first.
 - **Long place names on a published map** are shortened with an ellipsis instead of running off
   the edge of the picture.
+- **Backlinks beneath every document.** Every journal entry and page lists what links to it under
+  its text, the same list as the Backlinks panel. A linked name that has no page yet opens with
+  its backlinks under the empty first line. Select the **Backlinks** heading to fold the list for
+  every document, or use **Backlinks below documents: hide** and **show** in the `/` menu.
+  **Go to backlinks** in the `/` menu scrolls to the list from the keyboard.
+- **A document is no longer its own backlink.** Its links to its own name are left out of the
+  Backlinks panel.
+- **Highlight reference** now emphasises a link written with one of the page's aliases, as it does
+  a link written with the page's name.
 
 ## 0.9.5 - 2026-10-10
 

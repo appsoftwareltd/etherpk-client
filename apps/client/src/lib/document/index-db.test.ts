@@ -178,6 +178,24 @@ describe('index-db', () => {
         expect(groups.map((g) => g.sourceConcept)).toEqual(['2026-06-25', '2026-06-24'])
     })
 
+    // The index keeps a document's links to its own name, because a rename rewrites them, and
+    // marks their group so a view can leave it out (ADR 0135).
+    it('marks the group of a document that links to its own name, asked by any of its names', () => {
+        ingestOne(db, { concept: 'Project', kind: 'page', aliases: ['Proj'], text: '# Project\n- see [[Proj]] below' })
+
+        for (const name of ['Project', 'proj']) {
+            expect(backlinksFor(db, name).map((g) => [g.sourceConcept, g.sourceIsTarget])).toEqual([
+                ['2026-06-25', false],
+                ['2026-06-24', false],
+                ['Project', true],
+            ])
+        }
+    })
+
+    it('marks no group for a name that has no page', () => {
+        expect(backlinksFor(db, 'Detail').map((g) => g.sourceIsTarget)).toEqual([false])
+    })
+
     it('renders a block reference as a subtree with an ancestor breadcrumb', () => {
         const groups = backlinksFor(db, 'Project')
         const ref = groups.find((g) => g.sourceConcept === '2026-06-25')!.refs[0]

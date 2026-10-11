@@ -24,9 +24,12 @@
         text,
         /** Passed through to `InlineMarkdown`: the concept the host is emphasising, if any. */
         matches,
+        /** Passed through to `InlineMarkdown`: the panel whose Pane a wikilink opens in. */
+        sourcePanelId,
     }: {
         text: string;
         matches?: (concept: string) => boolean;
+        sourcePanelId?: string;
     } = $props();
 
     const segments = $derived(quoteSegments(text));
@@ -35,10 +38,10 @@
 {#snippet line(quoted: QuoteLine)}
     {#if quoted.heading}
         <div class="quoted-line quoted-h{quoted.heading}" data-testid="reference-heading" data-level={quoted.heading}>
-            <InlineMarkdown text={quoted.text} {matches} />
+            <InlineMarkdown text={quoted.text} {matches} {sourcePanelId} />
         </div>
     {:else}
-        <div class="quoted-line"><InlineMarkdown text={quoted.text} {matches} /></div>
+        <div class="quoted-line"><InlineMarkdown text={quoted.text} {matches} {sourcePanelId} /></div>
     {/if}
 {/snippet}
 
