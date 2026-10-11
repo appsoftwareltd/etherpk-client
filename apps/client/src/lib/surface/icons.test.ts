@@ -64,6 +64,14 @@ describe('iconSvg', () => {
         expect(iconSvg('backlinks', { strokeWidth: 1.2 })).toContain('stroke-width="1.8"')
     })
 
+    it("draws Today's journal as the Heroicons calendar, at Heroicons' own weight when asked for a stroke of 1", () => {
+        // Heroicons 2.2.0 outline `calendar`, verbatim: the Graph Sidebar's button and the phone's top bar share it.
+        const svg = iconSvg('todays-journal', { strokeWidth: 1 })
+        expect(svg).toContain('viewBox="0 0 24 24"')
+        expect(svg).toContain('stroke-width="1.5"')
+        expect(svg).toContain('d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0V11.25A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5"')
+    })
+
     it('escapes the label, the one value in the markup that is not a number or a table entry', () => {
         expect(String(iconSvg('lock', { label: 'A "quoted" <b>name</b> & more' }))).toContain(
             'aria-label="A &quot;quoted&quot; &lt;b&gt;name&lt;/b&gt; &amp; more"',

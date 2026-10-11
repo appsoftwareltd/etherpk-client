@@ -156,6 +156,12 @@ const HEROICON_PATHS: Record<string, string> = {
      */
     backlinks:
         '<path d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244"/>',
+    /**
+     * heroicons/outline `calendar`: open today's [[Journal Entry]]. On the Graph Sidebar's Today's
+     * journal button and the phone top bar's, so the two read as the same action.
+     */
+    'todays-journal':
+        '<path d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0V11.25A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5"/>',
 }
 
 export interface IconOptions {

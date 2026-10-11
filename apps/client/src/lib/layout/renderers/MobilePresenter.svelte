@@ -251,6 +251,26 @@
         row?.querySelector<HTMLElement>('.tabmenu-label')?.focus({ preventScroll: true })
     }
 
+    // --- Today's journal ----------------------------------------------------------
+    /**
+     * The top bar's way to today's [[Journal Entry]]: the Graph Sidebar's Today's journal button
+     * without its words, so a phone reaches today without opening the left drawer first. It runs
+     * the Command Alt+J runs, which reads today at the press, never at mount: a tab left open
+     * overnight reaches the new day. Drawn only where that Command exists. The workspace registers
+     * it before this presenter mounts, and the layout harness has no registry, where the button
+     * would do nothing.
+     */
+    const OPEN_TODAY = 'document.openTodayJournal'
+    const canOpenToday = tryGetActiveCommandRegistry()?.has(OPEN_TODAY) ?? false
+
+    function openToday() {
+        // Opening into the main region already dismisses a drawer (the `focusRev` effect above).
+        // The list goes too: the entry it would be picked from is now in front. Not `closeList`,
+        // which hands focus to the document control: the opened entry takes focus itself.
+        menuOpen = false
+        void tryGetActiveCommandRegistry()?.execute(OPEN_TODAY)
+    }
+
     // --- Ride above the soft keyboard --------------------------------------------
     // The soft keyboard overlays the layout viewport (it does not shrink it), so a
     // bottom-pinned Command Bar would sit behind the keyboard. We track the visual
@@ -346,7 +366,8 @@
 {/snippet}
 
 <div class="mobile" data-testid="mobile-presenter" style="--keyboard-inset: {keyboardInset}px">
-    <!-- The drawer toggles, and between them the control naming the document in front -->
+    <!-- The drawer toggles, and between them the control naming the document in front and the
+         button to today's journal -->
     <div class="topbar" data-testid="mobile-topbar">
         <button
             class="toggle"
@@ -388,8 +409,26 @@
         {:else}
             <div class="current current--empty" data-testid="mobile-current">{NO_PAGE_OPEN}</div>
         {/if}
+        {#if canOpenToday}
+            <button
+                class="toggle"
+                data-testid="mobile-today"
+                title="Today's journal"
+                aria-label="Open today's journal"
+                onclick={openToday}
+            >
+                <!-- The Graph Sidebar's calendar, at the toggles' size and line weight: the
+                     outline is as heavy as their panel outlines beside it. In-repo constant
+                     markup from the icon table. -->
+                <span class="today-icon" aria-hidden="true">
+                    <!-- eslint-disable-next-line svelte/no-at-html-tags -->
+                    {@html iconSvg('todays-journal', { strokeWidth: 1.2 })}
+                </span>
+            </button>
+        {/if}
         <!-- No Tasks button here, unlike the desktop toolbar: the top bar is kept to the drawer
-             toggles and the document control, and Tasks is a resident tab of the right drawer. -->
+             toggles, the document control and Today's journal, and Tasks is a resident tab of
+             the right drawer. -->
         <button
             class="toggle"
             data-testid="mobile-toggle-right"
@@ -689,9 +728,10 @@
            rather than stretch the grid past the viewport. */
         min-width: 0;
     }
-    /* The drawer toggles (icon-only) and the document control share one box, so they are the
-       same height and read as one set. Height is fixed (not derived from line-height) because
-       `font: inherit` resets line-height — the two would otherwise diverge. */
+    /* The icon-only buttons (the drawer toggles and Today's journal) and the document control
+       share one box, so they are the same height and read as one set. Height is fixed (not
+       derived from line-height) because `font: inherit` resets line-height — the two would
+       otherwise diverge. */
     .topbar .toggle,
     .current {
         display: inline-flex;
@@ -827,6 +867,12 @@
         justify-content: center;
         width: 1.9rem;
         cursor: pointer;
+    }
+    /* Today's journal's calendar, the size SidebarToggleIcon draws the toggles' glyphs. */
+    .today-icon :global(svg) {
+        width: 1.1rem;
+        height: 1.1rem;
+        display: block;
     }
     /* The button fills the tab's height, so a tap anywhere above or below the title lands on
        it; the title inside it is what gets trimmed and centred. */

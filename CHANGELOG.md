@@ -19,6 +19,8 @@ starts at 0.9.3.
   of its lines of text, as wide as the panel, with every place and route in view. Select it to open
   the note at the reference. The picture is always drawn over the deployment's own map, even with
   your own Mapbox token.
+- **Today's journal on a phone's top bar.** A calendar button between the document name and the
+  right drawer's button opens today's journal, without opening the left drawer first.
 - **Long place names on a published map** are shortened with an ellipsis instead of running off
   the edge of the picture.
 
