@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import type { MapLine } from '$lib/document/map-text'
 
-import { formatDistance, haversineMeters, itemsBounds, oneSpotAt, placesAtSpot, routeLengthMeters, simplifyPath, worldPixels } from './map-geometry'
+import { formatDistance, frameRoom, haversineMeters, itemsBounds, oneSpotAt, placesAtSpot, routeLengthMeters, simplifyPath, worldPixels } from './map-geometry'
 
 // The arithmetic a map needs on the device: what to frame, how long a route is, and how a
 // recorded track is thinned to a line that still lies within a few metres of the original.
@@ -113,5 +113,28 @@ describe('places that share a spot on screen', () => {
         // A kilometre apart is hundreds of pixels at street level.
         expect(oneSpotAt([{ key: 3, point: harbour }, { key: 7, point: { lat: 50.709, lon: -1.5 } }], 14)).toBeNull()
         expect(oneSpotAt([{ key: 3, point: harbour }], 14)).toBeNull()
+    })
+})
+
+describe('the room a map leaves round what it frames', () => {
+    const room = { top: 48, bottom: 40, left: 40, right: 40 }
+
+    it('is the room asked for, on a map big enough for it', () => {
+        expect(frameRoom(800, 450, room)).toEqual(room)
+    })
+
+    it('shrinks on a small map to half its width and half its height, so there is always some map left to frame in', () => {
+        const shrunk = frameRoom(100, 60, room)
+        expect(shrunk.left + shrunk.right).toBeCloseTo(50)
+        expect(shrunk.top + shrunk.bottom).toBeCloseTo(30)
+        // Each side in proportion, so the room above still clears a pin and the room below the credit.
+        expect(shrunk.top / shrunk.bottom).toBeCloseTo(48 / 40)
+    })
+
+    it('shrinks one way only when only one way is short: a sidebar-wide picture keeps its height', () => {
+        const shrunk = frameRoom(300, 200, { ...room, right: 40 + 120 })
+        expect(shrunk.top).toBe(48)
+        expect(shrunk.bottom).toBe(40)
+        expect(shrunk.left + shrunk.right).toBeCloseTo(150)
     })
 })

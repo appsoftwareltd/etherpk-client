@@ -6,7 +6,8 @@
  * - the Views for the two [[Map View]] kinds, one concept's map and the whole graph's, sharing one
  *   component,
  * - the Commands and rows that reach them (map-view-commands.ts),
- * - the picture a published page shows in place of a Map Block.
+ * - the picture of a Map Block a published page, or a reference in the Backlinks panel, shows in
+ *   place of its lines.
  *
  * The Client takes all of it back when the graph closes or the extension is switched off; what
  * this returns clears what the extension holds itself.
@@ -46,12 +47,15 @@ export interface MapsEnvironment {
 }
 
 /**
- * A Map Block as the picture a published page shows. Loaded only by a publish that holds a map:
- * MapLibre is large, and most sites have none.
+ * A Map Block as a picture: the one a published page shows, or, asked with a size and a theme, the
+ * one the Backlinks panel shows in a reference. Always over the deployment's basemap, never the
+ * person's Mapbox (map-style.ts). Loaded only once a map is drawn as a picture: MapLibre is large,
+ * and most sites have none.
  */
-const drawForPublish: MapPictureRenderer = async (source) => {
-    const [{ drawMapPicture }, { mapStyles: styles }] = await Promise.all([import('./map-picture'), import('./map-style'), import('./map-worker')])
-    return drawMapPicture(source, { style: styles()?.light ?? null })
+const drawPicture: MapPictureRenderer = async (source, request) => {
+    const [{ drawMapPicture }, { mapStyles, pictureStyle }] = await Promise.all([import('./map-picture'), import('./map-style'), import('./map-worker')])
+    const style = pictureStyle(mapStyles(), request)
+    return drawMapPicture(source, request ? { style, width: request.width, height: request.height, dark: request.dark } : { style })
 }
 
 /** Maps for an open graph: Map Blocks, the Map View, and every way to them. */
@@ -65,7 +69,7 @@ export function registerMaps(context: ExtensionContext, view: ViewContribution, 
     context.views.register(MAP_WHOLE_KIND, view)
     registerMapBlocks(context, { graphId: context.graphId, assetStore: environment.assetStore, copy: environment.copy, notify, search: environment.search, selectRequests, basemaps })
     registerMapViewCommands(context)
-    context.contributions.register(MAP_PICTURE_KIND, MAP_FENCE_INFO, drawForPublish)
+    context.contributions.register(MAP_PICTURE_KIND, MAP_FENCE_INFO, drawPicture)
     return () => {
         // Only this graph's: a clean-up that ran late must never clear the next graph's services.
         if (mapViewServices()?.extension === context) setMapViewServices(null)

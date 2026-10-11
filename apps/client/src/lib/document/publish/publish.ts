@@ -80,9 +80,10 @@ export interface MapPicture {
 
 /**
  * Bumped when the way a map is drawn changes, so a site published again holds the new picture
- * under a new name rather than a cached one under the old.
+ * under a new name rather than a cached one under the old. 2: a name that would run past the
+ * picture's edge is shortened with an ellipsis.
  */
-const MAP_PICTURE_VERSION = 1
+const MAP_PICTURE_VERSION = 2
 
 /** A picture's file name: from what the map holds and how it is drawn, so an unchanged map publishes the same file. */
 async function mapPictureName(source: string): Promise<string> {

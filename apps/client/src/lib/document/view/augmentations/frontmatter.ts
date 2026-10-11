@@ -73,6 +73,9 @@ function frontmatterRange(state: EditorState): { from: number; to: number } | nu
     return first && first.name === FRONTMATTER_NODE ? { from: first.from, to: first.to } : null
 }
 
+/** Every line of the block's text, as a mark (see its use in {@link buildDecorations}). */
+const frontmatterText = Decoration.mark({ class: 'gk-frontmatter-text' })
+
 function buildDecorations(state: EditorState): DecorationSet {
     const range = frontmatterRange(state)
     if (!range) return Decoration.none
@@ -88,6 +91,10 @@ function buildDecorations(state: EditorState): DecorationSet {
         if (n === firstLine) classes.push('gk-code-block-first')
         if (n === lastLine) classes.push('gk-code-block-last')
         decos.push(Decoration.line({ class: classes.join(' ') }).range(line.from))
+        // The panel's rows are not prose rows, and a line holding only a YAML literal (`  Short
+        // note` under `description: >`) gets no highlight token: without a mark it is plain text
+        // CodeMirror could take as its row-height sample (`fenceText` in code-highlight.ts; ADR 0022).
+        if (line.length > 0) decos.push(frontmatterText.range(line.from, line.to))
     }
 
     // Dim the delimiters over their text only, so the panel behind them is untouched — the same

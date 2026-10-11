@@ -15,6 +15,12 @@ starts at 0.9.3.
 - **Screenshots on the home page.** The home page shows four screenshots of the demo graph in turn:
   the Graph View, the editor, a Kanban board and a Map View. Choose one from the row of tabs under
   them, swipe on a phone, or pause them. A browser set to reduce motion shows the first one, still.
+- **Maps in the Backlinks panel.** A reference that holds a map shows a picture of the map instead
+  of its lines of text, as wide as the panel, with every place and route in view. Select it to open
+  the note at the reference. The picture is always drawn over the deployment's own map, even with
+  your own Mapbox token.
+- **Long place names on a published map** are shortened with an ellipsis instead of running off
+  the edge of the picture.
 
 ## 0.9.5 - 2026-10-10
 

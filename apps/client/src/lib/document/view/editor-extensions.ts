@@ -60,6 +60,7 @@ import { caretClamp } from './caret-clamp'
 import { fenceDeleteGuard, fencePad } from './fence-guard'
 import { type EditRefusal, editRefusalReporter } from './edit-refused'
 import { type EditorDocumentInfo, editorDocument } from './editor-document'
+import { keepCaretVisible } from './keep-caret-visible'
 import { lineAnchor } from './line-anchor'
 import { editorOnScreen } from './editor-on-screen'
 import { wrapSelectionInput } from './wrap-selection'
@@ -282,6 +283,9 @@ export function editorFeatures(services: EditorExtensionServices): EditorFeature
         // Read by the interactive fences, so a widget behind another tab lets go of what it holds.
         { name: 'on-screen', extension: editorOnScreen.init(() => services.onScreen?.() ?? true) },
         { name: 'line-anchor', extension: lineAnchor() },
+        // A shown caret stays shown when the editor shrinks: a phone's soft keyboard opening. It
+        // decorates nothing and filters nothing, so its place in the list is free.
+        { name: 'keep-caret-visible', extension: keepCaretVisible() },
         // The View's own hooks last: focus makes this editor the active one; updates keep the
         // Command Bar context, reading position and pending reveals in step.
         {

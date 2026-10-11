@@ -91,6 +91,15 @@ const MARKERS = new Set(['HeaderMark', 'EmphasisMark', 'CodeMark', 'Strikethroug
 const MARKERS_WITH_TRAILING_SPACE = new Set(['HeaderMark', 'QuoteMark'])
 
 /**
+ * A quoted line's text is a mark of its own. Its row is not a prose row (the panel's padding makes
+ * a one-line quote 55.8px where prose is 27px, and a quote's first and last lines are taller than
+ * prose), and nothing else need mark its text: with the `>` revealed, or on a lazy continuation
+ * line that has no `>`, the line was plain text, the kind of line CodeMirror takes as the sample it
+ * estimates every off-screen line's height from (`fenceText` in code-highlight.ts; ADR 0022).
+ */
+const quoteText = Decoration.mark({ class: 'cm-md-quote-text' })
+
+/**
  * Whether a thematic break the parser found on `line`, starting at `ruleFrom`, is drawn as a rule.
  * Not when:
  *
@@ -239,7 +248,11 @@ export function formatDecorations(state: EditorState, from: number, to: number, 
         const classes = ['gk-quote-line']
         if (quote.first) classes.push('gk-quote-first')
         if (quote.last) classes.push(QUOTE_LAST_LINE_CLASS)
-        decos.push(Decoration.line({ class: classes.join(' ') }).range(doc.line(n).from))
+        const line = doc.line(n)
+        decos.push(Decoration.line({ class: classes.join(' ') }).range(line.from))
+        // From the content column, never over the indentation the content-clamp lifts out of the flow.
+        const textFrom = line.from + contentColumn(line.text)
+        if (textFrom < line.to) decos.push(quoteText.range(textFrom, line.to))
     }
     return decos
 }

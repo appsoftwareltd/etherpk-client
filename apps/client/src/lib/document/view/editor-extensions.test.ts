@@ -81,6 +81,7 @@ describe('editor feature stack', () => {
             'editor-document',
             'on-screen',
             'line-anchor',
+            'keep-caret-visible',
             'view-hooks',
         ])
     })

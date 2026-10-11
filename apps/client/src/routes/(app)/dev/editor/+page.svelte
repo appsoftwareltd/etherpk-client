@@ -42,6 +42,11 @@
         resetEditorAnalysisDiagnostics,
     } from '$lib/document/view/analysis/editor-analysis'
     import {
+        browserImageFootprints,
+        releaseActiveImageFootprints,
+        setActiveImageFootprints,
+    } from '$lib/document/view/augmentations/image-footprints'
+    import {
         resetWikilinkDecorationDiagnostics,
         wikilinkDecorationDiagnostics,
     } from '$lib/document/view/augmentations/wikilink'
@@ -69,6 +74,12 @@
     // in the harness without a real directory.
     const assetStore = createAssetStore(createMemoryDirectoryAdapter({ now: () => Date.now() }))
     setActiveAssetStore(assetStore)
+
+    // Image footprints kept in this browser as a graph's are, under a graph id of the harness's
+    // own, so a spec can reload and find them (image-footprints.ts). Set before the editor mounts;
+    // never on the server render.
+    const footprints = typeof window === 'undefined' ? null : browserImageFootprints('dev-editor')
+    if (footprints) setActiveImageFootprints(footprints)
 
     // The Command + Contribution registries so the `/` Command Menu has commands to offer
     // (mirrors the /g/[graphId] composition root). Editor commands reach the focused editor
@@ -295,6 +306,10 @@
             setActiveDocumentStore(null)
             setActiveAssetStore(null)
             assetStore.dispose()
+            if (footprints) {
+                releaseActiveImageFootprints(footprints)
+                footprints.dispose()
+            }
             setActiveGraphSettings({})
             setActiveCommandRegistry(null)
             setActiveContributionRegistry(null)

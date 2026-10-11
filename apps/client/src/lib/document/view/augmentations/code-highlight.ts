@@ -24,6 +24,7 @@ import { isBulletLine } from '../../outliner'
 import { visibleFencedBlocks } from '../outliner-context'
 import { CODE_TOKEN_STYLES } from './code-token-styles'
 import { collapsedFenceStarts, collapseMayHaveChanged } from './rendered-common'
+import { rangeRevealed } from './reveal-policy'
 import { editorMarkdownExtensions } from './scheme-url-autolink'
 
 /** Code renders slightly smaller than prose: 14px at the default 16px zoom, the app's floor for
@@ -110,7 +111,7 @@ const markdownNoCodeColour = HighlightStyle.define([{ tag: t.atom, color: 'inher
  * code-block background, so the block reads as "rendered" while staying editable. The ``` fence
  * lines are dimmed when the caret is outside the block, and brighten when it enters to edit.
  * `gk-code-line` is applied by the content-clamp (non-bullet code lines); `gk-code-fence-dim` is
- * applied caret-awarely by {@link fenceDimPlugin} below.
+ * applied caret-awarely by {@link buildCodeBlockDecorations} below.
  */
 const codeLineTheme = EditorView.baseTheme({
     // `gk-code-line` is applied by the content-clamp to non-bullet code lines (monospace only;
@@ -211,7 +212,17 @@ const codeLineTheme = EditorView.baseTheme({
     },
 })
 
-const fenceTextDim = Decoration.mark({ class: 'gk-code-fence-dim' })
+/**
+ * The fence text (backticks + language id) is always a mark, dimmed or not. A fence line's row is
+ * not a prose row (22.8px for a closer, 31.2px for an opener with the panel's padding, where prose
+ * is 27px), and CodeMirror estimates the height of every line it has not laid out from the first
+ * short rendered line that is plain text with no mark. With the caret in a block its fences were
+ * plain text, so the estimate flipped as the view moved past code, and every off-screen line was
+ * re-estimated: the document's height swung by thousands of pixels and the view jumped away from
+ * the caret. A mark keeps the fence out of the sample (ADR 0022).
+ */
+const fenceText = Decoration.mark({ class: 'gk-code-fence' })
+const fenceTextDim = Decoration.mark({ class: 'gk-code-fence gk-code-fence-dim' })
 /** Restores the prose font over a form-1 opener's `[indent]- ` prefix (see the theme rule). */
 const openerPrefixProse = Decoration.mark({ class: 'gk-code-opener-prefix' })
 /** Nudges a form-1 opener's fence run right by one PANEL_PAD so it sits inside the panel, aligned with
@@ -222,9 +233,9 @@ const openerFenceInset = Decoration.mark({ class: 'gk-code-opener-fence' })
  * Build the code-block panel decorations from the **complete** fenced blocks (paired opener+closer
  * via the line-scan — so an unterminated fence never shades the document below it). Each block line
  * gets the shaded panel (a line decoration, uniform background inset to the fence column); the first
- * and last lines get vertical padding. When the caret is outside the block, the fence backticks and
- * language id are dimmed via a MARK over just that text — leaving the panel background untouched, so
- * the fence lines and the body share one background.
+ * and last lines get vertical padding. The fence backticks and language id are a MARK over just that
+ * text, dimmed when the caret is outside the block — leaving the panel background untouched, so the
+ * fence lines and the body share one background.
  */
 function buildCodeBlockDecorations(view: EditorView): DecorationSet {
     const { state } = view
@@ -242,7 +253,8 @@ function buildCodeBlockDecorations(view: EditorView): DecorationSet {
             for (let n = block.start; n <= block.end; n++) inCompleteBlock.add(n + 1)
             continue
         }
-        const caretInside = state.selection.ranges.some((r) => r.from <= endLine.to && r.to >= startLine.from)
+        // Range-kind reveal over the whole block, fences included (reveal-policy.ts).
+        const caretInside = rangeRevealed(state, startLine.from, endLine.to)
         // form-1: the opener sits on a bullet line (`- ``` `). Render its `[indent]- ` prefix in the prose
         // font so the dot and content column match the surrounding bullets (the rest stays monospace).
         const form1 = isBulletLine(startLine.text)
@@ -270,10 +282,11 @@ function buildCodeBlockDecorations(view: EditorView): DecorationSet {
             // panel and the (shifted) body panels line up. Two line decorations can't both set `style`.
             decos.push(Decoration.line({ class: classes.join(' ') }).range(line.from))
             // Dim the fence text (backticks + language id) when the caret is away — text only, not the bg.
+            // Undimmed it is still a mark ({@link fenceText}), so CodeMirror never samples the fence's row.
             const isFence = n === block.start || n === block.end
-            if (isFence && !caretInside) {
+            if (isFence) {
                 const textFrom = line.from + block.fenceColumn // skip indent / the `- ` marker
-                if (textFrom < line.to) decos.push(fenceTextDim.range(textFrom, line.to))
+                if (textFrom < line.to) decos.push((caretInside ? fenceText : fenceTextDim).range(textFrom, line.to))
             }
         }
     }

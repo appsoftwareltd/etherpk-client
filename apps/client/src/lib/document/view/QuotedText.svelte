@@ -3,8 +3,9 @@
      * A block of another document's text, quoted read-only and drawn as the editor draws it with
      * the caret elsewhere: its lines through `InlineMarkdown`, headings at their size, a quote on
      * its panel, a rule, a table as the editor's grid, and fenced code on its code panel (or drawn
-     * by its renderer, a `mermaid` or `math` fence). What the Backlinks panel shows for a
-     * reference's body. The reading is `quote-segments.ts`; this is only the markup and the styles,
+     * by its renderer, a `mermaid` or `math` fence, or as a picture of the map for a `map` fence,
+     * where the editor draws a live Map Block). What the Backlinks panel shows for a reference's
+     * body. The reading is `quote-segments.ts`; this is only the markup and the styles,
      * which mirror the editor's value for value (markdown-format.ts, markdown-table.ts).
      *
      * Each line is its own element, read on its own as the editor reads it (a line holding only an
@@ -15,6 +16,8 @@
     import { type QuoteLine, quoteSegments } from "../quote-segments";
     import InlineMarkdown from "./InlineMarkdown.svelte";
     import QuotedCode from "./QuotedCode.svelte";
+    import QuotedMap from "./QuotedMap.svelte";
+    import { quotedMapPictures } from "./quoted-map-pictures";
     import RenderedSource from "./RenderedSource.svelte";
 
     let {
@@ -43,9 +46,18 @@
      string has no other identity. -->
 {#each segments as segment, i (`${i}-${segment.kind}`)}
     {#if segment.kind === "code"}
-        <RenderedSource info={segment.lang} source={segment.code}>
-            <QuotedCode lang={segment.lang} code={segment.code} />
-        </RenderedSource>
+        <!-- A fence the maps extension draws as a picture (a `map` fence), else one an Augmentation
+             renderer draws, else code. -->
+        {@const pictures = quotedMapPictures(segment.lang)}
+        {#if pictures}
+            <QuotedMap source={segment.code} {pictures}>
+                <QuotedCode lang={segment.lang} code={segment.code} />
+            </QuotedMap>
+        {:else}
+            <RenderedSource info={segment.lang} source={segment.code}>
+                <QuotedCode lang={segment.lang} code={segment.code} />
+            </RenderedSource>
+        {/if}
     {:else if segment.kind === "quote"}
         <div class="quoted-quote" data-testid="reference-quote">
             {#each segment.lines as quoted, j (j)}{@render line(quoted)}{/each}

@@ -1,14 +1,3 @@
-<script module lang="ts">
-    import { THEME_CHANGE_EVENT } from "@appsoftwareltd/etherpk-shared/theme";
-    import { createSubscriber } from "svelte/reactivity";
-
-    /** Read again whenever the app changes theme, as the editor redraws its rendered widgets (rendered-common.ts). */
-    const watchTheme = createSubscriber((update) => {
-        window.addEventListener(THEME_CHANGE_EVENT, update);
-        return () => window.removeEventListener(THEME_CHANGE_EVENT, update);
-    });
-</script>
-
 <script lang="ts">
     /**
      * Source the editor draws with a registered Augmentation renderer (ADR 0022), drawn the same way
@@ -23,7 +12,7 @@
      */
     import type { Snippet } from "svelte";
 
-    import { isDark } from "./augmentations/rendered-common";
+    import { appIsDark } from "./app-theme.svelte";
     import { lookupAugmentationRenderer } from "./augmentations/renderers/contract";
 
     let {
@@ -40,10 +29,7 @@
     } = $props();
 
     const renderer = $derived(lookupAugmentationRenderer(info));
-    const dark = $derived.by(() => {
-        watchTheme();
-        return isDark();
-    });
+    const dark = $derived(appIsDark());
     // Asked again only when the source, the renderer or the theme changes: a panel refresh that
     // leaves them alone keeps the drawing it has.
     const drawing = $derived(renderer ? renderer.render(source, { dark, inline }) : null);

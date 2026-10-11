@@ -139,6 +139,12 @@
         SPELLING_OPEN_SETTINGS,
     } from "$lib/document/commands/spelling-commands";
     import { setActiveSpellService } from "$lib/document/spelling/active-spell-service";
+    import { forgetImageFootprintsIn } from "$lib/document/view/augmentations/image-embed";
+    import {
+        browserImageFootprints,
+        releaseActiveImageFootprints,
+        setActiveImageFootprints,
+    } from "$lib/document/view/augmentations/image-footprints";
     import {
         adoptGraphDictionary,
         setGraphDictionary,
@@ -1762,6 +1768,10 @@
             // has to replace that before the browser paints, which it does while this stays in
             // one task. Persistence follows - it changes nothing on screen.
             announceProtectionChanged(concept);
+            // Its pictures' references, kept with the size each was drawn at while the document was
+            // not protected, must not stay in localStorage either. After the remount above, so the
+            // editor now showing it records no more.
+            forgetImageFootprintsIn(body);
             await flushProtectionWrite(concept);
             // The plaintext just replaced must not stay readable at rest in the Local Cache row
             // (a Server Backend; the Filesystem file was simply overwritten).
@@ -6346,6 +6356,14 @@
         }
         window.addEventListener("pagehide", flushPersistence);
         session.own(disposeWorkspaceResources);
+        // The size each picture of this graph was last drawn at, kept across sessions so the
+        // editor holds a picture's space before it has decoded (image-footprints.ts).
+        const footprints = browserImageFootprints(graphId);
+        setActiveImageFootprints(footprints);
+        session.own(() => {
+            releaseActiveImageFootprints(footprints);
+            footprints.dispose();
+        });
         // Spell Check (ADR 0095). One service for the tab, opened on this graph while the device
         // preference is on (closed, it neither downloads nor holds a dictionary); it hears the
         // Graph Dictionary's words, reports downloads on the activity rail, and tries a failed

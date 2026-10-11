@@ -24,14 +24,12 @@ import 'maplibre-gl/dist/maplibre-gl.css'
 import type { MapLine, MapPoint } from '$lib/document/map-text'
 
 import type { Basemap } from './basemap'
-import { blankStyle, NAMED_PLACES, routeLayers, SINGLE_PLACE_ZOOM } from './map-drawing'
-import { itemsBounds, type PixelPoint, placesAtSpot } from './map-geometry'
+import { blankStyle, NAMED_PLACES, routeLayers, SINGLE_PLACE_ZOOM, WORLD } from './map-drawing'
+import { type FramePadding, frameRoom, itemsBounds, type PixelPoint, placesAtSpot } from './map-geometry'
 import { AllPins, ClusteredPins, type PlaceLayer } from './map-pins'
 import './map-worker'
 import { loadMapboxStyle, MapboxLogo, MapboxRefusedError, mapboxRequestUrl } from './mapbox'
 
-/** The view of an empty map: the whole world. */
-const WORLD = { center: [0, 20] as [number, number], zoom: 0.8 }
 /**
  * Room left round the framed items, in pixels, unless the owner says otherwise: a Map Block's
  * search box and actions across the top and its tools across the bottom, so nothing framed sits
@@ -49,13 +47,6 @@ export type BasemapProblem = 'offline' | 'unavailable' | 'none'
 
 /** A place or route as the engine draws it, under the number its owner knows it by. */
 export type EngineItem = MapLine & { key: number }
-
-export interface FramePadding {
-    top: number
-    bottom: number
-    left: number
-    right: number
-}
 
 /** Where the map is looking, kept by an owner that takes its map down and builds it again. */
 export interface MapCamera {
@@ -300,14 +291,7 @@ export class MapEngine {
         for (const item of items) if (item.kind === 'place') places++
         const named = places <= NAMED_PLACES
         // On a small map the room shrinks with it, so there is always some map left to frame in.
-        const across = Math.min(1, (width * 0.5) / (room.left + room.right + (named ? NAME_ROOM : 0)))
-        const down = Math.min(1, (height * 0.5) / (room.top + room.bottom))
-        const padding = {
-            top: room.top * down,
-            bottom: room.bottom * down,
-            left: room.left * across,
-            right: (room.right + (named ? NAME_ROOM : 0)) * across,
-        }
+        const padding = frameRoom(width, height, { ...room, right: room.right + (named ? NAME_ROOM : 0) })
         const glide = animate && !reducedMotion()
         this.map.fitBounds(box, { padding, maxZoom: SINGLE_PLACE_ZOOM, animate: glide, duration: glide ? 180 : 0 })
     }

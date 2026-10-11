@@ -4,7 +4,8 @@
  * A graph leaves more behind than its registry record. A synced graph has its Local Cache (the
  * documents and the outbox of unsent changes) and a link to its mirror folder; every graph has a
  * search index and a set of localStorage entries the workspace keeps per graph, of which
- * [[Recents]] and the [[Layout]] carry document titles. Forget and "Remove synced graphs from this
+ * [[Recents]] and the [[Layout]] carry document titles and the image footprints picture
+ * references (`image-footprints.ts`). Forget and "Remove synced graphs from this
  * browser" both come through here, so the list lives in one place. A folder graph's own files
  * are the person's and are never touched; neither is a mirror folder's content.
  *
@@ -16,6 +17,7 @@ import { discardIndexPool } from '$lib/document/index-pool-discard'
 import { localProtectionKey } from '$lib/document/protection/protection-store'
 import { SPELLING_LANGUAGES_KEY_PREFIX } from '$lib/document/spelling/languages'
 import { TASK_FILTER_KEY_PREFIX } from '$lib/document/task-filter-store'
+import { imageFootprintsKey } from '$lib/document/view/augmentations/image-footprints'
 import { LOCAL_LAYOUT_KEY_PREFIX } from '$lib/layout/store'
 import { READING_POSITIONS_KEY_PREFIX } from '$lib/navigation/reading-positions'
 import { RECENTS_KEY_PREFIX } from '$lib/navigation/recents'
@@ -44,6 +46,7 @@ export function graphDeviceMemoryKeys(graphId: string): string[] {
         `${SPELLING_LANGUAGES_KEY_PREFIX}${graphId}`,
         localProtectionKey(graphId),
         `${FOLDER_PATH_KEY_PREFIX}${graphId}`,
+        imageFootprintsKey(graphId),
     ]
 }
 

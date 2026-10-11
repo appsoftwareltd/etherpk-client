@@ -46,7 +46,9 @@ import { assetTargetAt, attachAssetContextMenu, buildAssetActions } from './asse
 import { loadAssetWithRetry } from './asset-load-retry'
 import { BLOCK_WIDGET_SPACING, BULLET_BLOCK_DROP, blockWidgetIndent, proseTextInset } from './content-clamp'
 import { displayMaxWidth, parseImageDisplaySizeHint } from './image-display-size'
+import { type ImageFootprint, activeImageFootprints, persistableImageUrl } from './image-footprints'
 import { isDirectImageUrl } from './image-target'
+import { isProtectedDocumentFacet } from './protected-document'
 import { pinReveal, pinnedRevealField, pinnedRevealFrom, revealInputsChanged, revealedLines } from './reveal-policy'
 import { isBulletImageLine, isImageLine, parseImageLine } from '../../image-line'
 import { analysisFor } from '../analysis/editor-analysis'
@@ -119,22 +121,17 @@ function posFromPoint(view: EditorView, x: number, y: number, from: number, to: 
 }
 
 /**
- * Last rendered footprint of images (px), keyed by ref + size hint. Module-level so it survives
- * decoration rebuilds: when the caret reveals an image's raw markdown, we reserve this size on the
- * line so the tall image's space isn't collapsed — stopping the page from jumping up and back down.
- * `height` is the **full vertical footprint including the wrap's spacing** so the reserved line is
- * exactly as tall as the rendered image (reserving only the content height shrinks the line on reveal
- * and pulls the document below it up); `width` is the rendered `<img>` width, used to size the
- * reveal placeholder tint to the image rather than the full editor width.
+ * Last rendered footprint of images (px), keyed by ref + size hint ({@link imageKey}), kept across
+ * sessions by the open graph's store ({@link activeImageFootprints}). Kept outside the widgets so it survives decoration rebuilds:
+ * when the caret reveals an image's raw markdown, we reserve this size on the line so the tall
+ * image's space isn't collapsed — stopping the page from jumping up and back down. And it sizes the
+ * height map's estimate and the loading placeholder before a picture has decoded, from the first
+ * frame of a session. `height` is the **full vertical footprint including the wrap's spacing** so the
+ * reserved line is exactly as tall as the rendered image (reserving only the content height shrinks
+ * the line on reveal and pulls the document below it up); `width` is the rendered `<img>` width, used
+ * to size the reveal placeholder tint to the image rather than the full editor width.
  */
-interface ImageSize {
-    width: number
-    height: number
-    /** The rendered image's left offset from its line's left edge (px) — so the reveal placeholder lands
-     *  exactly where the image sat, instead of a `ch`-derived guess that drifts with the font. */
-    left: number
-}
-const imageSizes = new Map<string, ImageSize>()
+type ImageSize = ImageFootprint
 export function imageKey(url: string, maxWidth?: number, maxHeight?: number): string {
     return `${url}|${maxWidth ?? ''}|${maxHeight ?? ''}`
 }
@@ -203,7 +200,7 @@ class ImageWidget extends WidgetType {
      */
     get estimatedHeight(): number {
         if (this.inline) return -1
-        return imageSizes.get(imageKey(this.url, this.maxWidth, this.maxHeight))?.height ?? -1
+        return activeImageFootprints().get(imageKey(this.url, this.maxWidth, this.maxHeight))?.height ?? -1
     }
 
     /** The widget apart from its notice, stamped on the DOM so a notice change updates in place. */
@@ -279,7 +276,7 @@ class ImageWidget extends WidgetType {
             if (settled) return
             settled = true
             show(true)
-            this.recordFootprint(root, img)
+            this.recordFootprint(view, root, img)
         }
         const fail = () => {
             if (settled) return
@@ -377,7 +374,7 @@ class ImageWidget extends WidgetType {
     /**
      * The box that holds the image's place while it resolves and decodes: a tinted panel with a
      * spinner, announced to assistive tech as a status. Sized to the image's LAST rendered footprint
-     * when one is remembered (see {@link imageSizes}) so the real image drops into exactly the same
+     * when one is remembered (see {@link ImageSize}) so the real image drops into exactly the same
      * space — the case that matters most is collapsing the raw markdown, which rebuilds the widget
      * for an image that was on screen a moment ago. A first render gets a modest default that
      * cannot overflow the editor (`max-width: 100%` in the theme).
@@ -388,7 +385,7 @@ class ImageWidget extends WidgetType {
         placeholder.setAttribute('role', 'status')
         placeholder.setAttribute('aria-label', 'Loading image')
         placeholder.appendChild(document.createElement('span')).className = 'cm-md-image-spinner'
-        const remembered = imageSizes.get(imageKey(this.url, this.maxWidth, this.maxHeight))
+        const remembered = activeImageFootprints().get(imageKey(this.url, this.maxWidth, this.maxHeight))
         if (remembered) {
             placeholder.style.width = `${remembered.width}px`
             // The remembered height is the widget's full footprint INCLUDING its vertical spacing (see
@@ -413,7 +410,7 @@ class ImageWidget extends WidgetType {
      * image itself). Runs once the decoded image is in the widget, so it measures the box the user
      * actually sees. A widget torn down mid-load (`root` detached) measures nothing.
      */
-    private recordFootprint(root: HTMLElement, img: HTMLImageElement): void {
+    private recordFootprint(view: EditorView, root: HTMLElement, img: HTMLImageElement): void {
         if (!root.isConnected) return
         const cs = getComputedStyle(root)
         const margin = (parseFloat(cs.marginTop) || 0) + (parseFloat(cs.marginBottom) || 0)
@@ -422,7 +419,11 @@ class ImageWidget extends WidgetType {
         const width = Math.round(imgBox.width)
         const lineEl = root.closest('.cm-line')
         const left = lineEl ? Math.round(imgBox.left - lineEl.getBoundingClientRect().left) : 0
-        if (height > 0) imageSizes.set(imageKey(this.url, this.maxWidth, this.maxHeight), { width, height, left })
+        if (height <= 0) return
+        // Kept for the next session too, unless the reference is protected text (a [[Protected
+        // Document]] must leave no plaintext behind) or cannot outlive this session.
+        const persist = persistableImageUrl(this.url) && !view.state.facet(isProtectedDocumentFacet)()
+        activeImageFootprints().remember(imageKey(this.url, this.maxWidth, this.maxHeight), { width, height, left }, { persist })
     }
 
     /**
@@ -505,7 +506,26 @@ function reservedSizeFor(lineText: string): ImageSize | null {
     const image = parseImageLine(lineText)
     if (!image) return null
     const { maxWidth, maxHeight } = parseImageDisplaySizeHint(image.alt)
-    return imageSizes.get(imageKey(image.url, maxWidth, maxHeight)) ?? null
+    return activeImageFootprints().get(imageKey(image.url, maxWidth, maxHeight)) ?? null
+}
+
+/** The markdown of an image line held open at the picture's height, as a mark (see its use). */
+const revealedImageSource = Decoration.mark({ class: 'cm-md-image-source' })
+
+/**
+ * Forget the footprints of every picture `text` shows, in the open graph's store and in storage, now:
+ * the text is becoming a [[Protected Document]]'s, and a footprint stored while it was not protected
+ * would keep its references in plaintext (image-footprints.ts).
+ */
+export function forgetImageFootprintsIn(text: string): void {
+    const urls = new Set<string>()
+    for (const line of text.split('\n')) {
+        const image = parseImageLine(line)
+        if (image) urls.add(image.url)
+    }
+    const store = activeImageFootprints()
+    store.forgetImages(urls)
+    store.flush()
 }
 
 function buildDecorations(state: EditorState, options: ImageEmbedOptions): DecorationSet {
@@ -536,6 +556,10 @@ function buildDecorations(state: EditorState, options: ImageEmbedOptions): Decor
                 const left = bullet ? (size.left > 0 ? `${size.left}px` : null) : proseTextInset(state, line.from)
                 const style = `min-height:${size.height}px;--gk-img-w:${size.width}px` + (left ? `;--gk-img-left:${left}` : '') + top
                 decos.push(Decoration.line({ attributes: { class: 'cm-md-image-reveal', style } }).range(line.from))
+                // The held line is as tall as the picture, so its markdown must not be plain text that
+                // CodeMirror could take as its row-height sample (ADR 0022). A bullet's is marked already.
+                const textFrom = line.from + (line.text.length - line.text.trimStart().length)
+                if (!bullet && textFrom < line.to) decos.push(revealedImageSource.range(textFrom, line.to))
             }
             continue
         }

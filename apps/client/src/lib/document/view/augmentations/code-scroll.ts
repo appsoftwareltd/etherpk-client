@@ -55,6 +55,8 @@ import { collapsedFenceStarts, collapseMayHaveChanged } from './rendered-common'
 const MIN_THUMB_PX = 24
 /** How far inside the span's visible edge the caret is kept when it is revealed. */
 const REVEAL_MARGIN_PX = 6
+/** How far (px) a finger may move between touching the track and lifting and still count as a tap. */
+const TAP_SLOP_PX = 10
 
 /** The scroller's custom property carrying a block's offset. Keyed by the opener line's start offset. */
 const shiftProperty = (opener: number) => `--gk-code-scroll-${opener}`
@@ -184,14 +186,36 @@ class ScrollbarWidget extends WidgetType {
         }
         thumb.addEventListener('pointerup', endDrag)
         thumb.addEventListener('pointercancel', endDrag)
-        // A click on the track (not the thumb) centres the thumb under the pointer.
-        track.addEventListener('pointerdown', (e) => {
+        // A click on the track (not the thumb) centres the thumb under the pointer. A finger or a pen
+        // counts only once it lifts near where it went down: the browser keeps a vertical swipe for
+        // the document (`touch-action: pan-y` in the theme), and a swipe that began on the track must
+        // not first jerk the block sideways. A swipe the browser takes ends in `pointercancel`.
+        const centreOn = (clientX: number) => {
             const c = controller()
-            if (!c || e.button !== 0 || e.target === thumb) return
-            e.preventDefault()
+            if (!c) return
             const key = opener()
-            const x = e.clientX - track.getBoundingClientRect().left
+            const x = clientX - track.getBoundingClientRect().left
             c.scrollTo(key, scrollForTrackClick(x, track.clientWidth, thumb.offsetWidth, c.overflowOf(key)))
+        }
+        let touchDown: { id: number; x: number; y: number } | null = null
+        track.addEventListener('pointerdown', (e) => {
+            if (!controller() || e.button !== 0 || e.target === thumb) return
+            if (e.pointerType !== 'mouse') {
+                touchDown = { id: e.pointerId, x: e.clientX, y: e.clientY }
+                return
+            }
+            e.preventDefault()
+            centreOn(e.clientX)
+        })
+        track.addEventListener('pointerup', (e) => {
+            const down = touchDown
+            touchDown = null
+            if (!down || down.id !== e.pointerId) return
+            if (Math.hypot(e.clientX - down.x, e.clientY - down.y) > TAP_SLOP_PX) return
+            centreOn(down.x)
+        })
+        track.addEventListener('pointercancel', () => {
+            touchDown = null
         })
         return bar
     }
@@ -599,7 +623,10 @@ const theme = EditorView.baseTheme({
         padding: `0.15em ${CODE_PANEL_PAD_RIGHT} 0.15em ${PANEL_PAD}`,
         fontSize: CODE_FONT_SIZE,
         background: 'var(--gk-code-bg, rgba(127,127,127,0.10))',
-        touchAction: 'none',
+        // A finger dragging sideways on the bar scrolls the block (the thumb's pointer handlers); one
+        // swiping up or down scrolls the document, as it would anywhere else on the page. With
+        // `none` a vertical swipe that happened to start on the bar did nothing at all.
+        touchAction: 'pan-y',
         userSelect: 'none',
         cursor: 'default',
     },

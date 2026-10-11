@@ -1,7 +1,7 @@
 /**
- * The arithmetic a map needs on the device: the area that frames a set of places and routes, the
- * length of a route, and thinning a recorded track to a line that stays within a few metres of
- * the original (ADR 0118: an imported route keeps its original recording as an Asset, so nothing
+ * The arithmetic a map needs on the device: the area that frames a set of places and routes and the
+ * room left round it, the length of a route, and thinning a recorded track to a line that stays
+ * within a few metres of the original (ADR 0118: an imported route keeps its original recording as an Asset, so nothing
  * is lost by thinning the copy the map draws).
  */
 import type { MapLine, MapPoint } from '$lib/document/map-text'
@@ -48,6 +48,26 @@ export function itemsBounds(items: readonly MapLine[]): Bounds | null {
     if (south === Infinity) return null
     if (shiftedEast - shiftedWest < east - west) return { west: shiftedWest, south, east: shiftedEast, north }
     return { west, south, east, north }
+}
+
+/** Room left round framed items, in pixels, on each side of a map. */
+export interface FramePadding {
+    top: number
+    bottom: number
+    left: number
+    right: number
+}
+
+/**
+ * The room to leave round what a map frames, for a map of this size in pixels: the room asked for,
+ * or on a small map that room shrunk to half the map's width and half its height, each side in
+ * proportion, so there is always some map left to frame in. The live map (map-engine.ts) and a
+ * picture of one (map-picture.ts) frame with it alike.
+ */
+export function frameRoom(width: number, height: number, room: FramePadding): FramePadding {
+    const across = Math.min(1, (width * 0.5) / (room.left + room.right))
+    const down = Math.min(1, (height * 0.5) / (room.top + room.bottom))
+    return { top: room.top * down, bottom: room.bottom * down, left: room.left * across, right: room.right * across }
 }
 
 const EARTH_RADIUS_METRES = 6_371_008.8
