@@ -118,6 +118,7 @@
     } from "$lib/document/search";
     import { registerDocumentCommands } from "$lib/document/commands/document-commands";
     import { registerBacklinksCommands } from "$lib/document/commands/backlinks-commands";
+    import { registerJournalCommands } from "$lib/document/commands/journal-commands";
     import {
         copyFailureMessage,
         writeClipboardText,
@@ -1322,6 +1323,7 @@
     let detachQuickNotesCommands: (() => void) | undefined;
     let detachSpellingCommands: (() => void) | undefined;
     let detachBacklinksCommands: (() => void) | undefined;
+    let detachJournalCommands: (() => void) | undefined;
     let detachProtectionCommands: (() => void) | undefined;
     let detachFrontmatterCommands: (() => void) | undefined;
     let detachAssetCommands: (() => void) | undefined;
@@ -3921,6 +3923,8 @@
             preferences: () => backlinksPreferences,
             notify,
         });
+        // The Journal Roll beneath a journal tab (ADR 0136): Show older entry.
+        detachJournalCommands = registerJournalCommands(commandRegistry, contributions);
         commandRegistry.register("publish.run", () => void publishAgain());
         // Registered so a keybinding or a menu row can reach it later; today it is offered from
         // Graph Settings → Storage, beside the orphaned-asset scan it belongs with.
@@ -6321,6 +6325,8 @@
         detachSpellingCommands = undefined;
         detachBacklinksCommands?.();
         detachBacklinksCommands = undefined;
+        detachJournalCommands?.();
+        detachJournalCommands = undefined;
         detachProtectionCommands?.();
         detachProtectionCommands = undefined;
         detachFrontmatterCommands?.();

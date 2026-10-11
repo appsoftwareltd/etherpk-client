@@ -7,14 +7,20 @@
 import type { EditorView } from '@codemirror/view'
 import { tick } from 'svelte'
 
+import { editorScroller } from './editor-scroller'
+
 /** The attribute the section carries while it is drawn (written out in DocumentBacklinks.svelte). */
 export const DOCUMENT_BACKLINKS_ATTRIBUTE = 'data-document-backlinks'
 /** The attribute its header's disclosure button carries, which the Command focuses (likewise). */
 export const DOCUMENT_BACKLINKS_TOGGLE_ATTRIBUTE = 'data-document-backlinks-toggle'
 
-/** The section beneath the document `view` shows, while it is drawn (it has backlinks, or failed). */
+/**
+ * The section beneath the document `view` shows, while it is drawn (it has backlinks, or failed).
+ * Its own, in the holder DocumentView puts in its scroller: a journal tab's scroller also holds the
+ * older days of its [[Journal Roll]], each with a section of its own.
+ */
 export function documentBacklinksOf(view: EditorView): HTMLElement | null {
-    return view.scrollDOM.querySelector<HTMLElement>(`[${DOCUMENT_BACKLINKS_ATTRIBUTE}]`)
+    return view.scrollDOM.querySelector<HTMLElement>(`:scope > div > [${DOCUMENT_BACKLINKS_ATTRIBUTE}]`)
 }
 
 /**
@@ -32,7 +38,8 @@ export async function goToDocumentBacklinks(view: EditorView, expand: () => void
     await tick()
     const section = documentBacklinksOf(view)
     if (!section) return false
-    const scroller = view.scrollDOM
+    // The tab's scroller for an older day in a Journal Roll, whose own does not scroll.
+    const scroller = editorScroller(view)
     const top = section.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop
     scroller.scrollTop = Math.max(0, top)
     section.querySelector<HTMLElement>(`[${DOCUMENT_BACKLINKS_TOGGLE_ATTRIBUTE}]`)?.focus({ preventScroll: true })

@@ -13,6 +13,7 @@
      * harness). CodeMirror is bound to the backend, which owns the text.
      */
     import { Transaction } from '@codemirror/state'
+    import { EditorView } from '@codemirror/view'
     import { mount, onDestroy, onMount, unmount, untrack } from 'svelte'
 
     import LoadingSweep from '$lib/components/LoadingSweep.svelte'
@@ -57,6 +58,10 @@
     import { createHeldReveal } from './held-reveal'
     import { setEditorOnScreen } from './editor-on-screen'
     import DocumentBacklinks from './DocumentBacklinks.svelte'
+    import DocumentViewSelf from './DocumentView.svelte'
+    import JournalRoll from './JournalRoll.svelte'
+    import { JOURNAL_ROLL_ATTRIBUTE } from './journal-roll-dom'
+    import { followReadingPoint } from './reading-point'
     import { handleEventsBelowText } from './below-text-events'
     import { DOCUMENT_BACKLINKS_ATTRIBUTE } from './document-backlinks'
     import type * as Y from 'yjs'
@@ -68,6 +73,7 @@
         ytext,
         panelId,
         embedded: embeddedProp = false,
+        rolled: rolledProp = false,
         revealAt,
         visibility: visibilityProp,
     }: {
@@ -81,6 +87,13 @@
          * the reveals addressed to its document, and it becomes the active editor only on focus.
          */
         embedded?: boolean
+        /**
+         * An older day loaded in a [[Journal Roll]] beneath a journal tab's entry (ADR 0136): an
+         * editor at its natural height, scrolled by the tab's scroller, with its own backlinks. Like
+         * an embedded editor it keeps none of a tab's bookkeeping (no Reading Position, no reveals,
+         * no Draft, no Lock button) and becomes the active editor only on focus.
+         */
+        rolled?: boolean
         /** Embedded only: the body line (0-based) put at the top when it opens. */
         revealAt?: number
         /**
@@ -94,6 +107,13 @@
 
     /** Fixed for the View's life, as its ref is. */
     const embedded = untrack(() => embeddedProp)
+    /** Fixed for the View's life, as its ref is. */
+    const rolled = untrack(() => rolledProp)
+    /**
+     * A Pane's own tab, neither embedded nor rolled: it keeps a [[Reading Position]], takes the
+     * reveals addressed to its document, may be a [[Draft]], and on a journal day carries a roll.
+     */
+    const ownsTab = !embedded && !rolled
     /** Fixed for the View's life: a presenter hands a View one visibility object. */
     const visibility = untrack(() => visibilityProp)
     /** Embedded: the line last shown, which a remount (protection changing) shows again. */
@@ -132,6 +152,16 @@
     let backlinksSection: ReturnType<typeof mount> | undefined
     /** Whether the section is drawn: it has backlinks, or failed to load them. */
     let backlinksDrawn = $state(false)
+    /**
+     * The [[Journal Roll]] beneath a journal tab's entry and its backlinks (ADR 0136), mounted and
+     * moved from editor to editor the same way. Only on a tab of a journal day.
+     */
+    let rollHolder: HTMLDivElement | undefined
+    let rollSection: ReturnType<typeof mount> | undefined
+    /** Whether the roll draws anything: a bar, or loaded days. */
+    let rollDrawn = $state(false)
+    /** Something is drawn beneath the text, so the text gives up its full pane height. */
+    const belowTextDrawn = $derived(backlinksDrawn || rollDrawn)
     /** Set once the View is gone, so a remount still on its way (a Draft promotion) builds nothing. */
     let destroyed = false
 
@@ -160,6 +190,46 @@
         backlinksHolder?.remove()
         backlinksHolder = undefined
         backlinksDrawn = false
+    }
+
+    /** Put the roll after the backlinks in `scroller`, mounting it the first time, and hand it the scroller. */
+    function placeRoll(scroller: HTMLElement): void {
+        if (!ownsTab || !isJournalConcept(view.target)) return
+        if (!rollHolder) {
+            rollHolder = document.createElement('div')
+            rollHolder.style.display = 'contents'
+            rollSection = mount(JournalRoll, {
+                target: rollHolder,
+                props: {
+                    anchor: view.target,
+                    day: DocumentViewSelf,
+                    panelId,
+                    visibility,
+                    ondrawnchange: (drawn: boolean) => (rollDrawn = drawn),
+                },
+            })
+        }
+        scroller.appendChild(rollHolder)
+        ;(rollSection as { attach?: (scroller: HTMLElement) => void } | undefined)?.attach?.(scroller)
+    }
+
+    /**
+     * The tab's position to keep, no deeper than the top of its roll. The roll is not remembered
+     * (ADR 0136), so a position among its days would come back past the end of what the tab holds.
+     */
+    function tabPosition(cm: EditorView): ReturnType<typeof editorPosition> {
+        const position = editorPosition(cm)
+        const roll = rollHolder?.querySelector<HTMLElement>(`[${JOURNAL_ROLL_ATTRIBUTE}]`)
+        if (roll?.isConnected) position.scrollTop = Math.min(position.scrollTop, roll.offsetTop)
+        return position
+    }
+
+    function unmountRoll(): void {
+        if (rollSection) void unmount(rollSection)
+        rollSection = undefined
+        rollHolder?.remove()
+        rollHolder = undefined
+        rollDrawn = false
     }
     let mountIndex = $state(0)
     // True while the document's backing content is still loading (a Server Backend cache
@@ -203,7 +273,7 @@
      * unlocked state exactly where the user had stopped looking at it. Masked counts as held -
      * the sidebar control reads "Unlocked · Lock now" in the same state, and this does the same.
      */
-    const showLock = $derived(protection?.status === 'unlocked' || protection?.status === 'masked')
+    const showLock = $derived(!rolled && (protection?.status === 'unlocked' || protection?.status === 'masked'))
 
     /** Live answer from the mounted document: protection is added and removed while it is open. */
     function isProtectedNow(): boolean {
@@ -343,9 +413,9 @@
         }
         // Already open: a reveal for this document moves the live caret rather than waiting
         // for a mount that will never happen.
-        // Not while embedded: a reveal names a document, and it is the document's own tab's to
-        // take. The Board tells a Task Detail where to look itself (`showLine`).
-        if (!embedded) {
+        // Not while embedded or rolled: a reveal names a document, and it is the document's own
+        // tab's to take. The Board tells a Task Detail where to look itself (`showLine`).
+        if (ownsTab) {
             detachReveal = subscribeReveal((request) => {
                 if (request.target !== view.target || !editor) return
                 takeReveal(view.target)
@@ -388,10 +458,12 @@
      * still building, "gone" and "not indexed yet" look alike, so this waits.
      */
     function embeddedDocumentGone(): boolean {
-        if (!embedded) return false
+        if (ownsTab) return false
         const index = getActiveGraphIndex()
         if (!index || index.isBuilding() || index.conceptExists(view.target)) return false
-        mountError = `"${view.target}" is no longer in the graph. It was renamed or deleted.`
+        mountError = rolled
+            ? 'This entry is no longer in the graph.'
+            : `"${view.target}" is no longer in the graph. It was renamed or deleted.`
         return true
     }
 
@@ -404,9 +476,10 @@
      * that may be seconds from arriving.
      */
     function draftAllowed(): boolean {
-        // A Task Detail shows a task that is written somewhere: with its document gone there is
-        // nothing to show, and a Draft would offer to write a page nobody asked for.
-        if (embedded) return false
+        // A Task Detail shows a task that is written somewhere, and a roll shows days that were
+        // written: with the document gone there is nothing to show, and a Draft would offer to write
+        // a document nobody asked for.
+        if (!ownsTab) return false
         if (!canCreateDocuments(getActiveDocumentStore())) return false
         const index = getActiveGraphIndex()
         if (!index || index.isBuilding()) return false
@@ -530,6 +603,12 @@
         focusEditor()
     }
 
+    /** Whether the focus is in the text of an editor other than `view`. */
+    function anotherEditorFocused(view: EditorView): boolean {
+        const text = document.activeElement?.closest('.cm-content')
+        return text != null && text !== view.contentDOM
+    }
+
     /**
      * Whether the focus is free for this editor to take: on nothing, on the page itself, or already
      * here. The backlinks beneath the text are inside the editor's DOM but are not the text: focus
@@ -540,9 +619,16 @@
         return !active || active === document.body || inEditorText(active)
     }
 
-    /** Whether `element` is in this editor and not in the backlinks beneath its text. */
+    /**
+     * Whether `element` is in this editor and not beneath its text. The nearest editor decides: an
+     * older day in this tab's [[Journal Roll]] is an editor of its own (ADR 0136). Inside this one,
+     * its backlinks and its roll are not its text; anything else of its own (a panel, a tooltip) is.
+     */
     function inEditorText(element: Element): boolean {
-        return (editor?.view.dom.contains(element) ?? false) && !element.closest(`[${DOCUMENT_BACKLINKS_ATTRIBUTE}]`)
+        const own = editor?.view
+        if (!own || element.closest('.cm-editor') !== own.dom) return false
+        const region = element.closest(`.cm-content, [${DOCUMENT_BACKLINKS_ATTRIBUTE}], [${JOURNAL_ROLL_ATTRIBUTE}]`)
+        return !region || !own.dom.contains(region) || region === own.contentDOM
     }
 
     /**
@@ -552,8 +638,8 @@
      * inside a dockview panel that is mid-activation - or one that has just been rebuilt by a
      * [[Draft]] promotion, where the element the user was typing into no longer exists.
      */
-    function focusEditor(): void {
-        const view = editor?.view
+    function focusEditor(target?: EditorView): void {
+        const view = target ?? editor?.view
         if (!view) return
         let attempts = 10
         // What had focus when this was asked for: the retries may take focus from it, and from
@@ -567,6 +653,26 @@
             if (!view.hasFocus && --attempts > 0) requestAnimationFrame(tryFocus)
         }
         tryFocus()
+    }
+
+    /**
+     * The text of an older day in this tab's [[Journal Roll]] that last had the focus, while the
+     * focus has not been in this tab's own text since. Coming back to the tab gives the focus back
+     * there: the reader was writing in that day, not in the entry above it.
+     */
+    let rollFocus: HTMLElement | null = null
+
+    function noteFocus(event: FocusEvent): void {
+        const text = event.target instanceof Element ? event.target.closest('.cm-content') : null
+        if (!text || !editor) return
+        if (text === editor.view.contentDOM) rollFocus = null
+        else if (text instanceof HTMLElement && text.closest(`[${JOURNAL_ROLL_ATTRIBUTE}]`)) rollFocus = text
+    }
+
+    /** The tab coming to the front: the focus goes where the reader last wrote in it. */
+    function focusActivated(): void {
+        const older = rollFocus?.isConnected ? EditorView.findFromDOM(rollFocus) : null
+        focusEditor(older ?? undefined)
     }
 
     /** The hint for this View's document now, or none while its content is still on the way. */
@@ -813,7 +919,9 @@
             ...(collabYText ? { collab: { ytext: collabYText, awareness } } : {}),
             // The feature stack lives in editor-extensions.ts (order-tested); the View supplies
             // only the services the features need and its own focus / update hooks.
-            extensions: editorExtensions({
+            // An older day in a Journal Roll carries the reader's position through its edits
+            // (reading-point.ts); the feature stack is the same for every mode.
+            extensions: [...(rolled ? [followReadingPoint] : []), ...editorExtensions({
                 assetStore: () => tryGetActiveAssetStore(),
                 graphIndex: () => getActiveGraphIndex(),
                 // [[Frontmatter]] is a proposal against the registry (ADR 0061); the workspace
@@ -870,7 +978,10 @@
                     if (update.docChanged && editRefusal) clearRefusal()
                     // Keep the Command Bar's outliner-block context in step with the caret.
                     if (update.selectionSet || update.docChanged) {
-                        refreshEditorContext(update.view)
+                        // The Command Bar describes the editor in use: the focused one, or the active
+                        // one when none is. An unfocused editor's update - a remote edit, an older day
+                        // in a Journal Roll - is not its business.
+                        if (update.view.hasFocus || getActiveEditorView() === update.view) refreshEditorContext(update.view)
                         reportPosition?.()
                     }
                     // Underlines are redrawn when the spell service answers, not only on a
@@ -892,11 +1003,13 @@
                 document: { concept: view.target, panelId },
                 // A tab restored behind another starts out of sight, so a map in it never draws.
                 onScreen: () => visibility?.onScreen ?? true,
-            }),
+            })],
         })
         // Command Menu handlers reach this editor through the active-view accessor. An embedded
         // editor opens beside the one being worked in, and takes over only when focused (onFocus).
-        if (!embedded) {
+        // Nor does a tab rebuilding behind the one being written in (a Draft replaced by sync, a
+        // protection change) take it from the editor that has the focus.
+        if (ownsTab && !anotherEditorFocused(editor.view)) {
             setActiveEditorView(editor.view)
             refreshEditorContext(editor.view)
         }
@@ -909,14 +1022,17 @@
         const letGoOfReveal = () => heldReveal.release()
         const takeover = ['keydown', 'pointerdown', 'touchstart'] as const
         for (const type of takeover) dom.addEventListener(type, letGoOfReveal, { capture: true, passive: true })
+        dom.addEventListener('focusin', noteFocus)
         detachEditorListeners = () => {
             for (const type of takeover) dom.removeEventListener(type, letGoOfReveal, { capture: true })
+            dom.removeEventListener('focusin', noteFocus)
         }
         observeScrollbar(editor.view.scrollDOM)
         // The backlinks beneath the text, after the content in the scroller (ADR 0135), and the
         // presses and drops on the scroller outside the text, which CodeMirror does not hear.
         placeBacklinks(editor.view.scrollDOM)
-        if (!embedded) detachBelowText = handleEventsBelowText(editor.view, { store: () => tryGetActiveAssetStore() })
+        placeRoll(editor.view.scrollDOM)
+        if (ownsTab) detachBelowText = handleEventsBelowText(editor.view, { store: () => tryGetActiveAssetStore() })
         // Reflect external/remote changes into the editor — but NOT in collab mode, where
         // yCollab already reflects remote Y.Text updates; a setExternalText whole-buffer
         // rewrite would be seen as a local edit and echo-storm the sync engine.
@@ -927,8 +1043,8 @@
         // scrolls or moves the caret. All of it no-ops outside a graph workspace.
         // An embedded editor has no position of its own to keep or restore: the document's tab
         // owns its Reading Position, and the Board says what to show (ADR 0113).
-        if (embedded) {
-            if (embeddedLine !== undefined) showLine(embeddedLine)
+        if (!ownsTab) {
+            if (embedded && embeddedLine !== undefined) showLine(embeddedLine)
             return
         }
         const positionKey = viewKey(view)
@@ -957,7 +1073,7 @@
             if (remembered) applyEditorPosition(editor.view, remembered)
         }
         detachPositionAdapter = registerPositionAdapter(positionKey, {
-            capture: () => (editor ? editorPosition(editor.view) : null),
+            capture: () => (editor ? tabPosition(editor.view) : null),
             // A pending reveal outranks a remembered position: the user asked for a specific
             // block, and this callback is exactly what would otherwise undo that.
             restore: (position) => {
@@ -970,7 +1086,7 @@
             // Retried over a few frames: a just-activated dockview panel can still
             // be hidden when this fires, and DOM focus inside a hidden subtree
             // silently no-ops.
-            focus: focusEditor,
+            focus: focusActivated,
             // The weaker request, for a presenter that must not raise a soft keyboard over a
             // document someone opened to read.
             focusIfEmpty,
@@ -978,7 +1094,7 @@
         reportPosition = () => {
             if (reportTimer) clearTimeout(reportTimer)
             reportTimer = setTimeout(() => {
-                if (editor) readingPositions?.set(positionKey, editorPosition(editor.view))
+                if (editor) readingPositions?.set(positionKey, tabPosition(editor.view))
             }, 200)
         }
         const scroller = editor.view.scrollDOM
@@ -1016,7 +1132,7 @@
         // Final capture: the debounce would otherwise drop the last ≤200ms of
         // scroll/caret movement from the Reading Position on unmount.
         if (editor && capturePosition) {
-            tryGetActiveReadingPositions()?.set(viewKey(view), editorPosition(editor.view))
+            tryGetActiveReadingPositions()?.set(viewKey(view), tabPosition(editor.view))
         }
         detachScrollReport?.()
         detachScrollReport = undefined
@@ -1038,6 +1154,7 @@
         detachBelowText = undefined
         // Kept for the next editor; out of this one's scroller before it goes.
         backlinksHolder?.remove()
+        rollHolder?.remove()
         editor?.destroy()
         editor = undefined
         releaseDocument?.()
@@ -1054,16 +1171,23 @@
         detachRetry?.()
         detachDraftWatch?.()
         detachReveal?.()
-        teardownEditor({ capturePosition: !embedded })
+        teardownEditor({ capturePosition: ownsTab })
         unmountBacklinks()
+        unmountRoll()
     })
 </script>
 
 <div
-    class={['document-view', showLock && 'document-view--lock', backlinksDrawn && 'document-view--backlinks']}
+    class={[
+        'document-view',
+        showLock && 'document-view--lock',
+        belowTextDrawn && 'document-view--below-text',
+        rolled && 'document-view--rolled',
+    ]}
     data-testid="document-view"
     data-doc-target={view.target}
     data-embedded={embedded || undefined}
+    data-rolled={rolled || undefined}
     style:--gk-scrollbar-inset="{scrollbarInset}px"
 >
     <div class="document-view__mounts" data-testid="document-mounts">{mountIndex}</div>
@@ -1239,25 +1363,55 @@
         padding-bottom: 4.5rem;
     }
     /*
-     * The backlinks beneath the text (ADR 0135), mounted into the editor's scroller after its
-     * content. CodeMirror lays the scroller out as a flex row, so while the section is drawn the
-     * row wraps, the section takes a row of its own (DocumentBacklinks.svelte), and the rows do not
-     * stretch to share the pane's height. The content gives up its full pane height for one line
-     * of room under the last line, where a click still puts the caret at the end, so the section
-     * follows the text instead of starting below the fold.
+     * The backlinks beneath the text (ADR 0135) and a journal tab's roll (ADR 0136), mounted into
+     * the editor's scroller after its content. CodeMirror lays the scroller out as a flex row, so
+     * while either is drawn the row wraps, each takes a row of its own (DocumentBacklinks.svelte,
+     * JournalRoll.svelte), and the rows do not stretch to share the pane's height. The content gives
+     * up its full pane height for one line of room under the last line, where a click still puts
+     * the caret at the end, so what is beneath follows the text instead of starting below the fold.
      */
-    .document-view--backlinks .document-view__editor :global(.cm-scroller) {
+    .document-view--below-text .document-view__editor :global(.cm-scroller) {
         flex-wrap: wrap;
         align-content: flex-start;
     }
     /* After the Lock button's rule, which it replaces while the section is drawn: the button's
        room moves to the section's foot, below the last thing in the scroller. */
-    .document-view--backlinks .document-view__editor :global(.cm-content) {
+    .document-view--below-text .document-view__editor :global(.cm-content) {
         min-height: 0;
         padding-bottom: calc(0.75rem + var(--gk-line-pitch));
     }
-    .document-view--lock .document-view__editor :global([data-document-backlinks]) {
+    /* Child combinators: the older days in a Journal Roll are editors inside this one, and the
+       Lock button's room belongs to the tab's own scroller only. */
+    .document-view--lock.document-view--below-text > .document-view__editor > :global(.cm-editor) > :global(.cm-scroller) {
         padding-bottom: 3.75rem;
+    }
+    /*
+     * An older day in a Journal Roll (ADR 0136): an editor at its natural height, scrolled by the
+     * tab's scroller. Every box from the View down to CodeMirror's scroller takes its content's
+     * height and lets it show, and the text never fills a pane it does not have.
+     */
+    .document-view--rolled {
+        height: auto;
+        background: transparent;
+    }
+    .document-view--rolled .document-view__editor {
+        flex: none;
+        overflow: visible;
+    }
+    .document-view--rolled .document-view__editor :global(.cm-editor) {
+        height: auto;
+    }
+    .document-view--rolled .document-view__editor :global(.cm-scroller) {
+        height: auto;
+        overflow: visible;
+    }
+    .document-view--rolled .document-view__editor :global(.cm-content) {
+        min-height: 0;
+    }
+    /* At the foot of the pane while the day is in view, rather than at the foot of a day that may
+       run well below it. */
+    .document-view--rolled .document-view__refusal {
+        position: sticky;
     }
     .document-view__lock:hover {
         background: var(--gk-surface-2);

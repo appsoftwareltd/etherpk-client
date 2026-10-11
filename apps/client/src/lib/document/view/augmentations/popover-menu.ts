@@ -18,6 +18,8 @@ import { EditorView, keymap, showTooltip, tooltips, type Tooltip, type TooltipVi
 
 import { setTrustedMarkup, type TrustedMarkup } from '$lib/security/trusted-types'
 
+import { editorScroller } from '../editor-scroller'
+
 /** The minimum a caller's menu state must carry: where to anchor, and the highlighted row. */
 export interface PopoverBase {
     /** Opening marker: the preferred horizontal anchor, stable while the query is typed. */
@@ -62,7 +64,9 @@ const TAILWIND_ITEM_SELECTED = 'bg-[var(--gk-surface-2)]'
 // for a docked document: a tooltip there can spill into its neighbour and create pane overflow.
 const paneTooltips = tooltips({
     tooltipSpace(view) {
-        const scroll = view.scrollDOM
+        // The scroller that scrolls the editor bounds it: an older day in a Journal Roll is as tall
+        // as its text, and its own scroller would let a menu run off the pane (editor-scroller.ts).
+        const scroll = editorScroller(view)
         const rect = scroll.getBoundingClientRect()
         const viewport = view.dom.ownerDocument.documentElement
         const left = rect.left + scroll.clientLeft * view.scaleX

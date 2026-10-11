@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { commandMenuItemsInOrder, createCommandRegistry, createContributionRegistry } from '../../surface'
 import { registerBacklinksCommands } from './backlinks-commands'
 import { registerEditorCommands } from './editor-commands'
+import { registerJournalCommands } from './journal-commands'
 import { registerFrontmatterCommands } from './frontmatter-commands'
 import { registerLinkCommands } from './link-commands'
 import { registerProtectionCommands } from './protection-commands'
@@ -34,10 +35,12 @@ describe('the Command Menu order', () => {
         registerProtectionCommands(commands, contributions, unused)
         registerFrontmatterCommands(commands, contributions, unused)
         registerBacklinksCommands(commands, contributions, unused)
+        registerJournalCommands(commands, contributions)
 
         expect(commandMenuItemsInOrder(contributions).map((item) => item.title)).toEqual([
             'Search',
             'Go to backlinks',
+            'Show older entry',
             'Today',
             'Upload asset',
             'Date Picker',

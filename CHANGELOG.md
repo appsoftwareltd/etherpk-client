@@ -5,10 +5,15 @@ What changed in each release of the EtherPK Client and the Headless Client
 They are released together, under the version number they share with the Sync Server. This log
 starts at 0.9.3.
 
-## Unreleased
+## 0.9.6 - 2026-10-11
 
 ### Client
 
+- **Journal roll.** Under a journal entry's text and backlinks, a bar names the previous day you
+  wrote on. Scroll down, or select the bar, and that day opens below, editable and with its own
+  backlinks, then the day before, up to ten days in one tab. **Hide** closes a day and the ones
+  below it, and **Open** opens it in its own tab. **Show older entry** in the `/` menu does the
+  same from the keyboard.
 - **The Extension API on npm.** [`@appsoftwareltd/etherpk-extension-api`](https://www.npmjs.com/package/@appsoftwareltd/etherpk-extension-api),
   the package an EtherPK extension is written against, is on npm from 0.9.5 and is published with
   every release, at the Client's version.
@@ -32,6 +37,15 @@ starts at 0.9.3.
   Backlinks panel.
 - **Highlight reference** now emphasises a link written with one of the page's aliases, as it does
   a link written with the page's name.
+- **No more jumps while moving through code.** With the cursor in a code block, the page could jump
+  away from the cursor as you moved, because the editor guessed the height of the lines off screen
+  from the code's own lines. It now guesses from ordinary text only.
+- **Pictures keep their size after a reload.** The editor remembers the size each picture was last
+  drawn at, per graph on this device, so the text around a picture no longer moves as it loads.
+- **The cursor stays in view when a phone's keyboard opens**, or when a pane is made shorter, instead
+  of sitting under the keyboard until the first key is pressed.
+- **A swipe up or down on a code block's scroll bar scrolls the page** on a phone. A sideways drag
+  still scrolls the code.
 
 ## 0.9.5 - 2026-10-10
 

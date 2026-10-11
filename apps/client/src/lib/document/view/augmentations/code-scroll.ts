@@ -4,7 +4,7 @@
  * Every body line of a complete [[Fenced Code Block]] is wrapped in one mark span: an inline-block
  * spanning the line's content column that clips what does not fit. The block's lines scroll
  * sideways TOGETHER. One CSS custom property per block on the editor's scroller
- * (`--gk-code-scroll-<opener>`, the opener line's document offset) carries the offset, and each
+ * (`--gk-code-scroll-<editor>-<opener>`, the opener line's document offset) carries the offset, and each
  * span's `text-indent` reads it, so a short `}` line slides out of view under the clip exactly as
  * it would in a `<pre>`, and a line CodeMirror renders later (a block taller than the viewport)
  * picks the offset up on arrival. A bar below the last body line is the affordance, present only
@@ -58,9 +58,21 @@ const REVEAL_MARGIN_PX = 6
 /** How far (px) a finger may move between touching the track and lifting and still count as a tap. */
 const TAP_SLOP_PX = 10
 
+/**
+ * The prefix of one editor's offset properties. Custom properties inherit, and an older day in a
+ * [[Journal Roll]] (ADR 0136) is an editor inside the tab's scroller, which carries the tab's own
+ * properties: keyed by offset alone, a block of the older day at the tab's block's offset, not yet
+ * measured, drew shifted sideways by the tab's scroll. So each editor has names of its own.
+ */
+const editorIds = new WeakMap<EditorView, number>()
+let nextEditorId = 0
+function shiftPrefix(view: EditorView): string {
+    let id = editorIds.get(view)
+    if (id === undefined) editorIds.set(view, (id = nextEditorId++))
+    return `--gk-code-scroll-${id}-`
+}
 /** The scroller's custom property carrying a block's offset. Keyed by the opener line's start offset. */
-const shiftProperty = (opener: number) => `--gk-code-scroll-${opener}`
-const SHIFT_PROPERTY_PREFIX = '--gk-code-scroll-'
+const shiftProperty = (view: EditorView, opener: number) => `${shiftPrefix(view)}${opener}`
 
 /** A complete, revealed block with at least one body line: what scrolls. */
 interface ScrollableBlock {
@@ -260,10 +272,10 @@ const barsField = StateField.define<DecorationSet>({
  * The mark over a body line. Per block, because the span's `text-indent` reads that block's
  * offset property; two marks with equal attributes compare equal, so a rebuild reuses the span.
  */
-function containerMark(opener: number): Decoration {
+function containerMark(view: EditorView, opener: number): Decoration {
     return Decoration.mark({
         class: 'gk-code-scroll',
-        attributes: { style: `--gk-code-shift:var(${shiftProperty(opener)},0px)` },
+        attributes: { style: `--gk-code-shift:var(${shiftProperty(view, opener)},0px)` },
     })
 }
 
@@ -272,7 +284,7 @@ function buildContainers(view: EditorView): DecorationSet {
     const decos: Range<Decoration>[] = []
     for (const b of scrollableBlocks(state)) {
         if (b.bodyTo < viewport.from || b.bodyFrom > viewport.to) continue
-        const mark = containerMark(b.opener)
+        const mark = containerMark(view, b.opener)
         for (let n = b.firstLine; n <= b.lastLine; n++) {
             const line = state.doc.line(n)
             if (line.to < viewport.from) continue
@@ -489,7 +501,7 @@ class CodeScrollController {
     }
 
     private applyShift(opener: number, metrics: BlockMetrics): void {
-        const name = shiftProperty(opener)
+        const name = shiftProperty(this.view, opener)
         const value = `${metrics.scroll}px`
         const style = this.view.scrollDOM.style
         if (style.getPropertyValue(name) !== value) style.setProperty(name, value)
@@ -503,7 +515,7 @@ class CodeScrollController {
         const names: string[] = []
         for (let i = 0; i < style.length; i++) {
             const name = style.item(i)
-            if (name.startsWith(SHIFT_PROPERTY_PREFIX)) names.push(name)
+            if (name.startsWith(shiftPrefix(this.view))) names.push(name)
         }
         return names
     }
@@ -518,7 +530,7 @@ class CodeScrollController {
                 // read follows this one and must see the text where it will be painted. The style
                 // write costs one extra layout only when a caret actually crossed the edge.
                 for (const m of measurement.blocks) {
-                    if (m.revealTarget !== null) view.scrollDOM.style.setProperty(shiftProperty(m.opener), `${m.revealTarget}px`)
+                    if (m.revealTarget !== null) view.scrollDOM.style.setProperty(shiftProperty(view, m.opener), `${m.revealTarget}px`)
                 }
                 return measurement
             },
@@ -545,7 +557,7 @@ class CodeScrollController {
         // A block that no longer exists (or moved: its property is keyed by offset) leaves nothing behind.
         for (const opener of [...this.blocks.keys()]) if (!live.has(opener)) this.blocks.delete(opener)
         for (const name of this.shiftProperties()) {
-            if (!this.blocks.has(Number(name.slice(SHIFT_PROPERTY_PREFIX.length)))) view.scrollDOM.style.removeProperty(name)
+            if (!this.blocks.has(Number(name.slice(shiftPrefix(view).length)))) view.scrollDOM.style.removeProperty(name)
         }
         const next = mergeOverflowing(view.state.field(overflowingField), verdicts, live)
         if (!next) return

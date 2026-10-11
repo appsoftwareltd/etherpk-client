@@ -16,7 +16,9 @@
  */
 
 import type { Extension } from '@codemirror/state'
-import { EditorView, ViewPlugin } from '@codemirror/view'
+import { EditorView, ViewPlugin, type ViewUpdate } from '@codemirror/view'
+
+import { editorScroller } from './editor-scroller'
 
 /** A caret's vertical extent, in client px. */
 export interface CaretExtent {
@@ -38,24 +40,46 @@ export function shrinkHidCaret(caret: CaretExtent, scrollerTop: number, before: 
 class CaretKeeper {
     private height: number
     private readonly observer: ResizeObserver | null
+    /**
+     * What shrinks: the scroller that scrolls this editor, which fills its pane while the pane fills
+     * what is left. The editor's own for a document tab; the tab's for an older day in a
+     * [[Journal Roll]] (editor-scroller.ts), which changes when the tab rebuilds its editor and moves
+     * the roll into the new one's scroller. So it is found again whenever the focus arrives, the one
+     * moment the keeper has anything to keep.
+     */
+    private scroller: HTMLElement | null = null
 
     constructor(private readonly view: EditorView) {
-        this.height = view.scrollDOM.clientHeight
-        // The scroller is what shrinks: the editor fills its pane, and the pane fills what is left.
+        this.height = 0
         this.observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => this.resized())
-        this.observer?.observe(view.scrollDOM)
+        this.watch()
+    }
+
+    update(update: ViewUpdate): void {
+        if (update.focusChanged && this.view.hasFocus) this.watch()
+    }
+
+    private watch(): void {
+        if (!this.observer) return
+        const scroller = editorScroller(this.view)
+        if (scroller === this.scroller) return
+        if (this.scroller) this.observer.unobserve(this.scroller)
+        this.scroller = scroller
+        this.height = scroller.clientHeight
+        this.observer.observe(scroller)
     }
 
     private resized(): void {
-        const { view } = this
+        const { view, scroller } = this
+        if (!scroller) return
         const before = this.height
-        const after = view.scrollDOM.clientHeight
+        const after = scroller.clientHeight
         this.height = after
         if (after >= before || !view.hasFocus) return
         const head = view.state.selection.main.head
         const caret = view.coordsAtPos(head)
         if (!caret) return
-        if (!shrinkHidCaret(caret, view.scrollDOM.getBoundingClientRect().top, before, after)) return
+        if (!shrinkHidCaret(caret, scroller.getBoundingClientRect().top, before, after)) return
         // Nearest: the caret lands just above the new bottom edge, the least the view can move.
         view.dispatch({ effects: EditorView.scrollIntoView(head, { y: 'nearest' }) })
     }
