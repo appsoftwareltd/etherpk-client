@@ -416,6 +416,10 @@
         readOnlyFolder,
     } from "$lib/storage/folder-ownership";
     import {
+        findPublishFolderOverlap,
+        publishFolderOverlapMessage,
+    } from "$lib/document/publish/host/publish-folder-check";
+    import {
         runGraphExport,
         type ExportReport,
     } from "$lib/storage/server/export/graph-export";
@@ -5299,6 +5303,10 @@
         if (handle && !(await ensurePermission(handle, "readwrite"))) {
             throw new Error("EtherPK was not allowed to write to the folder. Choose it again to grant access.");
         }
+        // Again at publish time: the folder may have been chosen before the check existed, or a
+        // graph opened there since.
+        const overlap = handle ? await findPublishFolderOverlap(handle, await readKnownGraphFolders()) : null;
+        if (overlap && handle) throw new Error(publishFolderOverlapMessage(handle.name, overlap));
         let outcome: PublishOutcome | null = null;
         let failure: unknown = null;
         await runActivity({
@@ -5434,6 +5442,10 @@
                 } catch {
                     return null; // cancelled
                 }
+                // A publish deletes the files it did not write from its folder: never a graph's.
+                // Refused before it is remembered, and shown at the publication's row.
+                const overlap = await findPublishFolderOverlap(handle, await readKnownGraphFolders());
+                if (overlap) throw new Error(publishFolderOverlapMessage(handle.name, overlap));
                 await writePublicationFolder({
                     key: `${graphId}/${publicationId}`,
                     graphId,

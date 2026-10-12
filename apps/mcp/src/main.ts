@@ -9,7 +9,7 @@
  *   etherpk-mcp stop   [--graph <id or name> [--sync-server <url>] | --folder <path> | --all]
  *   etherpk-mcp logout [--sync-server <url> | --all]
  *   etherpk-mcp semantic setup | status | remove
- *   etherpk-mcp publish (--graph <id or name> | --folder <path>) --publication <id> [--out <dir>]
+ *   etherpk-mcp publish (--graph <id or name> | --folder <path>) --publication <id> [--out <dir> | --dry-run]
  *   etherpk-mcp diagrams setup | status
  *
  * One config file holds a login per Sync Server (ADR 0075). `--sync-server` names the one a
@@ -81,7 +81,7 @@ import {
 import { createMcpServer } from './mcp-server'
 import { chromiumStatus, setupDiagrams } from './diagrams'
 import { defaultPublishFoldersPath, publishFolderOf, publishGraphKey, readPublishFolders, withPublishFolder, writePublishFolders } from './publish-folders'
-import { cliPublishOutput, findPublication, publish as publishTool } from './publish-tools'
+import { checkPublishFolder, cliPublishOutput, findPublication, publish as publishTool } from './publish-tools'
 import { ToolError } from './tools'
 import { createNodeDirectoryAdapter, isGraphFolder } from './node-directory-adapter'
 import { describeGraphStore, folderCacheDir, folderKey, graphCacheDir, listGraphStores, removeCacheRoot, removeServerCache, removeUnlistedGraphCaches, stampGraphCacheOwner } from './persistence'
@@ -128,8 +128,9 @@ const USAGE = `etherpk-mcp - EtherPK Headless Client (an MCP server over one syn
       Serve a local graph folder the same way: no sign-in, no server. The agent gets search,
       backlinks, tasks and format-safe edits over the folder's markdown, alongside the files
       themselves. Edits made in an editor or by the agent directly are picked up as they land.
-      The folder must already be a graph (open it in EtherPK once) - its index is kept under
-      the cache directory, never in the folder.
+      The folder must already be a graph, with pages/ and journals/ folders in it (EtherPK
+      makes them when it opens a folder) - its index is kept under the cache directory, never
+      in the folder.
   ${CMD} running
       List the graphs served on this computer: each one's background process, its agents and
       its log. A background process stops on its own once no agent has used it for five
@@ -148,14 +149,18 @@ const USAGE = `etherpk-mcp - EtherPK Headless Client (an MCP server over one syn
       to a service to be embedded.
   ${CMD} semantic status | remove
       Whether it is set up here, or delete it (logout --all deletes it too).
-  ${CMD} publish (--graph <id or name> | --folder <path>) --publication <id> [--out <dir>]
+  ${CMD} publish (--graph <id or name> | --folder <path>) --publication <id> [--out <dir> | --dry-run]
       Publish one publication of a graph to a folder on this machine and print the report.
       --out sets the publish folder for that graph and publication and is remembered: from
       then on this command without --out, and the agent's publish tool, write to the same
-      folder (the agent cannot choose one). The folder's owned files (.html at the top,
-      assets/, theme/, the search, feed and report files) are rewritten and their strays
-      removed - everything else in it is left alone. Publishing writes files - deploying them
-      (a git push, say) is yours. Run it from cron for a site that republishes itself.
+      folder (the agent cannot choose one). It must be a folder of its own, outside the
+      graph's folder: the folder's owned files (.html at the top, assets/, theme/, the search
+      and feed files) are rewritten and their strays removed - everything else in it is left
+      alone. Publishing writes files - deploying them (a git push, say) is yours. Run it from
+      cron for a site that republishes itself.
+      --dry-run renders and checks the publication and prints the whole report, with the
+      names of the pages it mentions, but writes nothing and needs no folder. Keep its output
+      out of public logs.
   ${CMD} diagrams setup
       Let a publish draw Mermaid diagrams and maps. Downloads a Chromium (about 170 MB) into the
       cache directory with Playwright's installer, once per computer - a publish whose pages hold
@@ -590,19 +595,21 @@ async function diagramsCommand(what: string | undefined): Promise<void> {
  * open, so a publish while agents work reads what they wrote and writes no copy of its own.
  * `--out` is how a person sets the Publish Folder; the tool never takes one.
  */
-async function publishCommand(args: ServeArgs & { publication?: string; out?: string }): Promise<void> {
+async function publishCommand(args: ServeArgs & { publication?: string; out?: string; 'dry-run'?: boolean }): Promise<void> {
     const request = graphRequest('publish', args)
     const publication = args.publication?.trim()
     if (!publication) fail('publish needs --publication <id>. The agent\'s list_publications tool, or Settings → Publish in EtherPK, shows the ids.')
-    const found = await findGraph(request).catch((error: unknown) => fail(`etherpk-mcp: ${describeError(error)}`))
+    const dryRun = args['dry-run'] === true
     const out = args.out?.trim()
-    const { reply, socket } = await requestHost(launcherFor(found), {
-        etherpk: 'publish',
-        protocol: HOST_PROTOCOL,
-        publication,
-        ...(out ? { out: resolve(out) } : {}),
-        env: publishSettings(process.env),
-    }).catch((error: unknown) => fail(`etherpk-mcp: ${describeError(error)}`))
+    if (dryRun && out) fail('publish --dry-run writes nothing, so it takes no --out. Leave --out off, or drop --dry-run to publish.')
+    const found = await findGraph(request).catch((error: unknown) => fail(`etherpk-mcp: ${describeError(error)}`))
+    const env = publishSettings(process.env)
+    const { reply, socket } = await requestHost(
+        launcherFor(found),
+        dryRun
+            ? { etherpk: 'publish-check', protocol: HOST_PROTOCOL, publication, env }
+            : { etherpk: 'publish', protocol: HOST_PROTOCOL, publication, ...(out ? { out: resolve(out) } : {}), env },
+    ).catch((error: unknown) => fail(`etherpk-mcp: ${describeError(error)}`))
     socket.destroy()
     switch (reply.etherpk) {
         case 'published':
@@ -613,6 +620,10 @@ async function publishCommand(args: ServeArgs & { publication?: string; out?: st
         case 'refused':
             return fail(reply.message)
         case 'failed':
+            // A host from before dry runs existed answers this to a request kind it does not know.
+            if (dryRun && reply.message === 'The request was not understood.') {
+                return fail(`etherpk-mcp: this graph is served on this computer by an older etherpk-mcp, which cannot run a dry run. Run: ${CMD} stop, then try again.`)
+            }
             return fail(`etherpk-mcp: ${reply.message}`)
         case 'unsupported':
             return fail(`etherpk-mcp: this graph is served on this computer by etherpk-mcp ${reply.version}, which cannot run a publish for this version (${VERSION}). Run: ${CMD} stop, then publish again.`)
@@ -623,18 +634,27 @@ async function publishCommand(args: ServeArgs & { publication?: string; out?: st
 
 /**
  * A command-line publish, as the graph's host runs it: the publication first, so a mistyped id is
- * never remembered as a publish folder, then `--out` remembered, then the publish the agent's
- * tool runs. The answer is what the command prints, in its own words.
+ * never remembered as a publish folder, then `--out` checked against the graph's folder and
+ * remembered, then the publish the agent's tool runs. The answer is what the command prints, in
+ * its own words.
  */
 async function publishInHost(graph: HeadlessGraph, request: PublishRequest): Promise<HostReply> {
     const env = withPublishSettings(process.env, request.env ?? {})
     const host = { env, cmd: CMD, via: 'cli' as const }
     const notes: string[] = []
     try {
+        if (request.etherpk === 'publish-check') {
+            // The full report, names included: a dry run is for finding what to fix, and it
+            // remembers nothing and writes nothing.
+            const result = await publishTool(graph, { id: request.publication, dryRun: true }, host)
+            return { etherpk: 'published', output: result, notes: [], exitCode: result.ok ? 0 : 1 }
+        }
         await findPublication(graph, request.publication, host)
         const configPath = defaultPublishFoldersPath(env)
         const key = publishGraphKey(graph.backend, graph.graphId)
         if (request.out) {
+            // Before it is remembered: a folder that would cost the graph files is never written down.
+            await checkPublishFolder(graph, request.publication, request.out, host)
             await writePublishFolders(configPath, withPublishFolder(await readPublishFolders(configPath), key, request.publication, request.out))
             notes.push(`etherpk-mcp: publish folder for "${request.publication}" of "${graph.name}" set to ${request.out} (remembered in ${configPath}).`)
         } else if (!publishFolderOf(await readPublishFolders(configPath), key, request.publication)) {
@@ -1170,6 +1190,7 @@ async function main(): Promise<void> {
             'no-semantic': { type: 'boolean' },
             publication: { type: 'string' },
             out: { type: 'string' },
+            'dry-run': { type: 'boolean' },
             all: { type: 'boolean' },
             name: { type: 'string' },
             help: { type: 'boolean', short: 'h' },

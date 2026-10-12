@@ -345,6 +345,21 @@ describe('a graph host', () => {
         expect(reply).toEqual({ etherpk: 'published', output: { ok: true, folder: '/srv/site' }, notes: ['set the folder'], exitCode: 0 })
         expect(publish).toHaveBeenCalledWith(expect.objectContaining({ graphId: expect.any(String) }), expect.objectContaining({ publication: 'docs', out: '/srv/site' }))
     })
+
+    // `publish --dry-run` is a request of its own rather than a flag on `publish`: a host from
+    // before it existed answers that it does not understand, instead of publishing for real.
+    it('runs a dry run as its own kind of request, through the same publish', async () => {
+        const env = await environment()
+        const publish = vi.fn(async () => ({ etherpk: 'published' as const, output: { ok: true, dryRun: true }, notes: [], exitCode: 0 }))
+        const started = await host(join(await scratch(), 'graph'), env, { publish })
+        const { endpoint } = started.announced[0] as { endpoint: string }
+
+        const { reply, socket } = await hostRequest(endpoint, { etherpk: 'publish-check', protocol: HOST_PROTOCOL, publication: 'docs', env: {} })
+        socket.destroy()
+
+        expect(reply).toEqual({ etherpk: 'published', output: { ok: true, dryRun: true }, notes: [], exitCode: 0 })
+        expect(publish).toHaveBeenCalledWith(expect.objectContaining({ graphId: expect.any(String) }), expect.objectContaining({ etherpk: 'publish-check', publication: 'docs' }))
+    })
 })
 
 describe('a session\'s view of the shared graph', () => {

@@ -49,6 +49,7 @@ source one.
 | `packages/themes` | The site themes the publisher bundles |
 | `packages/extension-api` | The Extension API every EtherPK extension is written against, MIT licensed, published to npm as [`@appsoftwareltd/etherpk-extension-api`](https://www.npmjs.com/package/@appsoftwareltd/etherpk-extension-api) |
 | `extensions` | The extensions that come with the Client: the Graph View, Kanban boards and maps |
+| `skills/etherpk` | The agent skill: how an AI agent makes, edits and publishes EtherPK graph folders ([SKILL.md](skills/etherpk/SKILL.md)) |
 
 ## Run it
 
@@ -90,6 +91,22 @@ npx @appsoftwareltd/etherpk-mcp --help
 ```
 
 Setup for each kind of graph is in [`apps/mcp/README.md`](apps/mcp/README.md).
+
+### Agent skill
+
+The `etherpk` skill teaches an AI agent (Claude Code, Codex, Cursor and the others the
+[skills CLI](https://github.com/vercel-labs/skills) supports) to make a blog, docs site or wiki
+folder in EtherPK's format inside any project, to write and edit its pages, to check it with a dry
+run of the publish, and to publish it. For a synced graph it sends the agent to the Headless
+Client's tools. Install it in the project the agent works in:
+
+```bash
+npx skills add appsoftwareltd/etherpk-client
+```
+
+Add `-g` to install it for every project. The skill is installed from this repository's `main`
+branch, and `npx skills add appsoftwareltd/etherpk-client#v<version>` pins it to a release.
+`npx skills update` brings it up to date.
 
 ## Build from source
 

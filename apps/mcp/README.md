@@ -38,8 +38,10 @@ No sign-in and no Sync Server:
 claude mcp add etherpk -- npx @appsoftwareltd/etherpk-mcp serve --folder /path/to/your/notes
 ```
 
-The folder must already be an EtherPK graph, so open it in EtherPK once. **Settings → Agents**
-shows this command with the path filled in once the folder's path is set on the General tab.
+The folder must already be an EtherPK graph, with `pages/` and `journals/` folders in it. EtherPK
+makes them when it opens a folder, and the [agent skill](#the-agent-skill) makes them for a new
+one. **Settings → Agents** shows this command with the path filled in once the folder's path is set
+on the General tab.
 
 ### Ask about your notes
 
@@ -169,9 +171,13 @@ npx @appsoftwareltd/etherpk-mcp publish --graph <id or name> --publication <id> 
 
 - `--out` is remembered for that graph and publication. Later runs without it, and the agent's
   `publish` tool, write to the same folder.
-- The top-level `.html` files, `assets/`, `theme/` and the search, feed and report files are
-  rewritten, and files that no longer belong are removed. Everything else in the folder is left
-  alone.
+- The top-level `.html` files, `assets/`, `theme/` and the search and feed files are rewritten,
+  and files that no longer belong are removed. Everything else in the folder is left alone.
+- The folder must be one of its own, outside the graph's folder. A publish refuses the graph's
+  folder, a folder inside it and a folder that holds it, because it would remove the graph's files.
+- `--dry-run` in place of `--out` renders and checks the publication and prints the whole report,
+  with the names of the pages it mentions, without writing anything. It needs no folder. Keep its
+  output out of public logs. The agent's `publish` tool takes `dryRun: true` for the same check.
 - Deploying the folder is up to you. Run the command from cron for a site that republishes itself.
 - Mermaid diagrams and maps need a browser. A map is published as a picture of the map, drawn over
   EtherPK's map host unless `ETHERPK_MAP_STYLE_URL` names another style. `diagrams setup` installs a
@@ -179,6 +185,17 @@ npx @appsoftwareltd/etherpk-mcp publish --graph <id or name> --publication <id> 
   hold diagrams or maps refuses until then. `ETHERPK_CHROMIUM` names a Chromium already on the
   computer instead, which NixOS needs.
 - `list_publications`, or **Settings → Publish** in EtherPK, shows the publication ids.
+
+## The agent skill
+
+The `etherpk` agent skill teaches an agent to make a blog, docs site or wiki folder in EtherPK's
+format inside any project, to check it with `publish --dry-run`, and to publish it with this
+command. For a synced graph it sends the agent to the tools above. Install it in the project the
+agent works in, or with `-g` for every project:
+
+```sh
+npx skills add appsoftwareltd/etherpk-client
+```
 
 ## Reference
 

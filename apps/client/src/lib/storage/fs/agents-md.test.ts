@@ -65,6 +65,20 @@ describe('the managed section', () => {
         expect(section).toMatch(/trailing whitespace|whitespace-only/i)
     })
 
+    // What add-frontmatter.ts lets a journal entry carry, and what publication.ts reads: an agent
+    // told a journal has no frontmatter would never publish one.
+    it('says which keys a journal entry may carry, and every publication key', () => {
+        expect(section).toMatch(/journal entry[\s\S]{0,400}`aliases`, `public`, `publications` and `slug`/)
+        for (const key of ['`id`', '`kind`', '`selection`', '`home`', '`url`', '`theme`', '`recent`', '`includes`']) {
+            expect(section).toContain(key)
+        }
+    })
+
+    // Git keeps no empty folder, and the Headless Client opens a folder only with both.
+    it('keeps an empty journals/ or pages/ in git with a .gitkeep', () => {
+        expect(section).toMatch(/\.gitkeep/)
+    })
+
     it('points at the published user docs, for what it does not say itself', () => {
         expect(section).toContain('https://docs.etherpk.com')
         expect(section).toContain('https://docs.etherpk.com/protected-documents')

@@ -45,6 +45,17 @@ export type HostRequest = (
           /** The command line's own settings for a publish, which may differ from the host's. */
           env: Record<string, string>
       }
+    | {
+          /**
+           * `publish --dry-run`: the same publish, writing nothing. A kind of its own rather than
+           * a flag on `publish`, so a host from before it answers that it does not understand
+           * instead of reading the request as a real publish into the remembered folder.
+           */
+          etherpk: 'publish-check'
+          protocol: number
+          publication: string
+          env: Record<string, string>
+      }
 ) & {
     /** Random hex the host answers with `proof`, so the client knows it reached the graph's host. */
     nonce?: string

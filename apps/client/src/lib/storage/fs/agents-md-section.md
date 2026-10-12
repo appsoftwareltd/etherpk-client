@@ -34,6 +34,8 @@ AGENTS.md                                     this file
 
 - Only `journals/` and `pages/` are read for documents, and only `.md` files in them. Nothing
   is nested below these four directories - a subfolder inside one is ignored.
+- Keep both `journals/` and `pages/`, even when one is empty. Git does not keep an empty folder,
+  so an empty one holds a `.gitkeep` file when the graph is in a git repository. Leave it there.
 - `etherpk/` is app-internal. `settings.json` holds graph settings (default image size, code
   language, favourites). `quick-notes.json` holds quick notes the user has not yet moved into a
   journal - EtherPK rewrites it whole, so do not edit it. `dictionary.txt` is the graph dictionary:
@@ -49,8 +51,9 @@ AGENTS.md                                     this file
 ### Documents and identity
 
 - A **journal entry** is `journals/YYYY-MM-DD.md`. The date is its whole identity: the file name
-  must be a real calendar day, there is at most one file per day, and it has no frontmatter
-  (a `title:` in one is kept but ignored). Journal entries cannot be renamed.
+  must be a real calendar day, there is at most one file per day, and it needs no frontmatter.
+  A `title:` in one is kept but ignored, while `aliases`, `public`, `publications` and `slug`
+  work as they do on a page. Journal entries cannot be renamed.
 - **A page is never named after a day.** Write a day's content to `journals/YYYY-MM-DD.md`,
   never to `pages/YYYY-MM-DD.md` or a page whose `title:` is a date: EtherPK refuses to create
   or rename a page to a day, and a page file that has one answers to the day in place of its
@@ -110,10 +113,11 @@ AGENTS.md                                     this file
   removes both keys before protecting a public document. A
   **publication** is defined by a page whose frontmatter carries a `publication:` mapping
   (`id`, and optionally `kind` of `docs` or `blog`, `selection` of `named` or `all-public`,
-  `home`, `url`, `theme`, `includes`) and whose outline of wikilinks is the site's
-  navigation - that page is itself never published. A page named under `includes` (a footer, a
-  head snippet) needs the same two keys as any published document and is then a snippet: it
-  fills its slot and is never published as a page of its own. A `slug: privacy-policy` key
+  `home`, `url`, `theme`, `recent` for how many posts a blog's front page lists, `includes`)
+  and whose outline of wikilinks is the site's navigation - that page is itself never published.
+  A page named under `includes` (a footer, a head snippet) needs the same two keys as any
+  published document and is then a snippet: it fills its slot and is never published as a page
+  of its own. A `slug: privacy-policy` key
   chooses the document's address on the site instead of one derived from its name, and a page's
   `date: 2026-09-28` dates it on a blog. `public` is the boolean `true`, never the quoted text
   `"true"`. To publish a document,

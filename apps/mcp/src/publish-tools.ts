@@ -29,7 +29,7 @@ import { chromiumStatus, openDiagramRenderer } from './diagrams'
 import { needsMaps, openMapRenderer } from './map-pictures'
 import type { HeadlessGraph } from './headless-graph'
 import { createNodePublishEnvironment, needsMermaid, nodeSiteFolder } from './publish-environment'
-import { defaultPublishFoldersPath, publishFolderOf, publishGraphKey, readPublishFolders } from './publish-folders'
+import { defaultPublishFoldersPath, publishFolderOf, publishFolderOverlap, publishGraphKey, readPublishFolders } from './publish-folders'
 import { ToolError } from './tools'
 
 /** What the tools need from the process: the environment and how this CLI is spelled for the user. */
@@ -68,6 +68,28 @@ export async function findPublication(graph: HeadlessGraph, id: string, host?: P
     const found = publications.find((p) => p.id === id.trim())
     if (!found) throw publicationNotFound(id, publications, via)
     return found
+}
+
+const OVERLAP_WORDS = { same: 'is the folder of', inside: 'is inside the folder of', contains: 'holds the folder of' } as const
+
+/**
+ * Refuse a Publish Folder that overlaps a served folder: the graph's own folder, one inside it, or
+ * one holding it. A publish deletes the files it did not write from the folder it writes into
+ * (`isOwnedPath`), which would take the graph's attachments, or mix the site's files into the
+ * graph. Checked where a folder is set (`--out`) and again before every publish, since the
+ * folder may have been set before this check existed. A synced graph has no folder here.
+ */
+export async function checkPublishFolder(graph: HeadlessGraph, publicationId: string, folder: string, host?: PublishHost): Promise<void> {
+    if (graph.backend.kind !== 'folder') return
+    const overlap = await publishFolderOverlap(graph.backend.path, folder)
+    if (!overlap) return
+    const { cmd, via } = hostOf(host)
+    const command = `${cmd} publish --folder "${graph.backend.path}" --publication ${publicationId} --out <a folder outside the graph>`
+    throw new ToolError(
+        'publish_folder_overlaps_graph',
+        `${folder} ${OVERLAP_WORDS[overlap]} the graph "${graph.name}" (${graph.backend.path}). A publish deletes the files it did not write from the folder it publishes into, so the site needs a folder of its own outside the graph. Nothing was published. ` +
+            (via === 'cli' ? `Run: ${command}` : `Ask the user to run: ${command}`),
+    )
 }
 
 /** The publication page's mapping and body, through the raw handles: what `publish-service` writes to. */
@@ -207,6 +229,12 @@ export async function updatePublication(graph: HeadlessGraph, args: UpdatePublic
 
 export interface PublishArgs {
     id: string
+    /**
+     * Render and report, write nothing: how an agent checks a publication before anyone
+     * publishes it. Needs no Publish Folder; a browser is still needed for Mermaid and maps,
+     * since drawing them is part of what is checked.
+     */
+    dryRun?: boolean
 }
 
 /** How many items fall under each key. */
@@ -224,7 +252,7 @@ function head<T>(items: readonly T[], n = 20): { total: number; first: T[] } {
 /**
  * Publish one publication into its Publish Folder and report. The folder is the one a person
  * set for this graph and publication on this machine (ADR 0086); a publish with Mermaid needs
- * the browser (ADR 0084).
+ * the browser (ADR 0084). A dry run does everything but write, so it needs no folder.
  *
  * The result IS the report, trimmed to counts and first entries: nothing of it is written into
  * the folder, because a static host serves whatever the folder holds and the report names every
@@ -241,13 +269,15 @@ export async function publish(graph: HeadlessGraph, args: PublishArgs, host?: Pu
     const publication = summary.publications.find((p) => p.id === args.id.trim())
     if (!publication) throw publicationNotFound(args.id, summary.publications, via)
     const folder = (await foldersFor(graph, env))(publication.id)
-    if (!folder) {
+    const dryRun = args.dryRun === true
+    if (!folder && !dryRun) {
         const where = graph.backend.kind === 'folder' ? `--folder "${graph.backend.path}"` : `--graph "${graph.name}"`
         throw new ToolError(
             'no_publish_folder',
             `No publish folder is set for "${publication.name}" on this machine. Ask the user to run: ${cmd} publish ${where} --publication ${publication.id} --out <dir> - that publishes once and remembers the folder for this tool.`,
         )
     }
+    if (folder && !dryRun) await checkPublishFolder(graph, publication.id, folder, host)
     const selected = selectDocuments(source.documents, publication, summary.publications)
     const includeTexts = Object.values(publication.includes)
         .map((concept) => source.documents.find((d) => d.concept.toLowerCase() === concept.toLowerCase())?.text ?? '')
@@ -278,11 +308,13 @@ export async function publish(graph: HeadlessGraph, args: PublishArgs, host?: Pu
     try {
         const environment = createNodePublishEnvironment({ graphTheme: (id) => graph.publishing.graphTheme(id), renderer, maps })
         const run = await runPublish(publication, { source, environment, unsettled })
-        const written = run.report.ok ? await writeSite(nodeSiteFolder(folder), run.bundle, { seeded: run.seeded, agentsMd: run.agentsMd }) : null
+        const written =
+            run.report.ok && folder && !dryRun ? await writeSite(nodeSiteFolder(folder), run.bundle, { seeded: run.seeded, agentsMd: run.agentsMd }) : null
         const excludedByReason: Record<string, number> = {}
         for (const e of run.report.excluded) excludedByReason[e.reason] = (excludedByReason[e.reason] ?? 0) + 1
         return {
             ok: run.report.ok,
+            ...(dryRun ? { dryRun: true as const } : {}),
             publication: run.report.publication,
             folder,
             written: written ? { written: written.written, unchanged: written.unchanged, deleted: head(written.deleted) } : null,

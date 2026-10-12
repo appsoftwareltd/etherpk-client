@@ -138,6 +138,15 @@ export function semanticSetupCommand(headlessClient: string): string {
     return `npx ${headlessClient} semantic setup`
 }
 
+/**
+ * Installs the `etherpk` Agent Skill into the agent, from the Client's Public Repository, where the
+ * skills CLI finds it at `skills/etherpk`. The same for every graph and both backends: it teaches
+ * the format and the workflow, and leaves reaching a graph to the commands above.
+ */
+export function skillInstallCommand(): string {
+    return 'npx skills add appsoftwareltd/etherpk-client'
+}
+
 /** Installs the browser a publish draws Mermaid with (ADR 0084). */
 export function diagramsSetupCommand(headlessClient: string): string {
     return `npx ${headlessClient} diagrams setup`

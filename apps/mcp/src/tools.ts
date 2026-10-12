@@ -111,6 +111,8 @@ export type ToolErrorCode =
     | 'publication_not_found'
     /** No Publish Folder is set for the publication on this machine (ADR 0086). */
     | 'no_publish_folder'
+    /** The Publish Folder is the graph's own folder, inside it, or holds it, so a publish would delete the graph's files. */
+    | 'publish_folder_overlaps_graph'
     /** The publish needs a browser for Mermaid and none is set up (ADR 0084). */
     | 'chromium_unavailable'
     /** No theme answers to that reference: not in the graph, not bundled, not a url. */

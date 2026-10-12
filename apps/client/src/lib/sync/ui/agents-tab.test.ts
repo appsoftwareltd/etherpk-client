@@ -10,6 +10,7 @@ import {
     registerCommand,
     registerFolderCommand,
     semanticSetupCommand,
+    skillInstallCommand,
     tokensPageUrl,
 } from './agents-tab'
 
@@ -86,5 +87,11 @@ describe('the optional setups and the publish command', () => {
         )
         // Without a known path there is nothing to spell.
         expect(publishCommand({ kind: 'local', folderName: 'Notes', folderPath: null, headlessClient: LATEST })).toBeNull()
+    })
+
+    // The Agent Skill is installed from the Client's Public Repository by the skills CLI, which
+    // finds it at skills/etherpk there.
+    it('spell the Agent Skill install from the Public Repository', () => {
+        expect(skillInstallCommand()).toBe('npx skills add appsoftwareltd/etherpk-client')
     })
 })

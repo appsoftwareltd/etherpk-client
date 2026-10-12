@@ -5,6 +5,36 @@ What changed in each release of the EtherPK Client and the Headless Client
 They are released together, under the version number they share with the Sync Server. This log
 starts at 0.9.3.
 
+## 0.10.1 - 2026-10-12
+
+### Client
+
+- **A site needs a folder of its own.** **Choose folder…** on the Publish tab refuses a local
+  graph's folder, a Local Mirror's folder, a folder inside one and a folder that holds one, and
+  says why: a publish removes the files it did not write from its folder. A folder chosen earlier
+  is checked again before each publish.
+- **Settings → Agents shows the agent skill**, with its install command and a copy button, for
+  local and synced graphs alike.
+- **The `AGENTS.md` in a local graph's folder** now says that a journal entry can carry
+  `aliases`, `public`, `publications` and `slug`, names a blog's `recent` setting, and asks agents
+  to keep an empty `journals/` or `pages/` folder with a `.gitkeep` file in it.
+
+### Headless Client
+
+- **`publish --dry-run`** renders and checks a publication and prints the whole report, without
+  writing anything and without a publish folder. The `publish` tool takes `dryRun: true` for the
+  same check.
+- **`publish --out` refuses a folder that overlaps the graph's**: the served folder itself, a
+  folder inside it, or one that holds it. Nothing is remembered, and a folder set earlier is
+  checked again before each publish.
+
+### Agent skill
+
+- **New: the `etherpk` agent skill.** `npx skills add appsoftwareltd/etherpk-client` teaches
+  Claude Code, Codex, Cursor and other agents to make a blog, docs site or wiki folder in EtherPK's
+  format inside any project, to check it with a dry run and publish it, and to use the Headless
+  Client's tools for a synced graph.
+
 ## 0.10.0 - 2026-10-12
 
 ### Client

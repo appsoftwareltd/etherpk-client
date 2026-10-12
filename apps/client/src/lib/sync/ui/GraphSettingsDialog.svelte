@@ -71,6 +71,7 @@
         registerCommand,
         registerFolderCommand,
         semanticSetupCommand,
+        skillInstallCommand,
         tokensPageUrl,
     } from "./agents-tab";
     import { MIRROR_PHASE_LABELS } from "$lib/storage/server/local-mirror";
@@ -186,10 +187,13 @@
 
     /** Which agent the register command is spelled for; the serve command is the same for all. */
     let agentTool = $state<AgentTool>("claude");
-    /** Which of the two commands was last copied, for the button's "Copied" tick. */
-    type AgentCopyKey = "login" | "register" | "semantic" | "diagrams" | "publish";
+    /** Which command was last copied, for the button's "Copied" tick. */
+    type AgentCopyKey = "login" | "register" | "semantic" | "diagrams" | "publish" | "skill";
+    /** One command with its copy button: the Agent Skill row and the optional extras. */
+    type AgentCommandRow = { key: AgentCopyKey; label: string; text: string; note: string };
     let agentCopied = $state<AgentCopyKey | null>(null);
-    let agentCopyError = $state<string | null>(null);
+    /** The copy that failed, shown beside its own command rather than at a fixed place. */
+    let agentCopyError = $state<{ key: AgentCopyKey; message: string } | null>(null);
     /**
      * The setup code step 1's login command carries (ADR 0132). It lives here and nowhere else:
      * never stored, gone when the dialog closes, and replaced by "expired" when its time is up so
@@ -252,7 +256,7 @@
         } catch {
             // No clipboard (an insecure context, a denied permission): the text is on screen
             // and selectable, so say that rather than failing silently.
-            agentCopyError = "Couldn't copy - select the command and copy it by hand.";
+            agentCopyError = { key: which, message: "Couldn't copy - select the command and copy it by hand." };
         }
     }
 
@@ -1013,6 +1017,7 @@
                         lines is kept - that part is rewritten each time the
                         graph opens so it always matches this version.
                     </p>
+                    {@render agentSkill()}
                     {#if agents.folderPath}
                         <p class="text-sm text-gray-600 dark:text-gray-400">
                             Path on this device:
@@ -1062,8 +1067,8 @@
                                     >{agentCopied === "register" ? "Copied" : "Copy"}</button
                                 >
                             </div>
-                            {#if agentCopyError}
-                                <p role="status" class="text-sm text-red-700 dark:text-red-400">{agentCopyError}</p>
+                            {#if agentCopyError?.key === "register"}
+                                <p role="status" class="text-sm text-red-700 dark:text-red-400">{agentCopyError.message}</p>
                             {/if}
                         </div>
                     {:else if agents.folderName}
@@ -1245,9 +1250,10 @@
                             </div>
                         </li>
                     </ol>
-                    {#if agentCopyError}
-                        <p role="status" class="text-sm text-red-700 dark:text-red-400">{agentCopyError}</p>
+                    {#if agentCopyError?.key === "login" || agentCopyError?.key === "register"}
+                        <p role="status" class="text-sm text-red-700 dark:text-red-400">{agentCopyError.message}</p>
                     {/if}
+                    {@render agentSkill()}
                     {@render agentExtras(agents)}
                     <p class="text-sm text-gray-600 dark:text-gray-400">
                         This graph's id is <code class="font-mono" data-testid="agents-graph-id">{agents.graphId}</code>.
@@ -1515,24 +1521,44 @@
         <p class="text-sm font-medium text-gray-950 dark:text-gray-100">Optional, on the agent's machine</p>
         <ul class="space-y-3">
             {#each extras as extra (extra.key)}
-                <li class="space-y-1">
-                    <span class="text-sm font-medium">{extra.label}</span>
-                    <div class="flex items-start gap-2">
-                        <pre
-                            class="min-w-0 flex-1 overflow-x-auto rounded-md border border-gray-900/10 dark:border-gray-100/15 bg-gray-50 dark:bg-white/5 p-3 font-mono text-sm"
-                            data-testid="agents-extra-{extra.key}">{extra.text}</pre>
-                        <button
-                            type="button"
-                            onclick={() => copyAgentCommand(extra.key, extra.text)}
-                            class="shrink-0 rounded-lg border border-gray-300 dark:border-gray-700 px-4 py-2 text-sm font-medium text-gray-950 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800"
-                            data-testid="agents-copy-{extra.key}">{agentCopied === extra.key ? "Copied" : "Copy"}</button
-                        >
-                    </div>
-                    <p class="text-sm text-gray-500 dark:text-gray-400">{extra.note}</p>
-                </li>
+                <li class="space-y-1">{@render agentCommand(extra)}</li>
             {/each}
         </ul>
     </div>
+{/snippet}
+
+<!-- The Agent Skill, on both tabs and whatever the folder path: it teaches any agent the format
+     and how to make, check and publish a graph folder, and needs nothing from this graph. -->
+{#snippet agentSkill()}
+    <div class="space-y-1 border-t border-gray-900/10 dark:border-gray-100/15 pt-4" data-testid="agents-skill">
+        {@render agentCommand({
+            key: "skill",
+            label: "Add the EtherPK skill to your agent",
+            text: skillInstallCommand(),
+            note: "Run it in the project your agent works in, or add -g for every project. It teaches Claude Code, Codex, Cursor and other agents to make a blog, docs or wiki folder in this format, check it and publish it, and to use the Headless Client for a synced graph.",
+        })}
+    </div>
+{/snippet}
+
+<!-- One command to copy: its label, the command, a copy button, a note, and a failed copy's
+     message beside the button that failed. -->
+{#snippet agentCommand(row: AgentCommandRow)}
+    <span class="text-sm font-medium">{row.label}</span>
+    <div class="flex items-start gap-2">
+        <pre
+            class="min-w-0 flex-1 overflow-x-auto rounded-md border border-gray-900/10 dark:border-gray-100/15 bg-gray-50 dark:bg-white/5 p-3 font-mono text-sm"
+            data-testid="agents-extra-{row.key}">{row.text}</pre>
+        <button
+            type="button"
+            onclick={() => copyAgentCommand(row.key, row.text)}
+            class="shrink-0 rounded-lg border border-gray-300 dark:border-gray-700 px-4 py-2 text-sm font-medium text-gray-950 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800"
+            data-testid="agents-copy-{row.key}">{agentCopied === row.key ? "Copied" : "Copy"}</button
+        >
+    </div>
+    <p class="text-sm text-gray-500 dark:text-gray-400">{row.note}</p>
+    {#if agentCopyError?.key === row.key}
+        <p role="status" class="text-sm text-red-700 dark:text-red-400">{agentCopyError.message}</p>
+    {/if}
 {/snippet}
 
 {#snippet installTools()}

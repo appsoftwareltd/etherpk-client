@@ -801,7 +801,7 @@
                             <button type="button" class={folderSupported ? secondaryButton : primaryButton} onclick={() => void publish(p, "zip")} disabled={!!working} data-testid="publication-{p.id}-zip">{working === "Building the zip" ? "Building…" : "Download zip"}</button>
                         </div>
                         {#if folderSupported && !folder}
-                            <p class="text-sm text-gray-500 dark:text-gray-400">Choose a folder to publish into - the same folder is reused on this device each time.</p>
+                            <p class="text-sm text-gray-500 dark:text-gray-400">Choose a folder of its own to publish into, outside any graph. The same folder is reused on this device each time.</p>
                         {/if}
                         {#if changes}
                             <p class="text-sm text-gray-500 dark:text-gray-400">A publish uses the saved settings, not the unsaved edits above.</p>

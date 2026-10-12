@@ -215,6 +215,29 @@ describe.each(backends)('%s backend', (_name, openGraph) => {
         expect(second.written!.unchanged).toBeGreaterThan(0)
     })
 
+    // An agent checks its work with a dry run before anyone publishes, so it needs no Publish
+    // Folder, writes nothing, and names what to fix.
+    it('checks a publication with a dry run: the same report, no folder needed, nothing written', async () => {
+        const g = await graph('g-pub-dry')
+        const { host, env, dir } = await hostFor()
+        await createPublication(g, { title: 'Docs', home: 'Welcome' }, host)
+        await g.store.createPage('Welcome', '- hello, see [[Missing Page]]')
+        await g.settle()
+        await setFrontmatter(g, { concept: 'Welcome', patch: { public: true, publications: ['docs'] } })
+
+        const dry = await publish(g, { id: 'docs', dryRun: true }, host)
+        expect(dry).toMatchObject({ ok: true, dryRun: true, folder: null, written: null })
+        expect(dry.included.first).toEqual(['Welcome'])
+        expect(dry.missingLinks.first.map((l) => l.concept)).toEqual(['Missing Page'])
+
+        // With a folder set, a dry run still writes nothing into it.
+        const site = join(dir, 'site')
+        await writePublishFolders(env.ETHERPK_MCP_PUBLISH_CONFIG!, withPublishFolder({ folders: {} }, publishGraphKey(g.backend, g.graphId), 'docs', site))
+        expect(await publish(g, { id: 'docs', dryRun: true }, host)).toMatchObject({ dryRun: true, folder: site, written: null })
+        expect(existsSync(site)).toBe(false)
+        await rejectsWith(publish(g, { id: 'nope', dryRun: true }, host), 'publication_not_found')
+    })
+
     it('refuses to publish Mermaid without a browser, and draws it with one', async () => {
         const g = await graph('g-pub-mermaid')
         const none = await hostFor()
@@ -252,4 +275,55 @@ describe.each(backends)('%s backend', (_name, openGraph) => {
         const scopes = new Set([...style.matchAll(/#([A-Za-z][\w-]*)(?=[\s{.,>])/g)].map((m) => m[1]))
         expect([...scopes]).toEqual([id])
     }, 60_000)
+})
+
+/**
+ * A publish deletes, from the folder it writes into, the files under assets/ and theme/ and the
+ * top-level pages it did not produce. A Publish Folder that is the graph's own folder, sits inside
+ * it or holds it would lose the graph's files to that rule, so the publish refuses before it
+ * renders anything. A synced graph has no folder on this machine to overlap.
+ */
+describe('a publish folder that overlaps a local graph folder', () => {
+    afterEach(async () => {
+        await Promise.all(open.splice(0).map((g) => g.dispose()))
+    })
+
+    it('is refused before anything is written, whichever way the two overlap', async () => {
+        const dir = await mkdtemp(join(tmpdir(), 'etherpk-mcp-overlap-'))
+        const graphPath = join(dir, 'notes')
+        const g = await openHeadlessFolder({
+            adapter: createMemoryDirectoryAdapter({ now: () => (clock += 1000) }),
+            name: 'notes',
+            path: graphPath,
+            graphId: `g-overlap-${Math.floor(performance.now() * 1000)}`,
+        })
+        open.push(g)
+        const env: NodeJS.ProcessEnv = { ...process.env, ETHERPK_MCP_PUBLISH_CONFIG: join(dir, 'publish.json'), ETHERPK_CHROMIUM: '/nonexistent/chromium' }
+        const host = { env, cmd: 'etherpk-mcp' }
+        await createPublication(g, { title: 'Docs', home: 'Welcome' }, host)
+        await g.store.createPage('Welcome', '- hello')
+        await g.settle()
+        await setFrontmatter(g, { concept: 'Welcome', patch: { public: true, publications: ['docs'] } })
+
+        const key = publishGraphKey(g.backend, g.graphId)
+        for (const [folder, relation] of [
+            [graphPath, 'is the folder of'],
+            [join(graphPath, 'site'), 'is inside the folder of'],
+            [dir, 'holds the folder of'],
+        ] as const) {
+            await writePublishFolders(env.ETHERPK_MCP_PUBLISH_CONFIG!, withPublishFolder({ folders: {} }, key, 'docs', folder))
+            let refused: unknown = null
+            await publish(g, { id: 'docs' }, host).catch((error: unknown) => (refused = error))
+            expect(refused, folder).toBeInstanceOf(ToolError)
+            expect((refused as ToolError).code).toBe('publish_folder_overlaps_graph')
+            expect((refused as ToolError).message).toContain(`${folder} ${relation} the graph`)
+            expect((refused as ToolError).message).toContain('--out')
+            expect(existsSync(join(folder, 'index.html')), folder).toBe(false)
+        }
+
+        // A folder beside the graph is fine.
+        await writePublishFolders(env.ETHERPK_MCP_PUBLISH_CONFIG!, withPublishFolder({ folders: {} }, key, 'docs', join(dir, 'site')))
+        expect((await publish(g, { id: 'docs' }, host)).ok).toBe(true)
+        expect(existsSync(join(dir, 'site', 'index.html'))).toBe(true)
+    })
 })

@@ -8,8 +8,8 @@
  * graph folder, which is the user's content (ADR 0079).
  */
 
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
-import { dirname, isAbsolute, join, resolve } from 'node:path'
+import { mkdir, readFile, realpath, writeFile } from 'node:fs/promises'
+import nodePath, { basename, dirname, isAbsolute, join, resolve } from 'node:path'
 
 import { defaultConfigPath } from './config'
 import type { HeadlessBackend } from './headless-graph'
@@ -71,6 +71,65 @@ export async function writePublishFolders(path: string, folders: PublishFolders)
 /** The folder set for a publication on this machine, or null. */
 export function publishFolderOf(folders: PublishFolders, graphKey: string, publicationId: string): string | null {
     return folders.folders[graphKey]?.[publicationId] ?? null
+}
+
+/**
+ * How a Publish Folder sits against a graph folder: the `same` folder, `inside` it, or it
+ * `contains` the graph folder. A publish deletes, from the folder it writes into, the files under
+ * `assets/` and `theme/` and the top-level pages it did not produce (`isOwnedPath`), so any of the
+ * three would cost the graph files; the Local Mirror refuses the same three for the same reason.
+ */
+export type FolderOverlap = 'same' | 'inside' | 'contains'
+
+export interface RelateFoldersOptions {
+    /** Compare without case, as the default filesystems of macOS and Windows do. */
+    caseInsensitive?: boolean
+    /** The platform's path rules; `node:path/win32` in a test of Windows paths. */
+    path?: Pick<typeof nodePath, 'relative' | 'isAbsolute' | 'resolve' | 'sep'>
+}
+
+/**
+ * How two absolute folder paths relate, by the platform's own `relative` rather than by splitting
+ * on `/` (Windows paths use `\`, and a shared prefix such as `notes` and `notes-site` is not a
+ * parent). Spelling only: {@link publishFolderOverlap} resolves symbolic links first.
+ */
+export function relateFolders(graphFolder: string, publishFolder: string, options: RelateFoldersOptions = {}): FolderOverlap | null {
+    const path = options.path ?? nodePath
+    const caseInsensitive = options.caseInsensitive ?? (process.platform === 'darwin' || process.platform === 'win32')
+    const fold = (p: string) => (caseInsensitive ? path.resolve(p).toLowerCase() : path.resolve(p))
+    const graph = fold(graphFolder)
+    const site = fold(publishFolder)
+    // `to` is below `from` when the way there never climbs: not `..` or `../…`, and not another
+    // drive's absolute path. A folder named `..notes` is still below.
+    const below = (from: string, to: string) => {
+        const rel = path.relative(from, to)
+        return rel !== '' && rel !== '..' && !rel.startsWith(`..${path.sep}`) && !path.isAbsolute(rel)
+    }
+    if (path.relative(graph, site) === '') return 'same'
+    if (below(graph, site)) return 'inside'
+    if (below(site, graph)) return 'contains'
+    return null
+}
+
+/**
+ * A path with its symbolic links resolved, for a folder that may not exist yet: the nearest
+ * existing ancestor is resolved and the rest appended, so `--out ./site` under a linked parent is
+ * compared where it will really be written.
+ */
+async function canonicalFolder(folder: string): Promise<string> {
+    const absolute = resolve(folder)
+    try {
+        return await realpath(absolute)
+    } catch {
+        const parent = dirname(absolute)
+        if (parent === absolute) return absolute
+        return join(await canonicalFolder(parent), basename(absolute))
+    }
+}
+
+/** {@link relateFolders} over the folders as they are on disk, symbolic links followed. */
+export async function publishFolderOverlap(graphFolder: string, publishFolder: string): Promise<FolderOverlap | null> {
+    return relateFolders(await canonicalFolder(graphFolder), await canonicalFolder(publishFolder))
 }
 
 /** The same file with one publication's folder set (made absolute) - the caller writes it. */
