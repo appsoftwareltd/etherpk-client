@@ -35,7 +35,7 @@
         getActiveDocumentStore,
         getActiveGraphSettings,
     } from "$lib/document";
-    import { msUntilNextLocalMidnight, todayISO } from "$lib/document/calendar/month-grid-core";
+    import { todayISO } from "$lib/document/calendar/month-grid-core";
     import JournalCalendar from "./JournalCalendar.svelte";
     import { FAVOURITE_MOVE } from "$lib/document/commands/document-commands";
     import { subscribeFavourites } from "$lib/document/favourites";
@@ -185,7 +185,9 @@
      * Today's [[Journal Concept]], resolved at the click and never cached: a tab left open
      * overnight must reach the new day, not the one it mounted on. Computed, never created:
      * reaching a day writes nothing until something is typed into it (ADR 0056), so this
-     * replaced an awaited `ensureTodayJournal` that minted an empty entry on every open.
+     * replaced an awaited `ensureTodayJournal` that minted an empty entry on every open. The
+     * button that calls this reads "Today" rather than the date, so nothing on it has to change at
+     * midnight.
      */
     function openToday() {
         open(todayISO());
@@ -193,30 +195,7 @@
 
     // ---- The action buttons -----------------------------------------------------------
     /**
-     * Bumped at each local midnight so today's button shows the new date, the timer the Journal
-     * Calendar uses. Also bumped when the window comes back into view, because a timer can fire
-     * late after a laptop sleeps. Pressing the button reads the clock again (`openToday`), so it
-     * always opens the day it is pressed on.
-     */
-    let dayTick = $state(0);
-    $effect(() => {
-        let timer: ReturnType<typeof setTimeout>;
-        const arm = () => {
-            timer = setTimeout(() => {
-                dayTick += 1;
-                arm();
-            }, msUntilNextLocalMidnight());
-        };
-        arm();
-        return () => clearTimeout(timer);
-    });
-    const today = $derived.by(() => {
-        void dayTick;
-        return todayISO();
-    });
-
-    /**
-     * The buttons extensions add after Search and today's date (the maps extension's Graph Map,
+     * The buttons extensions add after Search and Today (the maps extension's Graph Map,
      * the kanban extension's Graph Kanban), read again whenever one is added or taken back, as an
      * extension starts or is switched off.
      */
@@ -293,7 +272,7 @@
     let buttonsEl = $state<HTMLElement>();
     /** What the measure depends on besides sizes: which buttons there are and what they say. */
     const buttonLabels = $derived(
-        [canSearch ? "Search" : "", today, ...extensionButtons.map((button) => button.title)].join("\n"),
+        [canSearch ? "Search" : "", "Today", ...extensionButtons.map((button) => button.title)].join("\n"),
     );
 
     /**
@@ -576,19 +555,17 @@
     }
 </script>
 
-<!-- A timer can fire late after a laptop sleeps, so today's date is read again on coming back. -->
-<svelte:window onkeydown={onWindowKeydown} onfocus={() => (dayTick += 1)} />
-<svelte:document onvisibilitychange={() => (dayTick += 1)} />
+<svelte:window onkeydown={onWindowKeydown} />
 
 <div
     class="flex h-full flex-col gap-2 overflow-y-auto p-2 text-(--gk-text-default)"
     style:font-family="var(--gk-sans, 'Inter', system-ui, sans-serif)"
     data-testid="graph-sidebar"
 >
-    <!-- ── The action buttons: Search, today's date, the extensions' buttons (ADR 0139) ── -->
+    <!-- ── The action buttons: Search, Today, the extensions' buttons (ADR 0139) ── -->
     <!--
         One row, two columns or one, whichever keeps every label whole (`columns`). Search and
-        today's date come first, so they lead the row and head the grid and the stack. Every
+        Today come first, so they lead the row and head the grid and the stack. Every
         column is the same width, so a button left on its own keeps the width of one. Under the
         phone layout, icons alone sharing the row's width (`iconsOnly`).
     -->
@@ -631,17 +608,17 @@
                 {@render buttonContent("search", "Search")}
             </button>
         {/if}
-        <!-- The date says which day it opens; the name says what the date is for. -->
+        <!-- The label says Today; the accessible name says what it opens. -->
         <button
             type="button"
             data-testid="sidebar-today"
             onclick={openToday}
             class={iconsOnly ? sidebarIconButton : sidebarButton}
-            aria-label="Today's journal, {today}"
+            aria-label="Today's journal"
             {...helpFor("Open today's journal", OPEN_TODAY)}
         >
             <!-- The calendar at the weight the phone top bar's button draws it. -->
-            {@render buttonContent("todays-journal", today, 1)}
+            {@render buttonContent("todays-journal", "Today", 1)}
         </button>
         {#each extensionButtons as button (button.id)}
             <button

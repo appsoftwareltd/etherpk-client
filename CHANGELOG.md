@@ -5,6 +5,13 @@ What changed in each release of the EtherPK Client and the Headless Client
 They are released together, under the version number they share with the Sync Server. This log
 starts at 0.9.3.
 
+## Unreleased
+
+### Client
+
+- **The journal button in the graph sidebar reads Today.** It showed today's date. It still opens
+  today's journal, and a tab left open past midnight opens the new day.
+
 ## 0.10.1 - 2026-10-12
 
 ### Client
