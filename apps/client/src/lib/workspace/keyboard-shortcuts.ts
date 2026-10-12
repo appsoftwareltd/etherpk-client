@@ -53,11 +53,11 @@ export interface ShortcutGroup {
 export const APP_KEYBINDINGS: AppKeybinding[] = [
     // ── Go to ─────────────────────────────────────────────────────────────────────────────
     { key: 'Alt+J', command: 'document.openTodayJournal', label: "Today's journal entry", group: 'Go to' },
-    { key: 'Alt+F', command: 'search.open', label: 'Search the graph', group: 'Go to' },
     // Deliberately off the app's Alt-only convention. Mod+K is what everyone reaches for first
     // in a modern editor, and one extra binding on the same command is a cheap way to be right
-    // about that.
+    // about that. Listed before Alt+F, so the Search buttons' help text names it first.
     { key: 'Mod+K', command: 'search.open', label: 'Search the graph', group: 'Go to' },
+    { key: 'Alt+F', command: 'search.open', label: 'Search the graph', group: 'Go to' },
     // ── Sidebars ──────────────────────────────────────────────────────────────────────────
     // One letter per Sidebar (L, R) to toggle it, and one per resident (G, N, B, T) to get to it: a
     // reveal ends with the View in front of an expanded Sidebar, a toggle collapses as often as it

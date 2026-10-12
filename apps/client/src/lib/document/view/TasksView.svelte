@@ -29,7 +29,7 @@
 
     import { getActiveDocument } from "../active-document";
     import { conceptIsMissing, openConcept, openConceptAtLine } from "../open-concept";
-    import { quickFindKey } from "../quick-find";
+    import { nameMatchKey } from "../name-match";
     import { createSettleScheduler } from "../settle-scheduler";
     import {
         DUE_OPTIONS,
@@ -119,17 +119,17 @@
     let nameSelected = $state(0);
 
     /**
-     * Quick Find's MATCHING, not Quick Find: names and aliases, case-insensitive, a
+     * Search's name MATCHING, not Search: names and aliases, case-insensitive, a
      * [[Scoped Concept]]'s brackets read as spaces. It never navigates and never opens a
      * [[Draft]] — naming something here is a question about tasks, not a request to go there.
      * [[Pageless Concept]]s are offered too: a wikilink is enough to give a concept tasks.
      */
     const suggestions = $derived.by(() => {
-        const q = quickFindKey(nameQuery);
+        const q = nameMatchKey(nameQuery);
         if (q === "") return [];
         const all = getActiveGraphIndex()?.allConcepts() ?? [];
         return all
-            .map((candidate) => ({ candidate, score: matchScore(quickFindKey(candidate.display), q) }))
+            .map((candidate) => ({ candidate, score: matchScore(nameMatchKey(candidate.display), q) }))
             .filter((m): m is { candidate: (typeof all)[number]; score: number } => m.score !== null)
             .sort((a, b) => b.score - a.score || a.candidate.display.localeCompare(b.candidate.display))
             .slice(0, MAX_SUGGESTIONS);
@@ -559,7 +559,7 @@
             <!-- oninput as well as onfocus: selecting a name and pressing Escape both close
                  the list while focus STAYS in the input, so onfocus alone would never fire
                  again and the box would look dead until it was blurred and refocused. -->
-            <!-- The same 8px between the field and its button as Quick Find's. -->
+            <!-- 8px between the field and its button, the Sidebar's own padding. -->
             <div class="flex items-center gap-2">
                 <input
                     data-testid="tasks-name-filter"

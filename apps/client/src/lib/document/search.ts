@@ -17,7 +17,7 @@
 
 import { conceptKey } from './backlinks'
 import type { PropertyKeyInfo, PropertyMatch, PropertyValueInfo, SearchDocumentGroup } from './index-db'
-import { rankQuickFind, type QuickFindRow } from './quick-find'
+import { rankNames, type NameMatchRow } from './name-match'
 import { isSearchableTextQuery, parseSearchQuery, type PropertyFilter, type PropertyFilterTerm } from './search-query'
 
 /**
@@ -30,7 +30,7 @@ export const NAME_PAGE_SIZE = 5
 /** Document groups per page of text results. */
 export const TEXT_PAGE_SIZE = 10
 
-/** Matches Quick Find's constant, so the two feel identical. */
+/** The same wait as the wikilink popover's, long enough not to rank on every keystroke. */
 export const NAME_DEBOUNCE_MS = 120
 
 /** Longer than names: every keystroke is a worker round trip and an FTS query. */
@@ -57,7 +57,7 @@ export type TextStatus =
     | { kind: 'failed'; message: string }
 
 /** A names row, with the values that matched when Property Filters narrowed the group. */
-export interface SearchNameRow extends QuickFindRow {
+export interface SearchNameRow extends NameMatchRow {
     properties?: { key: string; value: string }[]
 }
 
@@ -70,6 +70,11 @@ export interface SearchState {
      * until it lands.
      */
     nameRows: SearchNameRow[]
+    /**
+     * The query `nameRows` answer. It trails `query` by the debounce (and, with a Property Filter,
+     * the round trip), so a row can be known to answer what is in the box rather than what was.
+     */
+    nameQuery: string
     namePage: number
     nameTotal: number
     /**
@@ -128,7 +133,7 @@ export interface SearchController {
     subscribe(listener: (state: SearchState) => void): () => void
     getState(): SearchState
     /**
-     * Open, optionally seeded from Quick Find. Running the search immediately is the point.
+     * Open, optionally seeded with a query. Running the search immediately is the point.
      * With no query (or an empty one) the last query is restored rather than cleared.
      */
     open(query?: string): void
@@ -147,6 +152,7 @@ const EMPTY: SearchState = {
     open: false,
     query: '',
     nameRows: [],
+    nameQuery: '',
     namePage: 0,
     nameTotal: 0,
     namesPaged: true,
@@ -206,17 +212,19 @@ export function createSearchController(sources: SearchSources): SearchController
      */
     function runNames() {
         const building = sources.building()
+        const query = state.query
         const { words, filters, terms } = parsed()
         const namesPaged = !(filters.length > 0 && words.trim() === '')
         if (filters.length > 0 && sources.propertyMatch) {
             set({ filterTerms: terms, nameBuilding: building !== null, namesPaged })
-            runFilteredNames(words, filters)
+            runFilteredNames(query, words, filters)
             return
         }
         nameToken++
-        const all = words.trim() === '' ? [] : rankQuickFind(sources.concepts(), words)
+        const all = words.trim() === '' ? [] : rankNames(sources.concepts(), words)
         set({
             nameRows: all,
+            nameQuery: query,
             nameTotal: all.length,
             nameBuilding: building !== null,
             filterTerms: terms,
@@ -229,7 +237,7 @@ export function createSearchController(sources: SearchSources): SearchController
      * over just those documents' names and aliases, without the create row: a Draft carries no
      * Property. Without words, every matching document by name, each with the values it matched.
      */
-    function runFilteredNames(words: string, filters: readonly PropertyFilter[]) {
+    function runFilteredNames(query: string, words: string, filters: readonly PropertyFilter[]) {
         const token = ++nameToken
         void sources.propertyMatch!(filters)
             .then((documents) => {
@@ -252,18 +260,18 @@ export function createSearchController(sources: SearchSources): SearchController
                         if (candidate.kind === 'alias') return byKey.has(conceptKey(candidate.canonical ?? ''))
                         return false
                     })
-                    rows = rankQuickFind(candidates, words)
+                    rows = rankNames(candidates, words)
                         .filter((row) => row.kind !== 'draft')
                         .map((row) => {
                             const properties = byKey.get(conceptKey(row.target))?.properties ?? []
                             return properties.length > 0 ? { ...row, properties } : row
                         })
                 }
-                set({ nameRows: rows, nameTotal: rows.length })
+                set({ nameRows: rows, nameQuery: query, nameTotal: rows.length })
             })
             .catch(() => {
                 if (token !== nameToken) return
-                set({ nameRows: [], nameTotal: 0 })
+                set({ nameRows: [], nameQuery: query, nameTotal: 0 })
             })
     }
 
@@ -404,7 +412,7 @@ export function createSearchController(sources: SearchSources): SearchController
             valueCache = new Map()
             emit()
             loadKeys()
-            // Immediately, not debounced: a handoff from Quick Find that sat blank for a beat
+            // Immediately, not debounced: a restored query whose results sat blank for a beat
             // reads as broken.
             runNames()
             runText()

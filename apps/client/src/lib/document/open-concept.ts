@@ -34,7 +34,7 @@ export function conceptIsMissing(concept: string): boolean {
  * does not end up disagreeing with its own backlinks.
  *
  * An alias opens the document it names, not a document called by the alias (same rule
- * [[Quick Find]] and [[Search]] apply in `rankQuickFind`) — otherwise a wikilink or Backlinks
+ * [[Search]] applies in `rankNames`) — otherwise a wikilink or Backlinks
  * click written as the alias would open the right content under the wrong tab title, since
  * the `document` view kind has no title of its own beyond its target.
  */

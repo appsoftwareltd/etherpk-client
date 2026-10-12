@@ -401,7 +401,7 @@
             {#if concept !== null}
                 <p class="empty-title" data-testid="map-view-empty-title">No places or routes belong to {concept} yet.</p>
                 <p>Maps on its page, or nested under a link to it, appear here. Type <kbd>/map</kbd> in a document to add one.</p>
-                <button type="button" class="gk-map-link-button" onclick={openWhole}>Show the Graph Map View</button>
+                <button type="button" class="gk-map-link-button" onclick={openWhole}>Show the Graph Map</button>
             {:else}
                 <p class="empty-title" data-testid="map-view-empty-title">No document in this graph has a map yet.</p>
                 <p>Type <kbd>/map</kbd> in any document to add one.</p>
@@ -475,7 +475,7 @@
                         {#if reading}<span class="updating" aria-hidden="true">Updating…</span>{/if}
                     </p>
                     {#if concept !== null}
-                        <button type="button" class="gk-map-link-button whole" onclick={openWhole} data-testid="map-view-whole">Show the Graph Map View</button>
+                        <button type="button" class="gk-map-link-button whole" onclick={openWhole} data-testid="map-view-whole">Show the Graph Map</button>
                     {/if}
                     <label class="filter">
                         <span class="gk-map-search-icon">{@render icon('search')}</span>

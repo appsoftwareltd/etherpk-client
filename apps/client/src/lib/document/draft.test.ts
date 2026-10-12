@@ -257,7 +257,7 @@ describe('promoteDraft — which kind the concept decides (ADR 0056)', () => {
     })
 
     it('reaches journals/ through the real Filesystem store, which refuses a day as a page', async () => {
-        // The route a `[[2026-09-01]]` wikilink, a Quick Find row and a calendar day all take.
+        // The route a `[[2026-09-01]]` wikilink, a Search row and a calendar day all take.
         // The store's createPage refuses a day outright, so this pins that the Draft never asks
         // it to: the refusal would otherwise be swallowed as an adopt and the text lost.
         const adapter = createMemoryDirectoryAdapter({ now: () => 0 })

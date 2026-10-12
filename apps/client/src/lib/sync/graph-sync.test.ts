@@ -2068,10 +2068,12 @@ describe('graph-sync operation window', () => {
         relay.ack(relay.appends[0])
         await vi.waitFor(() => expect(relay.appends).toHaveLength(OPERATION_WINDOW + 1))
 
-        // Answer everything as it arrives: every document's operation goes out exactly once.
-        for (let answered = 1; answered < docs.length; answered++) {
+        // Answer everything as it arrives: every document's operation goes out exactly once. Each
+        // wait acks every append that has arrived since the last, rather than one at a time.
+        let answered = 1
+        while (answered < docs.length) {
             await vi.waitFor(() => expect(relay.appends.length).toBeGreaterThan(answered))
-            relay.ack(relay.appends[answered])
+            while (answered < relay.appends.length) relay.ack(relay.appends[answered++])
         }
         await expect(graph.awaitAcked({ stallMs: 2_000 })).resolves.toEqual({ settled: true, outstanding: 0 })
         expect(new Set(relay.appends.map((append) => append.docId)).size).toBe(docs.length)
@@ -2079,7 +2081,9 @@ describe('graph-sync operation window', () => {
 
         graph.dispose()
         cache.dispose()
-    })
+        // Its own timeout: a window's worth of documents and more, each encrypted and cached, takes
+        // about half a second alone and ten times that beside the rest of the suite.
+    }, 20_000)
 
     it('resends no more than the window when the connection opens again', async () => {
         const relay = relayHoldingAcks()
@@ -2096,7 +2100,8 @@ describe('graph-sync operation window', () => {
 
         graph.dispose()
         cache.dispose()
-    })
+        // The same workload as above, and the same timeout.
+    }, 20_000)
 })
 
 describe('graph-sync follows a new Graph Key epoch (ADR 0127)', () => {

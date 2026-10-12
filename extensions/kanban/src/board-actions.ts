@@ -25,8 +25,8 @@ export interface BoardActions {
 
 /** What a rename or a removal of documents asks of a board. */
 export interface BoardDocuments {
-    /** The concept the board is over. */
-    concept: string
+    /** The concept the board is over, or null for the Graph Kanban, which no rename re-keys. */
+    concept: string | null
     /** A document was renamed: a Task Detail showing it follows it to its new name. */
     documentRenamed(from: string, to: string): void
     /** A document was removed: a Task Detail showing it closes, unless it is being typed in. */
@@ -77,7 +77,7 @@ const handovers = new Map<string, BoardState>()
 export function conceptRenamed(from: string, to: string): void {
     for (const { documents } of boards.values()) documents?.documentRenamed(from, to)
     for (const { documents } of boards.values()) {
-        if (documents && conceptKey(documents.concept) === conceptKey(from)) handovers.set(conceptKey(to), documents.state())
+        if (documents?.concept != null && conceptKey(documents.concept) === conceptKey(from)) handovers.set(conceptKey(to), documents.state())
     }
 }
 

@@ -255,10 +255,12 @@ export interface ExtensionViews {
 export interface GraphSidebarButton {
     args?: unknown;
     command: string;
+    description?: string;
     icon?: string;
     id: string;
     order?: number;
     title: string;
+    when?: () => boolean;
 }
 
 // @beta

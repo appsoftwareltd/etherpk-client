@@ -50,13 +50,26 @@ describe('createSearchController', () => {
     }
 
     it('runs both groups immediately on open, without waiting for a debounce', async () => {
-        // A handoff from Quick Find that sat blank for a beat reads as broken.
+        // A restored query whose results sat blank for a beat reads as broken.
         controller = createSearchController(makeSources())
         controller.open('orphan')
 
         expect(controller.getState().nameRows.length).toBeGreaterThan(0)
         await vi.waitFor(() => expect(controller.getState().textStatus.kind).toBe('ready'))
         expect(controller.getState().textGroups).toHaveLength(1)
+    })
+
+    it('says which query its names answer, the old one until the debounced answer to a new one lands', async () => {
+        controller = createSearchController(makeSources())
+        controller.open('orphan')
+        expect(controller.getState().nameQuery).toBe('orphan')
+
+        controller.setQuery('sweep')
+        // The rows on screen still answer the old query.
+        expect(controller.getState().nameQuery).toBe('orphan')
+        await settle()
+        expect(controller.getState().nameQuery).toBe('sweep')
+        expect(controller.getState().nameRows.map((row) => row.label)).toContain('Orphan Sweep')
     })
 
     it('answers names before text, because names never cross a message boundary', async () => {
@@ -522,7 +535,7 @@ describe('Property Filters (ADR 0107)', () => {
     it('with filters and words, pages the names as a text search does', async () => {
         const controller = createSearchController(manySources())
         controller.open('public:true doc')
-        // Ranked names stop at Quick Find's limit (twelve), which is still more than a page.
+        // Ranked names stop at the name-match limit (twelve), which is still more than a page.
         await vi.waitFor(() => expect(controller.getState().nameTotal).toBeGreaterThan(NAME_PAGE_SIZE))
         const state = controller.getState()
         expect(namePageRows(state)).toHaveLength(NAME_PAGE_SIZE)

@@ -89,6 +89,12 @@ export function sameChord(a: string, b: string): boolean {
  */
 export function createKeybindingTable<B extends Keybinding>(initial: readonly B[]) {
     const bindings: B[] = [...initial]
+    // Whoever shows a chord (the Graph Sidebar's help text) hears when one is added or taken out,
+    // because an extension can bind a chord after that surface has drawn.
+    const listeners = new Set<() => void>()
+    const changed = () => {
+        for (const listener of listeners) listener()
+    }
     return {
         bindings,
         /** Add a binding. Throws if its chord is bound already. Returns the removal. */
@@ -96,12 +102,28 @@ export function createKeybindingTable<B extends Keybinding>(initial: readonly B[
             const taken = bindings.find((bound) => sameChord(bound.key, binding.key))
             if (taken) throw new Error(`${binding.key} is bound already, to ${taken.command}.`)
             bindings.push(binding)
+            changed()
             return () => {
                 const at = bindings.indexOf(binding)
-                if (at >= 0) bindings.splice(at, 1)
+                if (at < 0) return
+                bindings.splice(at, 1)
+                changed()
             }
         },
+        /** Be told whenever a binding is added or taken out. Returns the unsubscribe. */
+        subscribe(listener: () => void): () => void {
+            listeners.add(listener)
+            return () => listeners.delete(listener)
+        },
     }
+}
+
+/** The live table of the app's chords, as `createKeybindingTable` makes it. */
+export type KeybindingTable<B extends Keybinding = Keybinding> = ReturnType<typeof createKeybindingTable<B>>
+
+/** Every chord bound to `command`, in the order the table holds them. */
+export function chordsFor(bindings: readonly Keybinding[], command: string): string[] {
+    return bindings.filter((binding) => binding.command === command).map((binding) => binding.key)
 }
 
 /**
@@ -156,6 +178,43 @@ export function formatChord(spec: string, apple: boolean): string[] {
     if (chord.shift) caps.push(apple ? '⇧' : 'Shift')
     caps.push(KEY_CAPS[chord.key] ?? (chord.key.length === 1 ? chord.key.toUpperCase() : chord.key))
     return caps
+}
+
+/**
+ * A chord as help text writes it: `Ctrl + K` on Windows and Linux, and `⌘K` on an Apple keyboard,
+ * where a menu runs the symbols together.
+ */
+export function formatChordHint(spec: string, apple: boolean): string {
+    return formatChord(spec, apple).join(apple ? '' : ' + ')
+}
+
+/**
+ * A chord as `aria-keyshortcuts` names it (`Control+K`, `Meta+K`, `Alt+Shift+P`): the
+ * KeyboardEvent key values a screen reader reads out, `Mod` resolved for the platform.
+ */
+export function ariaKeyShortcut(spec: string, apple: boolean): string {
+    const chord = parseChord(spec)
+    const keys: string[] = []
+    if (chord.mod) keys.push(apple ? 'Meta' : 'Control')
+    if (chord.ctrl) keys.push('Control')
+    if (chord.alt) keys.push('Alt')
+    if (chord.shift) keys.push('Shift')
+    keys.push(ARIA_KEYS[chord.key] ?? (chord.key.length === 1 ? chord.key.toUpperCase() : chord.key))
+    return keys.join('+')
+}
+
+/** Named keys by their KeyboardEvent key value, which `aria-keyshortcuts` uses. */
+const ARIA_KEYS: Record<string, string> = {
+    arrowup: 'ArrowUp',
+    arrowdown: 'ArrowDown',
+    arrowleft: 'ArrowLeft',
+    arrowright: 'ArrowRight',
+    enter: 'Enter',
+    tab: 'Tab',
+    escape: 'Escape',
+    backspace: 'Backspace',
+    delete: 'Delete',
+    ' ': 'Space',
 }
 
 /** Named keys whose cap reads better than their `event.key` spelling. */

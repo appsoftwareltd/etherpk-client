@@ -1,7 +1,8 @@
 <script lang="ts">
     /**
-     * The graph [[Sidebar]]: [[Quick Find]], today's [[Journal Entry]], [[Favourite]]s,
-     * [[Recents]], the way into [[All Documents]], and a synced graph's sync status at its foot.
+     * The graph [[Sidebar]]: a group of action buttons ([[Search]], today's [[Journal Entry]],
+     * the buttons extensions add), the [[Journal Calendar]], [[Favourite]]s, [[Recents]], the way
+     * into [[All Documents]], and a synced graph's sync status at its foot (ADR 0139).
      *
      * Replaces the old `document-tree`, which listed every journal and every page flat -
      * unusable at real scale (2838 documents on the graph this was built against) and, until
@@ -16,12 +17,12 @@
      *
      * Every row opens the same way, whether or not a document exists behind it: a Favourite
      * whose page was deleted, or a Recent that was only ever a [[Draft]], opens a Draft exactly
-     * as a Quick Find row for a [[Pageless Concept]] does (ADR 0050). Nothing here asks the
+     * as Search's row for a [[Pageless Concept]] does (ADR 0050). Nothing here asks the
      * store whether a concept resolves before letting it be clicked.
      *
-     * A [[Protected Document]]'s Favourite or Quick Find row wears the tab strip's padlock, minus
-     * its state; a protected document is left out of Recents altogether. The flag comes from the
-     * [[Derived Index]]'s concept snapshot - the same synchronous read Quick Find ranks over -
+     * A [[Protected Document]]'s Favourite row wears the tab strip's padlock, minus its state;
+     * a protected document is left out of Recents altogether. The flag comes from the
+     * [[Derived Index]]'s concept snapshot - the same synchronous read Search ranks names over -
      * never from opening the document, which on a Server Backend retains a sync engine (Store
      * decorator costs). It therefore trails a protect by one ingest, which is fine for a list you
      * glance at; the tab, where the state matters, stays immediate.
@@ -34,25 +35,23 @@
         getActiveDocumentStore,
         getActiveGraphSettings,
     } from "$lib/document";
-    import { todayISO } from "$lib/document/calendar/month-grid-core";
+    import { msUntilNextLocalMidnight, todayISO } from "$lib/document/calendar/month-grid-core";
     import JournalCalendar from "./JournalCalendar.svelte";
     import { FAVOURITE_MOVE } from "$lib/document/commands/document-commands";
     import { subscribeFavourites } from "$lib/document/favourites";
-    import {
-        rankQuickFind,
-        stepQuickFindHighlight,
-        type QuickFindRow,
-    } from "$lib/document/quick-find";
     import { getActiveLayoutController, type ViewRef } from "$lib/layout";
+    import { prefersMobileLayout } from "$lib/layout/breakpoint";
     import { getActiveRecents } from "$lib/navigation/active-recents";
     import type { FilesystemDocumentStore } from "$lib/storage";
     import { recentCountOf } from "$lib/storage/fs/graph-settings";
     import {
         attachContextMenu,
+        createControlHelp,
         GRAPH_SIDEBAR_BUTTON_KIND,
         type GraphSidebarButton,
         graphSidebarButtons,
         openContextMenu,
+        sidebarButtonColumns,
         tryGetActiveCommandRegistry,
         tryGetActiveContributionRegistry,
         tryGetActiveEventBus,
@@ -65,14 +64,12 @@
     import {
         currentWorkspaceServices,
         type ProtectionControls,
+        workspaceService,
     } from "$lib/workspace/workspace-services";
 
     const { view: _view }: { view: ViewRef } = $props();
 
     const store = getActiveDocumentStore() as FilesystemDocumentStore;
-
-    /** Debounce matches the wikilink popover's feel: long enough not to rank on every keystroke. */
-    const QUICK_FIND_DEBOUNCE_MS = 120;
 
     let documents = $state<{ concept: string; kind: string }[]>([]);
     let favourites = $state.raw<string[]>([]);
@@ -81,17 +78,8 @@
     let activeConcept = $state<string | null>(getActiveDocument());
     let calendarOpen = $state(true);
 
-    let query = $state("");
-    let rows = $state.raw<QuickFindRow[]>([]);
-    /**
-     * The row the arrow keys (or the mouse) have chosen, or `null` for none: the resting state,
-     * where Enter hands the typed text to [[Search]] rather than opening a row. Only a
-     * deliberate choice opens a row, so the list never pre-highlights its first one.
-     */
-    let activeRow = $state<number | null>(null);
-    /** Stable id base so the input can point at the highlighted row (aria-activedescendant). */
+    /** Stable id base for the Favourites handle's hint. */
     const listId = $props.id();
-    let debounceTimer: ReturnType<typeof setTimeout> | undefined;
 
     let favouritesOpen = $state(true);
     let recentsOpen = $state(true);
@@ -126,7 +114,7 @@
     /**
      * Not filtered to `known`: a Recent that no longer resolves - or never did, because it was
      * a Draft nothing was typed into - is still somewhere the user was, and opens the same
-     * Draft it would from Quick Find. A delete forgets its Recent explicitly (document-mutations).
+     * Draft it would from Search. A delete forgets its Recent explicitly (document-mutations).
      *
      * Filtered to leave out Protected Documents. Recents is an activity trail, and "what was
      * read lately" is exactly what protection should not advertise from a drawer anyone can
@@ -203,10 +191,34 @@
         open(todayISO());
     }
 
-    // ---- The extensions' buttons under Today's journal -------------------------------
+    // ---- The action buttons -----------------------------------------------------------
     /**
-     * The buttons extensions add under Today's journal (the maps extension's Graph Map View),
-     * read again whenever one is added or taken back, as an extension starts or is switched off.
+     * Bumped at each local midnight so today's button shows the new date, the timer the Journal
+     * Calendar uses. Also bumped when the window comes back into view, because a timer can fire
+     * late after a laptop sleeps. Pressing the button reads the clock again (`openToday`), so it
+     * always opens the day it is pressed on.
+     */
+    let dayTick = $state(0);
+    $effect(() => {
+        let timer: ReturnType<typeof setTimeout>;
+        const arm = () => {
+            timer = setTimeout(() => {
+                dayTick += 1;
+                arm();
+            }, msUntilNextLocalMidnight());
+        };
+        arm();
+        return () => clearTimeout(timer);
+    });
+    const today = $derived.by(() => {
+        void dayTick;
+        return todayISO();
+    });
+
+    /**
+     * The buttons extensions add after Search and today's date (the maps extension's Graph Map,
+     * the kanban extension's Graph Kanban), read again whenever one is added or taken back, as an
+     * extension starts or is switched off.
      */
     const contributions = tryGetActiveContributionRegistry();
     const watchButtons = createSubscriber((update) => contributions?.subscribe(GRAPH_SIDEBAR_BUTTON_KIND, update) ?? (() => {}));
@@ -222,130 +234,109 @@
     }
 
     /**
-     * Today's journal and every extension button: one look, one spacing. A solid grey fill and no
-     * visible border, so a button never reads as a field like Quick Find's above it. Hover tints it
-     * further from the sidebar's own colour: darker in the light theme, lighter in the dark. The
-     * border stays, transparent, for the outline a forced-colours mode draws.
+     * Search, the first button: the modal that looks across the whole graph, by name and by text
+     * (ADR 0139). Drawn only where the Command exists; the dev harnesses register none.
+     */
+    const SEARCH_OPEN = "search.open";
+    const canSearch = tryGetActiveCommandRegistry()?.has(SEARCH_OPEN) ?? false;
+
+    function openSearch() {
+        void tryGetActiveCommandRegistry()?.execute(SEARCH_OPEN);
+    }
+
+    /**
+     * Help text for a button: what it does, and every chord bound to its Command (ADR 0139), read
+     * from the live keybinding table so a chord an extension binds after this View has drawn
+     * shows too. The table is absent in the dev harnesses, where the text names no chord.
+     */
+    const helpFor = createControlHelp(workspaceService("keybindings"));
+    /** The Command Alt+J runs, whose chord today's button names. The button opens the same day. */
+    const OPEN_TODAY = "document.openTodayJournal";
+
+    /**
+     * Every button, one look and one spacing: a solid grey fill and no visible border, darker on
+     * hover in the light theme and lighter in the dark. The border stays, transparent, for the
+     * outline a forced-colours mode draws. The padding is kept tight so that the default 304px
+     * Sidebar fits two buttons side by side, with a classic scrollbar beside them.
+     * `overflow-hidden` clips a label that cannot fit even in one column (the Sidebar at its
+     * narrowest, an extension's long title), rather than letting it spill into the next button.
      */
     const sidebarButton =
-        "flex w-full items-center gap-2 rounded-md border border-transparent bg-(--gk-surface-2) px-3 py-1.5 text-left text-sm font-medium text-(--gk-text-strong) hover:bg-(--gk-border-strong) pointer-coarse:min-h-11";
-
-    // ---- Quick Find -----------------------------------------------------------------
-    function rank() {
-        rows = rankQuickFind(getActiveGraphIndex()?.allConcepts() ?? [], query);
-        // A re-rank can shorten the list under a chosen row; nothing is chosen then.
-        if (activeRow !== null && activeRow >= rows.length) activeRow = null;
-    }
-
-    function scheduleRank() {
-        // Let go of a chosen row at the keystroke, not when the debounced rank lands: the row
-        // was chosen for the old text, and an Enter pressed in between must search for the
-        // new text rather than open it.
-        activeRow = null;
-        if (debounceTimer) clearTimeout(debounceTimer);
-        debounceTimer = setTimeout(() => {
-            debounceTimer = undefined;
-            rank();
-        }, QUICK_FIND_DEBOUNCE_MS);
-    }
+        "flex min-w-0 items-center overflow-hidden rounded-md border border-transparent bg-(--gk-surface-2) px-1.5 py-1.5 text-left text-sm font-medium text-(--gk-text-strong) hover:bg-(--gk-border-strong) pointer-coarse:min-h-11";
 
     /**
-     * Open the chosen row. Every kind opens the SAME way now, including a `draft` row for a
-     * name nothing matches: opening writes nothing, and the page is created only once the
-     * user types into the [[Draft]] (ADR 0050). That is what makes a typo here free.
+     * Under the phone layout the buttons are their icons alone, sharing one row across the
+     * drawer's width (ADR 0139): a phone's drawer is narrow, and a row of icons keeps the top of it
+     * short. Each keeps its name for a screen reader and its help text. Read once, because the
+     * Sidebar mounts afresh with its presenter when the layout crosses the breakpoint.
      */
-    function chooseRow(index: number) {
-        const row = rows[index];
-        if (!row) return;
-        clearQuery();
-        open(row.target);
-    }
+    const iconsOnly = prefersMobileLayout();
+    /**
+     * The row: as many columns as fit at the narrowest a button may be (36px, 44px under a
+     * finger), with `auto-fit` collapsing the columns no button fills, so the buttons stretch
+     * across the whole width and start a second row only when one more would be narrower than
+     * that.
+     */
+    const iconRow =
+        "grid grid-cols-[repeat(auto-fit,minmax(2.25rem,1fr))] gap-2 pointer-coarse:grid-cols-[repeat(auto-fit,minmax(2.75rem,1fr))]";
+    /** The same fill as `sidebarButton`, as wide as its column, and 44px tall under a finger. */
+    const sidebarIconButton =
+        "flex h-9 min-w-0 items-center justify-center rounded-md border border-transparent bg-(--gk-surface-2) text-(--gk-text-default) hover:bg-(--gk-border-strong) pointer-coarse:h-11";
 
     /**
-     * Hand over to [[Search]], carrying whatever has been typed, trimmed. An empty box carries
-     * nothing, and Search then restores its own last query.
+     * How many columns the buttons take (`sidebarButtonColumns`): one row when every button fits
+     * at the widest one's natural width, two columns when two fit, otherwise one, so no label is
+     * cut short. Two to start, the default Sidebar's layout, until the first measure. Not used
+     * under the phone layout, where the buttons are icons in a wrapping row.
+     */
+    let columns = $state(2);
+    let buttonsEl = $state<HTMLElement>();
+    /** What the measure depends on besides sizes: which buttons there are and what they say. */
+    const buttonLabels = $derived(
+        [canSearch ? "Search" : "", today, ...extensionButtons.map((button) => button.title)].join("\n"),
+    );
+
+    /**
+     * Measure each button's natural width and the width the group has, and pick the columns.
      *
-     * Quick Find's text is deliberately NOT cleared: closing the modal should return the
-     * Sidebar exactly as it was left. That cuts against `chooseRow`'s clear-first rule, but
-     * that rule exists to stop a slow write landing over newly typed text, and opening a modal
-     * is not a write.
+     * The ResizeObserver watches the Sidebar's own box and each button's content, never the group:
+     * the group's height changes with its columns, and watching it would report that change back
+     * to this callback in the same frame. Each content box is as wide as its icon and label
+     * whatever the column, so it changes only with the label or a font arriving. The Sidebar is
+     * watched by its border box, which a scrollbar appearing does not change.
      */
-    function openSearch() {
-        searchOpenedHere = true;
-        void tryGetActiveCommandRegistry()?.execute("search.open", query.trim());
-    }
-
-    /**
-     * Set while a [[Search]] this box handed its text to is open. A result opened there finishes
-     * the errand the box was on, so the box empties as it does when one of its own rows is
-     * opened; a dismissed Search leaves it as it was, and gives it focus back.
-     */
-    let searchOpenedHere = false;
-
-    function onSearchClosed(outcome: "opened" | "dismissed") {
-        if (searchOpenedHere && outcome === "opened") clearQuery();
-        searchOpenedHere = false;
-    }
-
-    /**
-     * A pointer press on a hand-off control leaves focus where it is. When that is the box,
-     * Search hands it back there on Escape, so clicking the search button behaves like pressing
-     * Enter. A keyboard user who tabbed to the control gets focus back on the control itself.
-     */
-    function keepFocus(event: PointerEvent) {
-        event.preventDefault();
-    }
-
-    function clearQuery() {
-        query = "";
-        rows = [];
-        activeRow = null;
-    }
-
-    /**
-     * Up and Down move through the rows and back to the box (`stepQuickFindHighlight`). Enter
-     * opens the chosen row, or with none chosen hands the text to [[Search]]: a name you can
-     * see is one arrow away, and anything else is one key away from a full search.
-     */
-    function onQuickFindKeydown(event: KeyboardEvent) {
-        // An IME confirms a composition with Enter; that keystroke belongs to the IME.
-        if (event.isComposing) return;
-        if (event.key === "Escape") {
-            event.preventDefault();
-            clearQuery();
-        } else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-            if (rows.length === 0) return;
-            event.preventDefault();
-            activeRow = stepQuickFindHighlight(
-                activeRow,
-                rows.length,
-                event.key === "ArrowDown" ? 1 : -1,
+    $effect(() => {
+        const group = buttonsEl;
+        const root = group?.parentElement;
+        if (iconsOnly || !group || !root) return;
+        void buttonLabels;
+        const measure = () => {
+            const buttons = [...group.children].filter((child): child is HTMLElement => child instanceof HTMLElement);
+            const first = buttons[0];
+            if (!first) return;
+            const style = getComputedStyle(first);
+            const chrome =
+                parseFloat(style.paddingLeft) +
+                parseFloat(style.paddingRight) +
+                parseFloat(style.borderLeftWidth) +
+                parseFloat(style.borderRightWidth);
+            const widest = Math.max(
+                ...buttons.map((button) => button.querySelector("[data-button-content]")?.getBoundingClientRect().width ?? 0),
             );
-            // Focus stays in the box, so nothing scrolls the list on its own, and one Up from
-            // the box lands on the bottom row. Every row is already rendered; only its
-            // highlight changes, so the element can be scrolled to at once. The keys scroll
-            // and the mouse does not: the pointer is already over the row it chose.
-            if (activeRow !== null) {
-                document
-                    .getElementById(`${listId}-row-${activeRow}`)
-                    ?.scrollIntoView({ block: "nearest" });
-            }
-        } else if (event.key === "Enter") {
-            event.preventDefault();
-            if (activeRow === null) openSearch();
-            else chooseRow(activeRow);
-        }
-    }
-
-    /**
-     * The mouse chooses a row by MOVING onto it. Not `pointerenter`: the list appears under
-     * wherever the pointer happens to rest, and a row that slid under a still mouse would take
-     * Enter away from Search. Not touch either, where a scroll gesture is not a choice and a
-     * tap opens the row outright.
-     */
-    function pointRow(event: PointerEvent, index: number) {
-        if (event.pointerType !== "touch") activeRow = index;
-    }
+            columns = sidebarButtonColumns({
+                count: buttons.length,
+                // Rounded up: a fraction of a pixel short would clip the last letter.
+                widest: Math.ceil(widest + chrome),
+                available: group.clientWidth,
+                gap: parseFloat(getComputedStyle(group).columnGap) || 0,
+            });
+        };
+        const observer = new ResizeObserver(measure);
+        observer.observe(root, { box: "border-box" });
+        for (const content of group.querySelectorAll("[data-button-content]")) observer.observe(content);
+        measure();
+        return () => observer.disconnect();
+    });
 
     // ---- Favourites order -----------------------------------------------------------
     /**
@@ -531,9 +522,6 @@
         if (bus) {
             unsubscribers.push(bus.on("documents:changed", refresh));
             unsubscribers.push(
-                bus.on("search:closed", ({ outcome }) => onSearchClosed(outcome)),
-            );
-            unsubscribers.push(
                 bus.on(
                     "document:active-changed",
                     ({ documentId }) => (activeConcept = documentId),
@@ -544,18 +532,11 @@
         // in front after this View is created and before this onMount runs, and the bus has no
         // replay (BacklinksView has the same gap and the same fix).
         activeConcept = getActiveDocument();
-        // Re-rank when the concept index rebuilds. Ranking only on keystroke left results
-        // stale against a graph that had changed underneath them: a document created a
-        // moment ago was simply unfindable until the user typed another character.
+        // The Favourites' padlocks follow the index as it learns of a protect or an unprotect.
         const index = getActiveGraphIndex();
         if (index) {
             refreshProtected();
-            unsubscribers.push(
-                index.onUpdated(() => {
-                    scheduleRefreshProtected();
-                    if (query.trim() !== "") rank();
-                }),
-            );
+            unsubscribers.push(index.onUpdated(scheduleRefreshProtected));
         }
         unsubscribers.push(subscribeFavourites((next) => (favourites = next)));
         unsubscribers.push(
@@ -564,7 +545,6 @@
     });
     onDestroy(() => {
         detachProtectionWatch?.();
-        if (debounceTimer) clearTimeout(debounceTimer);
         if (protectedTimer) clearTimeout(protectedTimer);
         for (const dispose of unsubscribers) dispose();
         unsubscribers = [];
@@ -596,195 +576,86 @@
     }
 </script>
 
-<svelte:window onkeydown={onWindowKeydown} />
+<!-- A timer can fire late after a laptop sleeps, so today's date is read again on coming back. -->
+<svelte:window onkeydown={onWindowKeydown} onfocus={() => (dayTick += 1)} />
+<svelte:document onvisibilitychange={() => (dayTick += 1)} />
 
 <div
     class="flex h-full flex-col gap-2 overflow-y-auto p-2 text-(--gk-text-default)"
     style:font-family="var(--gk-sans, 'Inter', system-ui, sans-serif)"
     data-testid="graph-sidebar"
 >
-    <!-- ── Quick Find ─────────────────────────────────────────────────────────── -->
-    <div class="relative">
-        <!--
-            Focus stays in the field while the arrow keys move the highlight, so without
-            aria-activedescendant a screen reader never hears which row is selected.
-        -->
-        <!--
-            The button stretches to the box's height (the row's default `align-items`), and its
-            padding around the 16px icon makes it square. The gap matches the Sidebar's own
-            padding (`p-2`), so the button sits as far from the box as both do from the edges.
-        -->
-        <div class="flex gap-2">
-            <input
-                data-testid="quick-find"
-                placeholder="Quick find…"
-                aria-label="Quick find"
-                role="combobox"
-                aria-expanded={rows.length > 0}
-                aria-controls={listId}
-                aria-activedescendant={rows.length > 0 && activeRow !== null
-                    ? `${listId}-row-${activeRow}`
-                    : undefined}
-                autocomplete="off"
-                enterkeyhint="search"
-                bind:value={query}
-                oninput={scheduleRank}
-                onkeydown={onQuickFindKeydown}
-                class="min-w-0 flex-1 rounded-md border border-(--gk-border-soft) bg-(--gk-surface-1) px-2 py-1.5 text-sm text-(--gk-text-strong) placeholder:text-(--gk-text-subtle) focus:border-(--gk-border-strong) focus:outline-none pointer-coarse:min-h-11"
-            />
-            <button
-                type="button"
-                data-testid="quick-find-search-button"
-                aria-label="Search everything"
-                title="Search everything"
-                onpointerdown={keepFocus}
-                onclick={openSearch}
-                class="inline-flex shrink-0 items-center justify-center rounded-md border border-(--gk-border-soft) bg-(--gk-surface-1) px-2 text-(--gk-text-subtle) hover:bg-(--gk-surface-2) hover:text-(--gk-text-strong) pointer-coarse:min-w-11"
-            >
-                <!-- In-repo constant markup from the icon table, never user or document content. -->
-                <!-- eslint-disable-next-line svelte/no-at-html-tags -->
-                {@html iconSvg("search", { size: 16 })}
-            </button>
-        </div>
-        {#if rows.length > 0}
-            <ul
-                id={listId}
-                data-testid="quick-find-results"
-                class="mt-1 max-h-72 overflow-y-auto rounded-t-md border border-b-0 border-(--gk-border-soft) bg-(--gk-surface-1) py-1 shadow-lg"
-                role="listbox"
-            >
-                {#each rows as row, index (row.kind + row.label)}
-                    <li>
-                        <button
-                            type="button"
-                            id={`${listId}-row-${index}`}
-                            role="option"
-                            aria-selected={index === activeRow}
-                            data-testid="quick-find-result"
-                            data-kind={row.kind}
-                            class="flex w-full gap-2 px-2 text-left text-sm pointer-coarse:min-h-11 {row.kind ===
-                            'draft'
-                                ? 'items-center py-2'
-                                : 'items-baseline py-1.5'} {index === activeRow
-                                ? 'bg-(--gk-surface-2)'
-                                : ''}"
-                            onpointermove={(event) => pointRow(event, index)}
-                            onclick={() => chooseRow(index)}
-                        >
-                            <span
-                                class="min-w-0 flex-1 truncate {row.kind ===
-                                    'draft' || row.kind === 'pageless'
-                                    ? 'italic'
-                                    : ''}">{row.label}</span
-                            >
-                            {#if row.protected}
-                                <span
-                                    class="inline-flex shrink-0 self-center text-(--gk-text-subtle)"
-                                    data-testid="quick-find-protected"
-                                >
-                                    <!-- eslint-disable-next-line svelte/no-at-html-tags -->
-                                    {@html iconSvg("lock", {
-                                        size: 13,
-                                        label: "Protected document",
-                                    })}
-                                </span>
-                            {/if}
-                            {#if row.kind === "draft"}
-                                <!--
-                                    The row itself is the button, so the label is drawn as one
-                                    rather than nested: a button-in-button is invalid HTML and
-                                    would split the click target.
-                                -->
-                                <span
-                                    data-testid="quick-find-new-page"
-                                    class="inline-flex shrink-0 items-center rounded-md border border-(--gk-accent) px-3 py-1.5 text-sm leading-tight font-medium whitespace-nowrap text-(--gk-accent) {index ===
-                                    activeRow
-                                        ? 'bg-(--gk-accent) text-(--gk-surface-0)'
-                                        : ''}">+ {row.detail}</span
-                                >
-                            {:else if row.detail}
-                                <span
-                                    class="shrink-0 text-sm text-(--gk-text-subtle)"
-                                    >{row.detail}</span
-                                >
-                            {/if}
-                        </button>
-                    </li>
-                {/each}
-            </ul>
-            <!--
-                The handoff at the point the intent actually forms: the user has typed, scanned,
-                and not found it. The help line below is for DISCOVERY - it is above their eyes
-                by now, detached from the list they are reading.
-
-                OUTSIDE the listbox, and not part of the arrow-key selection: everything inside
-                `role="listbox"` must be an option, and this is an escape hatch rather than a
-                result. Its keyboard route is Enter with no row chosen, which is why the hint
-                shows only then.
-            -->
-            <button
-                type="button"
-                data-testid="quick-find-search-all"
-                onpointerdown={keepFocus}
-                onclick={openSearch}
-                class="flex w-full items-baseline gap-2 rounded-b-md border border-t-0 border-(--gk-border-soft) bg-(--gk-surface-1) px-2 py-1.5 text-left text-sm text-(--gk-text-subtle) shadow-lg hover:bg-(--gk-surface-2) pointer-coarse:min-h-11"
-            >
-                <span class="min-w-0 flex-1 truncate"
-                    >Search everything for “{query.trim()}”</span
-                >
-                {#if activeRow === null}
-                    <span class="shrink-0 text-sm">Enter</span>
-                {/if}
-            </button>
-        {/if}
-        <!--
-            Always visible, so someone who has never opened Search still learns it exists
-            without having to fail at Quick Find first.
-        -->
-        <p class="mt-1 px-1 text-sm text-(--gk-text-subtle)">
-            <button
-                type="button"
-                data-testid="quick-find-search-link"
-                onpointerdown={keepFocus}
-                onclick={openSearch}
-                class="underline underline-offset-2 hover:text-(--gk-text-default) pointer-coarse:min-h-11"
-                >Search everything</button
-            >
-            <span>(Ctrl+K)</span>
-        </p>
-    </div>
-
-    <!-- ── Today's journal, and the buttons extensions add under it ─────────────── -->
-    <div class="flex flex-col gap-2" data-testid="sidebar-buttons">
-    <button
-        type="button"
-        data-testid="sidebar-today"
-        onclick={openToday}
-        class={sidebarButton}
-    >
-        <span class="inline-flex shrink-0 text-(--gk-text-subtle)" aria-hidden="true">
-            <!-- In-repo constant markup from the icon table, shared with the phone top bar's button. -->
-            <!-- eslint-disable-next-line svelte/no-at-html-tags -->
-            {@html iconSvg("todays-journal", { size: 16, strokeWidth: 1 })}
-        </span>
-        Today's journal
-    </button>
-    {#each extensionButtons as button (button.id)}
-        <button
-            type="button"
-            data-testid="sidebar-extension-button"
-            data-command={button.command}
-            onclick={() => runButton(button)}
-            class={sidebarButton}
-        >
-            <span class="inline-flex shrink-0 text-(--gk-text-subtle)" aria-hidden="true">
+    <!-- ── The action buttons: Search, today's date, the extensions' buttons (ADR 0139) ── -->
+    <!--
+        One row, two columns or one, whichever keeps every label whole (`columns`). Search and
+        today's date come first, so they lead the row and head the grid and the stack. Every
+        column is the same width, so a button left on its own keeps the width of one. Under the
+        phone layout, icons alone sharing the row's width (`iconsOnly`).
+    -->
+    {#snippet buttonContent(icon: string, label: string, strokeWidth?: number)}
+        {#if iconsOnly}
+            <span class="inline-flex" aria-hidden="true">
                 <!-- Markup from the icon table: the Client's own, or an extension's, sanitised as it was registered. -->
                 <!-- eslint-disable-next-line svelte/no-at-html-tags -->
-                {@html iconSvg(button.icon ?? "default", { size: 16 })}
+                {@html iconSvg(icon, { size: 18, strokeWidth })}
             </span>
-            {button.title}
+        {:else}
+            <!-- Measured for its natural width (`data-button-content`), so it never shrinks. -->
+            <span class="inline-flex shrink-0 items-center gap-1.5" data-button-content>
+                <span class="inline-flex shrink-0 text-(--gk-text-subtle)" aria-hidden="true">
+                    <!-- Markup from the icon table: the Client's own, or an extension's, sanitised as it was registered. -->
+                    <!-- eslint-disable-next-line svelte/no-at-html-tags -->
+                    {@html iconSvg(icon, { size: 16, strokeWidth })}
+                </span>
+                <span class="whitespace-nowrap">{label}</span>
+            </span>
+        {/if}
+    {/snippet}
+    <div
+        bind:this={buttonsEl}
+        class={iconsOnly ? iconRow : "grid gap-2"}
+        style:grid-template-columns={iconsOnly ? undefined : `repeat(${columns}, minmax(0, 1fr))`}
+        data-testid="sidebar-buttons"
+        data-columns={iconsOnly ? undefined : columns}
+        data-icons-only={iconsOnly || undefined}
+    >
+        {#if canSearch}
+            <button
+                type="button"
+                data-testid="sidebar-search"
+                onclick={openSearch}
+                class={iconsOnly ? sidebarIconButton : sidebarButton}
+                aria-label={iconsOnly ? "Search" : undefined}
+                {...helpFor("Open graph search modal", SEARCH_OPEN)}
+            >
+                {@render buttonContent("search", "Search")}
+            </button>
+        {/if}
+        <!-- The date says which day it opens; the name says what the date is for. -->
+        <button
+            type="button"
+            data-testid="sidebar-today"
+            onclick={openToday}
+            class={iconsOnly ? sidebarIconButton : sidebarButton}
+            aria-label="Today's journal, {today}"
+            {...helpFor("Open today's journal", OPEN_TODAY)}
+        >
+            <!-- The calendar at the weight the phone top bar's button draws it. -->
+            {@render buttonContent("todays-journal", today, 1)}
         </button>
-    {/each}
+        {#each extensionButtons as button (button.id)}
+            <button
+                type="button"
+                data-testid="sidebar-extension-button"
+                data-command={button.command}
+                onclick={() => runButton(button)}
+                class={iconsOnly ? sidebarIconButton : sidebarButton}
+                aria-label={iconsOnly ? button.title : undefined}
+                {...helpFor(button.description ?? button.title, button.command)}
+            >
+                {@render buttonContent(button.icon ?? "default", button.title)}
+            </button>
+        {/each}
     </div>
 
     <!-- ── Journal Calendar ───────────────────────────────────────────────────── -->

@@ -25,14 +25,15 @@ export interface ReadBoardOptions {
 }
 
 /**
- * The board for `concept`, with due dates measured against `today` (`YYYY-MM-DD`, read from the
- * clock by the caller at the moment of asking: a board is left open for days).
+ * The board for `concept`, or for every task in the graph when it is null (the Graph Kanban), with
+ * due dates measured against `today` (`YYYY-MM-DD`, read from the clock by the caller at the
+ * moment of asking: a board is left open for days).
  *
  * The sections are asked in parallel. The index answers each in its own worker round trip, and
  * a section ordered by due date is exactly the index's `due` ordering, whose ties fall to the
  * document's name and the task's line.
  */
-export async function readBoard(source: TaskSource, concept: string, today: string, options: ReadBoardOptions = {}): Promise<BoardSnapshot> {
+export async function readBoard(source: TaskSource, concept: string | null, today: string, options: ReadBoardOptions = {}): Promise<BoardSnapshot> {
     const defaultLimit = options.sectionLimit ?? SECTION_PAGE_SIZE
     const lanes = await Promise.all(
         BOARD_LANES.map(async (lane): Promise<BoardLane> => {
@@ -57,6 +58,6 @@ export async function readBoard(source: TaskSource, concept: string, today: stri
     return { concept, today, lanes }
 }
 
-function sectionQuery(concept: string, status: TaskStatus, priority: TaskPriorityFilter, today: string): TaskQuery {
+function sectionQuery(concept: string | null, status: TaskStatus, priority: TaskPriorityFilter, today: string): TaskQuery {
     return { concept, statuses: [status], priorities: [priority], due: 'any', groupBy: 'due', today }
 }

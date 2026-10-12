@@ -70,7 +70,7 @@
      * Follow the active document, but only when it is a day.
      *
      * Unlike the [[Tasks View]], which is deliberately pinned, this is a mirror of where you are:
-     * arriving at an entry from a [[Backlink]] or [[Quick Find]] should leave the calendar
+     * arriving at an entry from a [[Backlink]] or [[Search]] should leave the calendar
      * showing the month you are now reading. Opening a page moves nothing — most navigation is
      * not to a journal entry, and yanking the month about for it would make the grid unusable.
      */

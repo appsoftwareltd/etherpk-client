@@ -59,8 +59,15 @@ export interface BoardStateStore {
     flush(): void
 }
 
-export function createBoardStateStore(graphId: string, concept: string, storage: Storage | undefined = globalThis.localStorage): BoardStateStore {
-    const key = `${BOARD_STATE_KEY_PREFIX}${graphId}:${conceptKey(concept)}`
+/**
+ * The Graph Kanban's state lives under a prefix of its own, so no concept's board, whatever its
+ * name, can share its key.
+ */
+export const GRAPH_BOARD_STATE_KEY_PREFIX = 'etherpk-kanban-graph:'
+
+/** The state of the board over `concept`, or of the Graph Kanban when it is null. */
+export function createBoardStateStore(graphId: string, concept: string | null, storage: Storage | undefined = globalThis.localStorage): BoardStateStore {
+    const key = concept === null ? `${GRAPH_BOARD_STATE_KEY_PREFIX}${graphId}` : `${BOARD_STATE_KEY_PREFIX}${graphId}:${conceptKey(concept)}`
     let current = load()
     let saveTimer: ReturnType<typeof setTimeout> | undefined
 

@@ -446,7 +446,7 @@ describe('index-db', () => {
 
         it('counts the scope among the keys an ingest of the page affects, before and after', () => {
             // The worker diffs these two to decide which candidates a one-document ingest can
-            // have changed; without the scope on both sides Quick Find would not learn of it.
+            // have changed; without the scope on both sides Search would not learn of it.
             expect(indexDocumentFactKeys(scoped).linkTargets).toEqual(['dev doc'])
             ingest(db, [scoped])
             expect(indexedDocumentFacts(db, 'dev doc').linkTargets).toEqual([])

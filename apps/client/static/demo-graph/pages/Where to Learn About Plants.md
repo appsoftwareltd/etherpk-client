@@ -3,7 +3,7 @@ title: Where to Learn About Plants
 ---
 Gardens and glasshouses worth a day out, to see plants grown properly with a label on every one.
 
-Each place is noted where it came up, on a plant's page or in the journal, in a map under a bullet that links here. A map's places belong to the concepts on the bullet above it, so every one of them belongs to this page as well as to the page it's written on. Right-click this tab and choose **Open Map View** to see them all on one map, listed by the page each one is on. Type `/` and choose **Graph Map View** to see them among every other place in the graph, including where each plant grows wild.
+Each place is noted where it came up, on a plant's page or in the journal, in a map under a bullet that links here. A map's places belong to the concepts on the bullet above it, so every one of them belongs to this page as well as to the page it's written on. Right-click this tab and choose **Open Map View** to see them all on one map, listed by the page each one is on. Select **Graph Map** at the top of the sidebar to see them among every other place in the graph, including where each plant grows wild.
 
 ## Close to home
 

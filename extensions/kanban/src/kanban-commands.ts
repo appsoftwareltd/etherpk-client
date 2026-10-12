@@ -1,8 +1,9 @@
 /**
- * The Commands, [[Context Menu]] rows and [[Command Menu]] row of a [[Kanban Board]] (ADR 0113):
- * Open Kanban Board on a document tab or a wikilink, `/kanban` in the editor, Open page on the
- * board's own tab, and the rows of a card's own menu. Desktop only, but for Open page: under the
- * phone layout a board cannot show, and its tab's one row opens the page it is about.
+ * The Commands, [[Context Menu]] rows and [[Command Menu]] rows of a [[Kanban Board]] (ADR 0113):
+ * Open Kanban Board on a document tab or a wikilink, `/kanban` in the editor, the Graph Kanban's
+ * Command Menu row and Graph Sidebar button, Open page on a board's own tab, and the rows of a
+ * card's own menu. Desktop only, but for Open page: under the phone layout a board cannot show,
+ * and its tab's one row opens the page it is about.
  *
  * All of it goes through the extension's context (ADR 0121), which takes it back as the graph
  * closes. A card's rows act through the board that raised the menu (`board-actions.ts`), which
@@ -18,7 +19,7 @@ import { editorDocument } from '$lib/document/view/editor-document'
 import { parseViewKey } from '$lib/layout/view-ref'
 
 import { boardActions } from './board-actions'
-import { BOARD_LANES, BOARD_SECTIONS, KANBAN_VIEW_KIND } from './board-model'
+import { BOARD_LANES, BOARD_SECTIONS, KANBAN_VIEW_KIND, KANBAN_WHOLE } from './board-model'
 
 /** Open the board for a concept: a document tab's or a wikilink's row runs it with the tab or the link as its target. */
 export const KANBAN_OPEN_BOARD = 'kanban.openBoard'
@@ -29,6 +30,13 @@ export const KANBAN_OPEN_BOARD = 'kanban.openBoard'
 export const KANBAN_OPEN_AT_CARET = 'kanban.openAtCaret'
 /** Open the board for `{ concept, panelId? }`: what a pick in `/kanban`'s list runs. */
 export const KANBAN_OPEN_BOARD_FOR = 'kanban.openBoardFor'
+/**
+ * Open the Graph Kanban, the board of every task in the graph, in the Pane of `{ panelId? }`, or
+ * of the editor in use when none is given.
+ */
+export const KANBAN_OPEN_WHOLE = 'kanban.openWhole'
+/** The Graph Kanban, by its name: its tab, its Command Menu row and its Graph Sidebar button. */
+const GRAPH_KANBAN = 'Graph Kanban'
 /** Open the document of the concept a board is about, from the board's tab. */
 export const KANBAN_OPEN_PAGE = 'kanban.openPage'
 export const KANBAN_CARD_OPEN = 'kanban.card.open'
@@ -82,7 +90,7 @@ function priorityId(priority: 1 | 2 | 3 | null): string {
 }
 
 export function registerKanbanCommands(context: ExtensionContext): void {
-    const { commands, contextMenu, commandMenu, layout } = context
+    const { commands, contextMenu, commandMenu, graphSidebar, layout } = context
     const onCard = (target: MenuTarget) => isCardTarget(target) && layout.isDesktop()
     /** The board and card a row acts on, or nothing when the board has since closed. */
     const reach = (arg: unknown) => {
@@ -154,6 +162,36 @@ export function registerKanbanCommands(context: ExtensionContext): void {
         // Not gated on `bodyWritable`: opening a board writes nothing to the page.
         when: () => layout.isDesktop(),
         command: KANBAN_OPEN_AT_CARET,
+    })
+    commands.register(KANBAN_OPEN_WHOLE, (arg) => {
+        if (!layout.isDesktop()) return
+        const { panelId } = (arg ?? {}) as { panelId?: unknown }
+        // From the Command Menu, in the Pane of the editor it was typed in, as a concept's board opens.
+        const from = typeof panelId === 'string' ? panelId : getActiveEditorView()?.state.facet(editorDocument)?.panelId
+        layout.openView(KANBAN_WHOLE, from === undefined ? {} : { inPaneOf: from })
+    })
+    commandMenu.register({
+        id: KANBAN_OPEN_WHOLE,
+        title: GRAPH_KANBAN,
+        detail: 'Every task in this graph',
+        icon: 'kanban',
+        group: 'Tasks',
+        // Straight after Open Kanban (140), the board for one concept.
+        order: 141,
+        keywords: ['board', 'lanes', 'tasks', 'status', 'everything', 'all'],
+        when: () => layout.isDesktop(),
+        command: KANBAN_OPEN_WHOLE,
+    })
+    graphSidebar.register({
+        id: KANBAN_OPEN_WHOLE,
+        title: GRAPH_KANBAN,
+        description: 'Open a Kanban board of every task in this graph',
+        icon: 'kanban',
+        // After the Graph Map (20), as the grid reads: Search, today, the map, the board.
+        order: 30,
+        // Asked as the Sidebar draws, which it does afresh when the layout changes.
+        when: () => layout.isDesktop(),
+        command: KANBAN_OPEN_WHOLE,
     })
     commands.register(KANBAN_OPEN_PAGE, (arg) => {
         const target = arg as MenuTarget | undefined

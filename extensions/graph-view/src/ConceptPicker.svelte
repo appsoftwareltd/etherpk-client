@@ -2,7 +2,7 @@
     /**
      * A box for naming a concept the [[Graph View]] shows: type part of a name, pick from what
      * matches. Names that start with what was typed come before names that only contain it, as in
-     * Quick Find. Arrow keys move through the matches, Enter picks, Escape closes the list.
+     * Search. Arrow keys move through the matches, Enter picks, Escape closes the list.
      *
      * It picks, it never navigates: the Graph View decides what picking means (centre on it, or
      * end a path there).

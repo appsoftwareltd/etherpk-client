@@ -63,13 +63,6 @@ export interface EventPayloads {
      * and nothing else holds a reference to it.
      */
     'quick-notes:focus': { graphId: string }
-    /**
-     * The [[Search]] modal was closed by the user: \`opened\` when they opened a result,
-     * \`dismissed\` for Escape or a click on the backdrop. Consumer: [[Quick Find]], which empties
-     * itself when a Search it handed its text to ends in a result, as it does after opening one
-     * of its own rows.
-     */
-    'search:closed': { graphId: string; outcome: 'opened' | 'dismissed' }
 }
 
 export type EventName = keyof EventPayloads

@@ -153,7 +153,7 @@ export interface RegionModel {
     collapsed: boolean
     /**
      * The pane last worked in, which is where the region's next reveal/tab open lands - even
-     * while focus has wandered to a Sidebar (Quick Find, the tree), as it has whenever a
+     * while focus has wandered to a Sidebar (Favourites, Recents), as it has whenever a
      * document is being opened. Absent ⇒ the first pane, and for a Layout persisted before
      * this existed.
      */

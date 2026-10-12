@@ -574,7 +574,7 @@ describe('LayoutController — reconciling with a renderer that keeps its own ar
         ]
         controller.openView({ kind: 'document-tree', target: 'root' }, { region: 'left-sidebar', activate: false })
         controller.focusView(docC) // work in the split…
-        controller.notePanelActivated('document-tree:root') // …then click into the tree (Quick Find)
+        controller.notePanelActivated('document-tree:root') // …then click into the tree (Favourites)
         controller.openView({ kind: 'document', target: 'doc-D' })
         expect(renderer.added.at(-1)?.placement.siblingPanelId).toBe(C)
         // And it persists, so a reload opens where you were.

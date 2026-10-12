@@ -69,12 +69,13 @@ const VIEW_COMPONENT = 'view'
 
 /**
  * Default sidebar widths (first run, and when a collapsed sidebar is re-opened
- * with no remembered width). Asymmetric: the left holds the Document Tree (short
- * titles), the right holds Backlinks (wider source snippets).
+ * with no remembered width). The same on both sides. The left is wide enough for
+ * the Graph Sidebar's action buttons two by two, a classic scrollbar beside them
+ * included (ADR 0139).
  */
 const DEFAULT_SIDEBAR_WIDTH: Record<'left-sidebar' | 'right-sidebar', number> = {
-    'left-sidebar': 280,
-    'right-sidebar': 340,
+    'left-sidebar': 304,
+    'right-sidebar': 304,
 }
 /** Minimum width a sidebar can be dragged to once it is resizable. */
 const SIDEBAR_MIN_WIDTH = 160
@@ -538,7 +539,7 @@ export function createDockviewRenderer(options: DockviewRendererOptions): Dockvi
         const width =
             sidebarWidth[region] ??
             DEFAULT_SIDEBAR_WIDTH[region as 'left-sidebar' | 'right-sidebar'] ??
-            280
+            DEFAULT_SIDEBAR_WIDTH['left-sidebar']
         group.api.setConstraints({ minimumWidth: width, maximumWidth: width })
         group.api.setSize({ width })
         requestAnimationFrame(() => {

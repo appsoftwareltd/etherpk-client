@@ -755,7 +755,7 @@
                                     </p>
                                 {/if}
                                 {#if problems.some((i) => i.problem === "missing")}
-                                    <p>A page that does not exist yet: check the spelling here, or type the name into <strong>Quick find</strong> in the sidebar and choose its <strong>New page</strong> row.</p>
+                                    <p>A page that does not exist yet: check the spelling here, or search for the name with <strong>Search</strong> in the sidebar and choose its <strong>New page</strong> row.</p>
                                 {/if}
                                 {#if problems.some((i) => i.problem === "protected")}
                                     <p>A protected page can never be published - name a different page.</p>

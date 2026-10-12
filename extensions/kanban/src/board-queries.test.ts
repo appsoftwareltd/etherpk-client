@@ -81,6 +81,13 @@ describe('reading a board', () => {
         expect(everyLabel).not.toContain('Buy milk')
     })
 
+    it('reads every task in the graph for the Graph Kanban, which answers to no concept', async () => {
+        const board = await readBoard(source, null, TODAY)
+        expect(board.concept).toBeNull()
+        expect(labels(board, 'open', 1)).toEqual(['Send the quote'])
+        expect(labels(board, 'open', null)).toEqual(['Tidy the notes', 'Buy milk'])
+    })
+
     it('knows where each card lives: its document and its line', async () => {
         const board = await readBoard(source, 'Acme', TODAY)
         const card = board.lanes[0].sections[0].cards[0]

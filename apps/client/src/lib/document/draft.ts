@@ -139,7 +139,7 @@ export async function promoteDraft(
     try {
         // The CONCEPT decides which kind comes into existence, never the surface the Draft was
         // opened from (ADR 0056): a day becomes that day's [[Journal Entry]], anything else a
-        // [[Page]]. So a date reached from the [[Journal Calendar]], a wikilink and [[Quick Find]]
+        // [[Page]]. So a date reached from the [[Journal Calendar]], a wikilink and [[Search]]
         // all land in the same place.
         if (isJournalConcept(draft.concept)) await store.createJournal(draft.concept, seeded)
         else await store.createPage(draft.concept, seeded)

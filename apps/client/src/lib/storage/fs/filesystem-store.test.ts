@@ -1472,7 +1472,7 @@ describe('FilesystemDocumentStore — a name taken again after its open document
     })
 
     // The user's own delete closes its tab: there is nothing to contest (ADR 0039). Opened afresh,
-    // as a Quick Find Draft opens a name, it is a name with no page, not the deleted text.
+    // as a Draft opened from Search opens a name, it is a name with no page, not the deleted text.
     it('a name deleted in the app opens afresh as no document, while the handle already held still edits it', async () => {
         const { store, old } = await deletedWhileOpen()
         await store.deleteDocument('Physics')

@@ -13,7 +13,7 @@ export const MAP_VIEW_KIND = 'maps.map'
 /** `maps.whole`: the Map View of every place and route in the graph. */
 export const MAP_WHOLE_KIND = 'maps.whole'
 
-/** The Graph Map View, the whole graph's: one per graph, its target fixed by the manifest. */
+/** The Graph Map, the whole graph's Map View: one per graph, its target fixed by the manifest. */
 export const MAP_WHOLE = { kind: MAP_WHOLE_KIND, target: 'whole' } as const satisfies ViewRef
 
 /** The Map View of `concept`. */
@@ -37,7 +37,7 @@ export const MAPS_OPEN_FROM_MENU = 'maps.openFromMenu'
 export const MAPS_OPEN_AT_CARET = 'maps.openAtCaret'
 /** The Map View of `{ concept, panelId? }`: what a pick in the Map View row's list runs. */
 export const MAPS_OPEN_FOR = 'maps.openFor'
-/** The Graph Map View. */
+/** The Graph Map. */
 export const MAPS_OPEN_WHOLE = 'maps.openWhole'
 /** A Map View tab's row: the document of the concept the map is about. */
 export const MAPS_OPEN_PAGE = 'maps.openPage'

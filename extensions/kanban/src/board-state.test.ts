@@ -49,6 +49,17 @@ describe('board state', () => {
         expect(createBoardStateStore('g2', 'Acme', storage).get().collapsed).toEqual(['done', 'cancelled'])
     })
 
+    it("keeps the Graph Kanban's state apart from every concept's board, in each graph", () => {
+        const storage = memoryStorage()
+        const graph = createBoardStateStore('g1', null, storage)
+        graph.set({ ...defaultBoardState(), collapsed: [] })
+        graph.flush()
+        expect(createBoardStateStore('g1', null, storage).get().collapsed).toEqual([])
+        // A concept named as the board's target is still a concept, with a board of its own.
+        expect(createBoardStateStore('g1', 'whole', storage).get().collapsed).toEqual(['done', 'cancelled'])
+        expect(createBoardStateStore('g2', null, storage).get().collapsed).toEqual(['done', 'cancelled'])
+    })
+
     it('keeps the Task Detail between a fifth and four fifths of the board', () => {
         const storage = memoryStorage()
         const store = createBoardStateStore('g1', 'Acme', storage)

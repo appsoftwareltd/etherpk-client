@@ -14,11 +14,32 @@ const board: ViewContribution = { mount: () => ({ destroy: () => {} }) }
 const actions: BoardActions = { open: () => {}, openInTab: () => {}, copyReference: () => {}, move: () => {} }
 
 describe('the Kanban Board extension', () => {
-    it('supplies the board View its manifest declares', () => {
+    it("supplies the board View for both kinds its manifest declares, a concept's board and the Graph Kanban", () => {
         const { context, views } = kanbanContext()
         registerKanban(context, board)
-        expect([...views.keys()]).toEqual(['kanban.board'])
+        expect([...views.keys()]).toEqual(['kanban.board', 'kanban.whole'])
         expect(views.get('kanban.board')).toBe(board)
+        expect(views.get('kanban.whole')).toBe(board)
+    })
+
+    it('hands nothing to or from the Graph Kanban when a concept is renamed', () => {
+        const { context, services } = kanbanContext()
+        registerKanban(context, board)
+        const heard: string[] = []
+        const unregister = registerBoard('board-whole', actions, {
+            concept: null,
+            documentRenamed: (from, to) => void heard.push(`renamed ${from} to ${to}`),
+            documentRemoved: () => {},
+            state: () => ({ ...defaultBoardState(), collapsed: [] }),
+        })
+        try {
+            services.events.emit('concept:renamed', { from: 'whole', to: 'Whole Food' })
+            // Its Task Detail still follows a renamed document, as on any board.
+            expect(heard).toEqual(['renamed whole to Whole Food'])
+            expect(takeBoardHandover('Whole Food')).toBeUndefined()
+        } finally {
+            unregister()
+        }
     })
 
     it('moves a Task Detail and hands a board over when the Client reports a rename', () => {

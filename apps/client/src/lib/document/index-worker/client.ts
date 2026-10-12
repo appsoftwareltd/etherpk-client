@@ -6,7 +6,7 @@
  * SQL.
  *
  * The two reads the editor makes constantly (`conceptExists` on every keystroke for
- * missing-link styling, `allConcepts` for wikilink completion and Quick Find) are answered
+ * missing-link styling, `allConcepts` for wikilink completion and Search) are answered
  * from the snapshot the worker pushes after each ingest, so they stay synchronous and never
  * cross a message boundary. `backlinks` is a real round trip; its two callers tolerate it.
  */

@@ -3,7 +3,7 @@
  *
  * The index is busy for a few milliseconds after every keystroke's ingest, and for seconds when a
  * rename replaces the whole index. Only the second is worth an icon: a person who renamed a page
- * and finds Quick Find or a link not yet following can see that the change is still being taken
+ * and finds Search or a link not yet following can see that the change is still being taken
  * in. So the icon shows once the index has been busy for `showAfterMs` without a break, and goes
  * once it has been idle for `hideAfterMs`, which keeps it steady between runs that follow one
  * another instead of blinking off and on.

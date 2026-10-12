@@ -71,11 +71,11 @@ describe("a wikilink's Open Map View row", () => {
     })
 })
 
-describe("the Graph Sidebar's Graph Map View button", () => {
-    it("opens the Graph Map View, with the map's own icon", async () => {
+describe("the Graph Sidebar's Graph Map button", () => {
+    it("opens the Graph Map, with the map's own icon", async () => {
         const maps = setup()
         const [button] = graphSidebarButtons(maps.contributions)
-        expect([button.title, button.icon]).toEqual(['Graph Map View', 'maps.map'])
+        expect(button).toMatchObject({ title: 'Graph Map', description: 'Open a map of every place and route in this graph', icon: 'maps.map', order: 20 })
         await maps.commands.execute(button.command, button.args)
         expect(maps.opened).toEqual([[null, undefined]])
     })
@@ -91,7 +91,7 @@ describe("a Map View tab's context menu", () => {
         expect(maps.pages).toEqual([['Campsites', 'maps.map:Campsites']])
     })
 
-    it("offers nothing on the Graph Map View, which is about no one concept", () => {
+    it("offers nothing on the Graph Map, which is about no one concept", () => {
         const { contributions } = setup()
         expect(listContextMenuItems(contributions, { kind: 'tab', panelId: 'maps.whole:whole' })).toEqual([])
     })
@@ -100,10 +100,10 @@ describe("a Map View tab's context menu", () => {
 describe('the Command Menu rows', () => {
     const editing = { inTable: false, tableInsertable: true, bodyWritable: true }
 
-    it('offers the Map View of a concept here and the Graph Map View, on a locked page too', () => {
+    it('offers the Map View of a concept here and the Graph Map, on a locked page too', () => {
         const titles = listCommandMenuItems(setup().contributions, { ...editing, bodyWritable: false }).map((item) => item.title)
         expect(titles).toContain('Open Map View')
-        expect(titles).toContain('Graph Map View')
+        expect(titles).toContain('Graph Map')
     })
 
     it('says which concept the Map View is for, and how many more the picker offers', () => {
@@ -112,7 +112,7 @@ describe('the Command Menu rows', () => {
         expect(commandMenuDetail(row, { ...editing, conceptsAtCaret: ['Garden', 'Kitchen'] })).toBe('For Garden and 1 more')
     })
 
-    it("opens the Graph Map View, and the map a pick in the list names, in the Pane they were asked from", async () => {
+    it("opens the Graph Map, and the map a pick in the list names, in the Pane they were asked from", async () => {
         const maps = setup()
         await maps.commands.execute(MAPS_OPEN_WHOLE)
         await maps.commands.execute(MAPS_OPEN_FOR, { concept: 'Campsites', panelId: 'document:Trips' })

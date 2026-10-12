@@ -74,7 +74,7 @@ export function activePaneOf(model: LayoutModel, region: Region): PaneModel | un
     const { panes, activePaneId } = model.regions[region]
     if (panes.length === 0) return undefined
     // Whichever holds the model's active panel; else the pane last worked in here, which is
-    // what counts while focus sits in a Sidebar (a document being opened from Quick Find);
+    // what counts while focus sits in a Sidebar (a document being opened from Favourites);
     // else the first.
     return (
         panes.find((p) => p.activePanelId === model.activePanelId) ??

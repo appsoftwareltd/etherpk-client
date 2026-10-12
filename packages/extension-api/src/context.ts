@@ -66,7 +66,7 @@ export interface ExtensionCommandMenu {
 }
 
 /**
- * Adding buttons to the Graph Sidebar, under Today's journal.
+ * Adding buttons to the Graph Sidebar's group of action buttons, after Search and today's date.
  *
  * @beta
  */

@@ -8,13 +8,13 @@
      * to reach a document that is neither recent nor favourited without already knowing its
      * name.
      *
-     * Filtering uses the same normalise-then-`matchScore` path as [[Quick Find]], so a
+     * Filtering uses the same normalise-then-`matchScore` path as [[Search]]'s names, so a
      * [[Scoped Concept]] is found by the words a human would type here too.
      */
     import { onDestroy, onMount } from "svelte";
 
     import { getActiveDocumentStore } from "$lib/document";
-    import { quickFindKey } from "$lib/document/quick-find";
+    import { nameMatchKey } from "$lib/document/name-match";
     import { matchScore } from "$lib/document/view/augmentations/wikilink-complete-core";
     import { getActiveLayoutController, type ViewRef } from "$lib/layout";
     import type { FilesystemDocumentStore } from "$lib/storage";
@@ -28,10 +28,10 @@
     let filter = $state("");
 
     const matches = $derived.by(() => {
-        const q = quickFindKey(filter);
+        const q = nameMatchKey(filter);
         if (q === "") return all;
         return all
-            .map((doc) => ({ doc, score: matchScore(quickFindKey(doc.concept), q) }))
+            .map((doc) => ({ doc, score: matchScore(nameMatchKey(doc.concept), q) }))
             .filter((m): m is { doc: { concept: string; kind: string }; score: number } => m.score !== null)
             .sort((a, b) => b.score - a.score || a.doc.concept.localeCompare(b.doc.concept))
             .map((m) => m.doc);

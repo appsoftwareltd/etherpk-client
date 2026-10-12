@@ -5,8 +5,8 @@
  *   the one the link names,
  * - the Command Menu's Open Map View row, for the concept the caret's block answers to, or the
  *   choice at the caret when it answers to several, as `/kanban` offers a board,
- * - the Command Menu's Graph Map View row, and the Graph Sidebar's Graph Map View button under
- *   Today's journal,
+ * - the Command Menu's Graph Map row, and the Graph Sidebar's Graph Map button after Search and
+ *   today's date,
  * - Open page on a concept's Map View tab, for the document it is about.
  *
  * Opening a map writes nothing, so none of the rows asks whether the page can be edited. All of it
@@ -23,7 +23,7 @@ import { parseViewKey } from '$lib/layout/view-ref'
 import { MAP_VIEW_KIND, MAP_WHOLE, MAPS_OPEN_AT_CARET, MAPS_OPEN_FOR, MAPS_OPEN_FROM_MENU, MAPS_OPEN_PAGE, MAPS_OPEN_WHOLE, mapViewOf } from './identity'
 
 /** The whole graph's Map View, by its name: its tab, its Command Menu row and its graph sidebar button. */
-const GRAPH_MAP_VIEW = 'Graph Map View'
+const GRAPH_MAP = 'Graph Map'
 
 /** The concept of the Map View a tab holds, or null for any other tab or target. */
 function mapConcept(target: MenuTarget | undefined): string | null {
@@ -114,7 +114,7 @@ export function registerMapViewCommands(context: ExtensionContext): void {
     })
     commandMenu.register({
         id: MAPS_OPEN_WHOLE,
-        title: GRAPH_MAP_VIEW,
+        title: GRAPH_MAP,
         detail: 'Every place and route in this graph',
         icon: 'map',
         group: 'Navigate',
@@ -122,7 +122,15 @@ export function registerMapViewCommands(context: ExtensionContext): void {
         keywords: ['map', 'places', 'routes', 'everything', 'all'],
         command: MAPS_OPEN_WHOLE,
     })
-    graphSidebar.register({ id: MAPS_OPEN_WHOLE, title: GRAPH_MAP_VIEW, icon: 'map', command: MAPS_OPEN_WHOLE })
+    graphSidebar.register({
+        id: MAPS_OPEN_WHOLE,
+        title: GRAPH_MAP,
+        description: 'Open a map of every place and route in this graph',
+        icon: 'map',
+        // First of the extensions' buttons, straight after Search and today's date; the Graph Kanban is 30.
+        order: 20,
+        command: MAPS_OPEN_WHOLE,
+    })
     commands.register(MAPS_OPEN_PAGE, (arg) => {
         const target = arg as MenuTarget | undefined
         const concept = mapConcept(target)

@@ -369,7 +369,7 @@ export function createMcpServer(source: HeadlessGraph | Promise<HeadlessGraph> |
         'set_aliases',
         {
             title: 'Set aliases',
-            description: 'Replace a document\'s aliases: other names it answers to in [[wikilinks]], Quick Find and on a published site. The list you pass is the complete list, and it is shown in the document\'s frontmatter, in a block added if there is none. A name that is already another document\'s title or alias is refused with error "name_taken".',
+            description: 'Replace a document\'s aliases: other names it answers to in [[wikilinks]], Search and on a published site. The list you pass is the complete list, and it is shown in the document\'s frontmatter, in a block added if there is none. A name that is already another document\'s title or alias is refused with error "name_taken".',
             inputSchema: {
                 concept,
                 aliases: z.array(z.string()).describe('Every alias the document should have - an empty list removes them all.'),

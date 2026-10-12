@@ -37,7 +37,6 @@
         valueSuggestions,
         type SearchSuggestion,
     } from "../search-suggest";
-    import { tryGetActiveEventBus } from "$lib/surface";
     import { iconSvg } from "$lib/surface/icons";
 
     const { controller }: { controller: SearchController } = $props();
@@ -62,8 +61,8 @@
      */
     let movedByKey = false;
     /**
-     * What had focus when Search opened, handed back when it is dismissed: the Quick Find box it
-     * was opened from, caret and all, or the editor. Opening a result hands nothing back, because
+     * What had focus when Search opened, handed back when it is dismissed: the Search button it
+     * was opened from, or the editor, caret and all. Opening a result hands nothing back, because
      * the document it opens takes focus.
      */
     let returnFocusTo: HTMLElement | null = null;
@@ -133,7 +132,6 @@
         // it just opened, whatever happens downstream.
         controller.close();
         returnFocusTo = null;
-        tryGetActiveEventBus()?.emit("search:closed", { outcome: "opened" });
         if (item.kind === "hit") revealLine(item.target, item.line);
         getActiveLayoutController().openView({ kind: "document", target: item.target });
     }
@@ -144,7 +142,6 @@
         returnFocusTo = null;
         // Closes without first clearing the query — reopening restores it anyway.
         controller.close();
-        tryGetActiveEventBus()?.emit("search:closed", { outcome: "dismissed" });
         // It had focus a moment ago, so it is already on screen: nothing to scroll to.
         if (target?.isConnected) target.focus({ preventScroll: true });
     }
@@ -255,8 +252,8 @@
         returnFocusTo =
             previous instanceof HTMLElement && previous !== document.body ? previous : null;
         input.focus();
-        // Selected, not merely inserted: a query handed over from Quick Find is usually one
-        // the user wants to amend, so typing replaces it and → keeps it.
+        // Selected, not merely inserted: the last query, restored, is usually one the user
+        // wants to replace, so typing replaces it and → keeps it.
         input.select();
     });
 
@@ -464,7 +461,8 @@
 
             <div class="search__results" bind:this={results}>
                 <!-- ── Names ──────────────────────────────────────────────── -->
-                <section data-testid="search-names">
+                <!-- `data-query`: the query these rows answer, which trails the box by the debounce. -->
+                <section data-testid="search-names" data-query={search.nameQuery}>
                     <header class="search__group-head">
                         <h2>Names</h2>
                         {#if search.nameBuilding}

@@ -1,7 +1,8 @@
 <script lang="ts">
     /**
-     * The [[Kanban Board]] (ADR 0113): the tasks that answer to one [[Concept]], set out in a
-     * [[Lane]] per [[Task Status]] and a section per priority. A lens over documents: every card
+     * The [[Kanban Board]] (ADR 0113): the tasks that answer to one [[Concept]], or every task in
+     * the graph on the Graph Kanban, set out in a [[Lane]] per [[Task Status]] and a section per
+     * priority. A lens over documents: every card
      * is a task line the [[Derived Index]] reported, and moving a card rewrites that line.
      *
      * A move shows at once. The card holds its new place until the index agrees, or gives way to
@@ -38,6 +39,7 @@
     import {
         BOARD_LANES,
         BOARD_SECTIONS,
+        boardConceptOf,
         type BoardCard,
         type BoardCell,
         type BoardLane,
@@ -61,7 +63,8 @@
     const { view, panelId, visibility }: { view: ViewRef; panelId?: string; visibility?: ViewVisibility } = $props();
 
     const uid = $props.id();
-    const concept = $derived(view.target);
+    /** The board's concept, or null on the Graph Kanban, which reads every task in the graph. */
+    const concept = $derived(boardConceptOf(view));
     const desktop = new MediaQuery(DESKTOP_MEDIA_QUERY);
 
     /** The board's shape with nothing in it, drawn while the first read is under way. */
@@ -100,9 +103,9 @@
      * rename starts from the state of the board it replaces, which that board handed over.
      */
     // svelte-ignore state_referenced_locally
-    const boardState = createBoardStateStore(currentWorkspaceServices()?.graphId ?? "", view.target);
+    const boardState = createBoardStateStore(currentWorkspaceServices()?.graphId ?? "", boardConceptOf(view));
     // svelte-ignore state_referenced_locally
-    const handedOver = takeBoardHandover(view.target);
+    const handedOver = boardConceptOf(view) === null ? undefined : takeBoardHandover(view.target);
     if (handedOver) boardState.set(handedOver);
     /** Lanes shown as a narrow strip with their count. */
     let collapsed = $state<TaskStatus[]>(boardState.get().collapsed);
@@ -876,7 +879,7 @@
                 if (activeKey === key) followMovedCard(key, to);
             },
         }, {
-            concept: view.target,
+            concept: boardConceptOf(view),
             documentRenamed: followDocumentRename,
             // As its tab does (GraphWorkspace's removal listener): closed, unless it is being typed
             // in, where the next keystroke has the last word (ADR 0039).
@@ -920,7 +923,8 @@
         bind:this={boardEl}
         class="relative flex h-full flex-col overflow-clip bg-(--gk-surface-0) text-(--gk-text-default)"
         data-testid="kanban-board"
-        data-concept={concept}
+        data-concept={concept ?? undefined}
+        data-whole={concept === null || undefined}
         aria-busy={loading}
     >
         <p id="{uid}-card-hint" class="sr-only">
@@ -1035,7 +1039,11 @@
                         <div class="flex min-h-0 flex-1 flex-col overflow-y-auto px-2 pb-2" data-kanban-lane-body>
                             {#if empty && lane.status === emptyNoticeLane}
                                 <p class="m-0 px-1 pt-2 text-sm text-(--gk-text-subtle)" data-testid="kanban-empty">
-                                    No tasks belong to {concept} yet. Tasks on its page, or nested under a link to it, appear here.
+                                    {#if concept === null}
+                                        No tasks in this graph yet.
+                                    {:else}
+                                        No tasks belong to {concept} yet. Tasks on its page, or nested under a link to it, appear here.
+                                    {/if}
                                 </p>
                             {/if}
                             {#each lane.sections as section (section.label)}

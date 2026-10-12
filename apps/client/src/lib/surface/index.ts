@@ -86,12 +86,23 @@ export {
 } from './context-menu-store'
 export {
     type Keybinding,
+    type KeybindingTable,
     type KeyEventLike,
+    ariaKeyShortcut,
     attachKeybindings,
+    chordsFor,
     eventMatches,
     formatChord,
+    formatChordHint,
     isApplePlatform,
     parseChord,
     suppressBrowserChords,
 } from './keybindings'
-export { GRAPH_SIDEBAR_BUTTON_KIND, type GraphSidebarButton, graphSidebarButtons, registerGraphSidebarButton } from './graph-sidebar-buttons'
+export { type ControlHelp, controlHelp, controlHelpText, createControlHelp } from './control-help'
+export {
+    GRAPH_SIDEBAR_BUTTON_KIND,
+    type GraphSidebarButton,
+    graphSidebarButtons,
+    registerGraphSidebarButton,
+    sidebarButtonColumns,
+} from './graph-sidebar-buttons'

@@ -1616,7 +1616,7 @@
     }
 
     /**
-     * Whether a concept has a document yet. A [[Draft]] - the create row in Quick Find, a
+     * Whether a concept has a document yet. A [[Draft]] - the New page row in Search, a
      * wikilink to a [[Pageless Concept]] - opens an editor over nothing, and the store first
      * hears of it at the first keystroke. Asked through `open`, which is what a protect does
      * next anyway, rather than through the index, which can lag a page just created.
@@ -3312,10 +3312,10 @@
             });
             indexingIndicator.busy(next.isBusy());
             // Re-run an OPEN Search when the index changes underneath it — a document edited
-            // in another tab, a sync arriving, or the initial build finishing. Quick Find
-            // already does this for the same reason: results ranked only on keystroke go
-            // stale against a graph that moved, and a search that silently misses something
-            // is this feature's one unacceptable failure. A no-op while the modal is closed.
+            // in another tab, a sync arriving, or the initial build finishing. Results ranked
+            // only on keystroke go stale against a graph that moved, and a search that silently
+            // misses something is this feature's one unacceptable failure. A no-op while the
+            // modal is closed.
             detachSearchRefresh();
             const detachRefresh = next.onUpdated(() => {
                 searchController?.refresh();
@@ -3879,7 +3879,7 @@
             }),
         );
         commandRegistry.register("search.open", (argument?: unknown) =>
-            // The optional argument is Quick Find handing over what was already typed.
+            // An optional query to open with; without one Search restores its last.
             searchController?.open(
                 typeof argument === "string" ? argument : "",
             ),
@@ -4300,6 +4300,7 @@
             events: bus,
             commands: commandRegistry,
             contributions,
+            keybindings: keybindingTable,
             readingPositions,
             // Getters over the session's runes, so a template reading them re-renders on a lock
             // transition. Actions only: no key, no record, nothing to leak.

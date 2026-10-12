@@ -3,7 +3,8 @@
  * (ADR 0113, ADR 0121):
  *
  * - the View for `kanban.board`, which its manifest declares with the board's address
- *   (`/g/<graph>/k/<concept>`) and its tab title,
+ *   (`/g/<graph>/k/<concept>`) and its tab title, and the same View for `kanban.whole`, the
+ *   Graph Kanban (`/g/<graph>/kanban`),
  * - the Commands and menu rows that open a board and act on a card (kanban-commands.ts),
  * - the Events that keep open boards right: a rename moves a Task Detail and hands a board's
  *   state to the board re-keyed from it, and a deletion closes a Task Detail over the document.
@@ -15,11 +16,12 @@
 import type { ExtensionContext, ViewContribution } from '@appsoftwareltd/etherpk-extension-api'
 
 import { conceptRenamed, documentRemoved } from './board-actions'
-import { KANBAN_VIEW_KIND } from './board-model'
+import { KANBAN_VIEW_KIND, KANBAN_WHOLE_KIND } from './board-model'
 import { registerKanbanCommands } from './kanban-commands'
 
 export function registerKanban(context: ExtensionContext, board: ViewContribution): void {
     context.views.register(KANBAN_VIEW_KIND, board)
+    context.views.register(KANBAN_WHOLE_KIND, board)
     registerKanbanCommands(context)
     context.events.on('concept:renamed', ({ from, to }) => conceptRenamed(from, to))
     // As a tab over the document closes: unless the Task Detail is being typed in (ADR 0039).

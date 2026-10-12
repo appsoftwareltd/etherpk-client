@@ -1,5 +1,6 @@
 import { EditorSelection, EditorState, type TransactionSpec } from '@codemirror/state'
 import { type EditorView, showTooltip } from '@codemirror/view'
+import type { GraphSidebarButton } from '@appsoftwareltd/etherpk-extension-api'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import { setActiveEditorView } from '$lib/document/active-editor'
@@ -11,7 +12,7 @@ import { commandMenuDetail, commandMenuItemsInOrder, listCommandMenuItems } from
 import { listContextMenuItems } from '$lib/surface/context-menu'
 import { type BoardActions, registerBoard } from './board-actions'
 import type { BoardCell } from './board-model'
-import { KANBAN_OPEN_AT_CARET, KANBAN_OPEN_BOARD, KANBAN_OPEN_BOARD_FOR, type KanbanCardTarget, registerKanbanCommands } from './kanban-commands'
+import { KANBAN_OPEN_AT_CARET, KANBAN_OPEN_BOARD, KANBAN_OPEN_BOARD_FOR, KANBAN_OPEN_WHOLE, type KanbanCardTarget, registerKanbanCommands } from './kanban-commands'
 import { kanbanContext } from './testing'
 
 // The rows a [[Kanban Board]] card's context menu offers, and how they reach the board that raised
@@ -149,6 +150,54 @@ describe("a board tab's context menu", () => {
         const { contributions } = setup()
         expect(listContextMenuItems(contributions, { kind: 'tab', panelId: 'backlinks:Acme' })).toEqual([])
     })
+
+    it('offers nothing on the Graph Kanban, which is about no one concept', () => {
+        const { contributions } = setup()
+        expect(listContextMenuItems(contributions, { kind: 'tab', panelId: 'kanban.whole:whole' })).toEqual([])
+    })
+})
+
+describe('the Graph Kanban', () => {
+    const editing = { inTable: false, tableInsertable: true, bodyWritable: true }
+
+    it('opens from its Command as the one whole-graph board, in the Pane it was asked from', async () => {
+        const { commands, openView } = setup()
+        await commands.execute(KANBAN_OPEN_WHOLE, { panelId: 'document:Planning' })
+        expect(openView).toHaveBeenCalledWith({ kind: 'kanban.whole', target: 'whole' }, { inPaneOf: 'document:Planning' })
+    })
+
+    it('does not open under the phone layout, where a board cannot show', async () => {
+        const { commands, openView } = setup(false)
+        await commands.execute(KANBAN_OPEN_WHOLE)
+        expect(openView).not.toHaveBeenCalled()
+    })
+
+    it('is a Command Menu row on desktop, and not under the phone layout', () => {
+        const row = listCommandMenuItems(setup().contributions, editing).find((item) => item.title === 'Graph Kanban')
+        expect(row).toMatchObject({ detail: 'Every task in this graph', icon: 'kanban.kanban', command: KANBAN_OPEN_WHOLE })
+        expect(listCommandMenuItems(setup(false).contributions, editing).map((item) => item.title)).not.toContain('Graph Kanban')
+    })
+
+    it('is a Graph Sidebar button with help text, after the Graph Map, on desktop only', async () => {
+        // Read from the registry as the Sidebar reads it, `when` and all.
+        const sidebarButtons = (contributions: ReturnType<typeof setup>['contributions']) =>
+            contributions
+                .list('graph-sidebar-button')
+                .map((entry) => entry.value as GraphSidebarButton)
+                .filter((button) => button.when?.() ?? true)
+        const desktop = setup()
+        const [button] = sidebarButtons(desktop.contributions)
+        expect(button).toMatchObject({
+            title: 'Graph Kanban',
+            description: 'Open a Kanban board of every task in this graph',
+            icon: 'kanban.kanban',
+            order: 30,
+            command: KANBAN_OPEN_WHOLE,
+        })
+        await desktop.commands.execute(button.command, button.args)
+        expect(desktop.openView).toHaveBeenCalledWith({ kind: 'kanban.whole', target: 'whole' }, {})
+        expect(sidebarButtons(setup(false).contributions)).toEqual([])
+    })
 })
 
 describe('/kanban', () => {
@@ -163,6 +212,7 @@ describe('/kanban', () => {
         expect(titles.slice(titles.indexOf('Copy file path'), titles.indexOf('Copy task reference') + 1)).toEqual([
             'Copy file path',
             'Open Kanban',
+            'Graph Kanban',
             'Copy task reference',
         ])
     })

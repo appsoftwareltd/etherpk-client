@@ -1063,8 +1063,10 @@
             pendingCaret = undefined
             // A promotion rebuilt this editor, so the element the user was mid-keystroke in no
             // longer exists. Without this they lose focus after the character that created the
-            // page and have to click back in — a Draft must feel like any other document.
-            focusEditor()
+            // page and have to click back in — a Draft must feel like any other document. Only
+            // while the focus went with the old editor: someone who moved on before the page was
+            // written (opened Search with the next key, say) keeps the focus where they put it.
+            if (focusIsFree()) focusEditor()
             // Same reason as a reveal: the caret is where the user was typing, so it is
             // scrolled INTO view rather than the document being yanked to the top.
             revealEditorPosition(editor.view, head)

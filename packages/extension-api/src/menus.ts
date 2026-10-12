@@ -149,20 +149,33 @@ export interface CommandMenuItem {
 }
 
 /**
- * A button in the Graph Sidebar, under Today's journal: a way in to what the extension shows for
- * the whole graph, such as the Graph Map View. Pressing it runs `command`.
+ * A button in the Graph Sidebar's group of action buttons, after Search and today's date: a way in
+ * to what the extension shows for the whole graph, such as the Graph Map. Pressing it runs
+ * `command`.
  *
  * @beta
  */
 export interface GraphSidebarButton {
     /** Under the extension's id. */
     id: string
-    /** The button's text. */
+    /** The button's text: short, because the Sidebar fits two buttons side by side. */
     title: string
+    /**
+     * What pressing the button does, shown as its help text: "Open a map of every place and route
+     * in this graph". The Client adds the key chords bound to `command`, so it names none. Without
+     * one, the help text is the title.
+     */
+    description?: string
     /** An icon drawn before the title: the extension's own or one of the Client's. */
     icon?: string
     /** Lower lists earlier. A button without one lists after every button that has one. */
     order?: number
+    /**
+     * Whether the button shows here, asked each time the Sidebar draws, which it does afresh when
+     * the layout changes between desktop and phone. Absent means everywhere. A `when` that throws
+     * hides the button.
+     */
+    when?: () => boolean
     /** The Command the button runs. */
     command: string
     /** What the Command is given. */

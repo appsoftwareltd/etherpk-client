@@ -5,8 +5,9 @@
 @source "../../../packages/shared/src";
 /* The compiled-in Built-in Extensions draw in the page with the Client's stylesheet (ADR 0121).
    A loaded one ships a stylesheet of its own for its shadow roots, so its build output is not
-   scanned. */
-@source "../../../extensions/*/src";
+   scanned. The pattern names the files under each extension's src folder: one that ends at the
+   folder itself matches only files named src, which is none (tailwind-sources.test.ts). */
+@source "../../../extensions/*/src/**/*";
 
 /* Use class-based dark mode (.dark on <html>) instead of @media (prefers-color-scheme) */
 @custom-variant dark (&:where(.dark, .dark *));

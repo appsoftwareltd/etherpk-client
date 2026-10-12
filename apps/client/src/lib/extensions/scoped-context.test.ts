@@ -95,6 +95,21 @@ describe('an extension context', () => {
         expect(graphSidebarButtons(contributions)).toEqual([])
     })
 
+    it('passes a Graph Sidebar button’s help text and its when through to the Sidebar', () => {
+        const { context, contributions } = setUp()
+        let desktop = true
+        context.graphSidebar.register({
+            id: 'graph-view.openWhole',
+            title: 'Graph View',
+            description: 'Open a graph of every page and link',
+            when: () => desktop,
+            command: 'graph-view.openWhole',
+        })
+        expect(graphSidebarButtons(contributions).map((button) => button.description)).toEqual(['Open a graph of every page and link'])
+        desktop = false
+        expect(graphSidebarButtons(contributions)).toEqual([])
+    })
+
     it("draws its own icon before one of the Client's with the same name", () => {
         const { context } = setUp()
         expect(context.icons.svg('graph-view')).toBe('<svg data-icon="graph-view.graph-view"/>')

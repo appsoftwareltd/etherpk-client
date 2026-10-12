@@ -5,6 +5,37 @@ What changed in each release of the EtherPK Client and the Headless Client
 They are released together, under the version number they share with the Sync Server. This log
 starts at 0.9.3.
 
+## Unreleased
+
+### Client
+
+- **Buttons at the top of the graph sidebar.** The sidebar now opens with **Search**, today's date
+  (it opens today's journal), **Graph Map** and **Graph Kanban**. They sit in one row when the
+  sidebar is wide, two by two at its usual width, and one above the other when it is narrow, with
+  Search and today's date always first. Hover a button to see what it does and its keyboard
+  shortcut.
+- **Quick Find is gone.** The sidebar's "Quick find" box and its "Search everything" line are
+  replaced by the Search button. Search finds documents by name in the same way, and offers a
+  **New page** row for a name that has no page yet. Open it with Ctrl+K (⌘K on a Mac), Alt+F or
+  the Search button.
+- **Graph Kanban.** A Kanban board of every task in the graph, not only one page's tasks, at
+  `/g/<graph>/kanban`. Open it from the sidebar's Graph Kanban button or **Graph Kanban** in the
+  `/` menu. It works as any board does, and each card names the document its task is in.
+  Desktop only, as every board is.
+- **Graph Map View is now Graph Map**, on its button, its tab and its `/` menu row.
+- **A search button on a phone's top bar**, to the left of the document name. The drawer buttons
+  on the top bar now show which drawer is open. In a phone's drawer the sidebar's buttons are
+  icons side by side, across the drawer's width.
+- **Wider sidebars.** Both sidebars open at 304px wide, so the sidebar's buttons fit two by two.
+  A sidebar you have already resized keeps its width.
+- **Extension API.** A Graph Sidebar button can carry a `description`, shown as its help text
+  with the key chords bound to its command, and a `when`, so it shows only where it applies.
+- **Kanban boards look as designed again.** Cards have their padding back, long tasks are cut
+  after three lines, a folded lane shows its name down the strip, and a card carried over a
+  section outlines where it will land.
+- **Search keeps the focus** when you open it straight after typing the first letter of a new
+  page. The page used to take the focus back once it was saved.
+
 ## 0.9.6 - 2026-10-11
 
 ### Client

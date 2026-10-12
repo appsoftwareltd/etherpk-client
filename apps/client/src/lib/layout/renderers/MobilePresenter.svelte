@@ -9,7 +9,7 @@
     import { untrack } from 'svelte'
 
     import type { LayoutController, LayoutModel, Region, ViewInstance } from '$lib/layout'
-    import { attachContextMenu, type ContextMenuTarget, tryGetActiveCommandRegistry } from '$lib/surface'
+    import { attachContextMenu, type ContextMenuTarget, createControlHelp, tryGetActiveCommandRegistry } from '$lib/surface'
 
     import CommandBar from './CommandBar.svelte'
     import type { MobileRenderer } from './mobile-renderer.svelte'
@@ -19,6 +19,7 @@
     import { iconSvg } from '$lib/surface/icons'
     import { unavailableViewMessage } from './unavailable-view'
     import { createViewVisibility, watchPageVisibility } from '../view-visibility'
+    import { workspaceService } from '$lib/workspace/workspace-services'
 
     let {
         controller,
@@ -122,7 +123,7 @@
      * The same rule holds on desktop, where it does nothing: there the Sidebar is a dock
      * column beside the content and covers nothing. Here it is an overlay, so it closes -
      * you asked to see something, so it stops sitting on top of it. Living here rather than
-     * in the callers means it holds for every way a document gets opened: [[Quick Find]], a
+     * in the callers means it holds for every way a document gets opened: [[Search]], a
      * [[Favourite]], a [[Recents]] row, [[All Documents]], a [[Backlink]] reference, a
      * [[Search]] result, history navigation, and whatever comes next.
      *
@@ -271,6 +272,28 @@
         void tryGetActiveCommandRegistry()?.execute(OPEN_TODAY)
     }
 
+    // --- Search -----------------------------------------------------------------------
+    /**
+     * The top bar's way to [[Search]], left of the document control (ADR 0139): the Graph
+     * Sidebar's Search button without its word, so a phone reaches Search without opening the left
+     * drawer first. Drawn only where the Command exists, as Today's journal is.
+     */
+    const SEARCH_OPEN = 'search.open'
+    const canSearch = tryGetActiveCommandRegistry()?.has(SEARCH_OPEN) ?? false
+
+    function openSearch() {
+        // The modal covers everything, so the list of open documents goes; a drawer stays as it
+        // was and is there again when Search is dismissed.
+        menuOpen = false
+        void tryGetActiveCommandRegistry()?.execute(SEARCH_OPEN)
+    }
+
+    /**
+     * Help text for the top bar's buttons: what each does and its chord, as the Graph Sidebar's
+     * buttons carry it. A narrow desktop window gets this bar too, with a keyboard behind it.
+     */
+    const helpFor = createControlHelp(workspaceService('keybindings'))
+
     // --- Ride above the soft keyboard --------------------------------------------
     // The soft keyboard overlays the layout viewport (it does not shrink it), so a
     // bottom-pinned Command Bar would sit behind the keyboard. We track the visual
@@ -366,18 +389,35 @@
 {/snippet}
 
 <div class="mobile" data-testid="mobile-presenter" style="--keyboard-inset: {keyboardInset}px">
-    <!-- The drawer toggles, and between them the control naming the document in front and the
-         button to today's journal -->
+    <!-- The drawer toggles, and between them the button to Search, the control naming the
+         document in front and the button to today's journal -->
     <div class="topbar" data-testid="mobile-topbar">
         <button
             class="toggle"
             data-testid="mobile-toggle-left"
             title="Toggle document tree"
             aria-label="Toggle document tree"
+            aria-expanded={leftOpen}
             onclick={() => toggleSidebarExclusive('left')}
         >
             <SidebarToggleIcon side="left" />
         </button>
+        {#if canSearch}
+            <button
+                class="toggle"
+                data-testid="mobile-search"
+                aria-label="Search"
+                onclick={openSearch}
+                {...helpFor('Open graph search modal', SEARCH_OPEN)}
+            >
+                <!-- The Graph Sidebar's search glass at the toggles' size and line weight.
+                     In-repo constant markup from the icon table. -->
+                <span class="bar-icon" aria-hidden="true">
+                    <!-- eslint-disable-next-line svelte/no-at-html-tags -->
+                    {@html iconSvg('search', { strokeWidth: 1.2 })}
+                </span>
+            </button>
+        {/if}
         <!-- Where a strip of tabs would be: the View in front, wearing the indicators its tab
              would. One control: a tap opens the list of every open View, a long press raises the
              tab's menu. With nothing open it says so and does nothing. -->
@@ -413,27 +453,28 @@
             <button
                 class="toggle"
                 data-testid="mobile-today"
-                title="Today's journal"
                 aria-label="Open today's journal"
                 onclick={openToday}
+                {...helpFor("Open today's journal", OPEN_TODAY)}
             >
                 <!-- The Graph Sidebar's calendar, at the toggles' size and line weight: the
                      outline is as heavy as their panel outlines beside it. In-repo constant
                      markup from the icon table. -->
-                <span class="today-icon" aria-hidden="true">
+                <span class="bar-icon" aria-hidden="true">
                     <!-- eslint-disable-next-line svelte/no-at-html-tags -->
                     {@html iconSvg('todays-journal', { strokeWidth: 1.2 })}
                 </span>
             </button>
         {/if}
         <!-- No Tasks button here, unlike the desktop toolbar: the top bar is kept to the drawer
-             toggles, the document control and Today's journal, and Tasks is a resident tab of
-             the right drawer. -->
+             toggles, Search, the document control and Today's journal, and Tasks is a resident
+             tab of the right drawer. -->
         <button
             class="toggle"
             data-testid="mobile-toggle-right"
             title="Toggle backlinks"
             aria-label="Toggle backlinks"
+            aria-expanded={rightOpen}
             onclick={() => toggleSidebarExclusive('right')}
         >
             <SidebarToggleIcon side="right" />
@@ -728,7 +769,7 @@
            rather than stretch the grid past the viewport. */
         min-width: 0;
     }
-    /* The icon-only buttons (the drawer toggles and Today's journal) and the document control
+    /* The icon-only buttons (the drawer toggles, Search and Today's journal) and the document control
        share one box, so they are the same height and read as one set. Height is fixed (not
        derived from line-height) because `font: inherit` resets line-height — the two would
        otherwise diverge. */
@@ -868,8 +909,17 @@
         width: 1.9rem;
         cursor: pointer;
     }
-    /* Today's journal's calendar, the size SidebarToggleIcon draws the toggles' glyphs. */
-    .today-icon :global(svg) {
+    /* A drawer toggle while its drawer is open: a neutral fill and a firmer edge, the Command Bar's
+       pressed look, so the bar says which drawer is showing. Grey from the theme's own tokens, so
+       it reads in both themes and over a graph's toolbar colour, which the toggles paint over. */
+    .topbar .toggle[aria-expanded='true'] {
+        background: var(--gk-surface-2);
+        border-color: var(--gk-border-strong, var(--gk-border-soft));
+        color: var(--gk-text-strong);
+    }
+    /* Search's glass and Today's journal's calendar, the size SidebarToggleIcon draws the
+       toggles' glyphs. */
+    .bar-icon :global(svg) {
         width: 1.1rem;
         height: 1.1rem;
         display: block;

@@ -17,6 +17,23 @@ import { parseTaskLine, parseTaskTags } from '$lib/document/task-tags'
  */
 export const KANBAN_VIEW_KIND = 'kanban.board'
 
+/**
+ * The View kind of the **Graph Kanban**, the board of every task in the graph: one per graph, at
+ * `/g/<graph>/kanban`, titled "Graph Kanban", its target fixed by the manifest.
+ */
+export const KANBAN_WHOLE_KIND = 'kanban.whole'
+
+/** The Graph Kanban as a View. */
+export const KANBAN_WHOLE = { kind: KANBAN_WHOLE_KIND, target: 'whole' } as const
+
+/**
+ * The concept a board's View is over, or null for the Graph Kanban, which answers to no one
+ * concept: the same null the task query takes for every task in the graph.
+ */
+export function boardConceptOf(view: { kind: string; target: string }): string | null {
+    return view.kind === KANBAN_WHOLE_KIND ? null : view.target
+}
+
 export interface BoardLaneSpec {
     status: TaskStatus
     label: string
@@ -93,7 +110,8 @@ export interface BoardLane extends BoardLaneSpec {
 }
 
 export interface BoardSnapshot {
-    concept: string
+    /** The concept the board is over, or null for the Graph Kanban. */
+    concept: string | null
     /** The day the due dates were measured against, `YYYY-MM-DD`. */
     today: string
     lanes: BoardLane[]

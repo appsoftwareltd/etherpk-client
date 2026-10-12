@@ -953,7 +953,7 @@ export interface ConceptCandidate {
     canonical?: string
     /**
      * Pageless only: how many wikilink occurrences reference this concept. It is what
-     * distinguishes a pageless row from a draft row in [[Quick Find]] and [[Search]] - the
+     * distinguishes a pageless row from a draft row in [[Search]] - the
      * one thing a "make this up" row can never show (ADR 0050).
      */
     references?: number

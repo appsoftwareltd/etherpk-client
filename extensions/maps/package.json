@@ -37,7 +37,7 @@
             {
                 "kind": "maps.whole",
                 "target": "whole",
-                "title": "Graph Map View",
+                "title": "Graph Map",
                 "icon": "map",
                 "region": "main",
                 "address": {

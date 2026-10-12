@@ -266,8 +266,8 @@
             intro: "The sidebar is a short list of ways back in, and each view remembers its reading position.",
             items: [
                 {
-                    lead: "Quick find by name",
-                    text: " (a typo offers a new page instead) and search by text across the graph.",
+                    lead: "Search by name",
+                    text: " (a typo offers a new page instead) and by text across the graph.",
                 },
                 {
                     lead: "All documents",

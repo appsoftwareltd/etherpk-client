@@ -20,6 +20,7 @@ import type { SyncIndicator, SyncStatusAction } from '$lib/sync/sync-indicator'
 import type { GraphSettings } from '$lib/storage/fs/graph-settings'
 import type { CommandRegistry } from '$lib/surface/command-registry'
 import type { ContributionRegistry } from '$lib/surface/contribution-registry'
+import type { KeybindingTable } from '$lib/surface/keybindings'
 import type { EventBus } from '$lib/surface/types'
 import type { RecentsStore } from '$lib/navigation/recents'
 import type { TaskFilterStore } from '$lib/document/task-filter-store'
@@ -153,6 +154,11 @@ export interface WorkspaceServices {
     events?: EventBus
     commands?: CommandRegistry
     contributions?: ContributionRegistry
+    /**
+     * The app's chords, live: the app's own and those extensions add as they start. What a
+     * control reads to name its shortcut in its help text (the Graph Sidebar's buttons).
+     */
+    keybindings?: KeybindingTable
     readingPositions?: ReadingPositionStore
     recents?: RecentsStore
     taskFilter?: TaskFilterStore
