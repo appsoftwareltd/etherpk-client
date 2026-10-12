@@ -302,7 +302,8 @@ extensions people can install from inside EtherPK. Each release is a pull reques
 rebuilt from its tagged source and compared with its npm package, and a person reviews it before it
 is listed. Installed extensions update by themselves to the newest listed release the person's
 EtherPK can run. The directory's contributing guide says what a release needs, including the size
-limits.
+limits. Publish the tarball `npm pack` makes: `pnpm publish` rewrites `package.json` as it packs,
+and then the published package no longer matches the rebuild.
 
 ## Licence
 
