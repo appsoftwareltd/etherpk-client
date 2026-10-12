@@ -12,7 +12,8 @@
  *   extension never has to undo its own registrations, and one that forgets cannot leave a dead
  *   Command behind.
  * - **Reach.** Only the Events the API names can be heard, and nothing here leads to a document
- *   store, a key or a sync engine.
+ *   store, a key or a sync engine. An extension from the Extension Directory reaches only the API's
+ *   Stable part (`stableOnly`): the Proposed part is for the extensions that come with EtherPK.
  *
  * After `dispose` the context adds nothing: a callback that fires late does no harm.
  */
@@ -28,6 +29,9 @@ import type {
     ViewContribution,
 } from '@appsoftwareltd/etherpk-extension-api'
 
+import { PLAYER_FRAME_HOSTS } from '@appsoftwareltd/etherpk-shared/frame-hosts'
+
+import { INTERACTIVE_FENCE_KIND } from '$lib/document/view/augmentations/interactive-fence-contract'
 import { extensionSettingKey } from '$lib/person-settings/person-settings'
 import { registerCommandMenuItem, type CommandMenuItem as ClientCommandMenuItem } from '$lib/surface/command-menu'
 import { registerContextMenuItem, type ContextMenuItem as ClientContextMenuItem } from '$lib/surface/context-menu'
@@ -35,7 +39,12 @@ import { registerGraphSidebarButton } from '$lib/surface/graph-sidebar-buttons'
 import type { EventName } from '$lib/surface'
 
 import type { CatalogueEntry } from './catalogue'
+import { toInteractiveFence } from './fence-widgets'
+import { buildFrame } from './frames'
 import type { ClientServices, GraphServices } from './services'
+
+/** An extension's id or a name under it, as a fence's info word may take them. */
+const FENCE_NAME = /^[a-z][a-z0-9-]*$/
 
 /** The Events an extension may hear: the API's catalogue, and no other of the Client's. */
 export const EXTENSION_EVENTS: readonly ExtensionEventName[] = ['document:active-changed', 'concept:renamed', 'document:deleted', 'documents:changed', 'theme:changed']
@@ -79,6 +88,10 @@ export function createScopedContext(
     const own = (what: string, name: string) => {
         if (!name.startsWith(`${id}.`)) throw new Error(`${what} "${name}" must start with "${id}."`)
     }
+    // A loaded extension's fence widgets mount like its Views: in a shadow root holding its
+    // stylesheets, unless it mounts in the page (ADR 0121, amended 2026-10-10).
+    const fenceIsolation =
+        entry.source === 'loaded' && manifest.isolation !== 'page' ? { styles: (manifest.styles ?? []).map((path) => `${entry.base}${path.replace(/^\.\//, '')}`) } : null
     /** The extension's own icon by its registered name, or the Client's icon of that name. */
     const icon = (name: string | undefined) => (name !== undefined && ownIcons.has(name) ? `${id}.${name}` : name)
 
@@ -206,10 +219,29 @@ export function createScopedContext(
         // extension's `{@html}` still trusted and is not sanitized a second time.
         icons: { svg: (name, options) => client.iconSvg(icon(name) ?? name, options) as unknown as IconMarkup },
         notify: (text) => graph.notify(text),
+        editor: {
+            registerFence(info, widget, options = {}) {
+                // The extension's id, an ordinary fence, or a name under it, an Extension Fence
+                // (ADR 0138): never another extension's word, and never one of the Client's own.
+                const dot = info.indexOf('.')
+                const owned = dot === -1 ? info === id : info.slice(0, dot) === id && FENCE_NAME.test(info.slice(dot + 1))
+                if (!owned) throw new Error(`A fence's info word must be "${id}" or "${id}.<name>", not "${info}".`)
+                if (disposed) return noop
+                const fence = toInteractiveFence(manifest.displayName, widget, options, fenceIsolation)
+                return keep(graph.contributions.register(INTERACTIVE_FENCE_KIND, info, fence))
+            },
+            insertBlock: (text, options) => (disposed ? false : graph.editor.insertBlock(text, options)),
+        },
+        // The dialog names the extension, so a person knows who is asking.
+        dialogs: { prompt: (options) => client.dialogs.prompt(options, manifest.displayName) },
+        embeds: {
+            frameHosts: PLAYER_FRAME_HOSTS,
+            frame: (options) => buildFrame(options),
+        },
     }
 
     return {
-        context,
+        context: entry.source === 'loaded' && entry.installed ? stableOnly(context) : context,
         dispose() {
             if (disposed) return
             disposed = true
@@ -222,6 +254,51 @@ export function createScopedContext(
             }
             disposers.length = 0
         },
+    }
+}
+
+/** A Proposed member, for an extension that may not use it: any call throws, saying why. */
+function refuse(member: string): () => never {
+    return () => {
+        throw new Error(`context.${member} is in the Proposed part of the Extension API, which only the extensions that come with EtherPK may use.`)
+    }
+}
+
+/**
+ * The context an extension from the Extension Directory gets: the Stable part of `context`, with
+ * every Proposed member refusing. The Proposed part may change in any release, and `contributions`
+ * reaches the Client's own registries, where an extension could take any kind's entries, another
+ * extension's fence word among them. The reviewer checks a listed release uses only the Stable part,
+ * and this keeps it to that. The plain values (`extensionId`, `graphId`, `clientVersion`, `dev`)
+ * stay readable, since reading one reaches nothing.
+ */
+function stableOnly(context: ExtensionContext): ExtensionContext {
+    const { layout, commands } = context
+    return {
+        ...context,
+        commands: { register: (commandId, handler) => commands.register(commandId, handler), execute: refuse('commands.execute'), has: refuse('commands.has') },
+        layout: {
+            isDesktop: () => layout.isDesktop(),
+            openView: (view, options) => layout.openView(view, options),
+            openDocument: refuse('layout.openDocument'),
+            activeDocument: refuse('layout.activeDocument'),
+            reveal: refuse('layout.reveal'),
+        },
+        contributions: {
+            register: refuse('contributions.register'),
+            unregister: refuse('contributions.unregister'),
+            get: refuse('contributions.get'),
+            has: refuse('contributions.has'),
+            list: refuse('contributions.list'),
+        },
+        contextMenu: { register: refuse('contextMenu.register') },
+        graphSidebar: { register: refuse('graphSidebar.register') },
+        keybindings: { register: refuse('keybindings.register') },
+        events: { on: refuse('events.on') },
+        index: { allConcepts: refuse('index.allConcepts'), linkGraph: refuse('index.linkGraph'), onUpdated: refuse('index.onUpdated') },
+        concepts: { canonicalName: refuse('concepts.canonicalName'), key: refuse('concepts.key') },
+        theme: { isDark: refuse('theme.isDark') },
+        icons: { svg: refuse('icons.svg') },
     }
 }
 

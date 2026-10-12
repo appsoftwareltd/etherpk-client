@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 
 import { createAddressBook } from '$lib/extensions/addresses'
 
+import { EXTENSION_ADDRESS_KIND } from '$lib/extensions/addresses'
+
 import { assetUrl, documentUrl, encodeConceptPath, graphUrl, themeUrl, viewUrl } from './document-url'
 import { setExtensionAddresses } from './extension-addresses'
 
@@ -12,6 +14,7 @@ describe("an extension View's address", () => {
         setExtensionAddresses(
             createAddressBook([
                 {
+                    id: 'timeline',
                     package: {
                         manifest: {
                             id: 'timeline',
@@ -73,6 +76,10 @@ describe('viewUrl', () => {
     it('addresses the two kinds that are places you go', () => {
         expect(viewUrl('g1', { kind: 'document', target: 'Physics' })).toBe('/g/g1/d/Physics')
         expect(viewUrl('g1', { kind: 'asset', target: 'chart.aa.png' })).toBe('/g/g1/a/chart.aa.png')
+    })
+
+    it('keeps the address of a page whose extension is not installed here, each segment encoded', () => {
+        expect(viewUrl('g1', { kind: EXTENSION_ADDRESS_KIND, target: 'pear/branches/Old pear' })).toBe('/g/g1/x/pear/branches/Old%20pear')
     })
 
     it('refuses the kinds that are chrome you look through', () => {

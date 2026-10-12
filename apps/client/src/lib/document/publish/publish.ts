@@ -13,6 +13,7 @@
 import { parseFrontmatter } from '$lib/storage/fs/frontmatter'
 
 import { backlinksFor, conceptKey } from '../backlinks/backlink-index'
+import { extensionOfFence, isExtensionFenceInfo } from '../extension-fence'
 import { MAP_FENCE_INFO, mapAltText } from '../map-text'
 import { wikilinkOccurrencesInSource } from '../wikilink/source'
 import { searchIndexJson, searchIndexScript, sitemapXml, feedXml, type SearchEntry, type FeedItem, type SitemapEntry } from './derived'
@@ -31,7 +32,7 @@ import {
 } from './fragments'
 import { withDiagramId } from './diagram-id'
 import { highlightCode as defaultHighlight } from './highlight'
-import { type DocumentRenderer, type RenderedDocument, type TocItem, createDocumentRenderer } from './markdown/render'
+import { type DocumentRenderer, type FenceOutputRef, type RenderedDocument, type TocItem, createDocumentRenderer } from './markdown/render'
 import { type NavNode, buildNav } from './nav'
 import { discoverPublications, readPageDate } from './publication'
 import { type PublicationResolver, createPublicationResolver, titleText } from './resolve'
@@ -66,8 +67,20 @@ export interface PublishEnvironment {
      * printed as its lines, which hold where each place is (ADR 0118).
      */
     renderMap?(source: string): Promise<MapPicture>
+    /**
+     * How a site shows a fence an extension draws (its registration's `publish`): a picture or a
+     * link, never HTML. Undefined when nothing here publishes fences of that info word, which is so
+     * for every one where no extension runs, as in the Headless Client: an [[Extension Fence]] is
+     * then left out (ADR 0138), and any other fence published as code.
+     */
+    publishFence?(fence: { info: string; body: readonly string[]; document: string }): Promise<PublishedFenceOutput | null> | undefined
     now?(): Date
 }
+
+/** What an extension makes of a fence for a published site (the Extension API's `PublishedFence`). */
+export type PublishedFenceOutput =
+    | { kind: 'picture'; type: 'image/svg+xml' | 'image/png' | 'image/webp'; bytes: Uint8Array; width: number; height: number; alt: string }
+    | { kind: 'link'; href: string; text: string; image?: { src: string; alt: string; width?: number; height?: number } }
 
 /** A Map Block drawn by the host. */
 export interface MapPicture {
@@ -92,6 +105,74 @@ async function mapPictureName(source: string): Promise<string> {
         .slice(0, 8)
         .map((byte) => byte.toString(16).padStart(2, '0'))
         .join('')
+}
+
+/** A fence's body as lines, as an extension's widget reads it: markdown-it's content ends with a line break. */
+function bodyLines(code: string): string[] {
+    const lines = code.split('\n')
+    if (lines[lines.length - 1] === '') lines.pop()
+    return lines
+}
+
+const PICTURE_EXTENSIONS = { 'image/svg+xml': 'svg', 'image/png': 'png', 'image/webp': 'webp' } as const
+
+/** An `https` address as written, or null for any other. */
+function httpsAddress(value: unknown): string | null {
+    if (typeof value !== 'string') return null
+    try {
+        return new URL(value).protocol === 'https:' ? value : null
+    } catch {
+        return null
+    }
+}
+
+/**
+ * What an extension's `publish` answered for a fence, checked, its picture kept for the site under
+ * a name taken from its bytes: a picture, a link (`https` only, as is any picture in it), null when
+ * it is left out, or undefined when it could not be made, after which an ordinary fence is published
+ * as code and an Extension Fence left out, with a warning either way.
+ */
+async function publishedFence(
+    asked: Promise<PublishedFenceOutput | null>,
+    info: string,
+    concept: string,
+    pictures: Map<string, Uint8Array>,
+    warnings: PublishIssue[],
+): Promise<FenceOutputRef | null | undefined> {
+    try {
+        const out = await asked
+        if (out === null) return null
+        if (out.kind === 'picture') {
+            const extension = PICTURE_EXTENSIONS[out.type]
+            if (!(out.bytes instanceof Uint8Array) || !extension) throw new Error('its picture is not an SVG, PNG or WebP file')
+            const digest = await crypto.subtle.digest('SHA-256', out.bytes as Uint8Array<ArrayBuffer>)
+            const name = [...new Uint8Array(digest)]
+                .slice(0, 8)
+                .map((byte) => byte.toString(16).padStart(2, '0'))
+                .join('')
+            const path = `pictures/${name}.${extension}`
+            pictures.set(path, out.bytes)
+            return { kind: 'picture', src: path, alt: String(out.alt ?? ''), width: Math.round(out.width), height: Math.round(out.height) }
+        }
+        if (out.kind === 'link') {
+            const href = httpsAddress(out.href)
+            if (!href) throw new Error('its link is not an https address')
+            const src = httpsAddress(out.image?.src)
+            const image = src && out.image ? { src, alt: String(out.image.alt ?? ''), width: out.image.width, height: out.image.height } : undefined
+            return { kind: 'link', href, text: String(out.text ?? href), ...(image ? { image } : {}) }
+        }
+        throw new Error('it answered with something that is neither a picture nor a link')
+    } catch (error) {
+        const why = error instanceof Error ? error.message : String(error)
+        const extensionFence = isExtensionFenceInfo(info)
+        warnings.push({
+            level: 'warning',
+            code: 'extension-fence-failed',
+            message: `A \`${info}\` block in "${concept}" could not be published: ${why}. ${extensionFence ? 'It is left out.' : 'It is published as its text.'}`,
+            concept,
+        })
+        return extensionFence ? null : undefined
+    }
 }
 
 export interface PublishProgress {
@@ -305,12 +386,39 @@ export async function publishPublication(
     }
     const mermaidSvg = new Map<string, string>()
     const mapPictures = new Map<string, MapPicture & { path: string; alt: string }>()
+    /** What each fence an extension publishes becomes, by its info word and body; null when it is left out. */
+    const fenceOutputs = new Map<string, FenceOutputRef | null>()
+    /** The pictures extensions made of fences, by their path in the site. */
+    const fencePictures = new Map<string, Uint8Array>()
     const highlighted = new Map<string, string>()
     const highlight = env.highlightCode ?? defaultHighlight
     const probe = createDocumentRenderer({ resolve: resolver.resolve, assetHref: assetHrefOf })
     const bodies = [...included, ...includeDocs.values()].map((d) => ({ doc: d, body: bodyOf(d) }))
     for (const { doc, body } of bodies) {
         for (const fence of probe.fences(body)) {
+            const fenceKey = `${fence.lang}\n${fence.code}`
+            const extensionFence = isExtensionFenceInfo(fence.lang)
+            const asked = fence.lang === '' || fenceOutputs.has(fenceKey) ? undefined : env.publishFence?.({ info: fence.lang, body: bodyLines(fence.code), document: doc.concept })
+            if (asked) {
+                const output = await publishedFence(asked, fence.lang, doc.concept, fencePictures, warnings)
+                // Undefined: it could not be made, and an ordinary fence falls through to code below.
+                if (output !== undefined) {
+                    fenceOutputs.set(fenceKey, output)
+                    continue
+                }
+            } else if (fenceOutputs.has(fenceKey)) continue
+            if (extensionFence) {
+                // Nothing here draws it (the Headless Client, or its extension off): left out and said,
+                // never printed, since its body is the extension's data (ADR 0138).
+                fenceOutputs.set(fenceKey, null)
+                warnings.push({
+                    level: 'warning',
+                    code: 'extension-fence-left-out',
+                    message: `"${doc.concept}" holds content from the ${extensionOfFence(fence.lang)} extension, which this publisher can't draw, so it is left out. Publish from EtherPK in a browser, with that extension on, to include it.`,
+                    concept: doc.concept,
+                })
+                continue
+            }
             if (fence.lang === 'mermaid') {
                 if (!env.renderMermaid || mermaidSvg.has(fence.code)) continue
                 try {
@@ -365,6 +473,7 @@ export async function publishPublication(
             const picture = mapPictures.get(src)
             return picture && { src: picture.path, alt: picture.alt, width: picture.width, height: picture.height }
         },
+        fenceOutput: (lang, code) => fenceOutputs.get(`${lang}\n${code}`),
     })
 
     // 5. Render every document.
@@ -575,6 +684,7 @@ export async function publishPublication(
         report.assets.copied.push(name)
     }
     for (const picture of mapPictures.values()) bundle.set(picture.path, picture.bytes)
+    for (const [path, bytes] of fencePictures) bundle.set(path, bytes)
     for (const [path, text] of theme.files) {
         if (path.startsWith('assets/')) bundle.set(`theme/${path.slice('assets/'.length)}`, text)
     }

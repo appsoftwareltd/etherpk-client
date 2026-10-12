@@ -31,7 +31,7 @@ import tseslint from 'typescript-eslint'
  * the Client from one of these extensions fails lint until it is added here, where a reviewer
  * sees it.
  */
-const CLIENT_IMPORT_EXCEPTIONS = {
+export const CLIENT_IMPORT_EXCEPTIONS = {
     kanban: [
         '$lib/document/active-editor',
         '$lib/document/backlinks',

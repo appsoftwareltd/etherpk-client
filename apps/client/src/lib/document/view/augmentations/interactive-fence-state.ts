@@ -1,7 +1,8 @@
 /**
  * Which fences an interactive fence widget draws over (`interactive-fence-contract.ts`), and when its
  * text is shown instead: while any selection range touches the fence, boundaries included, as a
- * rendered fence's is (range-kind reveal, reveal-policy.ts; ADR 0022). The caret on one of its lines,
+ * rendered fence's is (range-kind reveal, reveal-policy.ts; ADR 0022). An [[Extension Fence]]'s text
+ * shows only when asked for (requested-kind reveal, ADR 0138). The caret on one of its lines,
  * a selection reaching into it, **Edit as text** (which puts the caret on its first body line) and an
  * undo that puts the caret back inside all show its text, and the widget is drawn again once no
  * selection touches the fence. The caret at the end of the line above it, or at the start of the
@@ -19,10 +20,11 @@
 import { type EditorState, MapMode, StateField } from '@codemirror/state'
 
 import { analysisFor } from '../analysis/editor-analysis'
+import { extensionFencePlaceholder } from './extension-fence-placeholder'
 import { type RenderableFence } from './fence-render-core'
-import { fenceRegistrationsChanged, type InteractiveFence, lookupInteractiveFence } from './interactive-fence-contract'
+import { fenceRegistrationsChanged, type InteractiveFence, isExtensionFenceInfo, lookupInteractiveFence } from './interactive-fence-contract'
 import { isProtectedDocumentFacet } from './protected-document'
-import { rangeRevealed } from './reveal-policy'
+import { rangeRevealed, requestedRevealed } from './reveal-policy'
 
 /** A fence an interactive widget draws over, where it sits and what it holds. */
 export interface InteractiveFenceRange extends RenderableFence {
@@ -58,7 +60,8 @@ function findInteractiveFences(state: EditorState): InteractiveFenceRange[] {
     const out: InteractiveFenceRange[] = []
     const ordinals = new Map<string, number>()
     for (const f of analysisFor(state).renderableFences) {
-        const fence = lookupInteractiveFence(f.info)
+        // An Extension Fence nothing draws shows a note in its place, never its data (ADR 0138).
+        const fence = lookupInteractiveFence(f.info) ?? (isExtensionFenceInfo(f.info) ? extensionFencePlaceholder(f.info) : undefined)
         if (!fence) continue
         const ordinal = ordinals.get(f.info) ?? 0
         ordinals.set(f.info, ordinal + 1)
@@ -74,9 +77,26 @@ function findInteractiveFences(state: EditorState): InteractiveFenceRange[] {
     return out
 }
 
-/** The interactive fences drawn as their widget: every one no selection range touches (range-kind reveal). */
+/**
+ * The interactive fences drawn as their widget. An ordinary one is drawn while no selection range
+ * touches it (range-kind reveal). An [[Extension Fence]] (ADR 0138) is drawn unless the person asked
+ * for its text with Edit as text or Show text and the selection is still in it (requested-kind
+ * reveal): the caret alone never shows its data.
+ */
 export function collapsedInteractiveFences(state: EditorState): InteractiveFenceRange[] {
-    return interactiveFences(state).filter((f) => !rangeRevealed(state, f.blockFrom, f.blockTo))
+    return interactiveFences(state).filter((f) =>
+        isExtensionFenceInfo(f.info) ? !requestedRevealed(state, f.blockFrom, f.blockTo) : !rangeRevealed(state, f.blockFrom, f.blockTo),
+    )
+}
+
+/** The Extension Fences drawn as their widget, which the caret passes over as one block. */
+export function collapsedExtensionFences(state: EditorState): InteractiveFenceRange[] {
+    return collapsedInteractiveFences(state).filter((f) => isExtensionFenceInfo(f.info))
+}
+
+/** The ordinary interactive fences drawn as their widget, whose text the caret's way in shows. */
+export function collapsedOrdinaryFences(state: EditorState): InteractiveFenceRange[] {
+    return collapsedInteractiveFences(state).filter((f) => !isExtensionFenceInfo(f.info))
 }
 
 interface FenceIdentity {

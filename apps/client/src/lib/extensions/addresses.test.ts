@@ -2,10 +2,10 @@ import { describe, expect, it } from 'vitest'
 
 import type { ExtensionManifest } from '@appsoftwareltd/etherpk-extension-api'
 
-import { createAddressBook } from './addresses'
+import { type AddressedExtension, createAddressBook } from './addresses'
 
-function extension(manifest: Partial<ExtensionManifest> & Pick<ExtensionManifest, 'id'>) {
-    return { package: { manifest: { displayName: manifest.id, publisher: 'App Software', main: './src/extension.ts', ...manifest } } }
+function extension(manifest: Partial<ExtensionManifest> & Pick<ExtensionManifest, 'id'>): AddressedExtension {
+    return { id: manifest.id, package: { manifest: { displayName: manifest.id, publisher: 'App Software', main: './src/extension.ts', ...manifest } } }
 }
 
 const book = createAddressBook([
@@ -55,5 +55,58 @@ describe('the address book', () => {
         expect(book.takesConcept('kanban.board')).toBe(true)
         expect(book.takesConcept('graph-view.whole')).toBe(false)
         expect(book.takesConcept('document')).toBe(false)
+    })
+})
+
+describe('the addresses of an extension from the Extension Directory', () => {
+    const orchard = {
+        ...extension({
+            id: 'orchard',
+            views: [
+                { kind: 'orchard.trees', title: 'Trees: {target}', region: 'main', address: { segment: 'trees', target: 'concept' } },
+                { kind: 'orchard.map', target: 'map', title: 'Orchard map', region: 'main', address: { segment: 'map' } },
+            ],
+        }),
+        installed: { version: '1.0.0', integrity: 'sha512-orchard' },
+    }
+    const builtIns = (): AddressedExtension[] => [
+        extension({ id: 'kanban', views: [{ kind: 'kanban.board', title: 'Kanban: {target}', region: 'main', address: { segment: 'k', target: 'concept' } }] }),
+    ]
+    const directoryBook = createAddressBook(() => [...builtIns(), orchard])
+
+    it('are under /x/ and its id, so they never meet the Client’s own or another extension’s', () => {
+        expect(directoryBook.url('g1', { kind: 'orchard.trees', target: 'Apple tree' })).toBe('/g/g1/x/orchard/trees/Apple%20tree')
+        expect(directoryBook.url('g1', { kind: 'orchard.map', target: 'map' })).toBe('/g/g1/x/orchard/map')
+        expect(directoryBook.url('g1', { kind: 'kanban.board', target: 'Projects' })).toBe('/g/g1/k/Projects')
+    })
+
+    it('read back into the View they name', () => {
+        expect(directoryBook.view('x', 'orchard/trees/Apple tree')).toEqual({ kind: 'orchard.trees', target: 'Apple tree' })
+        expect(directoryBook.view('x', 'orchard/map')).toEqual({ kind: 'orchard.map', target: 'map' })
+        expect(directoryBook.takesConcept('orchard.trees')).toBe(true)
+    })
+
+    it('answer only under their own prefix, and a built-in’s only bare', () => {
+        expect(directoryBook.view('trees', 'Apple tree')).toBeNull()
+        expect(directoryBook.view('x', 'kanban/k/Projects')).toBeNull()
+        expect(directoryBook.view('x', 'orchard/map/extra')).toBeNull()
+        expect(directoryBook.view('x', 'orchard/paths/North')).toBeNull()
+        expect(directoryBook.view('x', '')).toBeNull()
+    })
+
+    it('say which extension an address belongs to when it is not here', () => {
+        expect(directoryBook.missing('x', 'pear/branches/Old pear')).toBe('pear')
+        expect(directoryBook.missing('x', 'orchard/trees/Apple tree')).toBeNull()
+        expect(directoryBook.missing('x', 'orchard/paths/North')).toBeNull()
+        expect(directoryBook.missing('k', 'Projects')).toBeNull()
+        expect(directoryBook.missing('x', 'Not an id/trees')).toBeNull()
+    })
+
+    it('follow the extensions as they are added and removed', () => {
+        const live = builtIns()
+        const liveBook = createAddressBook(() => live)
+        expect(liveBook.view('x', 'orchard/map')).toBeNull()
+        live.push(orchard)
+        expect(liveBook.view('x', 'orchard/map')).toEqual({ kind: 'orchard.map', target: 'map' })
     })
 })

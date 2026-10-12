@@ -23,6 +23,7 @@ import { createContributionRegistry, setActiveContributionRegistry } from '$lib/
 import { hiddenSyntax, type HiddenSyntaxSpec, hiddenSyntaxPieces } from './augmentations/base-renderer'
 import { followFenceRegistrations, interactiveFenceAugmentation } from './augmentations/interactive-fence'
 import { type InteractiveFence, registerInteractiveFence } from './augmentations/interactive-fence-contract'
+import { pasteAsFence } from './augmentations/paste-to-fence'
 import { markdownWithCodeHighlight } from './augmentations/code-highlight'
 import { markdownFormatSpec, RULE_LINE_CLASS } from './augmentations/markdown-format'
 import { markdownLinkSpec } from './augmentations/markdown-link'
@@ -1696,6 +1697,216 @@ describe('the caret at an interactive fence', () => {
             pressKey(editor, key)
             expect(editor.fixture()).toBe(doc)
         }
+    })
+})
+
+// Extension Fences (Editor Content Rules → Extension Fences, ADR 0138): a fence named
+// `<extension id>.<name>` holds an extension's data, such as a drawing. It is drawn by its widget, or
+// by a placeholder where its extension is not running, and the caret alone never shows its text: the
+// caret passes over it as one block, as over an embed in a block editor, and its text shows only
+// through Edit as text. Beside it the keys are a code block's, as beside any interactive fence.
+describe('the caret at an Extension Fence', () => {
+    const widget: InteractiveFence = { height: () => 400, mount: () => ({ update: () => {}, destroy: () => {} }) }
+    beforeEach(() => {
+        const registry = createContributionRegistry()
+        registerInteractiveFence(registry, 'garden.plan', widget)
+        setActiveContributionRegistry(registry)
+    })
+    afterEach(() => setActiveContributionRegistry(null))
+
+    const plan = '```garden.plan\n{"id":"k1"}\n{"type":"rectangle"}\n```'
+    const nested = plan.replaceAll('\n', '\n  ')
+    const open = (doc: string) => editorFixture(doc, { extensions: [interactiveFenceAugmentation()] })
+
+    function pressKey(editor: ReturnType<typeof open>, key: string): void {
+        for (const binding of editor.state.facet(keymap).flat()) {
+            if (binding.key === key && binding.run?.(editor as never)) return
+        }
+        editor.key(key)
+    }
+
+    function drawn(editor: ReturnType<typeof open>): string[] {
+        const out: string[] = []
+        for (const source of editor.state.facet(EditorView.decorations)) {
+            if (typeof source === 'function') continue
+            source.between(0, editor.state.doc.length, (from, to, value) => {
+                if (value.spec.widget) out.push(`${value.spec.block ? 'block' : 'inline'}: ${editor.state.sliceDoc(from, to)}`)
+            })
+        }
+        return out
+    }
+
+    const shows: { rule: string; precedent: Rule['precedent']; doc: string; drawn: string[] }[] = [
+        { rule: 'an Extension Fence is drawn as its widget while the caret is on another line', precedent: 'EtherPK', doc: `Int|ro\n${plan}\nAfter`, drawn: [`block: ${plan}`] },
+        { rule: 'a selection reaching across it leaves it drawn, where a map’s would show its text', precedent: 'EtherPK', doc: 'In«tro\n```garden.plan\n{"id":"k1"}\n{"type":"rectangle"}\n```\nAf»ter', drawn: [`block: ${plan}`] },
+        { rule: 'opened on a bullet’s line it is drawn after the marker, beside the dot', precedent: 'EtherPK', doc: `- Int|ro\n- ${nested}\n- After`, drawn: [`inline: ${nested}`] },
+    ]
+    for (const row of shows) {
+        it(`${row.rule} (${row.precedent})`, () => {
+            expect(drawn(open(row.doc))).toEqual(row.drawn)
+        })
+    }
+
+    const keyRows: Rule[] = [
+        { rule: 'Backspace at the start of the line after an Extension Fence changes nothing, as after any code block', precedent: 'Logseq', before: `Intro\n${plan}\n|After`, key: 'Backspace', after: `Intro\n${plan}\n|After` },
+        { rule: 'Delete at the end of the line before an Extension Fence changes nothing, as before any code block', precedent: 'Logseq', before: `Intro|\n${plan}\nAfter`, key: 'Delete', after: `Intro|\n${plan}\nAfter` },
+    ]
+    for (const row of keyRows) {
+        it(`${row.key}: ${row.rule} (${row.precedent})`, () => {
+            const editor = open(row.before)
+            pressKey(editor, row.key)
+            expect(editor.fixture()).toBe(row.after)
+        })
+    }
+
+    // Where a caret placed on its lines comes to rest. The arrow keys reach these places through
+    // the editor's atomic ranges, which need a view (tests-client/extension-api.test.ts); every
+    // other placement (a press, an undo, a command's selection) passes the caret filter, checked here
+    // by moving the caret to the start of `to`.
+    const placements: { rule: string; precedent: Rule['precedent']; before: string; to: string; after: string }[] = [
+        { rule: 'a caret moving down onto it rests at the start of the line below', precedent: 'EtherPK', before: `Int|ro\n${plan}\nAfter`, to: '{"type"', after: `Intro\n${plan}\n|After` },
+        { rule: 'a caret moving up onto it rests at the end of the line above', precedent: 'EtherPK', before: `Intro\n${plan}\nAf|ter`, to: '{"id"', after: `Intro|\n${plan}\nAfter` },
+        { rule: 'on a bullet’s line, a caret moving down onto it rests at the start of the bullet below', precedent: 'EtherPK', before: `- Garden pat|h\n- ${nested}\n- After`, to: '{"id"', after: `- Garden path\n- ${nested}\n- |After` },
+    ]
+    for (const row of placements) {
+        it(`${row.rule} (${row.precedent})`, () => {
+            const editor = open(row.before)
+            editor.dispatch(editor.state.update({ selection: { anchor: editor.text().indexOf(row.to) }, userEvent: 'select' }))
+            expect(editor.fixture()).toBe(row.after)
+        })
+    }
+
+    // Where the caret meets a second wall beside the fence: the outline's margin, a second fence, the
+    // frontmatter or an end of the document. Each row moves the caret as the editor would and then
+    // types, which writes beside the fence and never into its lines.
+    const second = '```garden.plan\n{"id":"k2"}\n```'
+    const select = (to: (editor: ReturnType<typeof open>) => number) => (editor: ReturnType<typeof open>) =>
+        editor.dispatch(editor.state.update({ selection: { anchor: to(editor) }, userEvent: 'select' }))
+    const walls: { rule: string; precedent: Rule['precedent']; before: string; move: (editor: ReturnType<typeof open>) => void; after: string }[] = [
+        {
+            rule: 'ArrowLeft at the start of the bullet below a fence on a bullet’s line flows to the end of the bullet above the fence',
+            precedent: 'Logseq',
+            before: `- Intro\n- ${nested}\n- |After`,
+            move: select((editor) => editor.head() - 1),
+            after: `- Introx|\n- ${nested}\n- After`,
+        },
+        {
+            rule: 'ArrowLeft at the start of the bullet below a fence in the bullet above flows to the end of that bullet’s line',
+            precedent: 'Logseq',
+            before: `- Intro\n  ${nested}\n- |After`,
+            move: select((editor) => editor.head() - 1),
+            after: `- Introx|\n  ${nested}\n- After`,
+        },
+        {
+            rule: 'a caret moving down onto the first of two fences in a row goes on past both',
+            precedent: 'EtherPK',
+            before: `Int|ro\n${plan}\n${second}\nAfter`,
+            move: select((editor) => editor.text().indexOf('{"type"')),
+            after: `Intro\n${plan}\n${second}\nx|After`,
+        },
+        {
+            rule: 'with the frontmatter above it and nothing below, Ctrl+End rests at its end, and typing starts a line below it',
+            precedent: 'EtherPK',
+            before: `---\ntitle: Garden\n---\n|${plan}`,
+            move: select((editor) => editor.text().length),
+            after: `---\ntitle: Garden\n---\n${plan}\nx|`,
+        },
+        {
+            rule: 'with the frontmatter above it, Backspace on the empty last line takes the line, and typing then starts a line above it',
+            precedent: 'EtherPK',
+            before: `---\ntitle: Garden\n---\n${plan}\n|`,
+            move: (editor) => void editor.key('Backspace'),
+            after: `---\ntitle: Garden\n---\nx|\n${plan}`,
+        },
+        {
+            rule: 'in a document that opens with it, typing before the caret has moved starts a line above it',
+            precedent: 'EtherPK',
+            before: `|${plan}\nAfter`,
+            move: () => {},
+            after: `x|\n${plan}\nAfter`,
+        },
+    ]
+    for (const row of walls) {
+        it(`${row.rule} (${row.precedent})`, () => {
+            const editor = open(row.before)
+            row.move(editor)
+            editor.type('x')
+            expect(editor.fixture()).toBe(row.after)
+        })
+    }
+
+    it('Tab over a block selection that holds a fence on a bullet’s line indents the fence with its bullet (Logseq)', () => {
+        const editor = open(`- Intro\n«- ${nested}\n- After»`)
+        pressKey(editor, 'Tab')
+        expect(editor.text()).toBe(`- Intro\n  - ${plan.replaceAll('\n', '\n    ')}\n  - After`)
+    })
+
+    it('a paste or deletion that would change its lines with the caret at its edge changes nothing (EtherPK)', () => {
+        const editor = open(`|${plan}\nAfter`)
+        editor.key('Delete')
+        expect(editor.fixture()).toBe(`|${plan}\nAfter`)
+        editor.paste('beans\npeas')
+        expect(editor.text()).toBe(`beans\npeas\n${plan}\nAfter`)
+    })
+})
+
+// Text pasted on a line of its own becomes the fence an extension claims it for: the first Hook, a
+// fence registration's `fromPaste` (Editor Content Rules → Pasting into a block). A garden link is
+// claimed as its one line, trimmed, and copied beds as one line each, kept as written.
+describe('pasting text an extension claims', () => {
+    const link = 'https://garden.example/plot'
+    const beds = 'garden-beds: north, south'
+    const fence: InteractiveFence = {
+        height: () => 100,
+        mount: () => ({ update: () => {}, destroy: () => {} }),
+        fromPaste: (text) => {
+            if (text.trim().startsWith('https://garden.example/')) return [text.trim()]
+            if (!text.startsWith('garden-beds:')) return null
+            return text
+                .replace(/^garden-beds: ?/, '')
+                .split(/\r?\n|, /)
+                .filter((line) => line !== '')
+        },
+    }
+    beforeEach(() => {
+        const registry = createContributionRegistry()
+        registerInteractiveFence(registry, 'garden', fence)
+        setActiveContributionRegistry(registry)
+    })
+    afterEach(() => setActiveContributionRegistry(null))
+
+    const rows: { rule: string; precedent: Rule['precedent']; before: string; text: string; after: string }[] = [
+        { rule: 'alone on an empty line, a link becomes the fence holding it, the caret on the line after', precedent: 'Logseq', before: 'Intro\n|\nAfter', text: link, after: `Intro\n\`\`\`garden\n${link}\n\`\`\`\n|After` },
+        { rule: 'text the extension reads as several lines becomes a fence of those lines', precedent: 'EtherPK', before: 'Intro\n|\nAfter', text: beds, after: 'Intro\n```garden\nnorth\nsouth\n```\n|After' },
+        { rule: 'on an empty bullet, the fence opens beside its dot', precedent: 'Logseq', before: '- Intro\n- |\n- After', text: link, after: `- Intro\n- \`\`\`garden\n  ${link}\n  \`\`\`\n- |After` },
+        { rule: 'inside text, it stays as pasted', precedent: 'Logseq', before: 'Intro\nSee |\nAfter', text: link, after: `Intro\nSee ${link}|\nAfter` },
+        { rule: 'text no extension claims stays as pasted', precedent: 'EtherPK', before: 'Intro\n|\nAfter', text: 'https://example.com/garden', after: 'Intro\nhttps://example.com/garden|\nAfter' },
+        { rule: 'on the last line, a link copied with its line break becomes the fence, the caret on the line before as /video leaves it', precedent: 'EtherPK', before: 'Intro\n|', text: `${link}\n`, after: `Intro|\n\`\`\`garden\n${link}\n\`\`\`` },
+        { rule: 'with a block below, the caret waits on the line before, never on the block', precedent: 'EtherPK', before: 'Intro\n|\n```js\nx\n```', text: 'garden-beds: north\nsouth', after: 'Intro|\n```garden\nnorth\nsouth\n```\n```js\nx\n```' },
+        { rule: 'on the last bullet, text of several lines becomes the fence beside its dot, the caret on the line before', precedent: 'EtherPK', before: '- Intro\n- |', text: 'garden-beds: north\nsouth', after: '- Intro|\n- ```garden\n  north\n  south\n  ```' },
+        { rule: 'the lines below the caret stay as they were', precedent: 'EtherPK', before: '- |\n  - child\n  closing words\n- After', text: 'garden-beds: north\nsouth', after: '- ```garden\n  north\n  south\n  ```\n  - |child\n  closing words\n- After' },
+        { rule: 'on a soft line of a bullet, the fence stays in the bullet at the line’s indentation', precedent: 'EtherPK', before: '- Garden\n  |\n- After', text: link, after: `- Garden\n  \`\`\`garden\n  ${link}\n  \`\`\`\n- |After` },
+        { rule: 'the lines the extension gave are kept as it gave them, never reshaped as a paste is', precedent: 'EtherPK', before: 'Intro\n|\nAfter', text: 'garden-beds:\n  - north\n  - south', after: 'Intro\n```garden\n  - north\n  - south\n```\n|After' },
+    ]
+    for (const row of rows) {
+        it(`${row.rule} (${row.precedent})`, () => {
+            const editor = editorFixture(row.before)
+            if (!pasteAsFence(editor, row.text)) editor.paste(row.text)
+            expect(editor.fixture()).toBe(row.after)
+        })
+    }
+
+    it('Mod+Z straight after gives back the text that was pasted, caret and all, as an autoformat is undone (EtherPK)', () => {
+        const editor = editorFixture('Intro\n|\nAfter')
+        pasteAsFence(editor, beds)
+        editor.key('Mod-z')
+        expect(editor.fixture()).toBe(`Intro\n${beds}|\nAfter`)
+        // Windows line breaks are one line break each in the editor.
+        const crlf = editorFixture('Intro\n|\nAfter')
+        pasteAsFence(crlf, 'garden-beds: north\r\nsouth')
+        expect(crlf.text()).toBe('Intro\n```garden\nnorth\nsouth\n```\nAfter')
+        crlf.key('Mod-z')
+        expect(crlf.fixture()).toBe('Intro\ngarden-beds: north\nsouth|\nAfter')
     })
 })
 

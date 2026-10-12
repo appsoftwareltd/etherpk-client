@@ -11,6 +11,7 @@
 
 import { conceptKey } from './backlinks/backlink-index'
 import { type Block, parseBlocks } from './block-model'
+import { extensionFences } from './extension-fence'
 import { codeLineText, fenceLineInfo, fencedBlocks, fencedBlockTree } from './fenced-code'
 import { MAP_FENCE_INFO, readMapBody } from './map-text'
 import { containsCipherFence } from './protection/fence-info'
@@ -261,13 +262,42 @@ export function deriveDoc(text: string): DerivedRows {
         }
     })
 
+    const maps = deriveMaps(text, blocks, links, lineToBlock)
     return {
         blocks,
         links,
         tasks,
         taskConcepts: deriveTaskConcepts(blocks, links, taskBlocks),
-        ...deriveMaps(text, blocks, links, lineToBlock),
+        ...maps,
+        searchText: withoutExtensionFences(text, blocks, lineToBlock, maps.searchText),
     }
+}
+
+/**
+ * What search and Semantic Search read for each block holding an [[Extension Fence]] (ADR 0138):
+ * the block's text with the fence's lines left out, so an extension's data (a drawing's elements)
+ * never fills either index. Added to what `deriveMaps` gave, block by block.
+ */
+function withoutExtensionFences(text: string, blocks: readonly BlockRow[], lineToBlock: ReadonlyMap<number, number>, searchText: Map<number, string>): Map<number, string> {
+    // Most documents hold none, and the fence scan costs a pass over every line.
+    if (!/```[a-z][a-z0-9-]*\.[a-z]/.test(text)) return searchText
+    const fences = extensionFences(text.split('\n'))
+    if (fences.length === 0) return searchText
+    const hidden = new Map<number, Set<number>>()
+    for (const fence of fences) {
+        const id = lineToBlock.get(fence.start)
+        if (id === undefined) continue
+        const lines = hidden.get(id) ?? new Set<number>()
+        for (let line = fence.start; line <= fence.end; line++) lines.add(line)
+        hidden.set(id, lines)
+    }
+    for (const [id, lines] of hidden) {
+        const block = blocks[id]
+        // A block's text holds one line per source line from its first to its last (block-model.ts).
+        const read = (searchText.get(id) ?? block.text).split('\n').map((line, n) => (lines.has(block.startLine + n) ? '' : line))
+        searchText.set(id, read.join('\n'))
+    }
+    return searchText
 }
 
 /**

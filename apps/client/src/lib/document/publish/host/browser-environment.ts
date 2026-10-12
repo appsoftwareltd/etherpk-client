@@ -3,13 +3,18 @@
  * renderer (so a diagram on the site is drawn by the same version that draws it in the editor),
  * a Map Block drawn as a picture by whatever extension contributed one (ADR 0118, ADR 0121), KaTeX's stylesheet and fonts fetched from the app's own bundle to be copied into the
  * site, and themes fetched over the network. Browser-only; the Headless Client has its own.
+ *
+ * An extension's fence is published as whatever its `publish` returns, an SVG picture cleaned first
+ * (`security/svg-file.ts`). Only here do extensions run, so only here are SVG pictures made.
  */
 
 import katexCss from 'katex/dist/katex.min.css?raw'
 
+import { cleanedSvgFile } from '../../../security/svg-file'
+
 import { mermaidRenderer } from '../../view/augmentations/renderers/mermaid-renderer'
 import type { MapPictureRenderer } from '../map-picture-renderer'
-import type { PublishEnvironment } from '../publish'
+import type { PublishedFenceOutput, PublishEnvironment } from '../publish'
 import type { GraphTheme } from '../theme/graph-theme'
 import { createThemeLoader } from '../theme/sources'
 import { decodeDataUrl } from './data-url'
@@ -60,6 +65,15 @@ async function katexAssets(): Promise<Map<string, string | Uint8Array>> {
     return katexAssetsPromise
 }
 
+/** An extension's answer with an SVG picture cleaned for the site; any other answer as it is. */
+function cleanedPicture(out: PublishedFenceOutput | null): PublishedFenceOutput | null {
+    // Anything not a picture's bytes is checked, and refused, by the publisher.
+    if (out?.kind !== 'picture' || out.type !== 'image/svg+xml' || !(out.bytes instanceof Uint8Array)) return out
+    const svg = cleanedSvgFile(new TextDecoder().decode(out.bytes))
+    if (svg === null) throw new Error('its picture is not an SVG file the Client could check')
+    return { ...out, bytes: new TextEncoder().encode(svg) }
+}
+
 export interface BrowserEnvironmentDeps {
     /** The graph's theme container lookup. */
     graphTheme(id: string): Promise<GraphTheme | null>
@@ -68,6 +82,11 @@ export interface BrowserEnvironmentDeps {
      * contributed (`map-picture-renderer.ts`), or undefined when none did.
      */
     mapPicture?(): MapPictureRenderer | undefined
+    /**
+     * The `publish` of whatever extension draws fences of this info word (its fence registration),
+     * read as a publish needs it, or undefined when none does.
+     */
+    fencePublisher?(info: string): ((fence: { info: string; body: readonly string[]; document: string }) => PublishedFenceOutput | null | Promise<PublishedFenceOutput | null>) | undefined
 }
 
 export function createBrowserPublishEnvironment(deps: BrowserEnvironmentDeps): PublishEnvironment {
@@ -89,6 +108,12 @@ export function createBrowserPublishEnvironment(deps: BrowserEnvironmentDeps): P
             // A browser can draw maps, so the publish is told why this one did not, and what to do.
             if (!draw) throw new Error('no extension on this device draws maps. Check that Maps is switched on under Settings > Extensions')
             return draw(source)
+        },
+        publishFence(fence) {
+            const publish = deps.fencePublisher?.(fence.info)
+            if (!publish) return undefined
+            // Whatever the extension does, the publisher gets a promise it can wait on and catch.
+            return (async () => cleanedPicture(await publish(fence)))()
         },
         katexAssets,
     }

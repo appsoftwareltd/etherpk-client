@@ -52,6 +52,8 @@
     import ProtectionSettingsTab from "$lib/document/protection/ui/ProtectionSettingsTab.svelte";
     import SpellingSettingsTab from "$lib/document/spelling/ui/SpellingSettingsTab.svelte";
     import ExtensionsSettingsTab from "$lib/extensions/ExtensionsSettingsTab.svelte";
+    import type { ExtensionDirectory } from "$lib/extensions/directory";
+    import type { InstalledSync } from "$lib/extensions/installed-sync";
     import type { ExtensionHost } from "$lib/extensions/host";
     import type { SpellingTabProps } from "$lib/document/spelling/ui/spelling-tab";
     import type { ProtectionTabProps } from "$lib/document/protection/ui/protection-tab";
@@ -92,6 +94,8 @@
         folderPath = null,
         formatting = null,
         extensions = null,
+        extensionDirectory = null,
+        installedSync = null,
         tab = undefined,
         onchangetab = undefined,
         onsave,
@@ -148,6 +152,10 @@
          * an open graph, as the other tabs about this device are.
          */
         extensions?: ExtensionHost | null;
+        /** The Extension Directory (ADR 0123), listed on the Extensions tab. Null lists none. */
+        extensionDirectory?: ExtensionDirectory | null;
+        /** Keeping the person's Extension Directory extensions in step on this device, for what it reports. */
+        installedSync?: InstalledSync | null;
         /**
          * The tab to be on: the one the address names while the workspace hosts this dialog
          * (ADR 0023, 2026-09-20), which is the tab an entry point asked for, else the one this
@@ -646,7 +654,7 @@
                 <ProtectionSettingsTab {...protection} />
             {:else if activeTab === "extensions" && extensions}
                 <!-- Each switch applies at once and is per device: nothing for Save to apply. -->
-                <ExtensionsSettingsTab host={extensions} />
+                <ExtensionsSettingsTab host={extensions} directory={extensionDirectory} {installedSync} />
             {:else if activeTab === "publish" && publish}
                 <!-- Nothing here is a setting the footer saves: each publication card has a Save of
                  its own (it writes a page), and the folder is per device. -->

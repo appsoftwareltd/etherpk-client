@@ -85,12 +85,13 @@ export function sanitizedSvgMarkup(svg: string): TrustedMarkup {
 /**
  * An icon an extension's manifest added (ADR 0121), sanitized by DOMPurify as SVG alone. Its markup
  * is not constant text in this repository, so it never goes through `etherpk-icons`: an extension's
- * icon cannot bring a script, an event handler or HTML into the page.
+ * icon cannot bring a script, an event handler or HTML into the page. Nor a reference to anything
+ * outside it (`href`), which the browser would fetch each time the icon is drawn.
  */
 export function sanitizedIconMarkup(svg: string): TrustedMarkup {
     // Without a DOM (the Node tests) there is no page and no sink either.
     if (!DOMPurify.isSupported) return svg as unknown as TrustedMarkup
-    return DOMPurify.sanitize(svg, { USE_PROFILES: { svg: true }, RETURN_TRUSTED_TYPE: true }) as unknown as TrustedMarkup
+    return DOMPurify.sanitize(svg, { USE_PROFILES: { svg: true }, FORBID_ATTR: ['href', 'xlink:href'], RETURN_TRUSTED_TYPE: true }) as unknown as TrustedMarkup
 }
 
 /** Put markup a policy made into `element`, replacing what it held. */

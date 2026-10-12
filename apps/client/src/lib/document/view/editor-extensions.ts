@@ -29,6 +29,7 @@ import { frontmatterCompletion } from './augmentations/frontmatter-complete'
 import { frontmatterKeys } from './frontmatter-keys'
 import { frontmatterBoundaryGuard } from './frontmatter-boundary'
 import { assetPasteAugmentation } from './augmentations/asset-paste'
+import { pasteToFenceAugmentation } from './augmentations/paste-to-fence'
 import { richPasteAugmentation } from './augmentations/rich-paste'
 import { bulletMarkerAugmentation } from './augmentations/bullet-marker'
 import { codeScrollAugmentation } from './augmentations/code-scroll'
@@ -229,6 +230,9 @@ export function editorFeatures(services: EditorExtensionServices): EditorFeature
         { name: 'markdown-link', extension: markdownLinkAugmentation() },
         { name: 'asset-drop', extension: assetDropAugmentation({ store }) },
         { name: 'asset-paste', extension: assetPasteAugmentation({ store }) },
+        // Text pasted alone on an empty line, which an extension's fence claims (`fromPaste`),
+        // becomes that fence. Before rich-paste: a copied link often carries HTML beside its text.
+        { name: 'paste-to-fence', extension: pasteToFenceAugmentation() },
         // After asset-paste: clipboard files with no plain text are that route's; HTML is this one's.
         { name: 'rich-paste', extension: richPasteAugmentation({ store }) },
         {

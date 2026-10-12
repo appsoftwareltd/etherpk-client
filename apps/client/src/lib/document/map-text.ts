@@ -50,6 +50,8 @@ const POINT = new RegExp(String.raw`^\s*(${NUMBER})\s*,\s*(${NUMBER})\s*$`)
 
 /** EtherPK writes five decimal places: about a metre on the ground. */
 const DECIMALS = 5
+/** How many of the last `@`s on a line may end its name (`readMapLine`). */
+const MAX_NAME_ENDS = 16
 
 function readPoint(text: string): MapPoint | null {
     const match = POINT.exec(text)
@@ -91,8 +93,11 @@ export function readMapLine(text: string): MapLine | null {
     const trimmed = text.trim()
     if (trimmed === '') return null
     // The name ends at the last `@` whose remainder reads, so an `@` inside a name, or inside a
-    // recording's file name, never cuts the line in the wrong place.
-    for (let at = trimmed.lastIndexOf('@'); at >= 0; at = at === 0 ? -1 : trimmed.lastIndexOf('@', at - 1)) {
+    // recording's file name, never cuts the line in the wrong place. Each try reads the rest of the
+    // line, so only the last MAX_NAME_ENDS are tried: past those, a line of many `@`s would be read
+    // once for each.
+    let tries = 0
+    for (let at = trimmed.lastIndexOf('@'); at >= 0 && tries < MAX_NAME_ENDS; at = at === 0 ? -1 : trimmed.lastIndexOf('@', at - 1), tries++) {
         const line = readLocation(trimmed.slice(at + 1), trimmed.slice(0, at).trim())
         if (line) return line
     }

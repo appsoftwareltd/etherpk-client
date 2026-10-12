@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import type { ExtensionPackage, ViewContribution } from '@appsoftwareltd/etherpk-extension-api'
+import type { ExtensionContext, ExtensionPackage, ViewContribution } from '@appsoftwareltd/etherpk-extension-api'
 
 import { commandMenuItemsInOrder } from '$lib/surface/command-menu'
 import { listContextMenuItems } from '$lib/surface/context-menu'
@@ -30,8 +30,15 @@ const graphView: ExtensionPackage = {
     },
 }
 
-function setUp() {
-    const entry: CatalogueEntry = { id: 'graph-view', package: graphView, source: 'loaded', base: '/extensions/graph-view/0.8.54/' }
+/** An extension's context. `installed` makes it a release from the Extension Directory rather than a built-in. */
+function setUp({ installed = false } = {}) {
+    const entry: CatalogueEntry = {
+        id: 'graph-view',
+        package: graphView,
+        source: 'loaded',
+        base: '/extensions/graph-view/0.8.54/',
+        installed: installed ? { version: '0.8.54', integrity: `sha512-${'A'.repeat(86)}==` } : undefined,
+    }
     const { services, bindings, indexListeners } = fakeGraphServices()
     const storage = memoryStorage()
     const settings = createPersonSettings(() => memoryStorage())
@@ -40,9 +47,10 @@ function setUp() {
         supplied.set(kind, view)
         return () => void supplied.delete(kind)
     }
-    const scoped = createScopedContext(entry, services, fakeClientServices(storage, settings), supplyView)
+    const client = fakeClientServices(storage, settings)
+    const scoped = createScopedContext(entry, services, client, supplyView)
     const { commands, contributions, events } = services
-    return { scoped, context: scoped.context, commands, contributions, events, bindings, indexListeners, storage, settings, supplied }
+    return { scoped, context: scoped.context, client, commands, contributions, events, bindings, indexListeners, storage, settings, supplied }
 }
 
 describe('an extension context', () => {
@@ -205,5 +213,90 @@ describe('an extension context', () => {
         context.contributions.unregister('augmentation-renderer', 'dot')
         expect(contributions.has('augmentation-renderer', 'math')).toBe(true)
         expect(contributions.has('augmentation-renderer', 'dot')).toBe(false)
+    })
+})
+
+describe("an extension's editor, dialogs and frames", () => {
+    const widget = { height: () => 200, mount: () => ({ update: () => {}, destroy: () => {} }) }
+
+    it('draws fences named by its id, or by a name under it, and no other', () => {
+        const { context, contributions } = setUp()
+        context.editor.registerFence('graph-view', widget)
+        context.editor.registerFence('graph-view.plan', widget, { keepsHistory: true, identify: () => 'k1' })
+        expect(contributions.has('interactive-fence', 'graph-view')).toBe(true)
+        const plan = contributions.get('interactive-fence', 'graph-view.plan') as { keepsHistory?: boolean; identify?: (body: string[]) => string | null }
+        expect(plan.keepsHistory).toBe(true)
+        expect(plan.identify?.([])).toBe('k1')
+        for (const info of ['map', 'kanban.board', 'graph-view.Plan', 'graph-view.', 'graph-viewer']) {
+            expect(() => context.editor.registerFence(info, widget)).toThrow(/info word must be/)
+        }
+    })
+
+    it('takes its fences back when it stops', () => {
+        const { scoped, context, contributions } = setUp()
+        context.editor.registerFence('graph-view.plan', widget)
+        scoped.dispose()
+        expect(contributions.has('interactive-fence', 'graph-view.plan')).toBe(false)
+    })
+
+    it('puts a block at the caret through the workspace, and nothing once stopped', () => {
+        const { scoped, context } = setUp()
+        expect(context.editor.insertBlock('```graph-view.plan\n```', { focus: true })).toBe(true)
+        scoped.dispose()
+        expect(context.editor.insertBlock('```graph-view.plan\n```')).toBe(false)
+    })
+
+    it('asks its questions in a dialog that names it', async () => {
+        const { context, client } = setUp()
+        await context.dialogs.prompt({ title: 'New bed', label: 'Name' })
+        expect(client.dialogs.prompt).toHaveBeenCalledWith({ title: 'New bed', label: 'Name' }, 'Graph View')
+    })
+
+    it('names the hosts a frame may show, and refuses any other', () => {
+        const { context } = setUp()
+        expect(context.embeds.frameHosts).toEqual(['https://www.youtube-nocookie.com', 'https://player.vimeo.com'])
+        expect(() => context.embeds.frame({ src: 'https://example.com/', title: 'Garden' })).toThrow(/only from/)
+    })
+})
+
+describe('an extension from the Extension Directory', () => {
+    const widget = { height: () => 200, mount: () => ({ update: () => {}, destroy: () => {} }) }
+
+    it('uses the Stable part of the API', async () => {
+        const { context, commands, contributions, supplied } = setUp({ installed: true })
+        context.commands.register('graph-view.reveal', () => 'done')
+        expect(await commands.execute('graph-view.reveal')).toBe('done')
+        context.commandMenu.register({ id: 'graph-view.insert', title: 'Graph', command: 'graph-view.reveal' })
+        expect(commandMenuItemsInOrder(contributions).map((item) => item.id)).toEqual(['graph-view.insert'])
+        context.views.register('graph-view.whole', { mount: () => ({ destroy() {} }) })
+        expect(supplied.has('graph-view.whole')).toBe(true)
+        context.editor.registerFence('graph-view.plan', widget)
+        expect(contributions.has('interactive-fence', 'graph-view.plan')).toBe(true)
+        context.storage.set('whole', 1)
+        expect([context.storage.get('whole'), context.settings.get('labels'), context.layout.isDesktop()]).toEqual([1, 'true', true])
+    })
+
+    // The Proposed part is for the extensions that come with EtherPK. Through `contributions` an
+    // extension could take any kind's entries, another extension's fence word among them.
+    it.each<[string, (context: ExtensionContext) => unknown]>([
+        ['contributions.register', (context) => context.contributions.register('interactive-fence', 'map', {})],
+        ['contributions.list', (context) => context.contributions.list('context-menu')],
+        ['contextMenu.register', (context) => context.contextMenu.register({ id: 'graph-view.show', label: 'Show', command: 'graph-view.show' })],
+        ['graphSidebar.register', (context) => context.graphSidebar.register({ id: 'graph-view.open', title: 'Open', command: 'graph-view.open' })],
+        ['keybindings.register', (context) => context.keybindings.register({ key: 'Alt+M', command: 'graph-view.reveal', label: 'Graph View' })],
+        ['events.on', (context) => context.events.on('documents:changed', () => {})],
+        ['index.allConcepts', (context) => context.index.allConcepts()],
+        ['concepts.key', (context) => context.concepts.key('Garden')],
+        ['theme.isDark', (context) => context.theme.isDark()],
+        ['icons.svg', (context) => context.icons.svg('close')],
+        ['commands.execute', (context) => context.commands.execute('layout.toggleSidebar')],
+        ['commands.has', (context) => context.commands.has('layout.toggleSidebar')],
+        ['layout.openDocument', (context) => context.layout.openDocument('Garden')],
+        ['layout.activeDocument', (context) => context.layout.activeDocument()],
+        ['layout.reveal', (context) => context.layout.reveal('graph-view.whole')],
+    ])('cannot use the Proposed %s', (member, use) => {
+        const { context, contributions } = setUp({ installed: true })
+        expect(() => use(context)).toThrow(`context.${member} is in the Proposed part of the Extension API, which only the extensions that come with EtherPK may use.`)
+        expect(contributions.has('interactive-fence', 'map')).toBe(false)
     })
 })

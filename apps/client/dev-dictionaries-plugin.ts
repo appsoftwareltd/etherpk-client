@@ -31,7 +31,13 @@ export function devDictionariesPlugin(): Plugin {
             server.middlewares.use(async (req, res, next) => {
                 const url = req.url?.split('?')[0] ?? ''
                 if (!url.startsWith(PREFIX)) return next()
-                const path = resolve(ROOT, decodeURIComponent(url.slice(PREFIX.length)))
+                let path: string
+                try {
+                    path = resolve(ROOT, decodeURIComponent(url.slice(PREFIX.length)))
+                } catch {
+                    // A malformed escape names no file.
+                    path = ''
+                }
                 // Never outside the folder, whatever the request spells.
                 if (!path.startsWith(ROOT + sep)) {
                     res.statusCode = 400

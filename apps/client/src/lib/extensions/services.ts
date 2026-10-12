@@ -6,6 +6,7 @@
 import type { ExtensionConcepts, ExtensionIndex, ExtensionLayout, Keybinding } from '@appsoftwareltd/etherpk-extension-api'
 
 import type { CommandRegistry, ContributionRegistry, EventBus } from '$lib/surface'
+import type { ClientDialogs } from './dialogs'
 import type { PersonSettings } from '$lib/person-settings/person-settings'
 import type { TrustedMarkup } from '$lib/security/trusted-types'
 
@@ -26,6 +27,11 @@ export interface GraphServices {
     concepts: ExtensionConcepts
     keybindings: KeybindingTable
     notify(text: string): void
+    /** The editor the person is working in, as far as an extension may reach it. */
+    editor: {
+        /** Put a block at the caret (`block-insert.ts`). False where nothing was put in. */
+        insertBlock(text: string, options?: { focus?: boolean }): boolean
+    }
 }
 
 /** What holds for the Client's whole run, whichever graph is open. */
@@ -45,4 +51,6 @@ export interface ClientServices {
     storage: Storage | undefined
     /** The person's settings, Extension Settings among them (ADR 0134). */
     settings: Pick<PersonSettings, 'get' | 'subscribe'>
+    /** The dialogs the Client draws for an extension (`dialogs.ts`), each naming the extension that asks. */
+    dialogs: ClientDialogs
 }

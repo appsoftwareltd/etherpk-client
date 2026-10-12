@@ -4,20 +4,23 @@
 
 ```ts
 
-// @beta
+// @public
 export type CommandHandler = (arg?: unknown) => unknown;
 
-// @beta
+// @public
 export interface CommandMenuContext {
     bodyWritable: boolean;
+    // @beta
     readonly conceptsAtCaret?: readonly string[];
     inTable: boolean;
     protectedDocument?: boolean;
+    // @beta
     tableInsertable: boolean;
 }
 
-// @beta
+// @public
 export interface CommandMenuItem {
+    // @beta
     args?: unknown;
     command: string;
     detail?: string | ((context: CommandMenuContext) => string | undefined);
@@ -62,14 +65,16 @@ export interface DocumentMenuTarget {
     vertical?: boolean;
 }
 
-// @beta
+// @public
 export interface ExtensionCommandMenu {
     register(item: CommandMenuItem): () => void;
 }
 
-// @beta
+// @public
 export interface ExtensionCommands {
+    // @beta
     execute(id: string, arg?: unknown): Promise<unknown>;
+    // @beta
     has(id: string): boolean;
     register(id: string, handler: CommandHandler): () => void;
 }
@@ -80,26 +85,42 @@ export interface ExtensionConcepts {
     key(name: string): string;
 }
 
-// @beta
+// @public
 export interface ExtensionContext {
+    // @beta
     readonly clientVersion: string;
     readonly commandMenu: ExtensionCommandMenu;
     readonly commands: ExtensionCommands;
+    // @beta
     readonly concepts: ExtensionConcepts;
+    // @beta
     readonly contextMenu: ExtensionContextMenu;
+    // @beta
     readonly contributions: ExtensionContributions;
+    // @beta
     readonly dev: boolean;
+    readonly dialogs: ExtensionDialogs;
+    readonly editor: ExtensionEditor;
+    readonly embeds: ExtensionEmbeds;
+    // @beta
     readonly events: ExtensionEvents;
+    // @beta
     readonly extensionId: string;
+    // @beta
     readonly graphId: string;
+    // @beta
     readonly graphSidebar: ExtensionGraphSidebar;
+    // @beta
     readonly icons: ExtensionIcons;
+    // @beta
     readonly index: ExtensionIndex;
+    // @beta
     readonly keybindings: ExtensionKeybindings;
     readonly layout: ExtensionLayout;
     notify(text: string): void;
     readonly settings: ExtensionSettings;
     readonly storage: ExtensionStorage;
+    // @beta
     readonly theme: ExtensionTheme;
     readonly views: ExtensionViews;
 }
@@ -119,6 +140,25 @@ export interface ExtensionContributions {
     }[];
     register(kind: string, id: string, value: unknown): () => void;
     unregister(kind: string, id: string): void;
+}
+
+// @public
+export interface ExtensionDialogs {
+    prompt(options: PromptOptions): Promise<string | undefined>;
+}
+
+// @public
+export interface ExtensionEditor {
+    insertBlock(text: string, options?: {
+        focus?: boolean;
+    }): boolean;
+    registerFence(info: string, widget: FenceWidget, options?: FenceOptions): () => void;
+}
+
+// @public
+export interface ExtensionEmbeds {
+    frame(options: FrameOptions): HTMLIFrameElement;
+    readonly frameHosts: readonly string[];
 }
 
 // @beta
@@ -174,15 +214,20 @@ export interface ExtensionIndex {
     onUpdated(listener: (update: IndexUpdate) => void): () => void;
 }
 
+// @public
+export type ExtensionIsolation = 'shadow' | 'page';
+
 // @beta
 export interface ExtensionKeybindings {
     register(binding: Keybinding): () => void;
 }
 
-// @beta
+// @public
 export interface ExtensionLayout {
+    // @beta
     activeDocument(): string | null;
     isDesktop(): boolean;
+    // @beta
     openDocument(concept: string, options?: {
         line?: number;
         inPaneOf?: string;
@@ -192,14 +237,16 @@ export interface ExtensionLayout {
         inPaneOf?: string;
         beside?: string;
     }): void;
+    // @beta
     reveal(kind: string): void;
 }
 
-// @beta
+// @public
 export interface ExtensionManifest {
     displayName: string;
     icons?: Record<string, string>;
     id: string;
+    isolation?: ExtensionIsolation;
     main: string;
     minClientVersion?: string;
     publisher: string;
@@ -214,7 +261,7 @@ export interface ExtensionMenuTarget {
     kind: `${string}.${string}`;
 }
 
-// @beta
+// @public
 export interface ExtensionModule {
     activate(context: ExtensionContext): void | (() => void);
 }
@@ -228,13 +275,13 @@ export interface ExtensionPackage {
     version: string;
 }
 
-// @beta
+// @public
 export interface ExtensionSettings {
     get(id: string): string | undefined;
     subscribe(listener: () => void): () => void;
 }
 
-// @beta
+// @public
 export interface ExtensionStorage {
     get<T>(key: string): T | undefined;
     remove(key: string): void;
@@ -246,9 +293,73 @@ export interface ExtensionTheme {
     isDark(): boolean;
 }
 
-// @beta
+// @public
 export interface ExtensionViews {
     register(kind: string, view: ViewContribution): () => void;
+}
+
+// @public
+export interface FenceContext extends FenceInfo {
+    closeWindow(): void;
+    readonly dark: boolean;
+    edit(change: FenceEdit | readonly FenceEdit[]): boolean;
+    editAsText(): void;
+    readonly onScreen: boolean;
+    openInTab(): void;
+    openWindow(): void;
+    readonly presentation: FencePresentation;
+    remove(): boolean;
+    resized(): void;
+    takeFocus(): boolean;
+    readonly writable: boolean;
+}
+
+// @public
+export type FenceEdit = {
+    kind: 'insert';
+    line: number;
+    text: string;
+} | {
+    kind: 'replace';
+    line: number;
+    expect: string;
+    text: string;
+} | {
+    kind: 'remove';
+    line: number;
+    expect: string;
+};
+
+// @public
+export interface FenceInfo {
+    readonly body: readonly string[];
+    readonly document: string | null;
+    readonly info: string;
+    readonly ordinal: number;
+}
+
+// @public
+export interface FenceOptions {
+    fromPaste?(text: string): readonly string[] | null;
+    identify?(body: readonly string[]): string | null;
+    keepsHistory?: boolean;
+    publish?(fence: PublishFenceRequest): PublishedFence | null | Promise<PublishedFence | null>;
+    title?: string;
+}
+
+// @public
+export type FencePresentation = 'inline' | 'tab' | 'window';
+
+// @public
+export interface FenceWidget {
+    height(info: FenceInfo): number;
+    mount(host: HTMLElement, context: FenceContext): MountedFence;
+}
+
+// @public
+export interface FrameOptions {
+    src: string;
+    title: string;
 }
 
 // @beta
@@ -310,10 +421,53 @@ export interface LinkGraphLink {
 // @beta
 export type MenuTarget = DocumentMenuTarget | TabMenuTarget | WikilinkMenuTarget | ExtensionMenuTarget;
 
-// @beta
+// @public
+export interface MountedFence {
+    destroy(): void;
+    update(context: FenceContext): void;
+}
+
+// @public
 export interface MountedView {
     destroy(): void;
     update?(props: ViewMountProps): void;
+}
+
+// @public
+export interface PromptOptions {
+    label: string;
+    placeholder?: string;
+    submitLabel?: string;
+    title: string;
+    validate?(value: string): string | undefined;
+    value?: string;
+}
+
+// @public
+export type PublishedFence = {
+    kind: 'picture';
+    type: 'image/svg+xml' | 'image/png' | 'image/webp';
+    bytes: Uint8Array;
+    width: number;
+    height: number;
+    alt: string;
+} | {
+    kind: 'link';
+    href: string;
+    text: string;
+    image?: {
+        src: string;
+        alt: string;
+        width?: number;
+        height?: number;
+    };
+};
+
+// @public
+export interface PublishFenceRequest {
+    readonly body: readonly string[];
+    readonly document: string;
+    readonly info: string;
 }
 
 // @beta
@@ -328,7 +482,7 @@ export type ReadExtensionPackageResult = {
     errors: string[];
 };
 
-// @beta
+// @public
 export interface SettingDeclaration {
     default?: boolean;
     description?: string;
@@ -349,12 +503,12 @@ export interface TabMenuTarget {
     vertical?: boolean;
 }
 
-// @beta
+// @public
 export interface ViewContribution {
     mount(element: HTMLElement, props: ViewMountProps): MountedView;
 }
 
-// @beta
+// @public
 export interface ViewDeclaration {
     address?: {
         segment: string;
@@ -363,6 +517,7 @@ export interface ViewDeclaration {
     icon?: string;
     kind: string;
     region: ViewRegion;
+    // @beta
     resident?: {
         side: 'left' | 'right';
         desktopOnly?: boolean;
@@ -371,23 +526,23 @@ export interface ViewDeclaration {
     title: string;
 }
 
-// @beta
+// @public
 export interface ViewMountProps {
     panelId?: string;
     view: ViewRef;
     visibility: ViewVisibility;
 }
 
-// @beta
+// @public
 export interface ViewRef {
     kind: string;
     target: string;
 }
 
-// @beta
+// @public
 export type ViewRegion = 'main' | 'left-sidebar' | 'right-sidebar';
 
-// @beta
+// @public
 export interface ViewVisibility {
     readonly onScreen: boolean;
     subscribe(listener: (onScreen: boolean) => void): () => void;

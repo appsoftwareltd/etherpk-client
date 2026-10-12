@@ -31,8 +31,26 @@
  *   dot, and a press on that line beside the widget shows its text.
  * - **The text.** **Edit as text**, in the widget's menu, puts the caret on the fence's first body
  *   line, which shows it as the ordinary fenced block it is.
+ * - **Extension Fences** (ADR 0138) differ only at the caret. Their text shows only when asked for
+ *   (requested-kind reveal), the caret passes over them as one block (`extensionFenceAtoms`,
+ *   `extensionFenceCaret`), and a person's typing never changes their lines (`extensionFenceEdits`).
  */
-import { type ChangeSpec, type EditorState, type Extension, Prec, type Range, StateEffect, StateField, Transaction, type TransactionSpec } from '@codemirror/state'
+import {
+    type ChangeSet,
+    type ChangeSpec,
+    EditorSelection,
+    EditorState,
+    type Extension,
+    Prec,
+    type Range,
+    RangeSet,
+    RangeValue,
+    type SelectionRange,
+    StateEffect,
+    StateField,
+    Transaction,
+    type TransactionSpec,
+} from '@codemirror/state'
 import { Decoration, type DecorationSet, EditorView, keymap, runScopeHandlers, ViewPlugin, WidgetType } from '@codemirror/view'
 
 import { type ContributionRegistry, tryGetActiveContributionRegistry } from '$lib/surface'
@@ -41,9 +59,11 @@ import { analysisFor } from '../analysis/editor-analysis'
 import { editorDocument } from '../editor-document'
 import { editorIsOnScreen, setEditorOnScreen } from '../editor-on-screen'
 import { bodyWritable } from '../body-writable'
+import { clampedCaret } from '../caret-clamp'
 import { refusalIn } from '../edit-refused'
 import { type FenceBodyEdit, fenceBodyEditApplies, safeFenceLine } from '../../fence-body'
 import { BLOCK_WIDGET_SPACING, BULLET_BLOCK_DROP, blockWidgetIndent } from './content-clamp'
+import { fenceHosting } from '../fence-hosting'
 import {
     fenceRegistrationsChanged,
     INTERACTIVE_FENCE_KIND,
@@ -51,10 +71,20 @@ import {
     type InteractiveFenceContext,
     type InteractiveFenceInfo,
     type InteractiveFenceView,
+    isExtensionFenceInfo,
 } from './interactive-fence-contract'
-import { collapsedInteractiveFences, fenceById, fenceIdAt, fenceIdentity, type InteractiveFenceRange, interactiveFences } from './interactive-fence-state'
+import {
+    collapsedExtensionFences,
+    collapsedInteractiveFences,
+    collapsedOrdinaryFences,
+    fenceById,
+    fenceIdAt,
+    fenceIdentity,
+    type InteractiveFenceRange,
+    interactiveFences,
+} from './interactive-fence-state'
 import { arrowIntoCollapsedFence, isDark, pressBesideFormOne, themeTick } from './rendered-common'
-import { rangeTouches } from './reveal-policy'
+import { rangeTouches, requestedRevealField, requestReveal } from './reveal-policy'
 
 /** Dispatched when a widget's height changed, so the block is measured again. */
 const fenceResized = StateEffect.define<null>()
@@ -118,8 +148,33 @@ export function fenceEditChanges(state: EditorState, fence: InteractiveFenceRang
         return { from: at, insert: `${indent}${safeFenceLine(edit.text)}\n` }
     }
     const line = state.doc.line(fence.start + 2 + edit.line)
-    if (edit.kind === 'replace') return { from: line.from, to: line.to, insert: `${indent}${safeFenceLine(edit.text)}` }
+    // A replacement takes its line break with it. Two devices replacing the same line then each
+    // delete it whole and write a whole line, and a merge keeps both as lines of their own, where
+    // replacing only the text put both texts on one line, which read as neither (ADR 0138). The
+    // body line always has a break after it, the closer's line being below it.
+    if (edit.kind === 'replace') return { from: line.from, to: line.to + 1, insert: `${indent}${safeFenceLine(edit.text)}\n` }
     return { from: line.from, to: line.to + 1 }
+}
+
+/**
+ * The changes several of a widget's edits make together, each read against the body the ones before
+ * it left, as one change set; or null when any of them no longer applies, and then none is made.
+ */
+export function widgetEditsChanges(state: EditorState, id: number, edits: readonly FenceBodyEdit[]): ChangeSet | null {
+    let current = state
+    let composed: ChangeSet | null = null
+    for (const edit of edits) {
+        const fence = fenceById(current, id)
+        const spec = fence ? fenceEditChanges(current, fence, edit) : null
+        if (!spec) return null
+        const changes = current.changes(spec)
+        composed = composed ? composed.compose(changes) : changes
+        // Unfiltered: a change a filter added here would be in `current` and not in `composed`, and
+        // the next edit's changes would no longer line up with it. The filters see the whole edit
+        // when it is dispatched.
+        current = current.update({ changes, filter: false }).state
+    }
+    return composed
 }
 
 function infoOf(fence: InteractiveFenceRange, state: EditorState): InteractiveFenceInfo {
@@ -185,8 +240,11 @@ class InteractiveFenceWidget extends WidgetType {
         this.place(root, host)
         // The editor ignores keys inside a widget, so after a widget's own edit Mod+Z would reach
         // nothing; outside a field the person is typing in, the chord is the editor's undo or redo.
+        // A widget that keeps its own undo (a drawing) keeps the chord. The key's own target is read
+        // through the event's path, since a loaded extension's widget sits in a shadow root, whose
+        // fields the event's target hides.
         root.addEventListener('keydown', (event) => {
-            if (!historyChord(event) || typingField(event.target)) return
+            if (this.fence.keepsHistory || !historyChord(event) || typingField(event.composedPath()[0] ?? event.target)) return
             if (runScopeHandlers(view, event, 'editor')) event.preventDefault()
         })
         mounted.set(root, { id: this.id, fence: this.fence, inline: this.inline, view: this.fence.mount(host, this.context(view)), host })
@@ -239,9 +297,14 @@ class InteractiveFenceWidget extends WidgetType {
             writable: this.writable,
             dark: this.dark,
             onScreen: this.onScreen,
+            presentation: 'inline',
             edit: (change) => applyEdit(view, id, change),
             editAsText: () => showText(view, id),
             remove: () => removeBlock(view, id),
+            takeFocus: () => takeFocusRequest(view, id),
+            openInTab: () => hostElsewhere(view, id, 'tab'),
+            openWindow: () => hostElsewhere(view, id, 'window'),
+            closeWindow: () => {},
             resized: () => {
                 // Out of the update cycle: a widget may say so while CodeMirror is drawing it.
                 queueMicrotask(() => {
@@ -289,11 +352,75 @@ export function widgetEditChanges(state: EditorState, id: number, edit: FenceBod
     return fence ? fenceEditChanges(state, fence, edit) : null
 }
 
-function applyEdit(view: EditorView, id: number, change: FenceBodyEdit): boolean {
+function applyEdit(view: EditorView, id: number, change: FenceBodyEdit | readonly FenceBodyEdit[]): boolean {
     if (!writableFence(view, id)) return false
-    const changes = widgetEditChanges(view.state, id, change)
+    const edits: readonly FenceBodyEdit[] = Array.isArray(change) ? change : [change as FenceBodyEdit]
+    if (edits.length === 0) return true
+    const changes = edits.length === 1 ? widgetEditChanges(view.state, id, edits[0]) : widgetEditsChanges(view.state, id, edits)
     if (!changes) return false
     return dispatchWidgetChange(view, { changes, userEvent: 'input.fence' })
+}
+
+/**
+ * A fence put in to take the keyboard (`insertBlock` with `focus`), for each editor: by the fence's
+ * id once the insert has been made, and by its opener's line start before, since a widget can be
+ * mounted, and ask, inside the very dispatch that wrote its fence.
+ */
+const focusRequests = new WeakMap<EditorView, { id: number | null; blockFrom: number }>()
+
+/** Ask the widget of the fence opening at `blockFrom` after the next change to take the keyboard. */
+export function requestFenceFocus(view: EditorView, blockFrom: number): void {
+    focusRequests.set(view, { id: null, blockFrom })
+}
+
+/**
+ * A request still waiting once the person does something else (types, deletes, moves the caret) is
+ * dropped: its widget was not drawn when it was put in (a placeholder, its extension not running, or
+ * off screen), and taking the keyboard when it is drawn later would take it from whatever the person
+ * is doing then.
+ */
+const dropStaleFocusRequest = EditorView.updateListener.of((update) => {
+    const request = focusRequests.get(update.view)
+    if (!request || request.id === null) return
+    if (update.transactions.some((tr) => tr.isUserEvent('select') || tr.isUserEvent('input') || tr.isUserEvent('delete'))) focusRequests.delete(update.view)
+})
+
+/** The insert landed: the request now names the fence by its id, which survives later edits. */
+export function settleFenceFocus(view: EditorView): void {
+    const request = focusRequests.get(view)
+    if (!request || request.id !== null) return
+    const id = fenceIdAt(view.state, request.blockFrom)
+    if (id === null) focusRequests.delete(view)
+    else focusRequests.set(view, { id, blockFrom: request.blockFrom })
+}
+
+function takeFocusRequest(view: EditorView, id: number): boolean {
+    const request = focusRequests.get(view)
+    if (!request) return false
+    const fence = fenceById(view.state, id)
+    if (request.id === id || (request.id === null && fence?.blockFrom === request.blockFrom)) {
+        focusRequests.delete(view)
+        return true
+    }
+    return false
+}
+
+/** Open the fence with this id in a tab or over the window, where its registration can identify it. */
+function hostElsewhere(view: EditorView, id: number, where: 'tab' | 'window'): void {
+    const fence = fenceById(view.state, id)
+    const document = view.state.facet(editorDocument)?.concept
+    const hosting = fenceHosting()
+    if (!fence || !document || !hosting || !fence.fence.identify) return
+    let fenceId: string | null = null
+    try {
+        fenceId = fence.fence.identify(fence.body)
+    } catch (error) {
+        console.error(`[extensions] ${fence.info}: identify threw`, error)
+    }
+    if (!fenceId) return
+    const ref = { document, info: fence.info, id: fenceId }
+    if (where === 'tab') hosting.openTab(ref)
+    else hosting.openWindow(ref)
 }
 
 /**
@@ -356,7 +483,10 @@ export function editAsTextSpec(state: EditorState, fence: InteractiveFenceRange)
 function showText(view: EditorView, id: number): void {
     const fence = fenceById(view.state, id)
     if (!fence) return
-    view.dispatch(editAsTextSpec(view.state, fence))
+    const spec = editAsTextSpec(view.state, fence)
+    // An Extension Fence shows its text only when asked (requested-kind reveal), so the request
+    // travels with the caret that goes inside it.
+    view.dispatch(isExtensionFenceInfo(fence.info) ? { ...spec, effects: requestReveal.of({ from: fence.blockFrom, to: fence.blockTo }) } : spec)
     view.focus()
 }
 
@@ -408,17 +538,198 @@ const interactiveFenceField = StateField.define<DecorationSet>({
 
 // High, under the popovers' lists (which bind the same keys at the highest precedence while open)
 // and over the view's own motion, as the rendered fences' arrows are (fence-render.ts).
+// An Extension Fence is never stepped into: the caret passes over it (`extensionFenceAtoms`).
 const arrows = Prec.high(
     keymap.of([
-        { key: 'ArrowDown', run: arrowIntoCollapsedFence(1, collapsedInteractiveFences) },
-        { key: 'ArrowUp', run: arrowIntoCollapsedFence(-1, collapsedInteractiveFences) },
+        { key: 'ArrowDown', run: arrowIntoCollapsedFence(1, collapsedOrdinaryFences) },
+        { key: 'ArrowUp', run: arrowIntoCollapsedFence(-1, collapsedOrdinaryFences) },
     ]),
 )
 
 /** A press on a form-1 fence's line beside its widget (`pressBesideFormOne`); one inside the widget never reaches here. */
 const pointer = EditorView.domEventHandlers({
-    mousedown: (event, view) => pressBesideFormOne(event, view, collapsedInteractiveFences),
+    mousedown: (event, view) => pressBesideFormOne(event, view, collapsedOrdinaryFences),
 })
+
+/** A marker for the atomic ranges: CodeMirror reads only where a range sits. */
+class AtomMark extends RangeValue {}
+const atomMark = new AtomMark()
+
+/**
+ * Where the caret may not rest for each drawn [[Extension Fence]] (ADR 0138): from the end of the line
+ * above its first line to the start of the line below its last, so the caret's motion, a press and a
+ * deletion pass over the fence as one block and land beside it, never on its lines, where a keystroke
+ * would write into its data or break its fences. The line breaks either side are part of the range,
+ * so the caret's two places beside it are the line above's end and the line below's start, which the
+ * range kind leaves drawn.
+ */
+export function extensionFenceAtomRanges(state: EditorState): RangeSet<AtomMark> {
+    const fences = collapsedExtensionFences(state)
+    if (fences.length === 0) return RangeSet.empty
+    const length = state.doc.length
+    return RangeSet.of(
+        fences.map((fence) => atomMark.range(Math.max(0, fence.blockFrom - 1), Math.min(length, fence.blockTo + 1))),
+        true,
+    )
+}
+
+const extensionFenceAtoms = EditorView.atomicRanges.of((view) => extensionFenceAtomRanges(view.state))
+
+/** Whether a position lies on a drawn Extension Fence's lines, its first line's start to its last line's end. */
+function onExtensionFence(fences: readonly InteractiveFenceRange[], pos: number): InteractiveFenceRange | undefined {
+    return fences.find((fence) => pos >= fence.blockFrom && pos <= fence.blockTo)
+}
+
+/**
+ * Where a caret that would rest on `fence`'s lines goes instead: past it the way the caret was
+ * going, to the start of the line below (at its content column, `clampedCaret`) or the end of the
+ * line above, and on past every drawn Extension Fence it meets there, as CodeMirror skips adjacent
+ * atomic ranges. The other way when there is no line that way: the end of the document, or the
+ * frontmatter's closing line above, which is no place for the caret. With no line either way, the
+ * fence's edge it came from, where typing starts a line of its own (`extensionFenceEdits`).
+ */
+export function extensionFenceRestingPlace(state: EditorState, fences: readonly InteractiveFenceRange[], fence: InteractiveFenceRange, down: boolean): number {
+    const frontmatterEnd = analysisFor(state).frontmatterEnd
+    const past = (start: InteractiveFenceRange, goingDown: boolean): number | null => {
+        let current = start
+        // Each step passes one more fence, so there are at most as many steps as fences.
+        for (let step = 0; step < fences.length; step++) {
+            const at = goingDown ? current.blockTo + 1 : current.blockFrom - 1
+            if (goingDown ? at > state.doc.length : current.blockFrom === 0 || at <= frontmatterEnd) return null
+            const next = onExtensionFence(fences, at)
+            if (!next) return goingDown ? clampedCaret(state, at) : at
+            current = next
+        }
+        return null
+    }
+    return past(fence, down) ?? past(fence, !down) ?? (down ? fence.blockTo : fence.blockFrom)
+}
+
+/**
+ * Every way a caret is placed that the atomic ranges do not cover (an undo, a reveal, a command's
+ * own selection, the caret clamp's ArrowLeft at the wall, a fence at the very start or end of the
+ * document, where the atomic range has no line on one side) passes this filter, which moves a caret
+ * resting on a drawn Extension Fence's lines past it (`extensionFenceRestingPlace`). A text range
+ * that ends on one is widened to take the fence whole, so a selection never cuts into the data.
+ *
+ * It must see the caret where every other filter has left it, so it is registered at the highest
+ * precedence, which CodeMirror runs last (`editor-extensions.test.ts` asserts the order against
+ * the caret clamp).
+ */
+export function extensionFenceCaret(): Extension {
+    return EditorState.transactionFilter.of((tr) => {
+        if (!tr.selection && tr.changes.empty) return tr
+        const state = tr.state
+        const fences = collapsedExtensionFences(state)
+        if (fences.length === 0) return tr
+        let moved = false
+        const before = tr.startState.selection.main.head
+        const ranges = state.selection.ranges.map((range): SelectionRange => {
+            if (range.empty) {
+                const fence = onExtensionFence(fences, range.head)
+                if (!fence) return range
+                // A caret moving down (a key, a press below) goes on past the fence, and one moving
+                // up stops above it. One placed by an edit rests above it, as `caretBesideFence`
+                // puts a caret after a widget's own change, and below it where there is no line above.
+                const down = tr.changes.empty && before <= fence.blockFrom
+                const beside = extensionFenceRestingPlace(state, fences, fence, down)
+                if (beside === range.head) return range
+                moved = true
+                return EditorSelection.cursor(beside)
+            }
+            const forward = range.head >= range.anchor
+            const widen = (pos: number, start: boolean) => {
+                const fence = onExtensionFence(fences, pos)
+                if (!fence) return pos
+                moved = true
+                return start ? fence.blockFrom : fence.blockTo
+            }
+            const from = widen(range.from, true)
+            const to = widen(range.to, false)
+            return forward ? EditorSelection.range(from, to) : EditorSelection.range(to, from)
+        })
+        if (!moved) return tr
+        return [tr, { selection: EditorSelection.create(ranges, state.selection.mainIndex), sequential: true }]
+    })
+}
+
+/** Whether a change reaches `fence`'s lines without taking the whole fence. */
+function changesReach(changes: ChangeSet, fence: InteractiveFenceRange): boolean {
+    let reaches = false
+    changes.iterChangedRanges((fromA, toA) => {
+        if (toA < fence.blockFrom || fromA > fence.blockTo) return
+        if (fromA <= fence.blockFrom && toA >= fence.blockTo) return
+        reaches = true
+    })
+    return reaches
+}
+
+/**
+ * Whether `fence` is still in the transaction's new document, whole: a fence with its info word and
+ * its body, where its lines went. Its indentation may change, as when its bullet is indented with
+ * the lines around it, since the body is read without it.
+ */
+function keptWhole(tr: Transaction, fence: InteractiveFenceRange, after: readonly InteractiveFenceRange[]): boolean {
+    const from = tr.changes.mapPos(fence.blockFrom, 1)
+    const to = tr.changes.mapPos(fence.blockTo, -1)
+    return after.some(
+        (other) =>
+            other.info === fence.info &&
+            other.blockFrom <= to &&
+            other.blockTo >= from &&
+            other.body.length === fence.body.length &&
+            other.body.every((line, i) => line === fence.body[i]),
+    )
+}
+
+/**
+ * Text typed or pasted against `fence`'s first line's start or its last line's end, where the caret
+ * rests when there is no line beside the fence, moved onto a line of its own above or below it.
+ * Null for any other change.
+ */
+function movedOffFence(tr: Transaction, fence: InteractiveFenceRange): TransactionSpec | null {
+    let only: { from: number; to: number; text: string } | null = null
+    let count = 0
+    tr.changes.iterChanges((fromA, toA, _fromB, _toB, inserted) => {
+        count++
+        only = { from: fromA, to: toA, text: inserted.toString() }
+    })
+    const change = only as { from: number; to: number; text: string } | null
+    if (count !== 1 || !change || change.from !== change.to || change.text === '') return null
+    const userEvent = tr.annotation(Transaction.userEvent)
+    if (change.from === fence.blockFrom) {
+        return { changes: { from: change.from, insert: `${change.text}\n` }, selection: { anchor: change.from + change.text.length }, userEvent, scrollIntoView: true }
+    }
+    if (change.from === fence.blockTo) {
+        return { changes: { from: change.from, insert: `\n${change.text}` }, selection: { anchor: change.from + change.text.length + 1 }, userEvent, scrollIntoView: true }
+    }
+    return null
+}
+
+/**
+ * The last guard of an [[Extension Fence]]'s data (ADR 0138): a person's typing, paste, deletion
+ * or drop never breaks a drawn one. The caret rules keep the caret off its lines, and this keeps the
+ * fence whole however the caret got there (a document that opens with a fence, where no transaction
+ * has placed the caret). An edit that leaves the fence whole passes, its indentation changed or not
+ * (a block selection indented with Tab). Text typed or pasted at its edge goes on a line of its own,
+ * and any other change that would break it is refused, the keystroke doing nothing.
+ *
+ * A widget's own edits (`input.fence`), a remote or undo change, and Edit as text's empty line
+ * (which carries the request to show the text) are not a person's typing, and pass.
+ */
+export function extensionFenceEdits(): Extension {
+    return EditorState.transactionFilter.of((tr) => {
+        if (!tr.docChanged) return tr
+        if (!(tr.isUserEvent('input') || tr.isUserEvent('delete') || tr.isUserEvent('move')) || tr.isUserEvent('input.fence')) return tr
+        if (tr.effects.some((effect) => effect.is(requestReveal))) return tr
+        const reached = collapsedExtensionFences(tr.startState).filter((fence) => changesReach(tr.changes, fence))
+        if (reached.length === 0) return tr
+        const after = interactiveFences(tr.state)
+        const broken = reached.filter((fence) => !keptWhole(tr, fence, after))
+        if (broken.length === 0) return tr
+        return (broken.length === 1 ? movedOffFence(tr, broken[0]) : null) ?? []
+    })
+}
 
 const theme = EditorView.baseTheme({
     // The block's distance from the lines around it, as padding (ADR 0022's height rule): a
@@ -437,6 +748,31 @@ const theme = EditorView.baseTheme({
         padding: `0 0 ${BLOCK_WIDGET_SPACING}`,
     },
     '.gk-interactive-fence-host': { position: 'relative', overflow: 'hidden' },
+    // An Extension Fence nothing draws (extension-fence-placeholder.ts): a quiet note, never its data.
+    '.gk-extension-fence-placeholder': {
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: '0.75rem',
+        height: '100%',
+        boxSizing: 'border-box',
+        padding: '0 0.75rem',
+        border: '1px dashed var(--gk-border-strong)',
+        borderRadius: '0.5rem',
+        color: 'var(--gk-text-muted)',
+        fontSize: 'max(0.875rem, 0.85em)',
+    },
+    '.gk-extension-fence-placeholder p': { margin: '0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+    '.gk-extension-fence-placeholder-show': {
+        flexShrink: '0',
+        border: '1px solid var(--gk-border-strong)',
+        borderRadius: '0.375rem',
+        padding: '0.25rem 0.625rem',
+        background: 'transparent',
+        color: 'var(--gk-text-default)',
+        font: 'inherit',
+        cursor: 'pointer',
+    },
 })
 
 /**
@@ -487,8 +823,22 @@ const fenceRegistrations = ViewPlugin.fromClass(
 
 /** The interactive fence augmentation. Mounted in the editor's feature stack (editor-extensions.ts). */
 export function interactiveFenceAugmentation(): Extension {
-    // The identity before the decorations, which read it.
-    return [fenceIdentity, interactiveFenceField, arrows, pointer, theme, fenceRegistrations]
+    // The identity before what reads it: the Extension Fences shown as text, then the decorations.
+    return [
+        fenceIdentity,
+        requestedRevealField,
+        interactiveFenceField,
+        arrows,
+        pointer,
+        extensionFenceAtoms,
+        // Highest precedence runs last among transaction filters, so these see the caret and the
+        // changes every other filter has settled. The edit guard is listed second so that it runs
+        // first, and the caret filter then places the caret its moved insert left.
+        Prec.highest([extensionFenceCaret(), extensionFenceEdits()]),
+        dropStaleFocusRequest,
+        theme,
+        fenceRegistrations,
+    ]
 }
 
 export type { InteractiveFence }

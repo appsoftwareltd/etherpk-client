@@ -1,6 +1,6 @@
 {
     "name": "@appsoftwareltd/etherpk-shared",
-    "version": "0.9.6",
+    "version": "0.10.0",
     "license": "Elastic-2.0",
     "private": true,
     "type": "module",
@@ -35,6 +35,10 @@
         "./field-errors": {
             "types": "./src/forms/field-errors.ts",
             "default": "./src/forms/field-errors.ts"
+        },
+        "./frame-hosts": {
+            "types": "./src/security/frame-hosts.ts",
+            "default": "./src/security/frame-hosts.ts"
         },
         "./theme": {
             "types": "./src/theme.ts",

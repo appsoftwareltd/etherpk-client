@@ -222,3 +222,122 @@ describe('the extension host', () => {
         expect(host.catalogue.broken).toEqual([])
     })
 })
+
+describe('a loaded extension that mounts in the page (ADR 0121, amended 2026-10-10)', () => {
+    function pageSetUp(pageStyles: (urls: readonly string[], id: string) => Promise<() => void>) {
+        const activate = vi.fn((context: ExtensionContext) => {
+            context.views.register('garden.board', view)
+        })
+        const garden: CatalogueEntry = {
+            id: 'garden',
+            source: 'loaded',
+            base: '/extensions/garden/1.0.0/',
+            package: {
+                name: '@example/etherpk-extension-garden',
+                version: '1.0.0',
+                manifest: manifest('garden', {
+                    main: './dist/main.js',
+                    minClientVersion: '0.8.54',
+                    styles: ['./dist/main.css'],
+                    isolation: 'page',
+                    views: [{ kind: 'garden.board', title: 'Garden', region: 'main' }],
+                }),
+            },
+        }
+        const storage = memoryStorage()
+        const host = createExtensionHost({
+            catalogue: { extensions: [garden], broken: [] },
+            client: fakeClientServices(storage),
+            switches: createExtensionSwitches(storage),
+            importModule: async () => ({ activate }),
+            pageStyles,
+        })
+        return { host, graph: fakeGraphServices(), activate }
+    }
+
+    it('mounts its Views in the page, its stylesheets adopted as it starts and taken out as it stops', async () => {
+        const unstyle = vi.fn()
+        const pageStyles = vi.fn(async () => unstyle)
+        const { host, graph, activate } = pageSetUp(pageStyles)
+        expect(slotOf(host as never, 'garden.board').isolation).toBeNull()
+        await host.start(graph.services)
+        expect(pageStyles).toHaveBeenCalledWith(['/extensions/garden/1.0.0/dist/main.css'], 'garden')
+        expect(activate).toHaveBeenCalledTimes(1)
+        host.stop()
+        expect(unstyle).toHaveBeenCalledTimes(1)
+    })
+
+    it('does not start when its stylesheet reaches outside its own classes, and says why', async () => {
+        const { host, graph, activate } = pageSetUp(async () => {
+            throw new Error('its stylesheet styles things outside .garden classes')
+        })
+        await host.start(graph.services)
+        expect(activate).not.toHaveBeenCalled()
+        expect(host.status('garden')).toEqual({ state: 'failed', message: 'its stylesheet styles things outside .garden classes' })
+    })
+})
+
+describe('an extension installed from the Extension Directory while the Client runs (ADR 0123)', () => {
+    function orchard(version = '1.0.0'): CatalogueEntry {
+        return {
+            id: 'orchard',
+            source: 'loaded',
+            base: `/extensions/orchard/${version.replaceAll('.', '').padEnd(32, '0')}/`,
+            installed: { version, integrity: `sha512-${'A'.repeat(86)}==` },
+            package: {
+                name: '@example/etherpk-extension-orchard',
+                version,
+                manifest: manifest('orchard', {
+                    displayName: 'Orchard',
+                    publisher: 'example',
+                    main: './dist/main.js',
+                    minClientVersion: '0.9.0',
+                    icons: { tree: '<circle/>' },
+                    views: [{ kind: 'orchard.trees', title: 'Trees', icon: 'tree', region: 'main' }],
+                }),
+            },
+        }
+    }
+
+    it('declares its View kinds and icons to the workspace at once, and starts in the open graph', async () => {
+        const orchardActivate = vi.fn((context: ExtensionContext) => {
+            context.views.register('orchard.trees', view)
+        })
+        const { host, graph, importModule } = setUp({ importModule: async (url) => (url.includes('orchard') ? { activate: orchardActivate } : { activate: () => {} }) })
+        await host.start(graph.services)
+        const declaredNow = vi.fn()
+        host.onDeclared(declaredNow)
+        await host.add(orchard())
+        expect(declaredNow).toHaveBeenCalledWith([expect.objectContaining({ extensionId: 'orchard', icon: 'orchard.tree' })], { 'orchard.tree': '<circle/>' })
+        expect(importModule).toHaveBeenCalledWith(expect.stringMatching(/^\/extensions\/orchard\/.+\/dist\/main\.js$/))
+        expect(orchardActivate).toHaveBeenCalledTimes(1)
+        expect(host.status('orchard')).toEqual({ state: 'running' })
+        expect(slotOf(host, 'orchard.trees').state().status).toBe('ready')
+        expect(host.catalogue.extensions.map((entry) => entry.id)).toContain('orchard')
+    })
+
+    it('stops when removed, its tabs saying it was removed, and a later release declares nothing twice', async () => {
+        const { host, graph, importModule } = setUp()
+        await host.start(graph.services)
+        await host.add(orchard('1.0.0'))
+        host.remove('orchard')
+        expect(host.catalogue.extensions.map((entry) => entry.id)).not.toContain('orchard')
+        expect(slotOf(host, 'orchard.trees').state()).toEqual({ status: 'failed', message: 'Orchard was removed from this device.' })
+        const declaredAgain = vi.fn()
+        host.onDeclared(declaredAgain)
+        await host.add(orchard('1.1.0'))
+        // The View kind is the one already registered: only its icon is declared again.
+        expect(declaredAgain).toHaveBeenCalledWith([], { 'orchard.tree': '<circle/>' })
+        expect(importModule).toHaveBeenLastCalledWith(expect.stringMatching(/^\/extensions\/orchard\/110/))
+        expect(host.views().filter((declared) => declared.declaration.kind === 'orchard.trees')).toHaveLength(1)
+    })
+
+    it('keeps the catalogue it was given as it was, and refuses an extension it has already', async () => {
+        const catalogue: Catalogue = { extensions: [], broken: [] }
+        const storage = memoryStorage()
+        const host = createExtensionHost({ catalogue, client: fakeClientServices(storage), switches: createExtensionSwitches(storage), importModule: async () => ({ activate: () => {} }) })
+        await host.add(orchard())
+        expect(catalogue.extensions).toEqual([])
+        await expect(host.add(orchard())).rejects.toThrow(/already here/)
+    })
+})

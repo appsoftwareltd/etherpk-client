@@ -86,6 +86,17 @@ export interface ExtensionHost {
     status(id: string): ExtensionStatus
     /** Called after any status or slot changes. Returns the unsubscribe. */
     subscribe(listener: () => void): () => void
+    /**
+     * Add an extension installed from the Extension Directory while the Client runs, checked first
+     * (`admitInstalled`): its icons and View kinds are declared at once, told to `onDeclared`, and
+     * it starts in the open graph if it is on. A Sidebar resident it declares appears once a graph
+     * opens again, since a graph's Sidebars are laid out as it opens.
+     */
+    add(entry: CatalogueEntry): Promise<void>
+    /** Stop an extension and take it out of the catalogue: it was removed from this device. */
+    remove(id: string): void
+    /** Hear View kinds declared by `add`, to register them as the first ones were. Returns the unsubscribe. */
+    onDeclared(listener: (views: DeclaredView[], icons: Record<string, string>) => void): () => void
 }
 
 export interface ExtensionHostOptions {
@@ -94,6 +105,11 @@ export interface ExtensionHostOptions {
     switches: ExtensionSwitches
     /** How a loaded extension's module is fetched: a dynamic import, but for tests. */
     importModule?: (url: string) => Promise<unknown>
+    /**
+     * How a loaded extension that mounts in the page has its stylesheets checked and adopted by the
+     * document (page-styles.ts), resolving to the way to take them out: but for tests.
+     */
+    pageStyles?: (urls: readonly string[], extensionId: string) => Promise<() => void>
 }
 
 interface Running {
@@ -102,8 +118,13 @@ interface Running {
 }
 
 export function createExtensionHost(options: ExtensionHostOptions): ExtensionHost {
-    const { catalogue, client, switches } = options
+    const { client, switches } = options
+    // The host's own copy, since `add` and `remove` change it and the built-in catalogue is shared.
+    const catalogue: Catalogue = { extensions: [...options.catalogue.extensions], broken: [...options.catalogue.broken] }
     const importModule = options.importModule ?? ((url: string) => import(/* @vite-ignore */ url))
+    const pageStyles = options.pageStyles ?? ((urls: readonly string[], id: string) => import('./page-styles').then((module) => module.adoptPageStyleSheets(urls, id)))
+    /** The way to take out the page stylesheets of each started extension that mounts in the page. */
+    const pageStylesAdopted = new Map<string, () => void>()
     const listeners = new Set<() => void>()
     const notify = () => {
         for (const listener of listeners) listener()
@@ -113,24 +134,45 @@ export function createExtensionHost(options: ExtensionHostOptions): ExtensionHos
     const declared: DeclaredView[] = []
     const residents: DeclaredResident[] = []
     const icons: Record<string, string> = {}
-    for (const entry of catalogue.extensions) {
+
+    /**
+     * Declare an extension's icons and View kinds, returning the View kinds new to the host. A View
+     * kind an earlier release of the same extension declared keeps its slot, which the workspace
+     * already registered, so an update registers nothing twice.
+     */
+    function declare(entry: CatalogueEntry): { views: DeclaredView[]; icons: Record<string, string> } {
         const manifest = entry.package.manifest
         const own = new Set(Object.keys(manifest.icons ?? {}))
-        for (const [name, markup] of Object.entries(manifest.icons ?? {})) icons[`${entry.id}.${name}`] = markup
-        const isolation = entry.source === 'loaded' ? { styles: (manifest.styles ?? []).map((path) => resolve(entry.base, path)) } : null
+        const added: DeclaredView[] = []
+        const addedIcons: Record<string, string> = {}
+        for (const [name, markup] of Object.entries(manifest.icons ?? {})) {
+            icons[`${entry.id}.${name}`] = markup
+            addedIcons[`${entry.id}.${name}`] = markup
+        }
+        // A loaded extension's Views mount in a shadow root, unless it mounts in the page, whose
+        // stylesheets the document adopts as it starts (ADR 0121, amended 2026-10-10).
+        const isolation = entry.source === 'loaded' && manifest.isolation !== 'page' ? { styles: (manifest.styles ?? []).map((path) => resolve(entry.base, path)) } : null
+        const initial: SlotState = switches.isOn(entry.id) ? { status: 'waiting' } : { status: 'off' }
         for (const declaration of manifest.views ?? []) {
-            const slot = createSlot(declaration.kind, entry.id, manifest.displayName, isolation, switches.isOn(entry.id) ? { status: 'waiting' } : { status: 'off' }, notify)
+            const earlier = slots.get(declaration.kind)
+            if (earlier) {
+                earlier.set(initial)
+                continue
+            }
+            const slot = createSlot(declaration.kind, entry.id, manifest.displayName, isolation, initial, notify)
             slots.set(declaration.kind, slot)
             const [prefix] = declaration.title.split('{target}')
-            declared.push({
+            const view: DeclaredView = {
                 extensionId: entry.id,
                 declaration,
                 slot,
                 ...(declaration.icon === undefined ? {} : { icon: own.has(declaration.icon) ? `${entry.id}.${declaration.icon}` : declaration.icon }),
-                title: (view) => declaration.title.replaceAll('{target}', view.target),
+                title: (ref) => declaration.title.replaceAll('{target}', ref.target),
                 ...(declaration.title.endsWith('{target}') && prefix !== '' ? { titlePrefix: prefix } : {}),
                 conceptTarget: declaration.address?.target === 'concept',
-            })
+            }
+            declared.push(view)
+            added.push(view)
             if (declaration.resident) {
                 residents.push({
                     kind: declaration.kind,
@@ -140,7 +182,10 @@ export function createExtensionHost(options: ExtensionHostOptions): ExtensionHos
                 })
             }
         }
+        return { views: added, icons: addedIcons }
     }
+    for (const entry of catalogue.extensions) declare(entry)
+    const declaredListeners = new Set<(views: DeclaredView[], icons: Record<string, string>) => void>()
 
     const statuses = new Map<string, ExtensionStatus>()
     for (const entry of catalogue.extensions) statuses.set(entry.id, switches.isOn(entry.id) ? { state: 'idle' } : { state: 'off' })
@@ -217,8 +262,24 @@ export function createExtensionHost(options: ExtensionHostOptions): ExtensionHos
         const ticket = generation.get(entry.id) ?? 0
         const stale = () => graph !== services || (generation.get(entry.id) ?? 0) !== ticket
         setStatus(entry.id, { state: 'starting' })
-        return importOf(entry).then(
-            (module) => {
+        const manifest = entry.package.manifest
+        const styled =
+            manifest.isolation === 'page' && !pageStylesAdopted.has(entry.id)
+                ? pageStyles(
+                      (manifest.styles ?? []).map((path) => resolve(entry.base, path)),
+                      entry.id,
+                  )
+                : Promise.resolve(null)
+        return Promise.all([importOf(entry), styled]).then(
+            ([module, unstyle]) => {
+                if (unstyle) {
+                    // A start abandoned meanwhile (the graph closed, the switch flipped) takes them out at once.
+                    if (stale()) {
+                        unstyle()
+                        return
+                    }
+                    pageStylesAdopted.set(entry.id, unstyle)
+                }
                 if (stale()) return
                 try {
                     activate(entry, module, services)
@@ -244,13 +305,17 @@ export function createExtensionHost(options: ExtensionHostOptions): ExtensionHos
                 console.error(`[extensions] ${entry.id}: its own clean-up failed`, error)
             }
         }
+        // A page-mounted extension's stylesheets leave the document with it.
+        pageStylesAdopted.get(entry.id)?.()
+        pageStylesAdopted.delete(entry.id)
         for (const slot of slotsOf(entry)) slot.set(next)
         setStatus(entry.id, status)
     }
 
     return {
         catalogue,
-        addresses: createAddressBook(catalogue.extensions),
+        // Read live, so a View address of an extension installed while the Client runs works at once.
+        addresses: createAddressBook(() => catalogue.extensions),
         views: () => declared,
         residents: () => residents,
         icons: () => icons,
@@ -289,6 +354,33 @@ export function createExtensionHost(options: ExtensionHostOptions): ExtensionHos
         subscribe(listener) {
             listeners.add(listener)
             return () => listeners.delete(listener)
+        },
+        async add(entry) {
+            if (catalogue.extensions.some((existing) => existing.id === entry.id)) throw new Error(`The extension "${entry.id}" is already here.`)
+            catalogue.extensions.push(entry)
+            const { views, icons: addedIcons } = declare(entry)
+            if (views.length > 0 || Object.keys(addedIcons).length > 0) {
+                for (const listener of declaredListeners) listener(views, addedIcons)
+            }
+            const on = switches.isOn(entry.id)
+            statuses.set(entry.id, on ? { state: 'idle' } : { state: 'off' })
+            notify()
+            if (on && graph) await startOne(entry, graph)
+        },
+        remove(id) {
+            const index = catalogue.extensions.findIndex((candidate) => candidate.id === id)
+            if (index === -1) return
+            const entry = catalogue.extensions[index]
+            stopOne(entry, { status: 'failed', message: `${entry.package.manifest.displayName} was removed from this device.` }, { state: 'off' })
+            catalogue.extensions.splice(index, 1)
+            statuses.delete(id)
+            // A later release has another address, so its module is imported afresh.
+            modules.delete(id)
+            notify()
+        },
+        onDeclared(listener) {
+            declaredListeners.add(listener)
+            return () => declaredListeners.delete(listener)
         },
     }
 }

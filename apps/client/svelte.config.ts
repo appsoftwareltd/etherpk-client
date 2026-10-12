@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url'
 // config loader before Vite resolves workspace packages, and cspDirectives reads app.html
 // from disk, so it must stay a Node-only module out of the browser barrel.
 import { cspDirectives } from '../../packages/shared/src/security/csp.ts'
+import { PLAYER_FRAME_HOSTS } from '../../packages/shared/src/security/frame-hosts.ts'
 import { compiledInExtensionFolders } from './compiled-in-extensions.ts'
 import { CLIENT_TRUSTED_TYPES_POLICIES } from './src/lib/security/trusted-types-policies.ts'
 
@@ -27,6 +28,8 @@ const config: Config = {
                 // Documents embed images from the web (`![alt](https://…)`); without this
                 // every one of them rendered as the broken-image affordance.
                 allowRemoteImages: true,
+                // Video players from YouTube and Vimeo, in frames the Client builds (ADR 0137).
+                frameHosts: PLAYER_FRAME_HOSTS,
                 dev: process.env.NODE_ENV !== 'production',
                 // A build served over plain HTTP, such as a local test stack on *.localhost
                 // names, needs plaintext origins allowed. The policy is baked here at build time,

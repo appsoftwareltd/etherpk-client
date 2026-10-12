@@ -446,6 +446,66 @@ describe('asset references that would leave assets/', () => {
     })
 })
 
+// A fence an extension draws is published as what its `publish` makes of it, a picture or a link,
+// and an Extension Fence nothing publishes is left out with a warning, never printed as its data
+// (ADR 0138). An ordinary fence nothing publishes is code, as ever.
+describe("an extension's fence in a published page", () => {
+    const page = (concept: string, text: string): PublishDocument => ({ concept, kind: 'page', text, aliases: [] })
+    const fenceDocs = [
+        page('Site', '---\npublication:\n  id: site\n---\n- [[Garden]]\n'),
+        page(
+            'Garden',
+            '---\npublic: true\npublications: [site]\n---\nThe plan for the beds.\n\n```garden.plan\n{"id":"k1"}\n{"type":"text","text":"Raised beds"}\n```\n\n```video\nhttps://youtu.be/abcdefghijk\n```\n',
+        ),
+    ]
+    const fenceSource: PublishSource = { documents: fenceDocs, readAsset: async () => null }
+    const site = discoverPublications(fenceDocs).publications.find((p) => p.id === 'site')!
+    const svg = new TextEncoder().encode('<svg xmlns="http://www.w3.org/2000/svg"/>')
+
+    it('publishes the picture and the link the extensions made, and none of the data', async () => {
+        const asked: string[] = []
+        const { bundle, report } = await publishPublication(
+            fenceSource,
+            site,
+            environment({
+                publishFence: (fence) => {
+                    asked.push(`${fence.info} ${fence.document} ${fence.body.length}`)
+                    if (fence.info === 'garden.plan') return Promise.resolve({ kind: 'picture', type: 'image/svg+xml', bytes: svg, width: 640, height: 320, alt: 'Garden plan' })
+                    return Promise.resolve({ kind: 'link', href: 'https://www.youtube.com/watch?v=abcdefghijk', text: 'Watch on YouTube', image: { src: 'https://i.ytimg.com/vi/abcdefghijk/hqdefault.jpg', alt: '' } })
+                },
+            }),
+        )
+        expect(report.errors).toEqual([])
+        expect(asked).toEqual(['garden.plan Garden 2', 'video Garden 1'])
+        const picture = [...bundle.keys()].find((path) => path.startsWith('pictures/'))
+        expect(picture).toMatch(/^pictures\/[0-9a-f]{16}\.svg$/)
+        const html = bundle.get('garden.html') as string
+        expect(html).toContain(`<img src="${picture}" alt="Garden plan" width="640" height="320" loading="lazy">`)
+        expect(html).toContain('<a href="https://www.youtube.com/watch?v=abcdefghijk">Watch on YouTube</a>')
+        for (const [path, content] of bundle) if (typeof content === 'string') expect(content, path).not.toContain('Raised beds')
+    })
+
+    it('leaves out an Extension Fence where nothing publishes it, saying so, and prints an ordinary one as code', async () => {
+        const { bundle, report } = await publishPublication(fenceSource, site, environment())
+        expect(report.ok).toBe(true)
+        expect(report.warnings).toEqual(expect.arrayContaining([expect.objectContaining({ code: 'extension-fence-left-out', concept: 'Garden' })]))
+        const html = bundle.get('garden.html') as string
+        expect(html).not.toContain('garden.plan')
+        expect(html).toContain('https://youtu.be/abcdefghijk')
+        for (const [path, content] of bundle) if (typeof content === 'string') expect(content, path).not.toContain('Raised beds')
+    })
+
+    it('refuses a link that is not https, publishing the fence as its text with a warning', async () => {
+        const { bundle, report } = await publishPublication(
+            fenceSource,
+            site,
+            environment({ publishFence: (fence) => (fence.info === 'video' ? Promise.resolve({ kind: 'link', href: 'javascript:alert(1)', text: 'Watch' }) : undefined) }),
+        )
+        expect(report.warnings).toEqual(expect.arrayContaining([expect.objectContaining({ code: 'extension-fence-failed' })]))
+        expect(bundle.get('garden.html')).not.toContain('javascript:')
+    })
+})
+
 // A Map Block is published as a picture the host draws (ADR 0118), and a map that cannot be drawn
 // stops the publish rather than be left out of a page without a word (ADR 0084's rule).
 describe('a Map Block in a published page', () => {

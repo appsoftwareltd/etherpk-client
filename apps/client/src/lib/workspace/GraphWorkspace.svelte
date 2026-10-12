@@ -324,8 +324,21 @@
     import { personSettings } from "$lib/person-settings/person-settings";
     import { createKeybindingTable } from "$lib/surface/keybindings";
     import { builtInCatalogue } from "$lib/extensions/built-ins";
+    import { withInstalled } from "$lib/extensions/catalogue";
+    import { EXTENSION_ADDRESS_KIND } from "$lib/extensions/addresses";
+    import ExtensionAddressView from "$lib/extensions/ExtensionAddressView.svelte";
     import ExtensionView from "$lib/extensions/ExtensionView.svelte";
+    import { createDialogs } from "$lib/extensions/dialogs";
+    import { createExtensionDirectory } from "$lib/extensions/directory";
+    import { releaseBase } from "$lib/extensions/directory-format";
     import { createExtensionHost } from "$lib/extensions/host";
+    import { createInstalledExtensions } from "$lib/extensions/installed";
+    import { createInstalledSync } from "$lib/extensions/installed-sync";
+    import { lookupInteractiveFence } from "$lib/document/view/augmentations/interactive-fence-contract";
+    import { insertBlock } from "$lib/document/view/block-insert";
+    import FenceView from "$lib/document/view/FenceView.svelte";
+    import { type FenceRef, fenceViewTarget, parseFenceViewTarget, setFenceHosting } from "$lib/document/view/fence-hosting";
+    import { closeFenceWindow, openFenceWindow } from "$lib/document/view/fence-window";
     import type { GraphServices } from "$lib/extensions/services";
     import { createExtensionSwitches } from "$lib/extensions/switches";
     import { openBeside } from "$lib/layout/open-beside";
@@ -2637,8 +2650,19 @@
     // kind an extension declares is registered before any Layout is restored: a tab for one always
     // has its title and icon, and shows that it is loading, or why it cannot draw, until its
     // extension supplies the View. The extensions themselves start as each graph opens.
+    // The releases this device runs of the person's Extension Directory extensions (ADR 0123) join
+    // the built-ins, each served from its release's address on this origin. A newer release
+    // fetched while the Client last ran takes its place now, before anything starts.
+    const installedExtensions = createInstalledExtensions();
+    installedExtensions.promoteStaged(Date.now());
+    const extensionCatalogue = withInstalled(
+        builtInCatalogue,
+        installedExtensions.list().map((release) => ({ ...release, base: releaseBase(release.id, release.integrity) })),
+        RELEASE_VERSION,
+    );
+    if (extensionCatalogue.broken.length > builtInCatalogue.broken.length) console.error("[extensions] some installed extensions cannot run here", extensionCatalogue.broken);
     const extensionHost = createExtensionHost({
-        catalogue: builtInCatalogue,
+        catalogue: extensionCatalogue,
         switches: createExtensionSwitches(),
         client: {
             clientVersion: RELEASE_VERSION,
@@ -2647,23 +2671,82 @@
             iconSvg,
             storage: typeof localStorage === "undefined" ? undefined : localStorage,
             settings: personSettings(),
+            dialogs: createDialogs(),
         },
     });
     registerIcons(extensionHost.icons());
+    // A fence's widget in a tab of its own (FenceView.svelte): the target names the fence by its
+    // document, info word and own id. Titled by what the fence holds
+    // (its registration's `title`) and its document.
+    registry.register({
+        kind: "fence",
+        component: FenceView,
+        naturalRegion: "main",
+        title: (view) => {
+            const fence = parseFenceViewTarget(view.target);
+            if (!fence) return "Fence";
+            return `${lookupInteractiveFence(fence.info)?.title ?? fence.info}: ${fence.document}`;
+        },
+    });
     setExtensionAddresses(extensionHost.addresses);
-    for (const declared of extensionHost.views()) {
-        registry.register({
-            kind: declared.declaration.kind,
-            // Its own props (`slot`, `host`) arrive through `props`, which every presenter mounts it with.
-            component: ExtensionView as unknown as Component<ViewProps>,
-            naturalRegion: declared.declaration.region,
-            title: declared.title,
-            ...(declared.titlePrefix === undefined ? {} : { titlePrefix: declared.titlePrefix }),
-            ...(declared.icon === undefined ? {} : { icon: declared.icon }),
-            conceptTarget: declared.conceptTarget,
-            props: { slot: declared.slot, host: extensionHost },
-        });
+    function registerExtensionViews(views: ReturnType<typeof extensionHost.views>) {
+        for (const declared of views) {
+            registry.register({
+                kind: declared.declaration.kind,
+                // Its own props (`slot`, `host`) arrive through `props`, which every presenter mounts it with.
+                component: ExtensionView as unknown as Component<ViewProps>,
+                naturalRegion: declared.declaration.region,
+                title: declared.title,
+                ...(declared.titlePrefix === undefined ? {} : { titlePrefix: declared.titlePrefix }),
+                ...(declared.icon === undefined ? {} : { icon: declared.icon }),
+                conceptTarget: declared.conceptTarget,
+                props: { slot: declared.slot, host: extensionHost },
+            });
+        }
     }
+    registerExtensionViews(extensionHost.views());
+    // An extension installed from the Extension Directory while the Client runs declares its View
+    // kinds and icons then, and they are registered as the first ones were.
+    extensionHost.onDeclared((views, icons) => {
+        registerIcons(icons);
+        registerExtensionViews(views);
+    });
+    const extensionDirectory = createExtensionDirectory({
+        host: extensionHost,
+        installed: installedExtensions,
+        settings: personSettings(),
+        clientVersion: RELEASE_VERSION,
+        storage: typeof localStorage === "undefined" ? undefined : localStorage,
+    });
+    // The person's Extension Directory extensions, kept in step on this device: installed as they
+    // arrive from the account, removed when the person removes them elsewhere or the account ends
+    // here, and updated to the newest release this Client can run (installed-sync.ts). Started as
+    // the workspace mounts.
+    const installedSync = createInstalledSync({
+        directory: extensionDirectory,
+        installed: installedExtensions,
+        settings: personSettings(),
+        clientVersion: RELEASE_VERSION,
+        builtIns: builtInCatalogue.extensions.map((entry) => entry.id),
+        notify: (text) => notify(text),
+    });
+    onMount(() => installedSync.start());
+    // A page under /x/ whose extension is not installed here (ADR 0123): which extension it belongs
+    // to, and Install where the directory lists it. Once the extension runs, the page takes its tab.
+    registry.register({
+        kind: EXTENSION_ADDRESS_KIND,
+        component: ExtensionAddressView as unknown as Component<ViewProps>,
+        naturalRegion: "main",
+        title: (view) => `Not installed: ${view.target.split("/")[0]}`,
+        props: {
+            host: extensionHost,
+            directory: extensionDirectory,
+            onresolved: (from: ViewRef, to: ViewRef) => {
+                controller?.openView(to);
+                controller?.closeView(from);
+            },
+        },
+    });
     /** The residents extensions declare for one Sidebar, the desktop's only ones on a desktop. */
     function extensionResidents(side: "left" | "right"): Resident[] {
         return extensionHost
@@ -4022,7 +4105,25 @@
             concepts: { key: conceptKey, canonicalName: canonicalConceptName },
             keybindings: keybindingTable,
             notify: (text) => notify(text),
+            editor: {
+                insertBlock(text, options) {
+                    const view = getActiveEditorView();
+                    return view ? insertBlock(view, text, options) : false;
+                },
+            },
         };
+        // Where a fence's widget can be drawn outside its document: a tab, or over the window.
+        const openFenceTab = (fence: FenceRef) => controller?.openView({ kind: "fence", target: fenceViewTarget(fence) });
+        setFenceHosting({
+            openTab: openFenceTab,
+            openWindow(fence) {
+                const registered = lookupInteractiveFence(fence.info);
+                // The projection the editors and the fence tab read, so an unlocked Protected
+                // Document is seen as one and its plaintext is never given to an extension.
+                const shown = protectedStore ?? store;
+                if (registered && shown) openFenceWindow({ ref: fence, fence: registered, store: shown, openTab: () => openFenceTab(fence) });
+            },
+        });
         void extensionHost.start(extensionGraph);
         // Copy task reference (ADR 0114): the task on the caret's line, or a card's, on the
         // clipboard as its words and an address, to hand to an agent. Said, since a clipboard
@@ -4580,8 +4681,10 @@
         // and a concept in it is resolved like a document's.
         const address = page.params.address;
         if (address) {
-            const view = extensionHost.addresses.view(address, page.params.target ?? "");
-            if (!view) return null;
+            const rest = page.params.target ?? "";
+            const view = extensionHost.addresses.view(address, rest);
+            // An Extension Directory extension's page, the extension not on this device: a tab says so.
+            if (!view) return extensionHost.addresses.missing(address, rest) ? { kind: EXTENSION_ADDRESS_KIND, target: rest } : null;
             return extensionHost.addresses.takesConcept(view.kind) ? { ...view, target: canonicalConceptName(view.target) } : view;
         }
         return null;
@@ -5181,6 +5284,11 @@
             // Whatever an extension contributed to draw a Map Block with (ADR 0121), read as a
             // publish needs it, so a switch made since the graph opened is respected.
             mapPicture: () => contributions.get(MAP_PICTURE_KIND, MAP_FENCE_INFO) as MapPictureRenderer | undefined,
+            // The `publish` of the extension drawing a fence, as the fence registry holds it now.
+            fencePublisher: (info) => {
+                const fence = lookupInteractiveFence(info);
+                return fence?.publish?.bind(fence);
+            },
         });
     }
 
@@ -6316,6 +6424,8 @@
         detachDocumentCommands = undefined;
         // Everything every packaged extension added to this graph is taken back (ADR 0121).
         extensionHost.stop();
+        closeFenceWindow();
+        setFenceHosting(null);
         detachThemeEvents?.();
         detachThemeEvents = undefined;
         detachTaskReferenceCommands?.();
@@ -6705,6 +6815,8 @@
         onrebuildindex={rebuildIndex}
         assetTools={mirrorAwareAssetTools()}
         extensions={extensionHost}
+        {extensionDirectory}
+        {installedSync}
         tab={graphSettingsDialog.tab}
         nameHelp={isServerStore
             ? "Changes the graph name for all members."

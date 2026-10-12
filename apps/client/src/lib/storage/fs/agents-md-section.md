@@ -208,6 +208,14 @@ Ridge walk @ 54.60120, -3.13410 > 54.60500, -3.14000 (../assets/ridge-walk.a1b2c
   bullet's own line (`- ```map`), where the map is drawn beside the bullet's dot.
 - A line EtherPK cannot read is kept as written and reported on the map, never rewritten.
 
+**Extension fences.** A fence whose info-string is an extension's id, a dot and a name (such as
+`excalidraw.drawing`) holds that extension's own data, such as a drawing's elements as one JSON
+object per line. EtherPK draws it through the extension, never searches it, and never publishes it
+as text. Leave such a fence exactly as it is: do not edit, reformat, re-indent or sort its lines,
+and do not add one by hand, because the extension that wrote it reads every line. A fence whose
+info-string is an extension's id alone (such as `video`, holding a link) is ordinary text that you
+may read and edit.
+
 **Tables.** GFM pipe tables. Leave a blank line between two tables or they read as one. A
 table cannot sit inside a code block or the frontmatter.
 

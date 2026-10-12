@@ -36,6 +36,15 @@ describe('reading one line', () => {
     it('splits at the last "@", so a name may hold one', () => {
         expect(readMapLine('Meet @ the pub @ 50.1, -1.2')).toMatchObject({ name: 'Meet @ the pub', point: { lat: 50.1, lon: -1.2 } })
         expect(readMapLine('Look @ 50, 1 @ 51, -1')).toMatchObject({ name: 'Look @ 50, 1', point: { lat: 51, lon: -1 } })
+        expect(readMapLine(`${'Garden @ '.repeat(100)}50.1, -1.2`)).toMatchObject({ point: { lat: 50.1, lon: -1.2 } })
+    })
+
+    // Each "@" tried reads the rest of the line, so a line of thousands would be read thousands of
+    // times over. Only the last few can end a name: the one before the place, and any in a recording.
+    it('gives up on a line after the last sixteen "@"s, however long it is', () => {
+        expect(readMapLine('@1'.repeat(200_000))).toBeNull()
+        expect(readMapLine(`Ride @ 50, -1 > 51, -2 (${'ride@'.repeat(16)}.gpx)`)).toBeNull()
+        expect(readMapLine(`Ride @ 50, -1 > 51, -2 (${'ride@'.repeat(15)}.gpx)`)).toMatchObject({ kind: 'route', name: 'Ride' })
     })
 
     it('keeps brackets that belong to a place name', () => {

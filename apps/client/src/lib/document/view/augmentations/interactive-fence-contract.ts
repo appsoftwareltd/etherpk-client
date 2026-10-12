@@ -15,6 +15,7 @@
  * id. With nothing registered for a word, the fence is an ordinary fenced block.
  */
 
+import type { FencePresentation, PublishedFence, PublishFenceRequest } from '@appsoftwareltd/etherpk-extension-api'
 import { StateEffect } from '@codemirror/state'
 
 import { type ContributionRegistry, tryGetActiveContributionRegistry } from '$lib/surface'
@@ -22,6 +23,10 @@ import { type ContributionRegistry, tryGetActiveContributionRegistry } from '$li
 import type { FenceBodyEdit } from '../../fence-body'
 
 export const INTERACTIVE_FENCE_KIND = 'interactive-fence'
+
+// Whether an info word names an [[Extension Fence]] (ADR 0138), which the editor draws whether or
+// not its extension runs: decided in one framework-free place that every reader shares.
+export { isExtensionFenceInfo } from '../../extension-fence'
 
 /** What a widget is told about its fence. */
 export interface InteractiveFenceInfo {
@@ -54,13 +59,16 @@ export interface InteractiveFenceContext extends InteractiveFenceInfo {
      * off screen until its pane is first measured, so a widget reads it at each update, never once.
      */
     readonly onScreen: boolean
+    /** Where the widget is drawn: in the document, or by the Client in a tab or over the window. */
+    readonly presentation: FencePresentation
     /**
-     * Change one line of the body, as one undoable editor change, in this widget's own fence even
-     * when asked after the widget was taken down. False when it was refused: the document cannot be
-     * written, the fence is gone, the line no longer says what the change expects (the widget is
-     * told the current body in an `update` soon after), or a guard kept the text as it was.
+     * Change the body, as one undoable editor change: one line, or several lines applied in order
+     * together, in this widget's own fence even when asked after the widget was taken down. False when
+     * it was refused, and then nothing changed: the document cannot be written, the fence is gone, a
+     * line no longer says what a change expects (the widget is told the current body in an `update`
+     * soon after), or a guard kept the text as it was.
      */
-    edit(change: FenceBodyEdit): boolean
+    edit(change: FenceBodyEdit | readonly FenceBodyEdit[]): boolean
     /** Show the fence's text in the editor, with the caret on its first body line. */
     editAsText(): void
     /**
@@ -73,6 +81,14 @@ export interface InteractiveFenceContext extends InteractiveFenceInfo {
     remove(): boolean
     /** The widget's height changed (it folded or unfolded): the editor measures it again. */
     resized(): void
+    /** True once, for the widget of a fence put in to take the keyboard (`insertBlock` with `focus`). */
+    takeFocus(): boolean
+    /** Open the fence in a tab of its own (`fence-hosting.ts`), where its registration can `identify` it. */
+    openInTab(): void
+    /** Draw the widget again over the whole window, where its registration can `identify` the fence. */
+    openWindow(): void
+    /** Close the window this widget fills; nothing for a widget drawn elsewhere. */
+    closeWindow(): void
 }
 
 /** A mounted widget, as the host drives it. */
@@ -92,6 +108,19 @@ export interface InteractiveFence {
     height(info: InteractiveFenceInfo): number
     /** Build the widget inside `host`, which the editor owns and positions. */
     mount(host: HTMLElement, context: InteractiveFenceContext): InteractiveFenceView
+    /** What the fence holds, such as "Drawing": a tab's title and a window's heading start with it. */
+    readonly title?: string
+    /** Mod+Z and Mod+Y pressed inside the widget are its own, not the editor's undo and redo. */
+    readonly keepsHistory?: boolean
+    /** The fence's own id, read from its body, so a tab or a window can find it again after any change. */
+    identify?(body: readonly string[]): string | null
+    /**
+     * What plain text pasted on an empty line or bullet becomes: this kind of fence's body lines, or
+     * null (`paste-to-fence.ts`). The first [[Hook]]: its answer changes what a paste writes.
+     */
+    fromPaste?(text: string): readonly string[] | null
+    /** How a published site shows the fence, asked only in a publish run in the browser. */
+    publish?(fence: PublishFenceRequest): PublishedFence | null | Promise<PublishedFence | null>
 }
 
 /**

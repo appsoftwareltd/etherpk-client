@@ -7,7 +7,7 @@
 /**
  * Where a View kind opens when nothing says otherwise.
  *
- * @beta
+ * @public
  */
 export type ViewRegion = 'main' | 'left-sidebar' | 'right-sidebar'
 
@@ -15,7 +15,7 @@ export type ViewRegion = 'main' | 'left-sidebar' | 'right-sidebar'
  * One View kind an extension adds, declared so the Client can show its tabs, titles and loading
  * state before any of the extension's code has run.
  *
- * @beta
+ * @public
  */
 export interface ViewDeclaration {
     /** The kind, `<extension id>.<name>`: the key every saved Layout stores it under. */
@@ -37,12 +37,15 @@ export interface ViewDeclaration {
     /**
      * The View lives in a Sidebar from the moment a graph opens, beside the Client's own residents,
      * and the Sidebar's toggle brings it back if it was closed. `desktopOnly` keeps it off a phone.
+     *
+     * @beta
      */
     resident?: { side: 'left' | 'right'; desktopOnly?: boolean }
     /**
-     * A short address of the View's own: `/g/<graph>/<segment>`, followed by the target when
-     * `target` is `concept`. Only a Built-in Extension may declare one. A View kind whose address
-     * takes a concept follows that concept through a rename.
+     * A short address of the View's own, followed by the target when `target` is `concept`: for an
+     * extension from the Extension Directory `/g/<graph>/x/<extension id>/<segment>`, and for one that
+     * comes with EtherPK `/g/<graph>/<segment>`. A View kind whose address takes a concept follows
+     * that concept through a rename.
      */
     address?: { segment: string; target?: 'concept' }
 }
@@ -54,7 +57,7 @@ export interface ViewDeclaration {
  * a graph, so it follows them to their other devices. The extension reads it through
  * `context.settings`.
  *
- * @beta
+ * @public
  */
 export interface SettingDeclaration {
     /** Unique within the extension: lowercase letters, digits and hyphens, such as `mapbox-token`. */
@@ -77,9 +80,20 @@ export interface SettingDeclaration {
 }
 
 /**
+ * Where a loaded extension's Views and fence widgets mount. `shadow`, the default, puts each in a
+ * shadow root holding the extension's stylesheets, so neither side's CSS reaches the other. `page`
+ * mounts them in the page and has the document adopt the stylesheets, for a library that cannot work
+ * in a shadow root. The Client then checks every rule is scoped under a class whose name starts with
+ * the extension's id, and refuses to start the extension otherwise.
+ *
+ * @public
+ */
+export type ExtensionIsolation = 'shadow' | 'page'
+
+/**
  * The `etherpk` field of an extension's package.json.
  *
- * @beta
+ * @public
  */
 export interface ExtensionManifest {
     /**
@@ -96,10 +110,13 @@ export interface ExtensionManifest {
     /** The module that exports `activate`, relative to the package's root. */
     main: string
     /**
-     * Stylesheets adopted into the shadow root of each of the extension's Views, relative to the
-     * package's root. Only a loaded extension has them: a compiled-in one shares the Client's.
+     * Stylesheets adopted into the shadow root of each of the extension's Views and fence widgets, or
+     * by the document with `isolation` `page`, relative to the package's root. Only a loaded extension
+     * has them: a compiled-in one shares the Client's.
      */
     styles?: string[]
+    /** Where a loaded extension's Views and fence widgets mount. `shadow` when left out. */
+    isolation?: ExtensionIsolation
     /** Icons by name: the inner markup of a 16 by 16 SVG drawn with `currentColor` strokes. */
     icons?: Record<string, string>
     /** The View kinds the extension adds. */
@@ -137,6 +154,8 @@ export type ReadExtensionPackageResult = { ok: true; extension: ExtensionPackage
 const NAME = /^[a-z][a-z0-9-]*$/
 const VERSION = /^\d+\.\d+\.\d+$/
 const REGIONS: readonly ViewRegion[] = ['main', 'left-sidebar', 'right-sidebar']
+/** The longest an icon's markup may be: a 16 by 16 picture needs a few hundred characters. */
+const ICON_MARKUP_LIMIT = 4096
 
 /**
  * Read an extension's package.json, already parsed, and check its manifest.
@@ -172,12 +191,16 @@ export function readExtensionPackage(packageJson: unknown): ReadExtensionPackage
     if (field.styles !== undefined && (!Array.isArray(field.styles) || !field.styles.every((path) => typeof path === 'string' && relativePath(path)))) {
         errors.push('"etherpk.styles" must be a list of paths inside the package.')
     }
+    if (field.isolation !== undefined && field.isolation !== 'shadow' && field.isolation !== 'page') {
+        errors.push('"etherpk.isolation" must be "shadow" or "page".')
+    }
     if (field.icons !== undefined) {
         if (!isRecord(field.icons)) errors.push('"etherpk.icons" must map names to SVG markup.')
         else
             for (const [iconName, markup] of Object.entries(field.icons)) {
                 if (!NAME.test(iconName)) errors.push(`Icon "${iconName}" must be lowercase letters, digits and hyphens.`)
                 if (typeof markup !== 'string' || markup.trim() === '') errors.push(`Icon "${iconName}" has no markup.`)
+                else if (markup.length > ICON_MARKUP_LIMIT) errors.push(`Icon "${iconName}" is longer than ${ICON_MARKUP_LIMIT} characters.`)
             }
     }
     const views = field.views === undefined ? [] : field.views
@@ -274,9 +297,12 @@ function checkView(view: unknown, index: number, id: string, kinds: Set<string>,
     }
 }
 
-/** A path that stays inside the package: relative, and never climbing out of it. */
+/**
+ * A path that stays inside the package: relative, never climbing out of it, and never an address or
+ * a drive (`https:`, `data:`, `C:`), which a URL would read as somewhere else.
+ */
 function relativePath(path: string): boolean {
-    return path !== '' && !path.startsWith('/') && !path.includes('\\') && !path.split('/').includes('..')
+    return path !== '' && !path.startsWith('/') && !path.includes('\\') && !/^[a-z][a-z0-9+.-]*:/i.test(path) && !path.split('/').includes('..')
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

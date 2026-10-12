@@ -94,12 +94,16 @@ export interface ContextMenuItem {
 /**
  * What a Command Menu row's `when` may read about the editor it was opened in.
  *
- * @beta
+ * @public
  */
 export interface CommandMenuContext {
     /** The caret is in a table. */
     inTable: boolean
-    /** A table may be inserted at the caret. */
+    /**
+     * A table may be inserted at the caret.
+     *
+     * @beta
+     */
     tableInsertable: boolean
     /** The document's body may be written: false in a locked Protected Document. */
     bodyWritable: boolean
@@ -113,6 +117,8 @@ export interface CommandMenuContext {
      * caret line's links, the links above it in the outline, the document's own concept, then the
      * scopes in its name. Names are as written, an alias as the alias. Worked out only when a row
      * reads it. Absent reads as none.
+     *
+     * @beta
      */
     readonly conceptsAtCaret?: readonly string[]
 }
@@ -120,7 +126,7 @@ export interface CommandMenuContext {
 /**
  * One row of the Command Menu, the menu `/` opens in the editor.
  *
- * @beta
+ * @public
  */
 export interface CommandMenuItem {
     /** Under the extension's id. */
@@ -144,7 +150,11 @@ export interface CommandMenuItem {
     when?: (context: CommandMenuContext) => boolean
     /** The Command the row runs. */
     command: string
-    /** What the Command is given. */
+    /**
+     * What the Command is given.
+     *
+     * @beta
+     */
     args?: unknown
 }
 

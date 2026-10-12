@@ -121,7 +121,14 @@ function servedFiles(extension: LoadedExtension): string[] {
 function fileFor(extensions: readonly LoadedExtension[], url: string): string | null {
     const extension = extensions.find((candidate) => url.startsWith(candidate.base))
     if (!extension) return null
-    const path = resolve(extension.directory, decodeURIComponent(url.slice(extension.base.length)))
+    let relative: string
+    try {
+        relative = decodeURIComponent(url.slice(extension.base.length))
+    } catch {
+        // A malformed escape names no file.
+        return null
+    }
+    const path = resolve(extension.directory, relative)
     const allowed = extension.folders.some((folder) => path.startsWith(join(extension.directory, folder) + sep))
     return allowed ? path : null
 }
@@ -129,10 +136,15 @@ function fileFor(extensions: readonly LoadedExtension[], url: string): string | 
 export function extensionsPlugin(): Plugin {
     let extensions: LoadedExtension[] = []
     let serverSide = false
+    let preview = false
     return {
         name: 'etherpk-extensions',
+        config(_config, env) {
+            preview = env.isPreview === true
+        },
         configResolved(config) {
-            const devFolders = config.command === 'serve' ? (process.env.ETHERPK_DEV_EXTENSIONS ?? '').split(',').map((folder) => folder.trim()).filter(Boolean) : []
+            // The dev server only: `vite preview` serves a build, and says `serve` too.
+            const devFolders = config.command === 'serve' && !preview ? (process.env.ETHERPK_DEV_EXTENSIONS ?? '').split(',').map((folder) => folder.trim()).filter(Boolean) : []
             extensions = readLoadedExtensions(config.root, devFolders)
             serverSide = Boolean(config.build.ssr)
         },
@@ -147,7 +159,9 @@ export function extensionsPlugin(): Plugin {
         configureServer(server) {
             server.middlewares.use((req, res, next) => {
                 const url = req.url?.split('?')[0] ?? ''
-                if (!url.startsWith(PREFIX)) return next()
+                // A release installed from the Extension Directory is served by the Client's own
+                // route (routes/extensions/[id]/[key]), under an address no built-in has.
+                if (!url.startsWith(PREFIX) || !extensions.some((extension) => url.startsWith(extension.base))) return next()
                 const path = fileFor(extensions, url)
                 let found = false
                 try {

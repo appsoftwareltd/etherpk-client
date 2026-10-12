@@ -199,6 +199,22 @@ describe('protected content contributes nothing to the index', () => {
     })
 })
 
+describe('an Extension Fence is never read as writing (ADR 0138)', () => {
+    const doc = ['- Garden plan', '  ```garden.plan', '  {"id":"k1"}', '  {"type":"text","text":"Raised beds"}', '  ```', '- Water the beans'].join('\n')
+
+    it("leaves the fence's lines out of what search and Semantic Search read for its block", () => {
+        const { blocks, searchText } = deriveDoc(doc)
+        const block = blocks.find((b) => b.label === 'Garden plan')!
+        expect(searchText.get(block.localId)).toBe('- Garden plan\n\n\n\n')
+        expect(searchText.get(blocks.find((b) => b.label === 'Water the beans')!.localId)).toBeUndefined()
+    })
+
+    it('reads an ordinary fence named by an extension’s id alone as written', () => {
+        const { blocks, searchText } = deriveDoc(['- Tour', '  ```video', '  https://youtu.be/abcdefghijk', '  ```'].join('\n'))
+        expect(searchText.get(blocks[0].localId)).toBeUndefined()
+    })
+})
+
 describe('deriveTitleLinks', () => {
     it('yields nothing for a plain title', () => {
         expect(deriveTitleLinks('Physics')).toEqual([])

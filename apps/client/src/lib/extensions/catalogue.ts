@@ -19,15 +19,26 @@ import { type ExtensionModule, type ExtensionPackage, readExtensionPackage } fro
  */
 export const RESERVED_SEGMENTS: readonly string[] = ['d', 'a', 't', 'x']
 
+/**
+ * The info words of the fenced blocks the Client and its built-in extensions draw: Mermaid diagrams
+ * and maths (`renderers/register.ts`), a Protected Document's ciphertext (`CIPHER_FENCE_INFO`) and the
+ * Maps extension's Map Block. An extension may name a fence by its own id (`registerFence`), so an
+ * extension from the Extension Directory may not take one of these as its id, or it could draw and
+ * publish those blocks in place of the Client.
+ */
+export const CLIENT_FENCE_WORDS: readonly string[] = ['map', 'math', 'mermaid', 'etherpk-cipher']
+
 /** One extension the catalogue accepted. */
 export type CatalogueEntry =
-    | { id: string; package: ExtensionPackage; source: 'compiled-in'; module: ExtensionModule }
+    | { id: string; package: ExtensionPackage; source: 'compiled-in'; module: ExtensionModule; installed?: never }
     | {
           id: string
           package: ExtensionPackage
           source: 'loaded'
           /** The address its package's root is served at, ending in `/`. */
           base: string
+          /** Set for a release installed from the Extension Directory (ADR 0123), not a built-in. */
+          installed?: { version: string; integrity: string }
       }
 
 /** One package the catalogue refused, and why. */
@@ -98,6 +109,53 @@ export function buildCatalogue(input: CatalogueInput): Catalogue {
         })
     }
     return { extensions, broken }
+}
+
+/** A release installed from the Extension Directory, as the device keeps it (installed.ts). */
+export interface InstalledPackage {
+    id: string
+    version: string
+    integrity: string
+    packageJson: unknown
+    /** The address the Client's server serves the release at (`releaseBase`), ending in `/`. */
+    base: string
+}
+
+/**
+ * Admit a release installed from the Extension Directory beside the extensions `catalogue` already
+ * holds, read and checked as a loaded built-in is, or say why it cannot run here: its package is
+ * not the release that was installed, it needs a newer Client, or its id is taken. Its View
+ * addresses are under `/x/<id>/` (ADR 0123, amended 2026-10-12), so no segment it declares can take
+ * another's.
+ */
+export function admitInstalled(catalogue: Catalogue, installed: InstalledPackage, clientVersion: string): { ok: true; entry: CatalogueEntry } | { ok: false; errors: string[] } {
+    const read = readExtensionPackage(installed.packageJson)
+    if (!read.ok) return { ok: false, errors: read.errors }
+    const { manifest } = read.extension
+    if (manifest.id !== installed.id) return { ok: false, errors: [`Its package is the extension "${manifest.id}", not "${installed.id}".`] }
+    if (CLIENT_FENCE_WORDS.includes(manifest.id)) return { ok: false, errors: [`Its id "${manifest.id}" names a block the Client draws itself.`] }
+    if (read.extension.version !== installed.version) return { ok: false, errors: [`Its package is version ${read.extension.version}, not the ${installed.version} that was installed.`] }
+    const minimum = manifest.minClientVersion
+    if (minimum === undefined) return { ok: false, errors: ['An extension from the Extension Directory must name its minClientVersion.'] }
+    if (compareVersions(minimum, clientVersion) > 0) return { ok: false, errors: [`It needs Client ${minimum} or later, and this Client is ${clientVersion}.`] }
+    const entry: CatalogueEntry = { id: manifest.id, package: read.extension, source: 'loaded', base: installed.base, installed: { version: installed.version, integrity: installed.integrity } }
+    if (catalogue.extensions.some((existing) => existing.id === entry.id)) return { ok: false, errors: [`The id "${entry.id}" is taken by another extension.`] }
+    return { ok: true, entry }
+}
+
+/**
+ * A copy of `catalogue` with the releases this device installed from the Extension Directory
+ * admitted after the built-ins, so a built-in keeps its id. One that cannot run here is listed as
+ * broken, with why.
+ */
+export function withInstalled(catalogue: Catalogue, installed: readonly InstalledPackage[], clientVersion: string): Catalogue {
+    const result: Catalogue = { extensions: [...catalogue.extensions], broken: [...catalogue.broken] }
+    for (const release of installed) {
+        const admitted = admitInstalled(result, release, clientVersion)
+        if (admitted.ok) result.extensions.push(admitted.entry)
+        else result.broken.push({ where: `${packageName(release.packageJson)} ${release.version}, from the Extension Directory`, errors: admitted.errors })
+    }
+    return result
 }
 
 /** What an accepted entry would take that is already taken. */

@@ -11,7 +11,11 @@
  * - **line** — revealed while any selection range touches the syntax's line (formatting marks,
  *   markdown links, tables, images). {@link revealedLines} / {@link lineRevealed}.
  * - **range** — revealed while any selection range touches the syntax's own span, boundaries
- *   inclusive (inline math, rendered fences, interactive fences). {@link rangeRevealed}.
+ *   inclusive (inline math, rendered fences, interactive fences other than Extension Fences).
+ *   {@link rangeRevealed}.
+ * - **requested** — revealed only when asked for (Edit as text, Show text), and then while any
+ *   selection range touches the span, as the range kind holds it. The caret alone never reveals it
+ *   (an Extension Fence's data, ADR 0138). {@link requestReveal} / {@link requestedRevealed}.
  * - **block** — revealed while any selection range touches any of the construct's lines (a block
  *   widget's source; a setext heading's underline, which shows while the caret is in the heading).
  *   {@link linesAllHidden}.
@@ -110,7 +114,51 @@ export function pinnedRevealFrom(state: EditorState): number | null {
     return state.field(pinnedRevealField, false) ?? null
 }
 
+// ── Requested reveal ─────────────────────────────────────────────────────────────────────────
+
+/** A span revealed on request, from its first character to its last line's end. */
+export interface RequestedSpan {
+    readonly from: number
+    readonly to: number
+}
+
+/**
+ * Reveal the span `[from, to]`, given in the transaction's start document: Edit as text on an
+ * Extension Fence's widget, or Show text on its placeholder. Dispatch it with the selection that
+ * goes inside the span, or the span is dropped again at once.
+ */
+export const requestReveal = StateEffect.define<RequestedSpan>()
+
+/**
+ * The spans revealed on request. Each follows its text through edits, taking in what is typed at
+ * its end and leaving out what is typed before its start, and is dropped once no selection range
+ * touches it (the range kind's rule) or its first character is deleted.
+ */
+export const requestedRevealField = StateField.define<readonly RequestedSpan[]>({
+    create: () => [],
+    update(value, tr) {
+        let spans = value
+        for (const effect of tr.effects) if (effect.is(requestReveal)) spans = [...spans, effect.value]
+        if (spans.length === 0) return value
+        const kept: RequestedSpan[] = []
+        for (const span of spans) {
+            const from = tr.changes.mapPos(span.from, 1, MapMode.TrackDel)
+            if (from === null) continue
+            const to = Math.max(from, tr.changes.mapPos(span.to, 1))
+            if (rangeRevealed(tr.state, from, to)) kept.push({ from, to })
+        }
+        const same = kept.length === value.length && kept.every((span, i) => span.from === value[i].from && span.to === value[i].to)
+        return same ? value : kept
+    },
+})
+
+/** Requested-kind reveal: was `[from, to]`, or a span overlapping it, revealed on request and is it still? */
+export function requestedRevealed(state: EditorState, from: number, to: number): boolean {
+    const spans = state.field(requestedRevealField, false)
+    return spans?.some((span) => span.from <= to && span.to >= from) ?? false
+}
+
 /** Whether a transaction changed anything a reveal decision depends on. */
 export function revealInputsChanged(tr: Transaction): boolean {
-    return tr.docChanged || tr.selection !== undefined || tr.effects.some((e) => e.is(pinReveal))
+    return tr.docChanged || tr.selection !== undefined || tr.effects.some((e) => e.is(pinReveal) || e.is(requestReveal))
 }

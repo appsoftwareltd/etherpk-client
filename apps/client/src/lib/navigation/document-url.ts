@@ -10,7 +10,7 @@
  * `/g/[graphId]/a/[assetId]`, and a graph [[Theme]] in its editor at `/g/[graphId]/t/[themeId]`.
  * An extension's View is addressed as its manifest declares (ADR 0121): a [[Kanban Board]] at
  * `/g/[graphId]/k/<concept>`, a [[Map View]] at `/g/[graphId]/m/<concept>` or `/g/[graphId]/map`
- * for the whole graph's.
+ * for the whole graph's. One from the Extension Directory is under its id: `/g/[graphId]/x/<id>/…`.
  * ADR 0023 made the main region's active [[View]] the thing the address bar names and the Back
  * button walks; both are main-region Views like any other, and leaving either unaddressed meant
  * opening it changed no URL and pushed no history entry - so Back skipped straight past it to
@@ -18,6 +18,7 @@
  * Back was meant to find Settings again (2026-09-20).
  */
 
+import { DIRECTORY_SEGMENT, EXTENSION_ADDRESS_KIND } from '$lib/extensions/addresses'
 import type { ViewRef } from '$lib/layout'
 
 import { encodeConceptPath } from './concept-path'
@@ -57,6 +58,8 @@ export function viewUrl(graphId: string, view: ViewRef): string | null {
     if (view.kind === 'document') return documentUrl(graphId, view.target)
     if (view.kind === 'asset') return assetUrl(graphId, view.target)
     if (view.kind === 'theme') return themeUrl(graphId, view.target)
+    // A page of an extension not installed here keeps the address it was opened at.
+    if (view.kind === EXTENSION_ADDRESS_KIND) return `${graphUrl(graphId)}/${DIRECTORY_SEGMENT}/${encodeConceptPath(view.target)}`
     // Every other kind is an extension's, addressed as its manifest declares (ADR 0121).
     return extensionAddresses()?.url(graphId, view) ?? null
 }

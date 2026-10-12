@@ -6,7 +6,7 @@
 /**
  * Which View: its kind and what it is about. A View with no subject has an empty target.
  *
- * @beta
+ * @public
  */
 export interface ViewRef {
     /** The View kind, `<extension id>.<name>` for an extension's. */
@@ -20,7 +20,7 @@ export interface ViewRef {
  * The desktop keeps every tab mounted, so a View that does work while shown (drawing, reading the
  * index) stops it while this is false.
  *
- * @beta
+ * @public
  */
 export interface ViewVisibility {
     /** True while the View can be seen. */
@@ -32,7 +32,7 @@ export interface ViewVisibility {
 /**
  * What a View is mounted with.
  *
- * @beta
+ * @public
  */
 export interface ViewMountProps {
     /** The View being mounted. */
@@ -49,7 +49,7 @@ export interface ViewMountProps {
 /**
  * A View the extension has drawn, as the Client drives it.
  *
- * @beta
+ * @public
  */
 export interface MountedView {
     /** The same View with new props: a rename re-keyed its target, or it moved to another Pane. */
@@ -61,7 +61,7 @@ export interface MountedView {
 /**
  * What an extension registers for a View kind its manifest declares.
  *
- * @beta
+ * @public
  */
 export interface ViewContribution {
     /**

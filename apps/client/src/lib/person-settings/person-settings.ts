@@ -42,6 +42,8 @@ interface Stored {
 export interface PersonSettings {
     /** A setting's value, or undefined when it is not set. */
     get(key: string): string | undefined
+    /** The keys under `prefix` that hold a value, a cleared one left out. */
+    keys(prefix: string): string[]
     /** Set a setting, or clear it with null. Empty text clears it too. */
     set(key: string, value: string | null): void
     /** Called whenever any setting changes, here, in another tab or from the account. */
@@ -123,6 +125,11 @@ export function createPersonSettings(storage: () => Storage | null, now: () => n
     return {
         get(key) {
             return state().settings[key]?.value ?? undefined
+        },
+        keys(prefix) {
+            return Object.entries(state().settings)
+                .filter(([key, setting]) => key.startsWith(prefix) && setting.value !== null)
+                .map(([key]) => key)
         },
         set(key, value) {
             const was = state()

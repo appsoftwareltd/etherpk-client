@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { createHash } from 'node:crypto'
 import { describe, expect, it } from 'vitest'
 import { cspDirectives, inlineScriptHashes } from './csp'
+import { PLAYER_FRAME_HOSTS } from './frame-hosts'
 
 function appHtml(body: string): string {
     const path = join(mkdtempSync(join(tmpdir(), 'csp-')), 'app.html')
@@ -96,6 +97,19 @@ describe('cspDirectives', () => {
         // And it is NOT a way back to framing: ADR 0055's directives are untouched.
         expect(cspDirectives({ appHtmlPath: path })['object-src']).toEqual(["'none'"])
         expect(cspDirectives({ appHtmlPath: path })['frame-src']).toBeUndefined()
+    })
+
+    it("frames the video players' hosts beside the app's own origin, and only where an app asks (ADR 0137)", () => {
+        // 'self' is what frames fell back to through default-src before any frame-src, and the
+        // Theme editor's preview is framed from the app's own origin (its service worker's route).
+        const frameSrc = cspDirectives({ appHtmlPath: path, frameHosts: PLAYER_FRAME_HOSTS })['frame-src']
+        expect(frameSrc).toEqual(["'self'", 'https://www.youtube-nocookie.com', 'https://player.vimeo.com'])
+    })
+
+    it('takes only https origins as frame hosts, so no object URL or whole scheme is framed (ADR 0055)', () => {
+        expect(() => cspDirectives({ appHtmlPath: path, frameHosts: ['blob:'] })).toThrow(/https origins/)
+        expect(() => cspDirectives({ appHtmlPath: path, frameHosts: ['https:'] })).toThrow(/https origins/)
+        expect(() => cspDirectives({ appHtmlPath: path, frameHosts: ["'self'"] })).toThrow(/https origins/)
     })
 
     it('opens connect-src to any HTTPS origin for the Client, whose Sync Server is configurable', () => {

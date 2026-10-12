@@ -59,7 +59,7 @@ describe('readExtensionPackage', () => {
         expect(errorsOf(graphView({ [key]: ' ' }))).toContain(`"etherpk.${key}" must be a non-empty string.`)
     })
 
-    it.each(['/dist/main.js', '../outside/main.js', 'dist/../../main.js', 'dist\\main.js'])('refuses a main that leaves the package: %j', (main) => {
+    it.each(['/dist/main.js', '../outside/main.js', 'dist/../../main.js', 'dist\\main.js', 'https://example.com/main.js', 'C:/dist/main.js', 'data:text/javascript,1'])('refuses a main that leaves the package: %j', (main) => {
         expect(errorsOf(graphView({ main }))).toContain('"etherpk.main" must be a path inside the package.')
     })
 
@@ -67,9 +67,19 @@ describe('readExtensionPackage', () => {
         expect(errorsOf(graphView({ styles: ['../theirs.css'] }))).toContain('"etherpk.styles" must be a list of paths inside the package.')
     })
 
+    it('reads where a loaded extension mounts, and refuses any other place', () => {
+        expect(errorsOf(graphView({ isolation: 'page' }))).toEqual([])
+        expect(errorsOf(graphView({ isolation: 'shadow' }))).toEqual([])
+        expect(errorsOf(graphView({ isolation: 'iframe' }))).toContain('"etherpk.isolation" must be "shadow" or "page".')
+    })
+
     it('refuses a minClientVersion that is not x.y.z, and allows none', () => {
         expect(errorsOf(graphView({ minClientVersion: '^0.8' }))).toContain('"etherpk.minClientVersion" must be x.y.z.')
         expect(errorsOf(graphView({ minClientVersion: undefined }))).toEqual([])
+    })
+
+    it('refuses an icon longer than a small picture needs', () => {
+        expect(errorsOf(graphView({ icons: { big: `<path d="${'M1 1 '.repeat(1000)}"/>` } }))).toEqual(['Icon "big" is longer than 4096 characters.'])
     })
 
     it('refuses icon names that are not lowercase and icons with no markup', () => {

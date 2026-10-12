@@ -51,6 +51,13 @@ export interface CspOptions {
      */
     allowRemoteImages?: boolean
     /**
+     * The other sites the app may frame besides its own origin, for the Client the video players'
+     * (`PLAYER_FRAME_HOSTS`, frame-hosts.ts), shown in frames it builds itself (ADR 0137). Only the
+     * Client sets it. https origins only, so never `blob:` (ADR 0055) or a whole scheme. Passed in
+     * rather than imported, because the config loader runs this file directly in Node.
+     */
+    frameHosts?: readonly string[]
+    /**
      * Development needs `ws:` for Vite's HMR socket and plain `http:` for a Sync Server on
      * localhost. Neither belongs in a production policy.
      */
@@ -138,6 +145,14 @@ export function cspDirectives(options: CspOptions): Record<string, string[]> {
         //
         // What form-action guards against is an injected form exfiltrating to an attacker
         // origin, and script-src above is what stops the injection in the first place.
+    }
+    // Without frame-src, frames fall back to default-src 'self': the app's own origin, which the
+    // Theme editor's preview is framed from (its service worker's route), and never `blob:`
+    // (ADR 0055). A frame-src replaces that fallback, so it keeps 'self' and adds the hosts.
+    if (options.frameHosts && options.frameHosts.length > 0) {
+        const refused = options.frameHosts.filter((host) => !/^https:\/\/[a-z0-9.-]+$/.test(host))
+        if (refused.length > 0) throw new Error(`frame-src takes only https origins, not ${refused.join(', ')} (ADR 0055).`)
+        directives['frame-src'] = ["'self'", ...options.frameHosts]
     }
     if (options.trustedTypesPolicies) {
         // SvelteKit quotes `script` itself. 'allow-duplicates' lets a policy be created again

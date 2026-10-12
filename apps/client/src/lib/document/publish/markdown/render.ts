@@ -12,6 +12,7 @@
 import MarkdownIt, { type Token } from 'markdown-it'
 
 import { isSafeAssetName } from '../../../storage/fs/asset-names'
+import { isExtensionFenceInfo } from '../../extension-fence'
 import { MAP_FENCE_INFO, readMapBody } from '../../map-text'
 import { displayMaxWidth, parseImageDisplaySizeHint } from '../../view/augmentations/image-display-size'
 import { publishSlug } from '../../wikilink/derive'
@@ -35,6 +36,27 @@ export interface RendererOptions {
      * hold where each place is (ADR 0118).
      */
     mapPicture?(source: string): MapPictureRef | undefined
+    /**
+     * What an extension made of a fence, by its info word and body (`publishFence`): a picture the
+     * site holds or a link, null for one left out, undefined for one no extension published. An
+     * [[Extension Fence]] with no output is left out, never printed as its data (ADR 0138).
+     */
+    fenceOutput?(lang: string, code: string): FenceOutputRef | null | undefined
+}
+
+/** A fence an extension published, as a page shows it: its picture, or a link with a picture from the web. */
+export type FenceOutputRef =
+    | { kind: 'picture'; src: string; alt: string; width: number; height: number }
+    | { kind: 'link'; href: string; text: string; image?: { src: string; alt: string; width?: number; height?: number } }
+
+/** A fence an extension published, as HTML the publisher writes: the extension never writes markup into a site. */
+function fenceOutputHtml(output: FenceOutputRef): string {
+    if (output.kind === 'picture') {
+        return `<figure class="diagram diagram-extension"><img src="${escapeHtml(output.src)}" alt="${escapeHtml(output.alt)}" width="${output.width}" height="${output.height}" loading="lazy"></figure>\n`
+    }
+    const size = (image: NonNullable<typeof output.image>) => (image.width && image.height ? ` width="${Math.round(image.width)}" height="${Math.round(image.height)}"` : '')
+    const image = output.image ? `<img src="${escapeHtml(output.image.src)}" alt="${escapeHtml(output.image.alt)}"${size(output.image)} loading="lazy">` : ''
+    return `<figure class="diagram diagram-link"><a href="${escapeHtml(output.href)}">${image}</a><figcaption><a href="${escapeHtml(output.href)}">${escapeHtml(output.text)}</a></figcaption></figure>\n`
 }
 
 /** A drawn Map Block, as a page shows it. */
@@ -140,7 +162,8 @@ function plainText(tokens: readonly Token[]): string {
             if (info === MAP_FENCE_INFO) {
                 const names = mapNames(token.content)
                 if (names !== '') lines.push(names)
-            } else if (info !== 'mermaid' && info !== 'math') lines.push(token.content.trim())
+                // An Extension Fence's body is its extension's data, never a site's text (ADR 0138).
+            } else if (info !== 'mermaid' && info !== 'math' && !isExtensionFenceInfo(info)) lines.push(token.content.trim())
         }
     }
     return lines.join('\n')
@@ -227,6 +250,10 @@ export function createDocumentRenderer(options: RendererOptions): DocumentRender
             if (!picture) return ''
             return `<figure class="map"><img src="${escapeHtml(picture.src)}" alt="${escapeHtml(picture.alt)}" width="${picture.width}" height="${picture.height}" loading="lazy"></figure>\n`
         }
+        const output = options.fenceOutput?.(lang, code)
+        if (output) return fenceOutputHtml(output)
+        // Left out, or published by nothing: an Extension Fence is never printed as its data.
+        if (output === null || isExtensionFenceInfo(lang)) return ''
         const highlighted = options.highlighted?.(lang, code)
         const cls = lang === '' ? '' : ` class="language-${escapeHtml(lang)}"`
         const inner = highlighted ?? escapeHtml(code)

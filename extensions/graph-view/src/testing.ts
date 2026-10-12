@@ -62,6 +62,15 @@ export function fakeContext(options: { desktop?: boolean } = {}) {
         // A stand-in for the Client's markup: tests read it as the string it is underneath.
         icons: { svg: (name) => `<svg data-icon="${name}"/>` as unknown as IconMarkup },
         notify: vi.fn(),
+        // The Graph View draws no fences, asks nothing and shows no frames.
+        editor: { registerFence: () => () => {}, insertBlock: () => false },
+        dialogs: { prompt: async () => undefined },
+        embeds: {
+            frameHosts: [],
+            frame: () => {
+                throw new Error('No frames in these tests.')
+            },
+        },
     }
     /** The rows a Context Menu raised on `target` would list. */
     const rowsFor = (target: MenuTarget) => rows.filter((row) => !row.when || row.when(target))

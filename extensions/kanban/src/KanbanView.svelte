@@ -993,7 +993,7 @@
                             data-testid="kanban-lane-expand"
                         >
                             <!-- In-repo constant markup from the icon table, never user content. -->
-                            <!-- eslint-disable-next-line svelte/no-at-html-tags -->
+                            <!-- eslint-disable-next-line svelte/no-at-html-tags -- iconSvg returns trusted markup from the Client's icon table or the sanitized manifest icons (ADR 0130) -->
                             {@html iconSvg("kanban.expand-lane")}
                             {#if shown !== null}
                                 <span class="text-sm text-(--gk-text-subtle)" data-testid="kanban-lane-count">{lane.total}</span>
@@ -1031,7 +1031,7 @@
                                     data-testid="kanban-lane-collapse"
                                 >
                                     <!-- In-repo constant markup from the icon table, never user content. -->
-                                    <!-- eslint-disable-next-line svelte/no-at-html-tags -->
+                                    <!-- eslint-disable-next-line svelte/no-at-html-tags -- iconSvg returns trusted markup from the Client's icon table or the sanitized manifest icons (ADR 0130) -->
                                     {@html iconSvg("kanban.collapse-lane")}
                                 </button>
                             </span>
@@ -1223,7 +1223,7 @@
                         data-testid="kanban-detail-close"
                     >
                         <!-- In-repo constant markup from the icon table, never user content. -->
-                        <!-- eslint-disable-next-line svelte/no-at-html-tags -->
+                        <!-- eslint-disable-next-line svelte/no-at-html-tags -- iconSvg returns trusted markup from the Client's icon table or the sanitized manifest icons (ADR 0130) -->
                         {@html iconSvg("close")}
                     </button>
                 </header>

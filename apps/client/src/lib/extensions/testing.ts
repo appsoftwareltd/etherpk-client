@@ -53,6 +53,7 @@ export function fakeGraphServices(graphId = 'g1') {
             },
         },
         notify: vi.fn(),
+        editor: { insertBlock: vi.fn(() => true) },
     }
     return { services, bindings, indexListeners }
 }
@@ -67,5 +68,6 @@ export function fakeClientServices(storage: Storage = memoryStorage(), settings:
         iconSvg: (name) => `<svg data-icon="${name}"/>` as unknown as TrustedMarkup,
         storage,
         settings,
+        dialogs: { prompt: vi.fn(async () => undefined) },
     }
 }

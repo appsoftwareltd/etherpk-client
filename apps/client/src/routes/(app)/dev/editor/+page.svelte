@@ -32,7 +32,9 @@
     import { personSettings } from '$lib/person-settings/person-settings'
     import { conceptKey } from '$lib/document/backlinks'
     import { builtInCatalogue } from '$lib/extensions/built-ins'
+    import { createDialogs } from '$lib/extensions/dialogs'
     import { createExtensionHost } from '$lib/extensions/host'
+    import { insertBlock } from '$lib/document/view/block-insert'
     import { createExtensionSwitches } from '$lib/extensions/switches'
     import { RELEASE_VERSION } from '$lib/release'
     import { createAssetStore, createMemoryDirectoryAdapter } from '$lib/storage'
@@ -92,12 +94,12 @@
     const detachLinkCommands = registerLinkCommands(commandRegistry, contributions)
     // The built-in Augmentation renderers (mermaid, math) — ADR 0022.
     const detachRenderers = registerAugmentationRenderers(contributions)
-    // The compiled-in Built-in Extensions (ADR 0121), started as a graph starts them, so a Map
-    // Block draws over its `map` fence and `/map` is offered. A loaded extension is left out: none
-    // adds to the editor. The harness has no Layout, so a View an extension supplies is never drawn,
+    // Every extension, started as a graph starts them, so a Map Block draws over its `map` fence and
+    // `/map` is offered, and an extension side-loaded in development (`ETHERPK_DEV_EXTENSIONS`) draws
+    // its fences here too. The harness has no Layout, so a View an extension supplies is never drawn,
     // and no Sync Server, so a map's search says what can be typed instead.
     const extensionHost = createExtensionHost({
-        catalogue: { ...builtInCatalogue, extensions: builtInCatalogue.extensions.filter((entry) => entry.source === 'compiled-in') },
+        catalogue: builtInCatalogue,
         switches: createExtensionSwitches(),
         client: {
             clientVersion: RELEASE_VERSION,
@@ -106,6 +108,7 @@
             iconSvg,
             storage: typeof localStorage === 'undefined' ? undefined : localStorage,
             settings: personSettings(),
+            dialogs: createDialogs(),
         },
     })
 
@@ -287,6 +290,12 @@
             concepts: { key: conceptKey, canonicalName: (name) => name },
             keybindings: { add: () => () => {} },
             notify: (text) => console.debug(text),
+            editor: {
+                insertBlock(text, options) {
+                    const view = getActiveEditorView()
+                    return view ? insertBlock(view, text, options) : false
+                },
+            },
         })
 
         void (async () => {

@@ -4,8 +4,12 @@
  * Everything an extension adds through it sits under the extension's id and is removed when the
  * graph closes or the extension is switched off, so an extension never has to undo its own
  * registrations. It holds no document store, no keys and no sync: an extension reads documents
- * only through the index's answers, and changes them only by running the Client's Commands.
+ * only through the index's answers and its own fences, and changes them only through its fences,
+ * the blocks it puts at the caret and the Client's Commands.
  */
+import type { ExtensionDialogs } from './dialogs'
+import type { ExtensionEditor } from './editor'
+import type { ExtensionEmbeds } from './embeds'
 import type { ExtensionEvents } from './events'
 import type { ExtensionIndex } from './graph-index'
 import type { CommandMenuItem, ContextMenuItem, GraphSidebarButton } from './menus'
@@ -14,28 +18,36 @@ import type { ViewContribution, ViewRef } from './views'
 /**
  * A Command's handler. What it returns, or resolves to, is what `execute` resolves to.
  *
- * @beta
+ * @public
  */
 export type CommandHandler = (arg?: unknown) => unknown
 
 /**
  * Running and adding Commands.
  *
- * @beta
+ * @public
  */
 export interface ExtensionCommands {
     /** Add a Command, its id under the extension's id. Throws if the id is taken or outside it. */
     register(id: string, handler: CommandHandler): () => void
-    /** Run any Command, the Client's or an extension's. Rejects if no Command has the id. */
+    /**
+     * Run any Command, the Client's or an extension's. Rejects if no Command has the id.
+     *
+     * @beta
+     */
     execute(id: string, arg?: unknown): Promise<unknown>
-    /** Whether any Command has the id. */
+    /**
+     * Whether any Command has the id.
+     *
+     * @beta
+     */
     has(id: string): boolean
 }
 
 /**
  * Supplying the Views the manifest declares.
  *
- * @beta
+ * @public
  */
 export interface ExtensionViews {
     /**
@@ -58,7 +70,7 @@ export interface ExtensionContextMenu {
 /**
  * Adding Command Menu rows.
  *
- * @beta
+ * @public
  */
 export interface ExtensionCommandMenu {
     /** Add a row, its id under the extension's id. */
@@ -104,7 +116,7 @@ export interface ExtensionKeybindings {
 /**
  * Opening Views and documents in the open graph's Layout.
  *
- * @beta
+ * @public
  */
 export interface ExtensionLayout {
     /**
@@ -113,15 +125,25 @@ export interface ExtensionLayout {
      * opens where its kind belongs, or comes to the front if it is open already.
      */
     openView(view: ViewRef, options?: { inPaneOf?: string; beside?: string }): void
-    /** Bring a Sidebar resident to the front of its expanded Sidebar. */
+    /**
+     * Bring a Sidebar resident to the front of its expanded Sidebar.
+     *
+     * @beta
+     */
     reveal(kind: string): void
     /**
      * Open the document of a concept, under the name it resolves to, as following a wikilink
      * does. `line` scrolls to and selects that line, `inPaneOf` and `beside` place it as for
      * {@link ExtensionLayout.openView}.
+     *
+     * @beta
      */
     openDocument(concept: string, options?: { line?: number; inPaneOf?: string; beside?: string }): void
-    /** The document the user is working in, or null. */
+    /**
+     * The document the user is working in, or null.
+     *
+     * @beta
+     */
     activeDocument(): string | null
     /** True while the desktop presenter is showing, 1024 pixels wide and more. */
     isDesktop(): boolean
@@ -143,7 +165,7 @@ export interface ExtensionConcepts {
  * The extension's own storage on this device, under `etherpk-<extension id>:` in the browser's
  * localStorage. Values are stored as JSON.
  *
- * @beta
+ * @public
  */
 export interface ExtensionStorage {
     /** The value stored under `key`, or undefined when there is none or it cannot be read. */
@@ -160,7 +182,7 @@ export interface ExtensionStorage {
  * keeps them with the person: on this device, and in their account where it syncs a graph, so they
  * follow the person to their other devices. The extension only reads them.
  *
- * @beta
+ * @public
  */
 export interface ExtensionSettings {
     /**
@@ -235,47 +257,105 @@ export interface ExtensionContributions {
 /**
  * What an extension is started with, once for each graph that opens.
  *
- * @beta
+ * @public
  */
 export interface ExtensionContext {
-    /** The extension's id, from its manifest. */
+    /**
+     * The extension's id, from its manifest.
+     *
+     * @beta
+     */
     readonly extensionId: string
-    /** The open graph. */
+    /**
+     * The open graph.
+     *
+     * @beta
+     */
     readonly graphId: string
-    /** The Client's version, `x.y.z`. */
+    /**
+     * The Client's version, `x.y.z`.
+     *
+     * @beta
+     */
     readonly clientVersion: string
-    /** True in a development build of the Client, where tests may reach in. */
+    /**
+     * True in a development build of the Client, where tests may reach in.
+     *
+     * @beta
+     */
     readonly dev: boolean
     /** Supplying the Views the manifest declares. */
     readonly views: ExtensionViews
     /** Running and adding Commands. */
     readonly commands: ExtensionCommands
-    /** Adding Context Menu rows. */
+    /**
+     * Adding Context Menu rows.
+     *
+     * @beta
+     */
     readonly contextMenu: ExtensionContextMenu
     /** Adding Command Menu rows. */
     readonly commandMenu: ExtensionCommandMenu
-    /** Adding buttons to the Graph Sidebar. */
+    /**
+     * Adding buttons to the Graph Sidebar.
+     *
+     * @beta
+     */
     readonly graphSidebar: ExtensionGraphSidebar
-    /** Adding key chords. */
+    /**
+     * Adding key chords.
+     *
+     * @beta
+     */
     readonly keybindings: ExtensionKeybindings
-    /** Every Contribution Point by kind, for the kinds the parts above do not cover. */
+    /**
+     * Every Contribution Point by kind, for the kinds the parts above do not cover.
+     *
+     * @beta
+     */
     readonly contributions: ExtensionContributions
-    /** Listening to Events. */
+    /**
+     * Listening to Events.
+     *
+     * @beta
+     */
     readonly events: ExtensionEvents
-    /** Questions to the open graph's index. */
+    /**
+     * Questions to the open graph's index.
+     *
+     * @beta
+     */
     readonly index: ExtensionIndex
     /** Opening Views and documents. */
     readonly layout: ExtensionLayout
-    /** The rules for naming a concept. */
+    /**
+     * The rules for naming a concept.
+     *
+     * @beta
+     */
     readonly concepts: ExtensionConcepts
     /** The extension's own storage on this device. */
     readonly storage: ExtensionStorage
     /** The person's answers to the settings the manifest declares. */
     readonly settings: ExtensionSettings
-    /** The Client's light or dark theme. */
+    /**
+     * The Client's light or dark theme.
+     *
+     * @beta
+     */
     readonly theme: ExtensionTheme
-    /** The Client's icons and the extension's own. */
+    /**
+     * The Client's icons and the extension's own.
+     *
+     * @beta
+     */
     readonly icons: ExtensionIcons
+    /** Widgets over the extension's own fences, and blocks put at the caret. */
+    readonly editor: ExtensionEditor
+    /** Dialogs the Client draws. */
+    readonly dialogs: ExtensionDialogs
+    /** Frames showing content from the hosts the Client allows. */
+    readonly embeds: ExtensionEmbeds
     /** Say something in passing, as the Client's own notices do: "Coordinates copied." */
     notify(text: string): void
 }
@@ -283,7 +363,7 @@ export interface ExtensionContext {
 /**
  * What an extension's main module exports.
  *
- * @beta
+ * @public
  */
 export interface ExtensionModule {
     /**

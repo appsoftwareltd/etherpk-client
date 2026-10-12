@@ -72,6 +72,17 @@ function clampAfterEdit(tr: Transaction): TransactionSpec | readonly Transaction
     return [tr, { selection: clampedRange(sel, clamp), sequential: true }]
 }
 
+/**
+ * Where a caret placed at `pos` in `state` rests by this rule: `pos`, or its line's clamp when `pos`
+ * is in the margin. For a filter that places a caret after this one has run (the Extension Fence
+ * caret, which moves a caret off a fence's lines onto the line below it).
+ */
+export function clampedCaret(state: EditorState, pos: number): number {
+    const line = state.doc.lineAt(pos)
+    const outline = (state.field(editorAnalysisField, false) as EditorAnalysis | undefined)?.outline
+    return Math.max(pos, line.from + clampColumn(state.doc.toString().split('\n'), line.number - 1, outline))
+}
+
 /** `range` with any end left of `clamp` moved to it, its direction kept; wholly in the margin → a caret at the clamp. */
 function clampedRange(range: SelectionRange, clamp: number): EditorSelection {
     return EditorSelection.single(Math.max(range.anchor, clamp), Math.max(range.head, clamp))

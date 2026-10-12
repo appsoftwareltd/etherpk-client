@@ -40,6 +40,16 @@ describe('a setting on this device', () => {
         expect(settings.get(KEY)).toBeUndefined()
     })
 
+    it('lists the keys that hold a value under a prefix, not the cleared ones', () => {
+        const { settings } = store()
+        settings.set('extensions.installed.orchard', 'installed')
+        settings.set('extensions.installed.pear', 'installed')
+        settings.set('extensions.installed.pear', null)
+        settings.set(KEY, 'pk.one')
+        expect(settings.keys('extensions.installed.')).toEqual(['extensions.installed.orchard'])
+        expect(settings.keys('nothing.')).toEqual([])
+    })
+
     it('tells its listeners of a change, and of nothing when the value is the same', () => {
         const { settings } = store()
         const heard = vi.fn()

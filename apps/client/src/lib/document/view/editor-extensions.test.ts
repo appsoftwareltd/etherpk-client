@@ -8,7 +8,10 @@ import { undoDepth } from '@codemirror/commands'
 import { EditorState } from '@codemirror/state'
 import { describe, expect, it } from 'vitest'
 
+import { createContributionRegistry, setActiveContributionRegistry } from '$lib/surface'
+
 import { editorAnalysis } from './analysis/editor-analysis'
+import { registerInteractiveFence } from './augmentations/interactive-fence-contract'
 import { editorDocument } from './editor-document'
 import { editorIsOnScreen, setEditorOnScreen } from './editor-on-screen'
 import { localHistoryExtension } from './editor-history'
@@ -65,6 +68,7 @@ describe('editor feature stack', () => {
             'markdown-link',
             'asset-drop',
             'asset-paste',
+            'paste-to-fence',
             'rich-paste',
             'wikilink',
             'link-cursor',
@@ -164,6 +168,11 @@ describe('editor feature stack', () => {
         before('asset-paste', 'rich-paste')
     })
 
+    it('lets pasted text become an extension’s fence before the HTML beside it is pasted as rich text', () => {
+        before('asset-paste', 'paste-to-fence')
+        before('paste-to-fence', 'rich-paste')
+    })
+
     it('lets the asset-link augmentation claim asset targets before markdown-link sees them', () => {
         before('asset-link', 'markdown-link')
     })
@@ -185,6 +194,23 @@ describe('editor feature stack', () => {
         // pins only the stack's order; that one container survives the tokens is proved in the
         // browser (tests-client/fenced-code-scroll.test.ts, "a single scroll container").
         before('content-clamp', 'code-scroll')
+    })
+
+    it('runs the Extension Fence caret filter after the caret clamp, so no clamp move leaves the caret on a fence', () => {
+        // Its filters are at the highest precedence, which CodeMirror runs last, rather than placed
+        // by this list. ArrowLeft at the wall is the clamp's move onto the line above, here a fence.
+        const registry = createContributionRegistry()
+        registerInteractiveFence(registry, 'garden.plan', { height: () => 100, mount: () => ({ update: () => {}, destroy: () => {} }) })
+        setActiveContributionRegistry(registry)
+        try {
+            const doc = '- Intro\n- ```garden.plan\n  {"id":"k1"}\n  ```\n- After'
+            const wall = doc.indexOf('After')
+            const state = EditorState.create({ doc, selection: { anchor: wall }, extensions: [editorAnalysis(), ...editorExtensions(services)] })
+            const moved = state.update({ selection: { anchor: wall - 1 }, userEvent: 'select' }).state
+            expect(moved.selection.main.head).toBe('- Intro'.length)
+        } finally {
+            setActiveContributionRegistry(null)
+        }
     })
 
     it('reports a refusal after the filters that raise it', () => {

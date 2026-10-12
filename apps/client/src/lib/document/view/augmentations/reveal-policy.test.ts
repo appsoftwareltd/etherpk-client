@@ -9,12 +9,15 @@ import {
     pinnedRevealLine,
     rangeRevealed,
     rangeTouches,
+    requestReveal,
+    requestedRevealField,
+    requestedRevealed,
     revealInputsChanged,
     revealedLines,
 } from './reveal-policy'
 
 function state(doc: string, anchor: number, head = anchor): EditorState {
-    return EditorState.create({ doc, selection: EditorSelection.single(anchor, head), extensions: [pinnedRevealField] })
+    return EditorState.create({ doc, selection: EditorSelection.single(anchor, head), extensions: [pinnedRevealField, requestedRevealField] })
 }
 
 describe('line-kind reveal', () => {
@@ -85,12 +88,42 @@ describe('pinned reveal', () => {
     })
 })
 
+describe('requested reveal', () => {
+    // A block from the start of its opener (6) to the end of its closer, between two lines of prose.
+    const doc = 'Intro\n```plan\nbeans\npeas\nkale\n```\nAfter'
+    const span = { from: 6, to: doc.indexOf('\nAfter') }
+
+    it('is never the caret alone: a caret inside the span reveals nothing until it is asked for', () => {
+        const s = state(doc, doc.indexOf('peas'))
+        expect(requestedRevealed(s, span.from, span.to)).toBe(false)
+        const asked = s.update({ effects: requestReveal.of(span) }).state
+        expect(requestedRevealed(asked, span.from, span.to)).toBe(true)
+    })
+
+    it('holds while a selection touches the span, through typing inside it, and drops once none does', () => {
+        let s = state(doc, doc.indexOf('peas')).update({ effects: requestReveal.of(span) }).state
+        s = s.update({ changes: { from: doc.indexOf('peas'), insert: 'sweet ' }, selection: { anchor: doc.indexOf('peas') + 6 } }).state
+        expect(requestedRevealed(s, span.from, span.to + 6)).toBe(true)
+        s = s.update({ selection: { anchor: s.doc.length } }).state
+        expect(requestedRevealed(s, span.from, span.to + 6)).toBe(false)
+        // Back inside, it stays hidden: the request was spent.
+        s = s.update({ selection: { anchor: doc.indexOf('peas') } }).state
+        expect(requestedRevealed(s, span.from, span.to + 6)).toBe(false)
+    })
+
+    it('drops a request made with the selection outside the span', () => {
+        const s = state(doc, 0).update({ effects: requestReveal.of(span) }).state
+        expect(requestedRevealed(s, span.from, span.to)).toBe(false)
+    })
+})
+
 describe('revealInputsChanged', () => {
-    it('is true for edits, selection changes and pin effects, false otherwise', () => {
+    it('is true for edits, selection changes, pin and request effects, false otherwise', () => {
         const s = state('ab', 0)
         expect(revealInputsChanged(s.update({ changes: { from: 0, insert: 'x' } }))).toBe(true)
         expect(revealInputsChanged(s.update({ selection: { anchor: 1 } }))).toBe(true)
         expect(revealInputsChanged(s.update({ effects: pinReveal.of(0) }))).toBe(true)
+        expect(revealInputsChanged(s.update({ effects: requestReveal.of({ from: 0, to: 1 }) }))).toBe(true)
         expect(revealInputsChanged(s.update({}))).toBe(false)
     })
 })

@@ -5,7 +5,7 @@ What changed in each release of the EtherPK Client and the Headless Client
 They are released together, under the version number they share with the Sync Server. This log
 starts at 0.9.3.
 
-## Unreleased
+## 0.10.0 - 2026-10-12
 
 ### Client
 
@@ -35,6 +35,62 @@ starts at 0.9.3.
   section outlines where it will land.
 - **Search keeps the focus** when you open it straight after typing the first letter of a new
   page. The page used to take the focus back once it was saved.
+- **A Stable Extension API.** The parts an extension from the Extension Directory may use are
+  Stable from this release, and a Stable part never breaks: it is deprecated and kept. They are the
+  parts below, and Views with their addresses, layout, settings, storage, commands and the Command
+  Menu. The rest stays Proposed, for the extensions that come with EtherPK, and in an extension
+  installed from the directory a call to a Proposed member throws an error that names it.
+  `etc/etherpk-extension-api.public.api.md` in the package lists the Stable part.
+- **More for extensions to build on.** The Extension API adds:
+  - `context.editor.registerFence`, a widget drawn over every fenced block with a given info word,
+    which edits the block's lines, can open it in a tab of its own or over the whole window, and
+    says how a published site shows it, as a picture or a link card.
+  - Extension Fences: a block named `<extension id>.<name>` holds an extension's data. It is never
+    searched, never published as code, and the caret passes over it. Where its extension isn't
+    running, a note says so and offers to show its text.
+  - Text pasted on a line of its own, such as a video's link, can become an extension's block, and
+    Mod+Z straight after gives back the text.
+  - `context.editor.insertBlock`, which puts nothing in a Protected Document,
+    `context.dialogs.prompt`, whose dialog names the extension that asks, and
+    `context.embeds.frame`, which shows a YouTube or Vimeo player. Besides its own pages, the Client now allows frames from
+    `www.youtube-nocookie.com` and `player.vimeo.com`, and from no other site.
+  - `"isolation": "page"` in an extension's manifest, for a library that can't run in a shadow
+    root, when every rule in its stylesheets styles only elements under its own classes.
+- **The Extension Directory.** Settings and Extensions → Extensions lists extensions from other
+  publishers, each release reviewed before it is listed. Install one and it starts at once, after a
+  question that says what every extension can reach: the documents in the graphs you open, every
+  extension's settings, and other websites. An extension from the directory can't take `map`,
+  `math`, `mermaid` or `etherpk-cipher` as its id. The Client's server fetches each release from npm, checks
+  it is the exact release the directory lists, and serves it from the Client's own address. It
+  stops serving a release within minutes of it leaving the directory.
+- **Your extensions follow you.** Once your account syncs a graph, the extensions you install from
+  the directory install on your other devices as they start, which say so once, and Remove takes
+  one off all of them. They leave a device with your other settings when you sign out there. While
+  the directory can't be read, one your account has that this device hasn't installed yet says
+  that it waits for the directory.
+- **Extensions update by themselves.** A newer release is fetched while EtherPK runs and takes over
+  the next time it starts, and the extension's row says when it was updated. A release taken out of
+  the directory stops at once and the newest listed one takes its place. A release that needs a
+  newer EtherPK waits, and the row says which version.
+- **Pages of extensions from the directory have addresses**, under `/x/<extension>/`. A link to one
+  whose extension is not installed opens a tab that says which extension it belongs to, with
+  Install.
+- **Settings for self-hosting the directory.** `EXTENSION_DIRECTORY_URL` chooses the list (EtherPK's
+  when unset, none when empty), `EXTENSION_REGISTRY_URL` the npm registry, and `EXTENSION_CACHE_DIR`
+  where the server keeps the releases it fetched, a folder no other user may write. Unset, the
+  server uses a folder of its own in the system's temporary folder. A directory of your own
+  can be plain files, with each release's package given by address (`tarball`) rather than
+  fetched from a registry, on a web server or in a folder (a `file:` address). EtherPK's own
+  directory takes every release from npm.
+- **Extension manifests.** `readExtensionPackage` refuses an icon longer than 4096 characters, and
+  a `main` or stylesheet path that is an address or a drive (`https:`, `C:`).
+
+### Headless Client
+
+- **Extension blocks on published pages.** `publish` leaves out a block that holds an extension's
+  data (an Extension Fence, such as an Excalidraw drawing), since the Headless Client runs no
+  extensions, and its report warns which documents had one. Publish from EtherPK in a browser,
+  with the extension on, to include it.
 
 ## 0.9.6 - 2026-10-11
 
