@@ -163,7 +163,7 @@ export interface CommandMenuItem {
  * to what the extension shows for the whole graph, such as the Graph Map. Pressing it runs
  * `command`.
  *
- * @beta
+ * @public
  */
 export interface GraphSidebarButton {
     /** Under the extension's id. */

@@ -5,6 +5,7 @@ import type { ExtensionContext, ExtensionPackage, ViewContribution } from '@apps
 import { commandMenuItemsInOrder } from '$lib/surface/command-menu'
 import { listContextMenuItems } from '$lib/surface/context-menu'
 import { graphSidebarButtons } from '$lib/surface/graph-sidebar-buttons'
+import { listJournalPanels } from '$lib/surface/journal-panels'
 
 import { createPersonSettings } from '$lib/person-settings/person-settings'
 
@@ -50,7 +51,7 @@ function setUp({ installed = false } = {}) {
     const client = fakeClientServices(storage, settings)
     const scoped = createScopedContext(entry, services, client, supplyView)
     const { commands, contributions, events } = services
-    return { scoped, context: scoped.context, client, commands, contributions, events, bindings, indexListeners, storage, settings, supplied }
+    return { scoped, context: scoped.context, client, services, commands, contributions, events, bindings, indexListeners, storage, settings, supplied }
 }
 
 describe('an extension context', () => {
@@ -276,27 +277,167 @@ describe('an extension from the Extension Directory', () => {
         expect([context.storage.get('whole'), context.settings.get('labels'), context.layout.isDesktop()]).toEqual([1, 'true', true])
     })
 
+    // Made Stable in 0.11.0, for the first extension that needed them from the directory (ADR 0120,
+    // amended 2026-10-12): a Graph Sidebar button, opening a day's Journal Entry, and the theme.
+    it('adds Graph Sidebar buttons, opens documents, and follows the theme', () => {
+        const { context, contributions, events, services } = setUp({ installed: true })
+        context.graphSidebar.register({ id: 'graph-view.openWhole', title: 'Graph View', command: 'graph-view.openWhole' })
+        expect(graphSidebarButtons(contributions).map((button) => button.id)).toEqual(['graph-view.openWhole'])
+        context.layout.openDocument('2026-10-12')
+        expect(services.layout.openDocument).toHaveBeenCalledWith('2026-10-12', undefined)
+        expect(context.theme.isDark()).toBe(false)
+        const heard = vi.fn()
+        context.events.on('theme:changed', heard)
+        events.emit('theme:changed', { dark: true })
+        expect(heard).toHaveBeenCalledWith({ graphId: 'g1', dark: true })
+    })
+
+    it('uses the parts added for 0.11.0: setting its settings, its records kept with the person, signing in and Journal Panels', async () => {
+        const { context, contributions } = setUp({ installed: true })
+        context.settings.set('depth', '3')
+        expect(context.settings.get('depth')).toBe('3')
+        context.personStorage.set('accounts', ['gardener@example.com'])
+        expect(context.personStorage.get('accounts')).toEqual(['gardener@example.com'])
+        await expect(context.auth.authorize('https://accounts.example/auth?state=s1')).resolves.toEqual({ code: 'c1', state: 's1' })
+        context.journalPanels.register({ id: 'graph-view.day', mount: () => ({ destroy() {} }) })
+        expect(contributions.has('journal-panel', 'graph-view.day')).toBe(true)
+    })
+
     // The Proposed part is for the extensions that come with EtherPK. Through `contributions` an
     // extension could take any kind's entries, another extension's fence word among them.
     it.each<[string, (context: ExtensionContext) => unknown]>([
         ['contributions.register', (context) => context.contributions.register('interactive-fence', 'map', {})],
         ['contributions.list', (context) => context.contributions.list('context-menu')],
         ['contextMenu.register', (context) => context.contextMenu.register({ id: 'graph-view.show', label: 'Show', command: 'graph-view.show' })],
-        ['graphSidebar.register', (context) => context.graphSidebar.register({ id: 'graph-view.open', title: 'Open', command: 'graph-view.open' })],
         ['keybindings.register', (context) => context.keybindings.register({ key: 'Alt+M', command: 'graph-view.reveal', label: 'Graph View' })],
-        ['events.on', (context) => context.events.on('documents:changed', () => {})],
         ['index.allConcepts', (context) => context.index.allConcepts()],
         ['concepts.key', (context) => context.concepts.key('Garden')],
-        ['theme.isDark', (context) => context.theme.isDark()],
         ['icons.svg', (context) => context.icons.svg('close')],
         ['commands.execute', (context) => context.commands.execute('layout.toggleSidebar')],
         ['commands.has', (context) => context.commands.has('layout.toggleSidebar')],
-        ['layout.openDocument', (context) => context.layout.openDocument('Garden')],
         ['layout.activeDocument', (context) => context.layout.activeDocument()],
         ['layout.reveal', (context) => context.layout.reveal('graph-view.whole')],
     ])('cannot use the Proposed %s', (member, use) => {
         const { context, contributions } = setUp({ installed: true })
         expect(() => use(context)).toThrow(`context.${member} is in the Proposed part of the Extension API, which only the extensions that come with EtherPK may use.`)
         expect(contributions.has('interactive-fence', 'map')).toBe(false)
+    })
+})
+
+describe("an extension's settings", () => {
+    it('sets a setting its manifest declares, as the person would, and clears it with null or empty text', () => {
+        const { context, settings } = setUp()
+        const heard = vi.fn()
+        context.settings.subscribe(heard)
+        context.settings.set('depth', '3')
+        expect([context.settings.get('depth'), settings.get('extension.graph-view.depth')]).toEqual(['3', '3'])
+        expect(heard).toHaveBeenCalled()
+        context.settings.set('depth', null)
+        expect(context.settings.get('depth')).toBeUndefined()
+        context.settings.set('depth', '4')
+        context.settings.set('depth', '')
+        expect(context.settings.get('depth')).toBeUndefined()
+    })
+
+    it('sets a switch only on or off', () => {
+        const { context } = setUp()
+        context.settings.set('labels', 'false')
+        expect(context.settings.get('labels')).toBe('false')
+        expect(() => context.settings.set('labels', 'maybe')).toThrow('The setting "labels" is a switch: set it to "true" or "false".')
+        expect(context.settings.get('labels')).toBe('false')
+    })
+
+    it('refuses a setting its manifest does not declare, so it never writes another extension’s', () => {
+        const { context, settings } = setUp()
+        expect(() => context.settings.set('colour', 'red')).toThrow('The setting "colour" is not declared in the manifest of graph-view.')
+        expect(() => context.settings.set('../kanban.token', 'x')).toThrow(/not declared/)
+        expect(settings.keys('extension.')).toEqual([])
+    })
+})
+
+describe("an extension's records kept with the person", () => {
+    it('keeps each record as JSON under the extension’s id, beside its settings, and forgets it when removed', () => {
+        const { context, settings } = setUp()
+        context.personStorage.set('accounts', [{ email: 'gardener@example.com', added: 1 }])
+        expect(context.personStorage.get('accounts')).toEqual([{ email: 'gardener@example.com', added: 1 }])
+        expect(settings.get('extension-data.graph-view.accounts')).toBe('[{"email":"gardener@example.com","added":1}]')
+        context.personStorage.remove('accounts')
+        expect(context.personStorage.get('accounts')).toBeUndefined()
+        context.personStorage.set('accounts', 'x')
+        context.personStorage.set('accounts', null)
+        expect(context.personStorage.get('accounts')).toBeUndefined()
+        context.personStorage.set('accounts', undefined)
+        expect(settings.keys('extension-data.')).toEqual([])
+    })
+
+    it('keeps a string with spaces at its ends as it was given', () => {
+        const { context } = setUp()
+        context.personStorage.set('note', '  beans  ')
+        expect(context.personStorage.get('note')).toBe('  beans  ')
+    })
+
+    it('refuses a key it could not keep and a record over 64 KB', () => {
+        const { context } = setUp()
+        expect(() => context.personStorage.set('', 1)).toThrow('A record\'s key is letters, digits, ".", "_" and "-", at most 100 of them, not "".')
+        expect(() => context.personStorage.set('beds/north', 1)).toThrow(/not "beds\/north"/)
+        expect(() => context.personStorage.set('beds', 'x'.repeat(64 * 1024))).toThrow('The record "beds" is longer than 64 KB as JSON.')
+        expect(context.personStorage.get('beds')).toBeUndefined()
+    })
+
+    it('reads nothing from a record that is not JSON', () => {
+        const { context, settings } = setUp()
+        settings.set('extension-data.graph-view.broken', '{"email":')
+        expect(context.personStorage.get('broken')).toBeUndefined()
+    })
+
+    it('tells a listener when one of its own records changes, here or from another device, and not for anything else', () => {
+        const { scoped, context, settings } = setUp()
+        const heard = vi.fn()
+        context.personStorage.subscribe(heard)
+        context.personStorage.set('accounts', ['gardener@example.com'])
+        expect(heard).toHaveBeenCalledTimes(1)
+        settings.set('extension-data.kanban.lanes', '3')
+        settings.set('extension.graph-view.depth', '3')
+        expect(heard).toHaveBeenCalledTimes(1)
+        settings.merge('https://sync.example a1', { 'extension-data.graph-view.accounts': { value: '["orchard@example.com"]', changedAt: Date.now() + 1000 } })
+        expect(heard).toHaveBeenCalledTimes(2)
+        expect(context.personStorage.get('accounts')).toEqual(['orchard@example.com'])
+        scoped.dispose()
+        context.personStorage.set('accounts', [])
+        expect(heard).toHaveBeenCalledTimes(2)
+    })
+})
+
+describe('signing in from an extension', () => {
+    it("names the Client's return address and passes a sign-in through to the Client", async () => {
+        const { context, client } = setUp()
+        expect(context.auth.redirectUri).toBe('https://client.example/extension-sign-in')
+        const controller = new AbortController()
+        await expect(context.auth.authorize('https://accounts.example/auth?state=s1', { signal: controller.signal })).resolves.toEqual({ code: 'c1', state: 's1' })
+        expect(client.signIn.authorize).toHaveBeenCalledWith('https://accounts.example/auth?state=s1', { signal: controller.signal })
+    })
+
+    it('starts no sign-in once stopped', async () => {
+        const { scoped, context, client } = setUp()
+        scoped.dispose()
+        await expect(context.auth.authorize('https://accounts.example/auth?state=s1')).rejects.toThrow('Graph View was stopped.')
+        expect(client.signIn.authorize).not.toHaveBeenCalled()
+    })
+})
+
+describe("an extension's Journal Panels", () => {
+    it('adds a panel under its id, and takes it back when disposed', () => {
+        const { scoped, context, contributions } = setUp()
+        context.journalPanels.register({ id: 'graph-view.day', mount: () => ({ destroy() {} }) })
+        expect(listJournalPanels(contributions).map((panel) => panel.id)).toEqual(['graph-view.day'])
+        expect(() => context.journalPanels.register({ id: 'day', mount: () => ({ destroy() {} }) })).toThrow('Journal Panel "day" must start with "graph-view."')
+        scoped.dispose()
+        expect(listJournalPanels(contributions)).toEqual([])
+    })
+
+    it("mounts a loaded extension's panel in a shadow root that holds its stylesheets", () => {
+        const { context, contributions } = setUp()
+        context.journalPanels.register({ id: 'graph-view.day', mount: () => ({ destroy() {} }) })
+        expect(listJournalPanels(contributions)[0].isolation).toEqual({ styles: [] })
     })
 })

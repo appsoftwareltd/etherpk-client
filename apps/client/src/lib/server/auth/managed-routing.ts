@@ -1,3 +1,5 @@
+import { SIGN_IN_PATH } from '$lib/extensions/sign-in'
+
 interface ManagedClientSsoRequest {
     configured: boolean
     method: string
@@ -36,8 +38,11 @@ export function shouldAttemptManagedClientSso(request: ManagedClientSsoRequest):
     // password again while the Corporate session holds.
     if (request.checked && !request.arrivedFromAnotherOrigin) return false
 
+    // An extension's sign-in returns with the service's code in its query (ADR 0140): a redirect
+    // through the account site would carry the code there, and the popup must stay on the page.
     return !request.pathname.startsWith('/auth/')
         && !request.pathname.startsWith('/_app/')
+        && request.pathname !== SIGN_IN_PATH
 }
 
 /**

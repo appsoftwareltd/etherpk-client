@@ -29,6 +29,7 @@
     import { CONTENT_PAD_X } from "./cm-document";
     import { DOCUMENT_BACKLINKS_ATTRIBUTE } from "./document-backlinks";
     import { registerJournalRoll } from "./journal-roll-dom";
+    import { JOURNAL_PANELS_ATTRIBUTE, journalPanelsIn } from "./journal-panels-dom";
     import { keepReadingPoint } from "./reading-point";
     import JournalRollBar from "./JournalRollBar.svelte";
 
@@ -122,7 +123,8 @@
         let touchY: number | null = null;
         // Not a pinch (a wheel with Ctrl), and not a popover's own list scrolling inside an editor.
         const onWheel = (event: WheelEvent) => {
-            if (event.ctrlKey || (event.target instanceof Element && event.target.closest(".cm-tooltip"))) return;
+            // Nor a wheel over a Journal Panel, which may scroll a list of its own.
+            if (event.ctrlKey || (event.target instanceof Element && event.target.closest(`.cm-tooltip, [${JOURNAL_PANELS_ATTRIBUTE}]`))) return;
             if (event.deltaY > 0) scrolledDown();
         };
         const onTouchStart = (event: TouchEvent) => {
@@ -185,7 +187,7 @@
     // ---- Keeping the reading point still ------------------------------------------------------
     const keeper = keepReadingPoint(
         () => root?.querySelectorAll<HTMLElement>(':scope > [data-testid="journal-roll-day"], :scope > .journal-roll__bar--trailing') ?? [],
-        (tabScroller) => tabScroller.querySelector<HTMLElement>(`:scope > div > [${DOCUMENT_BACKLINKS_ATTRIBUTE}]`),
+        (tabScroller) => [journalPanelsIn(tabScroller), tabScroller.querySelector<HTMLElement>(`:scope > div > [${DOCUMENT_BACKLINKS_ATTRIBUTE}]`)],
     );
 
     /** Watch a loaded day's size for the reading point (an attachment). */

@@ -5,6 +5,11 @@
 ```ts
 
 // @public
+export interface AuthorizeOptions {
+    signal?: AbortSignal;
+}
+
+// @public
 export type CommandHandler = (arg?: unknown) => unknown;
 
 // @public
@@ -28,6 +33,12 @@ export interface CommandMenuItem {
 }
 
 // @public
+export interface ExtensionAuth {
+    authorize(url: string, options?: AuthorizeOptions): Promise<Record<string, string>>;
+    readonly redirectUri: string;
+}
+
+// @public
 export interface ExtensionCommandMenu {
     register(item: CommandMenuItem): () => void;
 }
@@ -39,15 +50,21 @@ export interface ExtensionCommands {
 
 // @public
 export interface ExtensionContext {
+    readonly auth: ExtensionAuth;
     readonly commandMenu: ExtensionCommandMenu;
     readonly commands: ExtensionCommands;
     readonly dialogs: ExtensionDialogs;
     readonly editor: ExtensionEditor;
     readonly embeds: ExtensionEmbeds;
+    readonly events: ExtensionEvents;
+    readonly graphSidebar: ExtensionGraphSidebar;
+    readonly journalPanels: ExtensionJournalPanels;
     readonly layout: ExtensionLayout;
     notify(text: string): void;
+    readonly personStorage: ExtensionPersonStorage;
     readonly settings: ExtensionSettings;
     readonly storage: ExtensionStorage;
+    readonly theme: ExtensionTheme;
     readonly views: ExtensionViews;
 }
 
@@ -71,11 +88,58 @@ export interface ExtensionEmbeds {
 }
 
 // @public
+export type ExtensionEventName = keyof ExtensionEventPayloads;
+
+// @public
+export interface ExtensionEventPayloads {
+    'concept:renamed': {
+        graphId: string;
+        from: string;
+        to: string;
+    };
+    'document:active-changed': {
+        graphId: string;
+        documentId: string | null;
+    };
+    'document:deleted': {
+        graphId: string;
+        documentId: string;
+    };
+    'documents:changed': {
+        graphId: string;
+    };
+    'theme:changed': {
+        graphId: string;
+        dark: boolean;
+    };
+}
+
+// @public
+export interface ExtensionEvents {
+    on<K extends ExtensionEventName>(name: K, listener: (payload: ExtensionEventPayloads[K]) => void): () => void;
+}
+
+// @public
+export interface ExtensionGraphSidebar {
+    register(button: GraphSidebarButton): () => void;
+}
+
+// @public
 export type ExtensionIsolation = 'shadow' | 'page';
+
+// @public
+export interface ExtensionJournalPanels {
+    register(panel: JournalPanel): () => void;
+}
 
 // @public
 export interface ExtensionLayout {
     isDesktop(): boolean;
+    openDocument(concept: string, options?: {
+        line?: number;
+        inPaneOf?: string;
+        beside?: string;
+    }): void;
     openView(view: ViewRef, options?: {
         inPaneOf?: string;
         beside?: string;
@@ -102,8 +166,17 @@ export interface ExtensionModule {
 }
 
 // @public
+export interface ExtensionPersonStorage {
+    get<T>(key: string): T | undefined;
+    remove(key: string): void;
+    set(key: string, value: unknown): void;
+    subscribe(listener: () => void): () => void;
+}
+
+// @public
 export interface ExtensionSettings {
     get(id: string): string | undefined;
+    set(id: string, value: string | null): void;
     subscribe(listener: () => void): () => void;
 }
 
@@ -112,6 +185,11 @@ export interface ExtensionStorage {
     get<T>(key: string): T | undefined;
     remove(key: string): void;
     set(key: string, value: unknown): void;
+}
+
+// @public
+export interface ExtensionTheme {
+    isDark(): boolean;
 }
 
 // @public
@@ -184,9 +262,39 @@ export interface FrameOptions {
 }
 
 // @public
+export interface GraphSidebarButton {
+    args?: unknown;
+    command: string;
+    description?: string;
+    icon?: string;
+    id: string;
+    order?: number;
+    title: string;
+    when?: () => boolean;
+}
+
+// @public
+export interface JournalPanel {
+    id: string;
+    mount(element: HTMLElement, props: JournalPanelProps): MountedJournalPanel;
+}
+
+// @public
+export interface JournalPanelProps {
+    day: string;
+    panelId?: string;
+    visibility: ViewVisibility;
+}
+
+// @public
 export interface MountedFence {
     destroy(): void;
     update(context: FenceContext): void;
+}
+
+// @public
+export interface MountedJournalPanel {
+    destroy(): void;
 }
 
 // @public

@@ -3,7 +3,7 @@
  * registries and questions, and what holds for the Client's whole run. The workspace supplies
  * them; the host never reaches into the workspace itself.
  */
-import type { ExtensionConcepts, ExtensionIndex, ExtensionLayout, Keybinding } from '@appsoftwareltd/etherpk-extension-api'
+import type { ExtensionAuth, ExtensionConcepts, ExtensionIndex, ExtensionLayout, Keybinding } from '@appsoftwareltd/etherpk-extension-api'
 
 import type { CommandRegistry, ContributionRegistry, EventBus } from '$lib/surface'
 import type { ClientDialogs } from './dialogs'
@@ -49,8 +49,13 @@ export interface ClientServices {
     iconSvg(name: string, options?: { size?: number; strokeWidth?: number; label?: string }): TrustedMarkup
     /** Where extensions keep their own values on this device; none where storage is refused. */
     storage: Storage | undefined
-    /** The person's settings, Extension Settings among them (ADR 0134). */
-    settings: Pick<PersonSettings, 'get' | 'subscribe'>
+    /**
+     * The person's settings, Extension Settings among them (ADR 0134), and the records extensions
+     * keep with the person (ADR 0140).
+     */
+    settings: Pick<PersonSettings, 'get' | 'keys' | 'set' | 'subscribe'>
     /** The dialogs the Client draws for an extension (`dialogs.ts`), each naming the extension that asks. */
     dialogs: ClientDialogs
+    /** Signing in to another service in a popup, through the Client's one return page (`sign-in.ts`). */
+    signIn: ExtensionAuth
 }

@@ -7,7 +7,7 @@
  * Each Event's name and what it carries. Every Event belongs to the open graph, named by
  * `graphId`.
  *
- * @beta
+ * @public
  */
 export interface ExtensionEventPayloads {
     /** The document the user is working in changed, or there is none (`documentId` is null). */
@@ -34,14 +34,14 @@ export interface ExtensionEventPayloads {
 /**
  * An Event's name.
  *
- * @beta
+ * @public
  */
 export type ExtensionEventName = keyof ExtensionEventPayloads
 
 /**
  * Listening to Events.
  *
- * @beta
+ * @public
  */
 export interface ExtensionEvents {
     /** Listen to one Event until the returned function is called or the extension stops. */

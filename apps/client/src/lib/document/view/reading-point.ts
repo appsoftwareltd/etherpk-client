@@ -12,7 +12,9 @@
  * So the keeper remembers where the reader is: the first day block, in order, that crosses or sits
  * below the visible top, and for a day whose text crosses it, the position in that text at the top.
  * When anything it watches changes size, it scrolls by however far that point moved. It leaves
- * alone a point inside the editor that has the focus, where CodeMirror does the work.
+ * alone a point inside the editor that has the focus, where CodeMirror does the work. A reader still
+ * in the tab's own text has nothing to keep: what changes beneath that text (the [[Journal Panel]]s,
+ * the backlinks) is below them, and keeping a roll block still there would scroll their text away.
  */
 
 import type { Extension } from '@codemirror/state'
@@ -52,14 +54,17 @@ export interface ReadingPointKeeper {
     destroy(): void
 }
 
-/** `blocks` lists the roll's blocks top to bottom; `section` finds the tab's own backlinks section. */
+/**
+ * `blocks` lists the roll's blocks top to bottom; `sections` finds what sits between the tab's own
+ * text and the roll, whose size changes move the roll: the Journal Panels and the backlinks.
+ */
 export function keepReadingPoint(
     blocks: () => Iterable<HTMLElement>,
-    section: (scroller: HTMLElement) => HTMLElement | null,
+    sections: (scroller: HTMLElement) => (HTMLElement | null)[],
 ): ReadingPointKeeper {
     let scroller: HTMLElement | null = null
     let mark: ReadingMark | null = null
-    let watchedSection: HTMLElement | null = null
+    let watchedSections: HTMLElement[] = []
     const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => correct())
 
     const focusedText = () => document.activeElement?.closest('.cm-content') ?? null
@@ -101,13 +106,14 @@ export function keepReadingPoint(
     function remember(): void {
         mark = null
         if (!scroller) return
-        const tabSection = section(scroller)
-        if (tabSection !== watchedSection) {
-            if (watchedSection) observer?.unobserve(watchedSection)
-            watchedSection = tabSection
-            if (tabSection) observer?.observe(tabSection)
-        }
+        const found = sections(scroller).filter((element): element is HTMLElement => element !== null)
+        for (const element of watchedSections) if (!found.includes(element)) observer?.unobserve(element)
+        for (const element of found) if (!watchedSections.includes(element)) observer?.observe(element)
+        watchedSections = found
         const visibleTop = scroller.getBoundingClientRect().top
+        // Still in the tab's own text: what changes size is below the reader.
+        const ownText = scroller.querySelector<HTMLElement>(':scope > .cm-content')
+        if (ownText && ownText.getBoundingClientRect().bottom > visibleTop + 1) return
         for (const block of blocks()) {
             const box = block.getBoundingClientRect()
             if (box.bottom <= visibleTop + 1) continue

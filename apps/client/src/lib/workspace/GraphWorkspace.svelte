@@ -332,6 +332,7 @@
     import { createExtensionDirectory } from "$lib/extensions/directory";
     import { releaseBase } from "$lib/extensions/directory-format";
     import { createExtensionHost } from "$lib/extensions/host";
+    import { browserSignIn } from "$lib/extensions/sign-in";
     import { createInstalledExtensions } from "$lib/extensions/installed";
     import { createInstalledSync } from "$lib/extensions/installed-sync";
     import { lookupInteractiveFence } from "$lib/document/view/augmentations/interactive-fence-contract";
@@ -2676,6 +2677,7 @@
             storage: typeof localStorage === "undefined" ? undefined : localStorage,
             settings: personSettings(),
             dialogs: createDialogs(),
+            signIn: browserSignIn(),
         },
     });
     registerIcons(extensionHost.icons());

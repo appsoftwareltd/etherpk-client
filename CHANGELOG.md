@@ -5,6 +5,22 @@ What changed in each release of the EtherPK Client and the Headless Client
 They are released together, under the version number they share with the Sync Server. This log
 starts at 0.9.3.
 
+## 0.11.0 - 2026-10-13
+
+### Client
+
+- **The Today button's calendar is drawn with the same line weight** as the other buttons in the
+  graph sidebar.
+- **Extensions can show something about a day beneath its journal entry**, such as that day's
+  calendar events, above the entry's backlinks. It is not part of the entry, so it is never synced
+  with the graph, searched or published.
+- **Extensions can sign you in to other services.** The sign-in opens in a small window and comes
+  back to the Client's `/extension-sign-in` page, the one address to register with the service.
+- **Extensions from the Extension Directory can do more**: add a button to the graph sidebar, open a
+  document or a day's journal entry, follow the light and dark theme, save their own settings, and
+  keep records that follow you to your other devices with your settings, encrypted. Uninstalling an
+  extension clears its records.
+
 ## 0.10.2 - 2026-10-12
 
 ### Client

@@ -7,11 +7,13 @@
  * only through the index's answers and its own fences, and changes them only through its fences,
  * the blocks it puts at the caret and the Client's Commands.
  */
+import type { ExtensionAuth } from './auth'
 import type { ExtensionDialogs } from './dialogs'
 import type { ExtensionEditor } from './editor'
 import type { ExtensionEmbeds } from './embeds'
 import type { ExtensionEvents } from './events'
 import type { ExtensionIndex } from './graph-index'
+import type { ExtensionJournalPanels } from './journal'
 import type { CommandMenuItem, ContextMenuItem, GraphSidebarButton } from './menus'
 import type { ViewContribution, ViewRef } from './views'
 
@@ -80,7 +82,7 @@ export interface ExtensionCommandMenu {
 /**
  * Adding buttons to the Graph Sidebar's group of action buttons, after Search and today's date.
  *
- * @beta
+ * @public
  */
 export interface ExtensionGraphSidebar {
     /** Add a button, its id under the extension's id. */
@@ -134,9 +136,8 @@ export interface ExtensionLayout {
     /**
      * Open the document of a concept, under the name it resolves to, as following a wikilink
      * does. `line` scrolls to and selects that line, `inPaneOf` and `beside` place it as for
-     * {@link ExtensionLayout.openView}.
-     *
-     * @beta
+     * {@link ExtensionLayout.openView}. A day's name, `YYYY-MM-DD`, opens its Journal Entry, or a Draft
+     * of it when nothing is written for that day yet.
      */
     openDocument(concept: string, options?: { line?: number; inPaneOf?: string; beside?: string }): void
     /**
@@ -180,7 +181,8 @@ export interface ExtensionStorage {
  * The person's answers to the settings the extension's manifest declares (`settings`, ADR 0134).
  * The Client draws them under the extension's entry in Settings and Extensions → Extensions, and
  * keeps them with the person: on this device, and in their account where it syncs a graph, so they
- * follow the person to their other devices. The extension only reads them.
+ * follow the person to their other devices. The extension reads them, and may set them where it
+ * explains them itself, such as a setup screen asking for a key.
  *
  * @public
  */
@@ -196,12 +198,51 @@ export interface ExtensionSettings {
      * Returns the way to stop.
      */
     subscribe(listener: () => void): () => void
+    /**
+     * Set one of the settings the manifest declares, as the person would in Settings and Extensions,
+     * or clear it with null or empty text. A `boolean` setting takes `'true'` or `'false'`. Throws
+     * for a setting the manifest does not declare. Call it only for what the person typed or chose:
+     * the setting is theirs.
+     */
+    set(id: string, value: string | null): void
+}
+
+/**
+ * The extension's own records, kept with the person (ADR 0140): on this device, and where the
+ * person's account syncs a graph, in that account's vault too, encrypted on the device so only the
+ * person's own devices can read them. So a record follows the person to their other devices, as
+ * Extension Settings do, such as what signing in to another service gave the extension. The person
+ * never sees these records, and uninstalling the extension clears them on every device.
+ *
+ * Each record is kept as JSON, at most 64 KB of it. Between two devices the later change to a
+ * record wins, record by record. A record is readable on the device by any code in the page, as
+ * localStorage is, and by a Headless Client given an agent token for the same account, which opens
+ * the account's vault.
+ *
+ * @public
+ */
+export interface ExtensionPersonStorage {
+    /** The record under `key`, or undefined when there is none or it cannot be read. */
+    get<T>(key: string): T | undefined
+    /**
+     * Keep a record under `key`: letters, digits, `.`, `_` and `-`, at most 100 of them. Setting
+     * undefined or null removes it. Throws when the key is not one of those, or the record's JSON is
+     * longer than 64 KB.
+     */
+    set(key: string, value: unknown): void
+    /** Remove the record under `key`. */
+    remove(key: string): void
+    /**
+     * Hear every change to the extension's records, made on this device or arriving from another.
+     * Returns the way to stop.
+     */
+    subscribe(listener: () => void): () => void
 }
 
 /**
  * The Client's light or dark theme.
  *
- * @beta
+ * @public
  */
 export interface ExtensionTheme {
     /** True while the dark theme shows. The `theme:changed` Event reports a switch. */
@@ -296,12 +337,10 @@ export interface ExtensionContext {
     readonly contextMenu: ExtensionContextMenu
     /** Adding Command Menu rows. */
     readonly commandMenu: ExtensionCommandMenu
-    /**
-     * Adding buttons to the Graph Sidebar.
-     *
-     * @beta
-     */
+    /** Adding buttons to the Graph Sidebar. */
     readonly graphSidebar: ExtensionGraphSidebar
+    /** Adding panels beneath each Journal Entry. */
+    readonly journalPanels: ExtensionJournalPanels
     /**
      * Adding key chords.
      *
@@ -314,11 +353,7 @@ export interface ExtensionContext {
      * @beta
      */
     readonly contributions: ExtensionContributions
-    /**
-     * Listening to Events.
-     *
-     * @beta
-     */
+    /** Listening to Events. */
     readonly events: ExtensionEvents
     /**
      * Questions to the open graph's index.
@@ -338,11 +373,11 @@ export interface ExtensionContext {
     readonly storage: ExtensionStorage
     /** The person's answers to the settings the manifest declares. */
     readonly settings: ExtensionSettings
-    /**
-     * The Client's light or dark theme.
-     *
-     * @beta
-     */
+    /** The extension's own records, kept with the person and following them to their devices. */
+    readonly personStorage: ExtensionPersonStorage
+    /** Signing in to another service. */
+    readonly auth: ExtensionAuth
+    /** The Client's light or dark theme. */
     readonly theme: ExtensionTheme
     /**
      * The Client's icons and the extension's own.

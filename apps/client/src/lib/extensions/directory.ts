@@ -12,7 +12,7 @@
  * follow them to their other devices (installed-sync.ts). What the device does to keep in step with
  * those settings (`installRelease`, `stageRelease`, `removeFromDevice`) touches this device alone.
  */
-import type { PersonSettings } from '$lib/person-settings/person-settings'
+import { extensionDataKey, type PersonSettings } from '$lib/person-settings/person-settings'
 
 import { admitInstalled, type Catalogue } from './catalogue'
 import { type DirectoryExtension, type DirectoryListing, type DirectoryRelease, releaseBase } from './directory-format'
@@ -28,7 +28,10 @@ export interface ExtensionDirectory {
     load(signal?: AbortSignal): Promise<DirectoryState>
     /** The person installs a listed release: on this device, and in their settings. Throws, saying why, when it cannot. */
     install(extension: DirectoryExtension, release: DirectoryRelease): Promise<void>
-    /** The person removes an extension: from this device with what it kept, and from their settings. */
+    /**
+     * The person removes an extension: from this device with what it kept, from their settings, and
+     * with the records it kept with them (ADR 0140), which every device of theirs then clears.
+     */
     remove(id: string): void
     /** Put a listed release on this device and start it, in place of any other release of it. */
     installRelease(extension: DirectoryExtension, release: DirectoryRelease): Promise<void>
@@ -41,8 +44,8 @@ export interface ExtensionDirectory {
 export interface ExtensionDirectoryOptions {
     host: ExtensionHost
     installed: InstalledExtensions
-    /** The person's settings, where the extensions they installed are kept. */
-    settings: Pick<PersonSettings, 'set'>
+    /** The person's settings, where the extensions they installed, and the records they keep, are kept. */
+    settings: Pick<PersonSettings, 'keys' | 'set'>
     clientVersion: string
     fetch?: typeof fetch
     /** Where installed extensions keep their values (`etherpk-<id>:<key>`), cleared on removal. */
@@ -122,6 +125,9 @@ export function createExtensionDirectory(options: ExtensionDirectoryOptions): Ex
         remove(id) {
             directory.removeFromDevice(id, { clearStorage: true })
             settings.set(installedSettingKey(id), null)
+            // What it kept with the person, such as a sign-in to another service: no use to anyone
+            // once it is gone. The person's answers to its settings stay, for a reinstall.
+            for (const key of settings.keys(extensionDataKey(id, ''))) settings.set(key, null)
         },
         async installRelease(extension, release) {
             const { record, entry, current } = await fetchRelease(extension, release)

@@ -218,3 +218,12 @@ export function personSettings(): PersonSettings {
 export function extensionSettingKey(extensionId: string, settingId: string): string {
     return `extension.${extensionId}.${settingId}`
 }
+
+/**
+ * The key a record an extension keeps with the person is kept under (`context.personStorage`, ADR
+ * 0140): beside its settings, under a prefix of its own, so the Settings dialog never draws one and
+ * uninstalling the extension finds them all.
+ */
+export function extensionDataKey(extensionId: string, key: string): string {
+    return `extension-data.${extensionId}.${key}`
+}

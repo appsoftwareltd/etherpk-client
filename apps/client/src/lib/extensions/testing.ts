@@ -69,5 +69,10 @@ export function fakeClientServices(storage: Storage = memoryStorage(), settings:
         storage,
         settings,
         dialogs: { prompt: vi.fn(async () => undefined) },
+        // A sign-in that the service answers at once, with a code and the state it was given.
+        signIn: {
+            redirectUri: 'https://client.example/extension-sign-in',
+            authorize: vi.fn(async (url: string) => ({ code: 'c1', state: new URL(url).searchParams.get('state') ?? '' })),
+        },
     }
 }

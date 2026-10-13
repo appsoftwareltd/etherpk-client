@@ -32,10 +32,11 @@ import type {
 import { PLAYER_FRAME_HOSTS } from '@appsoftwareltd/etherpk-shared/frame-hosts'
 
 import { INTERACTIVE_FENCE_KIND } from '$lib/document/view/augmentations/interactive-fence-contract'
-import { extensionSettingKey } from '$lib/person-settings/person-settings'
+import { extensionDataKey, extensionSettingKey } from '$lib/person-settings/person-settings'
 import { registerCommandMenuItem, type CommandMenuItem as ClientCommandMenuItem } from '$lib/surface/command-menu'
 import { registerContextMenuItem, type ContextMenuItem as ClientContextMenuItem } from '$lib/surface/context-menu'
 import { registerGraphSidebarButton } from '$lib/surface/graph-sidebar-buttons'
+import { registerJournalPanel } from '$lib/surface/journal-panels'
 import type { EventName } from '$lib/surface'
 
 import type { CatalogueEntry } from './catalogue'
@@ -45,6 +46,12 @@ import type { ClientServices, GraphServices } from './services'
 
 /** An extension's id or a name under it, as a fence's info word may take them. */
 const FENCE_NAME = /^[a-z][a-z0-9-]*$/
+
+/** A key a record kept with the person may have (`personStorage`). */
+const RECORD_KEY = /^[A-Za-z0-9._-]{1,100}$/
+
+/** The most JSON one record kept with the person may hold, so no extension fills the account's vault. */
+export const RECORD_LIMIT = 64 * 1024
 
 /** The Events an extension may hear: the API's catalogue, and no other of the Client's. */
 export const EXTENSION_EVENTS: readonly ExtensionEventName[] = ['document:active-changed', 'concept:renamed', 'document:deleted', 'documents:changed', 'theme:changed']
@@ -88,8 +95,8 @@ export function createScopedContext(
     const own = (what: string, name: string) => {
         if (!name.startsWith(`${id}.`)) throw new Error(`${what} "${name}" must start with "${id}."`)
     }
-    // A loaded extension's fence widgets mount like its Views: in a shadow root holding its
-    // stylesheets, unless it mounts in the page (ADR 0121, amended 2026-10-10).
+    // A loaded extension's fence widgets and Journal Panels mount like its Views: in a shadow root
+    // holding its stylesheets, unless it mounts in the page (ADR 0121, amended 2026-10-10).
     const fenceIsolation =
         entry.source === 'loaded' && manifest.isolation !== 'page' ? { styles: (manifest.styles ?? []).map((path) => `${entry.base}${path.replace(/^\.\//, '')}`) } : null
     /** The extension's own icon by its registered name, or the Client's icon of that name. */
@@ -119,6 +126,10 @@ export function createScopedContext(
         has: (kind, contributionId) => graph.contributions.has(kind, contributionId),
         list: (kind) => graph.contributions.list(kind),
     }
+
+    /** The extension's own records kept with the person, by key, as last read: for `subscribe`. */
+    const dataPrefix = extensionDataKey(id, '')
+    const recordsNow = () => JSON.stringify(client.settings.keys(dataPrefix).map((key) => [key, client.settings.get(key)]))
 
     const context: ExtensionContext = {
         extensionId: id,
@@ -160,6 +171,20 @@ export function createScopedContext(
                 own('Graph Sidebar button', button.id)
                 if (disposed) return noop
                 return keep(registerGraphSidebarButton(graph.contributions, { ...button, icon: icon(button.icon) }))
+            },
+        },
+        journalPanels: {
+            register(panel) {
+                own('Journal Panel', panel.id)
+                if (disposed) return noop
+                return keep(
+                    registerJournalPanel(graph.contributions, {
+                        id: panel.id,
+                        extensionName: manifest.displayName,
+                        isolation: fenceIsolation,
+                        mount: (element, props) => panel.mount(element, props),
+                    }),
+                )
             },
         },
         keybindings: {
@@ -213,6 +238,62 @@ export function createScopedContext(
                 return value === 'true' || value === 'false' ? value : String(declared.default ?? false)
             },
             subscribe: (listener) => (disposed ? noop : keep(client.settings.subscribe(listener))),
+            set(setting, value) {
+                const declared = manifest.settings?.find((candidate) => candidate.id === setting)
+                if (!declared) throw new Error(`The setting "${setting}" is not declared in the manifest of ${id}.`)
+                if (declared.type === 'boolean' && value !== null && value !== 'true' && value !== 'false') {
+                    throw new Error(`The setting "${setting}" is a switch: set it to "true" or "false".`)
+                }
+                if (disposed) return
+                client.settings.set(extensionSettingKey(id, setting), value)
+            },
+        },
+        personStorage: {
+            get<T>(key: string): T | undefined {
+                const raw = client.settings.get(extensionDataKey(id, key))
+                if (raw === undefined) return undefined
+                try {
+                    return JSON.parse(raw) as T
+                } catch {
+                    return undefined
+                }
+            },
+            set(key, value) {
+                if (!RECORD_KEY.test(key)) throw new Error(`A record's key is letters, digits, ".", "_" and "-", at most 100 of them, not "${key}".`)
+                if (disposed) return
+                if (value === undefined || value === null) {
+                    client.settings.set(extensionDataKey(id, key), null)
+                    return
+                }
+                const json = JSON.stringify(value)
+                if (json.length > RECORD_LIMIT) throw new Error(`The record "${key}" is longer than 64 KB as JSON.`)
+                client.settings.set(extensionDataKey(id, key), json)
+            },
+            remove(key) {
+                if (disposed || !RECORD_KEY.test(key)) return
+                client.settings.set(extensionDataKey(id, key), null)
+            },
+            subscribe(listener) {
+                if (disposed) return noop
+                // The person's settings change for every extension and every setting: tell this
+                // listener only when one of the extension's own records did.
+                let last = recordsNow()
+                return keep(
+                    client.settings.subscribe(() => {
+                        const now = recordsNow()
+                        if (now === last) return
+                        last = now
+                        listener()
+                    }),
+                )
+            },
+        },
+        auth: {
+            redirectUri: client.signIn.redirectUri,
+            authorize(url, options) {
+                if (disposed) return Promise.reject(new Error(`${manifest.displayName} was stopped.`))
+                return client.signIn.authorize(url, options)
+            },
         },
         theme: { isDark: () => client.isDark() },
         // The Client's trusted markup is the API's `IconMarkup`: both are opaque, so it reaches the
@@ -280,7 +361,7 @@ function stableOnly(context: ExtensionContext): ExtensionContext {
         layout: {
             isDesktop: () => layout.isDesktop(),
             openView: (view, options) => layout.openView(view, options),
-            openDocument: refuse('layout.openDocument'),
+            openDocument: (concept, options) => layout.openDocument(concept, options),
             activeDocument: refuse('layout.activeDocument'),
             reveal: refuse('layout.reveal'),
         },
@@ -292,12 +373,9 @@ function stableOnly(context: ExtensionContext): ExtensionContext {
             list: refuse('contributions.list'),
         },
         contextMenu: { register: refuse('contextMenu.register') },
-        graphSidebar: { register: refuse('graphSidebar.register') },
         keybindings: { register: refuse('keybindings.register') },
-        events: { on: refuse('events.on') },
         index: { allConcepts: refuse('index.allConcepts'), linkGraph: refuse('index.linkGraph'), onUpdated: refuse('index.onUpdated') },
         concepts: { canonicalName: refuse('concepts.canonicalName'), key: refuse('concepts.key') },
-        theme: { isDark: refuse('theme.isDark') },
         icons: { svg: refuse('icons.svg') },
     }
 }

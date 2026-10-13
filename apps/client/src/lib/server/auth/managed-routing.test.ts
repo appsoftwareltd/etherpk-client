@@ -76,6 +76,9 @@ describe('managed Client automatic SSO', () => {
         { name: 'a POST request', change: { method: 'POST' } },
         { name: 'an OAuth route', change: { pathname: '/auth/callback' } },
         { name: 'a SvelteKit asset', change: { pathname: '/_app/immutable/entry/start.js' } },
+        // A service sends an extension's sign-in back there with its code in the query, which a
+        // redirect through the account site would carry with it.
+        { name: "an extension's sign-in return", change: { pathname: '/extension-sign-in' } },
     ])('does not check SSO for $name', ({ change }) => {
         expect(shouldAttemptManagedClientSso({ ...documentRequest, ...change })).toBe(false)
     })
@@ -109,6 +112,7 @@ describe('asking the account site whether the browser has signed in there since'
         { name: 'a browser that forgot Managed Sync here', change: { suppressed: true } },
         { name: 'a Client with no Managed Sync', change: { configured: false } },
         { name: 'a sign-in or sign-out step', change: { pathname: '/auth/signing-out' } },
+        { name: "an extension's sign-in return", change: { pathname: '/extension-sign-in' } },
         { name: 'a non-document request', change: { acceptsHtml: false } },
     ])('does not ask for $name', ({ change }) => {
         expect(shouldAskWhetherSignedInElsewhere({ ...missedRecently, ...change })).toBe(false)

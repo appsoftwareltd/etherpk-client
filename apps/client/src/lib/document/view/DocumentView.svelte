@@ -60,6 +60,7 @@
     import DocumentBacklinks from './DocumentBacklinks.svelte'
     import DocumentViewSelf from './DocumentView.svelte'
     import JournalRoll from './JournalRoll.svelte'
+    import JournalPanels from './JournalPanels.svelte'
     import { JOURNAL_ROLL_ATTRIBUTE } from './journal-roll-dom'
     import { followReadingPoint } from './reading-point'
     import { handleEventsBelowText } from './below-text-events'
@@ -153,6 +154,16 @@
     /** Whether the section is drawn: it has backlinks, or failed to load them. */
     let backlinksDrawn = $state(false)
     /**
+     * The [[Journal Panel]]s beneath a journal tab's entry and above its backlinks (ADR 0120,
+     * amended 2026-10-12),
+     * mounted and moved from editor to editor as the backlinks are. Only on a tab of a journal day,
+     * never on a day of its roll.
+     */
+    let panelsHolder: HTMLDivElement | undefined
+    let panelsSection: ReturnType<typeof mount> | undefined
+    /** Whether any panel draws something. */
+    let panelsDrawn = $state(false)
+    /**
      * The [[Journal Roll]] beneath a journal tab's entry and its backlinks (ADR 0136), mounted and
      * moved from editor to editor the same way. Only on a tab of a journal day.
      */
@@ -161,9 +172,36 @@
     /** Whether the roll draws anything: a bar, or loaded days. */
     let rollDrawn = $state(false)
     /** Something is drawn beneath the text, so the text gives up its full pane height. */
-    const belowTextDrawn = $derived(backlinksDrawn || rollDrawn)
+    const belowTextDrawn = $derived(panelsDrawn || backlinksDrawn || rollDrawn)
     /** Set once the View is gone, so a remount still on its way (a Draft promotion) builds nothing. */
     let destroyed = false
+
+    /** Put the panels after `scroller`'s content, mounting them the first time. */
+    function placeJournalPanels(scroller: HTMLElement): void {
+        if (!ownsTab || !isJournalConcept(view.target)) return
+        if (!panelsHolder) {
+            panelsHolder = document.createElement('div')
+            panelsHolder.style.display = 'contents'
+            panelsSection = mount(JournalPanels, {
+                target: panelsHolder,
+                props: {
+                    day: view.target,
+                    panelId,
+                    visibility,
+                    ondrawnchange: (drawn: boolean) => (panelsDrawn = drawn),
+                },
+            })
+        }
+        scroller.appendChild(panelsHolder)
+    }
+
+    function unmountJournalPanels(): void {
+        if (panelsSection) void unmount(panelsSection)
+        panelsSection = undefined
+        panelsHolder?.remove()
+        panelsHolder = undefined
+        panelsDrawn = false
+    }
 
     /** Put the section after `scroller`'s content, mounting it the first time. */
     function placeBacklinks(scroller: HTMLElement): void {
@@ -1028,8 +1066,10 @@
             dom.removeEventListener('focusin', noteFocus)
         }
         observeScrollbar(editor.view.scrollDOM)
-        // The backlinks beneath the text, after the content in the scroller (ADR 0135), and the
-        // presses and drops on the scroller outside the text, which CodeMirror does not hear.
+        // The Journal Panels, the backlinks and the roll beneath the text, after the content in the
+        // scroller (ADR 0120 amended 2026-10-12, ADR 0135, ADR 0136), and the presses and drops on
+        // the scroller outside the text, which CodeMirror does not hear.
+        placeJournalPanels(editor.view.scrollDOM)
         placeBacklinks(editor.view.scrollDOM)
         placeRoll(editor.view.scrollDOM)
         if (ownsTab) detachBelowText = handleEventsBelowText(editor.view, { store: () => tryGetActiveAssetStore() })
@@ -1155,6 +1195,7 @@
         detachBelowText?.()
         detachBelowText = undefined
         // Kept for the next editor; out of this one's scroller before it goes.
+        panelsHolder?.remove()
         backlinksHolder?.remove()
         rollHolder?.remove()
         editor?.destroy()
@@ -1174,6 +1215,7 @@
         detachDraftWatch?.()
         detachReveal?.()
         teardownEditor({ capturePosition: ownsTab })
+        unmountJournalPanels()
         unmountBacklinks()
         unmountRoll()
     })
@@ -1365,9 +1407,10 @@
         padding-bottom: 4.5rem;
     }
     /*
-     * The backlinks beneath the text (ADR 0135) and a journal tab's roll (ADR 0136), mounted into
-     * the editor's scroller after its content. CodeMirror lays the scroller out as a flex row, so
-     * while either is drawn the row wraps, each takes a row of its own (DocumentBacklinks.svelte,
+     * A journal tab's Journal Panels (ADR 0120, amended 2026-10-12), the backlinks beneath the text
+     * (ADR 0135) and a journal tab's roll (ADR 0136), mounted into the editor's scroller after its
+     * content. CodeMirror lays the scroller out as a flex row, so while any of them is drawn the row
+     * wraps, each takes a row of its own (JournalPanels.svelte, DocumentBacklinks.svelte,
      * JournalRoll.svelte), and the rows do not stretch to share the pane's height. The content gives
      * up its full pane height for one line of room under the last line, where a click still puts
      * the caret at the end, so what is beneath follows the text instead of starting below the fold.

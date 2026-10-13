@@ -45,6 +45,7 @@ export function fakeContext(options: { desktop?: boolean } = {}) {
         },
         commandMenu: { register: () => () => {} },
         graphSidebar: { register: () => () => {} },
+        journalPanels: { register: () => () => {} },
         keybindings: {
             register(binding) {
                 keybindings.push(binding)
@@ -57,7 +58,14 @@ export function fakeContext(options: { desktop?: boolean } = {}) {
         layout,
         concepts: { key: (name) => name.toLowerCase(), canonicalName: (name) => name },
         storage: { get: () => undefined, set: () => {}, remove: () => {} },
-        settings: { get: () => undefined, subscribe: () => () => {} },
+        settings: { get: () => undefined, subscribe: () => () => {}, set: () => {} },
+        personStorage: { get: () => undefined, set: () => {}, remove: () => {}, subscribe: () => () => {} },
+        auth: {
+            redirectUri: 'https://client.example/extension-sign-in',
+            authorize: async () => {
+                throw new Error('No sign-ins in these tests.')
+            },
+        },
         theme: { isDark: () => false },
         // A stand-in for the Client's markup: tests read it as the string it is underneath.
         icons: { svg: (name) => `<svg data-icon="${name}"/>` as unknown as IconMarkup },

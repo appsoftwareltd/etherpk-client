@@ -123,10 +123,100 @@ person sets it, and hears every change with `context.settings.subscribe`. A swit
 graph, the settings follow them to their other devices, encrypted so that only those devices can read
 them.
 
+`context.settings.set('api-key', value)` sets one of the manifest's settings, as the person would in
+Settings, or clears it with `null`. It is for a screen of the extension's own where the person types
+the value, such as a setup guide. It throws for a setting the manifest does not declare, and a switch
+takes only `'true'` or `'false'`.
+
 ### Storage
 
 `context.storage` keeps the extension's own values on the device, as JSON, with `get`, `set` and
 `remove`. It is for what the extension works out or caches, not for what the person sets.
+
+### Records kept with the person
+
+`context.personStorage` keeps the extension's own records with the person rather than on one
+device, such as what signing in to another service gave it. It has `get`, `set`, `remove` and
+`subscribe`, and keeps each record as JSON, at most 64 KB of it, under a key of letters, digits,
+`.`, `_` and `-`. Where the person's account syncs a graph, the records follow them to their other
+devices in the account's vault, encrypted so that only those devices can read them, and the later
+change to a record wins. The person never sees them, and uninstalling the extension clears them on
+every device.
+
+A record is no more private than a setting. Any code in EtherPK's page can read it on the device,
+and so can an agent the person gave an agent token for their account, so say in the extension what
+it keeps.
+
+### Signing in to another service
+
+`context.auth` runs an OAuth 2.0 sign-in in a popup. The service sends the popup back to the
+Client's one return page, `context.auth.redirectUri` (the Client's address followed by
+`/extension-sign-in`), which the person registers with the service once, for every extension.
+
+```ts
+const answer = await context.auth.authorize(`https://accounts.example.com/authorize?client_id=…&redirect_uri=${encodeURIComponent(context.auth.redirectUri)}&state=${state}&…`, { signal })
+if (answer.error) throw new Error(answer.error)
+// answer.code: exchange it at the service's token endpoint.
+```
+
+- The address must carry a `state`: only a return with the same `state` answers the call.
+- Call `authorize` inside the click that asked for it, with nothing awaited before it, because a
+  browser blocks a popup opened later. Work that takes time, such as a PKCE challenge, is done
+  before the click.
+- `authorize` resolves with the parameters the service sent back, `error` among them when the
+  person refused. It rejects when the browser blocks the popup, when `signal` aborts, or after ten
+  minutes. It does not reject when the person closes the popup, which the Client cannot always tell,
+  so offer a Cancel that aborts `signal`.
+- The extension builds the request and exchanges the code itself: the Client knows no service.
+
+### Journal Panels
+
+A Journal Panel draws beneath a journal entry's text, above its backlinks, about that day, such as
+the day's events from a calendar. It is outside the document, so nothing in it is synced with the
+graph, searched or published.
+
+```ts
+context.journalPanels.register({
+    id: 'weather.day',
+    mount(element, { day, visibility }) {
+        // `day` is YYYY-MM-DD. Load once `visibility.onScreen` is true.
+        element.textContent = `Forecast for ${day}`
+        return { destroy: () => element.replaceChildren() }
+    },
+})
+```
+
+The Client mounts a panel for each journal tab's own entry, a day with nothing written included, and
+never for the older days shown beneath it. A panel is as tall as what it draws, so one that draws
+nothing takes no space, and it draws its own heading and spacing. It mounts in a shadow root with the
+extension's stylesheets, as a View does.
+
+### Graph Sidebar buttons
+
+A button in the Graph Sidebar, below Search and today's date, runs a Command:
+`context.graphSidebar.register({ id, title, description, icon, order, when, command })`. These rules
+keep the buttons readable together:
+
+- **`title`** is short. Two buttons sit side by side in the sidebar at its default width of 304
+  pixels, and "Graph Kanban", with its icon, is about the widest that fits.
+- **`description`** says what the button does, such as "Open a map of every place and route in this
+  graph". The Client shows it as the button's help text. Don't write a keyboard shortcut in it: the
+  Client adds the key chords bound to the button's Command itself.
+- **`icon`** is clear on its own. On a phone the buttons show their icons only.
+- **`when`** hides the button where it does not apply. A button for the desktop alone passes
+  `when: () => context.layout.isDesktop()`. A `when` that throws hides the button too.
+- **`order`** places the button among the others. The Graph Map's is 20 and the Graph Kanban's is
+  30.
+
+### Opening documents, the theme and Events
+
+- `context.layout.openDocument(concept)` opens a document as following a wikilink does. A day's
+  name, `YYYY-MM-DD`, opens its journal entry.
+- `context.theme.isDark()` says whether the dark theme shows, and the `theme:changed` Event reports a
+  switch. EtherPK's `--gk-*` colour tokens reach into a shadow root and change with the theme by
+  themselves.
+- `context.events.on(name, listener)` hears the Client's Events: `document:active-changed`,
+  `concept:renamed`, `document:deleted`, `documents:changed` and `theme:changed`.
 
 ### Fence widgets
 
@@ -254,32 +344,14 @@ code runs under them.
 The Proposed parts are for the extensions that come with EtherPK, and may change in any release.
 They include:
 
-- Context Menu rows (`contextMenu`), key chords (`keybindings`) and Graph Sidebar buttons
-  (`graphSidebar`).
-- Events (`events`), questions to the graph's index (`index`) and the rules for naming a concept
-  (`concepts`).
-- The theme (`theme`), the Client's icons (`icons`) and a View that lives in a Sidebar (`resident`).
-- Running another extension's Commands (`commands.execute`) and opening documents
-  (`layout.openDocument`).
+- Context Menu rows (`contextMenu`) and key chords (`keybindings`).
+- Questions to the graph's index (`index`) and the rules for naming a concept (`concepts`).
+- The Client's icons (`icons`) and a View that lives in a Sidebar (`resident`).
+- Running another extension's Commands (`commands.execute`), and the document the person is working
+  in (`layout.activeDocument`).
 
 `contributions`, which reaches the Client's own registries, stays Proposed for good, since its
 shape is the Client's internals.
-
-### Graph Sidebar buttons
-
-A button in the Graph Sidebar, below Search and today's date, runs a Command. These rules keep the
-buttons readable together:
-
-- **`title`** is short. Two buttons sit side by side in the sidebar at its default width of 304
-  pixels, and "Graph Kanban", with its icon, is about the widest that fits.
-- **`description`** says what the button does, such as "Open a map of every place and route in this
-  graph". The Client shows it as the button's help text. Don't write a keyboard shortcut in it: the
-  Client adds the key chords bound to the button's Command itself.
-- **`icon`** is clear on its own. On a phone the buttons show their icons only.
-- **`when`** hides the button where it does not apply. A button for the desktop alone passes
-  `when: () => context.layout.isDesktop()`. A `when` that throws hides the button too.
-- **`order`** places the button among the others. The Graph Map's is 20 and the Graph Kanban's is
-  30.
 
 ## Trying an extension
 

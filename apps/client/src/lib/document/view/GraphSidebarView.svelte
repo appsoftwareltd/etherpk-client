@@ -569,12 +569,12 @@
         column is the same width, so a button left on its own keeps the width of one. Under the
         phone layout, icons alone sharing the row's width (`iconsOnly`).
     -->
-    {#snippet buttonContent(icon: string, label: string, strokeWidth?: number)}
+    {#snippet buttonContent(icon: string, label: string)}
         {#if iconsOnly}
             <span class="inline-flex" aria-hidden="true">
                 <!-- Markup from the icon table: the Client's own, or an extension's, sanitised as it was registered. -->
                 <!-- eslint-disable-next-line svelte/no-at-html-tags -->
-                {@html iconSvg(icon, { size: 18, strokeWidth })}
+                {@html iconSvg(icon, { size: 18 })}
             </span>
         {:else}
             <!-- Measured for its natural width (`data-button-content`), so it never shrinks. -->
@@ -582,7 +582,7 @@
                 <span class="inline-flex shrink-0 text-(--gk-text-subtle)" aria-hidden="true">
                     <!-- Markup from the icon table: the Client's own, or an extension's, sanitised as it was registered. -->
                     <!-- eslint-disable-next-line svelte/no-at-html-tags -->
-                    {@html iconSvg(icon, { size: 16, strokeWidth })}
+                    {@html iconSvg(icon, { size: 16 })}
                 </span>
                 <span class="whitespace-nowrap">{label}</span>
             </span>
@@ -617,8 +617,8 @@
             aria-label="Today's journal"
             {...helpFor("Open today's journal", OPEN_TODAY)}
         >
-            <!-- The calendar at the weight the phone top bar's button draws it. -->
-            {@render buttonContent("todays-journal", "Today", 1)}
+            <!-- The calendar at the same line weight as the buttons beside it. -->
+            {@render buttonContent("todays-journal", "Today")}
         </button>
         {#each extensionButtons as button (button.id)}
             <button

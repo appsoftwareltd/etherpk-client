@@ -28,6 +28,7 @@ export type {
     ExtensionKeybindings,
     ExtensionLayout,
     ExtensionModule,
+    ExtensionPersonStorage,
     ExtensionSettings,
     ExtensionStorage,
     ExtensionTheme,
@@ -35,6 +36,7 @@ export type {
     IconMarkup,
     Keybinding,
 } from './context'
+export type { AuthorizeOptions, ExtensionAuth } from './auth'
 export type { ExtensionDialogs, PromptOptions } from './dialogs'
 export type {
     ExtensionEditor,
@@ -51,6 +53,7 @@ export type {
 export type { ExtensionEmbeds, FrameOptions } from './embeds'
 export type { ExtensionEventName, ExtensionEventPayloads, ExtensionEvents } from './events'
 export type { ConceptCandidate, ConceptKind, ExtensionIndex, IndexUpdate, LinkGraph, LinkGraphConcept, LinkGraphLink } from './graph-index'
+export type { ExtensionJournalPanels, JournalPanel, JournalPanelProps, MountedJournalPanel } from './journal'
 export type {
     ExtensionIsolation,
     ExtensionManifest,

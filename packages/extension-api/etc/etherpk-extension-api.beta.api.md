@@ -5,6 +5,11 @@
 ```ts
 
 // @public
+export interface AuthorizeOptions {
+    signal?: AbortSignal;
+}
+
+// @public
 export type CommandHandler = (arg?: unknown) => unknown;
 
 // @public
@@ -66,6 +71,12 @@ export interface DocumentMenuTarget {
 }
 
 // @public
+export interface ExtensionAuth {
+    authorize(url: string, options?: AuthorizeOptions): Promise<Record<string, string>>;
+    readonly redirectUri: string;
+}
+
+// @public
 export interface ExtensionCommandMenu {
     register(item: CommandMenuItem): () => void;
 }
@@ -87,6 +98,7 @@ export interface ExtensionConcepts {
 
 // @public
 export interface ExtensionContext {
+    readonly auth: ExtensionAuth;
     // @beta
     readonly clientVersion: string;
     readonly commandMenu: ExtensionCommandMenu;
@@ -102,25 +114,24 @@ export interface ExtensionContext {
     readonly dialogs: ExtensionDialogs;
     readonly editor: ExtensionEditor;
     readonly embeds: ExtensionEmbeds;
-    // @beta
     readonly events: ExtensionEvents;
     // @beta
     readonly extensionId: string;
     // @beta
     readonly graphId: string;
-    // @beta
     readonly graphSidebar: ExtensionGraphSidebar;
     // @beta
     readonly icons: ExtensionIcons;
     // @beta
     readonly index: ExtensionIndex;
+    readonly journalPanels: ExtensionJournalPanels;
     // @beta
     readonly keybindings: ExtensionKeybindings;
     readonly layout: ExtensionLayout;
     notify(text: string): void;
+    readonly personStorage: ExtensionPersonStorage;
     readonly settings: ExtensionSettings;
     readonly storage: ExtensionStorage;
-    // @beta
     readonly theme: ExtensionTheme;
     readonly views: ExtensionViews;
 }
@@ -161,10 +172,10 @@ export interface ExtensionEmbeds {
     readonly frameHosts: readonly string[];
 }
 
-// @beta
+// @public
 export type ExtensionEventName = keyof ExtensionEventPayloads;
 
-// @beta
+// @public
 export interface ExtensionEventPayloads {
     'concept:renamed': {
         graphId: string;
@@ -188,12 +199,12 @@ export interface ExtensionEventPayloads {
     };
 }
 
-// @beta
+// @public
 export interface ExtensionEvents {
     on<K extends ExtensionEventName>(name: K, listener: (payload: ExtensionEventPayloads[K]) => void): () => void;
 }
 
-// @beta
+// @public
 export interface ExtensionGraphSidebar {
     register(button: GraphSidebarButton): () => void;
 }
@@ -217,6 +228,11 @@ export interface ExtensionIndex {
 // @public
 export type ExtensionIsolation = 'shadow' | 'page';
 
+// @public
+export interface ExtensionJournalPanels {
+    register(panel: JournalPanel): () => void;
+}
+
 // @beta
 export interface ExtensionKeybindings {
     register(binding: Keybinding): () => void;
@@ -227,7 +243,6 @@ export interface ExtensionLayout {
     // @beta
     activeDocument(): string | null;
     isDesktop(): boolean;
-    // @beta
     openDocument(concept: string, options?: {
         line?: number;
         inPaneOf?: string;
@@ -276,8 +291,17 @@ export interface ExtensionPackage {
 }
 
 // @public
+export interface ExtensionPersonStorage {
+    get<T>(key: string): T | undefined;
+    remove(key: string): void;
+    set(key: string, value: unknown): void;
+    subscribe(listener: () => void): () => void;
+}
+
+// @public
 export interface ExtensionSettings {
     get(id: string): string | undefined;
+    set(id: string, value: string | null): void;
     subscribe(listener: () => void): () => void;
 }
 
@@ -288,7 +312,7 @@ export interface ExtensionStorage {
     set(key: string, value: unknown): void;
 }
 
-// @beta
+// @public
 export interface ExtensionTheme {
     isDark(): boolean;
 }
@@ -362,7 +386,7 @@ export interface FrameOptions {
     title: string;
 }
 
-// @beta
+// @public
 export interface GraphSidebarButton {
     args?: unknown;
     command: string;
@@ -385,6 +409,19 @@ export interface IndexUpdate {
     changedConceptKeys: ReadonlySet<string>;
     full: boolean;
     mapsChanged: boolean;
+}
+
+// @public
+export interface JournalPanel {
+    id: string;
+    mount(element: HTMLElement, props: JournalPanelProps): MountedJournalPanel;
+}
+
+// @public
+export interface JournalPanelProps {
+    day: string;
+    panelId?: string;
+    visibility: ViewVisibility;
 }
 
 // @beta
@@ -425,6 +462,11 @@ export type MenuTarget = DocumentMenuTarget | TabMenuTarget | WikilinkMenuTarget
 export interface MountedFence {
     destroy(): void;
     update(context: FenceContext): void;
+}
+
+// @public
+export interface MountedJournalPanel {
+    destroy(): void;
 }
 
 // @public

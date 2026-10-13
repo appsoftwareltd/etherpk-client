@@ -125,6 +125,21 @@ describe('the Extension Directory in the browser', () => {
         expect(installedIds(settings)).toEqual([])
     })
 
+    it('clears the records the extension kept with the person, on every device, and keeps the person’s answers to its settings', async () => {
+        const { host, directory, settings } = setUp()
+        await host.start(fakeGraphServices().services)
+        await directory.install(orchard, release('1.0.0'))
+        settings.set('extension-data.orchard.accounts', '["gardener@example.com"]')
+        settings.set('extension-data.orchard.calendars', '{}')
+        settings.set('extension-data.garden.beds', '3')
+        settings.set('extension.orchard.client-id', 'orchard-client')
+        directory.remove('orchard')
+        expect(settings.keys('extension-data.')).toEqual(['extension-data.garden.beds'])
+        expect(settings.get('extension.orchard.client-id')).toBe('orchard-client')
+        // Cleared rather than forgotten, so the clearing reaches the person's other devices.
+        expect(settings.merge('https://sync.example a1', {})).toMatchObject({ 'extension-data.orchard.accounts': { value: null } })
+    })
+
     it('stops an extension on this device alone, keeping what it holds when asked to', async () => {
         const { host, installed, directory, storage, settings } = setUp()
         await host.start(fakeGraphServices().services)

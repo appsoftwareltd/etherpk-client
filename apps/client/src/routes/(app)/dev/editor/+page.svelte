@@ -34,6 +34,7 @@
     import { builtInCatalogue } from '$lib/extensions/built-ins'
     import { createDialogs } from '$lib/extensions/dialogs'
     import { createExtensionHost } from '$lib/extensions/host'
+    import { browserSignIn } from '$lib/extensions/sign-in'
     import { insertBlock } from '$lib/document/view/block-insert'
     import { createExtensionSwitches } from '$lib/extensions/switches'
     import { RELEASE_VERSION } from '$lib/release'
@@ -109,6 +110,7 @@
             storage: typeof localStorage === 'undefined' ? undefined : localStorage,
             settings: personSettings(),
             dialogs: createDialogs(),
+            signIn: browserSignIn(),
         },
     })
 
