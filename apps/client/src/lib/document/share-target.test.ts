@@ -8,6 +8,7 @@ import {
     composeSharedNote,
     orderShareTargets,
     peekPendingShare,
+    shareNoteText,
     stashPendingShare,
     takePendingShare,
 } from './share-target'
@@ -216,5 +217,43 @@ describe('orderShareTargets: the picker list', () => {
             'b',
             'demo',
         ])
+    })
+})
+
+describe('shareNoteText: what Add puts in the Quick Note', () => {
+    it('is the edited text, trimmed', () => {
+        expect(shareNoteText('  water the beans \n', false)).toBe('water the beans')
+    })
+
+    it('keeps inner line breaks, which the move writes as continuation lines', () => {
+        expect(shareNoteText('Garden\nwater the beans', false)).toBe('Garden\nwater the beans')
+    })
+
+    it('is null for text that is empty once trimmed, task or not', () => {
+        expect(shareNoteText('', false)).toBeNull()
+        expect(shareNoteText(' \n\t ', true)).toBeNull()
+    })
+
+    it('puts a checkbox in front for a task, so the move writes "- [ ] <text>"', () => {
+        expect(shareNoteText(' water the beans', true)).toBe('[ ] water the beans')
+        expect(shareNoteText('Garden\nwater the beans', true)).toBe('[ ] Garden\nwater the beans')
+    })
+
+    it('adds no second checkbox to text that already starts with one, open or done', () => {
+        expect(shareNoteText('[ ] water the beans', true)).toBe('[ ] water the beans')
+        expect(shareNoteText('[x] water the beans', true)).toBe('[x] water the beans')
+        expect(shareNoteText('[X] water the beans', true)).toBe('[X] water the beans')
+        expect(shareNoteText('[ ]', true)).toBe('[ ]')
+        // The editor's own rule: a checkbox needs no space after it (block-model.ts `taskDone`).
+        expect(shareNoteText('[ ]water the beans', true)).toBe('[ ]water the beans')
+    })
+
+    it('treats brackets that are not a checkbox as text', () => {
+        expect(shareNoteText('[Garden](https://example.com/)', true)).toBe('[ ] [Garden](https://example.com/)')
+        expect(shareNoteText('[-] water the beans', true)).toBe('[ ] [-] water the beans')
+    })
+
+    it('leaves a checkbox the user typed alone when the box is not ticked', () => {
+        expect(shareNoteText('[ ] water the beans', false)).toBe('[ ] water the beans')
     })
 })

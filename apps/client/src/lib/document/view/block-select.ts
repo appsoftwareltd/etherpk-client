@@ -1,9 +1,10 @@
 /**
  * Block-granular selection for the outliner (ADR 0021). A selection that reaches from one block into
  * another snaps to WHOLE blocks, so every touched block — its bullet marker, continuation lines and code
- * included — reads as selected and deletes as a unit (Logseq-style). This makes "what will be deleted"
- * unambiguous, and fixes the character-selection quirk where the line the caret just reached shows
- * nothing selected.
+ * included — reads as selected and deletes as a unit (Logseq-style). Each selected block brings every
+ * block nested under it: the selection runs on to the end of its last branch, exactly the lines Tab and
+ * Shift-Tab move ([[Block Selection]]). This makes "what will be deleted" unambiguous, and fixes the
+ * character-selection quirk where the line the caret just reached shows nothing selected.
  *
  * A range inside one block stays character-precise, across its continuation lines and into its own
  * code too, as a selection inside a Logseq block's editor does. Deciding by block rather than by line
@@ -12,13 +13,17 @@
  *
  * Implemented as a transaction filter over pure selection changes (Shift-arrow AND mouse-drag both flow
  * through here), so it needs no separate keymap or pointer handling. A selection that starts in prose
- * or a heading stays character-precise, whatever it reaches below.
+ * or a heading stays character-precise, whatever it reaches below. Shrinking is the exception: a
+ * Shift-arrow that shrinks the selection by one line would land inside a selected branch and be
+ * snapped straight back, so those two presses step by branch or block ({@link shrinkBlockSelectionUp}).
  */
 
-import { EditorSelection, EditorState, type Extension, type SelectionRange, type Text } from '@codemirror/state'
+import { EditorSelection, EditorState, type Extension, type SelectionRange, type StateCommand, type Text } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
 
+import { type FencedBlockRange, fencedBlocks } from '../fenced-code'
 import { outlineLines, type OutlineLine } from '../indent-unit'
+import { branchesWithin, contentStart } from '../outliner'
 import { editorAnalysisField } from './analysis/editor-analysis'
 import { withSelection } from './with-selection'
 
@@ -33,6 +38,48 @@ export const BLOCK_SELECTED_CLASS = 'gk-block-selected'
  */
 function lineOwners(state: EditorState): readonly OutlineLine[] {
     return state.field(editorAnalysisField, false)?.outline ?? outlineLines(state.doc.toString().split('\n'))
+}
+
+/**
+ * The document's lines and fenced blocks, read from the shared analysis like {@link lineOwners}, so a
+ * drag splits and scans nothing on each mouse move. Read only: the analysis owns the arrays.
+ */
+function linesAndBlocks(state: EditorState): { lines: readonly string[]; blocks: readonly FencedBlockRange[] } {
+    const analysis = state.field(editorAnalysisField, false)
+    if (analysis) return { lines: analysis.lines, blocks: analysis.fencedBlocks }
+    const lines = state.doc.toString().split('\n')
+    return { lines, blocks: fencedBlocks(lines) }
+}
+
+/**
+ * The branches rooted within lines `first`…`last`, each from its root to its last descendant
+ * (`branchesWithin`), read with the code the editor shows: a fence still being typed is text.
+ */
+function branchesIn(state: EditorState, first: number, last: number): { start: number; end: number }[] {
+    const { lines, blocks } = linesAndBlocks(state)
+    return branchesWithin(lines, first, last, blocks)
+}
+
+/**
+ * The branches a block selection covers, the ones Tab and Shift-Tab move together, and the lines it
+ * runs over. The snap reads the same branches, so what is highlighted is what the keys move. Null for
+ * a caret, a text range and a prose selection.
+ */
+export function selectedBranches(state: EditorState): { branches: { start: number; end: number }[]; firstLine: number; lastLine: number } | null {
+    const main = state.selection.main
+    if (!isBlockRange(state, main)) return null
+    const { first, last } = touchedLines(state.doc, main)
+    return { branches: branchesIn(state, first, last), firstLine: first, lastLine: last }
+}
+
+/**
+ * The last line of the branches rooted within lines `first`…`last`, or `last` itself when that is
+ * further: a blank, prose or heading line after them. Only the last branch can reach past `last`,
+ * since an earlier one ends before the next root starts.
+ */
+function branchesEnd(state: EditorState, first: number, last: number): number {
+    const branches = branchesIn(state, first, last)
+    return branches.length ? Math.max(last, branches[branches.length - 1].end) : last
 }
 
 /** The 0-based indexes of the first and last lines `range` touches. */
@@ -87,10 +134,10 @@ export function rangeBlockOwner(state: EditorState): number | null {
  * `main` snapped to whole blocks, when it is a block selection that does not already cover them;
  * null otherwise (a caret, a text range, a prose selection, or one already whole). The first block is
  * taken back to its bullet line and the last on through its remaining continuation and code lines;
- * the lines between are whole already. Each end block's lines are taken as the run around the
- * selection's end, so a paragraph a block resumes after its children (as CommonMark writes it) is
- * left out rather than pulling those children in. The drag direction is kept, so Shift-arrow keeps
- * extending naturally.
+ * the lines between are whole already. Then every selected block brings its descendants: the end runs
+ * on to the end of the last selected branch ({@link branchesEnd}), its children, a paragraph it resumes
+ * after them (as CommonMark writes it) and their code included, so the highlight is what Tab moves and
+ * what a delete removes. The drag direction is kept, so Shift-arrow keeps extending naturally.
  */
 export function snappedBlockSelection(state: EditorState, main: SelectionRange): EditorSelection | null {
     if (!isBlockRange(state, main)) return null
@@ -101,6 +148,7 @@ export function snappedBlockSelection(state: EditorState, main: SelectionRange):
     while (first > 0 && owners[first - 1].owner === top) first--
     const bottom = owners[last].owner
     if (bottom >= 0) while (last + 1 < owners.length && owners[last + 1].owner === bottom) last++
+    last = branchesEnd(state, first, last)
     const from = doc.line(first + 1).from
     const to = doc.line(last + 1).to
     const forward = main.head >= main.anchor
@@ -110,8 +158,87 @@ export function snappedBlockSelection(state: EditorState, main: SelectionRange):
     return EditorSelection.single(anchor, head)
 }
 
+/**
+ * The own text of the block whose bullet is line `owner`: from its content column (past the marker
+ * and any checkbox) to the end of its last continuation or code line, children left out. What a
+ * shrinking Shift-arrow leaves when one block is all that would remain, as a drag that comes back
+ * into one block leaves a text range.
+ */
+function ownText(state: EditorState, owners: readonly OutlineLine[], owner: number, headFirst: boolean): EditorSelection {
+    let end = owner
+    while (end + 1 < owners.length && owners[end + 1].owner === owner) end++
+    const bullet = state.doc.line(owner + 1)
+    const from = bullet.from + contentStart(bullet.text)
+    const to = state.doc.line(end + 1).to
+    return headFirst ? EditorSelection.single(to, from) : EditorSelection.single(from, to)
+}
+
+/**
+ * A selection made downwards, less its last branch: whole, as Tab would move it, and with any blank or
+ * prose lines before it. When only the start block's branch would remain, the start block's own text.
+ * Null when the head is on a blank or prose line after the last branch: CodeMirror's line move takes it
+ * back one line, as Shift+Down brought it, and the snap keeps that.
+ */
+function withoutLastBranch(state: EditorState, main: SelectionRange, first: number, last: number): EditorSelection | null {
+    const owners = lineOwners(state)
+    const branches = branchesIn(state, first, last)
+    if (branches.length === 0 || last > branches[branches.length - 1].end) return null
+    if (branches.length >= 2) {
+        const end = branches[branches.length - 2].end
+        const shrunk = EditorSelection.range(main.anchor, state.doc.line(end + 1).to)
+        if (isBlockRange(state, shrunk)) return EditorSelection.create([shrunk])
+    }
+    return ownText(state, owners, owners[first].owner, false)
+}
+
+/**
+ * A selection made upwards, less its top block: that block's own lines only, so its children stay
+ * selected, as a drag back down into its first child leaves them. Blank and prose lines below the
+ * block go with it. When one block would remain, that block's own text; null when nothing would.
+ * The next block starts at a line the outline walk reads as a bullet (one that owns itself), never at
+ * a `- ` line in code or one led by a character the walk does not read as indentation.
+ */
+function withoutTopBlock(state: EditorState, main: SelectionRange, first: number, last: number): EditorSelection | null {
+    const owners = lineOwners(state)
+    const top = owners[first].owner
+    let next = first
+    while (next <= last && owners[next].owner === top) next++
+    while (next <= last && owners[next].owner !== next) next++
+    if (next > last) return null
+    const shrunk = EditorSelection.range(main.anchor, state.doc.line(next + 1).from)
+    return isBlockRange(state, shrunk) ? EditorSelection.create([shrunk]) : ownText(state, owners, owners[next].owner, true)
+}
+
+/**
+ * Shift-Up and Shift-Down over a block selection, when the press shrinks it: the head comes back
+ * towards the anchor by a whole branch (Shift-Up on a selection made downwards) or a whole block
+ * (Shift-Down on one made upwards), never by a line the snap would take straight back. A growing
+ * press, a caret and a text range fall through to CodeMirror's line move, which the snap then widens
+ * to whole branches (Logseq: Shift-Down adds the next block with its children, Shift-Up steps up
+ * through the children of the branch above).
+ */
+function shrinkBlockSelection(dir: 'up' | 'down'): StateCommand {
+    return ({ state, dispatch }) => {
+        const main = state.selection.main
+        if (state.selection.ranges.length > 1 || !isBlockRange(state, main)) return false
+        const madeUpwards = main.head < main.anchor
+        if (madeUpwards !== (dir === 'down')) return false // a growing press
+        const { first, last } = touchedLines(state.doc, main)
+        const selection = dir === 'up' ? withoutLastBranch(state, main, first, last) : withoutTopBlock(state, main, first, last)
+        if (!selection) return false
+        dispatch(state.update({ selection, userEvent: 'select', scrollIntoView: true }))
+        return true
+    }
+}
+
+/** Shift-Up over a block selection made downwards: drop its last branch. */
+export const shrinkBlockSelectionUp: StateCommand = shrinkBlockSelection('up')
+
+/** Shift-Down over a block selection made upwards: drop its top block, its children kept. */
+export const shrinkBlockSelectionDown: StateCommand = shrinkBlockSelection('down')
+
 export function blockSelection(): Extension {
-    return [blockSelectionFilter(), resnapAfterHistory, hideCaretForBlockSelection]
+    return [blockSelectionFilter(), resnapAfterEdit, hideCaretForBlockSelection]
 }
 
 const hideCaretForBlockSelection = [
@@ -130,15 +257,17 @@ function blockSelectionFilter(): Extension {
 }
 
 /**
- * Undo and redo are dispatched past every transaction filter (`filter: false`), and a redo maps the
- * selection it restores forward through the change it re-applies: redoing a Tab over a block selection
- * lands the selection's start after the re-inserted indent, two columns into the first line. A
- * Backspace from there would leave the indent behind as stray spaces. So the snap is re-asserted after
- * a history transaction. (In collab mode the undo manager restores the selection through the filters,
- * so it is already whole-line there.)
+ * The filter above snaps pure selection moves only, so a document change can leave a block selection
+ * short of whole branches, and the snap is re-asserted after one. Undo and redo are dispatched past
+ * every transaction filter (`filter: false`), and a redo maps the selection it restores forward
+ * through the change it re-applies: redoing a Tab over a block selection lands the selection's start
+ * after the re-inserted indent, two columns into the first line, and a Backspace from there would
+ * leave the indent behind as stray spaces. An edit from elsewhere (a collaborator's, or an agent's) can
+ * add a child under the last selected block, which Tab would then move unhighlighted. Tab and Shift-Tab
+ * snap their own selection in the same transaction (the outliner keymap), so this finds them whole.
  */
-const resnapAfterHistory = EditorView.updateListener.of((update) => {
-    if (!update.transactions.some((tr) => tr.isUserEvent('undo') || tr.isUserEvent('redo'))) return
+const resnapAfterEdit = EditorView.updateListener.of((update) => {
+    if (!update.docChanged) return
     const snapped = snappedBlockSelection(update.state, update.state.selection.main)
     if (snapped) update.view.dispatch({ selection: snapped, userEvent: 'select' })
 })

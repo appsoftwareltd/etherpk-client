@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
+import { taskDone } from './outliner'
 import type { QuickNote } from './quick-notes'
 import { journalSeparator, quickNotesAsJournalBlocks } from './quick-notes-journal'
 
@@ -32,6 +33,12 @@ describe('quick notes as journal blocks', () => {
         // note; the continuation column is the bullet's content column (two past its indent).
         const text = quickNotesAsJournalBlocks([note('1', 'first line\n\n  second line  \nthird', '2026-09-17', 1)], dayOf)
         expect(text).toBe(['- [[2026-09-17]]', '  - first line', '    second line', '    third', ''].join('\n'))
+    })
+
+    it('moves a note that starts with a checkbox as a task, which is what the Share Target\'s "Add as task" writes', () => {
+        const text = quickNotesAsJournalBlocks([note('1', '[ ] water the beans\nby the shed', '2026-09-17', 1)], dayOf)
+        expect(text).toBe(['- [[2026-09-17]]', '  - [ ] water the beans', '    by the shed', ''].join('\n'))
+        expect(taskDone(text.split('\n')[1])).toBe(false)
     })
 
     it('writes nothing for no notes', () => {

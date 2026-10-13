@@ -705,7 +705,7 @@ table('Tab and Shift+Tab move whole branches', [
 
 table('Tab and Shift+Tab move every branch of a block selection together, and a range inside one block moves that block', [
     { rule: 'sibling branches nest together, each with its descendants', precedent: 'Logseq', before: '- a\n«- b\n  - c\n- d»', key: 'Tab', after: '- a\n«  - b\n    - c\n  - d»' },
-    { rule: 'descendants below the selection travel with their root', precedent: 'Logseq', before: '- a\n«- b\n- c»\n  - d', key: 'Tab', after: '- a\n«  - b\n  - c»\n    - d' },
+    { rule: 'descendants below a selection set without the snap travel with their root, and the selection then takes them', precedent: 'Logseq', before: '- a\n«- b\n- c»\n  - d', key: 'Tab', after: '- a\n«  - b\n  - c\n    - d»' },
     { rule: 'branches at different depths each nest under their own previous sibling', precedent: 'Logseq', before: '- a\n  - b\n«  - c\n- d»', key: 'Tab', after: '- a\n  - b\n«    - c\n  - d»' },
     { rule: 'the head’s line does not decide: a first child at the head is no refusal', precedent: 'EtherPK', before: '- a\n«- b\n  - c\n- d\n  - e»', key: 'Tab', after: '- a\n«  - b\n    - c\n  - d\n    - e»' },
     { rule: 'refused as a whole when the first selected branch has no previous sibling', precedent: 'Logseq', before: '«- a\n- b»', key: 'Tab', after: '«- a\n- b»' },
@@ -713,7 +713,7 @@ table('Tab and Shift+Tab move every branch of a block selection together, and a 
     { rule: 'each selected branch lands one unit under its own previous sibling, on any grid', precedent: 'EtherPK', before: '- a\n    - x\n«    - b\n    - c»', key: 'Tab', after: '- a\n    - x\n«      - b\n      - c»' },
     { rule: 'outdent lifts every selected branch one level', precedent: 'Logseq', before: '- a\n«  - b\n    - c\n  - d»', key: 'Shift-Tab', after: '- a\n«- b\n  - c\n- d»' },
     { rule: 'outdent is refused as a whole when a selected branch is at the root', precedent: 'EtherPK', before: '«- a\n  - b\n- c»', key: 'Shift-Tab', after: '«- a\n  - b\n- c»' },
-    { rule: 'a block selection whose head reached a fence is still the outliner’s', precedent: 'EtherPK', before: '- a\n«- b\n- c\n  ```\n  x»\n  ```', key: 'Tab', after: '- a\n«  - b\n  - c\n    ```\n    x»\n    ```' },
+    { rule: 'a block selection whose head reached a fence is still the outliner’s, and takes the block whole', precedent: 'EtherPK', before: '- a\n«- b\n- c\n  ```\n  x»\n  ```', key: 'Tab', after: '- a\n«  - b\n  - c\n    ```\n    x\n    ```»' },
     { rule: 'a range from a block into its own code nests the block, not the code', precedent: 'Logseq', before: '- a\n- «b\n  ```\n  x»\n  ```', key: 'Tab', after: '- a\n  - «b\n    ```\n    x»\n    ```' },
     { rule: 'a range inside one block, across its continuation, nests the block and stays on its text', precedent: 'Logseq', before: '- a\n- «b\n  soft»', key: 'Tab', after: '- a\n  - «b\n    soft»' },
     { rule: 'a range across a block’s continuation lines alone still moves the block, not a line of it', precedent: 'Logseq', before: '- a\n- b\n  «soft\n  more»', key: 'Tab', after: '- a\n  - b\n    «soft\n    more»' },
@@ -721,8 +721,60 @@ table('Tab and Shift+Tab move every branch of a block selection together, and a 
     { rule: 'a range from a block into its own code is refused whole when the block cannot nest', precedent: 'EtherPK', before: '- «a\n  ```\n  x»\n  ```', key: 'Tab', after: '- «a\n  ```\n  x»\n  ```' },
     { rule: 'a selection across a blank line spans two groups: the second group’s first block has no sibling, so Tab is refused whole', precedent: 'EtherPK', before: '- a\n«- b\n\n- c»', key: 'Tab', after: '- a\n«- b\n\n- c»' },
     { rule: 'across a blank line, Shift+Tab lifts the blocks of both groups and leaves the blank alone', precedent: 'EtherPK', before: '- a\n  - b\n«  - c\n\n  - d»', key: 'Shift-Tab', after: '- a\n  - b\n«- c\n\n- d»' },
-    { rule: 'a selection from a nested block to a shallower one lifts each; the block after becomes the last one’s child', precedent: 'Logseq', before: '- a\n  - b\n«    - c\n  - d»\n  - e', key: 'Shift-Tab', after: '- a\n  - b\n«  - c\n- d»\n  - e' },
+    { rule: 'a selection from a nested block to a shallower one lifts each; the block after becomes the last one’s child, and is selected with it', precedent: 'Logseq', before: '- a\n  - b\n«    - c\n  - d»\n  - e', key: 'Shift-Tab', after: '- a\n  - b\n«  - c\n- d\n  - e»' },
 ])
+
+// A block selection is snapped to whole branches (block-select.ts), so a press that shrinks it one line
+// would land inside a selected branch and be snapped straight back. Shrinking steps by branch or block.
+table('Shift+Up and Shift+Down shrink a block selection a branch or a block at a time', [
+    { rule: 'Shift+Up removes the last branch', precedent: 'EtherPK', before: '«- a\n- b\n  - c\n- d»', key: 'Shift-ArrowUp', after: '«- a\n- b\n  - c»\n- d' },
+    { rule: 'Shift+Up removes a last branch with children whole', precedent: 'EtherPK', before: '«- a\n- b\n- c\n  - d»', key: 'Shift-ArrowUp', after: '«- a\n- b»\n- c\n  - d' },
+    { rule: 'a last block with continuation lines is removed in one press', precedent: 'EtherPK', before: '«- a\n- b\n- c\n  soft»', key: 'Shift-ArrowUp', after: '«- a\n- b»\n- c\n  soft' },
+    { rule: 'blank and prose lines between groups go with the branch after them', precedent: 'EtherPK', before: '«- a\n- b\n\n- c»', key: 'Shift-ArrowUp', after: '«- a\n- b»\n\n- c' },
+    { rule: 'a start block with children stays a block selection', precedent: 'EtherPK', before: '«- a\n  - b\n- c»', key: 'Shift-ArrowUp', after: '«- a\n  - b»\n- c' },
+    { rule: 'with only the start branch left, the start block’s own text is selected', precedent: 'EtherPK', before: '«- a\n  - b»\n- c', key: 'Shift-ArrowUp', after: '- «a»\n  - b\n- c' },
+    { rule: 'a start block’s continuation is part of its text', precedent: 'EtherPK', before: '«- a\n  soft\n- b»', key: 'Shift-ArrowUp', after: '- «a\n  soft»\n- b' },
+    { rule: 'a start task’s text starts after its checkbox', precedent: 'EtherPK', before: '«- [ ] a\n- b»', key: 'Shift-ArrowUp', after: '- [ ] «a»\n- b' },
+    { rule: 'Shift+Down removes the top block only, its children kept', precedent: 'Logseq', before: '»- a\n  - b\n- c«', key: 'Shift-ArrowDown', after: '- a\n«  - b\n- c»' },
+    { rule: 'a top block with continuation lines is removed in one press', precedent: 'EtherPK', before: '»- a\n  soft\n- b\n- c«', key: 'Shift-ArrowDown', after: '- a\n  soft\n«- b\n- c»' },
+    { rule: 'blank and prose lines between groups go with the block before them', precedent: 'EtherPK', before: '»- a\n\n- b\n- c«', key: 'Shift-ArrowDown', after: '- a\n\n«- b\n- c»' },
+    { rule: 'with only the bottom block left, its own text is selected', precedent: 'EtherPK', before: '- a\n»- b\n- c«', key: 'Shift-ArrowDown', after: '- a\n- b\n- «c»' },
+    { rule: 'a `- ` line in a code sample is no block for Shift+Down to stop at', precedent: 'EtherPK', before: '»- a\n```\n- x\n```\n- b«', key: 'Shift-ArrowDown', after: '- a\n```\n- x\n```\n- «b»' },
+    { rule: 'a `- ` line in a code sample is no branch for Shift+Up to remove', precedent: 'EtherPK', before: '«- a\n```\n- x\n```\n- b»', key: 'Shift-ArrowUp', after: '- «a»\n```\n- x\n```\n- b' },
+    { rule: 'a `- ` line in a block’s own code is no block for Shift+Down to stop at', precedent: 'EtherPK', before: '»- a\n  ```\n  - x\n  ```\n- b\n- c«', key: 'Shift-ArrowDown', after: '- a\n  ```\n  - x\n  ```\n«- b\n- c»' },
+])
+
+describe('shrinking a block selection (EtherPK)', () => {
+    it('keeps the head first when Shift+Down shrinks an upward selection', () => {
+        for (const before of ['»- a\n  - b\n- c«', '- a\n»- b\n- c«']) {
+            const editor = editorFixture(before)
+            editor.key('Shift-ArrowDown')
+            expect(editor.state.selection.main.head).toBeLessThan(editor.state.selection.main.anchor)
+        }
+    })
+
+    it('steps past a line that only looks like a bullet', () => {
+        const nbsp = String.fromCharCode(0xa0) // a no-break space before the dash: prose to the outline walk
+        const editor = editorFixture(`»- a\n${nbsp}- x\n- b«`)
+        editor.key('Shift-ArrowDown')
+        expect(editor.fixture()).toBe(`- a\n${nbsp}- x\n- «b»`)
+    })
+
+    it('leaves a growing press, a caret and a text range to CodeMirror', () => {
+        expect(editorFixture('«- a\n- b»\n- c').key('Shift-ArrowDown')).toBe(false)
+        expect(editorFixture('- a\n»- b\n- c«').key('Shift-ArrowUp')).toBe(false)
+        expect(editorFixture('- a|\n- b').key('Shift-ArrowUp')).toBe(false)
+        expect(editorFixture('- «a\n  soft»').key('Shift-ArrowUp')).toBe(false)
+        expect(editorFixture('«prose\n- b»').key('Shift-ArrowUp')).toBe(false)
+    })
+
+    it('leaves a press from a blank or prose line after the last branch to CodeMirror, which moves one line', () => {
+        // Shift+Down from «- a\n- b» reaches the blank line, and the snap keeps it there: Shift+Up comes
+        // back one line at a time, as it went, rather than past the branch above.
+        expect(editorFixture('«- a\n- b\n»\n- c').key('Shift-ArrowUp')).toBe(false)
+        expect(editorFixture('«- a\n  - b\nprose»').key('Shift-ArrowUp')).toBe(false)
+    })
+})
 
 table('Alt+Up / Alt+Down is the Logseq move (ADR 0021)', [
     { rule: 'from a continuation after the children the whole branch jumps, paragraph included', precedent: 'EtherPK', before: '- a\n  - b\n  trailing|\n- c', key: 'Alt-ArrowDown', after: '- c\n- a\n  - b\n  trailing|' },

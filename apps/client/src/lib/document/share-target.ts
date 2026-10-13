@@ -2,16 +2,18 @@
  * The [[Share Target]] (CONTEXT.md; ADR 0087): text or a link handed to EtherPK by another app
  * through the device's share sheet, becoming a [[Quick Note]] in the graph the user picks.
  *
- * Three pure pieces, all framework-free so the rules are pinned down in the Node tier:
+ * Pure pieces, all framework-free so the rules are pinned down in the Node tier:
  *
  * - **What the note says.** The share sheet hands over up to three fields and apps fill them
  *   inconsistently (Chrome shares a page as `title` + the url in `text`; YouTube puts
  *   "Title https://…" in `text` alone). {@link composeSharedNote} turns whatever arrived into
  *   one string, a page's title made the link's text, and cuts a runaway `text` to the cap.
- * - **Which graph first.** {@link orderShareTargets}: the last-opened graph first (so the common
- *   case is one tap), the rest in the Graphs page's order, the Demo Graph apart and last.
- * - **The wait.** The share page decides only the graph; the workspace adds the note once the
- *   graph is open (ADR 0087). Between the two the text is a {@link PendingShare} in
+ * - **Which graph first.** {@link orderShareTargets}: the last-opened graph first and preselected,
+ *   the rest in the Graphs page's order, the Demo Graph apart and last.
+ * - **What Add writes.** {@link shareNoteText}: the edited text, with a checkbox in front when
+ *   the user marked it as a task.
+ * - **The wait.** When the share page cannot write the note itself, the workspace adds it once
+ *   the graph is open (ADR 0087). Between the two the text is a {@link PendingShare} in
  *   `sessionStorage`: it survives the unlock prompt, the permission button and a reload, is
  *   consumed once, and dies with the window - closing it at the unlock prompt discards the
  *   share, as cancelling any share sheet does.
@@ -125,6 +127,26 @@ export function composeSharedNote(payload: SharedPayload): ComposedShare | null 
     return { text: lines.join('\n'), truncated }
 }
 
+/**
+ * A checkbox at the start of the text, open or done, with or without a space after it: the
+ * editor's own task rule (`taskDone` in block-model.ts), less the bullet the move writes.
+ */
+const LEADING_CHECKBOX = /^\[[ xX]\]/
+
+/**
+ * What Add puts in the [[Quick Note]]: the edited text, trimmed, or `null` when nothing is left.
+ * For a task, a checkbox in front, so the move to the journal writes the first line as
+ * `  - [ ] <text>` and the note lands as a [[Task]]. The checkbox is the note's own text rather
+ * than a field beside it, so the Quick Notes View shows exactly what will land and nothing about
+ * the note's record, sync or file changes (ADR 0087, amended 2026-10-13). Text that already
+ * starts with a checkbox is left alone, so a share sent back to the page cannot get a second.
+ */
+export function shareNoteText(text: string, asTask: boolean): string | null {
+    const trimmed = text.trim()
+    if (trimmed === '') return null
+    return asTask && !LEADING_CHECKBOX.test(trimmed) ? `[ ] ${trimmed}` : trimmed
+}
+
 export interface ShareTargetOrder {
     /** The device-local last-opened pointer (last-graph.ts), or null. */
     lastGraphId: string | null
@@ -132,7 +154,7 @@ export interface ShareTargetOrder {
 }
 
 /**
- * The picker's order: the last-opened graph first and focused, the rest in the order given
+ * The picker's order: the last-opened graph first and preselected, the rest in the order given
  * (the registry's, which is the Graphs page's, so the two cannot drift), the Demo Graph last
  * whatever its place - a throwaway never sits above real work (ADR 0069), even when it was the
  * last thing opened.

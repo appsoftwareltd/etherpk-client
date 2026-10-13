@@ -104,7 +104,7 @@ export function formOneOpeners(lines: readonly string[], blocks: readonly Fenced
 }
 
 /** Map from a fenced block's opener line index to the block, for O(1) "does a fence start here?". */
-function fenceStartMap(blocks: FencedBlockRange[]): Map<number, FencedBlockRange> {
+function fenceStartMap(blocks: readonly FencedBlockRange[]): Map<number, FencedBlockRange> {
     const m = new Map<number, FencedBlockRange>()
     for (const b of blocks) m.set(b.start, b)
     return m
@@ -119,8 +119,12 @@ function fenceStartMap(blocks: FencedBlockRange[]): Map<number, FencedBlockRange
  * ends it, as do a heading and any same-or-shallower content line.
  */
 export function branchRange(lines: string[], i: number, blocks: FencedBlockRange[] = fencedBlocks(lines)): { start: number; end: number } {
+    return { start: i, end: branchEnd(lines, i, fenceStartMap(blocks)) }
+}
+
+/** The last line of the branch rooted at line `i` ({@link branchRange}), given the fence openers. */
+function branchEnd(lines: readonly string[], i: number, starts: Map<number, FencedBlockRange>): number {
     const root = lineIndent(lines[i])
-    const starts = fenceStartMap(blocks)
     const own = starts.get(i) // `i` itself may open a fence (a `- ``` ` form-1 bullet)
     let end = own ? own.end : i
     let j = end + 1
@@ -140,26 +144,45 @@ export function branchRange(lines: string[], i: number, blocks: FencedBlockRange
         end = j
         j++
     }
-    return { start: i, end }
+    return end
 }
 
 /**
- * The roots of the branches within lines `[first, last]`: every bullet line in the span that is not
- * inside an earlier root's branch. A block selection's Tab and Shift-Tab act on these together. A
- * blank, prose or heading line in the span is nobody's root; a branch whose descendants run past
- * `last` is still whole — a branch is never split by where a selection stopped.
+ * The branches rooted within lines `[first, last]`, in order, each from its root to its last line: a
+ * root is every bullet line in the span that is not inside an earlier root's branch. A block
+ * selection's Tab and Shift-Tab act on these together, and the block selection snaps to them
+ * (`view/block-select.ts`), so what it highlights is what Tab moves. A blank, prose or heading line
+ * in the span is nobody's root; a branch whose descendants run past `last` is still whole — a branch
+ * is never split by where a selection stopped. Fenced code is opaque: a `- ` line in a code sample, or
+ * in code the span starts inside, is code and no root. The fence openers are mapped once for the whole
+ * span: the snap runs on every mouse move of a drag.
  */
-export function branchRootsWithin(lines: string[], first: number, last: number): number[] {
-    const roots: number[] = []
-    for (let j = first; j <= last; ) {
+export function branchesWithin(lines: readonly string[], first: number, last: number, blocks: readonly FencedBlockRange[] = fencedBlocks(lines)): { start: number; end: number }[] {
+    const starts = fenceStartMap(blocks)
+    const branches: { start: number; end: number }[] = []
+    // A span that starts inside code starts after it, past the outermost block around its first line.
+    let j = first
+    for (const b of blocks) if (b.start < first && b.end >= j) j = b.end + 1
+    while (j <= last) {
+        const fence = starts.get(j)
+        if (fence && !isBulletLine(lines[j])) {
+            j = fence.end + 1 // a code sample, or code under prose: opaque, whatever its lines look like
+            continue
+        }
         if (!isBulletLine(lines[j])) {
             j++
             continue
         }
-        roots.push(j)
-        j = branchRange(lines, j).end + 1
+        const end = branchEnd(lines, j, starts)
+        branches.push({ start: j, end })
+        j = end + 1
     }
-    return roots
+    return branches
+}
+
+/** The roots of the branches within lines `[first, last]` ({@link branchesWithin}). */
+export function branchRootsWithin(lines: readonly string[], first: number, last: number, blocks: readonly FencedBlockRange[] = fencedBlocks(lines)): number[] {
+    return branchesWithin(lines, first, last, blocks).map((branch) => branch.start)
 }
 
 /**

@@ -7,6 +7,7 @@ import {
     applyLineCuts,
     blockBodyEnd,
     branchRange,
+    branchesWithin,
     branchRootsWithin,
     bulletContent,
     canIndent,
@@ -158,6 +159,23 @@ describe('branchRootsWithin (a block selection’s branches)', () => {
         const lines = ['- a', '', '# h', 'prose', '- b', '  - c']
         expect(branchRootsWithin(lines, 0, 4)).toEqual([0, 4])
         expect(branchRootsWithin(lines, 1, 3)).toEqual([])
+    })
+
+    it('gives each branch to its last descendant, past the span too', () => {
+        const lines = ['- a', '  - b', '- c', '  - d', '    - e', '- f']
+        expect(branchesWithin(lines, 0, 2)).toEqual([
+            { start: 0, end: 1 },
+            { start: 2, end: 4 },
+        ])
+    })
+
+    it('takes no `- ` line inside code for a root, in a code sample or where the span starts in code', () => {
+        const lines = ['- a', '```', '- x', '```', '- b']
+        expect(branchesWithin(lines, 0, 4)).toEqual([
+            { start: 0, end: 0 },
+            { start: 4, end: 4 },
+        ])
+        expect(branchRootsWithin(lines, 2, 4)).toEqual([4])
     })
 })
 

@@ -23,6 +23,7 @@ import { analysisFor } from './analysis/editor-analysis'
 import { interactiveFenceAugmentation } from './augmentations/interactive-fence'
 import { type InteractiveFence, registerInteractiveFence } from './augmentations/interactive-fence-contract'
 import { collapsedInteractiveFences, interactiveFences } from './augmentations/interactive-fence-state'
+import { isBlockSelection, snappedBlockSelection } from './block-select'
 import { clampColumn } from './caret-clamp'
 import { toggleBullet } from './outliner-keymap'
 import { bulletToggleable } from './task-toggleable'
@@ -758,6 +759,33 @@ describe('outliner invariants under random key sequences', { timeout: 30_000 }, 
                 }
             }),
             fuzz(200),
+        )
+    })
+
+    it('a shrinking Shift-arrow over a block selection never edits, always changes the selection, and leaves one the snap keeps', () => {
+        // Editor Content Rules → Selection: a block selection is snapped to whole branches, so a shrink
+        // that moved the head by a line would be snapped straight back. Each press that acts must shrink.
+        fc.assert(
+            fc.property(scenarioArb, afterChildrenArb, formOneArb, marginArb, fc.boolean(), fc.integer({ min: 1, max: 5 }), ({ outline, caretAt, selectTo }, afterChildren, formOne, margin, upwards, presses) => {
+                const editor = editorFor(outline, caretAt, selectTo ?? 1, 'unit', [], afterChildren, [], formOne, [], [], margin)
+                if (!isBlockSelection(editor.state)) return
+                if (upwards) {
+                    const { anchor, head } = editor.state.selection.main
+                    editor.select(head, anchor) // the same lines, made upwards
+                }
+                const text = editor.text()
+                for (let n = 0; n < presses && isBlockSelection(editor.state); n++) {
+                    const before = editor.state.selection.main
+                    const shrinking = before.head < before.anchor ? 'Shift-ArrowDown' : 'Shift-ArrowUp'
+                    if (!editor.key(shrinking)) return // a press from a line after the last branch: CodeMirror's
+                    const after = editor.state.selection.main
+                    expect(editor.text()).toBe(text)
+                    expect([after.anchor, after.head]).not.toEqual([before.anchor, before.head])
+                    expect(Math.max(after.from, before.from) <= Math.min(after.to, before.to) && after.to - after.from < before.to - before.from).toBe(true)
+                    expect(snappedBlockSelection(editor.state, after)).toBeNull()
+                }
+            }),
+            fuzz(300),
         )
     })
 })

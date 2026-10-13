@@ -1,7 +1,8 @@
 /**
- * Where a [[Share Target]] share lands once the user has picked a graph (ADR 0087, amended
- * 2026-09-21): written directly from the share page when this device can do it without asking
- * anything, handed to the workspace otherwise.
+ * Where a [[Share Target]] share lands once the user presses Add (ADR 0087, amended 2026-09-21
+ * and 2026-10-13): written directly from the share page when this device can do it without
+ * asking anything, handed to the workspace otherwise. The route is worked out before Add
+ * (`routeShare`) and the write runs on it (`landShareDirectly`).
  *
  * The direct write is for synced graphs only. Their engine is built for more than one writer -
  * the Local Cache is shared across tabs and a Y.Array append merges at the relay - so a share
@@ -28,10 +29,29 @@ import { heldGraphKeyring, resolveSyncedGraphConnection, type SyncedGraphConnect
 
 import type { QuickNote } from './quick-notes'
 
-export type ShareLanding =
-    | { kind: 'added'; synced: boolean }
-    | { kind: 'handoff'; reason: 'folder' | 'no-sync' | 'locked' }
-    | { kind: 'handoff'; reason: 'failed'; error: string }
+/** A failure on the way to the direct write, named so the console can say what went wrong. */
+export interface FailedHandoff {
+    kind: 'handoff'
+    reason: 'failed'
+    error: string
+}
+
+/** Why a share goes to the workspace instead of being written from the share page. */
+export type ShareHandoff = { kind: 'handoff'; reason: 'folder' | 'no-sync' | 'locked' } | FailedHandoff
+
+/** Everything the direct write's session needs, read before the user presses Add. */
+export interface DirectShareRoute {
+    kind: 'direct'
+    graphId: string
+    rootDocId: string
+    keyring: GraphKeyring
+    connection: SyncedGraphConnection
+}
+
+export type ShareRoute = DirectShareRoute | ShareHandoff
+
+/** How the direct write ended: the note added (and whether the relay acknowledged it), or a hand-off after all. */
+export type ShareLanding = { kind: 'added'; synced: boolean } | FailedHandoff
 
 /** The three seams, injectable so the decision is pinned down without a relay or a vault. */
 export interface ShareLandingDeps {
@@ -50,28 +70,62 @@ const productionDeps: ShareLandingDeps = {
     session: addQuickNoteOverSession,
 }
 
+function failure(err: unknown): FailedHandoff {
+    return { kind: 'handoff', reason: 'failed', error: err instanceof Error ? err.message : String(err) }
+}
+
+/**
+ * How a share to `graph` would land, worked out while the user is still reading the form: the
+ * direct write's preconditions, or the reason it hands over. The page runs this as soon as a
+ * graph is selected, because reading the held keyring opens the vault, which is a network call;
+ * done before Add, the press saves at once, and a hand-off is known before anything says
+ * "Adding". Nothing here writes or prompts.
+ */
+export async function routeShare(graph: GraphRecord, deps: Pick<ShareLandingDeps, 'connection' | 'keyring'> = productionDeps): Promise<ShareRoute> {
+    if (graph.backend !== 'server') return { kind: 'handoff', reason: 'folder' }
+    // Inside the try as well: the connection is read from this browser's storage, and the page
+    // holds the result as a promise it never expects to reject.
+    try {
+        const connection = deps.connection(graph)
+        if (!connection) return { kind: 'handoff', reason: 'no-sync' }
+        const rootDocId = (graph.handle as { rootDocId?: unknown } | null)?.rootDocId
+        if (typeof rootDocId !== 'string' || rootDocId === '') throw new Error('The graph record names no root document.')
+        const keyring = await deps.keyring(connection, graph.id)
+        if (!keyring) return { kind: 'handoff', reason: 'locked' }
+        return { kind: 'direct', graphId: graph.id, rootDocId, keyring, connection }
+    } catch (err) {
+        return failure(err)
+    }
+}
+
 /** What the caller hears and controls: `onSaved`, and a signal that ends the sync wait early. */
 export interface ShareLandingOptions extends QuickNoteSessionHooks {
     signal?: AbortSignal
 }
 
+/**
+ * Write the note over a short engine session on a route `routeShare` resolved. A failure before
+ * the session reports the note saved hands over; one after it is a sync problem the page reports,
+ * never a reason to hand the same text to the workspace again.
+ */
 export async function landShareDirectly(
-    graph: GraphRecord,
+    route: DirectShareRoute,
     note: QuickNote,
-    deps: ShareLandingDeps = productionDeps,
+    deps: Pick<ShareLandingDeps, 'session'> = productionDeps,
     hooks: ShareLandingOptions = {},
 ): Promise<ShareLanding> {
-    if (graph.backend !== 'server') return { kind: 'handoff', reason: 'folder' }
-    const connection = deps.connection(graph)
-    if (!connection) return { kind: 'handoff', reason: 'no-sync' }
     let saved = false
     try {
-        const rootDocId = (graph.handle as { rootDocId?: unknown } | null)?.rootDocId
-        if (typeof rootDocId !== 'string' || rootDocId === '') throw new Error('The graph record names no root document.')
-        const keyring = await deps.keyring(connection, graph.id)
-        if (!keyring) return { kind: 'handoff', reason: 'locked' }
+        const { connection } = route
         const delivery = await deps.session(
-            { graphId: graph.id, rootDocId, keyring, relayUrl: connection.relayUrl, token: connection.token, signal: hooks.signal },
+            {
+                graphId: route.graphId,
+                rootDocId: route.rootDocId,
+                keyring: route.keyring,
+                relayUrl: connection.relayUrl,
+                token: connection.token,
+                signal: hooks.signal,
+            },
             note,
             {
                 onSaved: () => {
@@ -83,6 +137,6 @@ export async function landShareDirectly(
         return { kind: 'added', synced: delivery.synced }
     } catch (err) {
         if (saved) return { kind: 'added', synced: false }
-        return { kind: 'handoff', reason: 'failed', error: err instanceof Error ? err.message : String(err) }
+        return failure(err)
     }
 }

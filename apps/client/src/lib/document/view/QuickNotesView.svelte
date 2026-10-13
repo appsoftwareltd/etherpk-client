@@ -206,17 +206,18 @@
     <span class="sr-only" aria-live="polite" data-testid="quick-notes-announcement">{announcement}</span>
 
     <!-- ── Move ───────────────────────────────────────────────────────────────── -->
-    <!-- Disabled only while there is nothing to move: the empty list below says why. -->
+    <!-- Disabled only while there is nothing to move: the empty list below says why. Drawn like
+         Add, the box's own button, so it reads as an action rather than another field. -->
     <button
         type="button"
         data-testid="quick-notes-move"
         onclick={move}
         disabled={count === 0 || moving || !hasMoveCommand}
         aria-busy={moving}
-        class="flex w-full items-center justify-center gap-2 rounded-md border border-(--gk-border-soft) bg-(--gk-surface-1) px-2 py-1.5 text-sm font-medium text-(--gk-text-strong) hover:bg-(--gk-surface-2) disabled:cursor-default disabled:opacity-50 disabled:hover:bg-(--gk-surface-1) pointer-coarse:min-h-11"
+        class="flex w-full items-center justify-center gap-2 rounded-md bg-(--gk-accent) px-3 py-1.5 text-sm font-medium text-(--gk-surface-0) hover:bg-(--gk-accent-hover) disabled:cursor-default disabled:opacity-50 disabled:hover:bg-(--gk-accent) pointer-coarse:min-h-11"
     >
         <svg
-            class="h-4 w-4 shrink-0 text-(--gk-text-subtle)"
+            class="h-4 w-4 shrink-0"
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"

@@ -17,7 +17,6 @@ import {
     applyLeaveListCuts,
     blockBodyEnd,
     branchRange,
-    branchRootsWithin,
     bulletContent,
     canIndent,
     canLeaveList,
@@ -53,7 +52,7 @@ import { INDENT, INDENT_UNIT } from '../indent-unit'
 import { deletionBreaksFence } from './fence-guard'
 import { minimalReplacement } from './minimal-replacement'
 import { toggleBold, toggleHighlight, toggleItalic } from './wrap-selection'
-import { isBlockSelection, rangeBlockOwner } from './block-select'
+import { isBlockSelection, rangeBlockOwner, selectedBranches, shrinkBlockSelectionDown, shrinkBlockSelectionUp, snappedBlockSelection } from './block-select'
 import { analysisFor } from './analysis/editor-analysis'
 import { caretContext, type FencedBlock, fencedBlockAt, lineInFrontmatter, outermostFencedBlockAt, unterminatedFenceOpenerAt } from './outliner-context'
 import { bulletToggleable, taskToggleable, toggledBullet } from './task-toggleable'
@@ -174,26 +173,11 @@ function offsetOfLine(view: Target, n: number): number {
 }
 
 /**
- * The branches a block selection covers: the 0-based index of every bullet line in the selected
- * lines that is not inside an earlier selected branch. A selection reaching from one block into
- * another is block-granular (block-select.ts), so Tab and Shift-Tab act on all of its branches
- * together, the way Logseq moves a multi-block selection — not on the line the head happens to sit
- * on. Null for a caret, a text range or a prose selection: those keep the caret-line rule (a range
- * inside one block acting on that block). Descendants past the selection's last line still travel
- * with their root; a branch is never split by where a drag stopped.
- */
-function selectedBranchRoots(view: Target, lines: string[]): { roots: number[]; firstLine: number; lastLine: number } | null {
-    if (!isBlockSelection(view.state)) return null
-    const main = view.state.selection.main
-    const firstLine = view.state.doc.lineAt(main.from).number - 1
-    const lastLine = view.state.doc.lineAt(main.to).number - 1
-    return { roots: branchRootsWithin(lines, firstLine, lastLine), firstLine, lastLine }
-}
-
-/**
  * Apply a shift of every selected branch and keep the selection on the same whole lines. Mapping
  * the selection through the change would leave its start after the inserted indent (a range's
- * `from` maps forward past an insertion at its position), so it is re-anchored explicitly.
+ * `from` maps forward past an insertion at its position), so it is re-anchored explicitly. Then it is
+ * snapped in the shifted document, in the same transaction: an outdent can make the block after the
+ * selection a child of its last block, and a block selection takes every selected block's children.
  */
 function dispatchBranchShift(view: Target, changes: ChangeSpec[], firstLine: number, lastLine: number, userEvent: ShiftEvent): void {
     const { state } = view
@@ -201,7 +185,9 @@ function dispatchBranchShift(view: Target, changes: ChangeSpec[], firstLine: num
     const from = set.mapPos(state.doc.line(firstLine + 1).from, -1)
     const to = set.mapPos(state.doc.line(lastLine + 1).to, 1)
     const forward = state.selection.main.head >= state.selection.main.anchor
-    dispatchKeeping(view, { changes: set, selection: EditorSelection.single(forward ? from : to, forward ? to : from), userEvent })
+    const kept = EditorSelection.single(forward ? from : to, forward ? to : from)
+    const shifted = state.update({ changes: set, selection: kept }).state
+    dispatchKeeping(view, { changes: set, selection: snappedBlockSelection(shifted, kept.main) ?? kept, userEvent })
 }
 
 /**
@@ -228,7 +214,11 @@ function indentDelta(lines: string[], root: number): number {
 
 /** Changes shifting every line of the branch rooted at `root` by `delta` columns (never below 0). */
 function branchShift(view: Target, lines: string[], root: number, delta: number): ChangeSpec[] {
-    const { start, end } = branchRange(lines, root)
+    return linesShift(view, lines, branchRange(lines, root), delta)
+}
+
+/** Changes shifting every line from `start` to `end` by `delta` columns (never below 0). */
+function linesShift(view: Target, lines: string[], { start, end }: { start: number; end: number }, delta: number): ChangeSpec[] {
     const changes: ChangeSpec[] = []
     for (let j = start; j <= end; j++) {
         const from = offsetOfLine(view, j)
@@ -243,14 +233,17 @@ function branchShift(view: Target, lines: string[], root: number, delta: number)
 
 export const indentBranch: StateCommand = (view) => {
     const { lines, index } = ctx(view)
-    const selected = selectedBranchRoots(view, lines)
+    // A block selection's branches (block-select.ts), the ones it highlights: Tab moves all of them
+    // together, the way Logseq moves a multi-block selection, not the line the head happens to sit on.
+    // A caret, a text range and a prose selection keep the caret-line rule below.
+    const selected = selectedBranches(view.state)
     if (selected) {
         // Every selected branch nests one level, or none does: each needs a previous sibling to
         // nest under, judged in the document as it stands — a later selected sibling's previous
         // sibling is the earlier one, which moves with it, so the pair keeps its shape.
-        if (!selected.roots.every((root) => canIndent(lines, root))) return true // consume — never move focus
+        if (!selected.branches.every((branch) => canIndent(lines, branch.start))) return true // consume — never move focus
         const changes: ChangeSpec[] = []
-        for (const root of selected.roots) changes.push(...branchShift(view, lines, root, indentDelta(lines, root)))
+        for (const branch of selected.branches) changes.push(...linesShift(view, lines, branch, indentDelta(lines, branch.start)))
         dispatchBranchShift(view, changes, selected.firstLine, selected.lastLine, 'input.indent')
         return true
     }
@@ -282,14 +275,14 @@ export const outdentBranch: StateCommand = (view) => {
     // Shift-Tab lands the root on its parent's indent (column 0 without one): one press is one level
     // on any grid (ADR 0067), the descendants keeping their own offsets.
     const outdentDelta = (root: number) => outdentTarget(lines, root) - lineIndent(lines[root])
-    const selected = selectedBranchRoots(view, lines)
+    const selected = selectedBranches(view.state)
     if (selected) {
         // Every selected branch lifts one level, or none does. A root at the top level is refused
         // rather than turned into prose: the caret-line rule's exit from the list would leave the
         // other selected blocks under a prose line, split from their group.
-        if (!selected.roots.every((root) => canOutdent(lines, root))) return true // consume
+        if (!selected.branches.every((branch) => canOutdent(lines, branch.start))) return true // consume
         const changes: ChangeSpec[] = []
-        for (const root of selected.roots) changes.push(...branchShift(view, lines, root, outdentDelta(root)))
+        for (const branch of selected.branches) changes.push(...linesShift(view, lines, branch, outdentDelta(branch.start)))
         dispatchBranchShift(view, changes, selected.firstLine, selected.lastLine, 'delete.dedent') // refused where a fence would pair anew
         return true
     }
@@ -1488,6 +1481,10 @@ export function outlinerBindings(): readonly KeyBinding[] {
         { key: 'Alt-ArrowDown', run: moveBranchDown },
         { key: 'Alt-Shift-ArrowUp', run: moveBranchUp },
         { key: 'Alt-Shift-ArrowDown', run: moveBranchDown },
+        // A block selection shrinks by a branch or a block (block-select.ts); a growing press, a caret and
+        // a text range fall through to CodeMirror's line move, which the block snap then widens.
+        { key: 'Shift-ArrowUp', run: shrinkBlockSelectionUp },
+        { key: 'Shift-ArrowDown', run: shrinkBlockSelectionDown },
         { key: 'Mod-.', run: toggleFold },
         // Format Toggles (wrap-selection.ts, ADR 0077). `preventDefault` so a refused toggle (in a
         // fence, say) still does not reach the browser, where Mod-b opens Firefox's bookmarks.

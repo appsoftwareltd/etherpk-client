@@ -534,7 +534,11 @@
     });
 </script>
 
-<div class="flex h-full flex-col overflow-hidden text-(--gk-text-default)" data-testid="tasks-view">
+<!-- break-words (overflow-wrap: break-word, inherited by everything below): a link or any other
+     run with no space in it breaks at the View's edge instead of running past it. Without it
+     one long link in a task widened the list and the whole list scrolled sideways. It only
+     breaks a word that would otherwise overflow, so ordinary text wraps at spaces as before. -->
+<div class="flex h-full flex-col overflow-hidden break-words text-(--gk-text-default)" data-testid="tasks-view">
     <div class="flex flex-col gap-2 border-b border-(--gk-border-soft) p-3">
         <div class="flex items-baseline gap-2">
             <h3 class="m-0 text-sm font-normal uppercase tracking-[0.04em] text-(--gk-text-muted)">Tasks</h3>
@@ -632,13 +636,15 @@
         </div>
 
         <!-- One press to ask about wherever the user now is. Named, so the press is
-             predictable before it is made; hidden when no document is focused. -->
+             predictable before it is made; hidden when no document is focused. max-w-full:
+             self-start sizes the button to its longest word, so a name with no spaces would
+             still run past the edge; capped, it breaks like the rest of the View. -->
         {#if activeConcept !== null && activeConcept !== filter.concept}
             <button
                 type="button"
                 data-testid="tasks-use-active"
                 onclick={() => selectName(activeConcept)}
-                class="self-start text-left text-sm text-(--gk-accent,#2563eb) hover:underline pointer-coarse:min-h-11"
+                class="max-w-full self-start text-left text-sm text-(--gk-accent,#2563eb) hover:underline pointer-coarse:min-h-11"
             >
                 ↳ Filter to {activeConcept}
             </button>

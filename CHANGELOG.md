@@ -5,6 +5,23 @@ What changed in each release of the EtherPK Client and the Headless Client
 They are released together, under the version number they share with the Sync Server. This log
 starts at 0.9.3.
 
+## Unreleased
+
+### Client
+
+- **Long links in the Tasks panel wrap onto the next line.** A task with a long link or a long
+  page name no longer makes the whole list scroll sideways.
+- **Selecting a block in an outline selects its children too.** A selection from a parent into its
+  first child now takes all of the parent's children, so what is highlighted is what Tab moves and
+  what Backspace, Delete, cut and copy take. **Shift+Up** and **Shift+Down** shrink such a selection
+  by a whole branch or block at a time.
+- **Sharing to EtherPK from another app waits for you to press Add.** You can edit the shared text
+  first, and tick **Add as task** to have it land as a task when you move it to your journal. With
+  several graphs, the one you opened last is already selected, and the page no longer jumps about
+  while it loads.
+- **Move all to today's journal** in Quick notes is drawn like the **Add** button, so it no longer
+  looks like a text box.
+
 ## 0.11.0 - 2026-10-13
 
 ### Client
