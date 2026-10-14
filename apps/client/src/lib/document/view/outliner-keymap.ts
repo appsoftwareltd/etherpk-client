@@ -55,7 +55,7 @@ import { toggleBold, toggleHighlight, toggleItalic } from './wrap-selection'
 import { isBlockSelection, rangeBlockOwner, selectedBranches, shrinkBlockSelectionDown, shrinkBlockSelectionUp, snappedBlockSelection } from './block-select'
 import { analysisFor } from './analysis/editor-analysis'
 import { caretContext, type FencedBlock, fencedBlockAt, lineInFrontmatter, outermostFencedBlockAt, unterminatedFenceOpenerAt } from './outliner-context'
-import { bulletToggleable, taskToggleable, toggledBullet } from './task-toggleable'
+import { blockSelectionTaskLines, bulletToggleable, taskToggleable, toggledBullet } from './task-toggleable'
 
 /**
  * What a command needs: the state and a way to dispatch a transaction. Every structural command is
@@ -400,6 +400,9 @@ const enterBullet: StateCommand = (view) => {
 }
 
 const softNewline: StateCommand = (view) => {
+    // Over a block selection a line break replaces the blocks, as Enter does (block-select.ts), wherever
+    // the head is: CodeMirror's own newline below reaches the deleteHeal filter, which leaves one block.
+    if (isBlockSelection(view.state)) return false
     const { line, head } = ctx(view)
     const cont = continuationAt(view)
     if (cont) {
@@ -543,6 +546,8 @@ function leadAfterBlock(lines: string[], openerIdx: number, fenceColumn: number)
  */
 const enterInCode: StateCommand = (view) => {
     const { state } = view
+    // A block selection whose head reached code is the outliner's: Enter replaces its blocks (softNewline).
+    if (isBlockSelection(state)) return false
     if (caretContext(state) !== 'fenced-code') return false
     const head = state.selection.main.head
     const block = fencedBlockAt(state, head)
@@ -582,6 +587,7 @@ const enterInCode: StateCommand = (view) => {
  *  the deliberate alternative to Enter's new-block-below. */
 const shiftEnterInCode: StateCommand = (view) => {
     const { state } = view
+    if (isBlockSelection(state)) return false // as for Enter
     if (caretContext(state) !== 'fenced-code') return false
     const head = state.selection.main.head
     const block = fencedBlockAt(state, head)
@@ -1225,6 +1231,10 @@ function enterList(view: Target, marker: string): void {
 }
 
 export const toggleTask: StateCommand = (view) => {
+    // A block selection: every block it highlights cycles from its own state, as Logseq's cycle-todos!
+    // cycles every selected block, and the selection stays on the same whole lines.
+    const selectedTasks = blockSelectionTaskLines(view.state)
+    if (selectedTasks) return cycleTasksAt(view, selectedTasks)
     const { index, line } = ctx(view)
     // A range across one block's lines acts on that block, as Tab does (Logseq): its bullet cycles.
     const owner = rangeBlockOwner(view.state)
@@ -1256,6 +1266,25 @@ function cycleTaskAt(view: Target, index: number): boolean {
     if (!change) return true
     const set = view.state.changes({ from: line.from + change.from, to: line.from + change.to, insert: change.insert })
     dispatch(view, { changes: set, selection: view.state.selection.map(set, 1) })
+    return true
+}
+
+/** Cycle the task state of every bullet line in `indexes` together, the block selection kept whole. */
+function cycleTasksAt(view: Target, indexes: number[]): boolean {
+    if (indexes.length === 0) return false
+    const { state } = view
+    const changes: ChangeSpec[] = []
+    for (const index of indexes) {
+        const line = state.doc.line(index + 1)
+        const change = minimalReplacement(line.text, cycleTask(line.text))
+        if (change) changes.push({ from: line.from + change.from, to: line.from + change.to, insert: change.insert })
+    }
+    const set = state.changes(changes)
+    const main = state.selection.main
+    const from = set.mapPos(state.doc.lineAt(main.from).from, -1)
+    const to = set.mapPos(state.doc.lineAt(main.to).to, 1)
+    const forward = main.head >= main.anchor
+    dispatch(view, { changes: set, selection: EditorSelection.single(forward ? from : to, forward ? to : from) })
     return true
 }
 
@@ -1474,7 +1503,8 @@ export function outlinerBindings(): readonly KeyBinding[] {
         { key: 'Delete', run: deleteMergeNext },
         { key: 'Shift-Enter', run: shiftEnterInCode },
         { key: 'Shift-Enter', run: softNewline },
-        { key: 'Mod-Shift-Enter', run: toggleTask },
+        // Consumed where the toggle is refused too, as the format toggles are, so the browser never acts on it.
+        { key: 'Mod-Shift-Enter', run: toggleTask, preventDefault: true },
         // Primary chord is Alt-Arrow (shadows CodeMirror's structure-blind moveLineUp/Down, which
         // would otherwise orphan a bullet by swapping raw lines); Alt-Shift-Arrow kept as an alias.
         { key: 'Alt-ArrowUp', run: moveBranchUp },

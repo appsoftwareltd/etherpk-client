@@ -20,6 +20,7 @@
  */
 
 import { EditorSelection, EditorState, type Extension, type SelectionRange, type Text, type Transaction, type TransactionSpec } from '@codemirror/state'
+import { EditorView } from '@codemirror/view'
 
 import { frontmatterLines } from '$lib/storage/fs/frontmatter-span'
 
@@ -98,6 +99,10 @@ function clampedEnds(doc: Text, lines: string[], range: SelectionRange, outline?
 }
 
 export function caretClamp(): Extension {
+    return [clampFilter(), clampAfterHistory]
+}
+
+function clampFilter(): Extension {
     return EditorState.transactionFilter.of((tr) => {
         if (!tr.changes.empty) return clampAfterEdit(tr)
         if (!tr.selection) return tr
@@ -133,3 +138,23 @@ export function caretClamp(): Extension {
         return withSelection(tr, EditorSelection.cursor(clamp)) // click/Home/vertical into the margin → snap right
     })
 }
+
+/**
+ * Undo and redo are dispatched past every transaction filter, and a redo restores the selection the
+ * undone edit started from, mapped through the change: redoing a typed character over a block
+ * selection selects the new block's whole line, marker included, and a key typed next would take the
+ * marker with it and leave the block after it without a parent. So a selection within one line that a
+ * history step leaves in the margin is clamped as a selection move would be.
+ */
+const clampAfterHistory = EditorView.updateListener.of((update) => {
+    if (!update.transactions.some((tr) => tr.isUserEvent('undo') || tr.isUserEvent('redo'))) return
+    const { state } = update
+    if (state.selection.ranges.length !== 1) return
+    const sel = state.selection.main
+    const line = state.doc.lineAt(sel.head)
+    if (state.doc.lineAt(sel.anchor).number !== line.number) return // across lines: the block snap's
+    const outline = (state.field(editorAnalysisField, false) as EditorAnalysis | undefined)?.outline
+    const clamp = line.from + clampColumn(state.doc.toString().split('\n'), line.number - 1, outline)
+    if (sel.from < clamp) update.view.dispatch({ selection: clampedRange(sel, clamp), userEvent: 'select' })
+})
+

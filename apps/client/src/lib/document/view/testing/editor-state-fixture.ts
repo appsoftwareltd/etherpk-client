@@ -112,6 +112,8 @@ export interface EditorFixtureOptions extends FixtureOptions {
  */
 const DEFAULT_KEY_HANDLERS: Record<string, StateCommand> = {
     Enter: insertNewlineAndIndent,
+    // CodeMirror binds Shift+Enter to the same newline, under the outliner's soft line keys.
+    'Shift-Enter': insertNewlineAndIndent,
     'Mod-Enter': insertBlankLine,
     // Typed as `Command` upstream but implemented over `{ state, dispatch }` only.
     Backspace: stateOnly(deleteCharBackward),

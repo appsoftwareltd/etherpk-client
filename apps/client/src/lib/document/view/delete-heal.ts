@@ -20,6 +20,12 @@
  *   block above, or top-level prose) and the group is healed around it ({@link healAroundMasked}
  *   with the line masked out, so it is nobody's parent). A within-line delete that leaves the marker
  *   in place (the content cleared) is an edit to the block, not its removal, and is left alone.
+ * - **A typed character, or Enter, over a block selection** replaces the blocks with one block in the
+ *   first one's place, at its indent and with its marker, the typed text its content
+ *   (`blockSelectionReplacement` in block-select.ts). Replaced from column 0 as typed, the first
+ *   block's marker would go too and the block after the selection would be left without a parent. A
+ *   composition is left whole here; block-select.ts replaces the blocks when it starts, or puts the
+ *   marker back when it ends, depending on how the editor reads input.
  * - **Enter, or a typed character, over a selection from prose that takes a bullet's marker**
  *   ({@link cutsAfterBulletIntoProse}). The bullet's text joins the prose line, as with Delete, so the
  *   bullet leaves the list: its own lines come to the margin and its children up a level. Only the
@@ -38,10 +44,11 @@
  * re-indented line and the caret maps through it.
  */
 
-import { type ChangeSpec, EditorState, type Extension, type Text, Transaction } from '@codemirror/state'
+import { type ChangeSpec, EditorState, type Extension, type Text, Transaction, type TransactionSpec } from '@codemirror/state'
 
 import { fencedBlocks } from '../fenced-code'
 import { applyLeaveListCuts, cutsAfterBulletIntoProse, formOneOpeners, healAfterRangeDelete, healAroundMasked, healSpan, isBulletLine, lineIndent, opaqueLineFlags } from '../outliner'
+import { blockSelectionReplacement, typedOverBlocks } from './block-select'
 import { clampColumn } from './caret-clamp'
 import { minimalReplacement } from './minimal-replacement'
 
@@ -56,6 +63,10 @@ export function deleteHeal(): Extension {
         // Typing is every keystroke: unless it replaced a selection reaching past one line, nothing here
         // applies, and the document is not read at all.
         if (typed) {
+            // Before the caret check: a keyboard can collapse a block selection to a caret before it
+            // deletes the blocks (block-select.ts, typedOverBlocks).
+            const overBlocks = typedOverBlockSelection(tr)
+            if (overBlocks) return overBlocks
             const sel = tr.startState.selection.main
             if (sel.empty || tr.startState.doc.lineAt(sel.from).number === tr.startState.doc.lineAt(sel.to).number) return tr
         }
@@ -120,6 +131,17 @@ export function deleteHeal(): Extension {
         const anchor = offset + clampColumn(healed, healedCaretLine)
         return [tr, { changes: change, sequential: true, selection: { anchor } }]
     })
+}
+
+/**
+ * A typed character or Enter that replaced a block selection, as the replacement block-select.ts makes
+ * of it (`typedOverBlocks`): an edit inside the selection only, whether it spans the selection or was
+ * trimmed to what differs, or the deletion of a block selection a keyboard collapsed just before.
+ */
+function typedOverBlockSelection(tr: Transaction): TransactionSpec | null {
+    const over = typedOverBlocks(tr)
+    const replacement = over && blockSelectionReplacement(tr.startState, over.text, over.range)
+    return replacement && { ...replacement, userEvent: tr.annotation(Transaction.userEvent), scrollIntoView: true }
 }
 
 /**

@@ -15,6 +15,11 @@ starts at 0.9.3.
   first child now takes all of the parent's children, so what is highlighted is what Tab moves and
   what Backspace, Delete, cut and copy take. **Shift+Up** and **Shift+Down** shrink such a selection
   by a whole branch or block at a time.
+- **Typing over selected blocks keeps the outline whole.** The blocks are replaced by one block in
+  the place of the first, holding what you type, where the text used to land at the left margin and
+  leave the next block without a parent. **Enter** and **Shift+Enter** leave one empty block, and
+  words typed with a phone keyboard or an input method land in the block too. **Ctrl+Shift+Enter**
+  over selected blocks cycles the task state of each of them.
 - **Sharing to EtherPK from another app waits for you to press Add.** You can edit the shared text
   first, and tick **Add as task** to have it land as a task when you move it to your journal. With
   several graphs, the one you opened last is already selected, and the page no longer jumps about

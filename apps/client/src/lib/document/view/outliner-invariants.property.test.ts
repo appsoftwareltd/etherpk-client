@@ -275,10 +275,10 @@ function editsFenceText(editor: HeadlessEditor, key: string): boolean {
     const sel = state.selection.main
     const lines = editor.text().split('\n')
     if (!sel.empty) {
-        // The deleting keys, and the keys whose default replaces a selection (Enter, Mod-Enter), remove
-        // a selected fence line by the user's own hand: the block is dissolved on purpose, like editing
-        // the fence's own characters.
-        if (!['Backspace', 'Delete', 'Mod-Backspace', 'Mod-Delete', 'Enter', 'Mod-Enter'].includes(key)) return false
+        // The deleting keys, and the keys whose default replaces a selection (Enter, Shift-Enter,
+        // Mod-Enter), remove a selected fence line by the user's own hand: the block is dissolved on
+        // purpose, like editing the fence's own characters.
+        if (!['Backspace', 'Delete', 'Mod-Backspace', 'Mod-Delete', 'Enter', 'Shift-Enter', 'Mod-Enter'].includes(key)) return false
         const first = state.doc.lineAt(sel.from).number - 1
         const last = state.doc.lineAt(sel.to).number - 1
         return fencedBlocks(lines).some((b) => (b.start >= first && b.start <= last) || (b.end >= first && b.end <= last))
@@ -562,6 +562,31 @@ describe('outliner invariants under random key sequences', { timeout: 30_000 }, 
                 // The same blocks, not only as many: one character adds no line, so every block keeps
                 // its fences where they were (a block dissolved while another formed would count equal).
                 expect(fencedBlocks(editor.text().split('\n'))).toEqual(fencedBlocks(lines))
+            }),
+            fuzz(300),
+        )
+    })
+
+    it('typing, Enter or Shift+Enter over a block selection leaves one block in the first one’s place, and the block after it keeps its parent', () => {
+        // Editor Content Rules → Selection. noOrphans reads across a prose line, so the shape is asserted
+        // directly: the first block's line holds its indent, its marker and what was typed, and the line
+        // after the replaced blocks sits no deeper than it.
+        fc.assert(
+            fc.property(scenarioArb, afterChildrenArb, fc.double({ min: 0, max: 1, noNaN: true }), fc.constantFrom('x', '*', 'Enter', 'Shift-Enter'), ({ outline, caretAt }, afterChildren, selectTo, input) => {
+                const editor = editorFor(outline, caretAt, selectTo, 'unit', [], afterChildren)
+                if (!isBlockSelection(editor.state)) return
+                const first = editor.state.doc.lineAt(editor.state.selection.main.from)
+                const lead = first.text.slice(0, lineIndent(first.text)) + (/^\s*-\s+\[[ xX]\]/.test(first.text) ? '- [ ] ' : '- ')
+                if (input.includes('Enter')) editor.key(input)
+                else editor.type(input)
+                const lines = editor.text().split('\n')
+                const at = first.number - 1
+                expect(lines[at]).toBe(lead + (input.includes('Enter') ? '' : input))
+                const next = lines[at + 1]
+                if (next !== undefined && isBulletLine(next)) expect(lineIndent(next)).toBeLessThanOrEqual(lineIndent(lines[at]))
+                expect(noOrphans(lines)).toBe(true)
+                expect(indentsOnGrid(lines)).toBe(true)
+                expect(markersIntact(lines)).toBe(true)
             }),
             fuzz(300),
         )

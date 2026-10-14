@@ -3,7 +3,7 @@ import { EditorView } from '@codemirror/view'
 import { describe, expect, it } from 'vitest'
 
 import { analysisFor } from './analysis/editor-analysis'
-import { BLOCK_SELECTED_CLASS, blockSelection, isBlockSelection, snappedBlockSelection } from './block-select'
+import { BLOCK_SELECTED_CLASS, blockSelection, blockSelectionReplacement, isBlockSelection, lostLeadRestore, snappedBlockSelection } from './block-select'
 import { editorFixture, renderFixture } from './testing/editor-state-fixture'
 
 describe('block-granular selection hides the caret', () => {
@@ -139,12 +139,12 @@ describe('snapping a block selection to whole blocks', () => {
         expect(editor.text()).toBe('- d')
     })
 
-    it('leaves no child without a parent when Enter replaces a drag that ended above it', () => {
+    it('leaves one empty block and no child without a parent when Enter replaces a drag that ended above a child', () => {
         const editor = editorFixture('- a\n- b\n  - c\n- d|')
         editor.select(2, 6) // from "a" into "b", above b's child
         expect(editor.fixture()).toBe('«- a\n- b\n  - c»\n- d')
         editor.key('Enter')
-        expect(editor.fixture()).toBe('\n|\n- d')
+        expect(editor.fixture()).toBe('- |\n- d')
     })
 
     it('grows by CodeMirror’s line move, widened by the snap: down a whole branch at a time (Logseq)', () => {
@@ -173,6 +173,140 @@ describe('snapping a block selection to whole blocks', () => {
         expect(editor.fixture()).toBe('- z\n«- a\n- b\n  ```»\n\n  ```\n  code\n  ```')
         editor.key('Tab')
         expect(editor.text().split('\n').slice(4)).toEqual(['', '  ```', '  code', '  ```'])
+    })
+
+    it('replaces a block selection with one empty block, as an IME composition starts into it', () => {
+        const replaced = (fixture: string) => {
+            const { state } = editorFixture(fixture)
+            const spec = blockSelectionReplacement(state, '')
+            return spec && renderFixture(state.update(spec).state)
+        }
+        expect(replaced('- a\n«  - b\n    - c\n  - d»\n  - e')).toBe('- a\n  - |\n  - e')
+        expect(replaced('«- [x] a\n- b»')).toBe('- [ ] |')
+        // A caret, a text range and a prose selection are not a block selection: nothing to replace.
+        expect(replaced('- a|\n- b')).toBeNull()
+        expect(replaced('- «a\n  soft»')).toBeNull()
+        expect(replaced('«prose\n- b»')).toBeNull()
+    })
+
+    describe('a change CodeMirror trimmed to what differs, as it reads typing from the page', () => {
+        // Typing `s` over a selection that ends in `s` reaches the editor as "delete all but that s":
+        // the common suffix is left in place. It is still the selection typed over.
+        const trimmed = (userEvent: string) => {
+            const editor = editorFixture('- a\n«  - b\n  - pods»\n  - d')
+            const { from, to } = editor.state.selection.main
+            editor.dispatch(editor.state.update({ changes: { from, to: to - 1 }, selection: { anchor: from + 1 }, userEvent }))
+            return editor
+        }
+
+        it('typed: one block in the first one’s place', () => {
+            expect(trimmed('input.type').fixture()).toBe('- a\n  - s|\n  - d')
+        })
+
+        it('a line inserted at its end deletes nothing selected, and is not typing over it', () => {
+            const editor = editorFixture('- a\n«  - b\n  - c»\n  - d')
+            const { to } = editor.state.selection.main
+            editor.dispatch(editor.state.update({ changes: { from: to, insert: '\n' }, selection: { anchor: to + 1 }, userEvent: 'input' }))
+            expect(editor.text()).toBe('- a\n  - b\n  - c\n\n  - d')
+        })
+
+        it('composed: the indent and marker come back when the composition ends', () => {
+            const editor = trimmed('input.type.compose.start')
+            const spec = lostLeadRestore(editor.state, false)
+            if (spec) editor.dispatch(editor.state.update(spec))
+            expect(editor.fixture()).toBe('- a\n  - s|\n  - d')
+        })
+    })
+
+    describe('a keyboard that collapses the selection before typing over it (GBoard through an EditContext)', () => {
+        // GBoard moves the caret to the selection's end, then deletes the range it had selected, then
+        // inserts its text at the caret: by the deletion the editor's selection is no longer the blocks.
+        const collapsedThenDeleted = () => {
+            const editor = editorFixture('- a\n«  - b\n    - c\n  - d»\n  - e')
+            const { from, to } = editor.state.selection.main
+            editor.dispatch(editor.state.update({ selection: { anchor: to }, userEvent: 'select' }))
+            editor.dispatch(editor.state.update({ changes: { from, to }, selection: { anchor: from }, userEvent: 'input.type' }))
+            return editor
+        }
+
+        it('reads the deletion of the blocks it had selected as typing over them: one empty block in their place', () => {
+            const editor = collapsedThenDeleted()
+            expect(editor.fixture()).toBe('- a\n  - |\n  - e')
+            editor.type('g')
+            expect(editor.fixture()).toBe('- a\n  - g|\n  - e')
+        })
+
+        it('forgets the blocks once the caret moves on, or after any other edit', () => {
+            const moved = editorFixture('- a\n«  - b\n  - c»\n  - d')
+            const { from, to } = moved.state.selection.main
+            moved.dispatch(moved.state.update({ selection: { anchor: to }, userEvent: 'select' }))
+            moved.select(2)
+            moved.dispatch(moved.state.update({ changes: { from, to }, userEvent: 'input.type' }))
+            expect(moved.text()).toBe('- a\n\n  - d')
+            const typed = editorFixture('- a\n«  - b\n  - c»\n  - d')
+            const range = typed.state.selection.main
+            typed.dispatch(typed.state.update({ selection: { anchor: range.to }, userEvent: 'select' }))
+            typed.type('x')
+            typed.dispatch(typed.state.update({ changes: { from: range.from, to: range.to }, userEvent: 'input.type' }))
+            expect(typed.text()).not.toContain('  - |')
+        })
+
+        it('leaves a deletion that is not exactly the blocks it had selected as it is', () => {
+            const editor = editorFixture('- a\n«  - b\n  - c»\n  - d')
+            const { to } = editor.state.selection.main
+            editor.dispatch(editor.state.update({ selection: { anchor: to }, userEvent: 'select' }))
+            editor.dispatch(editor.state.update({ changes: { from: to - 1, to }, userEvent: 'input.type' }))
+            expect(editor.text()).toBe('- a\n  - b\n  - \n  - d')
+        })
+    })
+
+    describe('an input method composition over a block selection, read without an EditContext', () => {
+        // The composition replaces the selection from column 0 as typed (the editor never changes text
+        // beside a composition in progress); the first block's indent and marker come back once it ends.
+        const composing = () => {
+            const editor = editorFixture('- a\n«  - b\n  - c»\n  - d')
+            const { from, to } = editor.state.selection.main
+            editor.dispatch(editor.state.update({ changes: { from, to, insert: 'x' }, selection: { anchor: from + 1 }, userEvent: 'input.type.compose.start' }))
+            expect(editor.text()).toBe('- a\nx\n  - d')
+            return editor
+        }
+        const restore = (editor: ReturnType<typeof editorFixture>, compositionStarted = false) => {
+            const spec = lostLeadRestore(editor.state, compositionStarted)
+            if (spec) editor.dispatch(editor.state.update(spec))
+            return spec
+        }
+
+        it('puts the indent and marker back when it ends, after everything it typed', () => {
+            const editor = composing()
+            editor.dispatch(editor.state.update({ changes: { from: 5, insert: 'y' }, selection: { anchor: 6 }, userEvent: 'input.type.compose' }))
+            expect(restore(editor, true)).toBeNull() // still composing: nothing changes beside it
+            restore(editor)
+            expect(editor.fixture()).toBe('- a\n  - xy|\n  - d')
+            expect(lostLeadRestore(editor.state, false)).toBeNull() // once
+        })
+
+        it('joins the composition’s undo step', () => {
+            const editor = composing()
+            restore(editor)
+            editor.key('Mod-z')
+            expect(editor.fixture()).toBe('- a\n«  - b\n  - c»\n  - d')
+        })
+
+        it('leaves an empty block when the composition is cancelled', () => {
+            const editor = composing()
+            editor.dispatch(editor.state.update({ changes: { from: 4, to: 5 }, selection: { anchor: 4 }, userEvent: 'input.type.compose' }))
+            restore(editor)
+            expect(editor.fixture()).toBe('- a\n  - |\n  - d')
+        })
+
+        it('forgets what it would put back after an undo or an edit from elsewhere', () => {
+            const undone = composing()
+            undone.key('Mod-z')
+            expect(lostLeadRestore(undone.state, false)).toBeNull()
+            const remote = composing()
+            remote.dispatch(remote.state.update({ changes: { from: 0, insert: 'z' } }))
+            expect(lostLeadRestore(remote.state, false)).toBeNull()
+        })
     })
 
     it('after a redo of an indent, the selection is re-snapped by the update listener', () => {

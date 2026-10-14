@@ -85,6 +85,20 @@ describe('taskToggleable over a range across one block’s lines', () => {
     })
 })
 
+describe('taskToggleable over a block selection', () => {
+    /** The whole of `doc` selected: whole blocks, from the first line to the last. */
+    const selecting = (doc: string) => EditorState.create({ doc, selection: { anchor: 0, head: doc.length }, extensions: [editorAnalysis()] })
+
+    it('is live while one of the blocks can cycle', () => {
+        expect(taskToggleable(selecting('- a\n- \n- [x] b'))).toBe(true)
+    })
+
+    it('is refused when every block is an empty bullet or opens its code on its line', () => {
+        expect(taskToggleable(selecting('- \n- '))).toBe(false)
+        expect(taskToggleable(selecting('- ```\n  x\n  ```\n- '))).toBe(false)
+    })
+})
+
 describe('indentable', () => {
     it('is true over a range across one block’s lines, wherever its head sits: Indent acts on the block', () => {
         expect(indentable(range('- a\n- b\n  ```\n  code\n  ```', 'b', 'co'))).toBe(true)

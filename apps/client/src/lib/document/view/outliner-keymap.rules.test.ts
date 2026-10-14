@@ -956,6 +956,29 @@ describe('cutting blocks heals the survivors (ADR 0021)', () => {
     })
 })
 
+table('Enter over a block selection leaves one empty block in its place', [
+    { rule: 'the blocks go, and an empty block takes the first one’s place', precedent: 'EtherPK', before: '- a\n«  - b\n  - c»\n  - d', key: 'Enter', after: '- a\n  - |\n  - d' },
+    { rule: 'a task stays a task, open again', precedent: 'EtherPK', before: '«- [x] a\n- b»\n- c', key: 'Enter', after: '- [ ] |\n- c' },
+    // A drag that ends in a block whose last content is code has its head on the closing fence, and one
+    // made upwards from a form-1 block has it in the code: the selection is the outliner's, not the code's.
+    { rule: 'with the head on a closing fence', precedent: 'EtherPK', before: '«- a\n- b\n  ```\n  code\n  ```»\n- c', key: 'Enter', after: '- |\n- c' },
+    { rule: 'with the head in a form-1 block’s code, made upwards', precedent: 'EtherPK', before: '»- ```js\n  x\n  ```\n- b«\n- c', key: 'Enter', after: '- |\n- c' },
+    // Shift+Enter is a line break too, so over a block selection it does what Enter does, wherever the head is.
+    { rule: 'Shift+Enter does the same, with the head on a bullet', precedent: 'EtherPK', before: '- a\n«  - b\n  - c»\n  - d', key: 'Shift-Enter', after: '- a\n  - |\n  - d' },
+    { rule: 'Shift+Enter does the same, with the head on a continuation line', precedent: 'EtherPK', before: '- a\n«  - b\n  - c\n    more»\n  - d', key: 'Shift-Enter', after: '- a\n  - |\n  - d' },
+    { rule: 'Shift+Enter does the same, with the head on a closing fence', precedent: 'EtherPK', before: '«- a\n- b\n  ```\n  code\n  ```»\n- c', key: 'Shift-Enter', after: '- |\n- c' },
+])
+
+// Logseq's cycle-todos!: every selected block cycles from its own state. Here that is every block the
+// selection highlights, its children included (Editor Content Rules → Selection).
+table('Mod+Shift+Enter over a block selection cycles every block in it', [
+    { rule: 'each block cycles from its own state', precedent: 'Logseq', before: '«- a\n- [ ] b\n- [x] c»', key: 'Mod-Shift-Enter', after: '«- [ ] a\n- [x] b\n- c»' },
+    { rule: 'a selected block’s children cycle too', precedent: 'EtherPK', before: '«- a\n  - b»\n- c', key: 'Mod-Shift-Enter', after: '«- [ ] a\n  - [ ] b»\n- c' },
+    { rule: 'an empty bullet is left as it is', precedent: 'Logseq', before: '«- a\n- \n- b»', key: 'Mod-Shift-Enter', after: '«- [ ] a\n- \n- [ ] b»' },
+    { rule: 'a bullet whose code opens on its line is left as it is, and its code too', precedent: 'EtherPK', before: '«- a\n- ```md\n  - x\n  ```»', key: 'Mod-Shift-Enter', after: '«- [ ] a\n- ```md\n  - x\n  ```»' },
+    { rule: 'continuation lines and prose are left as they are', precedent: 'EtherPK', before: '«- a\n  soft\n\nprose»', key: 'Mod-Shift-Enter', after: '«- [ ] a\n  soft\n\nprose»' },
+])
+
 table('Mod+Shift+Enter cycles the task state', [
     { rule: 'plain bullet becomes an open task', precedent: 'EtherPK', before: '- a|', key: 'Mod-Shift-Enter', after: '- [ ] a|' },
     { rule: 'open task becomes done', precedent: 'EtherPK', before: '- [ ] a|', key: 'Mod-Shift-Enter', after: '- [x] a|' },
@@ -1513,7 +1536,10 @@ describe('an edit over what Select all selects changes that region alone', () =>
             expect(afterSelectAll(before, (e) => (e.cut(), e.type('N')))).toBe('---\ntitle: K\n---\nN|')
         })
         it(`typing replaces the body (${JSON.stringify(body)})`, () => {
-            expect(afterSelectAll(before, (e) => e.type('N'))).toBe('---\ntitle: K\n---\nN|')
+            // An outline body selected whole is a block selection: one block takes its place (Editor
+            // Content Rules → Selection). A prose body is replaced as typed.
+            const typed = body.startsWith('- ') ? '- N|' : 'N|'
+            expect(afterSelectAll(before, (e) => e.type('N'))).toBe(`---\ntitle: K\n---\n${typed}`)
         })
     }
     it('Backspace in the block empties its lines and keeps both delimiters and the body', () => {
@@ -1582,8 +1608,9 @@ typedTable('wrapping a selection', [
     { rule: 'whitespace at the edges stays outside the markers', precedent: 'VS Code', before: '- the« fox »jumped', key: '*', after: '- the *«fox»* jumped' },
     { rule: 'with nothing selected the key is a plain character', precedent: 'EtherPK', before: '- the fox|', key: '[', after: '- the fox[|' },
     { rule: 'a selection across lines is the ordinary replace', precedent: 'EtherPK', before: 'one «two\nthree» four', key: '*', after: 'one *| four' },
-    // The replace itself is the block selection's (Editor Content Rules → Selection): the blocks go, the marker heals.
-    { rule: 'a block selection is the ordinary replace', precedent: 'EtherPK', before: '- «a\n- b»', key: '*', after: '- *|' },
+    // The replace itself is the block selection's (Editor Content Rules → Selection): the blocks go, and one
+    // block takes the first one's place with the typed text.
+    { rule: 'a block selection is replaced, not wrapped: one block takes its place', precedent: 'EtherPK', before: '«- a\n- b»', key: '*', after: '- *|' },
     { rule: 'in a fence, brackets wrap', precedent: 'VS Code', before: '- ```js\n  f(«x»)\n  ```', key: '(', after: '- ```js\n  f((«x»))\n  ```' },
     { rule: 'in a fence, a backtick wraps', precedent: 'VS Code', before: '- ```js\n  «x»\n  ```', key: '`', after: '- ```js\n  `«x»`\n  ```' },
     { rule: 'in a fence, an emphasis key is a plain character', precedent: 'VS Code', before: '- ```js\n  a «x» b\n  ```', key: '*', after: '- ```js\n  a *| b\n  ```' },
@@ -1624,8 +1651,20 @@ bracketButtonTable('the Command Bar bracket buttons over a selection', [
     { rule: 'and the closing button types its own', precedent: 'EtherPK', before: '- the [[fox|', key: ']]', after: '- the [[fox]]|' },
     { rule: 'a selection of only whitespace is the ordinary replace', precedent: 'EtherPK', before: '- the« »fox', key: '[[', after: '- the[[|fox' },
     { rule: 'a selection across lines is the ordinary replace', precedent: 'EtherPK', before: 'one «two\nthree» four', key: '[[', after: 'one [[| four' },
-    { rule: 'a block selection is the ordinary replace', precedent: 'EtherPK', before: '- «a\n- b»', key: '[[', after: '- [[|' },
+    { rule: 'a block selection is replaced, not wrapped: one block takes its place', precedent: 'EtherPK', before: '«- a\n- b»', key: '[[', after: '- [[|' },
     { rule: 'in the frontmatter nothing wraps', precedent: 'EtherPK', before: '---\ntitle: «x»\n---\n', key: '[[', after: '---\ntitle: [[|\n---\n' },
+])
+
+// Typing over a block selection replaces the blocks, and one block takes the first one's place, at its
+// indent and with its marker, so the outline never loses a parent (Editor Content Rules → Selection).
+typedTable('typing over a block selection leaves one block in its place', [
+    { rule: 'the typed text is the block’s content, at the first block’s indent', precedent: 'EtherPK', before: '- a\n«  - b\n  - c»\n  - d', key: 'x', after: '- a\n  - x|\n  - d' },
+    { rule: 'two stars are typed, not wrapped, into the block', precedent: 'EtherPK', before: '- a\n«  - b\n  - c»\n  - d', key: '* *', after: '- a\n  - **|\n  - d' },
+    { rule: 'the selected blocks’ children go with them', precedent: 'EtherPK', before: '- a\n«  - b\n    - c\n- d\n  - e»\n- f', key: 'x', after: '- a\n  - x|\n- f' },
+    { rule: 'a task stays a task, open again', precedent: 'EtherPK', before: '«- [x] a\n- b»\n- c', key: 'x', after: '- [ ] x|\n- c' },
+    { rule: 'a bullet whose text is a heading leaves a plain bullet', precedent: 'EtherPK', before: '«- ## a\n- b»', key: 'x', after: '- x|' },
+    { rule: 'a bullet whose code opens on its line leaves a plain bullet', precedent: 'EtherPK', before: '«- ```js\n  y\n  ```\n- b»', key: 'x', after: '- x|' },
+    { rule: 'a selection on into prose is replaced the same way', precedent: 'EtherPK', before: '- a\n«  - b\n\nprose»\n- c', key: 'x', after: '- a\n  - x|\n- c' },
 ])
 
 describe('after a wrap the inner text stays selected, left to right', () => {

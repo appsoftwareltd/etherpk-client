@@ -16,15 +16,20 @@
  * or a heading stays character-precise, whatever it reaches below. Shrinking is the exception: a
  * Shift-arrow that shrinks the selection by one line would land inside a selected branch and be
  * snapped straight back, so those two presses step by branch or block ({@link shrinkBlockSelectionUp}).
+ *
+ * Typing over a block selection replaces the blocks with one block in the first one's place
+ * ({@link blockSelectionReplacement}): the selection starts at column 0, so an ordinary replace would
+ * take the first block's indent and marker with it and leave the next block without a parent.
  */
 
-import { EditorSelection, EditorState, type Extension, type SelectionRange, type StateCommand, type Text } from '@codemirror/state'
-import { EditorView } from '@codemirror/view'
+import { type ChangeSpec, EditorSelection, EditorState, type Extension, type SelectionRange, type StateCommand, StateEffect, StateField, type Text, type Transaction, type TransactionSpec } from '@codemirror/state'
+import { EditorView, ViewPlugin } from '@codemirror/view'
 
 import { type FencedBlockRange, fencedBlocks } from '../fenced-code'
 import { outlineLines, type OutlineLine } from '../indent-unit'
-import { branchesWithin, contentStart } from '../outliner'
+import { branchesWithin, contentStart, lineIndent, newBulletMarker } from '../outliner'
 import { editorAnalysisField } from './analysis/editor-analysis'
+import { editorHistory } from './editor-history'
 import { withSelection } from './with-selection'
 
 /** The editor class carried while the selection is block-granular; the caret is hidden under it. */
@@ -237,9 +242,226 @@ export const shrinkBlockSelectionUp: StateCommand = shrinkBlockSelection('up')
 /** Shift-Down over a block selection made upwards: drop its top block, its children kept. */
 export const shrinkBlockSelectionDown: StateCommand = shrinkBlockSelection('down')
 
-export function blockSelection(): Extension {
-    return [blockSelectionFilter(), resnapAfterEdit, hideCaretForBlockSelection]
+/**
+ * Where a block selection's replacement starts when the selection takes the first block's marker:
+ * that block's line, and the indent and marker typing over it keeps (a task's, open again). Null when
+ * the selection starts after the marker, which an ordinary replace keeps anyway.
+ */
+function keptLead(state: EditorState, main: SelectionRange): { from: number; lead: string } | null {
+    const owner = lineOwners(state)[state.doc.lineAt(main.from).number - 1].owner
+    const bullet = state.doc.line(owner + 1)
+    if (main.from >= bullet.from + contentStart(bullet.text)) return null
+    return { from: bullet.from, lead: bullet.text.slice(0, lineIndent(bullet.text)) + newBulletMarker(bullet.text) }
 }
+
+/**
+ * The block selection replaced by `text`, as typing over it replaces it: the blocks go, and one block
+ * takes the first one's place, at its indent and with its marker (a task's open again), `text` its
+ * content and the caret after it. A line break leaves the block empty, so Enter over the selection
+ * leaves one empty block. The selection starts at column 0, so an ordinary replace would take the
+ * first block's indent and marker too, and the block after the selection would be left indented
+ * under a line of prose: no parent. Null for a caret, a text range and a prose selection. A selection
+ * that starts after the first block's marker keeps what is before it, as an ordinary replace does.
+ */
+export function blockSelectionReplacement(state: EditorState, text: string, range: SelectionRange = state.selection.main): { changes: ChangeSpec; selection: EditorSelection } | null {
+    if (!isBlockRange(state, range)) return null
+    const typed = text.includes('\n') ? '' : text
+    const kept = keptLead(state, range)
+    const from = kept ? kept.from : range.from
+    const insert = (kept?.lead ?? '') + typed
+    return { changes: { from, to: range.to, insert }, selection: EditorSelection.single(from + insert.length) }
+}
+
+/**
+ * A block selection a keyboard collapsed to a caret before typing over it, until the next change.
+ * GBoard, reading the editor through an EditContext (Chrome on Android), types over a selection in
+ * three steps: it moves the caret to the selection's end, deletes the range it had selected, and
+ * inserts its text at the caret. By the deletion the editor's selection is a caret, so the deletion is
+ * matched against the block selection remembered here ({@link typedOverBlocks}). Any edit, or any
+ * other move of the selection, forgets it.
+ */
+const collapsedBlockSelection = StateField.define<{ from: number; to: number } | null>({
+    create: () => null,
+    update(value, tr) {
+        if (tr.docChanged) return null
+        if (!tr.selection) return value
+        const before = tr.startState.selection.main
+        return tr.newSelection.main.empty && isBlockRange(tr.startState, before) ? { from: before.from, to: before.to } : null
+    },
+})
+
+/**
+ * The block selection a transaction types over, and the text it leaves there: the main selection when
+ * it is a block selection the transaction replaces ({@link replacedSelectionText}), or a block selection
+ * a keyboard collapsed just before, when the transaction replaces exactly that range. Null otherwise.
+ */
+export function typedOverBlocks(tr: Transaction): { range: SelectionRange; text: string } | null {
+    const main = tr.startState.selection.main
+    if (isBlockRange(tr.startState, main)) {
+        const text = replacedSelectionText(tr)
+        return text === null ? null : { range: main, text }
+    }
+    const collapsed = tr.startState.field(collapsedBlockSelection, false)
+    if (!collapsed || !main.empty || !tr.docChanged) return null
+    let count = 0
+    let text: string | null = null
+    tr.changes.iterChanges((fromA, toA, _fromB, _toB, inserted) => {
+        count += 1
+        if (fromA === collapsed.from && toA === collapsed.to) text = inserted.toString()
+    })
+    const range = EditorSelection.range(collapsed.from, collapsed.to)
+    return count === 1 && text !== null && isBlockRange(tr.startState, range) ? { range, text } : null
+}
+
+/**
+ * The text a transaction leaves where the main selection was, when every change it makes lies inside
+ * the selection: how typing over a selection reads, whether the change spans the whole selection or
+ * is trimmed to what differs. CodeMirror trims what it reads from the page (a keypress, an input
+ * method's text) to the smallest change, so a typed `t` over a selection that ends in `t` arrives as
+ * "delete all but that last t". Null for a caret, when a change reaches outside the selection, and
+ * when nothing selected is deleted: a line inserted at the selection's end (CodeMirror's Mod-Enter) is
+ * not typing over it.
+ */
+export function replacedSelectionText(tr: Transaction): string | null {
+    const sel = tr.startState.selection.main
+    if (sel.empty || !tr.docChanged) return null
+    let inside = true
+    let deletes = false
+    tr.changes.iterChangedRanges((fromA, toA) => {
+        if (fromA < sel.from || toA > sel.to) inside = false
+        if (toA > fromA) deletes = true
+    })
+    return inside && deletes ? tr.newDoc.sliceString(tr.changes.mapPos(sel.from, -1), tr.changes.mapPos(sel.to, 1)) : null
+}
+
+export function blockSelection(): Extension {
+    return [blockSelectionFilter(), resnapAfterEdit, hideCaretForBlockSelection, collapsedBlockSelection, compositionOverBlocks]
+}
+
+/**
+ * An IME composition over a block selection: on Android every word GBoard types is one, as are the
+ * words of a Chinese or Japanese input method. The editor never changes text beside a composition in
+ * progress, since a change there can break it, so the deleteHeal filter's rewrite of a typed character
+ * cannot be made to a composition's changes. How the replacement is made depends on whether the
+ * keyboard says a key is coming, and on how CodeMirror reads input:
+ *
+ * - A phone keyboard (and a desktop input method) announces each key with a keydown whose key code is
+ *   229 before any text arrives. No composition has started then, on either path, so the blocks are
+ *   replaced by an empty block at once and the word types into it from its first letter.
+ * - Through an EditContext (Chrome on Android), the composition events fire on the context. The blocks
+ *   are replaced by an empty block when the composition starts, before it has any text, and it types
+ *   into that block.
+ * - Through the content element (a desktop input method, and browsers without an EditContext), the
+ *   browser has already fixed the range it composes into when `compositionstart` fires, and changing
+ *   the text then doubles letters. So the composition replaces the selection from column 0 as typed,
+ *   the first block's indent and marker are remembered ({@link lostLead}), and they are put back in
+ *   front of the composed text once the composition has ended.
+ */
+const lostLead = StateEffect.define<{ pos: number; lead: string } | null>()
+
+/**
+ * The indent and marker a composition took from the first selected block, and where to put them back.
+ * Kept only through the composition's own changes: any other edit (an undo, a collaborator's change)
+ * means the line is no longer the one the composition typed, and it is forgotten.
+ */
+const pendingLead = StateField.define<{ pos: number; lead: string } | null>({
+    create: () => null,
+    update(value, tr) {
+        for (const effect of tr.effects) if (effect.is(lostLead)) return effect.value
+        if (!value || !tr.docChanged) return value
+        if (!tr.isUserEvent('input.type.compose')) return null
+        // Text the composition types at the line's start goes after the lead, so the position stays put.
+        return { pos: tr.changes.mapPos(value.pos, -1), lead: value.lead }
+    },
+})
+
+/** A composition's first change over a block selection that took its marker: remember what it took. */
+const rememberLostLead = EditorState.transactionExtender.of((tr) => {
+    if (!tr.isUserEvent('input.type.compose') || !tr.docChanged) return null
+    const over = typedOverBlocks(tr)
+    const kept = over && keptLead(tr.startState, over.range)
+    return kept && { effects: lostLead.of({ pos: kept.from, lead: kept.lead }) }
+})
+
+/**
+ * The transaction that puts the remembered indent and marker back, once no composition is in progress
+ * (`compositionStarted` is the view's); null while one is, or when nothing is remembered. It carries
+ * the composition's own user event, which CodeMirror's history always joins to the step before it, so
+ * one undo takes the composition and the restored marker together, even after a click ended it.
+ */
+export function lostLeadRestore(state: EditorState, compositionStarted: boolean): TransactionSpec | null {
+    const pending = state.field(pendingLead, false)
+    if (!pending || compositionStarted) return null
+    // Only at the start of a line: anything else means the text was edited since, and is left alone.
+    if (state.doc.lineAt(pending.pos).from !== pending.pos) return { effects: lostLead.of(null) }
+    return { changes: { from: pending.pos, insert: pending.lead }, effects: lostLead.of(null), userEvent: 'input.type.compose' }
+}
+
+/**
+ * Restore outside the update that noticed the composition end, so every update listener sees the
+ * composition's last change before the restore. The collaborative history joins it by being told to.
+ */
+function restoreLostLead(view: EditorView): void {
+    const spec = lostLeadRestore(view.state, view.compositionStarted)
+    if (!spec) return
+    const { joinNext } = view.state.facet(editorHistory)
+    if (joinNext && spec.changes) joinNext(() => view.dispatch(spec))
+    else view.dispatch(spec)
+}
+
+function replaceForComposition(view: EditorView): void {
+    const replacement = blockSelectionReplacement(view.state, '')
+    if (replacement) view.dispatch({ ...replacement, userEvent: 'delete.selection', scrollIntoView: true })
+}
+
+const compositionOverBlocks = [
+    pendingLead,
+    rememberLostLead,
+    EditorView.domEventHandlers({
+        keydown(event, view) {
+            // 229 is the key code of a key an input method handles; text follows it, composed or not.
+            if (event.keyCode === 229 && !view.compositionStarted) replaceForComposition(view)
+            return false
+        },
+    }),
+    EditorView.updateListener.of((update) => {
+        if (update.state.field(pendingLead, false)) queueMicrotask(() => restoreLostLead(update.view))
+    }),
+    // The composition's last change can reach the editor before compositionend, leaving no update after
+    // it to restore from; CodeMirror flushes what is left within a few milliseconds of the event.
+    EditorView.domEventObservers({
+        compositionend(_event, view) {
+            setTimeout(() => restoreLostLead(view), 50)
+        },
+    }),
+    ViewPlugin.fromClass(
+        class {
+            private context: EventTarget | null = null
+            private readonly onStart = () => replaceForComposition(this.view)
+
+            constructor(private readonly view: EditorView) {
+                this.attach()
+            }
+
+            update() {
+                this.attach()
+            }
+
+            destroy() {
+                this.context?.removeEventListener('compositionstart', this.onStart)
+            }
+
+            /** Follow the EditContext CodeMirror has on the content element (it attaches one only where it reads input through it). */
+            private attach() {
+                const context = (this.view.contentDOM as HTMLElement & { editContext?: EventTarget | null }).editContext ?? null
+                if (context === this.context) return
+                this.context?.removeEventListener('compositionstart', this.onStart)
+                context?.addEventListener('compositionstart', this.onStart)
+                this.context = context
+            }
+        },
+    ),
+]
 
 const hideCaretForBlockSelection = [
     EditorView.editorAttributes.compute(['selection'], (state) => ({ class: isBlockSelection(state) ? BLOCK_SELECTED_CLASS : '' })),

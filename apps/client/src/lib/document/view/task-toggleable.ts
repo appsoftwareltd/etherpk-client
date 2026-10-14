@@ -15,7 +15,9 @@
  * bullet whose fence opens on its line (form 1) is part of its block's code here: the task marker
  * would push the fence past the content column, where its closer no longer pairs with it, and the
  * code block would dissolve. A range across one block's lines cycles that block wherever its head
- * sits, so the gate reads the block, not the head's line.
+ * sits, so the gate reads the block, not the head's line. A block selection cycles every block it
+ * highlights, each from its own state (Logseq's cycle-todos!), and the gate is live while one of
+ * them can cycle ({@link blockSelectionTaskLines}).
  *
  * **Indent** (`editor.indent`, the Command Bar's Indent button; Tab runs the code and fence handlers
  * first). A block selection, or a range across one block's lines, nests its blocks wherever its head
@@ -38,9 +40,9 @@
 import type { EditorState } from '@codemirror/state'
 
 import { type FencedBlockRange, fenceLineInfo } from '../fenced-code'
-import { canLeaveList, canOutdent, formOneOpeners, isHeadingLine } from '../outliner'
+import { bulletContent, canLeaveList, canOutdent, formOneOpeners, isHeadingLine, taskDone } from '../outliner'
 import { analysisFor } from './analysis/editor-analysis'
-import { isBlockSelection, rangeBlockOwner } from './block-select'
+import { isBlockSelection, rangeBlockOwner, selectedBranches } from './block-select'
 import { caretContext } from './outliner-context'
 import { tableAtCaret } from './table-context'
 
@@ -55,7 +57,30 @@ function onFormOneOpener(state: EditorState): boolean {
     return isFormOneOpener(state, state.doc.lineAt(state.selection.main.head).number - 1)
 }
 
+/**
+ * The lines the task toggle cycles over a block selection, 0-based: every bullet the selection
+ * highlights, children included, as the outline walk reads them (a `- ` line in code is code).
+ * An empty bullet is left alone, as Logseq leaves an empty block, and so is a bullet whose code opens
+ * on its line, whose fence a task marker would push off its column. Null for anything but a block
+ * selection.
+ */
+export function blockSelectionTaskLines(state: EditorState): number[] | null {
+    const selected = selectedBranches(state)
+    if (!selected) return null
+    const { lines, outline, fencedBlocks } = analysisFor(state)
+    const openers = formOneOpeners(lines, fencedBlocks)
+    const cycled: number[] = []
+    for (let i = selected.firstLine; i <= selected.lastLine; i++) {
+        if (outline[i].owner !== i || openers.has(i)) continue
+        if (taskDone(lines[i]) === undefined && bulletContent(lines[i]).trim() === '') continue
+        cycled.push(i)
+    }
+    return cycled
+}
+
 export function taskToggleable(state: EditorState): boolean {
+    const selectedTasks = blockSelectionTaskLines(state)
+    if (selectedTasks) return selectedTasks.length > 0
     // A range across one block's lines cycles that block, wherever the head sits, as the command reads
     // it (`toggleTask`): refused only on a form-1 block, whose code block the marker would break.
     const owner = rangeBlockOwner(state)
