@@ -7,8 +7,8 @@
  * `DirectoryAdapter` is deliberately flat over a graph's four subdirectories.
  *
  * The folder's rules: **owned** paths - every file the publisher produced, and anything under
- * `assets/` and `theme/`, top-level `.html`, `search.json`, `sitemap.xml`, `feed.xml` and an old
- * build's report - are rewritten and their strays deleted; **seeded** files are written when absent and
+ * `assets/`, `theme/`, `maps/` and `pictures/`, top-level `.html`, `search.json`, `sitemap.xml`
+ * and `feed.xml` - are rewritten and their strays deleted; **seeded** files are written when absent and
  * never touched again; `AGENTS.md` has its managed section rewritten and the user's text kept;
  * everything else (`CNAME`, `robots.txt`, `.git/`, a file the user added) is never written or
  * deleted. Only what changed is written, so a publish that changes one page moves one mtime.
@@ -45,14 +45,17 @@ export interface SiteFolder {
 }
 
 /**
- * Stale files are removed only from the places the publisher owns. `etherpk-publish.json` is not
- * produced but stays owned, so the first publish after the upgrade deletes the copy an older
- * build left in the folder.
+ * The folders the publisher writes into, whole: the graph's assets, the theme, and the pictures
+ * it draws for maps (`maps/`) and for extension blocks (`pictures/`). Those pictures are named by
+ * their content, so a changed map or an unpublished page leaves the old one behind as a stray.
  */
+const OWNED_FOLDERS = ['assets/', 'theme/', 'maps/', 'pictures/']
+
+/** Stale files are removed only from the places the publisher owns. */
 export function isOwnedPath(path: string): boolean {
-    if (path.startsWith('assets/') || path.startsWith('theme/')) return true
+    if (OWNED_FOLDERS.some((folder) => path.startsWith(folder))) return true
     if (path.includes('/')) return false
-    return /\.html$/.test(path) || ['search.json', 'search-index.js', 'sitemap.xml', 'feed.xml', 'etherpk-publish.json', '.nojekyll'].includes(path)
+    return /\.html$/.test(path) || ['search.json', 'search-index.js', 'sitemap.xml', 'feed.xml', '.nojekyll'].includes(path)
 }
 
 function sameBytes(a: Uint8Array, b: Uint8Array): boolean {

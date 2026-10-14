@@ -28,10 +28,13 @@ describe('allocateSlugs', () => {
     })
 
     it('keeps the generated files\' names free, and never emits an empty slug', () => {
-        const slugs = allocateSlugs([doc('Index'), doc('404'), doc('Journal'), doc('Search'), doc('???')])
+        const slugs = allocateSlugs([doc('Index'), doc('404'), doc('Journal'), doc('Posts'), doc('???')])
         for (const reserved of RESERVED_SLUGS) expect([...slugs.values()]).not.toContain(reserved)
         expect(slugs.get('index')).toBe('index-2')
         expect(slugs.get('404')).toBe('404-2')
+        // A blog's list of posts is posts.html, so a page called Posts gives way rather than being
+        // overwritten by it.
+        expect(slugs.get('posts')).toBe('posts-2')
         expect(slugs.get('???')).toBe('page')
     })
 
@@ -62,6 +65,12 @@ describe('allocateSlugs', () => {
             { concept: 'Terms', wanted: 'privacy-policy', slug: 'privacy-policy-2', explicit: true },
             { concept: 'Privacy Policy', wanted: 'privacy-policy', slug: 'privacy-policy-3', explicit: false },
         ])
+    })
+
+    it('leaves a name the publisher never writes free, such as search', () => {
+        // Site search reads search.json and search-index.js. There is no search.html, so a page
+        // called Search keeps its own address.
+        expect(allocateSlugs([doc('Search')]).get('search')).toBe('search')
     })
 
     it('an explicit slug that is reserved or empties is ignored and reported', () => {

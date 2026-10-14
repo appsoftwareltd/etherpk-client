@@ -354,7 +354,7 @@
             data-testid="graph-view-pageless"
         >
             <option value="all">All</option>
-            <option value="mentioned-twice">Mentioned twice or more</option>
+            <option value="mentioned-twice">In two or more documents</option>
             <option value="none">None</option>
         </select>
     </label>

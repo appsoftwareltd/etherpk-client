@@ -3862,9 +3862,9 @@
             data-testid="graphs-unsupported"
         >
             <p>
-                This browser cannot open a folder on this computer. Folders need
-                a Chromium-based desktop browser: Chrome, Edge or Brave. Synced
-                graphs work in any browser.
+                This browser cannot open a folder. Folders need Chrome or Edge on
+                a desktop, or Chrome on Android. Synced graphs work in any
+                browser.
             </p>
             {#if servers.length === 0}
                 <button
@@ -4065,8 +4065,8 @@
                         </p>
                         {#if !supported}
                             <p class="text-sm text-gray-500 dark:text-gray-400">
-                                Folders need a Chromium-based desktop browser:
-                                Chrome, Edge or Brave.
+                                Folders need Chrome or Edge on a desktop, or
+                                Chrome on Android.
                             </p>
                         {/if}
                         <p

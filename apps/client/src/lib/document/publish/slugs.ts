@@ -15,8 +15,11 @@ import { conceptKey } from '../backlinks/backlink-index'
 import { publishSlug } from '../wikilink/derive'
 import type { PublishDocument } from './types'
 
-/** Names the publisher writes itself; a document wanting one is suffixed instead. */
-export const RESERVED_SLUGS: readonly string[] = ['index', '404', 'journal', 'search']
+/**
+ * The pages the publisher writes itself (the home page, the 404 page, and the journal and posts
+ * archives); a document wanting one of their names is suffixed instead.
+ */
+export const RESERVED_SLUGS: readonly string[] = ['index', '404', 'journal', 'posts']
 
 export interface SlugCollision {
     concept: string

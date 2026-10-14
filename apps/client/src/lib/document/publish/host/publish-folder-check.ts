@@ -1,8 +1,8 @@
 /**
  * Whether a folder chosen as a [[Publish Folder]] overlaps a [[Graph Folder]] this device knows.
  *
- * A publish deletes, from the folder it writes into, the files under `assets/` and `theme/` and
- * the top-level pages it did not produce (`isOwnedPath` in `site-writer.ts`). Published into a
+ * A publish deletes, from the folder it writes into, the files under `assets/`, `theme/`, `maps/`
+ * and `pictures/` and the top-level pages it did not produce (`isOwnedPath` in `site-writer.ts`). Published into a
  * graph's own folder it would delete the graph's attachments, published inside one it mixes the
  * site's files (a `README.md`, an `AGENTS.md`) into the graph, and published into a folder that
  * holds one it can reach the graph's files below. So all three are refused, compared by handle

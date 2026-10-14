@@ -12,8 +12,8 @@
      * The grid itself is the shared framework-free renderer the Command Menu's pick-a-date
      * popover also paints (`../calendar/month-grid.ts`), attached rather than templated, the same
      * way the context menu attaches itself. What lives here is everything the popover cannot
-     * share: real DOM focus (a roving tabindex, because forty-two tab stops between [[Quick
-     * Find]] and [[Favourite]]s would be impassable) and following the active document.
+     * share: real DOM focus (a roving tabindex, because forty-two tab stops between the
+     * sidebar's buttons and [[Favourite]]s would be impassable) and following the active document.
      */
     import {
         formatISODate,

@@ -16,7 +16,7 @@ describe('seeded files', () => {
         // Wrangler uploads everything under the assets directory, the repository's .git included,
         // unless an .assetsignore says otherwise (found the hard way on docs.etherpk.com, 2026-09-19).
         const ignore = files.get('.assetsignore') as string
-        for (const path of ['.git', '.github', 'wrangler.jsonc', 'AGENTS.md', 'README.md', 'etherpk-publish.json']) expect(ignore.split('\n')).toContain(path)
+        for (const path of ['.git', '.github', 'wrangler.jsonc', 'AGENTS.md', 'README.md']) expect(ignore.split('\n')).toContain(path)
     })
 
     it('adds a managed section to a fresh AGENTS.md and rewrites only that section later', () => {

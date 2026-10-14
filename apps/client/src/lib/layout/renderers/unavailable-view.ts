@@ -9,5 +9,5 @@
  * than erroring or rendering blank.
  */
 export function unavailableViewMessage(kind: string): string {
-    return `This view (“${kind}”) isn’t available here — the extension that provides it may be disabled or not installed.`
+    return `This view (“${kind}”) isn’t available here. The extension that provides it may be switched off or not installed.`
 }

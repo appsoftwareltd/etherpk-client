@@ -414,7 +414,7 @@
                 {/if}
             </div>
             <p class="mt-1 text-sm text-gray-600 dark:text-gray-400" data-testid="extension-directory-note">
-                Extensions from other publishers. All are reviewed before being accepted to the directory. Sync will install the extensions on all of your devices, and extensions are auto-updating.
+                Extensions from other publishers. All are reviewed before being accepted to the directory. Sync will install the extensions on all of your devices, and they update themselves.
             </p>
 
             {#if pending.length > 0}

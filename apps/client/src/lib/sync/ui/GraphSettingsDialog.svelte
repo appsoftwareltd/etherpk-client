@@ -839,9 +839,8 @@
                             data-testid="mirror-unsupported"
                         >
                             This browser can't give EtherPK a folder to write
-                            to. Mirroring needs the File System Access API,
-                            which Chrome and Edge on a desktop provide - phones
-                            and Firefox don't yet.
+                            to. Mirroring needs Chrome or Edge on a desktop, or
+                            Chrome on Android.
                         </p>
                     {:else}
                         <p class="text-sm text-gray-600 dark:text-gray-400">

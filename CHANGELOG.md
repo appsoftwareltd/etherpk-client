@@ -5,6 +5,29 @@ What changed in each release of the EtherPK Client and the Headless Client
 They are released together, under the version number they share with the Sync Server. This log
 starts at 0.9.3.
 
+## Unreleased
+
+### Client
+
+- **A publish removes old map and extension pictures.** A picture under `maps/` or `pictures/`
+  that no published page uses any more is deleted from the site folder, as old pages and assets
+  already were.
+- **A page named Search publishes at `search.html`**, where it was given `search-2.html`. In a
+  blog, a page named Posts now gets `posts-2.html` instead of being replaced by the list of posts.
+- **Reset workspace keeps Highlight reference** and whether the backlinks under documents are
+  folded. It still forgets the arrangement, the Backlinks pin and the Tasks filter.
+- **Clearer wording** on the Graphs page, in Settings and on the home page about which browsers can
+  open a folder: Chrome or Edge on a desktop, or Chrome on Android. Also clearer: what a passkey
+  does for protected documents, the two choices when you rename a page, the Graph View's
+  **Pageless** filter (**In two or more documents**), and **no page yet** in the Tasks view's name
+  suggestions.
+
+### Headless Client
+
+- **`publish` removes old map pictures** from the site folder, as the Client does.
+- **A page named Search publishes at `search.html`**, and a blog's page named Posts at
+  `posts-2.html`, as in the Client.
+
 ## 0.11.1 - 2026-10-14
 
 ### Client

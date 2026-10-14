@@ -207,9 +207,8 @@
                 </p>
             {:else}
                 <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
-                    Bind a passkey and this device can unlock without the passphrase. It also means
-                    that if you ever forget the passphrase, this device can still get in and let you
-                    set a new one - which is the only way back there is.
+                    Bind a passkey and this device can unlock with your fingerprint, face or device
+                    PIN instead of the passphrase.
                 </p>
                 <button
                     type="button"

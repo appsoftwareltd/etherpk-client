@@ -175,7 +175,7 @@
             <label class="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-200">
                 <input type="radio" name="{uid}-strategy" bind:group={strategy} value="rewrite" data-testid="rename-strategy-rewrite" class="mt-0.5" />
                 <span>
-                    <span class="font-medium">Update the links</span> -
+                    <span class="font-medium">Update the links</span>:
                     {#if aliasOf !== null}replace the alias "{concept}" with the new name, and{/if}
                     rewrite
                     {#if linkCount > 0}{linkCount} {linkCount === 1 ? "document" : "documents"}{:else}any documents{/if}
@@ -186,10 +186,10 @@
                 <input type="radio" name="{uid}-strategy" bind:group={strategy} value="alias" data-testid="rename-strategy-alias" class="mt-0.5" />
                 <span>
                     {#if aliasOf !== null}
-                        <span class="font-medium">Keep the old name working</span> - "{aliasOf}" answers to the new name as
+                        <span class="font-medium">Keep the old name working</span>: "{aliasOf}" answers to the new name as
                         well, and links that say "{concept}" are left as written.
                     {:else}
-                        <span class="font-medium">Keep the old name working</span> - "{concept}" becomes an alias, so existing
+                        <span class="font-medium">Keep the old name working</span>: "{concept}" becomes an alias, so existing
                         links still resolve and their text is left as written.
                     {/if}
                 </span>

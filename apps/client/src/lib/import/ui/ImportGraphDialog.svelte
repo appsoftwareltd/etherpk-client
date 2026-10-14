@@ -547,7 +547,7 @@
                             ><span class="font-medium {folderAvailable ? '' : 'text-gray-500 dark:text-gray-400'}">Local folder</span> -
                             plain markdown files in a new, empty folder you
                             choose.{#if !folderAvailable}
-                                <span class="block text-gray-600 dark:text-gray-300">Needs a Chromium-based desktop browser.</span>{/if}</span
+                                <span class="block text-gray-600 dark:text-gray-300">Needs Chrome or Edge on a desktop, or Chrome on Android.</span>{/if}</span
                         >
                     </label>
                     <label

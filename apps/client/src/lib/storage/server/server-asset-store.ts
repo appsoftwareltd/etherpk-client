@@ -493,7 +493,7 @@ export function createServerAssetStore(deps: ServerAssetStoreDeps): AssetStore {
                             throw new Error(
                                 typeof navigator !== 'undefined' && navigator.onLine === false
                                     ? 'The connection dropped while uploading to the storage bucket.'
-                                    : 'Uploading to the storage bucket was blocked. The bucket\'s CORS policy must allow this app\'s origin - see "Asset storage" in the Synced Graphs doc.',
+                                    : 'Uploading to the storage bucket was blocked. The bucket\'s CORS policy must allow this app\'s address, which whoever runs the Sync Server sets.',
                             )
                         }
                         if (!r.ok) throw new HttpFailure(r.status, `chunk ${n} upload failed: ${r.status}`)

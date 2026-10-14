@@ -791,7 +791,7 @@
                                 {/if}
                             </p>
                         {:else}
-                            <p class="text-sm text-gray-600 dark:text-gray-400">This browser cannot write a folder - download the site as a zip instead, or use Chrome or Edge on a desktop to publish straight into a folder.</p>
+                            <p class="text-sm text-gray-600 dark:text-gray-400">This browser cannot write a folder. Download the site as a zip instead, or use Chrome or Edge on a desktop, or Chrome on Android, to publish straight into a folder.</p>
                         {/if}
                         <div class="flex flex-wrap gap-2">
                             {#if folderSupported}

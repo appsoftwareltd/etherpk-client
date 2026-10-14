@@ -500,7 +500,7 @@
     // What to know before choosing between a folder graph and a synced one. A self-hosted Client's
     // server is run by its team, not by EtherPK, so that copy names the server rather than "we".
     const usageNotes = $derived([
-        "Folder graphs need the File System Access API, which today means a Chromium desktop browser (Chrome, Edge, Brave). Phones, Safari and Firefox work with synced graphs.",
+        "Folder graphs need Chrome or Edge on a desktop, or Chrome on Android. Safari, Firefox and every browser on an iPhone or iPad work with synced graphs.",
         `End-to-end encryption protects your data and privacy. An unlocked device or your Recovery Code is needed to decrypt your synced notes. ${managed ? "We cannot" : "Your Sync Server cannot"} decrypt or recover your notes for you. Keep a copy of your code safe and backed up.`,
     ]);
 
@@ -984,8 +984,8 @@
                     <span
                         class="mt-2.5 h-1.5 w-1.5 shrink-0 rounded-full bg-gray-950 dark:bg-white"
                         aria-hidden="true"
-                    ></span>Folder graphs in a Chromium desktop browser, or the
-                    Client on your own machine
+                    ></span>Folder graphs in Chrome or Edge on a desktop or Chrome
+                    on Android, or the Client on your own machine
                 </li>
                 <li class="flex items-start gap-3">
                     <span

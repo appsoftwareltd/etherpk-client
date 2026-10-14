@@ -124,14 +124,25 @@ describe('writeSiteToDirectory', () => {
         expect(fileText(root, 'AGENTS.md')).toBe('# Mine\n<!-- s -->new<!-- e -->\nkeep')
     })
 
-    it('deletes the publish report an older build left in the folder', async () => {
-        // Older builds wrote etherpk-publish.json into every site. The name stays an owned path
-        // so that the first publish after the upgrade removes the copy.
+    it('deletes map and extension pictures that no page uses any more', async () => {
+        // A map's picture is named by its lines and an extension block's by its content, so a
+        // changed map or an unpublished page leaves the old picture behind, place names and all.
         const root: MemDir = { kind: 'directory', entries: new Map() }
-        root.entries.set('etherpk-publish.json', { kind: 'file', bytes: new TextEncoder().encode('{"excluded":[{"concept":"Secret Plans"}]}'), writes: 0 })
-        const result = await writeSiteToDirectory(dirHandle(root), new Map([['index.html', 'x']]), { seeded: new Map(), agentsMd })
-        expect(result.deleted).toEqual(['etherpk-publish.json'])
-        expect(root.entries.has('etherpk-publish.json')).toBe(false)
+        const handle = dirHandle(root)
+        const first = new Map<string, string | Uint8Array>([
+            ['index.html', 'v1'],
+            ['maps/kept.webp', new Uint8Array([1])],
+            ['maps/old.webp', new Uint8Array([2])],
+            ['pictures/old.png', new Uint8Array([3])],
+        ])
+        await writeSiteToDirectory(handle, first, { seeded: new Map(), agentsMd })
+        root.entries.set('garden', { kind: 'directory', entries: new Map([['plan.txt', { kind: 'file', bytes: new TextEncoder().encode('mine'), writes: 0 }]]) })
+
+        const second = new Map<string, string | Uint8Array>([['index.html', 'v2'], ['maps/kept.webp', new Uint8Array([1])]])
+        const result = await writeSiteToDirectory(handle, second, { seeded: new Map(), agentsMd })
+        expect(result.deleted.sort()).toEqual(['maps/old.webp', 'pictures/old.png'])
+        expect(fileText(root, 'maps/kept.webp')).not.toBeNull()
+        expect(fileText(root, 'garden/plan.txt')).toBe('mine')
     })
 
     it('never touches .git', async () => {

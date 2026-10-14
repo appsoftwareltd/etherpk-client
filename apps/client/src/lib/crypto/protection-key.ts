@@ -138,9 +138,9 @@ async function unwrap(wrapped: string, wrapKey: Uint8Array, aad: Uint8Array): Pr
 }
 
 /**
- * Mint a protection record. Pass `existingKey` to re-root an existing key under a new passphrase —
- * that is how a device holding only a passkey wrap recovers from a forgotten passphrase without
- * re-encrypting a single document.
+ * Mint a protection record. Pass `existingKey` to re-root an existing key under a new passphrase,
+ * which is how a passphrase change keeps every protected document as it is, with nothing
+ * re-encrypted.
  */
 export async function createProtectionRecord(
     passphrase: string,

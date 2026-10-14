@@ -76,8 +76,8 @@ export function publishFolderOf(folders: PublishFolders, graphKey: string, publi
 /**
  * How a Publish Folder sits against a graph folder: the `same` folder, `inside` it, or it
  * `contains` the graph folder. A publish deletes, from the folder it writes into, the files under
- * `assets/` and `theme/` and the top-level pages it did not produce (`isOwnedPath`), so any of the
- * three would cost the graph files; the Local Mirror refuses the same three for the same reason.
+ * `assets/`, `theme/`, `maps/` and `pictures/` and the top-level pages it did not produce
+ * (`isOwnedPath`), so any of the three would cost the graph files; the Local Mirror refuses the same three for the same reason.
  */
 export type FolderOverlap = 'same' | 'inside' | 'contains'
 

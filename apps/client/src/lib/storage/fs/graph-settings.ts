@@ -26,7 +26,7 @@ export interface GraphSettings {
     defaultMaxImageDisplaySize?: string
     /**
      * Default info-string injected when a Fenced Code Block is created with bare backticks
-     * (ADR 0018). Absent ⇒ `text` (no highlighting until the author picks a language).
+     * (ADR 0018). Absent ⇒ a bare fence (no language, so no highlighting until the author picks one).
      */
     defaultCodeLanguage?: string
     /**

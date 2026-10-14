@@ -4,18 +4,19 @@
  *
  * What goes is the ARRANGEMENT and what hangs off it: the [[Layout]] itself (panes, tabs, pins,
  * Sidebar collapse, dockview geometry), the [[Reading Position]]s of Views that no longer exist,
- * and the two Sidebar View preferences that are arrangement in all but name - the Backlinks pin
- * and the Tasks filter. What stays is everything a user READS or WROTE: [[Recents]] (activity,
+ * and the two Sidebar View states that are arrangement in all but name: the Backlinks pin and the
+ * Tasks filter. What stays is everything a user READS or WROTE or CHOSE: [[Recents]] (activity,
  * not arrangement), the unsent Quick Note text, the editor font size (a preference over every
- * graph), and of course all shared graph content.
+ * graph), the Backlinks preferences (Highlight reference and the fold of the backlinks beneath
+ * documents, ADR 0135), and of course all shared graph content.
  *
  * The Layout is not cleared here: the workspace restores `defaultLayout()` over a fresh
  * presenter and saves it, which is one write rather than a delete and a write. This clears the
- * three localStorage keys the Layout's companions live under, so the stores the workspace
- * creates next start from their defaults.
+ * localStorage keys of the companions that go, so the stores the workspace creates next start
+ * from their defaults. The Backlinks pin is never stored: the reset recreates the Backlinks store,
+ * which reads the kept preferences back and starts unpinned.
  */
 
-import { BACKLINKS_PREFERENCES_KEY_PREFIX } from '$lib/document/backlinks-preferences'
 import { TASK_FILTER_KEY_PREFIX } from '$lib/document/task-filter-store'
 import { READING_POSITIONS_KEY_PREFIX } from '$lib/navigation/reading-positions'
 
@@ -23,7 +24,6 @@ import { READING_POSITIONS_KEY_PREFIX } from '$lib/navigation/reading-positions'
 export function workspaceResetKeys(graphId: string): string[] {
     return [
         `${READING_POSITIONS_KEY_PREFIX}${graphId}`,
-        `${BACKLINKS_PREFERENCES_KEY_PREFIX}${graphId}`,
         `${TASK_FILTER_KEY_PREFIX}${graphId}`,
     ]
 }

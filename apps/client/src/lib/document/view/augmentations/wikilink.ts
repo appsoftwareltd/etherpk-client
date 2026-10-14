@@ -3,7 +3,7 @@
  * parser + code-suppression (not a regex). A pure decoration over unaltered
  * markdown (ADR 0001). Each segment carries its `data-concept`; links to a concept
  * with no document get `.cm-wikilink--missing`, and a plain click opens the concept
- * (confirming first when it has no document yet). Holding the mod key (Ctrl / ⌘)
+ * (as a [[Draft]] when it has no document yet). Holding the mod key (Ctrl / ⌘)
  * suppresses that and just places the cursor, which is how link text is edited —
  * inverted from the usual editor convention so touch, which has no modifier, can
  * follow a link at all. From the keyboard, Alt+Enter follows the link at the caret and

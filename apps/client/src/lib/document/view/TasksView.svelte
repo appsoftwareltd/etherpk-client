@@ -626,7 +626,7 @@
                             >
                                 <span class="min-w-0 flex-1 truncate">{candidate.display}</span>
                                 <span class="shrink-0 text-sm uppercase text-(--gk-text-subtle)">
-                                    {candidate.kind === "alias" ? `alias of ${candidate.canonical}` : candidate.kind}
+                                    {candidate.kind === "alias" ? `alias of ${candidate.canonical}` : candidate.kind === "pageless" ? "no page yet" : candidate.kind}
                                 </span>
                             </button>
                         </li>

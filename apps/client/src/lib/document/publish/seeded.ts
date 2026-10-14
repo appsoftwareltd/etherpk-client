@@ -100,7 +100,6 @@ not here.
 wrangler.jsonc
 AGENTS.md
 README.md
-etherpk-publish.json
 `,
         ],
     ])
@@ -123,7 +122,7 @@ and files that are no longer produced are deleted.
   frontmatter says \`public: true\` and names this publication in \`publications: [${publication.id}]\`
   (unless the publication takes every public document).
 - The navigation is the outline of the publication page in EtherPK - the theme and the include
-  slots (head, logo, header, footer, before-content, after-content, scripts, styles) are chosen
+  slots (head, favicon, logo, header, footer, before-content, after-content, scripts, styles) are chosen
   and edited there too, in the Publish settings and the Theme editor.
 - \`index.html\` opens from disk for a preview. \`.github/workflows/pages.yaml\` deploys the folder
   to GitHub Pages, \`wrangler.jsonc\` deploys it to Cloudflare Workers, and any static host serves it

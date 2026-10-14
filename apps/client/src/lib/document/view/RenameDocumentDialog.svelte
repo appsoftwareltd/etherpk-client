@@ -255,7 +255,7 @@
 
         <!-- The cascade rule (ADR 0038 §2): a scoped concept's name contains its scope's. -->
         <p class="text-sm text-gray-500 dark:text-gray-400">
-            Links that use a renamed name as a scope are updated with it - a scoped concept is named by its scope.
+            Links that use a renamed name as a scope are updated with it, because a scoped concept is named by its scope.
         </p>
     {/snippet}
 
