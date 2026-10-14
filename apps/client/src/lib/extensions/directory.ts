@@ -24,8 +24,8 @@ export type DirectoryState = { state: 'off' } | { state: 'ok'; listing: Director
 
 export interface ExtensionDirectory {
     readonly clientVersion: string
-    /** The list as the Client's server last read it. */
-    load(signal?: AbortSignal): Promise<DirectoryState>
+    /** The list as the Client's server last read it, or, with `fresh`, as it reads it now (Refresh). */
+    load(signal?: AbortSignal, options?: { fresh?: boolean }): Promise<DirectoryState>
     /** The person installs a listed release: on this device, and in their settings. Throws, saying why, when it cannot. */
     install(extension: DirectoryExtension, release: DirectoryRelease): Promise<void>
     /**
@@ -112,8 +112,8 @@ export function createExtensionDirectory(options: ExtensionDirectoryOptions): Ex
 
     const directory: ExtensionDirectory = {
         clientVersion,
-        async load(signal) {
-            const response = await fetcher('/api/extensions/directory', { signal, cache: 'no-store' })
+        async load(signal, { fresh = false } = {}) {
+            const response = await fetcher(fresh ? '/api/extensions/directory?fresh=1' : '/api/extensions/directory', { signal, cache: 'no-store' })
             if (!response.ok) return { state: 'unavailable', error: await refusal(response) }
             return (await response.json()) as DirectoryState
         },

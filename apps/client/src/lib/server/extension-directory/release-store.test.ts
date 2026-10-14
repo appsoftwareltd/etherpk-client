@@ -119,6 +119,22 @@ describe('the Extension Directory list', () => {
         expect(world.requests.filter((url) => url === DIRECTORY)).toHaveLength(2)
     })
 
+    it('is read again at once when asked for afresh, but never twice within half a minute', async () => {
+        const s = store()
+        const reads = () => world.requests.filter((url) => url === DIRECTORY)
+        await s.listing()
+        clock += 20 * 1000
+        await s.listing({ fresh: true })
+        expect(reads()).toHaveLength(1)
+        clock += 10 * 1000
+        await s.listing({ fresh: true })
+        expect(reads()).toHaveLength(2)
+        // The fresh read starts the ten minutes again.
+        clock += 9 * 60 * 1000
+        await s.listing()
+        expect(reads()).toHaveLength(2)
+    })
+
     it('says why when it was never read, and keeps the last one read when it cannot be read again', async () => {
         world.failListing = true
         const s = store()

@@ -4,6 +4,7 @@ import { defineConfig } from 'vite'
 // Relative rather than through the package exports map: Vite loads this config before it can
 // resolve workspace packages, and the module shells out to git, so it stays Node-only.
 import { readPackageVersion, resolveBuildInfo } from '../../packages/shared/src/build-stamp/resolve-build-info'
+import { devServerHttps } from '../../packages/shared/src/dev-server/dev-server-https'
 import { demoGraphPlugin } from './demo-graph-plugin'
 import { devDictionariesPlugin } from './dev-dictionaries-plugin'
 import { devPostcodesPlugin } from './dev-postcodes-plugin'
@@ -35,7 +36,10 @@ export default defineConfig({
     ],
     server: {
         port: 5173,
-        strictPort: true
+        strictPort: true,
+        // HTTPS and extra allowed hosts when the DEV_SERVER_* settings ask for them, to test from
+        // another device through a TLS proxy such as Tailscale Serve (see dev-server-https.ts).
+        ...devServerHttps(),
     },
     resolve: {
         // A compiled-in extension (ADR 0121) is a package of its own under `extensions/`, with its

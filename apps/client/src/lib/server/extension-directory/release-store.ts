@@ -48,6 +48,11 @@ export const DEFAULT_RELEASE_LIMITS: ReleaseLimits = { packedBytes: 50 * 1024 * 
 
 /** How long a list read is used before it is read again. */
 export const LISTING_TTL_MS = 10 * 60 * 1000
+/**
+ * How soon after one read the list may be read again when someone asks for it afresh (Refresh in
+ * Settings): soon enough to see a release just listed, never so often that the directory is hammered.
+ */
+const LISTING_REFRESH_MS = 30 * 1000
 /** How soon a list that could not be read is tried again. */
 const LISTING_RETRY_MS = 60 * 1000
 /** The most bytes `directory.json` may hold, and a registry's record of a package. */
@@ -87,7 +92,11 @@ export type ListingState = { state: 'off' } | { state: 'ok'; listing: DirectoryL
 export type ReleaseFile = { ok: true; file: string; size: number } | { ok: false; status: 400 | 404 | 410 | 502 | 503; message: string }
 
 export interface ReleaseStore {
-    listing(): Promise<ListingState>
+    /**
+     * The list as last read, read again first when it is due. With `fresh`, it is read again now
+     * rather than at the end of its ten minutes, unless the last read was under half a minute ago.
+     */
+    listing(options?: { fresh?: boolean }): Promise<ListingState>
     /** The file at `path` in the release `key` of extension `id`. */
     file(id: string, key: string, path: string): Promise<ReleaseFile>
 }
@@ -207,6 +216,8 @@ export function createReleaseStore(options: ReleaseStoreOptions): ReleaseStore {
 
     let current: DirectoryListing | null = null
     let nextCheck = 0
+    /** When the list was last read, or tried: a fresh read waits half a minute after it. */
+    let lastRead = Number.NEGATIVE_INFINITY
     let lastError = 'it has not been read yet'
     let reading: Promise<void> | null = null
     const fetching = new Map<string, Promise<void>>()
@@ -261,6 +272,7 @@ export function createReleaseStore(options: ReleaseStoreOptions): ReleaseStore {
     }
 
     async function readListing(): Promise<void> {
+        lastRead = now()
         const directoryUrl = options.directoryUrl!
         const listingCopy = join(await root(), 'directory.json')
         try {
@@ -293,9 +305,9 @@ export function createReleaseStore(options: ReleaseStoreOptions): ReleaseStore {
         }
     }
 
-    async function listing(): Promise<ListingState> {
+    async function listing({ fresh = false }: { fresh?: boolean } = {}): Promise<ListingState> {
         if (options.directoryUrl === null) return { state: 'off' }
-        if (now() >= nextCheck) {
+        if (now() >= nextCheck || (fresh && now() - lastRead >= LISTING_REFRESH_MS)) {
             reading ??= readListing().finally(() => {
                 reading = null
             })

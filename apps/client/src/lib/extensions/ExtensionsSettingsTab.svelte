@@ -18,7 +18,8 @@
      * their settings, and update by themselves (installed-sync.ts): an installed one says where it
      * came from, when it was last updated, a newer release waiting for the next start or for a newer
      * Client, and can be removed, here and on the person's other devices. One installed from the
-     * account that this device cannot run yet is listed too, saying why.
+     * account that this device cannot run yet is listed too, saying why. Refresh reads the list again
+     * at once, and brings the installed extensions up to it, rather than at the next hourly check.
      */
     import { onMount, tick } from "svelte";
     import type { Attachment } from "svelte/attachments";
@@ -54,7 +55,7 @@
     let directorySlow = $state(false);
     let loadController: AbortController | null = null;
 
-    async function loadDirectory() {
+    async function loadDirectory({ fresh = false }: { fresh?: boolean } = {}) {
         if (!directory) return;
         loadController?.abort();
         const controller = new AbortController();
@@ -62,7 +63,7 @@
         directoryLoading = true;
         const slow = setTimeout(() => (directorySlow = true), 300);
         try {
-            const state = await directory.load(controller.signal);
+            const state = await directory.load(controller.signal, { fresh });
             if (!controller.signal.aborted) directoryState = state;
         } catch {
             if (!controller.signal.aborted) directoryState = { state: "unavailable", error: "The Client's server could not be reached." };
@@ -239,11 +240,25 @@
         }
     }
 
-    /** Where the extensions a person installs run, by whether their account syncs. */
-    function installsNote(state: PersonSettingsSyncState): string {
-        return state === "synced" || state === "syncing"
-            ? "One you install runs in every graph, here and on your other devices where you sync with your account. Each updates by itself."
-            : "One you install runs in every graph on this device, and on your other devices once you sync a graph. Each updates by itself.";
+    /** Refresh is under way: the list read again, then the installed extensions brought up to it. */
+    let refreshing = $state(false);
+
+    /**
+     * Read the list again now rather than when the Client's server next would (it keeps a read for
+     * ten minutes), then bring installed extensions up to it rather than at the next hourly check,
+     * so a release listed a moment ago shows, and installs, at once.
+     */
+    async function refresh() {
+        if (!directory || refreshing) return;
+        refreshing = true;
+        announcement = "";
+        try {
+            await loadDirectory({ fresh: true });
+            await installedSync?.run();
+            if (directoryState?.state === "ok") announcement = "The Extension Directory is up to date.";
+        } finally {
+            refreshing = false;
+        }
     }
 
     /** The confirmation takes the keyboard as it opens, on its Install button. */
@@ -307,7 +322,7 @@
 <div class="space-y-5" data-testid="extensions-tab">
     <p class="text-sm text-gray-600 dark:text-gray-400">
         Extensions add views, commands and menu rows to EtherPK. Some come with EtherPK{#if directory}, and you can install others from the Extension Directory below{/if}. Switching one off applies to every graph on
-        <strong>this device</strong>, and its open tabs say so until it is back on.
+        <strong>this device</strong>.
     </p>
 
     <ul class="space-y-4" bind:this={rowList}>
@@ -390,9 +405,16 @@
 
     {#if directory}
         <section class="border-t border-gray-100 pt-5 dark:border-gray-800" aria-labelledby="{uid}-directory" data-testid="extension-directory">
-            <h3 id="{uid}-directory" class="text-sm font-medium text-gray-950 focus:outline-none dark:text-gray-100" tabindex="-1" bind:this={directoryHeading}>Extension Directory</h3>
+            <div class="flex flex-wrap items-center justify-between gap-2">
+                <h3 id="{uid}-directory" class="text-sm font-medium text-gray-950 focus:outline-none dark:text-gray-100" tabindex="-1" bind:this={directoryHeading}>Extension Directory</h3>
+                {#if directoryState?.state === "ok"}
+                    <button type="button" class={secondaryButton} aria-disabled={refreshing} aria-busy={refreshing} onclick={refresh} data-testid="extension-directory-refresh">
+                        {refreshing ? "Refreshing…" : "Refresh"}
+                    </button>
+                {/if}
+            </div>
             <p class="mt-1 text-sm text-gray-600 dark:text-gray-400" data-testid="extension-directory-note">
-                Extensions from other publishers. Each release is reviewed before it is listed. {installsNote(syncState)}
+                Extensions from other publishers. All are reviewed before being accepted to the directory. Sync will install the extensions on all of your devices, and extensions are auto-updating.
             </p>
 
             {#if pending.length > 0}
@@ -424,13 +446,13 @@
             {:else if directoryState.state === "unavailable"}
                 <div class="mt-3 space-y-2" role="alert" data-testid="extension-directory-unavailable">
                     <p class="text-sm text-(--gk-text-warning)">The Extension Directory couldn't be read: {directoryState.error}</p>
-                    <button type="button" class={secondaryButton} aria-disabled={directoryLoading} aria-busy={directoryLoading} onclick={() => !directoryLoading && loadDirectory()} data-testid="extension-directory-retry">
+                    <button type="button" class={secondaryButton} aria-disabled={directoryLoading} aria-busy={directoryLoading} onclick={() => !directoryLoading && loadDirectory({ fresh: true })} data-testid="extension-directory-retry">
                         {directoryLoading ? "Trying again…" : "Try again"}
                     </button>
                 </div>
             {:else if available.length === 0}
                 <p class="mt-3 text-sm text-gray-500 dark:text-gray-400" data-testid="extension-directory-empty">
-                    {listing && listing.extensions.length > 0 ? "Every extension the directory lists is installed." : "No extensions are listed yet."}
+                    {#if listing && listing.extensions.length > 0}<strong class="font-semibold">All available extensions installed</strong>{:else}No extensions are listed yet.{/if}
                 </p>
             {:else}
                 <ul class="mt-3 space-y-4" bind:this={directoryList}>

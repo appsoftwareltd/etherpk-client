@@ -61,6 +61,13 @@ describe('the Extension Directory in the browser', () => {
         expect(await down.directory.load()).toEqual({ state: 'unavailable', error: 'The server is restarting.' })
     })
 
+    it('asks the server to read the list again now, for Refresh', async () => {
+        const listing = { state: 'ok', listing: { version: 1, extensions: [orchard] } }
+        const { directory, requests } = setUp({ '/api/extensions/directory?fresh=1': () => Response.json(listing) })
+        expect(await directory.load(undefined, { fresh: true })).toEqual(listing)
+        expect(requests).toEqual(['/api/extensions/directory?fresh=1'])
+    })
+
     it('installs a listed release: fetched from its own address, kept on the device, started in the open graph, and the person’s', async () => {
         const { host, installed, directory, requests, activate, settings } = setUp()
         await host.start(fakeGraphServices().services)

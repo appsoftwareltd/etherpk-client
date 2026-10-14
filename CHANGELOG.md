@@ -5,10 +5,15 @@ What changed in each release of the EtherPK Client and the Headless Client
 They are released together, under the version number they share with the Sync Server. This log
 starts at 0.9.3.
 
-## Unreleased
+## 0.11.1 - 2026-10-14
 
 ### Client
 
+- **Refresh in the Extension Directory** (Settings and Extensions → Extensions) reads the directory
+  again at once and brings installed extensions up to their newest release, instead of waiting up
+  to ten minutes for the list and an hour for updates.
+- **The Extensions tab says more plainly** how the directory's extensions are reviewed, installed on
+  your devices and updated.
 - **Long links in the Tasks panel wrap onto the next line.** A task with a long link or a long
   page name no longer makes the whole list scroll sideways.
 - **Selecting a block in an outline selects its children too.** A selection from a parent into its
