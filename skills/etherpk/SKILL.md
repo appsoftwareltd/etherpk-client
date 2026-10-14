@@ -100,6 +100,10 @@ section to match the version the user runs, so where it and this skill differ, f
   today's date. A page with no date, such as About, is a fixed page. A public journal entry
   (`journals/YYYY-MM-DD.md`) is a post too. The archive of every post is `posts.html`, which the
   menu can link as `- [All posts](posts.html)`.
+- A page with `template: true` in its frontmatter is a Template: a pattern the user copies with
+  `/Template`, its `{{date}}`, `{{title}}` and other variables filled in on the copy. Keep it off
+  the site by leaving out `public: true`. To write a page from one, copy its body and fill the
+  variables in yourself, or pass `template` to the MCP `create_page` tool.
 - Put images in `assets/` and embed them as `![Alt text](../assets/<file>)`.
 - The publication's `theme:` sets the look. Left out, a docs site uses `etherpk-docs` and a blog
   `etherpk-blog`. The other bundled themes suit either kind: `etherpk-papermod`, `etherpk-stack`,

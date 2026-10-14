@@ -292,3 +292,232 @@ describe('convertLogseq image dimensions', () => {
         expect(doc(graph, 'Note').text).toContain('{:height 1, :width 2}')
     })
 })
+
+/**
+ * Logseq marks a template with a block property (`template:: Name`) on any block. EtherPK's
+ * Template is a page (ADR 0144), so each such block becomes the page `[[Templates]] Name`, and
+ * leaves the page it sat on, so its tasks are not in two places.
+ */
+describe('convertLogseq templates', () => {
+    const report = (graph: ConvertedGraph, category: string) => graph.report.filter((r) => r.category === category)
+
+    it('moves a template block, children and all, to a Template page of its own', async () => {
+        const graph = await convertLogseq([
+            src(
+                'pages/Garden.md',
+                [
+                    '- Plans',
+                    '- Weekly Review',
+                    '  template:: Weekly Review',
+                    '  id:: 66f1a2b3-c4d5-e6f7-a8b9-c0d1e2f3a4b5',
+                    '\t- TODO water the beans',
+                    '\t- check the fence',
+                    '- Harvest',
+                ].join('\n'),
+            ),
+        ])
+        expect(doc(graph, '[[Templates]] Weekly Review').text).toBe(
+            '---\ntitle: "[[Templates]] Weekly Review"\ntemplate: true\n---\n- Weekly Review\n  - [ ] water the beans\n  - check the fence',
+        )
+        expect(doc(graph, 'Garden').text).toBe('---\ntitle: Garden\n---\n- Plans\n- Harvest')
+        expect(report(graph, 'rename')).toContainEqual({
+            category: 'rename',
+            concept: '[[Templates]] Weekly Review',
+            detail: 'The Logseq template "Weekly Review" in [[Garden]] became a Template page of its own, and was removed from [[Garden]].',
+        })
+    })
+
+    it('takes only the children, at the margin, when template-including-parent is false', async () => {
+        const graph = await convertLogseq([
+            src(
+                'pages/Kitchen.md',
+                [
+                    '- Recipes',
+                    '\t- Soup',
+                    '\t  template:: Soup',
+                    '\t  template-including-parent:: false',
+                    '\t  collapsed:: true',
+                    '\t\t- chop the carrots',
+                    '\t\t\t- small pieces',
+                    '\t\t- boil the water',
+                    '\t- Bread',
+                ].join('\n'),
+            ),
+        ])
+        expect(doc(graph, '[[Templates]] Soup').text).toBe(
+            '---\ntitle: "[[Templates]] Soup"\ntemplate: true\n---\n- chop the carrots\n  - small pieces\n- boil the water',
+        )
+        expect(doc(graph, 'Kitchen').text).toBe('---\ntitle: Kitchen\n---\n- Recipes\n  - Bread')
+    })
+
+    it('keeps a template block in a journal, and a fenced one, the way Logseq reads them', async () => {
+        const graph = await convertLogseq([
+            src('journals/2026_07_16.md', '- Evening\n  template:: Evening\n  - close the shed\n- the day itself'),
+            src('pages/Notes.md', '- ```\n  - not a block\n    template:: Fenced\n  ```'),
+        ])
+        expect(doc(graph, '[[Templates]] Evening').text).toContain('- Evening\n  - close the shed')
+        expect(doc(graph, '2026-07-16').text).toBe('- the day itself')
+        expect(graph.documents.some((d) => d.concept.includes('Fenced'))).toBe(false)
+        expect(doc(graph, 'Notes').text).toContain('template:: Fenced')
+    })
+
+    it('turns the dynamic variables into Template Variables, in Template pages only', async () => {
+        const graph = await convertLogseq([
+            src(
+                'pages/Garden.md',
+                [
+                    '- Daily',
+                    '  template:: Daily',
+                    '  template-including-parent:: false',
+                    '\t- [[<% today %>]] notes',
+                    '\t- planted on <% today %>, before <% Tomorrow %> and after <%yesterday%>',
+                    '\t- at <% time %> on <%  current   page %>',
+                    '\t- later <% next monday %> and <% last friday %> and <% NEXT MONDAY %>',
+                    '- elsewhere <% today %> stays',
+                ].join('\n'),
+            ),
+        ])
+        expect(doc(graph, '[[Templates]] Daily').text).toBe(
+            [
+                '---',
+                'title: "[[Templates]] Daily"',
+                'template: true',
+                '---',
+                '- [[{{date}}]] notes',
+                '- planted on [[{{date}}]], before [[{{tomorrow}}]] and after [[{{yesterday}}]]',
+                '- at {{time}} on [[{{title}}]]',
+                '- later <% next monday %> and <% last friday %> and <% NEXT MONDAY %>',
+            ].join('\n'),
+        )
+        expect(doc(graph, 'Garden').text).toContain('- elsewhere <% today %> stays')
+        expect(report(graph, 'unsupported')).toEqual([
+            {
+                category: 'unsupported',
+                concept: '[[Templates]] Daily',
+                detail: 'The template variables `<% next monday %>`, `<% last friday %>` and `<% NEXT MONDAY %>` were kept as written. EtherPK does not fill them in.',
+            },
+        ])
+    })
+
+    it('fills a variable inside a longer link without a second pair of brackets', async () => {
+        const graph = await convertLogseq([
+            src('pages/Garden.md', '- Log\n  template:: Log\n  - see [[<% today %> harvest]] and [[<% current page %>]]'),
+        ])
+        expect(doc(graph, '[[Templates]] Log').text).toContain('- see [[{{date}} harvest]] and [[{{title}}]]')
+    })
+
+    it('takes the children of a block whose only text is its template property', async () => {
+        const graph = await convertLogseq([
+            src('pages/Kitchen.md', '- template:: Kitchen Tidy\n  icon:: broom\n\t- wash the pans\n\t- sweep the floor\n\n- Pantry'),
+        ])
+        expect(doc(graph, '[[Templates]] Kitchen Tidy').text).toBe(
+            '---\ntitle: "[[Templates]] Kitchen Tidy"\ntemplate: true\n---\n- wash the pans\n- sweep the floor',
+        )
+        // The blank line after the block separated it from the next one, so it stays.
+        expect(doc(graph, 'Kitchen').text).toBe('---\ntitle: Kitchen\n---\n\n- Pantry')
+    })
+
+    it('makes a template inside another template a Template too, and cuts only the outer one', async () => {
+        const graph = await convertLogseq([
+            src(
+                'pages/Garden.md',
+                [
+                    '- Season',
+                    '  template:: Season',
+                    '	- Spring',
+                    '	  template:: Spring',
+                    '		- sow the beans',
+                    '	- Autumn',
+                    '- Shed',
+                ].join('\n'),
+            ),
+        ])
+        expect(doc(graph, '[[Templates]] Season').text).toContain('- Season\n  - Spring\n    - sow the beans\n  - Autumn')
+        expect(doc(graph, '[[Templates]] Spring').text).toContain('---\n- Spring\n  - sow the beans')
+        expect(doc(graph, 'Garden').text).toBe('---\ntitle: Garden\n---\n- Shed')
+    })
+
+    it('keeps the bullet of a nested template whose only text was its property, so its children keep their depth', async () => {
+        const graph = await convertLogseq([
+            src('pages/Garden.md', '- Season\n  template:: Season\n\t- template:: Spring\n\t\t- sow the beans\n\t- Autumn'),
+        ])
+        expect(doc(graph, '[[Templates]] Season').text).toContain('---\n- Season\n  -\n    - sow the beans\n  - Autumn')
+        expect(doc(graph, '[[Templates]] Spring').text).toContain('---\n- sow the beans')
+    })
+
+    it('suffixes a template whose name is taken, and says so', async () => {
+        const graph = await convertLogseq([
+            src('pages/Templates___Daily.md', '- the namespace page'),
+            src('pages/Garden.md', '- Daily\n  template:: Daily\n  - water the beans'),
+            src('pages/Kitchen.md', '- Daily\n  template:: daily\n  - wash the pans'),
+        ])
+        expect(doc(graph, '[[Templates]] Daily').text).toContain('- the namespace page')
+        expect(doc(graph, '[[Templates]] Daily (2)').text).toContain('water the beans')
+        expect(doc(graph, '[[Templates]] daily (3)').text).toContain('wash the pans')
+        expect(report(graph, 'collision').map((r) => r.concept)).toEqual(['[[Templates]] Daily (2)', '[[Templates]] daily (3)'])
+    })
+
+    it('marks a page whose page properties name it a template, named after the page', async () => {
+        const graph = await convertLogseq([
+            src('pages/Morning Routine.md', 'template:: Morning\ntemplate-including-parent:: false\n- stretch\n- water the beans on <% today %>'),
+            src('pages/Evening.md', 'template:: evening\n- close the shed'),
+        ])
+        expect(doc(graph, 'Morning Routine').text).toBe(
+            '---\ntitle: Morning Routine\ntemplate: true\n---\n- stretch\n- water the beans on [[{{date}}]]',
+        )
+        expect(doc(graph, 'Evening').text).toBe('---\ntitle: Evening\ntemplate: true\n---\n- close the shed')
+        expect(report(graph, 'rename')).toEqual([
+            {
+                category: 'rename',
+                concept: 'Morning Routine',
+                detail: 'Logseq named this template "Morning". A Template takes the name of its page, so it is now the Template "Morning Routine".',
+            },
+        ])
+    })
+
+    it('sets the Journal Template from :default-templates when the import found that template', async () => {
+        const graph = await convertLogseq([
+            src('logseq/config.edn', '{:meta/version 1\n ;; :default-templates {:journals "Commented"}\n :default-templates\n {:journals "daily"}}'),
+            src('pages/Garden.md', '- Daily\n  template:: Daily\n  - water the beans'),
+        ])
+        expect(graph.settings).toEqual({ journalTemplate: '[[Templates]] Daily' })
+        expect(report(graph, 'unresolved')).toEqual([])
+    })
+
+    it('reports a default journal template the import did not find, and sets nothing', async () => {
+        const graph = await convertLogseq([
+            src('logseq/config.edn', '{:default-templates {:journals "Weekly Review"}}'),
+            src('pages/Garden.md', '- Daily\n  template:: Daily\n  - water the beans'),
+        ])
+        expect(graph.settings).toBeUndefined()
+        expect(report(graph, 'unresolved')).toEqual([
+            {
+                category: 'unresolved',
+                detail: 'logseq/config.edn names "Weekly Review" as the default journal template, but the import found no template with that name. The graph has no Journal Template.',
+            },
+        ])
+    })
+
+    it('sets nothing for the empty default Logseq writes', async () => {
+        const graph = await convertLogseq([src('logseq/config.edn', '{:default-templates\n {:journals ""}}'), src('pages/Garden.md', '- x')])
+        expect(graph.settings).toBeUndefined()
+        expect(graph.report).toEqual([])
+    })
+})
+
+describe('parseLogseqConfig', () => {
+    it('reads the default journal template, and nothing from comments', () => {
+        expect(parseLogseqConfig(':default-templates\n {:journals "Daily"}').journalTemplate).toBe('Daily')
+        expect(parseLogseqConfig(':default-templates {:journals ""}').journalTemplate).toBeUndefined()
+        expect(parseLogseqConfig(';; :default-templates {:journals "Daily"}').journalTemplate).toBeUndefined()
+    })
+
+    it('reads a setting after a commented-out example of it', () => {
+        const config = parseLogseqConfig(';; :journal/file-name-format "yyyy_MM_dd"\n:journal/file-name-format "yyyy-MM-dd" ; the one in use')
+        expect(config.journalFileFormat).toBe('yyyy-MM-dd')
+    })
+
+    it('keeps a semicolon inside a string', () => {
+        expect(parseLogseqConfig(':default-templates {:journals "Plan; Review"}').journalTemplate).toBe('Plan; Review')
+    })
+})

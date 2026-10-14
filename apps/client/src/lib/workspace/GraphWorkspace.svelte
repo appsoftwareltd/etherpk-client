@@ -119,6 +119,10 @@
     import { registerDocumentCommands } from "$lib/document/commands/document-commands";
     import { registerBacklinksCommands } from "$lib/document/commands/backlinks-commands";
     import { registerJournalCommands } from "$lib/document/commands/journal-commands";
+    import { registerTemplateCommands } from "$lib/document/commands/template-commands";
+    import { templateBodyOf } from "$lib/document/templates/template-page";
+    import { getActiveGraphSettings } from "$lib/document/active-graph-settings";
+    import { journalTemplateAfterRename } from "$lib/document/templates/journal-template";
     import {
         copyFailureMessage,
         writeClipboardText,
@@ -1342,6 +1346,7 @@
     let detachSpellingCommands: (() => void) | undefined;
     let detachBacklinksCommands: (() => void) | undefined;
     let detachJournalCommands: (() => void) | undefined;
+    let detachTemplateCommands: (() => void) | undefined;
     let detachProtectionCommands: (() => void) | undefined;
     let detachFrontmatterCommands: (() => void) | undefined;
     let detachAssetCommands: (() => void) | undefined;
@@ -1369,7 +1374,12 @@
         // A kind registered as being about a concept (a board, a Map View) follows a rename.
         followsConcept: (kind) => registry.get(kind)?.conceptTarget === true,
         // Extensions hear each concept a rename moved before their Views follow it (ADR 0121).
-        conceptRenamed: (from, to) => bus?.emit("concept:renamed", { from, to }),
+        // The Journal Template follows a rename of the page it names (ADR 0145), scoped pages
+        // a rename carried along included, since each is told here.
+        conceptRenamed: (from, to) => {
+            bus?.emit("concept:renamed", { from, to });
+            followJournalTemplateRename(from, to);
+        },
     });
 
     // ── Protection (ADR 0057-0059) ──────────────────────────────────────────────────────────
@@ -4014,6 +4024,13 @@
         });
         // The Journal Roll beneath a journal tab (ADR 0136): Show older entry.
         detachJournalCommands = registerJournalCommands(commandRegistry, contributions);
+        // `/Template` (ADR 0144): the list is the index's answer, and a picked Template is read
+        // through the store's snapshot, which never opens an editor for it.
+        detachTemplateCommands = registerTemplateCommands(commandRegistry, contributions, {
+            templates: () => graphIndex?.templates() ?? Promise.resolve([]),
+            readTemplate: async (concept) => templateBodyOf(await store?.snapshotDocument(concept).catch(() => null)),
+            journalTemplate: () => getActiveGraphSettings().journalTemplate ?? null,
+        });
         commandRegistry.register("publish.run", () => void publishAgain());
         // Registered so a keybinding or a menu row can reach it later; today it is offered from
         // Graph Settings → Storage, beside the orphaned-asset scan it belongs with.
@@ -5652,6 +5669,41 @@
      * meta map (ADR 0031). Filesystem: settings go to etherpk/settings.json and the name
      * is the local registry display name only (the folder on disk keeps its name).
      */
+    /**
+     * The [[Journal Template]] setting after the page it names was renamed: carried to the new
+     * name, as a favourite is (ADR 0145). A rename of any other page writes nothing.
+     */
+    function followJournalTemplateRename(from: string, to: string): void {
+        const next = journalTemplateAfterRename(getActiveGraphSettings().journalTemplate, from, to);
+        if (next !== null) void patchGraphSettings({ journalTemplate: next });
+    }
+
+    /**
+     * Write some of the shared Graph Settings without the dialog, keeping every other field as it
+     * is now: the Journal Template following a rename. On a Server Backend the meta change
+     * refreshes the active settings itself; a folder graph's are refreshed here.
+     */
+    async function patchGraphSettings(patch: Partial<GraphSettings>): Promise<void> {
+        if (isServerStore) {
+            const sg = serverGraph;
+            if (!sg) return;
+            const current = sanitizeGraphSettings(sg.getMeta().settings ?? {});
+            sg.setMetaSettings({ ...current, ...patch } as Record<string, unknown>);
+            return;
+        }
+        const adapter = fsAdapter;
+        if (!adapter) return;
+        try {
+            currentFsSettings = sanitizeGraphSettings({ ...currentFsSettings, ...patch });
+            await writeGraphSettings(adapter, currentFsSettings);
+            if (workspaceGeneration !== undefined) {
+                updateWorkspaceServices(workspaceGeneration, { settings: currentFsSettings });
+            }
+        } catch (err) {
+            notify(`Could not save the graph settings: ${(err as Error).message}`);
+        }
+    }
+
     function saveGraphSettings(result: {
         name: string;
         settings: GraphSettings;
@@ -6452,6 +6504,8 @@
         detachBacklinksCommands = undefined;
         detachJournalCommands?.();
         detachJournalCommands = undefined;
+        detachTemplateCommands?.();
+        detachTemplateCommands = undefined;
         detachProtectionCommands?.();
         detachProtectionCommands = undefined;
         detachFrontmatterCommands?.();
@@ -6831,6 +6885,7 @@
         extensions={extensionHost}
         {extensionDirectory}
         {installedSync}
+        templates={() => graphIndex?.templates() ?? Promise.resolve([])}
         tab={graphSettingsDialog.tab}
         nameHelp={isServerStore
             ? "Changes the graph name for all members."

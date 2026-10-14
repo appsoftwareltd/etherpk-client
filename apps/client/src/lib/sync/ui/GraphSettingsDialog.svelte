@@ -58,6 +58,7 @@
     import type { SpellingTabProps } from "$lib/document/spelling/ui/spelling-tab";
     import type { ProtectionTabProps } from "$lib/document/protection/ui/protection-tab";
     import type { MirrorTabProps } from "./mirror-tab";
+    import type { TemplateEntry } from "$lib/document/index-db";
     import type { PublishTabProps } from "./publish-tab";
     import PublishSettingsTab from "./PublishSettingsTab.svelte";
     import { PRESENCE_PALETTE } from "$lib/sync/presence-identity";
@@ -97,6 +98,7 @@
         extensions = null,
         extensionDirectory = null,
         installedSync = null,
+        templates = null,
         tab = undefined,
         onchangetab = undefined,
         onsave,
@@ -157,6 +159,11 @@
         extensionDirectory?: ExtensionDirectory | null;
         /** Keeping the person's Extension Directory extensions in step on this device, for what it reports. */
         installedSync?: InstalledSync | null;
+        /**
+         * The graph's [[Template]]s, for the Journal Template field (ADR 0145): the index's answer,
+         * asked once when the dialog opens. Null hides the field, outside an open graph.
+         */
+        templates?: (() => Promise<readonly TemplateEntry[]>) | null;
         /**
          * The tab to be on: the one the address names while the workspace hosts this dialog
          * (ADR 0023, 2026-09-20), which is the tab an entry point asked for, else the one this
@@ -447,6 +454,28 @@
     const TOOLBAR_COLOR_STAND_IN = "#e5e7eb";
     // svelte-ignore state_referenced_locally
     let draftFolderPath = $state(folderPath?.path ?? "");
+    // svelte-ignore state_referenced_locally
+    let journalTemplate = $state(settings.journalTemplate ?? "");
+    /** The graph's Templates once the index has answered; null until then. */
+    let templateList = $state.raw<readonly TemplateEntry[] | null>(null);
+    /** The setting names a page that is not among the graph's Templates: new days open empty. */
+    const journalTemplateMissing = $derived(
+        templateList !== null &&
+            journalTemplate !== "" &&
+            !templateList.some((entry) => entry.concept.toLowerCase() === journalTemplate.toLowerCase()),
+    );
+    onMount(() => {
+        if (!templates) return;
+        templates().then(
+            (list) => {
+                templateList = list;
+                // The setting matches a name without regard to case; the select needs the exact one.
+                const match = list.find((entry) => entry.concept.toLowerCase() === journalTemplate.toLowerCase());
+                if (match) journalTemplate = match.concept;
+            },
+            () => (templateList = []),
+        );
+    });
     let error = $state<string | null>(null);
 
     function save() {
@@ -489,6 +518,8 @@
             return;
         }
         next.recentDocumentCount = recentCount;
+        delete next.journalTemplate;
+        if (journalTemplate !== "") next.journalTemplate = journalTemplate;
         delete next.toolbarColor;
         if (toolbarColor !== null) {
             const hex = normalizeHexColor(toolbarColor);
@@ -1364,6 +1395,48 @@
                         many are listed is shared.
                     </p>
                 </div>
+                {#if templates}
+                    <div>
+                        <label
+                            for="graph-journal-template"
+                            class="mb-1.5 block text-sm font-medium text-gray-600 dark:text-gray-300"
+                            >Journal Template</label
+                        >
+                        <select
+                            id="graph-journal-template"
+                            data-testid="graph-journal-template"
+                            bind:value={journalTemplate}
+                            aria-describedby="graph-journal-template-help{journalTemplateMissing ? ' graph-journal-template-missing' : ''}"
+                            aria-invalid={journalTemplateMissing}
+                            class="block w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-gray-950 dark:text-gray-100 focus:border-gray-950 dark:focus:border-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-950 dark:focus:ring-gray-400"
+                        >
+                            <option value="">None</option>
+                            <!-- The saved name stays choosable while the list loads, and when it
+                                 names no Template, so opening the dialog never changes it. -->
+                            {#if journalTemplate !== "" && (templateList === null || journalTemplateMissing)}
+                                <option value={journalTemplate}>{journalTemplate}</option>
+                            {/if}
+                            {#each templateList ?? [] as entry (entry.concept)}
+                                <option value={entry.concept}>{entry.concept}</option>
+                            {/each}
+                        </select>
+                        {#if journalTemplateMissing}
+                            <p
+                                id="graph-journal-template-missing"
+                                class="mt-1.5 text-sm text-amber-700 dark:text-amber-400"
+                                data-testid="graph-journal-template-missing"
+                            >
+                                Template not found. "{journalTemplate}" is not a Template in
+                                this graph, so new days open empty. Choose another, or None.
+                            </p>
+                        {/if}
+                        <p id="graph-journal-template-help" class="mt-1.5 text-sm text-gray-500 dark:text-gray-400">
+                            Today and later days open holding this Template, and nothing is
+                            saved until you type. A page becomes a Template when its
+                            frontmatter says <code>template: true</code>.
+                        </p>
+                    </div>
+                {/if}
                 <div>
                     <label
                         for="graph-toolbar-color"

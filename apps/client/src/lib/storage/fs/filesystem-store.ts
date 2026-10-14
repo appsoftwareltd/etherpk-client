@@ -22,6 +22,7 @@ import { frontmatterIdentity, normaliseAliases, sameAliases, withFrontmatterIden
 import { renderFrontmatter } from '$lib/document/frontmatter/frontmatter-yaml'
 import type { IndexIncludeFact } from '$lib/document/index-db'
 import { type IndexProperty, propertiesOf } from '$lib/document/properties'
+import { isTemplate } from '$lib/document/templates/template-page'
 import { includeFactsOf } from '$lib/document/publish/publication'
 import { dayIsNotAPageName, isJournalConcept } from '$lib/document/journal-concept'
 import { lineFeedsOnly } from '$lib/document/line-endings'
@@ -70,6 +71,8 @@ export interface IndexDocSnapshot {
     includes?: IndexIncludeFact[]
     /** Its [[Property]]s for Property Filters (ADR 0107); absent when the block sets none. */
     properties?: IndexProperty[]
+    /** It is a [[Template]] (ADR 0144); absent when it is not. */
+    template?: boolean
 }
 
 /**
@@ -88,6 +91,7 @@ export function indexSnapshotOf(identity: { concept: string; kind: DocumentKind 
         text: fm.body,
         ...(includes.length > 0 ? { includes } : {}),
         ...(properties.length > 0 ? { properties } : {}),
+        ...(isTemplate(fm.data, identity.kind) ? { template: true } : {}),
     }
 }
 

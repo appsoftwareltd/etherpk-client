@@ -26,6 +26,7 @@ import {
 import { includeFactsOf } from '$lib/document/publish/publication'
 import { reachedWithin } from '$lib/reached-within'
 import { propertiesOf } from '$lib/document/properties'
+import { isTemplate } from '$lib/document/templates/template-page'
 import type { IndexDocSnapshot } from '$lib/storage/fs/filesystem-store'
 import type {
     IndexChangeCheckpoint,
@@ -489,7 +490,8 @@ export function createServerDocumentStore(
         const includes = entry.kind === 'page' ? includeFactsOf({ concept, kind: entry.kind, text, aliases: [] }) : []
         // Properties are read from the block like the include facts; title and aliases are not
         // among them, since the index takes those from the registry (ADR 0107).
-        const properties = propertiesOf(parseFrontmatter(text).data)
+        const frontmatter = parseFrontmatter(text).data
+        const properties = propertiesOf(frontmatter)
         return {
             concept,
             kind: entry.kind,
@@ -497,6 +499,7 @@ export function createServerDocumentStore(
             text: bodyForIndex(text),
             ...(includes.length > 0 ? { includes } : {}),
             ...(properties.length > 0 ? { properties } : {}),
+            ...(isTemplate(frontmatter, entry.kind) ? { template: true } : {}),
         }
     }
 

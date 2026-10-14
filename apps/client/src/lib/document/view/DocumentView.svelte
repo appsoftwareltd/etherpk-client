@@ -38,6 +38,9 @@
     import { getActiveDocumentStore } from '../active-store'
     import { getActiveGraphIndex } from '../backlinks'
     import { draftConceptNowExists } from '../draft-presence'
+    import { getActiveGraphSettings } from '../active-graph-settings'
+    import { journalTemplateFor } from '../templates/journal-template'
+    import { templateBodyOf, type TemplateSnapshot } from '../templates/template-page'
     import { msUntilNextLocalMidnight, todayISO } from '../calendar/month-grid-core'
     import { isJournalConcept } from '../journal-concept'
     import { placeholderText } from '../placeholder-text'
@@ -54,7 +57,8 @@
     import { anchoredLine, anchorLine } from './line-anchor'
     import { editorExtensions } from './editor-extensions'
     import { EDIT_REFUSAL_MESSAGE, EDIT_REFUSAL_TITLE, type EditRefusal } from './edit-refused'
-    import { applyEditorPosition, editorPosition, type RevealAlign, revealEditorPosition } from './view-position'
+    import { applyEditorPosition, editorPosition, placeSelection, type RevealAlign, revealEditorPosition } from './view-position'
+    import { templateAsNewText } from './template-insert'
     import { createHeldReveal } from './held-reveal'
     import { setEditorOnScreen } from './editor-on-screen'
     import DocumentBacklinks from './DocumentBacklinks.svelte'
@@ -855,6 +859,28 @@
         }
     }
 
+    /**
+     * A Draft for a day from today onward opens holding the graph's [[Journal Template]] (ADR
+     * 0145). The Template is read from the store's snapshot, which opens no editor for it, and
+     * reaches this editor as content does, so nothing is written until the first edit. A Draft
+     * typed in, promoted or replaced while the Template was read keeps what it has.
+     */
+    async function seedJournalTemplate(target: DraftDocument): Promise<void> {
+        const store = getActiveDocumentStore() as { snapshotDocument?: (concept: string) => Promise<TemplateSnapshot | null> }
+        const rendered = await journalTemplateFor(target.concept, {
+            name: () => getActiveGraphSettings().journalTemplate ?? null,
+            read: async (concept) => templateBodyOf(await store.snapshotDocument?.(concept)),
+        })
+        if (!rendered) return
+        // Placed by the rules `/Template` lands by, so the indentation is on the grid and no bullet is
+        // left without a parent, whoever wrote the Template.
+        const placed = templateAsNewText(rendered)
+        if (draft !== target || !target.seed(placed.text)) return
+        // `{{cursor}}` places the caret, as it does when a Template is inserted. Set by the app, so
+        // out of the history: tidy on leave never trims a line the person did not walk away from.
+        if (placed.cursor !== null && editor) editor.view.dispatch(placeSelection(placed.cursor))
+    }
+
     /** Open the document and build the editor over it. Throws if the concept is unknown. */
     function mountDocument(): void {
         const activeStore = getActiveDocumentStore()
@@ -873,6 +899,7 @@
             // Nothing is written until the first keystroke promotes it.
             draft = createDraftDocument(view.target, () => void promote())
             doc = draft
+            void seedJournalTemplate(draft)
         }
         // Loading state until the content is real. Delayed a beat so an already-seeded
         // document (the common case) never flashes a spinner. In collab mode yCollab
@@ -952,7 +979,12 @@
         editor = createDocumentEditor({
             parent: host!,
             doc: doc.getText(),
-            onChange: isCollab ? () => {} : (change) => doc!.applyChange(change, 'editor', hear),
+            // A Draft is written by an edit alone (ADR 0050, ADR 0145). A change that only rode on a
+            // caret move, tidy on leave trimming the Journal Template's line the caret left, is taken
+            // into its buffer and writes nothing.
+            onChange: isCollab
+                ? () => {}
+                : (change, edited) => (draft && doc === draft && !edited ? draft.absorb(change) : doc!.applyChange(change, 'editor', hear)),
             currentText: () => doc!.getText(),
             ...(collabYText ? { collab: { ytext: collabYText, awareness } } : {}),
             // The feature stack lives in editor-extensions.ts (order-tested); the View supplies

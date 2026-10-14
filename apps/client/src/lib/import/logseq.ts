@@ -4,7 +4,8 @@
  * Structure is preserved verbatim (no heading promotion - see the roadmap's "formatted
  * headings inside outliner blocks"); tabs normalise to the default 2-space indent unit.
  * Namespaces become [[Scoped Concept]]s, journals convert to ISO file names, task
- * markers convert per ADR 0032, and everything lossy lands in the report.
+ * markers convert per ADR 0032, template blocks become [[Template]] pages (ADR 0144,
+ * `logseq-templates.ts`), and everything lossy lands in the report.
  */
 
 import {
@@ -17,6 +18,7 @@ import { MARKDOWN_LINK } from '$lib/document/markdown-link-target'
 import { type AssetPlan, normaliseRef, planAssets, tryDecode } from './assets'
 import { buildFrontmatter, createFenceTracker, dedupeConcept, outsideInlineCode, scopedConceptName } from './convert-shared'
 import { type LogseqConfig, logseqDateToIso, parseLogseqConfig } from './logseq-dates'
+import { convertDynamicVariables, extractTemplateBlocks, keptVariablesDetail } from './logseq-templates'
 import { parseLogseqTask, orgTimestampDate } from './logseq-tasks'
 import { baseName, contentFiles, findFile, isMarkdownPath, readText } from './source'
 import { type TaskTags, taskLine } from './task-tags'
@@ -35,6 +37,8 @@ interface LogseqDoc {
     lines: string[]
     props: Record<string, string>
     sourcePath: string
+    /** A page made from a `template::` block (ADR 0144). `isTemplatePage` also counts a page whose own properties say `template::`. */
+    fromTemplateBlock?: boolean
 }
 
 interface BlockRef {
@@ -427,6 +431,42 @@ export async function convertLogseq(files: SourceFile[], control?: ImportControl
         claim({ kind: 'page', concept, fileName: `${portableFileStem(concept)}.md`, lines: body, props, sourcePath: file.path })
     }
 
+    // Templates. A `template::` block moves to a page of its own, `[[Templates]] Name`, and leaves
+    // the page it sat on (ADR 0144). This runs once every file has its name, so a template whose
+    // name is taken is the one suffixed. Logseq finds a template by the name its property gives,
+    // so that name is kept here for `:default-templates`, and the first template with a name wins.
+    const templatesByName = new Map<string, string>()
+    const nameTemplate = (logseqName: string, concept: string) => {
+        const key = logseqName.trim().toLowerCase()
+        if (!templatesByName.has(key)) templatesByName.set(key, concept)
+    }
+    for (const doc of [...docs]) {
+        if (isTemplatePage(doc)) nameTemplate(doc.props.template, doc.concept)
+        const { lines, templates } = extractTemplateBlocks(doc.lines)
+        if (templates.length === 0) continue
+        doc.lines = lines
+        for (const template of templates) {
+            const concept = scopedConceptName(['Templates', template.name])
+            const page: LogseqDoc = {
+                kind: 'page',
+                concept,
+                fileName: `${portableFileStem(concept)}.md`,
+                lines: template.lines,
+                props: {},
+                // Asset references in the block are relative to the file it came from.
+                sourcePath: doc.sourcePath,
+                fromTemplateBlock: true,
+            }
+            claim(page)
+            nameTemplate(template.name, page.concept)
+            report.push({
+                category: 'rename',
+                concept: page.concept,
+                detail: `The Logseq template "${template.name}" in [[${doc.concept}]] became a Template page of its own, and was removed from [[${doc.concept}]].`,
+            })
+        }
+    }
+
     // Block-ref index: uuid → the owning bullet's cleaned first-line text + final concept.
     // Walks every line of every document with no I/O, so nothing yielded here before.
     const blockRefs = new Map<string, BlockRef>()
@@ -469,11 +509,34 @@ export async function convertLogseq(files: SourceFile[], control?: ImportControl
             reportedImageSizes,
             sourceDir: doc.sourcePath.includes('/') ? doc.sourcePath.slice(0, doc.sourcePath.lastIndexOf('/')) : '',
         }
-        const body = convertBody(doc.lines, ctx).join('\n')
+        const template = isTemplatePage(doc)
+        let body = convertBody(doc.lines, ctx).join('\n')
+        if (template) {
+            // Only a Template's variables are filled in when it is copied, so only here do they mean anything.
+            const variables = convertDynamicVariables(body)
+            body = variables.text
+            if (variables.kept.length > 0) {
+                report.push({ category: 'unsupported', concept: doc.concept, detail: keptVariablesDetail(variables.kept) })
+            }
+        }
 
-        const custom = Object.fromEntries(
-            Object.entries(doc.props).filter(([key]) => !['title', 'alias', 'aliases'].includes(key)),
-        )
+        // A Template copies only its body, so the property saying whether the block went with
+        // its children has nothing left to say.
+        const dropped = ['title', 'alias', 'aliases', ...(template ? ['template-including-parent'] : [])]
+        const custom: Record<string, unknown> = Object.fromEntries(Object.entries(doc.props).filter(([key]) => !dropped.includes(key)))
+        if (template) {
+            // `template: true` marks a Template (ADR 0144). Logseq's value is the name it went by,
+            // and a Template is named by its page, so a different name is reported.
+            custom.template = true
+            const logseqName = doc.props.template?.trim()
+            if (logseqName && logseqName.toLowerCase() !== doc.concept.toLowerCase()) {
+                report.push({
+                    category: 'rename',
+                    concept: doc.concept,
+                    detail: `Logseq named this template "${logseqName}". A Template takes the name of its page, so it is now the Template "${doc.concept}".`,
+                })
+            }
+        }
         const aliasList = splitPropList(doc.props.aliases ?? doc.props.alias ?? '')
         let frontmatter: Record<string, unknown> = {}
         if (doc.kind === 'page') {
@@ -504,5 +567,25 @@ export async function convertLogseq(files: SourceFile[], control?: ImportControl
         })
     }
 
-    return { documents, assets: assetPlan.assets, report }
+    // `:default-templates {:journals "Name"}` becomes the graph's Journal Template (ADR 0145), named
+    // by the page the template became. Graph Settings travel in `settings`, as an EtherPK source's do.
+    let settings: Record<string, unknown> | undefined
+    if (config.journalTemplate) {
+        const journalTemplate = templatesByName.get(config.journalTemplate.toLowerCase())
+        if (journalTemplate) {
+            settings = { journalTemplate }
+        } else {
+            report.push({
+                category: 'unresolved',
+                detail: `logseq/config.edn names "${config.journalTemplate}" as the default journal template, but the import found no template with that name. The graph has no Journal Template.`,
+            })
+        }
+    }
+
+    return { documents, assets: assetPlan.assets, ...(settings ? { settings } : {}), report }
+}
+
+/** A page that becomes a Template: one made from a `template::` block, or whose page properties name it a template. */
+function isTemplatePage(doc: LogseqDoc): boolean {
+    return doc.kind === 'page' && (doc.fromTemplateBlock === true || (doc.props.template ?? '').trim() !== '')
 }

@@ -4,7 +4,7 @@
  * the [[Import Report]], so the report's "nothing is silently dropped" stays true.
  *
  * Code is left alone throughout: a fence's interior and an inline code span are literal in
- * Obsidian too.
+ * Obsidian too. The exception is a template's date format, which Obsidian fills in wherever it is.
  */
 
 import { createFenceTracker, outsideInlineCode } from './convert-shared'
@@ -121,4 +121,41 @@ export function unsupportedConstructs(body: string): { footnotes: boolean; tags:
         })
     }
     return { footnotes, tags: [...tags] }
+}
+
+/** The format tokens EtherPK's Template Variables fill in (`{{date:FORMAT}}`, `{{time:FORMAT}}`). */
+const ETHERPK_FORMAT_TOKENS = new Set(['YYYY', 'YY', 'MM', 'DD', 'HH', 'mm', 'ss'])
+
+/** The letters that start a Moment token. Any other letter Moment prints as it is, and so does EtherPK. */
+const MOMENT_TOKEN_LETTER = /[YyMQDdEeWwGgHhkmsSaAXxZzN]/
+
+/**
+ * The Moment tokens in a date or time format that EtherPK does not fill in, each once, in order.
+ * A token is a run of one letter with an optional ordinal `o` (`MMMM`, `Do`, `hh`), read the way
+ * Moment reads it. EtherPK prints such a token as written, or reads part of it (`MMMM` as two
+ * `MM`s), so the date a Template gives would not be the one it gave in Obsidian. Text inside
+ * square brackets is Moment's literal text, not tokens.
+ */
+export function unsupportedMomentTokens(format: string): string[] {
+    const tokens: string[] = []
+    let i = 0
+    while (i < format.length) {
+        const ch = format[i]
+        if (ch === '[') {
+            const close = format.indexOf(']', i + 1)
+            i = close === -1 ? format.length : close + 1
+            continue
+        }
+        if (!MOMENT_TOKEN_LETTER.test(ch)) {
+            i += 1
+            continue
+        }
+        let end = i + 1
+        while (end < format.length && format[end] === ch) end += 1
+        if (format[end] === 'o') end += 1
+        const token = format.slice(i, end)
+        if (!ETHERPK_FORMAT_TOKENS.has(token) && !tokens.includes(token)) tokens.push(token)
+        i = end
+    }
+    return tokens
 }

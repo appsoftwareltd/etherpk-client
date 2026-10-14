@@ -16,7 +16,7 @@ function ref(sourceConcept: string, line: number): DbBacklinkRef {
 }
 
 function group(sourceConcept: string, lines: number[], sourceIsTarget = false): DbBacklinkGroup {
-    return { sourceConcept, sourceKind: 'page', refs: lines.map((line) => ref(sourceConcept, line)), bodyNames: [], sourceIsTarget }
+    return { sourceConcept, sourceKind: 'page', refs: lines.map((line) => ref(sourceConcept, line)), bodyNames: [], sourceIsTarget, sourceIsTemplate: false }
 }
 
 function update(names: string[] = [], full = false): IndexUpdate {

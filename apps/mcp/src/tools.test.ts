@@ -363,6 +363,59 @@ describe('create_page', () => {
     })
 })
 
+describe('templates (ADR 0144)', () => {
+    async function template(g: HeadlessGraph, title: string, body: string): Promise<void> {
+        await seed(g, title, body)
+        await setFrontmatter(g, { concept: title, patch: { template: true } })
+    }
+
+    it('create_page starts a page from a Template, its variables filled in for the new page', async () => {
+        const g = await graph('g-template-create')
+        await template(g, 'Meeting', '- Notes on [[{{title}}]] from {{date}}{{cursor}}\n  - [ ] send the minutes')
+        expect(await createPage(g, { title: 'Kitchen Sync', template: 'meeting', text: '- extra' })).toEqual({ concept: 'Kitchen Sync', created: true })
+        expect((await readDocument(g, 'Kitchen Sync')).text).toBe(`- Notes on [[Kitchen Sync]] from ${todayISO()}\n  - [ ] send the minutes\n- extra`)
+    })
+
+    it('append_document fills a journal day with that day, from a Template alone', async () => {
+        const g = await graph('g-template-append')
+        await template(g, 'Meeting', '- Notes from [[{{date}}]]')
+        expect(await appendDocument(g, { concept: '2026-06-02', template: 'Meeting' })).toEqual({ concept: '2026-06-02', created: true })
+        expect(await text(g, '2026-06-02')).toBe('- Notes from [[2026-06-02]]\n')
+        await appendDocument(g, { concept: '2026-06-02', template: 'Meeting', text: '- and more' })
+        expect(await text(g, '2026-06-02')).toBe('- Notes from [[2026-06-02]]\n- Notes from [[2026-06-02]]\n- and more\n')
+    })
+
+    it('refuses a page that is not a Template, a missing one, and an append with nothing to add', async () => {
+        const g = await graph('g-template-refusals')
+        await seed(g, 'Plain', '- x')
+        const error = await rejectsWith(createPage(g, { title: 'New', template: 'Plain' }), 'invalid_argument')
+        expect(error.message).toContain('template: true')
+        await rejectsWith(appendDocument(g, { concept: 'today', template: 'Nowhere' }), 'invalid_argument')
+        await rejectsWith(appendDocument(g, { concept: 'today' }), 'invalid_argument')
+    })
+
+    it('rewrites a link inside a Template when the page it names is renamed', async () => {
+        // The index keeps a Template's links for exactly this: on a synced graph a rename rewrites
+        // only the documents the index says link to the old name.
+        const g = await graph('g-template-rename')
+        await seed(g, 'Garden', '- beds')
+        await template(g, 'Meeting', '- about [[Garden]]')
+        await indexed(g, async () => (await g.index.backlinks('Garden')).length === 1)
+        const result = await rename(g, { from: 'Garden', to: 'Allotment' })
+        expect(result.rewrittenDocuments).toEqual(['Meeting'])
+        expect((await readDocument(g, 'Meeting')).text).toBe('- about [[Allotment]]')
+    })
+
+    it('reports only a Template’s name among backlinks, never its body', async () => {
+        const g = await graph('g-template-backlinks')
+        await seed(g, 'Garden', '- beds')
+        await template(g, 'Meeting', '- about [[Garden]]')
+        await seed(g, 'Kitchen', '- see [[Garden]]')
+        await indexed(g, async () => (await g.index.backlinks('Garden')).length === 2)
+        expect((await backlinks(g, 'Garden')).sources.map((s) => s.concept)).toEqual(['Kitchen'])
+    })
+})
+
 describe('line endings (ADR 0112)', () => {
     it('writes line feeds only, whatever line endings the agent sent', async () => {
         const g = await graph('g-line-endings')

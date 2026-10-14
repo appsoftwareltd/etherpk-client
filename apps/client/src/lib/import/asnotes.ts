@@ -15,7 +15,9 @@
  *   (`asnotes-frontmatter.ts`).
  * - Tasks accept a `*` bullet, and a few tokens are prose to AS Notes but tags to EtherPK.
  * - Kanban boards, templates, the publish setup and encrypted notes each have their own handling
- *   (`asnotes-kanban.ts`, `asnotes-layout.ts`).
+ *   (`asnotes-kanban.ts`, `asnotes-layout.ts`). A template becomes a [[Template]] (ADR 0144) with
+ *   its placeholders written as EtherPK's [[Template Variable]]s, and `Journal.md` the graph's
+ *   [[Journal Template]] (ADR 0145).
  *
  * AS Notes has no pipes, fragments or embeds in its links (`[[a|b]]` targets `a_b.md`), so
  * nothing here reads Obsidian's constructs.
@@ -131,6 +133,52 @@ function asNotesTaskText(label: string): string {
     return remaining
 }
 
+/**
+ * AS Notes placeholders whose EtherPK variable has another name or prints something else, by the
+ * placeholder as AS Notes matches it: trimmed, with its case. `{{date}}`, `{{title}}` and
+ * `{{cursor}}` mean the same in both and are not listed.
+ */
+const RENAMED_PLACEHOLDERS: Record<string, string> = {
+    filename: '{{title}}',
+    // AS Notes prints the time with seconds, and EtherPK's `{{time}}` without them.
+    time: '{{time:HH:mm:ss}}',
+    datetime: '{{date}} {{time:HH:mm:ss}}',
+}
+
+/** A placeholder with an optional escaping backslash, read the way EtherPK's renderer reads a variable. */
+const PLACEHOLDER = /(\\?)\{\{([^{}]+)\}\}/g
+
+/**
+ * AS Notes's test for a bare date format such as `{{DD/MM/YY}}` (its `isDateFormatString`): once
+ * the tokens are removed, in this order, something was removed and only separators are left.
+ */
+function isAsNotesDateFormat(body: string): boolean {
+    const stripped = ['YYYY', 'YY', 'MM', 'DD', 'HH', 'mm', 'ss'].reduce((text, token) => text.split(token).join(''), body)
+    return stripped !== body && /^[^a-zA-Z0-9]*$/.test(stripped)
+}
+
+/**
+ * An AS Notes template's text with its placeholders written as the EtherPK variables that give
+ * the same text: `{{filename}}` as `{{title}}`, `{{time}}` with its seconds, and a bare format as
+ * `{{date:FORMAT}}`, or `{{time:FORMAT}}` when it has no date in it. AS Notes fills placeholders
+ * in wherever they are, code included, and so does EtherPK, so the whole text is read. An escaped
+ * placeholder and one AS Notes does not know are left as written, as both apps leave them.
+ */
+function asNotesTemplateText(text: string): string {
+    return text.replace(PLACEHOLDER, (whole: string, backslash: string, inner: string) => {
+        if (backslash) return whole
+        const name = inner.trim()
+        const renamed = RENAMED_PLACEHOLDERS[name]
+        if (renamed) return renamed
+        if (isAsNotesDateFormat(name)) return /YY|MM|DD/.test(name) ? `{{date:${name}}}` : `{{time:${name}}}`
+        return whole
+    })
+}
+
+/** The Import Report's line for a template whose frontmatter cannot take `template: true`. */
+const UNMARKED_TEMPLATE_DETAIL =
+    'This page is a template in AS Notes, but its frontmatter is not valid YAML, so it was not made a Template. Correct the frontmatter and add `template: true` to make it one.'
+
 const STAR_TASK = /^(\s*)\*(\s+\[[ xX]\])/
 const TASK = /^\s*-\s+\[[ xX]\]\s?(.*)$/
 const RETINA = /\s*\{\.retina\}\s*/g
@@ -240,12 +288,18 @@ export async function convertAsNotes(files: SourceFile[], control?: ImportContro
             report.push({ category: 'rename', concept: iso, detail: `Journal "${note.path}" renamed to "${iso}.md"` })
         }
     }
-    // Templates hold placeholders such as `{{date}}` and EtherPK has no templates, so each is kept
-    // as a page under one scope, where it cannot take the name of the note it was a template for.
+    // Each template becomes a Template (ADR 0144) under one scope, where it cannot take the name of
+    // the note it was a template for. AS Notes fills each new journal from the template folder's
+    // `Journal.md`, which makes that page the graph's Journal Template (ADR 0145).
+    const templateNotes = new Set<AsNote>()
+    let journalTemplate: AsNote | null = null
     for (const note of templates) {
         const { concept, fileName } = claimPageName(scopedConceptName(['Templates', note.stem]), taken)
-        notes.push(toNote(note, 'page', concept, fileName))
-        report.push({ category: 'rename', concept, detail: `AS Notes template "${note.path}" imported as a page. EtherPK has no templates.` })
+        const templateNote = toNote(note, 'page', concept, fileName)
+        notes.push(templateNote)
+        templateNotes.add(templateNote)
+        if (note.path.toLowerCase() === `${templateFolder}/journal.md`) journalTemplate = templateNote
+        report.push({ category: 'rename', concept, detail: `AS Notes template "${note.path}" was imported as a Template.` })
     }
     for (const { page, concept, fileName } of placeFolderPages(pages, taken, report)) {
         notes.push(toNote(page, 'page', concept, fileName))
@@ -395,9 +449,15 @@ export async function convertAsNotes(files: SourceFile[], control?: ImportContro
     for (const note of notes) {
         await breathe(control)
         onProgress?.({ label: 'Converting documents', done: ++converted, total })
-        const body = convertText(note.body, note.dir, note.concept)
+        const template = templateNotes.has(note)
+        const text = convertText(note.body, note.dir, note.concept)
+        const body = template ? asNotesTemplateText(text) : text
         if (note.keptBlock !== undefined) {
             report.push({ category: 'unsupported', concept: note.concept, detail: UNREADABLE_FRONTMATTER_DETAIL })
+            if (template) {
+                templateNotes.delete(note)
+                report.push({ category: 'unsupported', concept: note.concept, detail: UNMARKED_TEMPLATE_DETAIL })
+            }
             documents.push({ kind: note.kind, concept: note.concept, fileName: note.fileName, text: `${note.keptBlock}${body}` })
             continue
         }
@@ -421,7 +481,7 @@ export async function convertAsNotes(files: SourceFile[], control?: ImportContro
                 detail: `Frontmatter title "${title}" replaced by the page's name "${note.concept}" (AS Notes links name the file, and the title was only used when publishing)`,
             })
         }
-        const frontmatter = note.kind === 'page' ? { title: note.concept, ...rest } : rest
+        const frontmatter = note.kind === 'page' ? { title: note.concept, ...rest, ...(template ? { template: true } : {}) } : rest
         documents.push({ kind: note.kind, concept: note.concept, fileName: note.fileName, text: `${buildFrontmatter(frontmatter)}${body}` })
     }
 
@@ -445,5 +505,9 @@ export async function convertAsNotes(files: SourceFile[], control?: ImportContro
         report.push({ category: 'unreferenced', detail: `Asset "${asset.fileName}" is referenced by no document (imported anyway)` })
     }
 
-    return { documents, assets: assetPlan.assets, report }
+    // Graph Settings travel in `settings`, as an EtherPK source's do. A `Journal.md` that could not
+    // be made a Template is no Journal Template either, and the report already says why.
+    const settings = journalTemplate && templateNotes.has(journalTemplate) ? { journalTemplate: journalTemplate.concept } : undefined
+
+    return { documents, assets: assetPlan.assets, ...(settings ? { settings } : {}), report }
 }

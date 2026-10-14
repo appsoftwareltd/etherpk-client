@@ -25,6 +25,7 @@
 import type { ConceptCandidate, DbBacklinkGroup } from '../index-db'
 import type { IndexUpdate } from '../index-worker/client'
 import { conceptKey } from './backlink-index'
+import { shownBacklinkGroups } from './shown-backlinks'
 
 /** The part of the graph index (`RemoteGraphIndex`) the loader reads. */
 export interface BacklinksIndex {
@@ -119,7 +120,7 @@ export function createBacklinksLoader({ index, onChange, onScreen: startsOnScree
         index.backlinks(target).then(
             (groups) => {
                 if (destroyed || wanted !== target) return
-                const kept = groups.filter((group) => !group.sourceIsTarget)
+                const kept = shownBacklinkGroups(groups)
                 const json = JSON.stringify(kept)
                 // The same answer again keeps the arrays the view already drew from.
                 if (answer?.concept !== target || answer.json !== json) answer = { concept: target, groups: kept, json }

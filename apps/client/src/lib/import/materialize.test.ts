@@ -14,6 +14,7 @@ import { filesystemProtectionStore, inMemoryProtectionStore } from '$lib/documen
 
 import { proposeFrontmatter } from '$lib/document/frontmatter/proposal'
 import { mirrorFileText } from '$lib/storage/server/local-mirror'
+import { parseFrontmatter } from '$lib/storage/fs/frontmatter'
 
 import { convertSource } from './convert'
 import { materializeToFilesystem } from './materialize-filesystem'
@@ -537,5 +538,73 @@ describe('materializeToServer and the references inside protected documents', ()
         expect(imported.report).toContain('[[Vault Secrets]]')
         expect(imported.report).toContain('sealed under a key other than this graph’s')
         imported.dispose()
+    })
+})
+
+/**
+ * The Journal Template a Logseq, Obsidian or AS Notes source names travels the way an EtherPK
+ * source's Graph Settings do (ADR 0145): in the converted graph's `settings`, written by the
+ * materialiser to the new graph, beside the Template page it names.
+ */
+describe('the Journal Template through Import', () => {
+    const sources: Array<[format: 'logseq' | 'obsidian' | 'asnotes', files: SourceFile[], template: string]> = [
+        [
+            'logseq',
+            [src('logseq/config.edn', '{:default-templates {:journals "Daily"}}'), src('pages/Garden.md', '- Daily\n  template:: Daily\n  - water the beans')],
+            '[[Templates]] Daily',
+        ],
+        [
+            'obsidian',
+            [
+                src('.obsidian/templates.json', '{"folder": "Templates"}'),
+                src('.obsidian/daily-notes.json', '{"template": "Templates/Daily"}'),
+                src('Templates/Daily.md', '- water the beans'),
+            ],
+            'Daily',
+        ],
+        ['asnotes', [src('.asnotes/index.db', new Uint8Array([1])), src('templates/Journal.md', '- water the beans')], '[[Templates]] Journal'],
+    ]
+
+    for (const [format, files, template] of sources) {
+        it(`writes a ${format} source's Journal Template to a folder's settings, beside the Template`, async () => {
+            const converted = await convertSource(files, format)
+            const adapter = createMemoryDirectoryAdapter({ now: () => 0 })
+            await materializeToFilesystem(converted, adapter, { format, reportDate: '2026-10-14' })
+            expect(JSON.parse((await adapter.read('etherpk', 'settings.json')).text)).toEqual({ journalTemplate: template })
+            const pages = await Promise.all((await adapter.list('pages')).map(async (e) => parseFrontmatter((await adapter.read('pages', e.name)).text).data))
+            expect(pages.find((data) => data.title === template)?.template).toBe(true)
+        })
+    }
+
+    it('writes no settings file when the source names no Journal Template', async () => {
+        const converted = await convertSource([src('pages/Garden.md', '- water the beans')], 'logseq')
+        const adapter = createMemoryDirectoryAdapter({ now: () => 0 })
+        await materializeToFilesystem(converted, adapter, { format: 'logseq', reportDate: '2026-10-14' })
+        await expect(adapter.read('etherpk', 'settings.json')).rejects.toThrow()
+    })
+
+    it('sets the Journal Template in a synced graph’s settings', async () => {
+        const converted = await convertSource(sources[0][1], 'logseq')
+        const cache = await openGraphCache(`import-journal-template-${Math.floor(performance.now() * 1000)}`)
+        const graph = createGraphSync({
+            graphId: 'g-journal-template',
+            rootDocId: '018f47a0-7b5d-7cc5-b5c1-f0fbcde23002',
+            keyring: createGraphKeyring('g-journal-template'),
+            relayUrl: 'ws://loopback/sync',
+            token: fixedSyncToken('t'),
+            cache,
+            connect: createLoopbackRelay().connect,
+            debounceMs: 5,
+        })
+        await graph.ready()
+        await materializeToServer(converted, { graph, assetStore: null, name: 'Garden' }, { format: 'logseq', reportDate: '2026-10-14' })
+        expect(graph.getMeta().settings).toEqual({ journalTemplate: '[[Templates]] Daily' })
+        const titles: string[] = []
+        graph.registry().forEach((entry) => {
+            if (entry.kind === 'page' && entry.title) titles.push(entry.title)
+        })
+        expect(titles).toContain('[[Templates]] Daily')
+        graph.dispose()
+        cache.dispose()
     })
 })

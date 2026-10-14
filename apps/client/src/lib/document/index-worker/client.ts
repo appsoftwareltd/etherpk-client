@@ -22,6 +22,7 @@ import type {
     SearchDocumentGroup,
     TaskHit,
     TaskQuery,
+    TemplateEntry,
 } from '../index-db'
 import type { LinkGraph } from '../index-link-graph'
 import type { MapItemsResult } from '../index-map-items'
@@ -99,6 +100,8 @@ export interface RemoteGraphIndex {
     propertyKeys(): Promise<PropertyKeyInfo[]>
     propertyValues(key: string): Promise<PropertyValueInfo[]>
     propertyMatch(filters: readonly PropertyFilter[]): Promise<PropertyMatch[]>
+    /** The graph's [[Template]]s by name (ADR 0144). A round trip, made when a picker opens. */
+    templates(): Promise<TemplateEntry[]>
     /**
      * Which documents reference an [[Asset]], and how many times. A round trip, issued once
      * when the user asks to delete one — never speculatively. See ADR 0054 for why the count
@@ -1177,6 +1180,10 @@ export function createRemoteGraphIndex(
         async propertyKeys() {
             const response = await request<Extract<IndexResponse, { type: 'property-keys' }>>((id) => ({ type: 'property-keys', id }))
             return response.keys
+        },
+        async templates() {
+            const response = await request<Extract<IndexResponse, { type: 'templates' }>>((id) => ({ type: 'templates', id }))
+            return response.templates
         },
         async propertyValues(key) {
             const response = await request<Extract<IndexResponse, { type: 'property-values' }>>((id) => ({ type: 'property-values', id, key }))

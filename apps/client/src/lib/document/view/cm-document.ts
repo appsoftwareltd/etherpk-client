@@ -87,8 +87,13 @@ const followFontSize = ViewPlugin.define((view) => ({
 export interface DocumentEditorOptions {
     parent: HTMLElement
     doc: string
-    /** Fired for every editor-originated change. */
-    onChange: (change: TextChange) => void
+    /**
+     * Fired for every editor-originated change. `edited` is false when the change only rode on a
+     * caret move (a `select` transaction): tidy on leave trimming the line the caret walked away
+     * from. Every other change, typing or a Command's insert alike, is an edit. A [[Draft]] is
+     * written only by an edit (ADR 0145).
+     */
+    onChange: (change: TextChange, edited: boolean) => void
     /**
      * The document's text in the store now. Read when text arrives while this editor is still
      * sending a transaction's changes (send-and-hear.ts).
@@ -163,7 +168,8 @@ export function createDocumentEditor(options: DocumentEditorOptions): DocumentEd
         // A single transaction can carry several changes (a wrap key, a format toggle, a
         // multi-caret edit). `applyChange` takes one at a time and every store splices as it goes, so
         // each change is expressed against the text the ones before it leave (sequential-text-changes.ts).
-        exchange.send(sequentialTextChanges(update.changes), onChange)
+        const edited = update.transactions.some((tr) => tr.docChanged && !tr.isUserEvent('select'))
+        exchange.send(sequentialTextChanges(update.changes), (change) => onChange(change, edited))
     })
 
     const view = new EditorView({

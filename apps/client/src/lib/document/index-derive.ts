@@ -235,8 +235,19 @@ function blocksAndLinks(text: string): { blocks: BlockRow[]; links: LinkRow[]; l
     return { blocks, links, lineToBlock }
 }
 
+export interface DeriveOptions {
+    /**
+     * The document is a [[Template]] (ADR 0144). Its content is a pattern, so it gives no tasks,
+     * task concepts or places, and a link whose target holds a [[Template Variable]]
+     * (`[[{{date}}]]`) is no link. Its blocks and search text stay, so Search finds it, and its
+     * other links stay so a rename rewrites them; the views that show links leave them out.
+     */
+    template?: boolean
+}
+
 /** Derive the index rows for a single document's text. Pure. */
-export function deriveDoc(text: string): DerivedRows {
+export function deriveDoc(text: string, options: DeriveOptions = {}): DerivedRows {
+    if (options.template) return deriveTemplate(text)
     const { blocks, links, lineToBlock } = blocksAndLinks(text)
 
     // Scanning for fences costs a regex per line of the document, so it is worth deciding
@@ -269,6 +280,25 @@ export function deriveDoc(text: string): DerivedRows {
         tasks,
         taskConcepts: deriveTaskConcepts(blocks, links, taskBlocks),
         ...maps,
+        searchText: withoutExtensionFences(text, blocks, lineToBlock, maps.searchText),
+    }
+}
+
+/** A variable's opening braces in a link target: `[[{{date}}]]` names no concept until copied. */
+const VARIABLE_IN_TARGET = /\{\{/
+
+function deriveTemplate(text: string): DerivedRows {
+    const { blocks, links, lineToBlock } = blocksAndLinks(text)
+    // The map rows are dropped, but the search text keeps reading a Map Block's names instead of
+    // its coordinates, as it does for every document.
+    const maps = deriveMaps(text, blocks, links, lineToBlock)
+    return {
+        blocks,
+        links: links.filter((link) => !VARIABLE_IN_TARGET.test(link.concept)),
+        tasks: [],
+        taskConcepts: [],
+        mapItems: [],
+        mapConcepts: [],
         searchText: withoutExtensionFences(text, blocks, lineToBlock, maps.searchText),
     }
 }

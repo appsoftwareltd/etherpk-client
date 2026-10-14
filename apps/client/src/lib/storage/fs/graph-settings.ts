@@ -52,6 +52,13 @@ export interface GraphSettings {
      * graphs apart at a glance, so it stays the same colour wherever the graph is opened.
      */
     toolbarColor?: string
+    /**
+     * The [[Journal Template]]: the name of the [[Template]] a new day from today onward opens
+     * holding (ADR 0145). Shared graph content, so every [[Member]] gets the same one. Absent ⇒
+     * new days open empty. A name that is no Template any more leaves them empty too, and the
+     * Graph Settings dialog says so. Follows a rename of the page, as [[Favourite]]s do.
+     */
+    journalTemplate?: string
 }
 
 /** Applied on upload when `defaultMaxImageDisplaySize` is absent - the value after the `|` in `![alt|800](…)`. */
@@ -127,6 +134,8 @@ export function sanitizeGraphSettings(raw: unknown): GraphSettings {
         const hex = normalizeHexColor(toolbarColor)
         if (hex) out.toolbarColor = hex
     }
+    const journalTemplate = rec.journalTemplate
+    if (typeof journalTemplate === 'string' && journalTemplate.trim() !== '') out.journalTemplate = journalTemplate.trim()
     return out
 }
 

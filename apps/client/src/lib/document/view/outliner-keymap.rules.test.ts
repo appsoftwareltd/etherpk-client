@@ -38,11 +38,13 @@ import { analysisFor } from './analysis/editor-analysis'
 import { bulletToggleable, taskToggleable } from './task-toggleable'
 import { editorFixture, type FixtureOptions, press } from './testing/editor-state-fixture'
 import { wikilinkButtonSpec } from './wrap-selection'
+import { insertTemplate } from './template-insert'
+import { renderTemplate } from '../templates/template-variables'
 
 interface Rule {
     rule: string
     /** Which editor the behaviour is borrowed from, so a reviewer has a reference to check against. */
-    precedent: 'Logseq' | 'Obsidian' | 'VS Code' | 'CommonMark' | 'EtherPK'
+    precedent: 'Logseq' | 'Obsidian' | 'VS Code' | 'CommonMark' | 'EtherPK' | 'AS Notes'
     before: string
     key: string
     after: string
@@ -2097,5 +2099,60 @@ describe('an interactive fence follows its widget’s registration (EtherPK)', (
         await told()
         // Nothing told it, so it draws nothing until a transaction of its own reads the fences again.
         expect(drawn(editor)).toEqual([])
+    })
+})
+
+// A [[Template]] lands as a paste does (Editor Content Rules → Inserting a Template, ADR 0144): the
+// paste rules place it, so a Template and a pasted outline land alike. `{{cursor}}` puts the caret.
+describe('inserting a Template', () => {
+    const context = { day: '2026-10-14', now: new Date(2026, 9, 14, 9, 30), title: 'Garden' }
+    const rows: { rule: string; precedent: Rule['precedent']; before: string; body: string; after: string }[] = [
+        { rule: 'on an empty bullet, the first block takes the bullet', precedent: 'Logseq', before: '- Garden\n- |', body: '- Review\n  - [ ] water the beans', after: '- Garden\n- Review\n  - [ ] water the beans|' },
+        { rule: 'on a bullet with text, the Template nests under it, as a pasted outline does', precedent: 'EtherPK', before: '- Garden|', body: '- Review\n  - beans', after: '- Garden\n  - Review\n    - beans|' },
+        { rule: 'a Template of one plain line is typed in at the caret', precedent: 'EtherPK', before: '- Met |today', body: 'the Kitchen team ', after: '- Met the Kitchen team |today' },
+        { rule: 'on an empty prose line, an outline starts at the margin', precedent: 'EtherPK', before: 'Intro\n|', body: '- Review\n  - beans', after: 'Intro\n- Review\n  - beans|' },
+        { rule: 'after prose on the same line, an outline starts on a line of its own', precedent: 'EtherPK', before: 'Intro|', body: '- Review\n  - beans', after: 'Intro\n- Review\n  - beans|' },
+        { rule: 'the variables are filled in', precedent: 'Logseq', before: '- |', body: '- [[{{date}}]] in [[{{title}}]]', after: '- [[2026-10-14]] in [[Garden]]|' },
+        { rule: '{{cursor}} puts the caret where it stood', precedent: 'AS Notes', before: '- |', body: '- Notes: {{cursor}}\n- Tasks', after: '- Notes: |\n- Tasks' },
+        { rule: '{{cursor}} on an empty bullet of the Template puts the caret on it', precedent: 'EtherPK', before: '- |', body: '- Notes\n  - {{cursor}}\n- Tasks', after: '- Notes\n  - |\n- Tasks' },
+        { rule: '{{cursor}} before a bullet’s marker puts the caret after it', precedent: 'EtherPK', before: '- |', body: '- Notes\n{{cursor}}- Tasks', after: '- Notes\n- |Tasks' },
+        { rule: 'a Template that starts with prose lands as the next block, as Enter would put it', precedent: 'EtherPK', before: '- Garden|', body: 'Notes\n- a', after: '- Garden\n- Notes\n  - a|' },
+        { rule: 'with the caret inside a line, the rest of the line follows the Template’s last line, as after a paste', precedent: 'EtherPK', before: '- Met |today', body: '- Review\n  - beans', after: '- Met\n  - Review\n    - beans|today' },
+        { rule: 'a fence opened on the Template’s bullet stays a fence', precedent: 'EtherPK', before: '- Garden\n- |', body: '- ```js\n  x\n  ```', after: '- Garden\n- ```js\n  x\n  ```|' },
+        { rule: 'a fence under the Template’s bullet stays a fence', precedent: 'EtherPK', before: '- Garden\n- |', body: '- Code\n  ```js\n  x\n  ```', after: '- Garden\n- Code\n  ```js\n  x\n  ```|' },
+        { rule: '{{cursor}} inside a fence puts the caret on its code line', precedent: 'EtherPK', before: '- Garden\n- |', body: '- ```js\n  {{cursor}}\n  ```', after: '- Garden\n- ```js\n  |\n  ```' },
+        { rule: '{{cursor}} on a fence’s opening line leaves the fence whole and the caret at the end', precedent: 'EtherPK', before: '- Garden\n- |', body: '{{cursor}}- ```js\n  x\n  ```', after: '- Garden\n- ```js\n  x\n  ```|' },
+        { rule: '{{cursor}} on a fence’s closing line leaves the fence whole', precedent: 'EtherPK', before: '- Garden\n- |', body: '- ```js\n  x\n  ```{{cursor}}', after: '- Garden\n- ```js\n  x\n  ```|' },
+        { rule: 'in an outline, {{cursor}} alone on a line puts the caret at the end of the line above, as a blank line is dropped', precedent: 'EtherPK', before: '- |', body: '- Notes\n{{cursor}}\n- Later', after: '- Notes|\n- Later' },
+        { rule: '{{cursor}} on a line of its own in prose leaves an empty line to type on', precedent: 'EtherPK', before: '|', body: '# Notes\n{{cursor}}\n# Later', after: '# Notes\n|\n# Later' },
+        { rule: 'Windows line endings are read as line breaks', precedent: 'EtherPK', before: '- Garden\n- |', body: '- a\r\n  - {{cursor}}\r\n- c', after: '- Garden\n- a\n  - |\n- c' },
+        { rule: 'a private-use character the Template holds is kept, and the caret still goes to {{cursor}}', precedent: 'EtherPK', before: '- |', body: '- \uE000 icon {{cursor}}', after: '- \uE000 icon |' },
+        { rule: 'over selected blocks, the Template replaces them', precedent: 'EtherPK', before: '«- Old\n  - child»\n- Next', body: '- Review\n  - beans', after: '- Review\n  - beans|\n- Next' },
+    ]
+    for (const row of rows) {
+        it(`${row.rule} (${row.precedent})`, () => {
+            const editor = editorFixture(row.before)
+            insertTemplate(editor, renderTemplate(row.body, context))
+            expect(editor.fixture()).toBe(row.after)
+        })
+    }
+
+    it('typing straight after a Template is an undo step of its own, and Mod+Y puts the Template back (EtherPK)', () => {
+        const editor = editorFixture('- Garden\n- |')
+        insertTemplate(editor, renderTemplate('- Notes: {{cursor}}\n- Tasks', context))
+        editor.type('x')
+        editor.key('Mod-z')
+        expect(editor.fixture()).toBe('- Garden\n- Notes: |\n- Tasks')
+        editor.key('Mod-z')
+        expect(editor.text()).toBe('- Garden\n- ')
+        editor.key('Mod-y')
+        expect(editor.text()).toBe('- Garden\n- Notes: \n- Tasks')
+    })
+
+    it('Mod+Z straight after takes the whole Template out in one step (EtherPK)', () => {
+        const editor = editorFixture('- Garden\n- |')
+        insertTemplate(editor, renderTemplate('- Notes: {{cursor}}\n  - beans\n- Tasks', context))
+        editor.key('Mod-z')
+        expect(editor.fixture()).toBe('- Garden\n- |')
     })
 })

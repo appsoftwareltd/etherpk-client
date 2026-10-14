@@ -202,11 +202,91 @@ describe('convertAsNotes', () => {
             )
         })
 
-        it('imports templates as pages scoped under Templates', async () => {
+        it('imports templates as Templates scoped under Templates', async () => {
             const graph = await convertAsNotes(workspace(src('templates/Journal.md', '# {{date}}\n'), src('Journal.md', 'a page')))
-            expect(doc(graph, '[[Templates]] Journal').text).toBe('---\ntitle: "[[Templates]] Journal"\n---\n# {{date}}\n')
-            expect(doc(graph, 'Journal').kind).toBe('page')
-            expect(graph.report).toContainEqual(expect.objectContaining({ category: 'rename', concept: '[[Templates]] Journal' }))
+            expect(doc(graph, '[[Templates]] Journal').text).toBe('---\ntitle: "[[Templates]] Journal"\ntemplate: true\n---\n# {{date}}\n')
+            expect(doc(graph, 'Journal').text).toBe('---\ntitle: Journal\n---\na page')
+            expect(graph.report).toContainEqual({
+                category: 'rename',
+                concept: '[[Templates]] Journal',
+                detail: 'AS Notes template "templates/Journal.md" was imported as a Template.',
+            })
+        })
+    })
+
+    describe('templates', () => {
+        it('turns AS Notes placeholders into Template Variables that give the same text', async () => {
+            const graph = await convertAsNotes(
+                workspace(
+                    src(
+                        'templates/Meeting.md',
+                        [
+                            '---',
+                            'tags: [garden]',
+                            '---',
+                            '# {{filename}} on {{date}}',
+                            'Started {{time}}, logged {{ datetime }}',
+                            'Due {{DD/MM/YY}}, from {{YYYY-MM-DD HH:mm}} at {{ HH:mm }}',
+                            'Kept {{title}} {{cursor}} \\{{filename}} {{unknown}} {{MMM}} {{v2.0}}',
+                            '```',
+                            'in code {{filename}}',
+                            '```',
+                        ].join('\n'),
+                    ),
+                    src('Notes.md', 'not a template {{filename}} {{time}}'),
+                ),
+            )
+            expect(doc(graph, '[[Templates]] Meeting').text).toBe(
+                [
+                    '---',
+                    'title: "[[Templates]] Meeting"',
+                    'tags:',
+                    '  - garden',
+                    'template: true',
+                    '---',
+                    '# {{title}} on {{date}}',
+                    'Started {{time:HH:mm:ss}}, logged {{date}} {{time:HH:mm:ss}}',
+                    'Due {{date:DD/MM/YY}}, from {{date:YYYY-MM-DD HH:mm}} at {{time:HH:mm}}',
+                    'Kept {{title}} {{cursor}} \\{{filename}} {{unknown}} {{MMM}} {{v2.0}}',
+                    '```',
+                    'in code {{title}}',
+                    '```',
+                ].join('\n'),
+            )
+            expect(doc(graph, 'Notes').text).toBe('---\ntitle: Notes\n---\nnot a template {{filename}} {{time}}')
+        })
+
+        it('sets the Journal Template to the template folder\'s Journal.md', async () => {
+            const graph = await convertAsNotes(
+                workspace(
+                    src('.vscode/settings.json', '{ "as-notes.templateFolder": "Meta/Templates" }'),
+                    src('Meta/Templates/Journal.md', '# {{date}}\n- [ ] water the beans\n'),
+                    src('Meta/Templates/Weekly Review.md', '## {{date}}'),
+                ),
+            )
+            expect(graph.settings).toEqual({ journalTemplate: '[[Templates]] Journal' })
+            expect(doc(graph, '[[Templates]] Weekly Review').text).toContain('template: true')
+        })
+
+        it('names the Journal Template by the page Journal.md became when its name was taken', async () => {
+            const graph = await convertAsNotes(workspace(src('templates/Garden/Journal.md', 'a garden log'), src('templates/Journal.md', '# {{date}}')))
+            expect(doc(graph, '[[Templates]] Journal').text).toContain('a garden log')
+            expect(graph.settings).toEqual({ journalTemplate: '[[Templates]] Journal (2)' })
+        })
+
+        it('sets no Journal Template without a Journal.md', async () => {
+            const graph = await convertAsNotes(workspace(src('templates/Weekly Review.md', '## {{date}}'), src('templates/Garden/Journal.md', 'not the journal template')))
+            expect(graph.settings).toBeUndefined()
+        })
+
+        it('reports a template whose frontmatter it cannot mark, and leaves it out of the settings', async () => {
+            const block = '---\ntitle: A: B\nsettings:\n  width: 3\n---\n'
+            const graph = await convertAsNotes(workspace(src('templates/Journal.md', `${block}# {{date}}`)))
+            expect(doc(graph, '[[Templates]] Journal').text).toBe(`${block}# {{date}}`)
+            expect(graph.settings).toBeUndefined()
+            expect(details(graph, 'unsupported')).toContain(
+                'This page is a template in AS Notes, but its frontmatter is not valid YAML, so it was not made a Template. Correct the frontmatter and add `template: true` to make it one.',
+            )
         })
     })
 

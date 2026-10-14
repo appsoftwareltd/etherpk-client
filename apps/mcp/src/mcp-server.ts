@@ -314,10 +314,11 @@ export function createMcpServer(source: HeadlessGraph | Promise<HeadlessGraph> |
         'append_document',
         {
             title: 'Append to a document',
-            description: 'Add text at the end of a page or a journal entry, on a new line. A journal day that has no entry yet is created ("today" is accepted). A page that does not exist is not created: use create_page.',
+            description: 'Add text at the end of a page or a journal entry, on a new line. A journal day that has no entry yet is created ("today" is accepted). A page that does not exist is not created: use create_page. With template, a Template\'s body is added first, its variables ({{date}}, {{title}}, ...) filled in for this document; a journal day takes its own date. The graph\'s Journal Template is never added on its own.',
             inputSchema: {
                 concept,
-                text: z.string().min(1),
+                text: z.string().min(1).optional(),
+                template: z.string().min(1).optional().describe('The name of a Template: a page whose frontmatter says template: true. Search for template:true to list them.'),
             },
         },
         async (args) => run((graph) => appendDocument(graph, args)),
@@ -327,10 +328,11 @@ export function createMcpServer(source: HeadlessGraph | Promise<HeadlessGraph> |
         'create_page',
         {
             title: 'Create a page',
-            description: 'Create a new page with the given title, optional markdown body and optional frontmatter (the same keys and rules as set_frontmatter). Refuses a title that already names a page or an alias, or that is a calendar day (use append_document for journal entries).',
+            description: 'Create a new page with the given title, optional markdown body and optional frontmatter (the same keys and rules as set_frontmatter). With template, the page starts with that Template\'s body, its variables ({{date}}, {{title}}, ...) filled in for the new page, then the text. Refuses a title that already names a page or an alias, or that is a calendar day (use append_document for journal entries).',
             inputSchema: {
                 title: z.string().min(1),
                 text: z.string().optional(),
+                template: z.string().min(1).optional().describe('The name of a Template: a page whose frontmatter says template: true. Search for template:true to list them.'),
                 frontmatter: z.record(z.string(), frontmatterValue).optional().describe('Frontmatter keys for the new page, e.g. {"public": true, "publications": ["blog"], "date": "2026-01-31"}.'),
             },
         },

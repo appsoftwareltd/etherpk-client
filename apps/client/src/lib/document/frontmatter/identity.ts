@@ -78,6 +78,11 @@ export const FRONTMATTER_PROPERTIES: readonly FrontmatterProperty[] = [
         policy: 'none',
         summary: 'The day a page is dated on a published blog, as `YYYY-MM-DD`. A journal entry is dated by its name.',
     },
+    {
+        key: 'template',
+        policy: 'none',
+        summary: 'Makes a page a Template: `template: true` lists it under /Template, and its body is copied into a document with variables like `{{date}}` filled in.',
+    },
 ]
 
 export interface FrontmatterIdentity {

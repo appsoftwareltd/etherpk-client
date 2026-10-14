@@ -139,6 +139,16 @@ describe('graph settings', () => {
         }
     })
 
+    it('keeps the Journal Template as a trimmed name and drops anything else (ADR 0145)', async () => {
+        const adapter = createMemoryDirectoryAdapter({ now: clock() })
+        await adapter.write('etherpk', 'settings.json', JSON.stringify({ journalTemplate: '  [[Templates]] Daily ' }))
+        expect(await readGraphSettings(adapter)).toEqual({ journalTemplate: '[[Templates]] Daily' })
+        for (const raw of ['', '   ', 42, null, ['Daily']]) {
+            await adapter.write('etherpk', 'settings.json', JSON.stringify({ journalTemplate: raw }))
+            expect(await readGraphSettings(adapter)).toEqual({})
+        }
+    })
+
     it('normalizeHexColor: shorthand expands, case folds, everything else is null', () => {
         expect(normalizeHexColor('#FFF')).toBe('#ffffff')
         expect(normalizeHexColor('#A1b2C3')).toBe('#a1b2c3')

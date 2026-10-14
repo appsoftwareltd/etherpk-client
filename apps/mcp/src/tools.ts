@@ -57,6 +57,9 @@ import {
     taskReferenceUrl,
 } from '$lib/document/task-reference'
 import { ancestorChain, bulletLabel, deriveDoc } from '$lib/document/index-derive'
+import { withoutTemplateContent } from '$lib/document/backlinks/shown-backlinks'
+import { isTemplate, templateBody } from '$lib/document/templates/template-page'
+import { renderTemplate, templateContextFor } from '$lib/document/templates/template-variables'
 import { type ConceptFacts, createGraphModel, type GraphFilter, shortestPath, visibleGraph } from '@appsoftwareltd/etherpk-extension-graph-view/model'
 import { bridges, findClusters, hubs, isolatedDocuments, pagelessByDocuments, type RankedConcept } from '@appsoftwareltd/etherpk-extension-graph-view/model'
 import { taskLineWith } from '$lib/document/task-write'
@@ -264,12 +267,16 @@ export interface EditDocumentArgs {
 export interface AppendDocumentArgs {
     /** A page's name, a journal day `YYYY-MM-DD`, or `today`. */
     concept: string
-    text: string
+    text?: string
+    /** A [[Template]]'s name: its body is added first, its variables filled in for the document (ADR 0144). */
+    template?: string
 }
 
 export interface CreatePageArgs {
     title: string
     text?: string
+    /** A [[Template]]'s name: the new page starts with its body, before `text` (ADR 0144). */
+    template?: string
     /** Frontmatter keys to set on the new page, under the same rules as `set_frontmatter`. */
     frontmatter?: Record<string, unknown>
 }
@@ -582,7 +589,8 @@ export async function backlinks(graph: HeadlessGraph, concept: string) {
     const target = concept.trim() === 'today' ? todayISO() : concept.trim()
     if (target === '') throw new ToolError('invalid_argument', 'concept must not be empty.')
     await graph.store.refresh()
-    const groups = await graph.index.backlinks(target)
+    // A Template's body is a pattern, not a reference (ADR 0144): only its name is reported.
+    const groups = withoutTemplateContent(await graph.index.backlinks(target))
     return {
         concept: target,
         sources: groups.map((group) => ({
@@ -737,6 +745,37 @@ export async function tasks(graph: HeadlessGraph, args: TasksArgs = {}) {
 }
 
 /**
+ * What a tool writes from `template` and `text`: the named [[Template]]'s body with its variables
+ * filled in for the document called `into`, then the text, each in the form EtherPK writes
+ * (ADR 0144). `{{cursor}}` marks where a person's caret would go, so here it is only removed.
+ * The Journal Template is never applied on its own: an agent's write holds what it asked for.
+ */
+async function withTemplate(graph: HeadlessGraph, template: string | undefined, into: string, text: string | undefined): Promise<string> {
+    const parts: string[] = []
+    if (template !== undefined) parts.push(asWritten(renderTemplate(await templateBodyFor(graph, template), templateContextFor(into)).text))
+    if (text !== undefined && text !== '') parts.push(asWritten(text))
+    return parts.join('\n')
+}
+
+/** The body a copy of the Template named `name` takes, or a refusal that says how to find one. */
+async function templateBodyFor(graph: HeadlessGraph, name: string): Promise<string> {
+    const identity = resolveIdentity(graph, name.trim())
+    let raw = ''
+    if (identity) {
+        await graph.store.whenReady(identity.concept)
+        raw = graph.store.openRaw(identity.concept).getText()
+    }
+    const { data, body } = parseFrontmatter(raw)
+    if (!identity || !isTemplate(data, identity.kind) || documentProtection(body).kind === 'document') {
+        throw new ToolError(
+            'invalid_argument',
+            `"${name}" is not a Template. A page is a Template when its frontmatter says template: true; search for template:true to list them.`,
+        )
+    }
+    return templateBody(raw)
+}
+
+/**
  * Text an agent sent, in the form EtherPK writes: line feeds only (ADR 0112), then the
  * two-space Indent Unit (ADR 0067). Line endings go first so the normaliser reads whole lines.
  */
@@ -766,10 +805,10 @@ export async function editDocument(graph: HeadlessGraph, args: EditDocumentArgs)
 }
 
 export async function appendDocument(graph: HeadlessGraph, args: AppendDocumentArgs) {
-    const text = asWritten(args.text)
-    if (text.trim() === '') throw new ToolError('invalid_argument', 'text must not be empty.')
     const target = args.concept.trim() === 'today' ? todayISO() : args.concept.trim()
     await graph.store.refresh()
+    const text = await withTemplate(graph, args.template, target, args.text)
+    if (text.trim() === '') throw new ToolError('invalid_argument', 'Give text, a template, or both.')
     const existing = resolveIdentity(graph, target)
     if (!existing) {
         if (!isJournalConcept(target)) {
@@ -803,7 +842,7 @@ export async function createPage(graph: HeadlessGraph, args: CreatePageArgs) {
     // and the app seeds a new page with its body alone - a block the text carries is a mirror the
     // store writes back when the registry changes, and adds once the page has aliases (ADR 0061),
     // never the source of the name.
-    await graph.store.createPage(title, asWritten(args.text ?? ''))
+    await graph.store.createPage(title, await withTemplate(graph, args.template, title, args.text))
     if (args.frontmatter && Object.keys(args.frontmatter).length > 0) {
         await graph.store.whenReady(title)
         const raw = graph.store.openRaw(title).getText()

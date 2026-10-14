@@ -212,3 +212,108 @@ describe('convertObsidian', () => {
         expect(unreadable.map((r) => r.concept).sort()).toEqual(['2026-07-16', 'Note'])
     })
 })
+
+/**
+ * Obsidian's core Templates plugin keeps templates in one folder (`.obsidian/templates.json`), and
+ * its variables are already EtherPK's (`{{date}}`, `{{time}}`, `{{title}}`, `{{date:FORMAT}}`).
+ * A page from that folder becomes a Template (ADR 0144), and the daily notes template the graph's
+ * Journal Template (ADR 0145).
+ */
+describe('convertObsidian templates', () => {
+    const report = (graph: ConvertedGraph, category: string) => graph.report.filter((r) => r.category === category)
+
+    it('marks every page in the templates folder a Template, keeping its other frontmatter and its variables', async () => {
+        const graph = await convertObsidian([
+            src('.obsidian/templates.json', '{"folder": "/Templates/"}'),
+            src('Templates/Daily.md', '---\ntags:\n  - plan\n---\n# {{date}}\n- [ ] water the beans at {{time}} on [[{{title}}]]'),
+            src('Templates/Garden/Weekly.md', '{{date:YYYY-MM-DD}} review'),
+            src('Notes.md', 'not a template'),
+        ])
+        expect(doc(graph, 'Daily').text).toBe(
+            '---\ntitle: Daily\ntags:\n  - plan\ntemplate: true\n---\n# {{date}}\n- [ ] water the beans at {{time}} on [[{{title}}]]',
+        )
+        expect(doc(graph, 'Weekly').text).toBe('---\ntitle: Weekly\ntemplate: true\n---\n{{date:YYYY-MM-DD}} review')
+        expect(doc(graph, 'Notes').text).toBe('---\ntitle: Notes\n---\nnot a template')
+        expect(graph.settings).toBeUndefined()
+    })
+
+    it('marks nothing without a templates folder', async () => {
+        const graph = await convertObsidian([src('.obsidian/templates.json', '{}'), src('Templates/Daily.md', '# {{date}}')])
+        expect(doc(graph, 'Daily').text).toBe('---\ntitle: Daily\n---\n# {{date}}')
+    })
+
+    it('reports the Moment tokens a Template uses that EtherPK does not fill in, once per page', async () => {
+        const graph = await convertObsidian([
+            src('.obsidian/templates.json', '{"folder": "Templates"}'),
+            src(
+                'Templates/Log.md',
+                'Written {{date:dddd, MMMM Do YYYY}} at {{time:hh:mm A}}, {{date:YYYY-MM-DDTHH:mm}} and {{ date:[Week] MMMM }}',
+            ),
+            src('Templates/Plain.md', '{{date:DD/MM/YY}} {{time:HH:mm:ss}}'),
+            src('Elsewhere.md', '{{date:dddd}} in a page that is no Template'),
+        ])
+        expect(report(graph, 'unsupported')).toEqual([
+            {
+                category: 'unsupported',
+                concept: 'Log',
+                detail: 'The date and time formats in this Template use the Moment tokens `dddd`, `MMMM`, `Do`, `hh` and `A`, which EtherPK does not fill in. EtherPK fills in only YYYY, YY, MM, DD, HH, mm and ss.',
+            },
+        ])
+    })
+
+    it('reports a date or time format setting that EtherPK does not follow', async () => {
+        const graph = await convertObsidian([
+            src('.obsidian/templates.json', '{"folder": "Templates", "dateFormat": "DD/MM/YYYY", "timeFormat": "HH:mm"}'),
+            src('Templates/Daily.md', '# {{date}}'),
+        ])
+        expect(report(graph, 'degradation').map((r) => r.detail)).toEqual([
+            '.obsidian/templates.json sets the date format to "DD/MM/YYYY". In EtherPK, `{{date}}` always gives YYYY-MM-DD. To keep the old form, write `{{date:DD/MM/YYYY}}` in a Template.',
+        ])
+    })
+
+    it('sets the Journal Template to the daily notes template', async () => {
+        const graph = await convertObsidian([
+            src('.obsidian/templates.json', '{"folder": "Templates"}'),
+            src('.obsidian/daily-notes.json', '{"folder": "daily", "template": "Templates/Daily"}'),
+            src('Templates/Daily.md', '# {{date}}'),
+        ])
+        expect(graph.settings).toEqual({ journalTemplate: 'Daily' })
+    })
+
+    it('makes the daily notes template a Template wherever it is, as Obsidian uses it as one', async () => {
+        const graph = await convertObsidian([
+            src('.obsidian/daily-notes.json', '{"template": "Setup/Morning Page.md"}'),
+            src('Setup/Morning Page.md', '- [ ] water the beans'),
+        ])
+        expect(doc(graph, 'Morning Page').text).toBe('---\ntitle: Morning Page\ntemplate: true\n---\n- [ ] water the beans')
+        expect(graph.settings).toEqual({ journalTemplate: 'Morning Page' })
+    })
+
+    it('reports a daily notes template the import did not find, and sets nothing', async () => {
+        const graph = await convertObsidian([
+            src('.obsidian/daily-notes.json', '{"folder": "daily", "template": "Templates/Missing"}'),
+            src('Notes.md', 'x'),
+        ])
+        expect(graph.settings).toBeUndefined()
+        expect(report(graph, 'unresolved')).toEqual([
+            {
+                category: 'unresolved',
+                detail: '.obsidian/daily-notes.json names "Templates/Missing" as the template for new daily notes, but the import found no note there. The graph has no Journal Template.',
+            },
+        ])
+    })
+
+    it('reports a template page whose frontmatter it cannot mark', async () => {
+        const block = '---\ntitle: Plans: 2026\n---\n'
+        const graph = await convertObsidian([
+            src('.obsidian/templates.json', '{"folder": "Templates"}'),
+            src('.obsidian/daily-notes.json', '{"template": "Templates/Daily"}'),
+            src('Templates/Daily.md', `${block}# {{date}}`),
+        ])
+        expect(doc(graph, 'Daily').text).toBe(`${block}# {{date}}`)
+        expect(graph.settings).toBeUndefined()
+        expect(report(graph, 'unsupported').map((r) => r.detail)).toContain(
+            'This page is a template in Obsidian, but its frontmatter is not valid YAML, so it was not made a Template. Correct the frontmatter and add `template: true` to make it one.',
+        )
+    })
+})

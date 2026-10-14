@@ -9,8 +9,12 @@ describe('planAddFrontmatter', () => {
         const plan = planAddFrontmatter('- body\n', 'page')
         expect(plan.kind).toBe('choices')
         if (plan.kind !== 'choices') return
-        expect(plan.choices.map((c) => c.key)).toEqual(['title', 'aliases', 'public', 'publications', 'slug', 'date', 'publication'])
+        expect(plan.choices.map((c) => c.key)).toEqual(['title', 'aliases', 'public', 'publications', 'slug', 'date', 'publication', 'template'])
         expect(plan.choices.every((c) => !c.present && c.summary.length > 0)).toBe(true)
+    })
+
+    it('writes template as false, a switch that changes nothing until it is turned on (ADR 0144)', () => {
+        expect(withAddedFrontmatter('- body\n', ['template'], { title: 'Daily Plan', aliases: [] }).text).toBe('---\ntemplate: false\n---\n- body\n')
     })
 
     it('offers a journal entry only the keys a day can use', () => {

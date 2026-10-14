@@ -13,15 +13,15 @@ import { editFrontmatter, frontmatterData, frontmatterParseProblem } from './fro
 import { FRONTMATTER_PROPERTIES } from './identity'
 
 /** A key Add frontmatter can lay out. `includes` lives inside `publication:`, not beside it. */
-export type AddableKey = 'title' | 'aliases' | 'public' | 'publications' | 'slug' | 'date' | 'publication'
+export type AddableKey = 'title' | 'aliases' | 'public' | 'publications' | 'slug' | 'date' | 'publication' | 'template'
 
 /**
  * The keys each kind of document can use, in the order they are offered and written. A journal
  * entry is named and dated by its day, so it has no `title` or `date`, and it cannot define a
- * publication.
+ * publication or be a [[Template]] (ADR 0144).
  */
 const KEYS_FOR: Record<'page' | 'journal', readonly AddableKey[]> = {
-    page: ['title', 'aliases', 'public', 'publications', 'slug', 'date', 'publication'],
+    page: ['title', 'aliases', 'public', 'publications', 'slug', 'date', 'publication', 'template'],
     journal: ['aliases', 'public', 'publications', 'slug'],
 }
 
@@ -86,6 +86,7 @@ function valueFor(key: AddableKey, identity: AddFrontmatterIdentity): unknown {
         case 'aliases':
             return identity.aliases.length > 0 ? [...identity.aliases] : null
         case 'public':
+        case 'template':
             // An on/off switch reads as one: `false` says what `true` would do.
             return false
         case 'publication':

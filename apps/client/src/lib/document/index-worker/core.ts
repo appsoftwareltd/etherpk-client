@@ -41,6 +41,7 @@ import {
     searchTextCount,
     tasksMatching,
     tasksMatchingCount,
+    templatePages,
 } from '../index-db'
 import { linkGraph } from '../index-link-graph'
 import { mapItems, pageHasMapItems } from '../index-map-items'
@@ -466,6 +467,9 @@ export function createIndexCore(host: IndexDbHost): IndexCore {
 
                 case 'property-keys':
                     return [{ type: 'property-keys', id: request.id, keys: db ? propertyKeys(db) : [] }]
+
+                case 'templates':
+                    return [{ type: 'templates', id: request.id, templates: db ? templatePages(db) : [] }]
 
                 case 'property-values':
                     return [{ type: 'property-values', id: request.id, values: db ? propertyValues(db, request.key) : [] }]

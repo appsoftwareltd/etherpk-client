@@ -6,7 +6,9 @@
  * Folders flatten; only colliding base names become [[Scoped Concept]]s (the
  * distinguishing folder as scope). Piped links are alias-aware with a visible prose
  * fallback. Daily notes come from `.obsidian/daily-notes.json`, falling back to exact
- * ISO-named files. Files are otherwise native GFM and pass through untouched.
+ * ISO-named files. Files are otherwise native GFM and pass through untouched. The pages in the
+ * templates folder (`.obsidian/templates.json`) become [[Template]]s (ADR 0144), and the daily
+ * notes template the [[Journal Template]] (ADR 0145).
  */
 
 import { MARKDOWN_LINK } from '$lib/document/markdown-link-target'
@@ -16,7 +18,7 @@ import { type PlannedAsset, normaliseRef, planAssets } from './assets'
 import { buildFrontmatter, createFenceTracker, outsideInlineCode, readSourceFrontmatter, UNREADABLE_FRONTMATTER_DETAIL } from './convert-shared'
 import { placeFolderPages, type TakenNames } from './folder-pages'
 import { logseqDateToIso } from './logseq-dates'
-import { calloutHeading, obsidianComments, unsupportedConstructs, withoutComments } from './obsidian-constructs'
+import { calloutHeading, obsidianComments, unsupportedConstructs, unsupportedMomentTokens, withoutComments } from './obsidian-constructs'
 import { convertObsidianTaskLine } from './obsidian-tasks'
 import { baseName, contentFiles, dirName, findFile, isMarkdownPath, readText } from './source'
 import { breathe, type ConvertedDocument, type ConvertedGraph, type ImportControl, type ReportEntry, type SourceFile } from './types'
@@ -53,26 +55,59 @@ function momentFormat(format: string): string {
 interface DailyNotesConfig {
     folder: string
     grammar: string
+    /** The note a new daily note starts from, as the setting names it: vault-relative, usually without `.md`. */
+    template?: string
 }
 
 async function readDailyNotesConfig(files: SourceFile[]): Promise<DailyNotesConfig | null> {
     const file = findFile(files, '.obsidian/daily-notes.json')
     if (!file) return null
     try {
-        const parsed = JSON.parse(await readText(file)) as { folder?: string; format?: string }
+        const parsed = JSON.parse(await readText(file)) as { folder?: string; format?: string; template?: unknown }
+        const template = typeof parsed.template === 'string' ? parsed.template.trim() : ''
         return {
             folder: (parsed.folder ?? '').replace(/\/$/, ''),
             grammar: momentFormat(parsed.format || 'YYYY-MM-DD'),
+            ...(template ? { template } : {}),
         }
     } catch {
         return null
     }
 }
 
+/** The core Templates plugin's settings: its folder, and the formats its `{{date}}` and `{{time}}` used. */
+interface TemplatesConfig {
+    /** Vault-relative, without slashes at either end. */
+    folder: string | null
+    dateFormat?: string
+    timeFormat?: string
+}
+
+async function readTemplatesConfig(files: SourceFile[]): Promise<TemplatesConfig | null> {
+    const file = findFile(files, '.obsidian/templates.json')
+    if (!file) return null
+    try {
+        const parsed = JSON.parse(await readText(file)) as { folder?: unknown; dateFormat?: unknown; timeFormat?: unknown }
+        const folder = typeof parsed.folder === 'string' ? parsed.folder.trim().replace(/\\/g, '/').replace(/^\/+|\/+$/g, '') : ''
+        const format = (value: unknown) => (typeof value === 'string' && value.trim() !== '' ? value.trim() : undefined)
+        return { folder: folder === '' ? null : folder, dateFormat: format(parsed.dateFormat), timeFormat: format(parsed.timeFormat) }
+    } catch {
+        return null
+    }
+}
+
+/** The formats Obsidian's `{{date}}` and `{{time}}` use by default, which EtherPK's always use. */
+const DEFAULT_DATE_FORMAT = 'YYYY-MM-DD'
+const DEFAULT_TIME_FORMAT = 'HH:mm'
+
+/** A `{{date:FORMAT}}` or `{{time:FORMAT}}` variable, read as EtherPK's renderer reads it. */
+const FORMAT_VARIABLE = /(\\?)\{\{\s*(?:date|time):([^{}]+)\}\}/gi
+
 export async function convertObsidian(files: SourceFile[], control?: ImportControl): Promise<ConvertedGraph> {
     const onProgress = control?.onProgress
     const report: ReportEntry[] = []
     const dailyNotes = await readDailyNotesConfig(files)
+    const templatesConfig = await readTemplatesConfig(files)
 
     const content = contentFiles(files)
     const assetPlan = await planAssets(
@@ -216,6 +251,41 @@ export async function convertObsidian(files: SourceFile[], control?: ImportContr
         return `${label} ([[${concept}]])`
     }
 
+    // ---- Templates. Every page in the core Templates plugin's folder is a Template (ADR 0144), and
+    // so is the note the Daily notes plugin starts each day from, which Obsidian fills in the same way.
+    const templateNotes = new Set<ObsidianNote>()
+    const templateFolder = templatesConfig?.folder?.toLowerCase() ?? null
+    if (templateFolder !== null) {
+        for (const note of notes) {
+            const dir = note.dir.toLowerCase()
+            if (note.kind === 'page' && (dir === templateFolder || dir.startsWith(`${templateFolder}/`))) templateNotes.add(note)
+        }
+    }
+    let dailyTemplate: ObsidianNote | null = null
+    if (dailyNotes?.template) {
+        // The setting is a vault path, read the way Obsidian reads a link to it.
+        const found = resolveNote(dailyNotes.template.replace(/^\/+/, ''), '')
+        if (found?.kind === 'page') {
+            dailyTemplate = found
+            templateNotes.add(found)
+        }
+    }
+    // Obsidian's `{{date}}` and `{{time}}` used these formats. EtherPK's always use its own, and a
+    // Template that links a day as `[[{{date}}]]` needs the ISO form to reach the journal, so the
+    // variables are left alone and the difference is reported.
+    if (templatesConfig?.dateFormat && templatesConfig.dateFormat !== DEFAULT_DATE_FORMAT) {
+        report.push({
+            category: 'degradation',
+            detail: `.obsidian/templates.json sets the date format to "${templatesConfig.dateFormat}". In EtherPK, \`{{date}}\` always gives YYYY-MM-DD. To keep the old form, write \`{{date:${templatesConfig.dateFormat}}}\` in a Template.`,
+        })
+    }
+    if (templatesConfig?.timeFormat && templatesConfig.timeFormat !== DEFAULT_TIME_FORMAT) {
+        report.push({
+            category: 'degradation',
+            detail: `.obsidian/templates.json sets the time format to "${templatesConfig.timeFormat}". In EtherPK, \`{{time}}\` always gives HH:mm. To keep the old form, write \`{{time:${templatesConfig.timeFormat}}}\` in a Template.`,
+        })
+    }
+
     // ---- Body conversion.
     const convertBody = (note: ObsidianNote, body: string): string => {
         const inFence = createFenceTracker()
@@ -346,12 +416,31 @@ export async function convertObsidian(files: SourceFile[], control?: ImportContr
             })
         }
         const body = convertBody(note, uncommented)
+        const template = templateNotes.has(note)
         if (note.keptBlock !== undefined) {
             // Nothing is rebuilt from a block nothing could read, so no `title:` either: the page's
             // name is its file name, which is already written from the concept.
             report.push({ category: 'unsupported', concept: note.concept, detail: UNREADABLE_FRONTMATTER_DETAIL })
+            if (template) {
+                templateNotes.delete(note)
+                report.push({
+                    category: 'unsupported',
+                    concept: note.concept,
+                    detail: 'This page is a template in Obsidian, but its frontmatter is not valid YAML, so it was not made a Template. Correct the frontmatter and add `template: true` to make it one.',
+                })
+            }
             documents.push({ kind: note.kind, concept: note.concept, fileName: note.fileName, text: `${note.keptBlock}${body}` })
             continue
+        }
+        if (template) {
+            // Obsidian fills a template's formats in wherever they are, code included, as EtherPK does.
+            const unfilled = new Set<string>()
+            for (const match of body.matchAll(FORMAT_VARIABLE)) {
+                if (!match[1]) for (const token of unsupportedMomentTokens(match[2])) unfilled.add(token)
+            }
+            if (unfilled.size > 0) {
+                report.push({ category: 'unsupported', concept: note.concept, detail: momentTokensDetail([...unfilled]) })
+            }
         }
         const { title, ...rest } = withAliasesList(note.frontmatter, note.aliases)
         if (typeof title === 'string' && title.trim() !== '' && title !== note.concept) {
@@ -362,7 +451,7 @@ export async function convertObsidian(files: SourceFile[], control?: ImportContr
             })
         }
         const frontmatter =
-            note.kind === 'page' ? { title: note.concept, ...rest } : { ...rest }
+            note.kind === 'page' ? { title: note.concept, ...rest, ...(template ? { template: true } : {}) } : { ...rest }
         documents.push({
             kind: note.kind,
             concept: note.concept,
@@ -378,7 +467,29 @@ export async function convertObsidian(files: SourceFile[], control?: ImportContr
         })
     }
 
-    return { documents, assets: assetPlan.assets, report }
+    // The daily notes template becomes the Journal Template (ADR 0145), carried in Graph Settings
+    // as an EtherPK source's settings are. A template that is not a Template here cannot be one.
+    let settings: Record<string, unknown> | undefined
+    if (dailyNotes?.template) {
+        if (dailyTemplate && templateNotes.has(dailyTemplate)) {
+            settings = { journalTemplate: dailyTemplate.concept }
+        } else if (!dailyTemplate) {
+            report.push({
+                category: 'unresolved',
+                detail: `.obsidian/daily-notes.json names "${dailyNotes.template}" as the template for new daily notes, but the import found no note there. The graph has no Journal Template.`,
+            })
+        }
+    }
+
+    return { documents, assets: assetPlan.assets, ...(settings ? { settings } : {}), report }
+}
+
+/** The Import Report's line for the Moment tokens a Template's formats use that EtherPK does not fill in. */
+function momentTokensDetail(tokens: string[]): string {
+    const quoted = tokens.map((token) => `\`${token}\``)
+    const list = quoted.length === 1 ? quoted[0] : `${quoted.slice(0, -1).join(', ')} and ${quoted.at(-1)}`
+    const which = quoted.length === 1 ? 'token' : 'tokens'
+    return `The date and time formats in this Template use the Moment ${which} ${list}, which EtherPK does not fill in. EtherPK fills in only YYYY, YY, MM, DD, HH, mm and ss.`
 }
 
 /**

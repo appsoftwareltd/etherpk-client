@@ -68,6 +68,9 @@ export const ICON_PATHS: Record<string, string> = {
     pageless: '<path d="M4 2h5l4 4v8.5a.5.5 0 0 1-.5.5h-8a.5.5 0 0 1-.5-.5v-12a.5.5 0 0 1 .5-.5z" stroke-dasharray="2 1.5"/><path d="M8 8.5v3M6.5 10h3"/>',
     /** A circled plus: make a page by the name typed. */
     'new-page': '<circle cx="8" cy="8" r="6"/><path d="M8 5.5v5M5.5 8h5"/>',
+    /** A page holding a pair of braces: a [[Template]], whose `{{variables}}` are filled in on a copy. */
+    template:
+        '<path d="M4 2h5l4 4v8.5a.5.5 0 0 1-.5.5h-8a.5.5 0 0 1-.5-.5v-12a.5.5 0 0 1 .5-.5z"/><path d="M9 2v4h4"/><path d="M6.5 8.5c-.7 0-1 .3-1 1v.4c0 .4-.3.6-.7.6.4 0 .7.2.7.6v.4c0 .7.3 1 1 1M9.5 8.5c.7 0 1 .3 1 1v.4c0 .4.3.6.7.6-.4 0-.7.2-.7.6v.4c0 .7-.3 1-1 1"/>',
 
     table: '<rect x="2.5" y="3" width="11" height="10" rx="1"/><path d="M2.5 6.5h11M2.5 9.5h11M6.5 6.5v6.5"/>',
     // Row and column edits, drawn so the four read differently at 18px on the Command Bar: a

@@ -56,6 +56,11 @@ export interface IndexDoc {
      * `concept` and `aliases`, the graph's names. Absent or empty when the block has none.
      */
     properties?: readonly IndexProperty[]
+    /**
+     * The document is a [[Template]] (`isTemplate`, ADR 0144), read from its Frontmatter by whoever
+     * builds the IndexDoc, since the body handed to the index has none. Absent when it is not.
+     */
+    template?: boolean
 }
 
 /** One node of a block reference's rendered subtree (the matched block + descendants). */
@@ -116,6 +121,11 @@ export interface DbBacklinkGroup {
      * because a rename rewrites those links too, and marked, so a view can leave it out (ADR 0135).
      */
     sourceIsTarget: boolean
+    /**
+     * The source is a [[Template]]. Its body links are kept for the same reason, and a view shows
+     * only its title, through `shownBacklinkGroups` (ADR 0144).
+     */
+    sourceIsTemplate: boolean
 }
 
 /**
@@ -155,19 +165,22 @@ export interface SqlDb {
  * `purgeDeletedText`. 14 added the `properties` table (ADR 0107). 15 puts the [[Scope]]s in a
  * document's name among its tasks' `task_concepts` (ADR 0051, amended 2026-09-29). 16 adds
  * `map_items` and `map_concepts`, and reads a [[Map Block]]'s names instead of its coordinates
- * into `block_fts` and `passages` (ADR 0118).
+ * into `block_fts` and `passages` (ADR 0118). 17 adds `pages.template` and derives no tasks,
+ * places or variable links for a [[Template]] (ADR 0144).
  */
-export const INDEX_SCHEMA_VERSION = 16
+export const INDEX_SCHEMA_VERSION = 17
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS index_metadata (
   key TEXT PRIMARY KEY, value INTEGER NOT NULL);
 -- protected: the stored text holds a cipher fence (fence-info.ts). Kept on the page row so a
 -- listing can wear a padlock without opening the document - the one cheap answer the tab has.
+-- template: the page is a [[Template]] (ADR 0144). Its links are kept for a rename and marked
+-- by this, so the views that show relations can leave them out. Never set on a protected page.
 CREATE TABLE IF NOT EXISTS pages (
   id INTEGER PRIMARY KEY, concept TEXT NOT NULL, concept_key TEXT NOT NULL, kind TEXT NOT NULL,
   text_hash TEXT NOT NULL DEFAULT '', generation INTEGER NOT NULL DEFAULT 1,
-  protected INTEGER NOT NULL DEFAULT 0);
+  protected INTEGER NOT NULL DEFAULT 0, template INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE IF NOT EXISTS aliases (
   page_id INTEGER NOT NULL, alias_key TEXT NOT NULL, display TEXT NOT NULL);
 -- A publication page's includes (ADR 0082), one row per slot: page_id is the PUBLICATION
@@ -379,14 +392,17 @@ export function indexDocHash(doc: IndexDoc): string {
     const includes = doc.includes ?? []
     const properties = doc.properties ?? []
     const aliases = doc.aliases ?? []
-    if (includes.length === 0 && properties.length === 0 && aliases.length === 0) return hashText(doc.text)
+    if (includes.length === 0 && properties.length === 0 && aliases.length === 0 && !doc.template) return hashText(doc.text)
     // Properties come from the Frontmatter the body does not carry either, so an edit that only
     // sets `status: done` must still change the hash, or the index would keep the old value. The
     // aliases likewise: a rename that keeps the old name, or an alias edit, changes nothing else,
-    // and an ingest that took the document as unchanged would leave the name unresolved.
+    // and an ingest that took the document as unchanged would leave the name unresolved. The
+    // Template mark is hashed on its own, because `template: true` and `template: "true"` give the
+    // same property row and only the first is a Template.
     const includeText = includes.map((i) => `${i.publication}\u0001${i.slot}\u0001${i.concept}`).join('\u0000')
     const propertyText = properties.map((p) => `${p.key}\u0001${p.value ?? '\u0002'}`).join('\u0000')
-    return hashText(`${doc.text}\u0000${includeText}\u0003${propertyText}\u0004${aliases.join('\u0000')}`)
+    const templateMark = doc.template ? '\u0005template' : ''
+    return hashText(`${doc.text}\u0000${includeText}\u0003${propertyText}\u0004${aliases.join('\u0000')}${templateMark}`)
 }
 
 export function hashText(text: string): string {
@@ -446,7 +462,7 @@ function insertDerived(db: SqlDb, pageId: number, doc: IndexDoc): string[] {
             [pageId, t.concept, conceptKey(t.concept), 0, doc.concept, t.matchStart, t.matchEnd, null],
         )
     }
-    const { blocks, links, tasks, taskConcepts, mapItems, mapConcepts, searchText } = deriveDoc(doc.text)
+    const { blocks, links, tasks, taskConcepts, mapItems, mapConcepts, searchText } = deriveDoc(doc.text, { template: templateFlag(doc) === 1 })
     for (const b of blocks) {
         db.run(
             'INSERT INTO blocks (page_id, local_id, parent_local_id, ord, kind, depth, done, start_line, end_line, label, text) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
@@ -683,10 +699,18 @@ function protectedFlag(doc: IndexDoc): number {
     return containsCipherFence(doc.text) ? 1 : 0
 }
 
+/**
+ * The `template` column as stored. A [[Protected Document]] is never a [[Template]] (ADR 0144):
+ * its text cannot be read for a copy, and the index holds none of its frontmatter's meaning.
+ */
+function templateFlag(doc: IndexDoc): number {
+    return doc.template === true && doc.kind === 'page' && protectedFlag(doc) === 0 ? 1 : 0
+}
+
 function insertPage(db: SqlDb, pageId: number, generation: number, doc: IndexDoc): void {
     db.run(
-        'INSERT INTO pages (id, concept, concept_key, kind, text_hash, generation, protected) VALUES (?,?,?,?,?,?,?)',
-        [pageId, doc.concept, conceptKey(doc.concept), doc.kind, indexDocHash(doc), generation, protectedFlag(doc)],
+        'INSERT INTO pages (id, concept, concept_key, kind, text_hash, generation, protected, template) VALUES (?,?,?,?,?,?,?,?)',
+        [pageId, doc.concept, conceptKey(doc.concept), doc.kind, indexDocHash(doc), generation, protectedFlag(doc), templateFlag(doc)],
     )
     insertDerived(db, pageId, doc)
 }
@@ -865,19 +889,20 @@ export function ingestOne(db: SqlDb, doc: IndexDoc): void {
         if (found.length > 0) {
             pageId = found[0].id
             deleteDerivedRows(db, pageId)
-            db.run('UPDATE pages SET concept = ?, kind = ?, text_hash = ?, protected = ? WHERE id = ?', [
+            db.run('UPDATE pages SET concept = ?, kind = ?, text_hash = ?, protected = ?, template = ? WHERE id = ?', [
                 doc.concept,
                 doc.kind,
                 indexDocHash(doc),
                 protectedFlag(doc),
+                templateFlag(doc),
                 pageId,
             ])
         } else {
             const max = db.all<{ n: number }>('SELECT COALESCE(MAX(id), 0) AS n FROM pages')
             pageId = (max[0]?.n ?? 0) + 1
             db.run(
-                'INSERT INTO pages (id, concept, concept_key, kind, text_hash, generation, protected) VALUES (?,?,?,?,?,?,?)',
-                [pageId, doc.concept, key, doc.kind, indexDocHash(doc), generation, protectedFlag(doc)],
+                'INSERT INTO pages (id, concept, concept_key, kind, text_hash, generation, protected, template) VALUES (?,?,?,?,?,?,?,?)',
+                [pageId, doc.concept, key, doc.kind, indexDocHash(doc), generation, protectedFlag(doc), templateFlag(doc)],
             )
         }
         const written = new Set(insertDerived(db, pageId, doc))
@@ -1215,11 +1240,37 @@ export function indexDocumentFactKeys(doc: IndexDoc): IndexedDocumentFacts {
         linkTargets: [
             ...new Set([
                 ...deriveTitleLinks(doc.concept).map((link) => conceptKey(link.concept)),
-                ...deriveDoc(doc.text).links.map((link) => conceptKey(link.concept)),
+                // The same derivation insertDerived writes, so what a change invalidates is what it wrote.
+                ...deriveDoc(doc.text, { template: templateFlag(doc) === 1 }).links.map((link) => conceptKey(link.concept)),
             ]),
         ],
         includeTargets: [...new Set((doc.includes ?? []).map((include) => conceptKey(include.concept)))].sort(),
     }
+}
+
+/** One [[Template]] as the `/Template` picker lists it. */
+export interface TemplateEntry {
+    concept: string
+    /** The label of its first block, so two Templates with similar names can be told apart. */
+    firstLine: string
+}
+
+/**
+ * The graph's [[Template]]s (ADR 0144), ordered by name as it reads with the brackets of a
+ * [[Scope]] left out, so `[[Templates]] Daily` sorts among the Ts. One query over rows the index
+ * already holds: no document is opened to list them.
+ */
+export function templatePages(db: SqlDb): TemplateEntry[] {
+    const generation = activeIndexGeneration(db)
+    const rows = db.all<{ concept: string; firstLine: string | null }>(
+        `SELECT p.concept, (SELECT b.label FROM blocks b WHERE b.page_id = p.id ORDER BY b.local_id LIMIT 1) AS firstLine
+         FROM pages p WHERE p.generation = ? AND p.template = 1`,
+        [generation],
+    )
+    const sortKey = (concept: string) => concept.replace(/\[\[|\]\]/g, '').toLowerCase()
+    return rows
+        .map((row) => ({ concept: row.concept, firstLine: row.firstLine ?? '' }))
+        .sort((a, b) => sortKey(a.concept).localeCompare(sortKey(b.concept)))
 }
 
 export function conceptExists(db: SqlDb, concept: string): boolean {
@@ -1273,6 +1324,7 @@ interface LinkHit {
     match_end: number
     block_local_id: number | null
     in_title: number
+    template: number
 }
 
 /** Ancestor labels of a block, root-first. `headingsOnly` keeps just the heading tree. */
@@ -1410,7 +1462,7 @@ export function backlinksFor(db: SqlDb, concept: string): DbBacklinkGroup[] {
     const generation = activeIndexGeneration(db)
     const hits = db.all<LinkHit>(
         `SELECT l.page_id, l.concept_key, p.concept AS sourceConcept, p.kind AS sourceKind, l.line, l.line_text,
-                l.match_start, l.match_end, l.block_local_id, l.in_title
+                l.match_start, l.match_end, l.block_local_id, l.in_title, p.template
          FROM links l JOIN pages p ON p.id = l.page_id
          WHERE p.generation=? AND l.concept_key IN (${placeholders})
          ORDER BY l.page_id, l.line, l.match_start`,
@@ -1465,6 +1517,7 @@ export function backlinksFor(db: SqlDb, concept: string): DbBacklinkGroup[] {
                 refs: [],
                 bodyNames: [],
                 sourceIsTarget: h.page_id === pageId,
+                sourceIsTemplate: h.template === 1,
             }
             groups.set(h.sourceConcept, group)
         }

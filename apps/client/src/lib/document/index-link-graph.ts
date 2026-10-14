@@ -28,8 +28,8 @@ type WrittenLink = [key: string, written: string, inTitle: number]
 
 export function linkGraph(db: SqlDb): LinkGraph {
     const generation = activeIndexGeneration(db)
-    const pages = db.all<{ concept: string; key: string; kind: 'page' | 'journal'; protected: number }>(
-        'SELECT concept, concept_key AS key, kind, protected FROM pages WHERE generation = ? ORDER BY id',
+    const pages = db.all<{ concept: string; key: string; kind: 'page' | 'journal'; protected: number; template: number }>(
+        'SELECT concept, concept_key AS key, kind, protected, template FROM pages WHERE generation = ? ORDER BY id',
         [generation],
     )
     const aliases = db.all<{ key: string; page: string }>(
@@ -48,7 +48,14 @@ export function linkGraph(db: SqlDb): LinkGraph {
     )
 
     const concepts = new Map<string, LinkGraphConcept>()
+    // A [[Template]] is a pattern, not knowledge (ADR 0144): no dot, and no line from or to it. Its
+    // key is remembered so a link to it is not mistaken for a link to a page nobody has written.
+    const templates = new Set<string>()
     for (const page of pages) {
+        if (page.template) {
+            templates.add(page.key)
+            continue
+        }
         if (concepts.has(page.key)) continue
         const concept: LinkGraphConcept = { key: page.key, name: page.concept, kind: page.kind }
         // Only a journal entry named for a day that exists is dated (CONTEXT.md, Journal Concept),
@@ -60,18 +67,18 @@ export function linkGraph(db: SqlDb): LinkGraph {
     // own name wins over an alias that spells the same name, as it does when a wikilink is opened.
     const pageOfAlias = new Map<string, string>()
     for (const alias of aliases) {
-        if (!concepts.has(alias.key) && !pageOfAlias.has(alias.key)) pageOfAlias.set(alias.key, alias.page)
+        if (!concepts.has(alias.key) && !templates.has(alias.key) && !pageOfAlias.has(alias.key)) pageOfAlias.set(alias.key, alias.page)
     }
     const resolve = (key: string) => (concepts.has(key) ? key : (pageOfAlias.get(key) ?? key))
 
     // Every other target is a Pageless Concept, named by the casing most of its mentions use;
     // ties go to the one that sorts first, which puts a Title-Cased spelling ahead (as
     // conceptCandidates does, so a Draft opened from the Graph View is named the same way).
-    const parsed = rows.map((row) => ({ source: row.source, links: JSON.parse(row.links) as WrittenLink[] }))
+    const parsed = rows.filter((row) => !templates.has(row.source)).map((row) => ({ source: row.source, links: JSON.parse(row.links) as WrittenLink[] }))
     const spellings = new Map<string, Map<string, number>>()
     for (const row of parsed) {
         for (const [key, written] of row.links) {
-            if (concepts.has(resolve(key))) continue
+            if (concepts.has(resolve(key)) || templates.has(resolve(key))) continue
             const counts = spellings.get(key) ?? new Map<string, number>()
             counts.set(written, (counts.get(written) ?? 0) + 1)
             spellings.set(key, counts)

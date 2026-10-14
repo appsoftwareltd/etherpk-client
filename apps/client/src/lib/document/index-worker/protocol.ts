@@ -21,6 +21,7 @@ import type {
     SearchDocumentGroup,
     TaskHit,
     TaskQuery,
+    TemplateEntry,
 } from '../index-db'
 import type { LinkGraph } from '../index-link-graph'
 import type { MapItemsResult } from '../index-map-items'
@@ -80,6 +81,8 @@ export type IndexRequest =
     | { type: 'property-keys'; id: number }
     | { type: 'property-values'; id: number; key: string }
     | { type: 'property-match'; id: number; filters: PropertyFilter[] }
+    /** The graph's [[Template]]s, for the `/Template` picker and the Journal Template's setting (ADR 0144). */
+    | { type: 'templates'; id: number }
     /**
      * The [[Tasks View]]'s page. ONE request, unlike Search's split pair: the total here is a
      * COUNT over the same indexed join the rows come from, not a capped scan of a text index,
@@ -183,6 +186,7 @@ export type IndexResponse =
     | { type: 'property-keys'; id: number; keys: PropertyKeyInfo[] }
     | { type: 'property-values'; id: number; values: PropertyValueInfo[] }
     | { type: 'property-match'; id: number; documents: PropertyMatch[] }
+    | { type: 'templates'; id: number; templates: TemplateEntry[] }
     | { type: 'tasks'; id: number; hits: TaskHit[]; hasMore: boolean; total: number }
     | { type: 'asset-usage'; id: number; usage: AssetUsage }
     | { type: 'link-graph'; id: number; graph: LinkGraph }

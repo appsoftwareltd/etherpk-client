@@ -13,9 +13,9 @@ import { proposeFrontmatter } from './proposal'
 const DOC = '---\ntitle: Kanban\naliases:\n  - Board\ncolour: blue\n---\n\n- body\n'
 
 describe('the property table', () => {
-    it('knows title (confirm), aliases (silent) and the publishing keys, date included (read by publish, no editor effect)', () => {
+    it('knows title (confirm), aliases (silent), the publishing keys, date included, and template (read by publish and Templates, no editor effect)', () => {
         const policies = Object.fromEntries(FRONTMATTER_PROPERTIES.map((p) => [p.key, p.policy]))
-        expect(policies).toEqual({ title: 'confirm', aliases: 'silent', public: 'none', publications: 'none', publication: 'none', includes: 'none', slug: 'none', date: 'none' })
+        expect(policies).toEqual({ title: 'confirm', aliases: 'silent', public: 'none', publications: 'none', publication: 'none', includes: 'none', slug: 'none', date: 'none', template: 'none' })
     })
 })
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { calloutHeading, obsidianComments, unsupportedConstructs, withoutComments } from './obsidian-constructs'
+import { calloutHeading, obsidianComments, unsupportedConstructs, unsupportedMomentTokens, withoutComments } from './obsidian-constructs'
 
 const strip = (body: string) => withoutComments(body, obsidianComments(body))
 
@@ -54,5 +54,19 @@ describe('Obsidian footnotes and tags', () => {
             '```',
         ].join('\n')
         expect(unsupportedConstructs(body).tags).toEqual(['#tag', '#paren', '#nested/deep'])
+    })
+})
+
+describe('Moment tokens EtherPK does not fill in', () => {
+    it('names each token outside YYYY YY MM DD HH mm ss, once', () => {
+        expect(unsupportedMomentTokens('dddd, MMMM Do YYYY')).toEqual(['dddd', 'MMMM', 'Do'])
+        expect(unsupportedMomentTokens('h:mm a, h:mm A')).toEqual(['h', 'a', 'A'])
+        expect(unsupportedMomentTokens('YYY-M-D')).toEqual(['YYY', 'M', 'D'])
+    })
+
+    it('passes the tokens EtherPK knows, letters Moment prints as they are, and bracketed text', () => {
+        expect(unsupportedMomentTokens('YYYY-MM-DDTHH:mm:ss')).toEqual([])
+        expect(unsupportedMomentTokens('DD/MM/YY')).toEqual([])
+        expect(unsupportedMomentTokens('[Week of] YYYY')).toEqual([])
     })
 })

@@ -285,3 +285,97 @@ describe('canCreateDocuments', () => {
         expect(canCreateDocuments(halfSeam as unknown as DocumentStore)).toBe(false)
     })
 })
+
+// The [[Journal Template]] (ADR 0145): a new day's Draft opens holding it, and only the first edit
+// writes the day.
+describe('a Draft seeded with its starting text', () => {
+    const template = '- Morning\n  - [ ] water the beans'
+
+    it('holds the text, tells the editor, and writes nothing', () => {
+        const onFirstChange = vi.fn()
+        const draft = createDraftDocument('2026-10-15', onFirstChange)
+        const heard: string[] = []
+        draft.subscribe((text) => heard.push(text))
+
+        expect(draft.seed(template)).toBe(true)
+
+        expect(draft.getText()).toBe(template)
+        expect(heard).toEqual([template])
+        expect(onFirstChange).not.toHaveBeenCalled()
+        // Untouched, so it can still be discarded silently, as an empty Draft can.
+        expect(draft.hasContent()).toBe(false)
+    })
+
+    it('is refused once anything has been typed, and the typing is kept', () => {
+        const draft = createDraftDocument('2026-10-15', () => {})
+        draft.applyChange({ from: 0, to: 0, insert: 'mine' })
+
+        expect(draft.seed(template)).toBe(false)
+        expect(draft.getText()).toBe('mine')
+    })
+
+    it('takes in a change the person did not make without being written, and stays untouched', () => {
+        // Tidy on leave trims a seeded line's trailing space when the caret walks away from it: the
+        // editor's own doing, so the day is not created by a click (ADR 0145).
+        const onFirstChange = vi.fn()
+        const draft = createDraftDocument('2026-10-15', onFirstChange)
+        draft.seed('- Mood: \n- Notes')
+        draft.absorb({ from: 7, to: 8, insert: '' })
+
+        expect(draft.getText()).toBe('- Mood:\n- Notes')
+        expect(onFirstChange).not.toHaveBeenCalled()
+        expect(draft.hasContent()).toBe(false)
+        draft.applyChange({ from: 7, to: 7, insert: ' good' })
+        expect(onFirstChange).toHaveBeenCalledOnce()
+        expect(draft.hasContent()).toBe(true)
+    })
+
+    it('is refused a second time', () => {
+        const draft = createDraftDocument('2026-10-15', () => {})
+        draft.seed(template)
+        expect(draft.seed('- other')).toBe(false)
+        expect(draft.getText()).toBe(template)
+    })
+
+    it('promotes on the first edit, with the starting text and the edit together', async () => {
+        const store = serverLikeStore()
+        const draft = createDraftDocument('2026-10-15', () => {})
+        draft.seed(template)
+        draft.applyChange({ from: template.length, to: template.length, insert: '\n- planted' })
+
+        expect(draft.hasContent()).toBe(true)
+        await promoteDraft(store, draft)
+        expect(store.docs.get('2026-10-15')!.text).toBe(`${template}\n- planted`)
+    })
+
+    it('adopting a day that already starts with the same text appends only what was added', async () => {
+        // Another device opened the same day, which held the same Template, and wrote it first.
+        const store = serverLikeStore()
+        await store.createJournal('2026-10-15', `${template}\n- theirs`)
+        const draft = createDraftDocument('2026-10-15', () => {})
+        draft.seed(template)
+        draft.applyChange({ from: template.length, to: template.length, insert: '\n- mine' })
+
+        expect((await promoteDraft(store, draft)).text).toBe(`${template}\n- theirs\n- mine`)
+    })
+
+    it('adopting a day that holds something else appends everything, so nothing typed is lost', async () => {
+        const store = serverLikeStore()
+        await store.createJournal('2026-10-15', '- theirs')
+        const draft = createDraftDocument('2026-10-15', () => {})
+        draft.seed(template)
+        draft.applyChange({ from: template.length, to: template.length, insert: '\n- mine' })
+
+        expect((await promoteDraft(store, draft)).text).toBe(`- theirs\n${template}\n- mine`)
+    })
+
+    it('adopting appends the whole text when the starting text itself was edited', async () => {
+        const store = serverLikeStore()
+        await store.createJournal('2026-10-15', template)
+        const draft = createDraftDocument('2026-10-15', () => {})
+        draft.seed(template)
+        draft.applyChange({ from: 2, to: 9, insert: 'Evening' })
+
+        expect((await promoteDraft(store, draft)).text).toBe(`${template}\n- Evening\n  - [ ] water the beans`)
+    })
+})

@@ -10,6 +10,7 @@ import { registerProtectionCommands } from './protection-commands'
 import { registerQuickNotesCommands } from './quick-notes-commands'
 import { registerSpellingCommands } from './spelling-commands'
 import { registerTaskReferenceCommands } from './task-reference-commands'
+import { registerTemplateCommands } from './template-commands'
 
 /** Dependencies no registration reads: only the rows' `when` and the Commands call them. */
 const unused = {} as never
@@ -36,6 +37,7 @@ describe('the Command Menu order', () => {
         registerFrontmatterCommands(commands, contributions, unused)
         registerBacklinksCommands(commands, contributions, unused)
         registerJournalCommands(commands, contributions)
+        registerTemplateCommands(commands, contributions, unused)
 
         expect(commandMenuItemsInOrder(contributions).map((item) => item.title)).toEqual([
             'Search',
@@ -52,6 +54,7 @@ describe('the Command Menu order', () => {
             'Italic',
             'Highlight',
             'Code block',
+            'Template',
             'Table',
             'Table: Add column',
             'Table: Add row',

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
+import { backlinksFor } from '../backlinks/backlink-index'
 import { createPublicationResolver, titleText } from './resolve'
 import type { PublishDocument } from './types'
 
@@ -63,5 +64,28 @@ describe('titleText', () => {
         expect(titleText('[[Physics]] Quantum Mechanics')).toBe('Physics Quantum Mechanics')
         expect(titleText('[[[[Physics]] Quantum Mechanics]] Entanglement')).toBe('Physics Quantum Mechanics Entanglement')
         expect(titleText('Plain')).toBe('Plain')
+    })
+})
+
+describe('a public Template on a published site', () => {
+    const notes = page('Review Notes', '---\npublic: true\n---\n- about [[Physics]]\n')
+    const review = page('Weekly Review', '---\npublic: true\ntemplate: true\n---\n- Review of [[Physics]] on [[{{date}}]]\n')
+    const site = createPublicationResolver({
+        included: [physics, notes, review],
+        allDocuments: [physics, notes, review],
+        slugs: new Map([
+            ['physics', 'physics'],
+            ['review notes', 'review-notes'],
+            ['weekly review', 'weekly-review'],
+        ]),
+    })
+
+    it('is no backlink of what it links to, as in the app (ADR 0144)', () => {
+        // Physics links to its own scope, which the site leaves out where it draws backlinks.
+        expect(backlinksFor(site.index, 'Physics').map((group) => group.sourceConcept)).toEqual(['Physics', 'Review Notes'])
+    })
+
+    it('is still a page that links resolve to', () => {
+        expect(site.resolve('Weekly Review')).toMatchObject({ href: 'weekly-review.html', missing: false })
     })
 })

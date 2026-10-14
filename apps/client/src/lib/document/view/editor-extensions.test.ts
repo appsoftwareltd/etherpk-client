@@ -50,6 +50,7 @@ describe('editor feature stack', () => {
             'wrap-selection',
             'spell-check',
             'markdown-format',
+            'template-variables',
             'bullet-marker',
             'task-checkbox',
             'outline-guides',
@@ -194,6 +195,7 @@ describe('editor feature stack', () => {
         // pins only the stack's order; that one container survives the tokens is proved in the
         // browser (tests-client/fenced-code-scroll.test.ts, "a single scroll container").
         before('content-clamp', 'code-scroll')
+        before('template-variables', 'code-scroll')
     })
 
     it('runs the Extension Fence caret filter after the caret clamp, so no clamp move leaves the caret on a fence', () => {

@@ -18,6 +18,7 @@ import { wikilinkSegments } from '../wikilink/model'
 import { parseWikilinks } from '../wikilink/parser'
 import { renderWikilinkSegmentsToHtml } from '../wikilink/render-html'
 import type { ResolvedTarget } from '../wikilink/resolver'
+import { isTemplate } from '../templates/template-page'
 import type { PublishDocument } from './types'
 
 export type TargetStatus =
@@ -69,12 +70,12 @@ export function titleText(concept: string): string {
 
 export function createPublicationResolver(input: ResolverInput): PublicationResolver {
     const index = buildBacklinkIndex(
-        input.included.map((doc) => ({
-            concept: doc.concept,
-            kind: doc.kind,
-            aliases: [...doc.aliases],
-            text: parseFrontmatter(doc.text).body,
-        })),
+        input.included.map((doc) => {
+            const { data, body } = parseFrontmatter(doc.text)
+            // A public Template still has a page that links resolve to, but its body is a pattern,
+            // so its links are no backlinks on the site, as in the app (ADR 0144).
+            return { concept: doc.concept, kind: doc.kind, aliases: [...doc.aliases], text: isTemplate(data, doc.kind) ? '' : body }
+        }),
     )
     // Alias folding across the whole graph, so a link to a private page's alias is "private",
     // not "missing".

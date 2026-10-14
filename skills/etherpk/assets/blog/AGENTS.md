@@ -124,6 +124,17 @@ AGENTS.md                                     this file
   `"true"`. To publish a document,
   add the two keys to its block. To make a publication, write such a page. The user runs the
   publish from EtherPK.
+- **Templates.** A page whose frontmatter says `template: true` (the boolean, never `"true"`)
+  is a Template: the user copies its body into any document with `/Template`, and a new day
+  opens holding the graph's Journal Template (`journalTemplate` in `etherpk/settings.json`,
+  the page's name). Only the body is copied, never the frontmatter. In the body, `{{date}}`,
+  `{{yesterday}}` and `{{tomorrow}}` (`YYYY-MM-DD`), `{{time}}` (`HH:mm`), `{{datetime}}` and
+  `{{title}}` (the name of the document it is copied into) are filled in as plain text, so a
+  link is written around one: `[[{{date}}]]`. `{{date:DD/MM/YYYY}}` formats with the tokens
+  `YYYY YY MM DD HH mm ss`, `{{cursor}}` marks where the caret lands, `\{{` is a literal `{{`,
+  and any other name is copied as written. Keep a Template's variables as they are: its tasks
+  and links count for nothing in the graph. When you write a document from a Template
+  yourself, copy the body and fill the variables in.
 - Keep the block intact: never join body text onto the closing `---` and never delete the
   block from a protected document (see below).
 

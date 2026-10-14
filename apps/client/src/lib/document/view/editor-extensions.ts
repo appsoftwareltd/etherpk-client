@@ -53,6 +53,7 @@ import { slashCompletion } from './augmentations/slash-complete'
 import { spellCheckAugmentation } from './augmentations/spell-check'
 import { taskCheckboxAugmentation } from './augmentations/task-checkbox'
 import { taskTagCompletion } from './augmentations/task-tag-complete'
+import { templateVariablesAugmentation } from './augmentations/template-variables'
 import { wikilinkAugmentation } from './augmentations/wikilink'
 import type { WikilinkEdit } from './augmentations/wikilink-episode'
 import { wikilinkCompletion } from './augmentations/wikilink-complete'
@@ -180,6 +181,9 @@ export function editorFeatures(services: EditorExtensionServices): EditorFeature
         { name: 'spell-check', extension: spellCheckAugmentation() },
         // Inline formatting marks, then the outliner chrome drawn over the same lines.
         { name: 'markdown-format', extension: markdownFormatAugmentation() },
+        // A Template's variables, marked as they are written (ADR 0144). A mark inside a code line,
+        // so before the code line's scroll container, which must stay one box around it.
+        { name: 'template-variables', extension: templateVariablesAugmentation() },
         { name: 'bullet-marker', extension: bulletMarkerAugmentation() },
         { name: 'task-checkbox', extension: taskCheckboxAugmentation() },
         { name: 'outline-guides', extension: outlineGuidesAugmentation() },

@@ -21,12 +21,31 @@ starts at 0.9.3.
   does for protected documents, the two choices when you rename a page, the Graph View's
   **Pageless** filter (**In two or more documents**), and **no page yet** in the Tasks view's name
   suggestions.
+- **Templates.** A page whose frontmatter says `template: true` is a Template. Type `/Template` in
+  any document to copy one in, with `{{date}}`, `{{title}}`, `{{time}}` and the other variables
+  filled in for that document, and the cursor placed at `{{cursor}}`. A Template's tasks and links
+  stay out of the Tasks view, Kanban boards, backlinks, maps and the Graph View, and Search still
+  finds it.
+- **Journal Template.** Choose a Template in Settings and Extensions → General, and today and every
+  later day open holding it, with that day's date filled in. Nothing is saved until you type.
+- **Add frontmatter** offers the `template` key on pages.
+- **Importing from Logseq, Obsidian or AS Notes brings templates across** as Templates, with their
+  variables rewritten, and sets the Journal Template from the app's own setting.
 
 ### Headless Client
 
 - **`publish` removes old map pictures** from the site folder, as the Client does.
 - **A page named Search publishes at `search.html`**, and a blog's page named Posts at
   `posts-2.html`, as in the Client.
+- **`create_page` and `append_document` take a `template`**, the name of a Template, whose text
+  starts the page or is added to the document with its variables filled in.
+- **`backlinks` leaves out the text of Templates.** A Template that links to a page is listed only
+  when its own name is scoped by that page.
+
+### Agent skill
+
+- The skill and the `AGENTS.md` section EtherPK writes into a graph folder describe Templates and
+  their variables.
 
 ## 0.11.1 - 2026-10-14
 

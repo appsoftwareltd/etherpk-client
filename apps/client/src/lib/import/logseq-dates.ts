@@ -3,7 +3,8 @@
  * `yyyy_MM_dd`); date-page links follow `:journal/page-title-format` (default
  * `MMM do, yyyy`). Both convert to the ISO date that IS a journal's concept in EtherPK.
  * Unknown format tokens make the parser return null - the caller leaves the value
- * untouched and reports it once.
+ * untouched and reports it once. `config.edn` also names the default journal template, read
+ * here beside the formats.
  */
 
 const MONTHS = [
@@ -104,14 +105,49 @@ export interface LogseqConfig {
     journalFileFormat: string
     /** `:journal/page-title-format`, default `MMM do, yyyy`. */
     journalTitleFormat: string
+    /**
+     * The template Logseq fills a new journal page with, `:default-templates {:journals "Name"}`.
+     * Absent when the key is missing or empty, which is what Logseq writes by default.
+     */
+    journalTemplate?: string
 }
 
-/** Read the two journal formats out of `logseq/config.edn` (regex - we don't parse EDN). */
+/**
+ * EDN without its comments: `;` to the end of the line, outside a string. Logseq's default
+ * `config.edn` carries commented-out examples of the settings it documents, and an example read
+ * as the setting would win over the real one written further down.
+ */
+function withoutEdnComments(edn: string): string {
+    let out = ''
+    let inString = false
+    for (let i = 0; i < edn.length; i++) {
+        const ch = edn[i]
+        if (inString) {
+            out += ch
+            if (ch === '\\' && i + 1 < edn.length) out += edn[++i]
+            else if (ch === '"') inString = false
+        } else if (ch === '"') {
+            inString = true
+            out += ch
+        } else if (ch === ';') {
+            while (i + 1 < edn.length && edn[i + 1] !== '\n') i++
+        } else {
+            out += ch
+        }
+    }
+    return out
+}
+
+/** Read the journal settings out of `logseq/config.edn` (regex over the uncommented text - we don't parse EDN). */
 export function parseLogseqConfig(edn: string | null): LogseqConfig {
-    const read = (key: string) =>
-        edn ? new RegExp(`:journal/${key}\\s+"([^"]+)"`).exec(edn)?.[1] : undefined
+    const text = edn ? withoutEdnComments(edn) : ''
+    const read = (key: string) => new RegExp(`:journal/${key}\\s+"([^"]+)"`).exec(text)?.[1]
+    // `:default-templates {:journals "Name"}`: the map may span lines, and holds no nested maps.
+    const defaults = /:default-templates\s*\{([^}]*)\}/.exec(text)?.[1] ?? ''
+    const journalTemplate = /:journals\s+"((?:[^"\\]|\\.)*)"/.exec(defaults)?.[1].trim()
     return {
         journalFileFormat: read('file-name-format') ?? 'yyyy_MM_dd',
         journalTitleFormat: read('page-title-format') ?? 'MMM do, yyyy',
+        ...(journalTemplate ? { journalTemplate } : {}),
     }
 }

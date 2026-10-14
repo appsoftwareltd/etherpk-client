@@ -12,8 +12,9 @@
  * gap safe. Nothing is racing the user's typing; it is replayed.
  */
 
+import { parseFrontmatter } from '../storage/fs/frontmatter'
 import { isJournalConcept } from './journal-concept'
-import type { DocumentStore, EditorDocument } from './types'
+import type { DocumentStore, EditorDocument, TextChange } from './types'
 
 /** A store that can bring a document into existence — the Filesystem and Server Backends. */
 export interface DocumentCreatingStore extends DocumentStore {
@@ -30,8 +31,27 @@ export interface DraftDocument extends EditorDocument {
     readonly isDraft: true
     /** The concept this Draft promotes to — the name the page will be given. */
     readonly concept: string
-    /** True once anything has been typed; an empty Draft is safe to discard silently. */
+    /**
+     * True once anything has been typed; a Draft holding nothing, or only the text it was seeded
+     * with, is safe to discard silently.
+     */
     hasContent(): boolean
+    /**
+     * Fill an untouched Draft with starting text: the [[Journal Template]] a new day opens holding
+     * (ADR 0145). It reaches the editor as a document's content does, through `subscribe`, so it
+     * is no edit and writes nothing; the first edit promotes the Draft with this text in it.
+     * Refused, returning false, once anything has been typed or a seed has been taken.
+     */
+    seed(text: string): boolean
+    /** The text `seed` gave the Draft, or `''`. */
+    seeded(): string
+    /**
+     * Take in a change that only rode on a caret move: tidy on leave trimming a line the caret left.
+     * The buffer follows the editor, but nothing is written, since only an edit creates the
+     * document (ADR 0050, ADR 0145). Before any edit the change is part of the starting text, so the
+     * Draft still counts as untouched.
+     */
+    absorb(change: TextChange): void
 }
 
 /**
@@ -44,6 +64,7 @@ export interface DraftDocument extends EditorDocument {
  */
 export function createDraftDocument(concept: string, onFirstChange: () => void): DraftDocument {
     let buffer = ''
+    let seededText = ''
     let promotionRequested = false
     const listeners = new Set<(text: string) => void>()
 
@@ -52,7 +73,18 @@ export function createDraftDocument(concept: string, onFirstChange: () => void):
         concept,
         id: concept,
         getText: () => buffer,
-        hasContent: () => buffer !== '',
+        hasContent: () => buffer !== seededText,
+        seed(text) {
+            if (promotionRequested || buffer !== '' || seededText !== '' || text === '') return false
+            buffer = seededText = text
+            for (const listener of listeners) listener(text)
+            return true
+        },
+        seeded: () => seededText,
+        absorb(change) {
+            buffer = buffer.slice(0, change.from) + change.insert + buffer.slice(change.to)
+            if (!promotionRequested) seededText = buffer
+        },
         applyChange(change) {
             const next = buffer.slice(0, change.from) + change.insert + buffer.slice(change.to)
             if (next === buffer) return
@@ -155,8 +187,10 @@ export async function promoteDraft(
     if (adopted) {
         // We seeded nothing, so the Draft's text is appended whole, after a separating blank
         // line when the adopted document already has content. Nothing is overwritten: a
-        // [[Merge]] loses nothing, at a much smaller scale (ADR 0038).
-        const current = draft.getText()
+        // [[Merge]] loses nothing, at a much smaller scale (ADR 0038). A Draft that opened
+        // holding a [[Journal Template]] (ADR 0145) leaves out the Template when the adopted day
+        // already starts with it, so a day two devices opened at once does not hold it twice.
+        const current = withoutSharedStart(draft.getText(), draft.seeded(), opened)
         if (current === '') return { concept: draft.concept, text: opened, bodyOffset: opened.length }
         const separator = opened === '' || opened.endsWith('\n') ? '' : '\n'
         const insert = `${separator}${current}`
@@ -176,4 +210,16 @@ export async function promoteDraft(
     // Typed during the gap. Replace the body range wholesale — exact, and cheap at these sizes.
     doc.applyChange({ from: bodyOffset, to: opened.length, insert: current })
     return { concept: draft.concept, text: opened.slice(0, bodyOffset) + current, bodyOffset }
+}
+
+/**
+ * The part of a seeded Draft's text to append to a document it adopted: all of it, unless both
+ * start with the text the Draft was seeded with, which the document then already holds. The text
+ * after the seed is kept from its first character, so nothing typed is lost; a seed the person
+ * edited no longer starts the Draft's text, which is then appended whole.
+ */
+function withoutSharedStart(text: string, seeded: string, adopted: string): string {
+    // A journal entry carries frontmatter only when it has aliases; the body is what a seed fills.
+    if (seeded === '' || !text.startsWith(seeded) || !parseFrontmatter(adopted).body.startsWith(seeded)) return text
+    return text.slice(seeded.length).replace(/^\r?\n/, '')
 }
