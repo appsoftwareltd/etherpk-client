@@ -18,10 +18,10 @@ export function headlessClientPackage(version: string | null): string {
 }
 
 /**
- * The one-time sign-in on the agent's machine. With a setup code (ADR 0132) the command is the
- * whole sign-in: `login` trades the code for an agent token and then asks for Device Approval.
+ * The one-time sign-in on the agent's computer (ADR 0132), the whole sign-in: `login` trades the
+ * Agent Setup Code for an Agent Token and then asks for Device Approval.
  */
-export function headlessClientLoginCommand(serverBaseUrl: string, headlessClient: string, setupCode?: string): string {
+export function headlessClientLoginCommand(serverBaseUrl: string, headlessClient: string, setupCode: string): string {
     const server = serverBaseUrl.replace(/\/$/, '')
-    return `npx ${headlessClient} login --sync-server ${server}${setupCode ? ` --code ${setupCode}` : ''}`
+    return `npx ${headlessClient} login --sync-server ${server} --code ${setupCode}`
 }

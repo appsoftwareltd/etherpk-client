@@ -344,6 +344,13 @@
     import FenceView from "$lib/document/view/FenceView.svelte";
     import { type FenceRef, fenceViewTarget, parseFenceViewTarget, setFenceHosting } from "$lib/document/view/fence-hosting";
     import { closeFenceWindow, openFenceWindow } from "$lib/document/view/fence-window";
+    import { createDocumentsReader } from "$lib/agent-read/documents-reader";
+    import { filesystemReadSource, serverReadSource } from "$lib/agent-read/read-sources";
+    import { tryGetActiveAssetStore } from "$lib/document/active-asset-store";
+    import { createExtensionAssets } from "$lib/extensions/extension-assets";
+    import { closeExtensionWindow, openExtensionWindow } from "$lib/extensions/extension-window";
+    import { graphRecords } from "$lib/extensions/graph-records";
+    import { openExtensionPanel } from "$lib/extensions/inline-panel";
     import type { GraphServices } from "$lib/extensions/services";
     import { createExtensionSwitches } from "$lib/extensions/switches";
     import { openBeside } from "$lib/layout/open-beside";
@@ -4028,6 +4035,8 @@
         );
         // The publishing pair (ADR 0082): Alt+P for the settings, Alt+Shift+P to publish again.
         commandRegistry.register("publish.settings", () => openGraphSettings("publish"));
+        // The Agents tab: where an Agent Chat asks for a Model Connection when there is none (ADR 0147).
+        commandRegistry.register("agents.settings", () => openGraphSettings("agents"));
         // Spell Check (ADR 0095): its Spelling tab, then the spelling menu's rows, the phone's
         // Fix spelling button and the `/` row.
         commandRegistry.register(SPELLING_OPEN_SETTINGS, () => openGraphSettings("spelling"));
@@ -4139,15 +4148,27 @@
                 },
                 activeDocument: () => getActiveDocument(),
                 isDesktop: () => !useMobile,
+                openWindow: (options) => openExtensionWindow(options),
             },
             concepts: { key: conceptKey, canonicalName: canonicalConceptName },
             keybindings: keybindingTable,
             notify: (text) => notify(text),
+            // What an Agent Chat reads for a language model (ADR 0147): the store's own copy, never
+            // the protected projection the editors are given, so an unlocked Protected Document's
+            // plaintext cannot reach an extension, and every protected name left out.
+            documents: createDocumentsReader({
+                source: isServerStore ? serverReadSource(s as ServerDocumentStore) : filesystemReadSource(s as FilesystemDocumentStore),
+                index: () => graphIndex ?? null,
+                today: () => todayISO(),
+            }),
+            records: (extensionId) => graphRecords(graphId, extensionId),
+            assets: createExtensionAssets({ store: () => tryGetActiveAssetStore() }),
             editor: {
                 insertBlock(text, options) {
                     const view = getActiveEditorView();
                     return view ? insertBlock(view, text, options) : false;
                 },
+                openPanel: (options) => openExtensionPanel(getActiveEditorView(), options),
             },
         };
         // Where a fence's widget can be drawn outside its document: a tab, or over the window.
@@ -6546,6 +6567,7 @@
         // Everything every packaged extension added to this graph is taken back (ADR 0121).
         extensionHost.stop();
         closeFenceWindow();
+        closeExtensionWindow();
         setFenceHosting(null);
         detachThemeEvents?.();
         detachThemeEvents = undefined;

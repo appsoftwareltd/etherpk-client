@@ -115,14 +115,14 @@ function declaredHeight(fence: InteractiveFence, info: InteractiveFenceInfo): nu
 }
 
 /** The editor's undo and redo chords, which a widget's own buttons would otherwise swallow. */
-function historyChord(event: KeyboardEvent): boolean {
+export function historyChord(event: KeyboardEvent): boolean {
     if (!(event.ctrlKey || event.metaKey) || event.altKey) return false
     const key = event.key.toLowerCase()
     return key === 'z' || key === 'y'
 }
 
 /** Whether a key goes to a field the person is typing in, which keeps its own undo. */
-function typingField(target: EventTarget | null): boolean {
+export function typingField(target: EventTarget | null): boolean {
     return target instanceof HTMLElement && (target.isContentEditable || target.tagName === 'TEXTAREA' || (target.tagName === 'INPUT' && !['button', 'checkbox', 'radio', 'file'].includes((target as HTMLInputElement).type)))
 }
 

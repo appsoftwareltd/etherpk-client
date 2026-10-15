@@ -262,6 +262,34 @@ describe("an extension's editor, dialogs and frames", () => {
         expect(context.editor.insertBlock('```graph-view.plan\n```')).toBe(false)
     })
 
+    it('opens a panel in the document through the workspace, and closes it when stopped', () => {
+        const { scoped, context, services } = setUp()
+        const panel = { document: 'Garden', isOpen: true, insertBlock: vi.fn(), focus: vi.fn(), resize: vi.fn(), outline: vi.fn(() => null), close: vi.fn() }
+        vi.mocked(services.editor.openPanel).mockReturnValue(panel)
+        expect(context.editor.openPanel({ mount: () => ({ destroy() {} }) })).toBe(panel)
+        scoped.dispose()
+        expect(panel.close).toHaveBeenCalledOnce()
+        expect(context.editor.openPanel({ mount: () => ({ destroy() {} }) })).toBeNull()
+    })
+
+    it('opens a window over the Client, closes it when stopped, and opens none after', () => {
+        const { scoped, context, services } = setUp()
+        const opened = { close: vi.fn() }
+        vi.mocked(services.layout.openWindow).mockReturnValue(opened)
+        context.layout.openWindow({ title: 'Plan', mount: () => ({ destroy() {} }) })
+        scoped.dispose()
+        expect(opened.close).toHaveBeenCalledOnce()
+        context.layout.openWindow({ title: 'Plan', mount: () => ({ destroy() {} }) })
+        expect(services.layout.openWindow).toHaveBeenCalledOnce()
+    })
+
+    it("keeps its records for the open graph apart from another extension's", async () => {
+        const { context, services } = setUp()
+        await context.records.set('chat:a', { title: 'Beans' })
+        expect(await services.records('kanban').keys()).toEqual([])
+        expect(await context.records.get('chat:a')).toEqual({ title: 'Beans' })
+    })
+
     it('asks its questions in a dialog that names it', async () => {
         const { context, client } = setUp()
         await context.dialogs.prompt({ title: 'New bed', label: 'Name' })
@@ -332,6 +360,14 @@ describe('an extension from the Extension Directory', () => {
         ['commands.has', (context) => context.commands.has('layout.toggleSidebar')],
         ['layout.activeDocument', (context) => context.layout.activeDocument()],
         ['layout.reveal', (context) => context.layout.reveal('graph-view.whole')],
+        // Added for Agent Chat (ADR 0147): what reads a graph's text for a language model, keeps
+        // records on the device, adds assets, and draws in a document outside a fence.
+        ['layout.openWindow', (context) => context.layout.openWindow({ title: 'Plan', mount: () => ({ destroy() {} }) })],
+        ['editor.openPanel', (context) => context.editor.openPanel({ mount: () => ({ destroy() {} }) })],
+        ['documents.read', (context) => context.documents.read('Garden')],
+        ['documents.search', (context) => context.documents.search('beans')],
+        ['records.keys', (context) => context.records.keys()],
+        ['assets.saveImage', (context) => context.assets.saveImage(new Blob(), 'image.png')],
     ])('cannot use the Proposed %s', (member, use) => {
         const { context, contributions } = setUp({ installed: true })
         expect(() => use(context)).toThrow(`context.${member} is in the Proposed part of the Extension API, which only the extensions that come with EtherPK may use.`)

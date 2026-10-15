@@ -118,6 +118,16 @@ describe('cspDirectives', () => {
         expect(connectSrc).toContain('wss:')
     })
 
+    it("reaches a model server on the person's own machine over loopback, and no other plain-HTTP address (ADR 0147)", () => {
+        const connectSrc = cspDirectives({ appHtmlPath: path, allowArbitrarySyncOrigins: true, allowLoopbackHttp: true })['connect-src']
+        expect(connectSrc).toEqual(expect.arrayContaining(['http://localhost:*', 'http://127.0.0.1:*']))
+        // CSP's host grammar has no IPv6 literal: Chrome logs `http://[::1]:*` as an invalid source.
+        expect(connectSrc.some((source) => source.includes('['))).toBe(false)
+        // Loopback only: a whole scheme would let the page talk to any plain-HTTP host.
+        expect(connectSrc).not.toContain('http:')
+        expect(cspDirectives({ appHtmlPath: path, allowArbitrarySyncOrigins: true })['connect-src']).not.toContain('http://localhost:*')
+    })
+
     it('adds the plain-text schemes only in development', () => {
         expect(cspDirectives({ appHtmlPath: path, dev: true })['connect-src']).toContain('ws:')
         expect(cspDirectives({ appHtmlPath: path })['connect-src']).not.toContain('ws:')

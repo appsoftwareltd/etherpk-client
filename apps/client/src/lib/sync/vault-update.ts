@@ -107,6 +107,38 @@ export interface VaultChange {
     publishIdentity?: boolean
 }
 
+/** The vault as the server holds it now, opened with the key this device holds. */
+export interface ReadVault {
+    /** The account the vault belongs to, as the server named it: what this account signs as. */
+    principalId: string
+    version: number
+    envelope: Uint8Array
+    opened: OpenedVault
+    /** Offered while the identity on record has no signing key (`writeSignedVault`). */
+    identityProofKey?: Uint8Array
+}
+
+/**
+ * Read the vault and open it with `heldKey`, the vault key or a wrap key from the Recovery Code.
+ * @throws NoVaultError when the account has no vault.
+ */
+export async function readVault(api: Pick<SyncApi, 'getVault'>, heldKey: Uint8Array): Promise<ReadVault> {
+    const stored = await api.getVault()
+    if (!stored) throw new NoVaultError()
+    // A Sync Server from before ADR 0126 does not say whose vault it is, and refuses the write anyway.
+    if (typeof stored.principalId !== 'string') {
+        throw new SyncApiError('This Sync Server needs updating before it can save Encryption Keys.', 426, SERVER_UPGRADE_REQUIRED_CODE)
+    }
+    const envelope = fromBase64Url(stored.vault)
+    return {
+        principalId: stored.principalId,
+        version: stored.version,
+        envelope,
+        opened: await openVault(envelope, heldKey),
+        ...(stored.identityProofKey ? { identityProofKey: fromBase64Url(stored.identityProofKey) } : {}),
+    }
+}
+
 export interface VaultUpdate {
     /** The vault as the server now holds it: the content written, or what was read when nothing was. */
     vault: KeyVault
@@ -129,25 +161,18 @@ export async function updateVault(
     change: VaultChange,
 ): Promise<VaultUpdate> {
     for (let attempt = 1; ; attempt++) {
-        const stored = await api.getVault()
-        if (!stored) throw new NoVaultError()
-        // A Sync Server from before ADR 0126 does not say whose vault it is, and refuses the write anyway.
-        if (typeof stored.principalId !== 'string') {
-            throw new SyncApiError('This Sync Server needs updating before it can save Encryption Keys.', 426, SERVER_UPGRADE_REQUIRED_CODE)
-        }
-        const envelope = fromBase64Url(stored.vault)
-        const opened = await openVault(envelope, heldKey)
-        const next = await change.apply(opened.vault, opened, stored.principalId)
-        if (!next) return { vault: opened.vault, vaultKey: opened.vaultKey, principalId: stored.principalId, written: false }
+        const { principalId, version, envelope, opened, identityProofKey } = await readVault(api, heldKey)
+        const next = await change.apply(opened.vault, opened, principalId)
+        if (!next) return { vault: opened.vault, vaultKey: opened.vaultKey, principalId, written: false }
         try {
             const written = await writeSignedVault(api, next, {
-                principalId: stored.principalId,
-                expectedVersion: stored.version,
+                principalId,
+                expectedVersion: version,
                 seal: (vault) => (change.seal ? change.seal(vault, { envelope, opened }) : reencryptVault(vault, envelope, opened)),
                 publishIdentity: change.publishIdentity,
-                identityProofKey: stored.identityProofKey ? fromBase64Url(stored.identityProofKey) : undefined,
+                identityProofKey,
             })
-            return { vault: written.vault, vaultKey: written.vaultKey, principalId: stored.principalId, written: true }
+            return { vault: written.vault, vaultKey: written.vaultKey, principalId, written: true }
         } catch (error) {
             if (isVersionConflict(error) && attempt < MAX_ATTEMPTS) continue
             throw error

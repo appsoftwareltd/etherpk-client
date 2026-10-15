@@ -17,6 +17,7 @@
 
 export type {
     CommandHandler,
+    ExtensionCommandBar,
     ExtensionCommandMenu,
     ExtensionCommands,
     ExtensionConcepts,
@@ -36,8 +37,10 @@ export type {
     IconMarkup,
     Keybinding,
 } from './context'
+export type { ExtensionAssets } from './assets'
 export type { AuthorizeOptions, ExtensionAuth } from './auth'
 export type { ExtensionDialogs, PromptOptions } from './dialogs'
+export type { DocumentBacklink, DocumentSearchResult, DocumentSummary, DocumentTask, DocumentText, ExtensionDocuments } from './documents'
 export type {
     ExtensionEditor,
     FenceContext,
@@ -46,6 +49,8 @@ export type {
     FenceOptions,
     FencePresentation,
     FenceWidget,
+    InlinePanel,
+    InlinePanelOptions,
     MountedFence,
     PublishedFence,
     PublishFenceRequest,
@@ -66,6 +71,7 @@ export type {
 } from './manifest'
 export { readExtensionPackage } from './manifest'
 export type {
+    CommandBarButton,
     CommandMenuContext,
     CommandMenuItem,
     ContextMenuItem,
@@ -76,4 +82,6 @@ export type {
     TabMenuTarget,
     WikilinkMenuTarget,
 } from './menus'
+export type { ExtensionGraphRecords } from './records'
+export type { MountedSettingsSection, SettingsSection, SettingsSectionContext, SettingsSectionTab } from './settings-sections'
 export type { MountedView, ViewContribution, ViewMountProps, ViewRef, ViewVisibility } from './views'

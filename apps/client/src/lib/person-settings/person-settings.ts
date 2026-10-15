@@ -2,7 +2,8 @@
  * A person's settings (ADR 0134): what they set that belongs to them rather than to a graph, the
  * first being [[Extension Settings]], kept under `extension.<extension id>.<setting id>`. They are
  * kept on this device, and where the person's account syncs a graph they also go into the account's
- * vault (`person-settings-sync.ts`), so they follow the person to their other devices.
+ * Settings Vault (`person-settings-sync.ts`, ADR 0148), so they follow the person to their other
+ * devices. Where this file says "the vault", it means the Settings Vault.
  *
  * Each setting records when it was changed. Between two devices the later change wins, setting by
  * setting. A cleared setting is kept as cleared, so the clearing reaches the other devices too.
@@ -52,6 +53,8 @@ export interface PersonSettings {
     syncedWith(): string | undefined
     /** True while a change made here has not reached the account's vault. */
     hasPending(): boolean
+    /** Every setting this device holds, a cleared one included: what a vault is written again from. */
+    all(): PersonSettingsRecord
     /**
      * Take in the settings in an account's vault and say what the vault should be given: a later
      * change wins, setting by setting. On the device's first sync the account's values win and the
@@ -148,6 +151,9 @@ export function createPersonSettings(storage: () => Storage | null, now: () => n
         },
         hasPending() {
             return state().pending.length > 0
+        },
+        all() {
+            return { ...state().settings }
         },
         merge(account, vault) {
             const was = state()

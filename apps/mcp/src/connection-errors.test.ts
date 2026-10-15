@@ -18,7 +18,7 @@ describe('describeConnectionFailure', () => {
 
     it('says a refused token was refused, and how to sign in again', () => {
         expect(describeConnectionFailure(new SyncApiError('Unauthorized', 401), SERVER)).toBe(
-            'https://sync.example.com did not accept the token: it may have been revoked, mistyped, or left unused for 30 days. Make a setup code in EtherPK (a synced graph\'s Settings > Agents) and run login again.',
+            'https://sync.example.com did not accept the token: it may have been revoked, mistyped, or left unused for 30 days. Create an Agent Setup Code in EtherPK (the Graphs page\'s Agents tab, or a synced graph\'s Settings > Agents) and run login again.',
         )
     })
 

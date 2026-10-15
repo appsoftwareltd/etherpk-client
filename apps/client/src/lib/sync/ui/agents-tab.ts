@@ -31,11 +31,11 @@ export type AgentsTabProps =
           /** What the commands run with `npx`: `headlessClientPackage`. */
           headlessClient: string
           /**
-           * Ask the Sync Server for a one-time setup code over this graph's managed connection.
-           * Rejects with a `SyncApiError` (a 404 from a server that predates setup codes). Null on
-           * a custom server: this device holds only an access token for it, and a token may not
-           * make a setup code (ADR 0132), so the tab sends the person to the server's own
-           * Access tokens page, which makes one for a signed-in session.
+           * Ask the Sync Server for an Agent Setup Code over this graph's managed connection.
+           * Rejects with a `SyncApiError`. Null on a custom server: this device holds only an
+           * access token for it, and a token may not create an Agent Setup Code (ADR 0132), so the
+           * tab sends the person to the server's own Access tokens page, which creates one for a
+           * signed-in session.
            */
           createSetupCode: (() => Promise<{ code: string; expiresAt: string }>) | null
       }
@@ -60,11 +60,8 @@ export const AGENT_TOOLS: ReadonlyArray<{ id: AgentTool; label: string }> = [
     { id: 'other', label: 'Other' },
 ]
 
-/**
- * The one-time sign-in on the agent's machine. With a setup code from the tab (ADR 0132) it is the
- * whole sign-in; without one, `login` asks for an access token from the portal instead.
- */
-export function loginCommand(serverBaseUrl: string, headlessClient: string, setupCode?: string): string {
+/** The one-time sign-in on the agent's computer, carrying an Agent Setup Code from the tab (ADR 0132). */
+export function loginCommand(serverBaseUrl: string, headlessClient: string, setupCode: string): string {
     return headlessClientLoginCommand(serverBaseUrl, headlessClient, setupCode)
 }
 
@@ -146,6 +143,14 @@ export function semanticSetupCommand(headlessClient: string): string {
 export function skillInstallCommand(): string {
     return 'npx skills add appsoftwareltd/etherpk-client'
 }
+
+/** The Agent Skill's row, as a graph's Agents tab and the Graphs page's both show it. */
+export const AGENT_SKILL_ROW = {
+    key: 'skill',
+    label: 'Add the EtherPK skill to your agent',
+    text: skillInstallCommand(),
+    note: 'Run it in the project your agent works in, or add -g for every project. It teaches Claude Code, Codex, Cursor and other agents to make a blog, docs or wiki folder in this format, check it and publish it, and to use the Headless Client for a synced graph.',
+} as const
 
 /** Installs the browser a publish draws Mermaid with (ADR 0084). */
 export function diagramsSetupCommand(headlessClient: string): string {

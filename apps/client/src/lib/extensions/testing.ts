@@ -43,7 +43,7 @@ export function fakeGraphServices(graphId = 'g1') {
                 return () => indexListeners.delete(listener as () => void)
             },
         },
-        layout: { openView: vi.fn(), reveal: vi.fn(), openDocument: vi.fn(), activeDocument: () => null, isDesktop: () => true },
+        layout: { openView: vi.fn(), reveal: vi.fn(), openDocument: vi.fn(), activeDocument: () => null, isDesktop: () => true, openWindow: vi.fn(() => ({ close: vi.fn() })) },
         concepts: { key: (name) => name.toLowerCase(), canonicalName: (name) => name },
         keybindings: {
             add(binding) {
@@ -53,7 +53,27 @@ export function fakeGraphServices(graphId = 'g1') {
             },
         },
         notify: vi.fn(),
-        editor: { insertBlock: vi.fn(() => true) },
+        documents: {
+            list: vi.fn(async () => ({ documents: [], total: 0, hasMore: false })),
+            read: vi.fn(async () => null),
+            links: vi.fn(async () => null),
+            search: vi.fn(async () => ({ results: [], total: 0, hasMore: false })),
+            backlinks: vi.fn(async () => null),
+            formatGuide: () => '### Document syntax',
+            tasks: vi.fn(async () => ({ tasks: [], total: 0, hasMore: false })),
+        },
+        records: (extensionId) => {
+            const kept = new Map<string, unknown>()
+            const at = (key: string) => `${extensionId}:${key}`
+            return {
+                get: async <T>(key: string) => kept.get(at(key)) as T | undefined,
+                set: async (key, value) => void kept.set(at(key), value),
+                remove: async (key) => void kept.delete(at(key)),
+                keys: async () => [...kept.keys()].map((key) => key.slice(extensionId.length + 1)).sort(),
+            }
+        },
+        assets: { prepareImage: vi.fn(async (image: Blob) => image), saveImage: vi.fn(async () => '![image](assets/image.webp)') },
+        editor: { insertBlock: vi.fn(() => true), openPanel: vi.fn(() => null) },
     }
     return { services, bindings, indexListeners }
 }

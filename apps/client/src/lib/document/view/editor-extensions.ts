@@ -40,6 +40,7 @@ import { dateCalendar } from './augmentations/date-calendar'
 import { tableSizePicker } from './augmentations/table-size-picker'
 import { fenceRenderAugmentation } from './augmentations/fence-render'
 import { interactiveFenceAugmentation } from './augmentations/interactive-fence'
+import { inlinePanelsAugmentation } from './augmentations/inline-panels'
 import { protectedFenceAugmentation } from './augmentations/protected-fence'
 import { imageEmbedAugmentation } from './augmentations/image-embed'
 import { linkCursorAugmentation } from './augmentations/link-cursor'
@@ -222,6 +223,9 @@ export function editorFeatures(services: EditorExtensionServices): EditorFeature
         // Interactive fences: a widget that lives over its fence and changes its text, the Map
         // Block first (ADR 0118), drawn while no selection touches the fence, as a rendered fence is.
         { name: 'interactive-fence', extension: interactiveFenceAugmentation() },
+        // Inline panels: a block an extension draws beneath a line that is not the document's text,
+        // an Agent Chat opened with /Agent among them (ADR 0147).
+        { name: 'inline-panels', extension: inlinePanelsAugmentation() },
         { name: 'math-inline', extension: mathInlineAugmentation() },
         // Assets: images resolve through the store; asset links download. Asset-link MUST precede
         // markdown-link, which skips any target the asset augmentation owns.

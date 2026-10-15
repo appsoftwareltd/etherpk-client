@@ -148,12 +148,11 @@ describe('upgrading a stored standard token to an agent token', () => {
         expect(exchange).not.toHaveBeenCalled()
     })
 
-    it('goes on with the standard token on a server from before agent tokens, or when the exchange fails', async () => {
+    it('goes on with the standard token when the exchange fails, to try again on the next run', async () => {
         const path = await configPath()
         await writeConfig(path, { servers: { [SERVER]: { pat: STANDARD } } })
         const credentials = { syncServer: SERVER, pat: STANDARD }
 
-        await expect(upgradeToAgentToken({ path, credentials, keychain: null, name: 'n', exchange: async () => null, say: vi.fn() })).resolves.toEqual(credentials)
         await expect(
             upgradeToAgentToken({ path, credentials, keychain: null, name: 'n', exchange: async () => { throw new Error('offline') }, say: vi.fn() }),
         ).resolves.toEqual(credentials)

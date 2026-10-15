@@ -31,7 +31,13 @@
     import { iconSvg, registerIcons } from '$lib/surface/icons'
     import { personSettings } from '$lib/person-settings/person-settings'
     import { conceptKey } from '$lib/document/backlinks'
+    import { createDocumentsReader } from '$lib/agent-read/documents-reader'
+    import { todayISO } from '$lib/document/calendar/month-grid-core'
     import { builtInCatalogue } from '$lib/extensions/built-ins'
+    import { createExtensionAssets } from '$lib/extensions/extension-assets'
+    import { openExtensionWindow } from '$lib/extensions/extension-window'
+    import { graphRecords } from '$lib/extensions/graph-records'
+    import { openExtensionPanel } from '$lib/extensions/inline-panel'
     import { createDialogs } from '$lib/extensions/dialogs'
     import { createExtensionHost } from '$lib/extensions/host'
     import { browserSignIn } from '$lib/extensions/sign-in'
@@ -200,6 +206,33 @@
             }
             return out
         }
+        // An inline panel (ADR 0147) at the caret's line, drawn as a text field and a button that
+        // puts a block in through the panel, so a spec can drive the panel without an extension.
+        // Returns the panel's index for `__closePanel`, or null where no panel can go.
+        const panels: Array<{ close(): void }> = []
+        w.__openPanel = (height: number, block: string) => {
+            const view = getActiveEditorView()
+            const panel = view
+                ? openExtensionPanel(view, {
+                      height,
+                      mount(host, opened) {
+                          const field = host.appendChild(document.createElement('textarea'))
+                          field.setAttribute('data-testid', 'dev-panel-field')
+                          const button = host.appendChild(document.createElement('button'))
+                          button.setAttribute('data-testid', 'dev-panel-insert')
+                          button.textContent = 'Put in'
+                          button.addEventListener('click', () => opened.insertBlock(block))
+                          // The host is in the page only once CodeMirror has placed the widget.
+                          requestAnimationFrame(() => field.focus())
+                          return { destroy: () => host.replaceChildren() }
+                      },
+                  })
+                : null
+            if (!panel) return null
+            panels.push(panel)
+            return panels.length - 1
+        }
+        w.__closePanel = (index: number) => panels[index]?.close()
         w.__caret = () => {
             const view = getActiveEditorView()
             if (!view) return null
@@ -288,15 +321,28 @@
                 openDocument: (concept) => console.debug('[dev-editor] open document', concept),
                 activeDocument: () => 'doc-a',
                 isDesktop: () => media.matches,
+                openWindow: (options) => openExtensionWindow(options),
             },
             concepts: { key: conceptKey, canonicalName: (name) => name },
             keybindings: { add: () => () => {} },
             notify: (text) => console.debug(text),
+            // The harness's documents are its index fixtures (ADR 0147).
+            documents: createDocumentsReader({
+                source: {
+                    list: () => indexDocs.map(({ concept, kind, aliases }) => ({ concept, kind, aliases })),
+                    texts: async (concepts) => new Map(indexDocs.filter((doc) => concepts.includes(doc.concept)).map((doc) => [doc.concept, doc.text])),
+                },
+                index: () => graphIndex ?? null,
+                today: () => todayISO(),
+            }),
+            records: (extensionId) => graphRecords('dev-editor', extensionId),
+            assets: createExtensionAssets({ store: () => null }),
             editor: {
                 insertBlock(text, options) {
                     const view = getActiveEditorView()
                     return view ? insertBlock(view, text, options) : false
                 },
+                openPanel: (options) => openExtensionPanel(getActiveEditorView(), options),
             },
         })
 

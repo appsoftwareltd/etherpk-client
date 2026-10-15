@@ -48,7 +48,7 @@ source one.
 | `packages/shared` | Code the Client shares with the Sync Server: the sync protocol, UI components and auth pages |
 | `packages/themes` | The site themes the publisher bundles |
 | `packages/extension-api` | The Extension API every EtherPK extension is written against, MIT licensed, published to npm as [`@appsoftwareltd/etherpk-extension-api`](https://www.npmjs.com/package/@appsoftwareltd/etherpk-extension-api) |
-| `extensions` | The extensions that come with the Client: the Graph View, Kanban boards and maps |
+| `extensions` | The extensions that come with the Client: Agent Chat, the Graph View, Kanban boards and maps |
 | `skills/etherpk` | The agent skill: how an AI agent makes, edits and publishes EtherPK graph folders ([SKILL.md](skills/etherpk/SKILL.md)) |
 
 ## Run it

@@ -5,6 +5,58 @@ What changed in each release of the EtherPK Client and the Headless Client
 They are released together, under the version number they share with the Sync Server. This log
 starts at 0.9.3.
 
+## Unreleased
+
+### Client
+
+- **Agent Chat.** Type `/Agent` on a line, or press Alt+A, to ask a language model about your notes
+  in a chat at that line, beside the bullet's dot on an empty bullet. You connect Anthropic, OpenAI,
+  Google Gemini, OpenRouter, a model on your computer (Ollama, LM Studio) or another
+  OpenAI-compatible server with your own key, and EtherPK calls the provider from your browser. Each
+  chat reads nothing else, the bullet's siblings and ancestors, the document, the document and the
+  documents it links to, or the whole graph through search and read tools that the chat lists as the
+  model uses them. You choose the model from a list you can narrow by typing. A protected document
+  is never read or named, even while it is unlocked. You can paste images for a model that takes
+  them, and a chat can search the web through Anthropic, OpenAI or OpenRouter, starting as your
+  setting says. A chat is kept on the device you had it on, and only the turns you choose to save go
+  into the document. On a phone the chat opens over the whole screen. Agent Chat is an extension
+  that comes with EtherPK, so you can switch it off.
+- **The Agent Chats view** in the right sidebar lists every chat of the graph kept on the device,
+  saved or not, to read, continue, rename or delete.
+- **An Agent Chat button on the phone's command bar**, pinned at its right end, opens a chat at the
+  cursor while you are typing and at the end of the document otherwise. A chat opened in a journal
+  entry or page that has not been created yet leaves it uncreated until you save turns into it.
+- **The phone's font size buttons** are now the last of the command bar's scrolling buttons.
+- **Agent Setup Code.** The one-time code that signs in an agent's computer is called an Agent Setup
+  Code, created with **Create an Agent Setup Code** in the Agents settings, and the sign-in steps
+  there are shorter. The settings no longer offer a login command without a code.
+- **A Settings Vault for your settings.** The settings that follow you between devices, such as
+  your extensions, their settings and your Agent Chat keys, are kept in a Settings Vault in your
+  account, apart from your Encryption Keys. An agent you sign in with the Headless Client cannot
+  read it. EtherPK moves your settings there the first time it syncs them, and it needs a Sync
+  Server of this version.
+- **An Agents tab on the Graphs page** sets up your model connections, which follow you to every
+  graph and to your other devices like your other settings, and shows how to sign in an agent with
+  the Headless Client without opening a graph.
+- **The slash menu puts a command named what you typed first**, ahead of a command that matches
+  as well only through one of its other search words. `/agent` now offers Agent Chat before Copy
+  task reference.
+- **EtherPK can reach a model server on your own computer** over plain HTTP at `localhost`,
+  `127.0.0.1` or `[::1]`, and nowhere else over plain HTTP.
+- **Extension API (Proposed):** `context.documents` reads the open graph's documents with every
+  protected document left out, `context.records` keeps an extension's records for a graph on the
+  device, `context.assets` adds images to the graph, `context.layout.openWindow` draws over the
+  whole window, and `context.editor.openPanel` draws a panel at a line of the document, which can be
+  resized and can read the outline around its line. `context.commandBar` adds a button to the
+  phone's command bar. An extension's main module can export
+  `settingsSections`, drawn in the Agents tab of the Graphs page and of a graph's settings.
+
+### Headless Client
+
+- **`login` always ends with an Agent Token.** An access token given with `--pat` is swapped for one
+  as before, and if the swap fails, `login` now fails and keeps nothing, where it used to keep the
+  access token. Messages name the Agent Setup Code and where to create one.
+
 ## 0.12.0 - 2026-10-15
 
 ### Client

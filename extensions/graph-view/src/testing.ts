@@ -17,6 +17,7 @@ export function fakeContext(options: { desktop?: boolean } = {}) {
         openDocument: vi.fn<(concept: string, options?: { line?: number; inPaneOf?: string; beside?: string }) => void>(),
         activeDocument: () => null,
         isDesktop: () => options.desktop ?? true,
+        openWindow: vi.fn(() => ({ close: () => {} })),
     }
     const context: ExtensionContext = {
         extensionId: 'graph-view',
@@ -45,6 +46,7 @@ export function fakeContext(options: { desktop?: boolean } = {}) {
         },
         commandMenu: { register: () => () => {} },
         graphSidebar: { register: () => () => {} },
+        commandBar: { register: () => () => {} },
         journalPanels: { register: () => () => {} },
         keybindings: {
             register(binding) {
@@ -55,6 +57,18 @@ export function fakeContext(options: { desktop?: boolean } = {}) {
         contributions: { register: () => () => {}, unregister: () => {}, get: () => undefined, has: () => false, list: () => [] },
         events: { on: () => () => {} },
         index: { allConcepts: () => [], linkGraph: async () => ({ concepts: [], links: [] }), onUpdated: () => () => {} },
+        // The Graph View reads no document text, keeps no records and saves no images.
+        documents: {
+            list: async () => ({ documents: [], total: 0, hasMore: false }),
+            read: async () => null,
+            links: async () => null,
+            search: async () => ({ results: [], total: 0, hasMore: false }),
+            backlinks: async () => null,
+            formatGuide: () => '',
+            tasks: async () => ({ tasks: [], total: 0, hasMore: false }),
+        },
+        records: { get: async () => undefined, set: async () => {}, remove: async () => {}, keys: async () => [] },
+        assets: { prepareImage: async (image) => image, saveImage: async () => null },
         layout,
         concepts: { key: (name) => name.toLowerCase(), canonicalName: (name) => name },
         storage: { get: () => undefined, set: () => {}, remove: () => {} },
@@ -70,8 +84,8 @@ export function fakeContext(options: { desktop?: boolean } = {}) {
         // A stand-in for the Client's markup: tests read it as the string it is underneath.
         icons: { svg: (name) => `<svg data-icon="${name}"/>` as unknown as IconMarkup },
         notify: vi.fn(),
-        // The Graph View draws no fences, asks nothing and shows no frames.
-        editor: { registerFence: () => () => {}, insertBlock: () => false },
+        // The Graph View draws no fences or panels, asks nothing and shows no frames.
+        editor: { registerFence: () => () => {}, insertBlock: () => false, openPanel: () => null },
         dialogs: { prompt: async () => undefined },
         embeds: {
             frameHosts: [],

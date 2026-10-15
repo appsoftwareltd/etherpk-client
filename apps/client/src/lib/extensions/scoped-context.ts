@@ -18,6 +18,7 @@
  * After `dispose` the context adds nothing: a callback that fires late does no harm.
  */
 import type {
+    CommandBarButton,
     CommandMenuItem,
     ContextMenuItem,
     ExtensionContext,
@@ -32,7 +33,8 @@ import type {
 import { PLAYER_FRAME_HOSTS } from '@appsoftwareltd/etherpk-shared/frame-hosts'
 
 import { INTERACTIVE_FENCE_KIND } from '$lib/document/view/augmentations/interactive-fence-contract'
-import { extensionDataKey, extensionSettingKey } from '$lib/person-settings/person-settings'
+import { extensionSettingKey } from '$lib/person-settings/person-settings'
+import { registerCommandBarItem } from '$lib/surface/command-bar'
 import { registerCommandMenuItem, type CommandMenuItem as ClientCommandMenuItem } from '$lib/surface/command-menu'
 import { registerContextMenuItem, type ContextMenuItem as ClientContextMenuItem } from '$lib/surface/context-menu'
 import { registerGraphSidebarButton } from '$lib/surface/graph-sidebar-buttons'
@@ -42,16 +44,13 @@ import type { EventName } from '$lib/surface'
 import type { CatalogueEntry } from './catalogue'
 import { toInteractiveFence } from './fence-widgets'
 import { buildFrame } from './frames'
+import { type ContextLifecycle, extensionPersonStorage, extensionSettings } from './person-scoped'
 import type { ClientServices, GraphServices } from './services'
 
 /** An extension's id or a name under it, as a fence's info word may take them. */
 const FENCE_NAME = /^[a-z][a-z0-9-]*$/
 
-/** A key a record kept with the person may have (`personStorage`). */
-const RECORD_KEY = /^[A-Za-z0-9._-]{1,100}$/
-
-/** The most JSON one record kept with the person may hold, so no extension fills the account's vault. */
-export const RECORD_LIMIT = 64 * 1024
+export { RECORD_LIMIT } from './person-scoped'
 
 /** The Events an extension may hear: the API's catalogue, and no other of the Client's. */
 export const EXTENSION_EVENTS: readonly ExtensionEventName[] = ['document:active-changed', 'concept:renamed', 'document:deleted', 'documents:changed', 'theme:changed']
@@ -127,9 +126,7 @@ export function createScopedContext(
         list: (kind) => graph.contributions.list(kind),
     }
 
-    /** The extension's own records kept with the person, by key, as last read: for `subscribe`. */
-    const dataPrefix = extensionDataKey(id, '')
-    const recordsNow = () => JSON.stringify(client.settings.keys(dataPrefix).map((key) => [key, client.settings.get(key)]))
+    const life: ContextLifecycle = { keep, disposed: () => disposed }
 
     /**
      * Hear when one of the extension's own settings changes, and not another's: what its fences'
@@ -185,6 +182,24 @@ export function createScopedContext(
                 return keep(registerCommandMenuItem(graph.contributions, row))
             },
         },
+        commandBar: {
+            register(button: CommandBarButton) {
+                own('Command Bar button', button.id)
+                if (disposed) return noop
+                // Pinned, in the group at the bar's right end; otherwise after every editing button.
+                return keep(
+                    registerCommandBarItem(graph.contributions, {
+                        id: button.id,
+                        icon: icon(button.icon) ?? 'default',
+                        label: button.title,
+                        command: button.command,
+                        args: button.args,
+                        align: button.pinned ? 'end' : 'start',
+                        order: EXTENSION_COMMAND_BAR_ORDER,
+                    }),
+                )
+            },
+        },
         graphSidebar: {
             register(button: GraphSidebarButton) {
                 own('Graph Sidebar button', button.id)
@@ -222,7 +237,23 @@ export function createScopedContext(
             linkGraph: () => graph.index.linkGraph(),
             onUpdated: (listener) => (disposed ? noop : keep(graph.index.onUpdated(listener))),
         },
-        layout: graph.layout,
+        documents: graph.documents,
+        records: graph.records(id),
+        assets: graph.assets,
+        layout: {
+            ...graph.layout,
+            // A window the extension opened closes with its context, as its other registrations go.
+            openWindow(options) {
+                if (disposed) return { close: noop }
+                const opened = graph.layout.openWindow(options)
+                const undo = keep(() => opened.close())
+                return {
+                    close() {
+                        undo()
+                    },
+                }
+            },
+        },
         concepts: graph.concepts,
         storage: {
             get<T>(key: string): T | undefined {
@@ -248,65 +279,8 @@ export function createScopedContext(
                 }
             },
         },
-        settings: {
-            get: (setting) => {
-                const value = client.settings.get(extensionSettingKey(id, setting))
-                const declared = manifest.settings?.find((candidate) => candidate.id === setting)
-                if (declared?.type !== 'boolean') return value
-                // A switch reads as on or off, whatever was stored: its default until it is set.
-                return value === 'true' || value === 'false' ? value : String(declared.default ?? false)
-            },
-            subscribe: (listener) => (disposed ? noop : keep(client.settings.subscribe(listener))),
-            set(setting, value) {
-                const declared = manifest.settings?.find((candidate) => candidate.id === setting)
-                if (!declared) throw new Error(`The setting "${setting}" is not declared in the manifest of ${id}.`)
-                if (declared.type === 'boolean' && value !== null && value !== 'true' && value !== 'false') {
-                    throw new Error(`The setting "${setting}" is a switch: set it to "true" or "false".`)
-                }
-                if (disposed) return
-                client.settings.set(extensionSettingKey(id, setting), value)
-            },
-        },
-        personStorage: {
-            get<T>(key: string): T | undefined {
-                const raw = client.settings.get(extensionDataKey(id, key))
-                if (raw === undefined) return undefined
-                try {
-                    return JSON.parse(raw) as T
-                } catch {
-                    return undefined
-                }
-            },
-            set(key, value) {
-                if (!RECORD_KEY.test(key)) throw new Error(`A record's key is letters, digits, ".", "_" and "-", at most 100 of them, not "${key}".`)
-                if (disposed) return
-                if (value === undefined || value === null) {
-                    client.settings.set(extensionDataKey(id, key), null)
-                    return
-                }
-                const json = JSON.stringify(value)
-                if (json.length > RECORD_LIMIT) throw new Error(`The record "${key}" is longer than 64 KB as JSON.`)
-                client.settings.set(extensionDataKey(id, key), json)
-            },
-            remove(key) {
-                if (disposed || !RECORD_KEY.test(key)) return
-                client.settings.set(extensionDataKey(id, key), null)
-            },
-            subscribe(listener) {
-                if (disposed) return noop
-                // The person's settings change for every extension and every setting: tell this
-                // listener only when one of the extension's own records did.
-                let last = recordsNow()
-                return keep(
-                    client.settings.subscribe(() => {
-                        const now = recordsNow()
-                        if (now === last) return
-                        last = now
-                        listener()
-                    }),
-                )
-            },
-        },
+        settings: extensionSettings(id, manifest, client, life),
+        personStorage: extensionPersonStorage(id, client, life),
         auth: {
             redirectUri: client.signIn.redirectUri,
             authorize(url, options) {
@@ -331,6 +305,13 @@ export function createScopedContext(
                 return keep(graph.contributions.register(INTERACTIVE_FENCE_KIND, info, fence))
             },
             insertBlock: (text, options) => (disposed ? false : graph.editor.insertBlock(text, options)),
+            openPanel(options) {
+                if (disposed) return null
+                const panel = graph.editor.openPanel(options)
+                // A panel the extension opened closes with its context.
+                if (panel) keep(() => panel.close())
+                return panel
+            },
         },
         // The dialog names the extension, so a person knows who is asking.
         dialogs: { prompt: (options) => client.dialogs.prompt(options, manifest.displayName) },
@@ -373,7 +354,7 @@ function refuse(member: string): () => never {
  * stay readable, since reading one reaches nothing.
  */
 function stableOnly(context: ExtensionContext): ExtensionContext {
-    const { layout, commands } = context
+    const { layout, commands, editor } = context
     return {
         ...context,
         commands: { register: (commandId, handler) => commands.register(commandId, handler), execute: refuse('commands.execute'), has: refuse('commands.has') },
@@ -383,7 +364,24 @@ function stableOnly(context: ExtensionContext): ExtensionContext {
             openDocument: (concept, options) => layout.openDocument(concept, options),
             activeDocument: refuse('layout.activeDocument'),
             reveal: refuse('layout.reveal'),
+            openWindow: refuse('layout.openWindow'),
         },
+        editor: {
+            registerFence: (info, widget, options) => editor.registerFence(info, widget, options),
+            insertBlock: (text, options) => editor.insertBlock(text, options),
+            openPanel: refuse('editor.openPanel'),
+        },
+        documents: {
+            list: refuse('documents.list'),
+            read: refuse('documents.read'),
+            links: refuse('documents.links'),
+            search: refuse('documents.search'),
+            backlinks: refuse('documents.backlinks'),
+            formatGuide: refuse('documents.formatGuide'),
+            tasks: refuse('documents.tasks'),
+        },
+        records: { get: refuse('records.get'), set: refuse('records.set'), remove: refuse('records.remove'), keys: refuse('records.keys') },
+        assets: { prepareImage: refuse('assets.prepareImage'), saveImage: refuse('assets.saveImage') },
         contributions: {
             register: refuse('contributions.register'),
             unregister: refuse('contributions.unregister'),
@@ -392,12 +390,16 @@ function stableOnly(context: ExtensionContext): ExtensionContext {
             list: refuse('contributions.list'),
         },
         contextMenu: { register: refuse('contextMenu.register') },
+        commandBar: { register: refuse('commandBar.register') },
         keybindings: { register: refuse('keybindings.register') },
         index: { allConcepts: refuse('index.allConcepts'), linkGraph: refuse('index.linkGraph'), onUpdated: refuse('index.onUpdated') },
         concepts: { canonicalName: refuse('concepts.canonicalName'), key: refuse('concepts.key') },
         icons: { svg: refuse('icons.svg') },
     }
 }
+
+/** An extension's Command Bar buttons sort after the Client's own (the last, zoom in, is 110). */
+const EXTENSION_COMMAND_BAR_ORDER = 1000
 
 /** Where an extension's stored value lives: `etherpk-<id>:<key>`, the form older keys take. */
 export function storageKey(extensionId: string, key: string): string {

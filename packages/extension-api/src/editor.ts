@@ -235,6 +235,72 @@ export interface FenceOptions {
 }
 
 /**
+ * A panel an extension draws in a document, beneath one of its lines, which is not part of the
+ * document's text: nothing of it is saved, synced or seen on another device (ADR 0147).
+ *
+ * The panel follows its line as the document changes, here or on another device, and moves with
+ * the editor when the editor is rebuilt (a Draft becoming a document, say). It closes when the
+ * person closes it, or when the document's editor closes for good: the panel lasts for the visit.
+ *
+ * @beta
+ */
+export interface InlinePanel {
+    /** The document the panel is in, by its concept. */
+    readonly document: string | null
+    /** False once the panel has closed. */
+    readonly isOpen: boolean
+    /**
+     * Put a block at the panel's line, by the rule {@link ExtensionEditor.insertBlock} follows at the
+     * caret: an empty line is replaced, an empty bullet takes an outline's place at its own
+     * indentation (or any other block as its content), and after any other line the block goes on new
+     * lines beneath at the line's content column. The panel then sits beneath the block, and the next
+     * block goes after it at the indentation of its first line. One undoable change. False where
+     * nothing was put in: the panel is closed, its editor has closed, or its line is now in the
+     * frontmatter, a fenced block or a table.
+     */
+    insertBlock(text: string): boolean
+    /** Bring the panel into view. */
+    focus(): void
+    /**
+     * Give the panel a new height in CSS pixels, which its content scrolls inside: the lines below
+     * it move once. Grow it when there is more to show, rather than on every change.
+     */
+    resize(height: number): void
+    /**
+     * The outline around the panel's line, as the document writes it: the line's ancestors, each its
+     * own lines without its other children, and its siblings with their branches, the line's own
+     * branch among them while the line has text. A block the panel put in is left out. Null when
+     * the line is not a bullet, or the panel is closed or under the document's last line.
+     */
+    outline(): string | null
+    /** Close the panel. Its `onClose` is told. */
+    close(): void
+}
+
+/**
+ * What an inline panel is drawn with.
+ *
+ * @beta
+ */
+export interface InlinePanelOptions {
+    /**
+     * The panel's height in CSS pixels, which its content scrolls inside, so the lines below never
+     * move as its content grows. {@link InlinePanel.resize} changes it.
+     */
+    height?: number
+    /**
+     * Draw the panel into `host`, which the Client owns and places. Called once, when the panel is
+     * first drawn: the host keeps its content while the panel is scrolled out of view and when the
+     * editor is rebuilt, and `destroy` is called when the panel closes. Events inside the host are
+     * the panel's own: the editor neither types nor moves its caret for them, but Mod+Z and Mod+Y
+     * outside a text field undo and redo in the document.
+     */
+    mount(host: HTMLElement, panel: InlinePanel): { destroy(): void }
+    /** Told once, when the panel closes for any reason. */
+    onClose?(): void
+}
+
+/**
  * The document editor, as far as an extension may reach it.
  *
  * @public
@@ -259,4 +325,16 @@ export interface ExtensionEditor {
      * written, or a caret in the frontmatter, a fence or a table.
      */
     insertBlock(text: string, options?: { focus?: boolean }): boolean
+    /**
+     * Draw a panel beneath the caret's line in the editor the person is working in, from where the
+     * line's text starts, or beside the dot of an empty bullet, as a code block opened there is. With
+     * `at` `end`, it is drawn beneath the document's last line, at the editor's left edge, a line's
+     * height clear of it. With `caret-or-end`, at the caret while the person is typing in the
+     * document (the editor has the keyboard, as a Command Bar button leaves it), else at the end: for
+     * a button pressed from outside the text. Null where no panel can go: no editor, a Protected
+     * Document, or a caret in the frontmatter, a fenced block or a table.
+     *
+     * @beta
+     */
+    openPanel(options: InlinePanelOptions & { at?: 'caret' | 'end' | 'caret-or-end' }): InlinePanel | null
 }

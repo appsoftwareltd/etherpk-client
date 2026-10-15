@@ -3,7 +3,8 @@
  *
  * A graph leaves more behind than its registry record. A synced graph has its Local Cache (the
  * documents and the outbox of unsent changes) and a link to its mirror folder; every graph has a
- * search index and a set of localStorage entries the workspace keeps per graph, of which
+ * search index, the records extensions keep for it (an [[Agent Chat]]'s chats, ADR 0147), and a
+ * set of localStorage entries the workspace keeps per graph, of which
  * [[Recents]] and the [[Layout]] carry document titles and the image footprints picture
  * references (`image-footprints.ts`). Forget and "Remove synced graphs from this
  * browser" both come through here, so the list lives in one place. A folder graph's own files
@@ -31,6 +32,7 @@ import {
 import { FOLDER_PATH_KEY_PREFIX } from '$lib/storage/fs/folder-path'
 import { deleteGraphCache } from '$lib/sync/local-cache'
 import { deleteAssetCopies } from '$lib/storage/server/asset-copies'
+import { deleteGraphRecords } from '$lib/extensions/graph-records'
 
 import { LAST_PUBLICATION_KEY_PREFIX, SETTINGS_TAB_KEY_PREFIX } from './device-memory'
 
@@ -56,6 +58,8 @@ export interface ForgetGraphDeps {
     deleteGraphCache(graphId: string): Promise<void>
     /** The graph's kept asset copies and queued uploads (ADR 0143). */
     deleteAssetCopies(graphId: string): Promise<void>
+    /** What extensions keep on this device for the graph, an Agent Chat's chats among them (ADR 0147). */
+    deleteExtensionRecords(graphId: string): Promise<void>
     /** Not awaited by the default: a tab that still holds the index keeps it until the next sweep. */
     discardIndex(graphId: string): void
     forgetMirrorFolder(graphId: string): Promise<void>
@@ -68,6 +72,7 @@ const browserDeps = (): ForgetGraphDeps => ({
     storage: globalThis.localStorage,
     deleteGraphCache,
     deleteAssetCopies,
+    deleteExtensionRecords: deleteGraphRecords,
     discardIndex: (graphId) => {
         void discardIndexPool(graphId).catch((error) =>
             console.warn('[index] could not discard the search index of', graphId, error),
@@ -92,6 +97,7 @@ export async function forgetGraphOnDevice(
         await deps.deleteAssetCopies(record.id)
         await deps.forgetMirrorFolder(record.id)
     }
+    await deps.deleteExtensionRecords(record.id)
     deps.discardIndex(record.id)
     forgetGraphDeviceMemory(record.id, deps.storage)
     await deps.removeRecord(record.id)

@@ -61,7 +61,7 @@
         ownedGraphsDeleted: number;
         membershipsDropped: number;
         /** Absent from a server older than agent tokens. */
-        agentTokensRevoked?: number;
+        agentTokensRevoked: number;
     } | null>(null);
     let transferFor = $state<OwnedGraph | null>(null);
 
@@ -245,7 +245,7 @@
                 afterwards gives you a new identity and Recovery Code. Everything below that you
                 own will be affected. Graphs you only take part in as a player
                 are not touched, you simply leave them. Every agent is signed out,
-                and logs in again with a new setup code.
+                and logs in again with a new Agent Setup Code.
             </p>
 
             {#if shared.length > 0}

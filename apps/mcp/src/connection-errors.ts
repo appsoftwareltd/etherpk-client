@@ -25,7 +25,7 @@ export function describeConnectionFailure(error: unknown, syncServer: string): s
         }
         if (error.status === 401) {
             // An agent token also stops working after 30 days unused (ADR 0132).
-            return `${syncServer} did not accept the token: it may have been revoked, mistyped, or left unused for 30 days. Make a setup code in EtherPK (a synced graph's Settings > Agents) and run login again.`
+            return `${syncServer} did not accept the token: it may have been revoked, mistyped, or left unused for 30 days. Create an Agent Setup Code in EtherPK (the Graphs page's Agents tab, or a synced graph's Settings > Agents) and run login again.`
         }
         return null
     }

@@ -52,8 +52,8 @@ describe('unlockByRecoveryCode', () => {
 })
 
 /**
- * A Sync Server holding one approval request (ADR 0125), and the unlocked EtherPK tab that answers
- * and approves it: what the terminal flow talks to, step by step.
+ * A Sync Server holding one approval request (ADR 0125), and the device with unlocked Encryption
+ * Keys that answers and approves it: what the terminal flow talks to, step by step.
  */
 function approvalServer(envelope: string) {
     let row: { id: string; commitment: string; status: string; approverPublicKey?: string; requesterPublicKey?: string; reply?: string } | null =
@@ -91,8 +91,8 @@ function approvalServer(envelope: string) {
         cancelDeviceApproval: async () => ({ ok: true as const }),
     } as unknown as SyncApi
     let session: ApproverSession | null = null
-    /** The tab: answer the request, then once the terminal has revealed, read the code and approve. */
-    const tab = {
+    /** The unlocked device: answer the request, then once the terminal has revealed, read the code and approve. */
+    const approver = {
         async answer() {
             const [pending] = (await api.listDeviceApprovals()) as PendingDeviceApproval[]
             const answered = await answerDeviceApproval(api, pending)
@@ -107,13 +107,13 @@ function approvalServer(envelope: string) {
             await approveDevice(api, session!, vaultKey)
         },
     }
-    return { api, tab }
+    return { api, approver }
 }
 
 describe('unlockByDeviceApproval', () => {
-    it('prints the code the tab shows, and returns the vault key once the tab approved and y was pressed', async () => {
+    it('prints the code the approving device shows, and returns the vault key once it approved and y was pressed', async () => {
         const a = await account()
-        const { api, tab } = approvalServer(a.envelope)
+        const { api, approver } = approvalServer(a.envelope)
         const said: string[] = []
         let pressedY = false
         let polls = 0
@@ -122,28 +122,30 @@ describe('unlockByDeviceApproval', () => {
             codesMatch: () => pressedY,
             sleep: async () => {
                 polls++
-                if (polls === 1) await tab.answer()
+                if (polls === 1) await approver.answer()
                 if (polls === 2) {
                     // The terminal revealed and printed its code on the previous poll.
-                    const shown = await tab.code()
+                    const shown = await approver.code()
                     expect(shown).not.toBeNull()
                     expect(said.join('\n')).toContain(shown!)
-                    await tab.approve(a.vaultKey)
+                    await approver.approve(a.vaultKey)
                 }
                 if (polls === 4) pressedY = true
             },
         }
         const key = await unlockByDeviceApproval(api, { ...io, clientUrl: 'https://app.example.test' })
         expect(toBase64Url(key)).toBe(toBase64Url(a.vaultKey))
-        // The key was held until y, not used the moment the tab approved.
+        // The key was held until y, not used the moment the device approved.
         expect(polls).toBe(4)
         expect(said.join('\n')).toContain('EtherPK approved this device. Press y if it showed the same code.')
-        // The instruction names the Client, not the Server, and says a tab of any page will do.
+        // The instruction names the Client, not the Server, says any page will do, and that any
+        // device with the account's keys unlocked can approve.
         expect(said.join('\n')).toContain('open EtherPK at https://app.example.test')
         expect(said.join('\n')).toMatch(/any page/)
+        expect(said.join('\n')).toContain("on any device where this account's\nEncryption Keys are unlocked")
     })
 
-    it('shows no code until a tab answers', async () => {
+    it('shows no code until an unlocked device answers', async () => {
         const a = await account()
         const { api } = approvalServer(a.envelope)
         const said: string[] = []

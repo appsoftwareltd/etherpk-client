@@ -25,17 +25,28 @@
  *   refusal says what to run.
  */
 
+import {
+    backlinkSources,
+    capText,
+    isProtectedDocumentText,
+    LIST_PAGE_LIMIT,
+    READ_MANY_LIMIT,
+    READ_MANY_TEXT_CAP,
+    READ_TEXT_CAP,
+    SEARCH_PAGE_LIMIT,
+    searchText as searchIndexText,
+    TASK_PAGE_LIMIT,
+    type TextSearchOutput,
+} from '$lib/agent-read/read-rules'
 import { todayISO } from '$lib/document/calendar/month-grid-core'
 import { normaliseIndentUnit } from '$lib/document/indent-unit'
 import { lineFeedsOnly } from '$lib/document/line-endings'
 import { isJournalConcept } from '$lib/document/journal-concept'
-import { documentProtection } from '$lib/document/protection/cipher-fence'
 import { DocumentUnconfirmedError } from '$lib/document/types'
 import { withAliasesInAddedBlock } from '$lib/document/frontmatter/identity'
 import { withFrontmatterPatch } from '$lib/document/frontmatter/patch'
 import { withPublishing } from '$lib/document/frontmatter/publishing'
 import { isPublicationId } from '$lib/document/publish/publication'
-import { parseSearchQuery } from '$lib/document/search-query'
 import { parseFrontmatter } from '$lib/storage/fs/frontmatter'
 import { frontmatterSpan } from '$lib/storage/fs/frontmatter-span'
 import { conceptKey } from '$lib/storage/fs/identity'
@@ -57,7 +68,6 @@ import {
     taskReferenceUrl,
 } from '$lib/document/task-reference'
 import { ancestorChain, bulletLabel, deriveDoc } from '$lib/document/index-derive'
-import { withoutTemplateContent } from '$lib/document/backlinks/shown-backlinks'
 import { isTemplate, templateBody } from '$lib/document/templates/template-page'
 import { renderTemplate, templateContextFor } from '$lib/document/templates/template-variables'
 import { type ConceptFacts, createGraphModel, type GraphFilter, shortestPath, visibleGraph } from '@appsoftwareltd/etherpk-extension-graph-view/model'
@@ -68,12 +78,11 @@ import { minimalReplacement } from '$lib/document/view/minimal-replacement'
 import type { HeadlessDocument } from './headless-documents'
 import type { HeadlessGraph } from './headless-graph'
 
-/** Sizes an agent's context can absorb; the caller can page or narrow, never exceed them. */
-export const LIST_PAGE_LIMIT = 200
-export const SEARCH_PAGE_LIMIT = 50
-export const TASK_PAGE_LIMIT = 200
-/** UTF-16 units of document text returned before `truncated` is set. */
-export const READ_TEXT_CAP = 200_000
+/**
+ * Sizes an agent's context can absorb; the caller can page or narrow, never exceed them. Shared with
+ * the browser's [[Agent Chat]] (`$lib/agent-read/read-rules`), so the two never drift apart.
+ */
+export { LIST_PAGE_LIMIT, READ_MANY_LIMIT, READ_MANY_TEXT_CAP, READ_TEXT_CAP, SEARCH_PAGE_LIMIT, TASK_PAGE_LIMIT, type TextSearchOutput } from '$lib/agent-read/read-rules'
 
 export type ToolErrorCode =
     /** The graph could not be opened (not logged in, the keys no longer open the vault, no such graph); the message says why. */
@@ -163,11 +172,6 @@ export interface ListDocumentsArgs {
     limit?: number
 }
 
-/** Documents one `read_documents` call may ask for. */
-export const READ_MANY_LIMIT = 20
-/** UTF-16 units across one `read_documents` call before the rest is cut. */
-export const READ_MANY_TEXT_CAP = 400_000
-
 export interface SetTaskArgs {
     /** The task by document and line, or by `reference`. */
     concept?: string
@@ -213,23 +217,6 @@ export interface SearchArgs {
 }
 
 /** The text group as the agent sees it: unchanged from before `mode` existed. */
-export interface TextSearchOutput {
-    results: Array<{
-        concept: string
-        kind: 'page' | 'journal'
-        matches: number
-        hits: Array<{ line: number; breadcrumb: string[]; snippet: string }>
-        /**
-         * Only when the query was Property Filters and no words (ADR 0107): each document the
-         * filters let through, with the values of the keys they named. It has no hits.
-         */
-        properties?: Array<{ key: string; value: string }>
-    }>
-    total: number
-    totalCapped: boolean
-    hasMore: boolean
-}
-
 /** The By-meaning group as the agent sees it. */
 export interface SemanticSearchOutput {
     results: Array<{
@@ -418,7 +405,7 @@ async function liveText(graph: HeadlessGraph, identity: HeadlessDocument): Promi
 }
 
 function refuseIfProtected(concept: string, text: string): void {
-    if (documentProtection(text).kind === 'document') {
+    if (isProtectedDocumentText(text)) {
         throw new ToolError(
             'protected_document',
             `"${concept}" is a protected document. Its content is encrypted under a key this client never holds, so it cannot be read or changed here - the user can unlock it in EtherPK.`,
@@ -479,13 +466,14 @@ export async function readDocument(graph: HeadlessGraph, concept: string): Promi
     const identity = requireIdentity(graph, concept)
     const text = await liveText(graph, identity)
     refuseIfProtected(identity.concept, text)
+    const capped = capText(text, READ_TEXT_CAP)
     return {
         concept: identity.concept,
         kind: identity.kind,
         aliases: identity.aliases,
-        text: text.length > READ_TEXT_CAP ? text.slice(0, READ_TEXT_CAP) : text,
+        text: capped.text,
         frontmatter: agentFrontmatter(graph.store.openRaw(identity.concept).getText()),
-        truncated: text.length > READ_TEXT_CAP,
+        truncated: capped.truncated,
     }
 }
 
@@ -544,71 +532,19 @@ function round(similarity: number): number {
     return Math.round(similarity * 1000) / 1000
 }
 
-async function searchText(graph: HeadlessGraph, query: string, offset: number, limit: number): Promise<TextSearchOutput> {
-    // Property Filters are read the way Search reads them: a `key:value` term whose key some
-    // unprotected document carries narrows the results, and anything else is words (ADR 0107).
-    const keys = await graph.index.propertyKeys()
-    const { words, filters } = parseSearchQuery(query, new Set(keys.map((info) => info.key.toLowerCase())))
-    if (filters.length > 0 && words.trim() === '') {
-        const documents = await graph.index.propertyMatch(filters)
-        return {
-            results: documents.slice(offset, offset + limit).map((doc) => ({
-                concept: doc.concept,
-                kind: doc.kind,
-                matches: 0,
-                hits: [],
-                properties: doc.properties,
-            })),
-            total: documents.length,
-            totalCapped: false,
-            hasMore: offset + limit < documents.length,
-        }
-    }
-    const [result, count] = await Promise.all([
-        graph.index.searchText(words, offset, limit, filters),
-        graph.index.searchTextCount(words, filters),
-    ])
-    return {
-        results: result.groups.map((group) => ({
-            concept: group.concept,
-            kind: group.kind,
-            matches: group.matches,
-            hits: group.hits.map((hit) => ({
-                line: hit.line,
-                breadcrumb: hit.breadcrumb,
-                snippet: hit.snippet.map((segment) => segment.text).join(''),
-            })),
-        })),
-        total: count.total,
-        totalCapped: count.capped,
-        hasMore: result.hasMore,
-    }
+/** The index's text group, read as Search reads it (shared with the browser's Agent Chat). */
+function searchText(graph: HeadlessGraph, query: string, offset: number, limit: number): Promise<TextSearchOutput> {
+    return searchIndexText(graph.index, query, offset, limit)
 }
 
 export async function backlinks(graph: HeadlessGraph, concept: string) {
     const target = concept.trim() === 'today' ? todayISO() : concept.trim()
     if (target === '') throw new ToolError('invalid_argument', 'concept must not be empty.')
     await graph.store.refresh()
-    // A Template's body is a pattern, not a reference (ADR 0144): only its name is reported.
-    const groups = withoutTemplateContent(await graph.index.backlinks(target))
-    return {
-        concept: target,
-        sources: groups.map((group) => ({
-            concept: group.sourceConcept,
-            kind: group.sourceKind,
-            // `kind` says what `text` quotes: a block and its subtree, the prose around the link,
-            // or - for a document scoped by the concept (ADR 0083) - the source's own title.
-            references: group.refs.map((ref) => ({
-                kind: ref.kind,
-                line: ref.line,
-                breadcrumb: ref.breadcrumb,
-                text:
-                    ref.kind === 'block'
-                        ? ref.subtree.map((node) => node.text).join('\n')
-                        : (ref.context?.text ?? ''),
-            })),
-        })),
-    }
+    // `kind` says what each reference's text quotes: a block and its subtree, the prose around the
+    // link, or - for a document scoped by the concept (ADR 0083) - the source's own title. A
+    // Template's body is a pattern, not a reference (ADR 0144): only its name is reported.
+    return { concept: target, sources: backlinkSources(await graph.index.backlinks(target)) }
 }
 
 /** The most rows any one list of graph_insights returns. */
@@ -766,7 +702,7 @@ async function templateBodyFor(graph: HeadlessGraph, name: string): Promise<stri
         raw = graph.store.openRaw(identity.concept).getText()
     }
     const { data, body } = parseFrontmatter(raw)
-    if (!identity || !isTemplate(data, identity.kind) || documentProtection(body).kind === 'document') {
+    if (!identity || !isTemplate(data, identity.kind) || isProtectedDocumentText(body)) {
         throw new ToolError(
             'invalid_argument',
             `"${name}" is not a Template. A page is a Template when its frontmatter says template: true; search for template:true to list them.`,
@@ -1193,7 +1129,7 @@ export async function readDocuments(graph: HeadlessGraph, args: { concepts: stri
             continue
         }
         const text = await liveText(graph, identity)
-        if (documentProtection(text).kind === 'document') {
+        if (isProtectedDocumentText(text)) {
             documents.push({ concept: identity.concept, error: 'protected_document', message: `"${identity.concept}" is a protected document and cannot be read here.` })
             continue
         }
@@ -1288,7 +1224,7 @@ function referenceSources(graph: HeadlessGraph): TaskReferenceSources {
             if (!identity) return null
             const text = await liveText(graph, identity)
             // A protected document's tasks cannot be read here, so it holds none to find.
-            return documentProtection(text).kind === 'document' ? null : text
+            return isProtectedDocumentText(text) ? null : text
         },
         allTasks: () => everyIndexedTask(graph.index, todayISO()),
     }

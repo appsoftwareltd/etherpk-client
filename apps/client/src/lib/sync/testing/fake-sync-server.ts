@@ -17,6 +17,7 @@ import {
     keyHandoutTranscript,
     keyReplaceTranscript,
     keyWriteTranscript,
+    settingsVaultWriteTranscript,
 } from '@appsoftwareltd/etherpk-shared'
 import {
     type KeyVault,
@@ -47,6 +48,7 @@ import {
     type PendingInvite,
     type PendingKeyHandout,
     type PublishedIdentityJson,
+    type SettingsVaultWriteRequest,
     type SyncApi,
 } from '../sync-api'
 
@@ -59,6 +61,8 @@ export interface FakeAccount {
     id: string
     email: string
     vault: { bytes: Uint8Array; version: number } | null
+    /** The Settings Vault (ADR 0148), which an agent token is never given. */
+    settingsVault: { bytes: Uint8Array; version: number } | null
     /** Oldest first; the last is the one the directory publishes. */
     identities: FakeIdentity[]
 }
@@ -248,7 +252,7 @@ export function createFakeSyncServer() {
     function account(id: string, email = `${id}@example.com`): FakeAccount {
         let found = accounts.get(id)
         if (!found) {
-            found = { id, email, vault: null, identities: [] }
+            found = { id, email, vault: null, settingsVault: null, identities: [] }
             accounts.set(id, found)
         }
         return found
@@ -298,6 +302,22 @@ export function createFakeSyncServer() {
         return acct.vault.version
     }
 
+    /** A Settings Vault write, by the rules `settings-vault-store.ts` applies on the Sync Server (ADR 0148). */
+    async function putSettingsVault(principalId: string, write: SettingsVaultWriteRequest): Promise<number> {
+        const acct = account(principalId)
+        const signingKey = latest(principalId)?.signingPublicKey
+        if (!signingKey) throw new SyncApiError('identity required', 400, 'identity_required')
+        const vault = fromBase64Url(write.vault)
+        const transcript = settingsVaultWriteTranscript({ principalId, expectedVersion: write.expectedVersion, settingsVaultHash: await sha256(vault) })
+        if (!verifySignature(fromBase64Url(write.signature), transcript, signingKey)) {
+            throw new SyncApiError('not signed by the key on record', 403, 'key_signature_refused')
+        }
+        const conflict = write.expectedVersion === 0 ? acct.settingsVault !== null : acct.settingsVault?.version !== write.expectedVersion
+        if (conflict) throw new SyncApiError('Version conflict', 409, 'version_conflict')
+        acct.settingsVault = { bytes: vault, version: (acct.settingsVault?.version ?? 0) + 1 }
+        return acct.settingsVault.version
+    }
+
     /** Key Replacement (ADR 0128), by the rules and with the effects `key-replacement.ts` has on the Sync Server. */
     async function replaceKeys(principalId: string, request: KeyReplaceRequest): Promise<KeyReplaceResponse> {
         const acct = account(principalId)
@@ -326,6 +346,8 @@ export function createFakeSyncServer() {
         if (acct.vault?.version !== request.expectedVersion) throw new SyncApiError('Version conflict', 409, 'version_conflict')
         acct.vault = { bytes: vault, version: acct.vault.version + 1 }
         acct.identities.push(identity)
+        // Sealed under the vault key this replaces.
+        acct.settingsVault = null
 
         const declinedInvites: KeyReplaceResponse['declinedInvites'] = []
         const withdrawnInvites: KeyReplaceResponse['withdrawnInvites'] = []
@@ -441,6 +463,8 @@ export function createFakeSyncServer() {
                 return { vault: toBase64Url(acct.vault.bytes), version: acct.vault.version, principalId, ...(identityProofKey ? { identityProofKey } : {}) }
             },
             putKeys: (write) => putKeys(principalId, write),
+            getSettingsVault: async () => (acct.settingsVault ? { vault: toBase64Url(acct.settingsVault.bytes), version: acct.settingsVault.version } : null),
+            putSettingsVault: (write) => putSettingsVault(principalId, write),
             replaceKeys: (request) => replaceKeys(principalId, request),
             getIdentity: async (userId?: string) => {
                 const id = userId ?? principalId

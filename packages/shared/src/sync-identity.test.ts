@@ -4,10 +4,12 @@ import {
     KEY_HANDOUT_SIGNATURE_LABEL,
     KEY_REPLACE_SIGNATURE_LABEL,
     KEY_WRITE_SIGNATURE_LABEL,
+    SETTINGS_VAULT_WRITE_SIGNATURE_LABEL,
     inviteTranscript,
     keyHandoutTranscript,
     keyReplaceTranscript,
     keyWriteTranscript,
+    settingsVaultWriteTranscript,
 } from './sync-identity'
 
 /** Reads a length-prefixed transcript back into its fields. */
@@ -83,6 +85,27 @@ describe('key replacement transcript (ADR 0128)', () => {
     it('refuses a version that is not a whole number above zero: there is a vault to replace', () => {
         expect(() => keyReplaceTranscript({ principalId: 'a', expectedVersion: 0, vaultHash: hash(1), identityHash: hash(2) })).toThrow(RangeError)
         expect(() => keyReplaceTranscript({ principalId: 'a', expectedVersion: 2.5, vaultHash: hash(1), identityHash: hash(2) })).toThrow(RangeError)
+    })
+})
+
+describe('settings vault write transcript (ADR 0148)', () => {
+    it('holds its own label, the account, the version and the settings vault hash, in order', () => {
+        const parts = fields(settingsVaultWriteTranscript({ principalId: 'account-1', expectedVersion: 3, settingsVaultHash: hash(1) }))
+
+        expect(parts.map((p, i) => (i < 3 ? text(p) : p))).toEqual([SETTINGS_VAULT_WRITE_SIGNATURE_LABEL, 'account-1', '3', hash(1)])
+    })
+
+    it('never equals a key write over the same fields, so neither signature passes as the other', () => {
+        const fieldsOf = { principalId: 'account-1', expectedVersion: 3 }
+
+        expect(settingsVaultWriteTranscript({ ...fieldsOf, settingsVaultHash: hash(1) })).not.toEqual(
+            keyWriteTranscript({ ...fieldsOf, vaultHash: hash(1), identityHash: null }),
+        )
+    })
+
+    it('refuses a version that is not a whole number, so both sides write it the same way', () => {
+        expect(() => settingsVaultWriteTranscript({ principalId: 'a', expectedVersion: 1.5, settingsVaultHash: hash(1) })).toThrow(RangeError)
+        expect(() => settingsVaultWriteTranscript({ principalId: 'a', expectedVersion: -1, settingsVaultHash: hash(1) })).toThrow(RangeError)
     })
 })
 

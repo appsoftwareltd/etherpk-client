@@ -69,8 +69,8 @@ export async function forgetLoginSecrets(syncServer: string, stored: StoredLogin
 /**
  * A login an older Headless Client made holds a standard token, which reaches everything a
  * signed-in session does. Trade it for an agent token, which the Sync Server revokes the standard
- * one for, and save that in its place. Anything that stops the trade (a server from before agent
- * tokens, no network) leaves the login as it was, to be tried again on the next run.
+ * one for, and save that in its place. A trade that fails (no network, a server not answering)
+ * leaves the login as it was, to be tried again on the next run.
  */
 export async function upgradeToAgentToken(opts: {
     path: string
@@ -97,7 +97,6 @@ export async function upgradeToAgentToken(opts: {
             const current = await loginCredentials(credentials.syncServer, stored, keychain)
             if (accessTokenKind(current.pat) !== 'standard') return current
             const agentToken = await exchange({ syncServer: current.syncServer, token: current.pat, name })
-            if (!agentToken) return current
             const where = await saveLogin({
                 config,
                 path,
@@ -111,7 +110,7 @@ export async function upgradeToAgentToken(opts: {
     } catch (error) {
         const reason = error instanceof Error ? error.message : String(error)
         if (opts.stillWorks && !(await opts.stillWorks(credentials.pat).catch(() => true))) {
-            say(`etherpk-mcp: could not replace the access token for ${credentials.syncServer} with an agent token (${reason}), and the old token no longer works. Make a setup code in EtherPK (a synced graph's Settings > Agents) and run login again.`)
+            say(`etherpk-mcp: could not replace the access token for ${credentials.syncServer} with an agent token (${reason}), and the old token no longer works. Create an Agent Setup Code in EtherPK (the Graphs page's Agents tab, or a synced graph's Settings > Agents) and run login again.`)
         } else {
             say(`etherpk-mcp: could not replace the access token for ${credentials.syncServer} with an agent token this time (${reason}). It goes on working, and the next run tries again.`)
         }

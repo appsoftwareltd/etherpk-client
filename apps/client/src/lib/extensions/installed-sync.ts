@@ -4,7 +4,7 @@
  *
  * **Which extensions** the person has is one entry each in their settings (ADR 0134),
  * `extensions.installed.<id>`, set when they install one and cleared when they remove it. The
- * settings follow the person through their account's vault, so a new device installs their
+ * settings follow the person through their account's Settings Vault, so a new device installs their
  * extensions as it starts, a removal on one device removes the extension on the others, and when
  * the account ends on a device its extensions leave with its settings. A device with no account
  * keeps the entries on the device.

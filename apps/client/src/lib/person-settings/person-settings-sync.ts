@@ -1,26 +1,33 @@
 /**
  * Keeps the person's settings (person-settings.ts) in step with their account (ADR 0134). They go
- * into the account's vault, which only the account's own devices can open, so they follow the
- * person to every device where they sync, and the Sync Server holds them unreadable.
+ * into the account's Settings Vault (ADR 0148), sealed under the vault key that only the account's
+ * own devices hold, so they follow the person to every device where they sync, and the Sync
+ * Server holds them unreadable. They stay out of the Key Vault: an agent the person signs in with
+ * the Headless Client reads the Key Vault, and the Sync Server never gives it the Settings Vault,
+ * so the API keys among the person's settings never reach an agent.
  *
  * The account is the one that stands for this device (`primarySyncConnection`): the EtherPK account
  * when the device holds it, else the first server added. Settings sync once that account has a
  * vault, which it has from its first synced graph, and only while its Encryption Keys are unlocked
  * here. Until then they stay on the device, and what was changed here waits to be sent.
  *
- * A sync reads the vault, merges (person-settings.ts says how) and writes back only when the vault
- * lacks something of this device's. It runs as the Client starts, a moment after a change here,
+ * A sync opens the Key Vault for the keys, reads the Settings Vault, merges (person-settings.ts
+ * says how) and writes back only when the Settings Vault lacks something of this device's. One the
+ * account has not got, or that this device cannot open, is written again from everything this
+ * device holds. Settings an earlier version kept in the Key Vault are merged in, written to the
+ * Settings Vault, and then taken out of the Key Vault. It runs as the Client starts, a moment after a change here,
  * when the window is focused again (at most once a minute), when the device comes back online and
  * when its Sync connections change. When the account ends here its settings leave the device.
  */
 import { onAccountSignal } from '$lib/sync/account-signal'
 import { readSyncAccount } from '$lib/sync/account-scope'
 import { NoVaultError } from '$lib/sync/recovery-unlock'
+import { updateSettingsVault } from '$lib/sync/settings-vault-update'
 import type { SyncApi } from '$lib/sync/sync-api'
 import { primarySyncConnection, syncApiFor } from '$lib/sync/sync-connection'
 import { SYNC_CONNECTIONS_CHANGED_EVENT, SYNC_CONNECTIONS_STORAGE_KEY } from '$lib/sync/sync-connections'
 import { getVaultWrapKey } from '$lib/sync/vault-session'
-import { updateVault } from '$lib/sync/vault-update'
+import { readVault, updateVault } from '$lib/sync/vault-update'
 
 import { personSettings, readPersonSettings, type PersonSettings, type PersonSettingsRecord } from './person-settings'
 
@@ -41,7 +48,7 @@ export type PersonSettingsSyncState =
 export interface PersonSettingsAccount {
     /** `<server origin> <account id>`: another account is another person's settings. */
     id: string
-    api: Pick<SyncApi, 'getVault' | 'putKeys'>
+    api: Pick<SyncApi, 'getVault' | 'putKeys' | 'getSettingsVault' | 'putSettingsVault'>
     /** The key this device holds for the account's vault, or null while it is locked here. */
     heldKey: Uint8Array | null
 }
@@ -71,17 +78,36 @@ export function createPersonSettingsSync(settings: PersonSettings, account: () =
         if (!target) return settle('device')
         const { heldKey } = target
         if (!heldKey) return settle('locked')
-        let give: PersonSettingsRecord = {}
+        let given: PersonSettingsRecord = {}
         try {
-            // `apply` runs again on a newer vault when another device wrote first, so `give` is
-            // always what the vault written was given.
-            await updateVault(target.api, heldKey, {
-                apply: (vault) => {
-                    give = settings.merge(target.id, readPersonSettings(vault.settings))
-                    return Object.keys(give).length === 0 ? null : { ...vault, settings: { ...vault.settings, ...give } }
+            const keys = await readVault(target.api, heldKey)
+            const signingPrivateKey = keys.opened.vault.signingPrivateKey
+            // Every unlock gives a vault from before signing keys one (`ensureAccountIdentity`),
+            // so this waits only until then.
+            if (!signingPrivateKey) throw new Error('The account has no signing key yet.')
+            // What an earlier version kept in the Key Vault (ADR 0134), on its way out.
+            const moving = readPersonSettings(keys.opened.vault.settings)
+            // `apply` runs again on a newer Settings Vault when another device wrote first, so
+            // `given` is always what the Settings Vault written was given.
+            const held = await updateSettingsVault(
+                target.api,
+                { principalId: keys.principalId, vaultKey: keys.opened.vaultKey, signingPrivateKey },
+                {
+                    apply: (current) => {
+                        const theirs = current ? readPersonSettings(current.settings) : {}
+                        const remote = later(theirs, moving)
+                        const give = settings.merge(target.id, remote)
+                        // None the account can open: write it again from all this device holds,
+                        // which the merge has just brought up to date.
+                        const next = current ? { ...remote, ...give } : settings.all()
+                        given = current ? give : next
+                        const changed = current ? !sameSettings(next, theirs) : Object.keys(next).length > 0
+                        return changed ? { ...current, settings: next } : null
+                    },
                 },
-            })
-            settings.delivered(target.id, give)
+            )
+            settings.delivered(target.id, given)
+            if (Object.keys(moving).length > 0) await takeOutOfKeyVault(target.api, heldKey, readPersonSettings(held?.settings))
             settle('synced')
         } catch (error) {
             // An account with no vault syncs no graph yet, so its settings stay on the device.
@@ -117,6 +143,41 @@ export function createPersonSettingsSync(settings: PersonSettings, account: () =
             return running
         },
     }
+}
+
+/** `ours` with each setting from `theirs` that it lacks or that changed later there. */
+function later(ours: PersonSettingsRecord, theirs: PersonSettingsRecord): PersonSettingsRecord {
+    const out = { ...ours }
+    for (const [key, setting] of Object.entries(theirs)) if (!out[key] || setting.changedAt > out[key].changedAt) out[key] = setting
+    return out
+}
+
+function sameSettings(a: PersonSettingsRecord, b: PersonSettingsRecord): boolean {
+    const keys = Object.keys(a)
+    return (
+        keys.length === Object.keys(b).length &&
+        keys.every((key) => b[key] !== undefined && b[key].value === a[key].value && b[key].changedAt === a[key].changedAt)
+    )
+}
+
+/**
+ * Take out of the Key Vault the settings an earlier version kept there that the Settings Vault now
+ * holds (`held`), as recent or more so. One changed in the Key Vault since it was read, by that
+ * earlier version still open somewhere, stays until the next sync moves it too, so a setting is
+ * never in neither vault.
+ */
+async function takeOutOfKeyVault(api: PersonSettingsAccount['api'], heldKey: Uint8Array, held: PersonSettingsRecord): Promise<void> {
+    await updateVault(api, heldKey, {
+        apply: (vault) => {
+            if (!vault.settings) return null
+            const left = Object.fromEntries(
+                Object.entries(readPersonSettings(vault.settings)).filter(([key, setting]) => !held[key] || held[key].changedAt < setting.changedAt),
+            )
+            if (Object.keys(left).length === Object.keys(vault.settings).length) return null
+            // An empty record is left out of the sealed vault altogether.
+            return { ...vault, settings: left }
+        },
+    })
 }
 
 /** The account that stands for this device, if it is confirmed here. */

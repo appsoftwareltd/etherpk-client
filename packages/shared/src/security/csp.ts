@@ -42,6 +42,14 @@ export interface CspOptions {
      */
     allowArbitrarySyncOrigins?: boolean
     /**
+     * The Client's Agent Chat talks to a model server the person runs on their own machine, such
+     * as Ollama or LM Studio, which listens on plain HTTP on a loopback address (ADR 0147). Only
+     * `localhost` and `127.0.0.1` are added, any port, never the whole `http:` scheme, so the
+     * page can still reach no other plain-HTTP host. Browsers treat loopback as a secure origin, so
+     * an HTTPS page may fetch from it. Only the Client sets this.
+     */
+    allowLoopbackHttp?: boolean
+    /**
      * The Client renders documents that may embed images from anywhere on the web
      * (`![alt](https://…)`), which the base policy blocks. Only the Client sets this: the
      * Server and Corporate apps render no user documents. Loading a remote image tells its
@@ -89,6 +97,8 @@ export function cspDirectives(options: CspOptions): Record<string, string[]> {
     // are untouched, and nothing is framed.
     const connectSrc = ["'self'", 'blob:']
     if (options.allowArbitrarySyncOrigins) connectSrc.push('https:', 'wss:')
+    // No `http://[::1]:*`: CSP's host grammar has no IPv6 literal, so browsers drop it as invalid.
+    if (options.allowLoopbackHttp) connectSrc.push('http://localhost:*', 'http://127.0.0.1:*')
     if (options.dev || options.plaintext) connectSrc.push('ws:', 'http:')
 
     // blob: is how decrypted assets are handed to <img>; data: covers inline SVG icons. The

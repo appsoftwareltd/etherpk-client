@@ -7,14 +7,18 @@
  * only through the index's answers and its own fences, and changes them only through its fences,
  * the blocks it puts at the caret and the Client's Commands.
  */
+import type { ExtensionAssets } from './assets'
 import type { ExtensionAuth } from './auth'
 import type { ExtensionDialogs } from './dialogs'
+import type { ExtensionDocuments } from './documents'
 import type { ExtensionEditor } from './editor'
 import type { ExtensionEmbeds } from './embeds'
 import type { ExtensionEvents } from './events'
 import type { ExtensionIndex } from './graph-index'
 import type { ExtensionJournalPanels } from './journal'
-import type { CommandMenuItem, ContextMenuItem, GraphSidebarButton } from './menus'
+import type { CommandBarButton, CommandMenuItem, ContextMenuItem, GraphSidebarButton } from './menus'
+import type { ExtensionGraphRecords } from './records'
+import type { SettingsSection } from './settings-sections'
 import type { ViewContribution, ViewRef } from './views'
 
 /**
@@ -77,6 +81,17 @@ export interface ExtensionContextMenu {
 export interface ExtensionCommandMenu {
     /** Add a row, its id under the extension's id. */
     register(item: CommandMenuItem): () => void
+}
+
+/**
+ * Adding buttons to the Command Bar, the row of buttons across the bottom of a phone's screen:
+ * after the editing buttons that scroll, or in the pinned group at its right end.
+ *
+ * @beta
+ */
+export interface ExtensionCommandBar {
+    /** Add a button, its id under the extension's id. */
+    register(button: CommandBarButton): () => void
 }
 
 /**
@@ -148,6 +163,20 @@ export interface ExtensionLayout {
     activeDocument(): string | null
     /** True while the desktop presenter is showing, 1024 pixels wide and more. */
     isDesktop(): boolean
+    /**
+     * Draw something over the whole EtherPK window, with a heading and a close button the Client
+     * draws, as a fence's widget opens over the window. One at a time: opening another closes the
+     * one before. The close button, Escape and `close` all close it, and `onClose` is told once.
+     *
+     * @beta
+     */
+    openWindow(options: {
+        /** The heading the Client draws beside the close button. */
+        title: string
+        /** Draw into `host`, which fills the window under the heading. */
+        mount(host: HTMLElement, window: { close(): void }): { destroy(): void }
+        onClose?(): void
+    }): { close(): void }
 }
 
 /**
@@ -209,15 +238,15 @@ export interface ExtensionSettings {
 
 /**
  * The extension's own records, kept with the person (ADR 0140): on this device, and where the
- * person's account syncs a graph, in that account's vault too, encrypted on the device so only the
- * person's own devices can read them. So a record follows the person to their other devices, as
+ * person's account syncs a graph, in that account's Settings Vault too, encrypted on the device so
+ * only the person's own devices can read them. So a record follows the person to their other devices, as
  * Extension Settings do, such as what signing in to another service gave the extension. The person
  * never sees these records, and uninstalling the extension clears them on every device.
  *
  * Each record is kept as JSON, at most 64 KB of it. Between two devices the later change to a
  * record wins, record by record. A record is readable on the device by any code in the page, as
- * localStorage is, and by a Headless Client given an agent token for the same account, which opens
- * the account's vault.
+ * localStorage is. A Headless Client signed in to the same account cannot read it: the Sync Server
+ * never gives an agent token the Settings Vault (ADR 0148).
  *
  * @public
  */
@@ -339,6 +368,12 @@ export interface ExtensionContext {
     readonly commandMenu: ExtensionCommandMenu
     /** Adding buttons to the Graph Sidebar. */
     readonly graphSidebar: ExtensionGraphSidebar
+    /**
+     * Adding buttons to the phone's Command Bar.
+     *
+     * @beta
+     */
+    readonly commandBar: ExtensionCommandBar
     /** Adding panels beneath each Journal Entry. */
     readonly journalPanels: ExtensionJournalPanels
     /**
@@ -361,6 +396,24 @@ export interface ExtensionContext {
      * @beta
      */
     readonly index: ExtensionIndex
+    /**
+     * Reading the open graph's documents, with every Protected Document left out, name and all.
+     *
+     * @beta
+     */
+    readonly documents: ExtensionDocuments
+    /**
+     * The extension's records for the open graph, kept on this device only.
+     *
+     * @beta
+     */
+    readonly records: ExtensionGraphRecords
+    /**
+     * Images kept as the open graph's assets.
+     *
+     * @beta
+     */
+    readonly assets: ExtensionAssets
     /** Opening Views and documents. */
     readonly layout: ExtensionLayout
     /**
@@ -407,4 +460,11 @@ export interface ExtensionModule {
      * called after that, for anything else the extension holds.
      */
     activate(context: ExtensionContext): void | (() => void)
+    /**
+     * Sections the extension adds to the Client's settings tabs, which the Client mounts while the
+     * extension is switched on, whether or not a graph is open.
+     *
+     * @beta
+     */
+    settingsSections?: readonly SettingsSection[]
 }

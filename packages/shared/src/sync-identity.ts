@@ -29,6 +29,9 @@ export const KEY_HANDOUT_SIGNATURE_LABEL = 'etherpk/key-handout/v1'
 /** Starts the transcript a Key Replacement is signed over, by the old signing key and the new (ADR 0128). */
 export const KEY_REPLACE_SIGNATURE_LABEL = 'etherpk/key-replace/v1'
 
+/** Starts the transcript a Settings Vault write is signed over (ADR 0148). */
+export const SETTINGS_VAULT_WRITE_SIGNATURE_LABEL = 'etherpk/settings-vault-write/v1'
+
 /** The coded refusal for a key write whose signature the signing key on record does not accept. */
 export const KEY_SIGNATURE_REFUSED_CODE = 'key_signature_refused'
 
@@ -79,6 +82,24 @@ export function keyWriteTranscript(fields: {
         utf8(String(fields.expectedVersion)),
         fields.vaultHash,
         fields.identityHash ?? new Uint8Array(0),
+    )
+}
+
+/**
+ * What a Settings Vault write is signed over (ADR 0148): the account, the version the write
+ * replaces and the SHA-256 of the new envelope. The account's signing key signs it, as it signs a
+ * key write, so a sign-in alone cannot replace the person's settings. Its own label keeps a
+ * signature over one kind of vault from passing as the other.
+ */
+export function settingsVaultWriteTranscript(fields: { principalId: string; expectedVersion: number; settingsVaultHash: Uint8Array }): Uint8Array {
+    if (!Number.isSafeInteger(fields.expectedVersion) || fields.expectedVersion < 0) {
+        throw new RangeError(`expectedVersion must be a whole number, not ${fields.expectedVersion}`)
+    }
+    return lengthPrefixed(
+        utf8(SETTINGS_VAULT_WRITE_SIGNATURE_LABEL),
+        utf8(fields.principalId),
+        utf8(String(fields.expectedVersion)),
+        fields.settingsVaultHash,
     )
 }
 

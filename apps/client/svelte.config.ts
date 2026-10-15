@@ -25,6 +25,9 @@ const config: Config = {
             directives: cspDirectives({
                 appHtmlPath,
                 allowArbitrarySyncOrigins: true,
+                // Agent Chat reaches a model server on the person's own machine, such as Ollama,
+                // over plain HTTP on loopback only (ADR 0147).
+                allowLoopbackHttp: true,
                 // Documents embed images from the web (`![alt](https://…)`); without this
                 // every one of them rendered as the broken-image affordance.
                 allowRemoteImages: true,

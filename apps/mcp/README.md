@@ -17,14 +17,14 @@ Needs Node.js 24 or later.
 
 ### A synced graph
 
-In EtherPK, open the graph's **Settings → Agents** and select **Make a setup code**. The tab shows
+In EtherPK, open the graph's **Settings → Agents** and select **Create an Agent Setup Code**. The tab shows
 two commands with your server, the code and the graph filled in. On your own Sync Server, the tab
 links to the server's **Access tokens** page, which makes the code.
 
 ```sh
-# Once per computer. When this terminal and an unlocked EtherPK tab show the same code,
-# approve in the tab, then press y here.
-npx @appsoftwareltd/etherpk-mcp login --sync-server https://sync.etherpk.com --code <setup code>
+# Once per computer. When this terminal and EtherPK, on a device where your Encryption Keys are
+# unlocked, show the same code, approve there, then press y here.
+npx @appsoftwareltd/etherpk-mcp login --sync-server https://sync.etherpk.com --code <Agent Setup Code>
 
 # Register the graph with your agent (Claude Code shown, the Agents tab has the others).
 claude mcp add etherpk -- npx @appsoftwareltd/etherpk-mcp serve --sync-server https://sync.etherpk.com --graph <graph id>
@@ -124,14 +124,15 @@ directory, once per computer.
 
 `login` makes this computer a device of your account.
 
-- **The token.** `--code` trades a setup code for an agent token. Make the code in a synced graph's
-  **Settings → Agents** in EtherPK, or on the Sync Server's **Access tokens** page, where the token
-  is then listed as "Agent on <computer name>". An agent token can read and write your graphs. It
+- **The token.** `--code` trades an Agent Setup Code for an Agent Token. Create the code in
+  EtherPK's Agents settings (the Graphs page's **Agents** tab, or a synced graph's **Settings →
+  Agents**), or on the Sync Server's **Access tokens** page, where the token is then listed as
+  "Agent on <computer name>". An agent token can read and write your graphs. It
   cannot reset or replace your Encryption Keys, make tokens, invite people or delete graphs. It
   stops working after 30 days unused, when you revoke it, and when you reset your Encryption Keys.
-- **For a script**, or a Sync Server too old for setup codes, `--pat` or `ETHERPK_PAT` gives an
-  account-wide access token instead. `login` unlocks with it, then swaps it for an agent token and
-  revokes it.
+- **For a script**, `--pat` or `ETHERPK_PAT` gives an account-wide access token instead. `login`
+  unlocks with it, then swaps it for an Agent Token and revokes it. If the swap fails, `login`
+  fails and keeps nothing.
 - **The keys** are unlocked by Device Approval. Open EtherPK in a browser where the account's
   Encryption Keys are unlocked. When the browser and the terminal show the same short code, select
   **Approve** in the browser and press `y` in the terminal. Press `n` if the codes differ.
@@ -207,7 +208,7 @@ install the package globally once with `npm install -g @appsoftwareltd/etherpk-m
 
 | Command | What it does |
 | --- | --- |
-| `login --sync-server <url> [--code <setup code>] [--recovery-code]` | Sign this computer in as a device of your account, unlock your Encryption Keys, and list the graphs the account can reach. |
+| `login --sync-server <url> [--code <Agent Setup Code>] [--recovery-code]` | Sign this computer in as a device of your account, unlock your Encryption Keys, and list the graphs the account can reach. |
 | `graphs [--sync-server <url>]` | List the synced graphs each signed-in account can reach, with name, id and your role. |
 | `serve --graph <id or name> [--sync-server <url>] [--no-semantic]` | Serve one synced graph to the agent over stdio. |
 | `serve --folder <path> [--no-semantic]` | Serve a local graph folder the same way. |
@@ -226,8 +227,8 @@ install the package globally once with `npm install -g @appsoftwareltd/etherpk-m
 | Flag | Applies to | Meaning |
 | --- | --- | --- |
 | `--sync-server <url>` | `login`, `graphs`, `serve --graph`, `publish --graph`, `stop --graph`, `logout` | Which Sync Server the command means. Required for `login`, and elsewhere optional while only one server is signed in. `serve` and `logout` refuse to guess between several. |
-| `--code <setup code>` | `login` | The one-time setup code. It works once, within 10 minutes. |
-| `--pat <token>` | `login` | An account-wide access token instead of a setup code. `login` swaps it for an agent token and revokes it. |
+| `--code <Agent Setup Code>` | `login` | The one-time Agent Setup Code. It works once, within 10 minutes. |
+| `--pat <token>` | `login` | An account-wide access token instead of an Agent Setup Code. `login` swaps it for an agent token and revokes it. |
 | `--recovery-code` | `login` | Unlock with your Recovery Code instead of Device Approval. Pressing `r` while `login` waits does the same. |
 | `--graph <id or name>` | `serve`, `publish`, `stop` | The synced graph. Not with `--folder`. |
 | `--folder <path>` | `serve`, `publish`, `stop` | The local graph folder. Not with `--graph` or `--sync-server`. |

@@ -420,6 +420,16 @@ export function blockWidgetIndent(state: EditorState, pos: number): string | nul
 }
 
 /**
+ * The `padding-left` of a block widget that starts where the line at `pos` itself starts, before a
+ * bullet's dot: the line's nesting margin alone, or null at column 0. An inline panel beneath a
+ * block it saved starts there, where the next block it saves goes.
+ */
+export function blockWidgetLineStart(state: EditorState, pos: number): string | null {
+    const placement = textPlacement(state, pos)
+    return placement && placement.margin > 0 ? `${placement.margin}px` : null
+}
+
+/**
  * Where the text of the line at `pos` starts inside the line's own box (its `padding-left`), or
  * null at column 0: where a block image stood when its line is revealed for editing, since the
  * image started where the text does.

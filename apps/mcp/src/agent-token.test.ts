@@ -29,10 +29,10 @@ describe('a setup code', () => {
         await expect(redeemSetupCode({ syncServer: SERVER, code: CODE, name: 'Agent on desk', fetch })).rejects.toThrow('This setup code was already used.')
     })
 
-    it('on a server from before setup codes says the server needs updating', async () => {
+    it('rejects with the status when the server has no such route', async () => {
         const fetch = vi.fn(async () => new Response('Not Found', { status: 404 }))
 
-        await expect(redeemSetupCode({ syncServer: SERVER, code: CODE, name: 'Agent on desk', fetch })).rejects.toThrow(/older version/)
+        await expect(redeemSetupCode({ syncServer: SERVER, code: CODE, name: 'Agent on desk', fetch })).rejects.toMatchObject({ status: 404 })
     })
 })
 
@@ -47,10 +47,10 @@ describe('exchanging a standard token', () => {
         expect(JSON.parse(String(init?.body))).toEqual({ name: 'Agent on desk' })
     })
 
-    it('answers null on a server from before agent tokens, so the standard token goes on working', async () => {
+    it('rejects with the status when the server has no such route, rather than keeping the standard token', async () => {
         const fetch = vi.fn(async () => new Response('Not Found', { status: 404 }))
 
-        await expect(exchangeForAgentToken({ syncServer: SERVER, token: STANDARD, name: 'Agent on desk', fetch })).resolves.toBeNull()
+        await expect(exchangeForAgentToken({ syncServer: SERVER, token: STANDARD, name: 'Agent on desk', fetch })).rejects.toMatchObject({ status: 404 })
     })
 
     it('rejects with the status when the server refuses the token', async () => {

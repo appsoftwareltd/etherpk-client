@@ -9,6 +9,16 @@ export interface AuthorizeOptions {
     signal?: AbortSignal;
 }
 
+// @beta
+export interface CommandBarButton {
+    args?: unknown;
+    command: string;
+    icon: string;
+    id: string;
+    pinned?: boolean;
+    title: string;
+}
+
 // @public
 export type CommandHandler = (arg?: unknown) => unknown;
 
@@ -63,6 +73,16 @@ export interface ContextMenuItem {
 }
 
 // @beta
+export interface DocumentBacklink extends Omit<DocumentSummary, 'aliases'> {
+    // (undocumented)
+    references: {
+        line: number;
+        breadcrumb: string[];
+        text: string;
+    }[];
+}
+
+// @beta
 export interface DocumentMenuTarget {
     concept: string;
     kind: 'document-tab' | 'favourite' | 'recent' | 'document-row';
@@ -70,10 +90,56 @@ export interface DocumentMenuTarget {
     vertical?: boolean;
 }
 
+// @beta
+export interface DocumentSearchResult extends Omit<DocumentSummary, 'aliases'> {
+    hits: {
+        line: number;
+        breadcrumb: string[];
+        snippet: string;
+    }[];
+    matches: number;
+}
+
+// @beta
+export interface DocumentSummary {
+    aliases: string[];
+    kind: 'page' | 'journal';
+    name: string;
+}
+
+// @beta
+export interface DocumentTask extends Omit<DocumentSummary, 'aliases'> {
+    breadcrumb: string[];
+    due: string | null;
+    line: number;
+    priority: 1 | 2 | 3 | null;
+    scheduled: string | null;
+    // (undocumented)
+    status: 'open' | 'doing' | 'waiting' | 'done' | 'cancelled';
+    text: string;
+}
+
+// @beta
+export interface DocumentText extends DocumentSummary {
+    text: string;
+    truncated: boolean;
+}
+
+// @beta
+export interface ExtensionAssets {
+    prepareImage(image: Blob): Promise<Blob>;
+    saveImage(image: Blob, name: string): Promise<string | null>;
+}
+
 // @public
 export interface ExtensionAuth {
     authorize(url: string, options?: AuthorizeOptions): Promise<Record<string, string>>;
     readonly redirectUri: string;
+}
+
+// @beta
+export interface ExtensionCommandBar {
+    register(button: CommandBarButton): () => void;
 }
 
 // @public
@@ -98,9 +164,13 @@ export interface ExtensionConcepts {
 
 // @public
 export interface ExtensionContext {
+    // @beta
+    readonly assets: ExtensionAssets;
     readonly auth: ExtensionAuth;
     // @beta
     readonly clientVersion: string;
+    // @beta
+    readonly commandBar: ExtensionCommandBar;
     readonly commandMenu: ExtensionCommandMenu;
     readonly commands: ExtensionCommands;
     // @beta
@@ -112,6 +182,8 @@ export interface ExtensionContext {
     // @beta
     readonly dev: boolean;
     readonly dialogs: ExtensionDialogs;
+    // @beta
+    readonly documents: ExtensionDocuments;
     readonly editor: ExtensionEditor;
     readonly embeds: ExtensionEmbeds;
     readonly events: ExtensionEvents;
@@ -130,6 +202,8 @@ export interface ExtensionContext {
     readonly layout: ExtensionLayout;
     notify(text: string): void;
     readonly personStorage: ExtensionPersonStorage;
+    // @beta
+    readonly records: ExtensionGraphRecords;
     readonly settings: ExtensionSettings;
     readonly storage: ExtensionStorage;
     readonly theme: ExtensionTheme;
@@ -158,11 +232,50 @@ export interface ExtensionDialogs {
     prompt(options: PromptOptions): Promise<string | undefined>;
 }
 
+// @beta
+export interface ExtensionDocuments {
+    backlinks(name: string): Promise<DocumentBacklink[] | null>;
+    formatGuide(): string;
+    links(name: string): Promise<string[] | null>;
+    list(options?: {
+        kind?: 'page' | 'journal';
+        offset?: number;
+        limit?: number;
+    }): Promise<{
+        documents: DocumentSummary[];
+        total: number;
+        hasMore: boolean;
+    }>;
+    read(name: string): Promise<DocumentText | null>;
+    search(query: string, options?: {
+        offset?: number;
+        limit?: number;
+    }): Promise<{
+        results: DocumentSearchResult[];
+        total: number;
+        hasMore: boolean;
+    }>;
+    tasks(options?: {
+        concept?: string;
+        statuses?: DocumentTask['status'][];
+        offset?: number;
+        limit?: number;
+    }): Promise<{
+        tasks: DocumentTask[];
+        total: number;
+        hasMore: boolean;
+    }>;
+}
+
 // @public
 export interface ExtensionEditor {
     insertBlock(text: string, options?: {
         focus?: boolean;
     }): boolean;
+    // @beta
+    openPanel(options: InlinePanelOptions & {
+        at?: 'caret' | 'end' | 'caret-or-end';
+    }): InlinePanel | null;
     registerFence(info: string, widget: FenceWidget, options?: FenceOptions): () => void;
 }
 
@@ -202,6 +315,14 @@ export interface ExtensionEventPayloads {
 // @public
 export interface ExtensionEvents {
     on<K extends ExtensionEventName>(name: K, listener: (payload: ExtensionEventPayloads[K]) => void): () => void;
+}
+
+// @beta
+export interface ExtensionGraphRecords {
+    get<T>(key: string): Promise<T | undefined>;
+    keys(): Promise<string[]>;
+    remove(key: string): Promise<void>;
+    set(key: string, value: unknown): Promise<void>;
 }
 
 // @public
@@ -253,6 +374,18 @@ export interface ExtensionLayout {
         beside?: string;
     }): void;
     // @beta
+    openWindow(options: {
+        title: string;
+        mount(host: HTMLElement, window: {
+            close(): void;
+        }): {
+            destroy(): void;
+        };
+        onClose?(): void;
+    }): {
+        close(): void;
+    };
+    // @beta
     reveal(kind: string): void;
 }
 
@@ -279,6 +412,8 @@ export interface ExtensionMenuTarget {
 // @public
 export interface ExtensionModule {
     activate(context: ExtensionContext): void | (() => void);
+    // @beta
+    settingsSections?: readonly SettingsSection[];
 }
 
 // @beta
@@ -412,6 +547,26 @@ export interface IndexUpdate {
     mapsChanged: boolean;
 }
 
+// @beta
+export interface InlinePanel {
+    close(): void;
+    readonly document: string | null;
+    focus(): void;
+    insertBlock(text: string): boolean;
+    readonly isOpen: boolean;
+    outline(): string | null;
+    resize(height: number): void;
+}
+
+// @beta
+export interface InlinePanelOptions {
+    height?: number;
+    mount(host: HTMLElement, panel: InlinePanel): {
+        destroy(): void;
+    };
+    onClose?(): void;
+}
+
 // @public
 export interface JournalPanel {
     id: string;
@@ -467,6 +622,11 @@ export interface MountedFence {
 
 // @public
 export interface MountedJournalPanel {
+    destroy(): void;
+}
+
+// @beta
+export interface MountedSettingsSection {
     destroy(): void;
 }
 
@@ -546,6 +706,26 @@ export interface SettingDeclaration {
     title: string;
     type: 'text' | 'secret' | 'boolean';
 }
+
+// @beta
+export interface SettingsSection {
+    id: string;
+    mount(element: HTMLElement, context: SettingsSectionContext): MountedSettingsSection;
+    tab: SettingsSectionTab;
+}
+
+// @beta
+export interface SettingsSectionContext {
+    readonly auth: ExtensionAuth;
+    readonly extensionId: string;
+    notify(text: string): void;
+    readonly personStorage: ExtensionPersonStorage;
+    readonly settings: ExtensionSettings;
+    readonly theme: ExtensionTheme;
+}
+
+// @beta
+export type SettingsSectionTab = 'agents';
 
 // @beta
 export interface TabMenuTarget {

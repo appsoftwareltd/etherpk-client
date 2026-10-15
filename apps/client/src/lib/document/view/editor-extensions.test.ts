@@ -63,6 +63,7 @@ describe('editor feature stack', () => {
             'protected-fence',
             'fence-render',
             'interactive-fence',
+            'inline-panels',
             'math-inline',
             'image-embed',
             'asset-link',

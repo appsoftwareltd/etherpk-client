@@ -4,9 +4,10 @@
      * buttons fixed to the bottom of the viewport, each invoking a [[Command]]. Fed by the
      * `command-bar` Contribution kind; a dumb renderer over the registry.
      *
-     * Layout: a scrollable strip of `align:'start'` buttons (the slash trigger + the outliner
-     * block-ops) with an {@link HScrollbar} beneath, and a pinned `align:'end'` group (the zoom
-     * controls) that never scrolls away. Outliner-only buttons are disabled (greyed) when the
+     * Layout: a scrollable strip of `align:'start'` buttons (the slash trigger, the outliner
+     * block-ops, then zoom) with an {@link HScrollbar} beneath, and a pinned `align:'end'` group
+     * that never scrolls away, holding the buttons extensions pin there (`context.commandBar`). With
+     * none pinned, the group is not drawn. Outliner-only buttons are disabled (greyed) when the
      * caret is not in an outliner block, read reactively from `editorContext`, and a toggle button
      * (the bullet toggle) carries `aria-pressed` from it too. A button in a
      * **Contextual Group** (the table group) is present only while the caret is on what its
@@ -17,9 +18,11 @@
      * keyboard is handled by {@link MobilePresenter} shrinking the surface to the visual viewport.
      */
     import { onMount } from 'svelte'
+    import { createSubscriber } from 'svelte/reactivity'
 
     import { editorContext, registerCommandBar } from '$lib/document'
     import {
+        COMMAND_BAR_KIND,
         type CommandBarItem,
         listCommandBarItems,
         tryGetActiveCommandRegistry,
@@ -30,12 +33,14 @@
 
     import HScrollbar from './HScrollbar.svelte'
 
-    // The button set is registered once at the composition root before this mounts, so a
-    // single read is enough (the Contribution registry is not reactive).
-    const items: CommandBarItem[] = (() => {
-        const reg = tryGetActiveContributionRegistry()
-        return reg ? listCommandBarItems(reg) : []
-    })()
+    // The Client's own buttons are registered before this mounts, and an extension's come and go
+    // as it starts or is switched off, so the list is read again whenever one is added or taken back.
+    const contributions = tryGetActiveContributionRegistry()
+    const watchItems = createSubscriber((update) => contributions?.subscribe(COMMAND_BAR_KIND, update) ?? (() => {}))
+    const items = $derived.by<CommandBarItem[]>(() => {
+        watchItems()
+        return contributions ? listCommandBarItems(contributions) : []
+    })
     /** A contextual group's buttons exist only while the caret is on their subject. */
     function shown(item: CommandBarItem): boolean {
         if (item.contextualGroup === 'table') return editorContext.table !== null
@@ -43,7 +48,7 @@
         return true
     }
     const startItems = $derived(items.filter((i) => (i.align ?? 'start') === 'start' && shown(i)))
-    const endItems = items.filter((i) => i.align === 'end')
+    const endItems = $derived(items.filter((i) => i.align === 'end'))
 
     let stripEl = $state<HTMLDivElement>()
 
@@ -112,7 +117,7 @@
             {/each}
         </div>
         {#if endItems.length}
-            <div class="command-bar__zoom">
+            <div class="command-bar__pinned" data-testid="command-bar-pinned">
                 {#each endItems as item (item.id)}
                     {@render barButton(item)}
                 {/each}
@@ -147,8 +152,8 @@
     .command-bar__buttons::-webkit-scrollbar {
         display: none;
     }
-    /* The zoom group is pinned to the right and never scrolls away. */
-    .command-bar__zoom {
+    /* The pinned group sits at the right end and never scrolls away. */
+    .command-bar__pinned {
         display: flex;
         gap: 0.4rem;
         flex: none;

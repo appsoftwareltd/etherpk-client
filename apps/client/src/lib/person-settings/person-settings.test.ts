@@ -166,6 +166,19 @@ describe('merging with the account’s vault', () => {
         expect(settings.get(KEY)).toBe('pk.two')
     })
 
+    it('gives every setting it holds, a cleared one included, to rebuild a vault the account cannot open', () => {
+        const { settings, at } = store()
+        settings.set(KEY, 'pk.one')
+        at(2_000)
+        settings.set('extension.kanban.colour', 'blue')
+        settings.set('extension.kanban.colour', null)
+
+        expect(settings.all()).toEqual({
+            [KEY]: { value: 'pk.one', changedAt: 1_000 },
+            'extension.kanban.colour': { value: null, changedAt: 2_001 },
+        })
+    })
+
     it('reads only what looks like a setting from a vault', () => {
         expect(readPersonSettings({ a: { value: 'x', changedAt: 1 }, b: { value: 3, changedAt: 1 }, c: { value: null, changedAt: 2 }, d: 'x' })).toEqual({
             a: { value: 'x', changedAt: 1 },

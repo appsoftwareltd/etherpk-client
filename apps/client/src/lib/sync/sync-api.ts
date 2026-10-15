@@ -159,6 +159,15 @@ export interface KeyWriteRequest {
     identityProof?: string
 }
 
+/** A Settings Vault write as the Client sends it (ADR 0148), signed by the account's signing key. */
+export interface SettingsVaultWriteRequest {
+    vault: string
+    /** The version this write replaces; 0 creates the Settings Vault. */
+    expectedVersion: number
+    /** Over `settingsVaultWriteTranscript` for the account, the version and the envelope's hash. */
+    signature: string
+}
+
 /** A Key Replacement as the Client sends it (ADR 0128): signed by the key on record and by the new one. */
 export interface KeyReplaceRequest {
     vault: string
@@ -283,6 +292,21 @@ export function createSyncApi(deps: SyncApiDeps) {
                 method: 'PUT',
                 body: JSON.stringify(write),
             }).then((r) => r.version),
+        /**
+         * The person's Settings Vault (ADR 0148), or null while the account has none. An agent
+         * token is refused it: only the account's own devices read it.
+         */
+        getSettingsVault: () =>
+            call<{ vault: string; version: number }>('/api/v1/sync/settings-vault').catch((e: unknown) => {
+                if (e instanceof SyncApiError && e.status === 404) return null
+                throw e
+            }),
+        /** Write the Settings Vault, signed. Resolves to the new version. A stale `expectedVersion` rejects with status 409. */
+        putSettingsVault: (write: SettingsVaultWriteRequest) =>
+            call<{ version: number }>('/api/v1/sync/settings-vault', {
+                method: 'PUT',
+                body: JSON.stringify(write),
+            }).then((r) => r.version),
         /** Key Replacement (ADR 0128): new keys, and everything an old copy of them reached cut off. */
         replaceKeys: (replacement: KeyReplaceRequest) =>
             call<KeyReplaceResponse>('/api/v1/sync/keys/replace', {
@@ -362,9 +386,8 @@ export function createSyncApi(deps: SyncApiDeps) {
             call<{ graphs: Array<{ graphId: string; otherMembers: Array<{ userId: string; email: string; role: string }>; solo: boolean }> }>(
                 '/api/v1/sync/reset',
             ).then((r) => r.graphs),
-        // `agentTokensRevoked` is absent from a server older than agent tokens.
         resetAccount: () =>
-            call<{ ownedGraphsDeleted: number; membershipsDropped: number; hadVault: boolean; agentTokensRevoked?: number }>('/api/v1/sync/reset', {
+            call<{ ownedGraphsDeleted: number; membershipsDropped: number; hadVault: boolean; agentTokensRevoked: number }>('/api/v1/sync/reset', {
                 method: 'POST',
             }),
         // Device approval (ADR 0125) — the server brokers blind: a commitment, two one-time

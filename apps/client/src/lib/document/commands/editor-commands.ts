@@ -269,8 +269,10 @@ export function registerEditorCommands(
     barItem({ id: 'editor.undo', icon: 'undo', label: 'Undo', order: 5, command: 'editor.undo', undoOnly: true, writableOnly: true })
     barItem({ id: 'editor.redo', icon: 'redo', label: 'Redo', order: 5, command: 'editor.redo', redoOnly: true, writableOnly: true })
     barItem({ id: 'editor.toggleFold', icon: 'fold', label: 'Fold', order: 60, command: 'editor.toggleFold', outlinerOnly: true })
-    barItem({ id: 'editor.zoomOut', icon: 'zoom-out', label: 'Decrease font size', order: 100, align: 'end', command: 'editor.zoomOut' })
-    barItem({ id: 'editor.zoomIn', icon: 'zoom-in', label: 'Increase font size', order: 110, align: 'end', command: 'editor.zoomIn' })
+    // Last of the scrolling buttons: the pinned group at the bar's right end is for the buttons
+    // extensions pin there, and zoom is set once and left.
+    barItem({ id: 'editor.zoomOut', icon: 'zoom-out', label: 'Decrease font size', order: 100, command: 'editor.zoomOut' })
+    barItem({ id: 'editor.zoomIn', icon: 'zoom-in', label: 'Increase font size', order: 110, command: 'editor.zoomIn' })
 
     // ── Command Menu descriptors ──────────────────────────────────────────────
     // Every row that writes to the body is hidden on a locked Protected Document (the menu's

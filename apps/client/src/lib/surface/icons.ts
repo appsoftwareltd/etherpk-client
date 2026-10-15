@@ -163,6 +163,12 @@ const HEROICON_PATHS: Record<string, string> = {
      * heroicons/outline `calendar`: open today's [[Journal Entry]]. On the Graph Sidebar's Today's
      * journal button and the phone top bar's, so the two read as the same action.
      */
+    /**
+     * heroicons/outline `command-line`, a terminal window: the Headless Client, which runs on the
+     * command line beside an agent. Before its heading in the Agents settings, beside Agent Chat's.
+     */
+    'headless-client':
+        '<path d="m6.75 7.5 3 2.25-3 2.25m4.5 0h3m-9 8.25h13.5A2.25 2.25 0 0 0 21 18V6a2.25 2.25 0 0 0-2.25-2.25H5.25A2.25 2.25 0 0 0 3 6v12a2.25 2.25 0 0 0 2.25 2.25Z"/>',
     'todays-journal':
         '<path d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0V11.25A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5"/>',
 }

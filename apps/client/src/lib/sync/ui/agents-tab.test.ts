@@ -19,7 +19,6 @@ const noSetupCode = () => Promise.reject(new Error('not asked for in these tests
 
 describe('the Agents tab commands', () => {
     it('spell login for the connected server and serve for this graph', () => {
-        expect(loginCommand('https://sync.example.test', LATEST)).toBe('npx @appsoftwareltd/etherpk-mcp login --sync-server https://sync.example.test')
         expect(loginCommand('https://sync.example.test', LATEST, 'epk_setup_abc')).toBe('npx @appsoftwareltd/etherpk-mcp login --sync-server https://sync.example.test --code epk_setup_abc')
         expect(registerCommand('claude', 'g-1', 'https://sync.example.test/', LATEST)).toBe('claude mcp add etherpk -- npx @appsoftwareltd/etherpk-mcp serve --sync-server https://sync.example.test --graph g-1')
         expect(registerCommand('codex', 'g-1', 'https://sync.example.test', LATEST)).toBe('codex mcp add etherpk -- npx @appsoftwareltd/etherpk-mcp serve --sync-server https://sync.example.test --graph g-1')
@@ -63,7 +62,7 @@ describe('a pinned Headless Client', () => {
     })
 
     it('is what every command runs', () => {
-        expect(loginCommand('https://sync.example.test', pinned)).toBe('npx @appsoftwareltd/etherpk-mcp@0.8.1 login --sync-server https://sync.example.test')
+        expect(loginCommand('https://sync.example.test', pinned, 'epk_setup_abc')).toBe('npx @appsoftwareltd/etherpk-mcp@0.8.1 login --sync-server https://sync.example.test --code epk_setup_abc')
         expect(registerCommand('claude', 'g-1', 'https://sync.example.test', pinned)).toBe('claude mcp add etherpk -- npx @appsoftwareltd/etherpk-mcp@0.8.1 serve --sync-server https://sync.example.test --graph g-1')
         const block = JSON.parse(registerCommand('cursor', 'g-1', 'https://sync.example.test', pinned)) as { mcpServers: { etherpk: { args: string[] } } }
         expect(block.mcpServers.etherpk.args[0]).toBe('@appsoftwareltd/etherpk-mcp@0.8.1')

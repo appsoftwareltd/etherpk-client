@@ -75,6 +75,13 @@ describe('rankCommandMenu', () => {
         expect(ids).toEqual(['date.pick'])
     })
 
+    it("puts a row whose title is what was typed before one that only has it as a keyword", () => {
+        // `/agent` on a task line: Copy task reference lists "agent" as a keyword, and comes first in
+        // menu order, but the Agent row is the one named.
+        const rows = [item('task.copyReference', 'Copy task reference', ['agent']), item('agent-chat.agent', 'Agent')]
+        expect(rankCommandMenu(rows, 'agent').map((i) => i.id)).toEqual(['agent-chat.agent', 'task.copyReference'])
+    })
+
     it('drops non-matches', () => {
         expect(rankCommandMenu(items, 'zzz')).toEqual([])
     })

@@ -1,0 +1,46 @@
+{
+    "name": "@appsoftwareltd/etherpk-extension-agent-chat",
+    "version": "0.12.0",
+    "license": "Elastic-2.0",
+    "description": "Ask a language model about your notes from inside a document, through your own model connection, and save the turns worth keeping into the document.",
+    "private": true,
+    "type": "module",
+    "etherpk": {
+        "id": "agent-chat",
+        "displayName": "Agent Chat",
+        "publisher": "App Software",
+        "main": "./src/extension.ts",
+        "icons": {
+            "agent-chat": "<path d=\"M8 5.33V2.67H5.33\"/><rect x=\"2.67\" y=\"5.33\" width=\"10.67\" height=\"8\" rx=\"1.33\"/><path d=\"M1.33 9.33h1.34M13.33 9.33h1.34M10 8.67V10M6 8.67V10\"/>"
+        },
+        "views": [
+            {
+                "kind": "agent-chat.chats",
+                "target": "chats",
+                "title": "Agent Chats",
+                "icon": "agent-chat",
+                "region": "right-sidebar",
+                "resident": {
+                    "side": "right"
+                }
+            }
+        ]
+    },
+    "dependencies": {
+        "@ai-sdk/anthropic": "4.0.76",
+        "@ai-sdk/google": "4.0.92",
+        "@ai-sdk/openai": "4.0.89",
+        "@ai-sdk/openai-compatible": "3.0.66",
+        "@appsoftwareltd/etherpk-extension-api": "workspace:*",
+        "@openrouter/ai-sdk-provider": "3.1.0",
+        "ai": "7.0.133",
+        "idb": "^8.0.3",
+        "markdown-it": "15.0.2",
+        "svelte": "^5.57.1",
+        "zod": "^4.3.6"
+    },
+    "devDependencies": {
+        "fake-indexeddb": "^6.2.5",
+        "vitest": "^4.1.11"
+    }
+}

@@ -35,9 +35,15 @@ export function openSlashContext(linePrefix: string): SlashContext | null {
     return { slash: i, queryFrom: i + 1, query: token.slice(1) }
 }
 
-/** The best match score of `query` against an item's title and any keywords, or null. */
+/**
+ * The best match score of `query` against an item's title and any keywords, or null. A title
+ * match counts one point more than the same match on a keyword, so of two rows that match equally
+ * well, the one named what was typed comes first (`/agent` gives Agent before a row that only lists
+ * "agent" as a keyword). One point never lifts a looser match over a closer one.
+ */
 function itemScore(item: CommandMenuItem, query: string): number | null {
-    let best: number | null = matchScore(item.title, query)
+    const title = matchScore(item.title, query)
+    let best: number | null = title === null ? null : title + 1
     for (const kw of item.keywords ?? []) {
         const s = matchScore(kw, query)
         if (s !== null && (best === null || s > best)) best = s

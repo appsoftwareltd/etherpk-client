@@ -16,6 +16,13 @@
     import { afterNavigate, goto, replaceState } from "$app/navigation";
     import { page } from "$app/state";
     import { env } from "$env/dynamic/public";
+    import ExtensionSettingsSections from "$lib/extensions/ExtensionSettingsSections.svelte";
+    import { iconSvg } from "$lib/surface/icons";
+    import { RELEASE_VERSION } from "$lib/release";
+    import { managedSyncOrigin } from "$lib/sync/sync-deployment";
+    import AgentCommandRow from "$lib/sync/ui/AgentCommandRow.svelte";
+    import { AGENT_SKILL_ROW, headlessClientPackage } from "$lib/sync/ui/agents-tab";
+    import HeadlessClientSignIn from "$lib/sync/ui/HeadlessClientSignIn.svelte";
     import {
         type DeviceStorageReport,
         type DirectoryAdapter,
@@ -212,7 +219,7 @@
     let statusTone = $state<"info" | "error">("info");
 
     /** The page's tabs in the order they are shown, which is also the arrow keys' order. */
-    const GRAPHS_PAGE_TABS = ["graphs", "sync", "device"] as const;
+    const GRAPHS_PAGE_TABS = ["graphs", "sync", "agents", "device"] as const;
     type GraphsPageTab = (typeof GRAPHS_PAGE_TABS)[number];
 
     /**
@@ -223,6 +230,8 @@
      * from the address (`afterNavigate` below).
      */
     let activeTab = $state<GraphsPageTab>(tabIn(page.url));
+    /** The Agents tab's Sync Server, by host, for signing an agent's computer in; the first when null. */
+    let agentsServerHost = $state<string | null>(null);
     /** The Sync tab's sub-tab as the address names it (`&server=`): a server's host, or `add`. */
     let requestedSyncPanel = $state<string | null>(
         page.url.searchParams.get("server"),
@@ -230,7 +239,7 @@
 
     function tabIn(url: URL): GraphsPageTab {
         const tab = url.searchParams.get("tab");
-        return tab === "sync" || tab === "device" ? tab : "graphs";
+        return tab === "sync" || tab === "agents" || tab === "device" ? tab : "graphs";
     }
 
     afterNavigate(({ to }) => {
@@ -3768,7 +3777,7 @@
     <div
         role="tablist"
         tabindex="-1"
-        aria-label="Graphs, sync settings and this device"
+        aria-label="Graphs, sync settings, agents and this device"
         onkeydown={onTabKeydown}
         class="flex gap-1 border-b border-gray-200 dark:border-white/10"
     >
@@ -3801,6 +3810,21 @@
                 ? 'border-gray-900 text-gray-950 dark:border-white dark:text-white'
                 : 'border-transparent text-gray-600 hover:text-gray-950 dark:text-gray-400 dark:hover:text-white'}"
             >Sync</button
+        >
+        <button
+            type="button"
+            role="tab"
+            id="graphs-tab-agents"
+            data-testid="graphs-agents-tab"
+            aria-selected={activeTab === "agents"}
+            aria-controls="graphs-agents-settings"
+            tabindex={activeTab === "agents" ? 0 : -1}
+            onclick={() => showTab("agents")}
+            class="-mb-px border-b-2 px-3 py-2 text-sm font-medium pointer-coarse:min-h-11 {activeTab ===
+            'agents'
+                ? 'border-gray-900 text-gray-950 dark:border-white dark:text-white'
+                : 'border-transparent text-gray-600 hover:text-gray-950 dark:text-gray-400 dark:hover:text-white'}"
+            >Agents</button
         >
         <button
             type="button"
@@ -4621,6 +4645,68 @@
                     </div>
                 </section>
             {/if}
+        </div>
+    {:else if activeTab === "agents"}
+        <!-- The two kinds of agent (ADR 0147), set up with no graph open because both belong to the
+             person or the account: an Agent Chat's Model Connections, drawn by the extension, and
+             signing a computer's Headless Client in to a Sync Server. What belongs to one graph
+             (its id, its serve command, its folder) stays in that graph's Agents tab. -->
+        <div
+            role="tabpanel"
+            id="graphs-agents-settings"
+            data-testid="graphs-agents-settings"
+            aria-labelledby="graphs-tab-agents"
+            class="space-y-8"
+        >
+            <ExtensionSettingsSections tab="agents" />
+            <section class="space-y-4 border-t border-gray-200 pt-6 dark:border-white/10" data-testid="graphs-agents-headless">
+                <div class="space-y-1">
+                    <h3 class="flex items-center gap-2 text-base font-semibold text-gray-950 dark:text-gray-100">
+                        <span class="text-gray-600 dark:text-gray-400">
+                            <!-- eslint-disable-next-line svelte/no-at-html-tags -- the Client's own icon markup (icons.ts) -->
+                            {@html iconSvg("headless-client", { size: 20 })}
+                        </span>Headless Client
+                    </h3>
+                    <p class="text-sm text-gray-600 dark:text-gray-400">
+                        Let an AI agent such as Claude Code read and edit your notes over MCP. A folder graph needs no setup: point the agent at the folder. For a synced
+                        graph, sign in the agent's computer once (below), then add the graph's MCP command from that graph's Settings &gt; Agents.
+                    </p>
+                </div>
+                {#if !listReady}
+                    {@render loadingSkeleton("Loading your Sync Servers…")}
+                {:else if servers.length === 0}
+                    <p class="text-sm text-gray-600 dark:text-gray-400" data-testid="graphs-agents-no-server">
+                        Signing in needs a Sync Server. Add one in the Sync tab to reach your synced graphs from an agent.
+                    </p>
+                {:else}
+                    {@const server = servers.find((candidate) => candidate.host === agentsServerHost) ?? servers[0]}
+                    {#if servers.length > 1}
+                        <label class="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+                            Sync Server
+                            <select
+                                class="rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-gray-950 dark:text-gray-100"
+                                value={server.host}
+                                onchange={(event) => (agentsServerHost = event.currentTarget.value)}
+                                data-testid="graphs-agents-server"
+                            >
+                                {#each servers as candidate (candidate.host)}<option value={candidate.host}>{candidate.host}</option>{/each}
+                            </select>
+                        </label>
+                    {/if}
+                    <div class="space-y-2 text-sm text-gray-950 dark:text-gray-100">
+                        {#key server.host}
+                            <HeadlessClientSignIn
+                                serverBaseUrl={server.connection.serverBaseUrl}
+                                headlessClient={headlessClientPackage(managedSyncOrigin(env) ? null : RELEASE_VERSION)}
+                                createSetupCode={server.connection.kind === "managed" ? () => server.api.createAgentSetupCode() : null}
+                            />
+                        {/key}
+                    </div>
+                {/if}
+                <div class="space-y-1 border-t border-gray-200 pt-4 dark:border-white/10 text-gray-950 dark:text-gray-100">
+                    <AgentCommandRow {...AGENT_SKILL_ROW} />
+                </div>
+            </section>
         </div>
     {:else}
         <div

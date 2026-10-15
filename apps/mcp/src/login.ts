@@ -3,11 +3,12 @@
  * (ADR 0072). Two routes, both already served by the Sync Server for every new device:
  *
  * - **Device Approval** (ADR 0125), the default: this process posts a commitment to a one-time
- *   key; once an unlocked EtherPK tab answers, it prints the code both screens show. The user
- *   approves in the tab AND presses y here: a server can play the approving device itself, and
+ *   key; once EtherPK answers on a device where the account's Encryption Keys are unlocked, it
+ *   prints the code both screens show. The user approves on that device AND presses y here: a
+ *   server can play the approving device itself, and
  *   only the user, comparing the two screens, can tell. The key that arrives is checked against
  *   the vault before it is used. No secret passes through the terminal.
- * - **Recovery Code**, behind a flag, for a box with no tab to hand: the code derives the wrap
+ * - **Recovery Code**, behind a flag, for a box with no unlocked device to hand: the code derives the wrap
  *   key, which opens the vault; what is cached is the vault key, never the code.
  *
  * Pure over an injected clock and output so the flow is testable without a terminal.
@@ -56,8 +57,8 @@ export type QuitSignal = keyof typeof SIGNAL_EXIT_CODES
  * The keys the approval wait answers to. `y` confirms the codes match; `n` says they do not, which
  * cancels the request; `r` switches to the Recovery Code; Ctrl-C (a key while the terminal is in
  * raw mode) and SIGINT, SIGTERM or SIGHUP quit. Every way out aborts the wait, so it cancels its
- * approval server-side before anything exits: a login left pending showed its stale code in every
- * unlocked tab for ten minutes. `exitCode` is set once the user has quit.
+ * approval server-side before anything exits: a login left pending showed its stale code on every
+ * unlocked device for ten minutes. `exitCode` is set once the user has quit.
  */
 export function approvalWaitControls() {
     const abort = new AbortController()
@@ -127,8 +128,8 @@ export async function unlockByDeviceApproval(api: SyncApi, io: LoginIo): Promise
     const request = await beginDeviceApproval(api)
     const where = io.clientUrl ? `open EtherPK at ${io.clientUrl}` : 'open EtherPK in a browser'
     io.say('')
-    io.say(`To approve this device, ${where} (any page - it need not be a note), connected to this account`)
-    io.say('with its Encryption Keys unlocked. A prompt will appear there, and this terminal then shows a code to compare.')
+    io.say(`To approve this device, ${where} (any page - it need not be a note) on any device where this account's`)
+    io.say('Encryption Keys are unlocked. A prompt will appear there, and this terminal then shows a code to compare.')
     io.say('')
     io.say('Waiting (up to ten minutes)…')
     const abandon = async () => {

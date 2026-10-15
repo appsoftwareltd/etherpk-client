@@ -99,13 +99,35 @@ function caretBeside(context: BlockInsertContext, before: number, after: number)
  * fence widget, and an extension's block would sit in its plaintext as text.
  */
 export function blockInsertable(state: EditorState): boolean {
+    return blockInsertableAt(state, state.selection.main.head)
+}
+
+/**
+ * {@link blockInsertable} for the line at `pos` rather than the caret's: an inline panel asks it of
+ * its own line when it puts a block in, since that line can have become code or a table since the
+ * panel opened.
+ */
+export function blockInsertableAt(state: EditorState, pos: number): boolean {
     if (state.readOnly || state.facet(isProtectedDocumentFacet)() || !bodyWritable(state)) return false
-    const { head } = state.selection.main
     const analysis = analysisFor(state)
-    if (head <= analysis.frontmatterEnd) return false
-    const line = state.doc.lineAt(head).number - 1
+    if (pos <= analysis.frontmatterEnd) return false
+    const line = state.doc.lineAt(pos).number - 1
     if (analysis.fencedBlocks.some((block) => block.start <= line && line <= block.end)) return false
     return !analysis.tables.some((table) => table.startLine <= line && line <= table.endLine)
+}
+
+/**
+ * Whether new lines can go straight after the line at `pos` without landing inside a fenced block
+ * or a table: the line is past the frontmatter, and is no block's line but its last. Lines put after
+ * a fence's closer, or a table's last row, are outside it.
+ */
+export function blockInsertableAfter(state: EditorState, pos: number): boolean {
+    if (state.readOnly || state.facet(isProtectedDocumentFacet)() || !bodyWritable(state)) return false
+    const analysis = analysisFor(state)
+    if (pos <= analysis.frontmatterEnd) return false
+    const line = state.doc.lineAt(pos).number - 1
+    if (analysis.fencedBlocks.some((block) => block.start <= line && line < block.end)) return false
+    return !analysis.tables.some((table) => table.startLine <= line && line < table.endLine)
 }
 
 /** The neighbours of the caret's line, or of the line at `pos`, from the editor's analysis. */

@@ -100,13 +100,12 @@ const CMD = /[\\/]_npx[\\/]/.test(process.argv[1] ?? '') ? 'npx @appsoftwareltd/
 
 const USAGE = `etherpk-mcp - EtherPK Headless Client (an MCP server over one synced graph)
 
-  ${CMD} login --sync-server <url> [--code <setup code>] [--recovery-code]
-      Sign this machine in as a device of your account. Make a setup code in EtherPK
-      (a synced graph's Settings > Agents, or <url>/account/tokens) and pass it with --code:
-      it works once, within 10 minutes, and gets this machine an agent token of its own,
-      which can do only what an agent needs. Then unlock your Encryption Keys by Device
-      Approval: open EtherPK in a browser connected to the account with its Encryption Keys
-      unlocked, approve there if it shows the same code, then press y. Press r while waiting,
+  ${CMD} login --sync-server <url> [--code <Agent Setup Code>] [--recovery-code]
+      Sign in this computer as a device of your account. Create an Agent Setup Code in EtherPK
+      (the Graphs page's Agents tab, or a synced graph's Settings > Agents, or <url>/account/tokens) and pass it with --code: it works once, within 10
+      minutes, and gets this computer an Agent Token limited to the routes an agent needs. Then
+      unlock your Encryption Keys by Device Approval: confirm the matching code in EtherPK on
+      any device where your Encryption Keys are unlocked, then press y. Press r while waiting,
       or pass --recovery-code, to type your Recovery Code instead (or ETHERPK_RECOVERY_CODE,
       for a scripted setup).
       For a script, --pat <token> or ETHERPK_PAT takes an account-wide access token instead,
@@ -324,13 +323,13 @@ async function login(args: { 'sync-server'?: string; pat?: string; code?: string
         args.code ??
         args.pat ??
         process.env.ETHERPK_PAT ??
-        (await ask("Setup code (make one in EtherPK: a synced graph's Settings > Agents): ", { secret: true, hint: 'pass --code <setup code>' }))
+        (await ask(`Agent Setup Code (create one in EtherPK: the Graphs page's Agents tab, or a synced graph's Settings > Agents): `, { secret: true, hint: 'pass --code <Agent Setup Code>' }))
     ).trim()
-    if (!given) fail("A setup code is required. Make one in EtherPK: a synced graph's Settings > Agents.")
+    if (!given) fail(`An Agent Setup Code is required. Create one in EtherPK: the Graphs page's Agents tab, or a synced graph's Settings > Agents.`)
 
-    // A setup code is the usual way in, and becomes this computer's agent token at once. An
-    // access token (a script, or a server from before setup codes) is used to unlock and then
-    // exchanged, so the long-lived token a person pasted is revoked once the agent has its own.
+    // An Agent Setup Code is the usual way in, and becomes this computer's agent token at once. An
+    // access token (from a script) is used to unlock and then exchanged, so the long-lived token
+    // a person pasted is revoked once the agent has its own. This computer never keeps it.
     const name = agentTokenName()
     let token: string
     let redeemed = false
@@ -340,7 +339,7 @@ async function login(args: { 'sync-server'?: string; pat?: string; code?: string
     } else if (accessTokenKind(given) !== null) {
         token = given
     } else {
-        fail("That is neither a setup code (epk_setup_...) nor an access token (epk_pat_...). Make a setup code in EtherPK: a synced graph's Settings > Agents.")
+        fail(`That is neither an Agent Setup Code (epk_setup_...) nor an access token (epk_pat_...). Create an Agent Setup Code in EtherPK: the Graphs page's Agents tab, or a synced graph's Settings > Agents.`)
     }
 
     // A token minted for this login and not kept is revoked, so a failed login leaves none behind.
@@ -352,27 +351,24 @@ async function login(args: { 'sync-server'?: string; pat?: string; code?: string
     console.log(`Connected to ${syncServer} as ${account.principal.email ?? account.principal.name ?? account.principal.id}.`)
 
     // ETHERPK_RECOVERY_CODE serves a box set up by a script, where there is no terminal to type
-    // into and no tab to approve from; the variable is read once and never written anywhere.
+    // into and no unlocked device to approve from; the variable is read once and never written anywhere.
     const byRecoveryCode = async () =>
         unlockByRecoveryCode(account.api, process.env.ETHERPK_RECOVERY_CODE ?? (await ask('Recovery Code: ', { secret: true, hint: 'set ETHERPK_RECOVERY_CODE' })))
     const vaultKey = await (args['recovery-code'] ? byRecoveryCode() : approveOrFallBack(account, byRecoveryCode)).catch(abandon)
 
     if (accessTokenKind(token) === 'standard') {
+        // A Headless Client holds only an Agent Token, which never reaches the Settings Vault: an
+        // access token that cannot be swapped for one is never kept, and the login fails.
         const given = token
-        const agentToken = await exchangeForAgentToken({ syncServer, token, name }).catch(async (error: unknown) => {
+        token = await exchangeForAgentToken({ syncServer, token, name }).catch(async (error: unknown) => {
             // The exchange may have reached the server and revoked the token before failing.
+            const reason = describeLoginFailure(error, syncServer)
             if (!(await tokenStillWorks(syncServer, given))) {
-                fail(`Could not swap the access token for an agent token (${describeLoginFailure(error, syncServer)}), and the access token you gave no longer works. Run login again with a setup code.`)
+                return fail(`Could not swap the access token for an Agent Token (${reason}), and the access token you gave no longer works. Run login again with an Agent Setup Code.`)
             }
-            console.log(`Could not swap the access token for an agent token (${describeLoginFailure(error, syncServer)}), so this computer keeps the access token you gave. Run login again to try again.`)
-            return undefined
+            return fail(`Could not swap the access token for an Agent Token (${reason}). Nothing was kept on this computer: run login again.`)
         })
-        if (agentToken) {
-            token = agentToken
-            console.log(`The access token you gave has been revoked. This computer now holds an agent token of its own, which can do only what an agent needs. If you used that access token anywhere else, make a new one at ${syncServer}/account/tokens.`)
-        } else if (agentToken === null) {
-            console.log('This Sync Server runs an older version of EtherPK that cannot give agent tokens, so this computer keeps the access token you gave.')
-        }
+        console.log(`The access token you gave has been revoked. This computer now holds an Agent Token, limited to the routes an agent needs. If you used that access token anywhere else, create a new one at ${syncServer}/account/tokens.`)
     }
 
     // The token this computer held before, if it held one for this server, is not needed now.

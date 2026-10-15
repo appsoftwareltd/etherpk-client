@@ -159,6 +159,31 @@ export interface CommandMenuItem {
 }
 
 /**
+ * A button on the Command Bar, the row of buttons across the bottom of a phone's screen. Pressing
+ * it runs `command` and leaves the keyboard where it was, so a Command can tell whether the caret
+ * is in the document.
+ *
+ * @beta
+ */
+export interface CommandBarButton {
+    /** Under the extension's id. */
+    id: string
+    /** The button's name, said to a screen reader and shown as its tooltip: the bar shows icons only. */
+    title: string
+    /** Its icon: the extension's own or one of the Client's. */
+    icon: string
+    /**
+     * In the bar's pinned group at its right end, which never scrolls away, rather than after the
+     * editing buttons that scroll. For an action a person reaches for often.
+     */
+    pinned?: boolean
+    /** The Command the button runs. */
+    command: string
+    /** What the Command is given. */
+    args?: unknown
+}
+
+/**
  * A button in the Graph Sidebar's group of action buttons, after Search and today's date: a way in
  * to what the extension shows for the whole graph, such as the Graph Map. Pressing it runs
  * `command`.
