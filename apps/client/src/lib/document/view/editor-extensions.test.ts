@@ -68,6 +68,7 @@ describe('editor feature stack', () => {
             'asset-link',
             'markdown-link',
             'asset-drop',
+            'plain-paste',
             'asset-paste',
             'paste-to-fence',
             'rich-paste',
@@ -163,6 +164,10 @@ describe('editor feature stack', () => {
         for (const popover of ['wikilink-completion', 'task-tag-completion', 'slash-completion', 'frontmatter-completion', 'date-calendar', 'table-size-picker', 'concept-picker']) {
             before(popover, 'frontmatter-keys')
         }
+    })
+
+    it('reads a Plain Paste before any other paste route can reshape it', () => {
+        for (const route of ['asset-paste', 'paste-to-fence', 'rich-paste']) before('plain-paste', route)
     })
 
     it('lets clipboard files claim a paste before the HTML route sees it', () => {

@@ -30,6 +30,7 @@ import { frontmatterKeys } from './frontmatter-keys'
 import { frontmatterBoundaryGuard } from './frontmatter-boundary'
 import { assetPasteAugmentation } from './augmentations/asset-paste'
 import { pasteToFenceAugmentation } from './augmentations/paste-to-fence'
+import { plainPasteAugmentation } from './augmentations/plain-paste'
 import { richPasteAugmentation } from './augmentations/rich-paste'
 import { bulletMarkerAugmentation } from './augmentations/bullet-marker'
 import { codeScrollAugmentation } from './augmentations/code-scroll'
@@ -233,6 +234,9 @@ export function editorFeatures(services: EditorExtensionServices): EditorFeature
         { name: 'asset-link', extension: assetLinkAugmentation({ store }) },
         { name: 'markdown-link', extension: markdownLinkAugmentation() },
         { name: 'asset-drop', extension: assetDropAugmentation({ store }) },
+        // A Plain Paste (the browser's paste-as-plain-text shortcut) is the text as it is: before every
+        // other paste route, so no extension's fence or file upload reshapes it.
+        { name: 'plain-paste', extension: plainPasteAugmentation() },
         { name: 'asset-paste', extension: assetPasteAugmentation({ store }) },
         // Text pasted alone on an empty line, which an extension's fence claims (`fromPaste`),
         // becomes that fence. Before rich-paste: a copied link often carries HTML beside its text.

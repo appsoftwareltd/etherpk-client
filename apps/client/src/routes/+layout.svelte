@@ -6,6 +6,7 @@
     import { beforeNavigate } from "$app/navigation";
     import { continueIfSignedInElsewhere } from "@appsoftwareltd/etherpk-shared";
     import { updated } from "$app/state";
+    import { dev } from "$app/environment";
     import { watchAppInstall } from "$lib/storage/app-install";
 
     let { children, data } = $props();
@@ -24,10 +25,11 @@
         // A sign-in made at the account site since the last silent check missed: ask there, and
         // go through the silent check on a yes, so the visit comes back signed in.
         if (data.signedInElsewhereCheck) void continueIfSignedInElsewhere(data.signedInElsewhereCheck);
-        // Register the minimal service worker required for PWA installability.
-        // The SW itself does no caching — it simply passes all requests to the network.
+        // The service worker (src/service-worker.ts, ADR 0142) keeps the app's files so the app
+        // starts with no network, and makes it installable. SvelteKit serves it as a module in
+        // development. Registering a new script at the same scope replaces the old `/sw.js`.
         if ("serviceWorker" in navigator) {
-            navigator.serviceWorker.register("/sw.js").catch((err) => {
+            navigator.serviceWorker.register("/service-worker.js", { type: dev ? "module" : "classic" }).catch((err) => {
                 console.warn("[sw] Registration failed:", err);
             });
         }

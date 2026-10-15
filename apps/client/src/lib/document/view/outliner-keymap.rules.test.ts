@@ -1945,7 +1945,9 @@ describe('the caret at an Extension Fence', () => {
 
 // Text pasted on a line of its own becomes the fence an extension claims it for: the first Hook, a
 // fence registration's `fromPaste` (Editor Content Rules → Pasting into a block). A garden link is
-// claimed as its one line, trimmed, and copied beds as one line each, kept as written.
+// claimed as its one line, trimmed, and copied beds as one line each, kept as written. A Plain Paste
+// never reaches this route, so the text stays text (Logseq): the route order is asserted in
+// editor-extensions.test.ts and pressed for real in tests-client/plain-paste.test.ts.
 describe('pasting text an extension claims', () => {
     const link = 'https://garden.example/plot'
     const beds = 'garden-beds: north, south'

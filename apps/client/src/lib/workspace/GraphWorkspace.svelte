@@ -400,7 +400,8 @@
         createServerDocumentStore,
         type ServerDocumentStore,
     } from "$lib/storage/server/server-document-store";
-    import { createServerAssetStore } from "$lib/storage/server/server-asset-store";
+    import { createServerAssetStore, type ServerAssetStore } from "$lib/storage/server/server-asset-store";
+    import { openAssetCopies } from "$lib/storage/server/asset-copies";
     import {
         MIRROR_PHASE_LABELS,
         createLocalMirror,
@@ -516,7 +517,9 @@
         createSyncApiFor,
         createGraphNamePublisher,
         describeSyncFailure,
-        ensureGraphKeys,
+        fallingBackToVaultCopy,
+        isServerUnreachable,
+        openGraphKeys,
         listSyncConnections,
         managedSyncOrigin,
         primarySyncConnection,
@@ -1324,6 +1327,8 @@
     let detachMeta: (() => void) | undefined;
     let metaSeedTimer: ReturnType<typeof setTimeout> | undefined;
     let assetStore: AssetStore | undefined;
+    /** The synced graph's asset store, which also sends what it queued with no network (ADR 0143). */
+    let serverAssetStore: ServerAssetStore | undefined;
     let graphIndex: RemoteGraphIndex | undefined;
     /** Temporary foreground claim bridging graph open to the real DocumentView retain. */
     let releasePreloadedDocument: (() => void) | undefined;
@@ -3055,8 +3060,10 @@
         // key by that tab (ADR 0129), and asks for the passcode only when no open tab answers.
         if (devicePasscode.state() === "locked")
             await attempt.wait(devicePasscode.unlockFromOtherTabs());
+        // The keyring out of the server's vault, or out of this device's copy of it when the
+        // server cannot be reached, so the graph opens from its Local Cache offline too.
         const result = await attempt.wait(
-            ensureGraphKeys(api, graphId, async () =>
+            openGraphKeys(api, graphId, serverOrigin, async () =>
                 requireVaultWrapKey(serverOrigin),
             ),
         );
@@ -3653,13 +3660,21 @@
             // the dev gate only when e2e passes `http`. Uploads encrypt client-side and travel
             // to S3 via presigned URLs.
             if (useServer.httpBaseUrl) {
-                assetStore = createServerAssetStore({
+                const serverAssets = createServerAssetStore({
                     graphId,
                     keyring: useServer.keyring,
                     baseUrl: useServer.httpBaseUrl,
                     syncToken: useServer.token,
+                    // Files viewed are kept, and files added with no network wait, on this device (ADR 0143).
+                    copies: openAssetCopies(),
                 });
-                attempt.own(() => assetStore?.dispose());
+                assetStore = serverAssets;
+                serverAssetStore = serverAssets;
+                attempt.own(() => {
+                    serverAssets.dispose();
+                    if (serverAssetStore === serverAssets) serverAssetStore = undefined;
+                });
+                void sendQueuedUploads();
                 // Orphan scan/cleanup: the blind server only enumerates ids; this
                 // key-holding client diffs them against every synced document.
                 const orphanDeps = {
@@ -4283,7 +4298,11 @@
         // graph folder holds, so nothing ADR 0057 protects is given up; only portability is, as on
         // a Filesystem Backend. An in-memory store here lost the passphrase on every reload.
         const protectionOrigin = graphServerOrigin;
-        const protectionApi = useServer && protectionOrigin ? createSyncApiFor(protectionOrigin) : null;
+        const serverProtectionApi = useServer && protectionOrigin ? createSyncApiFor(protectionOrigin) : null;
+        // The record is read from this device's copy of the vault when the server cannot be
+        // reached (ADR 0141), so a protected document unlocks with its passphrase offline.
+        const protectionApi =
+            serverProtectionApi && protectionOrigin ? fallingBackToVaultCopy(serverProtectionApi, protectionOrigin) : null;
         const protectionRecords = !useServer
             ? fsAdapter
                 ? filesystemProtectionStore(fsAdapter)
@@ -4851,6 +4870,7 @@
                 phase = "needs-unlock";
             } else {
                 phase = "error";
+                openFailedUnreachable = isServerUnreachable(err);
                 // The raw error is for the console; the notice says what to do next. A
                 // NotFoundError from the File System Access API means the stored handle no
                 // longer resolves because the folder moved, was renamed, or was deleted.
@@ -5080,10 +5100,45 @@
         }
     }
 
+    /**
+     * The failed open could not reach the server (ADR 0141): it is tried again by itself when the
+     * browser reports the network is back, so nobody has to press Try again.
+     */
+    let openFailedUnreachable = false;
+
+    /**
+     * Send the files this graph queued with no network (ADR 0143): when the graph opens, when the
+     * browser is back online and when the tab comes back. A server still out of reach leaves them
+     * for the next try. A refusal (the plan, the account) is said in the notice rail, and the
+     * files stay on this device until a later try succeeds.
+     */
+    async function sendQueuedUploads(): Promise<void> {
+        const store = serverAssetStore;
+        if (!store) return;
+        const result = await store.uploadQueued().catch((error: unknown) => {
+            console.warn("[assets] could not send the files saved on this device", error);
+            return null;
+        });
+        if (!result || store !== serverAssetStore) return;
+        const id = `queued-uploads:${graphId}`;
+        if (result.refusal) {
+            const files = result.waiting === 1 ? "1 file" : `${result.waiting.toLocaleString()} files`;
+            showNotice({
+                id,
+                tone: "error",
+                title: "Files are waiting to upload",
+                text: `${files} saved on this device could not be uploaded: ${result.refusal.message.replace(/\.$/, "")}. They stay on this device, and EtherPK tries again when you are back online or open the graph again.`,
+            });
+        } else if (result.waiting === 0) {
+            dismissNotice(id);
+        }
+    }
+
     /** Retry a failed open. The notice covers the workspace, so it needs a way forward. */
     async function retryOpen() {
         phase = "loading";
         message = "";
+        openFailedUnreachable = false;
         await runBuild();
     }
 
@@ -6591,18 +6646,26 @@
         });
         // The sync status reads the browser's online flag; a refused write is tried again when the
         // connection returns and when the person comes back to the tab, which is when a plan
-        // restarted in another tab usually shows.
+        // restarted in another tab usually shows. The relay reconnects at the same two moments
+        // rather than when its backoff, up to 30 seconds by then, runs out: a phone that slept may
+        // have missed the network coming back.
         browserOnline = navigator.onLine;
         const followOnline = () => {
             browserOnline = navigator.onLine;
             refreshSyncIndicator();
             if (browserOnline) {
+                serverGraph?.reconnectNow();
                 serverGraph?.retryRefused();
+                void sendQueuedUploads();
                 resumeMirrorAfterOutage();
+                if (phase === "error" && openFailedUnreachable) void retryOpen();
             }
         };
         const retryWhenVisible = () => {
-            if (document.visibilityState === "visible") serverGraph?.retryRefused();
+            if (document.visibilityState !== "visible") return;
+            serverGraph?.reconnectNow();
+            serverGraph?.retryRefused();
+            void sendQueuedUploads();
         };
         window.addEventListener("online", followOnline);
         window.addEventListener("offline", followOnline);

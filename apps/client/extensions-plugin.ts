@@ -25,6 +25,8 @@ import { createReadStream, readdirSync, readFileSync, realpathSync, statSync } f
 import { extname, join, resolve, sep } from 'node:path'
 import type { Plugin } from 'vite'
 
+import { BUILT_IN_EXTENSION_FILES } from './src/lib/offline/app-shell'
+
 const VIRTUAL_ID = 'virtual:etherpk-loaded-extensions'
 const RESOLVED_ID = `\0${VIRTUAL_ID}`
 const PREFIX = '/extensions/'
@@ -117,6 +119,16 @@ function servedFiles(extension: LoadedExtension): string[] {
     return files
 }
 
+/**
+ * The address of every file a build ships for the loaded extensions. The build writes the list to
+ * `BUILT_IN_EXTENSION_FILES`, and the service worker caches each file with the version's own
+ * (ADR 0142): these files are part of the app, so a Graph View never opened online still opens
+ * offline.
+ */
+export function builtInFileAddresses(extensions: readonly LoadedExtension[]): string[] {
+    return extensions.flatMap((extension) => servedFiles(extension).map((file) => `${extension.base}${file}`))
+}
+
 /** The served file a request names, or null when it names nothing an extension serves. */
 function fileFor(extensions: readonly LoadedExtension[], url: string): string | null {
     const extension = extensions.find((candidate) => url.startsWith(candidate.base))
@@ -192,6 +204,11 @@ export function extensionsPlugin(): Plugin {
                     })
                 }
             }
+            this.emitFile({
+                type: 'asset',
+                fileName: BUILT_IN_EXTENSION_FILES.slice(1),
+                source: JSON.stringify(builtInFileAddresses(extensions)),
+            })
         },
     }
 }

@@ -1493,6 +1493,8 @@ describe('graph-sync access loss and backoff', () => {
         delays?: number[]
         /** Wait for the first socket before returning; false when the mint itself is refused. */
         awaitSocket?: boolean
+        /** How long each backoff waits; no wait by default, so a test sees the schedule, not the clock. */
+        retryWaitMs?: number
     } = {}) {
         const sockets: ScriptedSocket[] = []
         const urls: string[] = []
@@ -1531,7 +1533,7 @@ describe('graph-sync access loss and backoff', () => {
             // Record each backoff and answer with no wait, so the test sees the schedule, not the clock.
             retryDelayMs: (attempt) => {
                 delays.push(attempt)
-                return 0
+                return options.retryWaitMs ?? 0
             },
         })
         if (options.awaitSocket !== false) await vi.waitFor(() => expect(sockets).toHaveLength(1))
@@ -1612,6 +1614,40 @@ describe('graph-sync access loss and backoff', () => {
         await vi.waitFor(() => expect(sockets).toHaveLength(4))
 
         expect(delays).toEqual([1, 2, 3])
+        gs.dispose()
+    })
+
+    it('connects at once when asked, in place of a pending retry, and starts the backoff again', async () => {
+        const { gs, sockets, delays } = await scripted({ retryWaitMs: 60_000 })
+        sockets[0].close(1006)
+        await settle()
+        expect(sockets).toHaveLength(1) // the retry waits its minute
+
+        // The browser reports the network is back.
+        gs.reconnectNow()
+        await vi.waitFor(() => expect(sockets).toHaveLength(2))
+        sockets[1].close(1006)
+
+        expect(delays).toEqual([1, 1]) // the schedule starts again from the first wait
+        gs.dispose()
+    })
+
+    it('does nothing when asked to connect while a socket is open or being made, or once access has ended', async () => {
+        const { gs, sockets } = await scripted({ retryWaitMs: 60_000 })
+        gs.reconnectNow() // the first socket is still being made
+        await settle()
+        expect(sockets).toHaveLength(1)
+
+        sockets[0].open()
+        gs.reconnectNow()
+        await settle()
+        expect(sockets).toHaveLength(1)
+
+        sockets[0].close(1006)
+        gs.endAccess({ kind: 'credentials' })
+        gs.reconnectNow()
+        await settle()
+        expect(sockets).toHaveLength(1)
         gs.dispose()
     })
 

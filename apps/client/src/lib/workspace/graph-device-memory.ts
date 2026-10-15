@@ -30,6 +30,7 @@ import {
 } from '$lib/storage'
 import { FOLDER_PATH_KEY_PREFIX } from '$lib/storage/fs/folder-path'
 import { deleteGraphCache } from '$lib/sync/local-cache'
+import { deleteAssetCopies } from '$lib/storage/server/asset-copies'
 
 import { LAST_PUBLICATION_KEY_PREFIX, SETTINGS_TAB_KEY_PREFIX } from './device-memory'
 
@@ -53,6 +54,8 @@ export function graphDeviceMemoryKeys(graphId: string): string[] {
 export interface ForgetGraphDeps {
     storage: Storage | undefined
     deleteGraphCache(graphId: string): Promise<void>
+    /** The graph's kept asset copies and queued uploads (ADR 0143). */
+    deleteAssetCopies(graphId: string): Promise<void>
     /** Not awaited by the default: a tab that still holds the index keeps it until the next sweep. */
     discardIndex(graphId: string): void
     forgetMirrorFolder(graphId: string): Promise<void>
@@ -64,6 +67,7 @@ export interface ForgetGraphDeps {
 const browserDeps = (): ForgetGraphDeps => ({
     storage: globalThis.localStorage,
     deleteGraphCache,
+    deleteAssetCopies,
     discardIndex: (graphId) => {
         void discardIndexPool(graphId).catch((error) =>
             console.warn('[index] could not discard the search index of', graphId, error),
@@ -85,6 +89,7 @@ export async function forgetGraphOnDevice(
 ): Promise<void> {
     if (record.backend === 'server') {
         await deps.deleteGraphCache(record.id)
+        await deps.deleteAssetCopies(record.id)
         await deps.forgetMirrorFolder(record.id)
     }
     deps.discardIndex(record.id)

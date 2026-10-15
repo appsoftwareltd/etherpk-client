@@ -56,4 +56,24 @@ describe("this browser's part of Sign out of EtherPK", () => {
         expect(readSyncAccount(TEAM)).toEqual({ serverOrigin: TEAM, principalId: 'principal-team' })
         expect(signals.announce).toHaveBeenCalledWith({ type: 'ended', reason: 'signed-out', serverOrigin: MANAGED })
     })
+
+    // The shell carries the signed-in page's layout data; an offline start after signing out must not show it.
+    it('removes the cached shell the service worker would start the app with offline', async () => {
+        const deleted: Array<[string, string]> = []
+        const cache = (name: string) => ({ delete: async (request: string) => (deleted.push([name, request]), true) })
+        globalThis.caches = {
+            keys: async () => ['etherpk-app-1', 'etherpk-app-2', 'etherpk-extension-files'],
+            open: async (name: string) => cache(name),
+        } as unknown as CacheStorage
+        try {
+            endManagedSessionInThisBrowser()
+            await vi.waitFor(() => expect(deleted).toHaveLength(2))
+            expect(deleted).toEqual([
+                ['etherpk-app-1', '/offline-shell'],
+                ['etherpk-app-2', '/offline-shell'],
+            ])
+        } finally {
+            delete (globalThis as { caches?: CacheStorage }).caches
+        }
+    })
 })

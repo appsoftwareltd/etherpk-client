@@ -35,6 +35,7 @@ function deps(storage: Storage, lastGraph: string | null = null): ForgetGraphDep
         calls,
         storage,
         deleteGraphCache: vi.fn(async (id: string) => void calls.push(`cache ${id}`)),
+        deleteAssetCopies: vi.fn(async (id: string) => void calls.push(`assets ${id}`)),
         discardIndex: vi.fn((id: string) => void calls.push(`index ${id}`)),
         forgetMirrorFolder: vi.fn(async (id: string) => void calls.push(`mirror ${id}`)),
         removeRecord: vi.fn(async (id: string) => void calls.push(`record ${id}`)),
@@ -48,14 +49,14 @@ function deps(storage: Storage, lastGraph: string | null = null): ForgetGraphDep
 
 describe('forgetGraphOnDevice', () => {
     // Recents and the layout carry document titles, so a removed graph leaves none behind.
-    it('removes a synced graph\'s copy, index, mirror link, record and everything remembered about it', async () => {
+    it('removes a synced graph\'s copy, its asset copies, index, mirror link, record and everything remembered about it', async () => {
         const remembered = Object.fromEntries(graphDeviceMemoryKeys('g1').map((key) => [key, 'x']))
         const storage = memoryStorage({ ...remembered, 'etherpk-recents:other': 'kept' })
         const forget = deps(storage, 'g1')
 
         await forgetGraphOnDevice(synced, forget)
 
-        expect(forget.calls).toEqual(['cache g1', 'mirror g1', 'index g1', 'record g1', 'last graph'])
+        expect(forget.calls).toEqual(['cache g1', 'assets g1', 'mirror g1', 'index g1', 'record g1', 'last graph'])
         for (const key of graphDeviceMemoryKeys('g1')) expect(storage.getItem(key)).toBeNull()
         expect(storage.getItem('etherpk-recents:other')).toBe('kept')
     })

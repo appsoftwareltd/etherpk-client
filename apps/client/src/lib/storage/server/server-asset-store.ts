@@ -34,6 +34,7 @@ import {
 } from '@appsoftwareltd/etherpk-shared'
 import type { AssetBytes, AssetStore, ResolvedAsset, SavedAsset } from '$lib/storage/fs/asset-store'
 import type { SyncTokenSource } from '$lib/sync/sync-token'
+import type { AssetCopies, SealedAsset } from './asset-copies'
 
 /**
  * ADR 0027 specifies fixed chunks "of order 1-4 MiB", one AEAD envelope each: the envelope is
@@ -121,6 +122,33 @@ function isTransientStatus(status: number): boolean {
 }
 
 /**
+ * The Sync Server gave no answer about an upload, once its retries were spent: the connection
+ * failed, or it answered with a status that means "try again later". A refusal (the plan, the
+ * account, the graph) and a cancellation are answers, and a file is never queued for them.
+ */
+function cannotReach(error: unknown): boolean {
+    if (error instanceof AssetRefusedError) return false
+    if (error instanceof DOMException && error.name === 'AbortError') return false
+    if (error instanceof HttpFailure) return error.status === 408 || error.status === 429 || error.status >= 500
+    return true
+}
+
+/** What sending the queued uploads came to. */
+export interface QueuedUploads {
+    sent: number
+    /** Still queued: the server could not be reached, or refused the first of them. */
+    waiting: number
+    /** Why the server refused, when it did; absent when it could not be reached. */
+    refusal?: Error
+}
+
+/** The Server Backend's asset store, which can also send what it queued with no network (ADR 0143). */
+export interface ServerAssetStore extends AssetStore {
+    /** Send this graph's queued uploads. Calls made while one is running share it. */
+    uploadQueued(): Promise<QueuedUploads>
+}
+
+/**
  * The encrypted metadata an asset's uploader wrote. `hash` (SHA-256 hex of the stored bytes) has
  * been there since assets were built; `size` and `chunkCount` arrived on 2026-10-05, so a file
  * uploaded before then is checked by its hash alone (ADR 0027, amended).
@@ -156,6 +184,14 @@ export interface ServerAssetStoreDeps {
     signal?: AbortSignal
     /** Test seam: shrink the backoff so retry specs do not sit through real waits. */
     retry?: Pick<RetryOptions, 'attempts' | 'baseDelayMs' | 'sleep' | 'random' | 'onRetry'>
+    /**
+     * This device's copies of the graph's assets (ADR 0143): read before the network, kept after a
+     * download or an upload, and where an upload with no network waits. Absent (the Headless
+     * Client, tests), every read goes to the server and an upload with no network fails.
+     */
+    copies?: AssetCopies
+    /** Whether the browser reports a network. `navigator.onLine` by default; false is reliable, true is not. */
+    online?: () => boolean
 }
 
 function kebabStem(name: string): string {
@@ -198,8 +234,9 @@ export function assetIdFromRef(ref: string): string | null {
     return m ? m[1] : null
 }
 
-export function createServerAssetStore(deps: ServerAssetStoreDeps): AssetStore {
+export function createServerAssetStore(deps: ServerAssetStoreDeps): ServerAssetStore {
     const f = deps.fetch ?? fetch
+    const online = deps.online ?? (() => typeof navigator === 'undefined' || navigator.onLine !== false)
     const base = deps.baseUrl.replace(/\/$/, '')
     const newAssetId = deps.newAssetId ?? (() => crypto.randomUUID())
     const objectUrls: string[] = []
@@ -323,33 +360,20 @@ export function createServerAssetStore(deps: ServerAssetStoreDeps): AssetStore {
         }
     }
 
-    async function fetchAssetBytesOnce(ref: string): Promise<AssetBytes | null> {
-        const assetId = assetIdFromRef(ref)
-        if (!assetId) return null
-        const body = await requestAsset(assetId)
-        if (!body) return null
-        // Decrypt metadata under the epoch key → the per-asset key + MIME.
-        const metadata = await openMetadata(assetId, body.encryptedMetadata)
-        if (typeof metadata.chunkCount === 'number' && body.downloadUrls.length !== metadata.chunkCount) {
-            throw new AssetIntegrityError()
-        }
+    /**
+     * Decrypt an asset's chunks under the per-asset key its opened metadata carries, and join them.
+     * The metadata is the uploader's own record of what was stored, so the chunk count, the size
+     * and the hash are checked against it, and a mismatch is an `AssetIntegrityError`: the bytes
+     * are never handed over in part (ADR 0027, amended 2026-10-05).
+     */
+    async function openChunks(ref: string, assetId: string, metadata: AssetMetadata, encrypted: readonly Uint8Array[]): Promise<AssetBytes> {
+        if (typeof metadata.chunkCount === 'number' && encrypted.length !== metadata.chunkCount) throw new AssetIntegrityError()
         const perAssetKey = fromBase64Url(metadata.perAssetKey)
-
-        // Download + decrypt each chunk, reassemble.
         const parts: Uint8Array[] = []
-        for (let n = 0; n < body.downloadUrls.length; n++) {
-            const chunkRes = await readRequest(body.downloadUrls[n])
-            if (!chunkRes.ok) {
-                // No 401 here: a download URL is signed, not authorised by the sync token.
-                if (chunkRes.status !== 401 && isTransientStatus(chunkRes.status)) {
-                    throw new AssetUnavailableError(`Storage could not hand over the file just now (HTTP ${chunkRes.status}).`, { status: chunkRes.status })
-                }
-                return null
-            }
-            const encrypted = new Uint8Array(await chunkRes.arrayBuffer())
+        for (let n = 0; n < encrypted.length; n++) {
             const { plaintext } = await openSymmetric({
                 keyForEpoch: () => perAssetKey,
-                envelope: encrypted,
+                envelope: encrypted[n],
                 aad: contextAad('asset', `id:${assetId}`, `chunk:${n}`),
             })
             parts.push(plaintext)
@@ -368,6 +392,200 @@ export function createServerAssetStore(deps: ServerAssetStoreDeps): AssetStore {
         // called and what titles an asset tab.
         return { bytes: joined, name: metadata.name, type: assetTypeFor(ref) }
     }
+
+    /**
+     * The asset from this device's copy (ADR 0143), or null when there is none. A copy that will
+     * not open is passed over, and the network is asked instead: a good download replaces it.
+     */
+    async function fromCopy(ref: string, assetId: string): Promise<AssetBytes | null> {
+        if (!deps.copies) return null
+        try {
+            const copy = await deps.copies.read(deps.graphId, assetId)
+            if (!copy) return null
+            return await openChunks(ref, assetId, await openMetadata(assetId, copy.encryptedMetadata), copy.chunks)
+        } catch (error) {
+            console.warn(`[assets] the copy of ${assetId} on this device would not open; fetching it again`, error)
+            return null
+        }
+    }
+
+    /** Keep `asset` on this device. A failure costs only a later download, so it is logged and passed over. */
+    async function keepCopy(assetId: string, asset: SealedAsset): Promise<void> {
+        await deps.copies?.keep(deps.graphId, assetId, asset).catch((error: unknown) => {
+            console.warn(`[assets] could not keep a copy of ${assetId} on this device`, error)
+        })
+    }
+
+    async function fetchAssetBytesOnce(ref: string): Promise<AssetBytes | null> {
+        const assetId = assetIdFromRef(ref)
+        if (!assetId) return null
+        // An asset id names its bytes for good, so a copy on this device is always the right file.
+        const copied = await fromCopy(ref, assetId)
+        if (copied) return copied
+        const body = await requestAsset(assetId)
+        if (!body) return null
+        // Decrypt metadata under the epoch key → the per-asset key + MIME. The chunk count is
+        // checked before anything is downloaded.
+        const metadata = await openMetadata(assetId, body.encryptedMetadata)
+        if (typeof metadata.chunkCount === 'number' && body.downloadUrls.length !== metadata.chunkCount) {
+            throw new AssetIntegrityError()
+        }
+        const encrypted: Uint8Array[] = []
+        for (let n = 0; n < body.downloadUrls.length; n++) {
+            const chunkRes = await readRequest(body.downloadUrls[n])
+            if (!chunkRes.ok) {
+                // No 401 here: a download URL is signed, not authorised by the sync token.
+                if (chunkRes.status !== 401 && isTransientStatus(chunkRes.status)) {
+                    throw new AssetUnavailableError(`Storage could not hand over the file just now (HTTP ${chunkRes.status}).`, { status: chunkRes.status })
+                }
+                return null
+            }
+            encrypted.push(new Uint8Array(await chunkRes.arrayBuffer()))
+        }
+        const asset = await openChunks(ref, assetId, metadata, encrypted)
+        // Kept only once it opened and matched its hash.
+        await keepCopy(assetId, { encryptedMetadata: body.encryptedMetadata, chunks: encrypted })
+        return asset
+    }
+
+    /** What a begin call declares: the id, the plaintext size, the chunk count and the sealed metadata. */
+    interface Upload {
+        assetId: string
+        size: number
+        chunkCount: number
+        encryptedMetadata: string
+    }
+
+    /**
+     * Begin an upload: record the metadata and get one presigned PUT URL per chunk, OR learn that a
+     * complete asset in this graph already carries the dedup token. Safe to retry - the server
+     * records (graph, asset) ON CONFLICT DO NOTHING, so a second attempt stores nothing new,
+     * double-counts no storage, and simply re-presigns.
+     */
+    function begin(upload: Upload, dedupToken: string | null) {
+        return step(async (fresh) => {
+            const res = await f(`${base}/api/v1/sync/assets`, {
+                method: 'POST',
+                headers: await authHeaders(fresh),
+                body: JSON.stringify({
+                    graphId: deps.graphId,
+                    assetId: upload.assetId,
+                    size: upload.size,
+                    chunkCount: upload.chunkCount,
+                    encryptedMetadata: upload.encryptedMetadata,
+                    ...(dedupToken ? { dedupToken } : {}),
+                }),
+            })
+            if (!res.ok) throw await beginFailure(res)
+            return (await res.json()) as { uploadUrls: string[] } | { reuse: { assetId: string } }
+        })
+    }
+
+    /** Chunk the bytes and encrypt each chunk under the per-asset key (AAD binds asset id + index). */
+    async function sealChunks(bytes: Uint8Array, assetId: string, perAssetKey: Uint8Array): Promise<Uint8Array[]> {
+        // As many as the server derives from the size (`assetChunkCount`), so the two never disagree.
+        const chunkCount = assetChunkCount(bytes.length)
+        const chunks: Uint8Array[] = []
+        for (let n = 0; n < chunkCount; n++) {
+            chunks.push(
+                await sealSymmetric({
+                    key: perAssetKey,
+                    epochId: 0,
+                    plaintext: bytes.subarray(n * CHUNK_SIZE, (n + 1) * CHUNK_SIZE),
+                    aad: contextAad('asset', `id:${assetId}`, `chunk:${n}`),
+                }),
+            )
+        }
+        return chunks
+    }
+
+    /**
+     * Upload each encrypted chunk straight to S3 via its presigned URL. Already parallel: a single
+     * large asset is not the serial part - the outer asset-to-asset loop is. Each chunk retries on
+     * its own: one blip must not cost the whole asset, let alone (via the import's unwind) the whole
+     * graph. `report` hears the SOURCE bytes of each chunk as it lands.
+     */
+    async function putChunks(uploadUrls: string[], chunks: readonly Uint8Array[], size: number, report?: (bytes: number) => void): Promise<void> {
+        await Promise.all(
+            uploadUrls.map((u, n) =>
+                step(async () => {
+                    let r: Response
+                    try {
+                        r = await f(u, { method: 'PUT', body: chunks[n] as BodyInit })
+                    } catch {
+                        // A presigned PUT that dies before any HTTP status (the browser's bare
+                        // "Failed to fetch") is the connection dropping or the bucket refusing
+                        // the cross-origin request, which the browser reports alike; it
+                        // retries first either way. Offline, it is the connection. Online, the
+                        // Sync Server answered the begin call moments ago, so the bucket's CORS
+                        // policy is the likely cause (see the Synced Graphs user doc): named,
+                        // or the failure costs hours to diagnose.
+                        throw new Error(
+                            !online()
+                                ? 'The connection dropped while uploading to the storage bucket.'
+                                : 'Uploading to the storage bucket was blocked. The bucket\'s CORS policy must allow this app\'s address, which whoever runs the Sync Server sets.',
+                        )
+                    }
+                    if (!r.ok) throw new HttpFailure(r.status, `chunk ${n} upload failed: ${r.status}`)
+                    // Report SOURCE bytes for this chunk, so a 400 MB asset moves the bar
+                    // ~400 times rather than once. The last chunk is a partial.
+                    report?.(Math.min(CHUNK_SIZE, size - n * CHUNK_SIZE))
+                }),
+            ),
+        )
+    }
+
+    /**
+     * Complete: flips the row to 'complete', which is INFORMATIONAL - nothing reads it to serve an
+     * asset. Retried, but a persistent failure is swallowed: the chunks and metadata are already
+     * durable, and forfeiting a twenty-minute import over a cosmetic flag is precisely the trade
+     * this retry exists to prevent. A cancellation still propagates.
+     */
+    async function complete(assetId: string): Promise<void> {
+        await step(async (fresh) => {
+            const res = await f(`${base}/api/v1/sync/assets/${deps.graphId}/${assetId}`, {
+                method: 'POST',
+                headers: await authHeaders(fresh),
+            })
+            if (!res.ok) throw new HttpFailure(res.status, `asset complete failed: ${res.status}`)
+        }).catch((err: unknown) => {
+            if (deps.signal?.aborted) throw err
+        })
+    }
+
+    /**
+     * Send the uploads queued on this device for this graph, oldest first (ADR 0143). Each goes up
+     * under the id its reference already names, with no dedup token, so the server cannot answer
+     * with another file. Stops at the first that fails: one the server cannot be reached for waits
+     * for the next try, and one it refuses waits too, with the refusal handed back to be said.
+     */
+    async function sendQueued(): Promise<QueuedUploads> {
+        if (!deps.copies) return { sent: 0, waiting: 0 }
+        const waiting = await deps.copies.queued(deps.graphId)
+        let sent = 0
+        for (const asset of waiting) {
+            let beginning = true
+            try {
+                const begun = await begin(asset, null)
+                if ('reuse' in begun) throw new Error('The sync server answered an upload with a file it was not asked for.')
+                beginning = false
+                await putChunks(begun.uploadUrls, asset.chunks, asset.size)
+                await complete(asset.assetId)
+            } catch (error) {
+                // 409: the server holds this id already, complete - an earlier try got that far.
+                if (!(error instanceof HttpFailure && error.status === 409)) {
+                    // Away: the Sync Server gave no answer, or the browser is offline. A storage
+                    // bucket that refuses the chunks while the browser is online is said, not waited on.
+                    const away = !online() || (beginning && cannotReach(error))
+                    return { sent, waiting: waiting.length - sent, ...(away ? {} : { refusal: error as Error }) }
+                }
+            }
+            await deps.copies.sent(deps.graphId, asset.assetId)
+            sent += 1
+        }
+        return { sent, waiting: 0 }
+    }
+    let sending: Promise<QueuedUploads> | null = null
 
     return {
         async save({ name, bytes, type }, onBytes): Promise<SavedAsset> {
@@ -391,11 +609,11 @@ export function createServerAssetStore(deps: ServerAssetStoreDeps): AssetStore {
                 isImage,
                 ...(reused ? { reused } : {}),
             })
-
-            // Within-graph reuse (ADR 0053): a blinded token of the content hash travels with
-            // the begin call. The server can index it but not invert it, so it answers "these
-            // bytes are already here" without learning what they are.
-            const dedupToken = await assetDedupToken(await dedupSecret(ring), hash)
+            let reported = 0
+            const report = (n: number) => {
+                reported += n
+                onBytes?.(n)
+            }
 
             // Metadata encrypted under the CURRENT graph epoch key. Size and chunk count let a
             // reader refuse a file the server cut short (ADR 0027, amended 2026-10-05).
@@ -408,35 +626,41 @@ export function createServerAssetStore(deps: ServerAssetStoreDeps): AssetStore {
                 size: bytes.length,
                 chunkCount,
             }
-            const encryptedMetadata = await sealSymmetric({
-                key: currentEpoch(ring).key,
-                epochId: currentEpoch(ring).epochId,
-                plaintext: utf8(JSON.stringify(metadata)),
-                aad: contextAad('asset-meta', `graph:${deps.graphId}`, `id:${assetId}`),
-            })
+            const upload: Upload = {
+                assetId,
+                size: bytes.length,
+                chunkCount,
+                encryptedMetadata: toBase64Url(
+                    await sealSymmetric({
+                        key: currentEpoch(ring).key,
+                        epochId: currentEpoch(ring).epochId,
+                        plaintext: utf8(JSON.stringify(metadata)),
+                        aad: contextAad('asset-meta', `graph:${deps.graphId}`, `id:${assetId}`),
+                    }),
+                ),
+            }
 
-            // Begin: record metadata + get one presigned PUT URL per chunk, OR learn that a
-            // complete asset in this graph already carries the token. Safe to retry - the
-            // server records (graph, asset) ON CONFLICT DO NOTHING, so a second attempt
-            // stores nothing new, double-counts no storage, and simply re-presigns.
-            const begin = (withToken: boolean) =>
-                step(async (fresh) => {
-                    const res = await f(`${base}/api/v1/sync/assets`, {
-                        method: 'POST',
-                        headers: await authHeaders(fresh),
-                        body: JSON.stringify({
-                            graphId: deps.graphId,
-                            assetId,
-                            size: bytes.length,
-                            chunkCount,
-                            encryptedMetadata: toBase64Url(encryptedMetadata),
-                            ...(withToken ? { dedupToken } : {}),
-                        }),
-                    })
-                    if (!res.ok) throw await beginFailure(res)
-                    return (await res.json()) as { uploadUrls: string[] } | { reuse: { assetId: string } }
-                })
-            let begun = await begin(true)
+            // With no Sync Server to reach, the file is sealed now and kept on this device until
+            // it can be sent (ADR 0143). The reference names its id at once, so the document is
+            // written as it would be online and the image shows from the queued copy.
+            const queue = async (chunks?: Uint8Array[]): Promise<SavedAsset> => {
+                await deps.copies!.queue(deps.graphId, { ...upload, chunks: chunks ?? (await sealChunks(bytes, assetId, perAssetKey)) })
+                report(bytes.length - reported)
+                return { ...saved(assetId, false), queued: true }
+            }
+            if (deps.copies && !online()) return queue()
+
+            // Within-graph reuse (ADR 0053): a blinded token of the content hash travels with
+            // the begin call. The server can index it but not invert it, so it answers "these
+            // bytes are already here" without learning what they are.
+            const dedupToken = await assetDedupToken(await dedupSecret(ring), hash)
+            let begun: Awaited<ReturnType<typeof begin>>
+            try {
+                begun = await begin(upload, dedupToken)
+            } catch (error) {
+                if (deps.copies && !deps.signal?.aborted && cannotReach(error)) return queue()
+                throw error
+            }
             if ('reuse' in begun) {
                 // The server names which file to reuse, and nothing it says can be taken on
                 // trust: a reuse answer pointing at a different file of the graph would put that
@@ -447,79 +671,36 @@ export function createServerAssetStore(deps: ServerAssetStoreDeps): AssetStore {
                     // Nothing to encrypt or push. Report the bytes as retired all the same: the
                     // caller is measuring work done, not bytes through a socket (as the
                     // Filesystem store does for its own dedup), so an Activity bar still completes.
-                    onBytes?.(bytes.length)
+                    report(bytes.length)
                     return saved(begun.reuse.assetId, true)
                 }
                 console.warn(`[sync] the server offered asset ${begun.reuse.assetId} for reuse, but its hash differs; uploading a fresh copy`)
-                begun = await begin(false)
+                begun = await begin(upload, null)
                 if ('reuse' in begun) throw new Error('The sync server answered an upload with a file it was not asked for.')
             }
-            const { uploadUrls } = begun
 
-            // Chunk + encrypt each chunk under the per-asset key (AAD binds asset id + index).
-            // After begin, not before: a reuse answer makes this work unnecessary, and for a
-            // large video that is the difference between instant and a long wait.
-            const chunks: Uint8Array[] = []
-            for (let n = 0; n < chunkCount; n++) {
-                const slice = bytes.subarray(n * CHUNK_SIZE, (n + 1) * CHUNK_SIZE)
-                chunks.push(
-                    await sealSymmetric({
-                        key: perAssetKey,
-                        epochId: 0,
-                        plaintext: slice,
-                        aad: contextAad('asset', `id:${assetId}`, `chunk:${n}`),
-                    }),
-                )
+            // Sealed after begin, not before: a reuse answer makes this work unnecessary, and for
+            // a large video that is the difference between instant and a long wait.
+            const chunks = await sealChunks(bytes, assetId, perAssetKey)
+            try {
+                await putChunks(begun.uploadUrls, chunks, bytes.length, report)
+            } catch (error) {
+                // The connection dropped part way. The begun upload waits on the server, and the
+                // queued copy repeats it, which the server accepts for an upload still pending.
+                if (deps.copies && !deps.signal?.aborted && !online()) return queue(chunks)
+                throw error
             }
-
-            // Upload each encrypted chunk straight to S3 via its presigned URL. Already
-            // parallel: a single large asset is not the serial part - the outer
-            // asset-to-asset loop is. Each chunk retries on its own: one blip must not cost
-            // the whole asset, let alone (via the import's unwind) the whole graph.
-            await Promise.all(
-                uploadUrls.map((u, n) =>
-                    step(async () => {
-                        let r: Response
-                        try {
-                            r = await f(u, { method: 'PUT', body: chunks[n] as BodyInit })
-                        } catch {
-                            // A presigned PUT that dies before any HTTP status (the browser's bare
-                            // "Failed to fetch") is the connection dropping or the bucket refusing
-                            // the cross-origin request, which the browser reports alike; it
-                            // retries first either way. Offline, it is the connection. Online, the
-                            // Sync Server answered the begin call moments ago, so the bucket's CORS
-                            // policy is the likely cause (see the Synced Graphs user doc): named,
-                            // or the failure costs hours to diagnose.
-                            throw new Error(
-                                typeof navigator !== 'undefined' && navigator.onLine === false
-                                    ? 'The connection dropped while uploading to the storage bucket.'
-                                    : 'Uploading to the storage bucket was blocked. The bucket\'s CORS policy must allow this app\'s address, which whoever runs the Sync Server sets.',
-                            )
-                        }
-                        if (!r.ok) throw new HttpFailure(r.status, `chunk ${n} upload failed: ${r.status}`)
-                        // Report SOURCE bytes for this chunk, so a 400 MB asset moves the bar
-                        // ~400 times rather than once. The last chunk is a partial.
-                        onBytes?.(Math.min(CHUNK_SIZE, bytes.length - n * CHUNK_SIZE))
-                    }),
-                ),
-            )
-
-            // Complete: flips the row to 'complete', which is INFORMATIONAL - nothing reads it
-            // to serve an asset. Retried, but a persistent failure is swallowed: the chunks and
-            // metadata are already durable, and forfeiting a twenty-minute import over a
-            // cosmetic flag is precisely the trade this retry exists to prevent. A cancellation
-            // still propagates.
-            await step(async (fresh) => {
-                const res = await f(`${base}/api/v1/sync/assets/${deps.graphId}/${assetId}`, {
-                    method: 'POST',
-                    headers: await authHeaders(fresh),
-                })
-                if (!res.ok) throw new HttpFailure(res.status, `asset complete failed: ${res.status}`)
-            }).catch((err: unknown) => {
-                if (deps.signal?.aborted) throw err
-            })
-
+            await complete(assetId)
+            // Kept, so it shows offline later without being downloaded first.
+            await keepCopy(assetId, { encryptedMetadata: upload.encryptedMetadata, chunks })
             return saved(assetId, false)
+        },
+
+        uploadQueued() {
+            sending ??= sendQueued().finally(() => {
+                sending = null
+            })
+            return sending
         },
 
         // The mirror and the publisher report an asset they got no bytes for. A server that answered

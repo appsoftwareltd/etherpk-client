@@ -1,4 +1,5 @@
 import { clearManagedAccessToken } from '$lib/auth/managed-token'
+import { forgetShell } from '$lib/offline/app-shell'
 import { announceAccountSignal } from './account-signal'
 import { clearSyncAccount } from './account-scope'
 import { listSyncConnections } from './sync-connection'
@@ -14,6 +15,8 @@ import { lockVault } from './vault-session'
  */
 export function endManagedSessionInThisBrowser(): void {
     clearManagedAccessToken()
+    // The offline shell holds the signed-in page's layout data (ADR 0142).
+    void forgetShell().catch((error: unknown) => console.warn('[sw] could not remove the offline shell', error))
     const managed = listSyncConnections().find((held) => held.kind === 'managed')
     if (managed) {
         lockVault(managed.origin)

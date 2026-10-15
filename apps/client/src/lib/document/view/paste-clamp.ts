@@ -18,6 +18,15 @@
  * the first line, and a fragment mixing prose and bullets left a paragraph below a sublist at the
  * parent's content column: a shape Enter and the tidy read as prose and dismantled.
  *
+ * **A [[Plain Paste]] into a block, one block** ({@link pastedTextAsOneBlock}, the 2026-10-14
+ * amendment to ADR 0089). The browser's paste-as-plain-text shortcut keeps the fragment in the
+ * caret's block: the first line lands as above, and every line after it is a continuation line at
+ * the block's content column, blank lines between them included. The fragment's bullets can only be
+ * children at that column, so they nest under the block, and a line after them is the block's own
+ * paragraph after its children, which `ownerBulletIndex` reads as the block's since ADR 0089. A
+ * heading ends any block it sits in, so each pasted heading is a block of its own under the caret's
+ * block, owning its section as a [[Rich Paste]] heading does.
+ *
  * **Inside a fenced block, the clamp** ({@link clampPastedText}, ADR 0020): every line after the
  * first is indented to the fence column, the fragment's own common indentation stripped, so column 0
  * of the fragment reads as column 0 of the code and no pasted line can dissolve the block. The fence
@@ -49,6 +58,7 @@ import {
     contentColumn,
     contentStart,
     isBulletLine,
+    isHeadingLine,
     lineIndent,
     MARKER_WIDTH,
     newBulletMarker,
@@ -56,6 +66,13 @@ import {
     ownerBulletIndex,
 } from '../outliner'
 import { clampColumn } from './caret-clamp'
+
+/**
+ * The user event of a [[Plain Paste]] (`augmentations/plain-paste.ts`): the browser's
+ * paste-as-plain-text shortcut. `isUserEvent('input.paste')` still matches it, so every paste rule
+ * reads it as a paste, and {@link pasteClamp} keeps its lines in one block.
+ */
+export const PLAIN_PASTE_USER_EVENT = 'input.paste.plain'
 
 /** Re-indent a pasted fragment for a target whose clamp is `clamp` columns. */
 export function clampPastedText(text: string, clamp: number): string {
@@ -123,6 +140,8 @@ export interface PasteTarget {
     replacesMarker: boolean
     /** The marker a prose first line takes when it owns the line: the bullet's own, or a fresh one over a replaced marker. */
     lineMarker: string
+    /** The paste starts a line that is not the bullet's own: only indentation before it, so its first line opens the line. */
+    startsLine: boolean
     /** Text right of the replaced range on its line: it follows the last pasted line. */
     after: string
 }
@@ -143,6 +162,56 @@ function shiftLeading(line: string, delta: number): string {
     return ' '.repeat(Math.max(0, spaces + delta)) + line.slice(spaces)
 }
 
+/** A fenced block's lines after its opener, moved by `delta` columns as the opener was. */
+function fenceBody(lines: string[], unit: FencedBlockRange, delta: number): string[] {
+    return lines.slice(unit.start + 1, unit.end + 1).map((line) => shiftLeading(line, delta))
+}
+
+/** What placing a fragment's first line wrote, and what the walk over the lines after it starts from. */
+interface FirstLinePlaced {
+    out: string[]
+    /** The index of the last fragment line placed: the first line, or the closer of the fence it opens. */
+    last: number
+    /** The first line is a bullet merged into the caret's block: the columns its own lines move by. Else null. */
+    rootShift: number | null
+    /** Where the caret line's tail goes when it needs a line of its own. */
+    tailColumn: number
+    /** The lines placed end with a fence's closer. */
+    endsWithFence: boolean
+}
+
+/**
+ * A fragment's first line, placed at the caret the same way by every paste into a block. A bullet line
+ * merges its marker with the caret's: whole when it owns the line, else its content only. A fence,
+ * alone or on the first line's bullet, is never split across the caret's text: the bullet's own fence
+ * on an empty bullet (form 1), else a fence on its own continuation line (form 2). Prose lands as
+ * typed, or after the line's marker when it owns the line; an empty first line leaves the caret's
+ * text alone.
+ */
+function placeFirstLine(lines: string[], unit: FencedBlockRange | undefined, target: PasteTarget, takesLine: boolean): FirstLinePlaced {
+    const line = lines[0]
+    const indent = ' '.repeat(target.indent)
+    if (isBulletLine(line)) {
+        const shift = target.indent - lineIndent(line)
+        if (unit && !takesLine) {
+            // The bullet's own fence after the caret's text: the opener on a line of its own, at the content column.
+            const out = ['', ' '.repeat(target.contentColumn) + bulletContent(line), ...fenceBody(lines, unit, target.contentColumn - contentColumn(line))]
+            return { out, last: unit.end, rootShift: shift, tailColumn: target.contentColumn, endsWithFence: true }
+        }
+        const out = [takesLine ? indent + line.trimStart() : bulletContent(line)]
+        if (unit) out.push(...fenceBody(lines, unit, shift))
+        return { out, last: unit ? unit.end : 0, rootShift: shift, tailColumn: target.contentColumn, endsWithFence: unit !== undefined }
+    }
+    if (unit) {
+        const column = takesLine ? target.indent + MARKER_WIDTH : target.contentColumn
+        const opener = takesLine ? [indent + '- ' + line.trimStart()] : ['', ' '.repeat(column) + line.trimStart()]
+        const out = [...opener, ...fenceBody(lines, unit, column - lineIndent(line))]
+        return { out, last: unit.end, rootShift: null, tailColumn: column, endsWithFence: true }
+    }
+    const out = [takesLine ? indent + target.lineMarker + line.trimStart() : line.trimStart()]
+    return { out, last: 0, rootShift: null, tailColumn: target.contentColumn, endsWithFence: false }
+}
+
 /**
  * A fragment pasted into an outliner block, a block per line (module comment; ADR 0089). Returns the
  * lines to insert at the caret, the first spliced into the caret's line, and whether that first line
@@ -156,27 +225,37 @@ export function pastedTextAsBlocks(text: string, target: PasteTarget): PastedBlo
     const blocks = fencedBlocks(lines)
     const fenceAt = new Map<number, FencedBlockRange>(blocks.map((b) => [b.start, b]))
     const outline = outlineLines(lines, blocks)
-    const out: string[] = []
-    let replacesLine = false
+    const first = placeFirstLine(lines, fenceAt.get(0), target, takesLine)
+    const out = first.out
     /** Indents of the fragment's open bullets, innermost last: a bullet's nesting is how many are shallower than it. */
     const open: number[] = []
-    /** The indent of the block the fragment's bullets currently nest under. */
-    let base = target.indent
     /** Columns each placed fragment bullet moved by, so its continuation lines and fence move with it. */
     const shift = new Map<number, number>()
     /** The fragment's root is a bullet merged into the caret's block and its subtree is still open. */
     let rootOpen = false
+    /** The indent of the block the fragment's bullets currently nest under. */
+    let base: number
+    if (first.rootShift !== null) {
+        // The root joined the caret's block; its siblings in the fragment land where Enter would put the next block.
+        rootOpen = true
+        open.push(lineIndent(lines[0]))
+        shift.set(0, first.rootShift)
+        base = target.newIndent - INDENT_UNIT
+    } else {
+        // The caret's block is the prose line the fragment's first bullets nest under.
+        base = target.nestIndent - INDENT_UNIT
+    }
     /** The content column of the last block emitted: where the caret line's tail goes when it needs a line of its own. */
-    let tailColumn = target.contentColumn
+    let tailColumn = first.tailColumn
     /** The last lines emitted are a fenced block, closer last. */
-    let endsWithFence = false
+    let endsWithFence = first.endsWithFence
     /** Emit a fenced block's lines after its opener, moved with the opener. */
     const pushFenceBody = (unit: FencedBlockRange, delta: number) => {
-        for (let j = unit.start + 1; j <= unit.end; j++) out.push(shiftLeading(lines[j], delta))
+        out.push(...fenceBody(lines, unit, delta))
         endsWithFence = true
     }
 
-    for (let k = 0; k < lines.length; k++) {
+    for (let k = first.last + 1; k < lines.length; k++) {
         const line = lines[k]
         const unit = fenceAt.get(k)
         const owner = outline[k].owner
@@ -184,25 +263,12 @@ export function pastedTextAsBlocks(text: string, target: PasteTarget): PastedBlo
             const indent = lineIndent(line)
             while (open.length && open[open.length - 1] >= indent) open.pop()
             if (rootOpen && open.length === 0) rootOpen = false // a sibling of the merged root closes its subtree
-            let at: number
-            if (k === 0) {
-                // The fragment's root joins the caret's block: whole when it owns the line, else content only.
-                at = target.indent
-                if (takesLine) {
-                    replacesLine = true
-                    out.push(' '.repeat(at) + line.trimStart())
-                } else out.push(bulletContent(line))
-                rootOpen = true
-                // Its siblings in the fragment land where Enter would put the next block.
-                base = target.newIndent - INDENT_UNIT
-            } else {
-                // The merged root's descendants hang from where a bullet nested under the caret's block goes
-                // (its children's indent when it has children, so they cannot land two levels down); every
-                // other bullet one level under its base.
-                at = rootOpen ? target.nestIndent + INDENT_UNIT * (open.length - 1) : base + INDENT_UNIT * (open.length + 1)
-                out.push(' '.repeat(at) + line.trimStart())
-                tailColumn = at + MARKER_WIDTH
-            }
+            // The merged root's descendants hang from where a bullet nested under the caret's block goes
+            // (its children's indent when it has children, so they cannot land two levels down); every
+            // other bullet one level under its base.
+            const at = rootOpen ? target.nestIndent + INDENT_UNIT * (open.length - 1) : base + INDENT_UNIT * (open.length + 1)
+            out.push(' '.repeat(at) + line.trimStart())
+            tailColumn = at + MARKER_WIDTH
             open.push(indent)
             shift.set(k, at - indent)
             endsWithFence = false
@@ -225,31 +291,6 @@ export function pastedTextAsBlocks(text: string, target: PasteTarget): PastedBlo
             continue
         }
         // Owned by no bullet: prose, a heading, a bare blank line, or a fenced block of its own.
-        if (k === 0) {
-            // The first line is the caret's, blank or not: an empty first line leaves the caret's text alone.
-            if (unit) {
-                // A fence at the caret is never split across the caret's text: the bullet's own fence on an
-                // empty bullet (form 1), else a fence on its own continuation line (form 2).
-                let column: number
-                if (takesLine) {
-                    replacesLine = true
-                    out.push(' '.repeat(target.indent) + '- ' + line.trimStart())
-                    column = target.indent + MARKER_WIDTH
-                } else {
-                    out.push('', ' '.repeat(target.contentColumn) + line.trimStart())
-                    column = target.contentColumn
-                }
-                tailColumn = column
-                pushFenceBody(unit, column - lineIndent(line))
-                k = unit.end
-            } else if (takesLine) {
-                replacesLine = true
-                out.push(' '.repeat(target.indent) + target.lineMarker + line.trimStart())
-            } else out.push(line.trimStart())
-            // The caret's block is the prose line the fragment's first bullets nest under.
-            base = target.nestIndent - INDENT_UNIT
-            continue
-        }
         if (!unit && line.trim() === '') continue // a blank line separates blocks; there is nothing to keep
         if (unit) {
             out.push(' '.repeat(target.newIndent) + '- ' + line.trimStart())
@@ -264,6 +305,144 @@ export function pastedTextAsBlocks(text: string, target: PasteTarget): PastedBlo
         base = target.newIndent
         open.length = 0
         rootOpen = false
+    }
+    // The caret line's tail follows the last pasted line; after a closing fence it takes a soft line of
+    // its own, or it would become the closer's info string and dissolve the block.
+    if (endsWithFence && target.after !== '') out.push(' '.repeat(tailColumn))
+    return { insert: out.join('\n'), replacesLine: takesLine }
+}
+
+/** The lines without the blank lines at their start and their end: the trailing newline of a line-wise copy, say. */
+function withoutEdgeBlankLines(lines: string[]): string[] {
+    let start = 0
+    let end = lines.length
+    while (start < end && lines[start].trim() === '') start++
+    while (end > start && lines[end - 1].trim() === '') end--
+    return start === end ? [''] : lines.slice(start, end)
+}
+
+/** A heading line's level: how many `#` open it. */
+function headingLevel(line: string): number {
+    return /^#+/.exec(line.trimStart())![0].length
+}
+
+/**
+ * A [[Plain Paste]] into an outliner block: the whole fragment stays in the caret's block (module
+ * comment; the 2026-10-14 amendment to ADR 0089). The first line lands as {@link pastedTextAsBlocks}
+ * puts it, and every line after it is the block's own, at its content column plus the line's own
+ * indentation, a blank line at the content column. A bullet line can only be a child at that column,
+ * so the fragment's bullets nest under the block with their own nesting, and what belongs to each
+ * moves with it; a line after them that belongs to none of them is the block's paragraph after its
+ * children, at its content column exactly, since any deeper it would sit inside a child's branch short
+ * of the child's text, where nothing owns it.
+ *
+ * A heading line ends a block wherever it sits, so it cannot be one of the block's lines either. Each
+ * is a block of its own under the caret's block that owns its section, through to the next heading of
+ * its level or higher, as a [[Rich Paste]] nests one: the lines after it are that block's lines and
+ * the bullets after it its children, by the rules above. Blank lines before a heading separate
+ * sections, which the nesting now does, and are dropped. No heading ever leaves the caret's block.
+ */
+export function pastedTextAsOneBlock(text: string, target: PasteTarget): PastedBlocks {
+    const takesLine = target.emptyBullet || target.replacesMarker
+    const fragment = withoutEdgeBlankLines(stripCommonIndent(normaliseIndentUnit(text)).split('\n'))
+    // A heading first line that would open a continuation line would end the block there: it goes on a
+    // line of its own as the first section instead, and the caret's line, holding nothing else, gives way.
+    const headingOpens = target.startsLine && !takesLine && isHeadingLine(fragment[0])
+    const lines = headingOpens ? ['', ...fragment] : fragment
+    const blocks = fencedBlocks(lines)
+    const fenceAt = new Map<number, FencedBlockRange>(blocks.map((b) => [b.start, b]))
+    const code = (k: number) => blocks.some((b) => k > b.start && k <= b.end)
+    const heading = lines.map((line, k) => k > 0 && !code(k) && isHeadingLine(line))
+    /** Blank lines whose next non-blank line is a heading: they separate sections and are dropped. */
+    const beforeHeading = lines.map(() => false)
+    for (let k = lines.length - 1, next = false; k > 0; k--) {
+        const blank = !code(k) && lines[k].trim() === ''
+        beforeHeading[k] = blank && next
+        if (!blank) next = heading[k]
+    }
+    const outline = outlineLines(lines, blocks)
+    const first = placeFirstLine(lines, fenceAt.get(0), target, takesLine)
+    const out = first.out
+    const replacesLine = takesLine || (headingOpens && target.after.trim() === '')
+    if (replacesLine && !takesLine) out.shift() // the empty caret line is the first section's line
+    /**
+     * Where each placed fragment bullet went: the columns its own lines move by, and its content
+     * column. A merged first bullet is the caret's block, so it is never one of the open bullets.
+     */
+    const placed = new Map<number, { shift: number; column: number }>()
+    if (first.rootShift !== null) placed.set(0, { shift: first.rootShift, column: target.contentColumn })
+    /** The open sections, innermost last: each heading block's level and bullet indent. */
+    const sections: { level: number; indent: number }[] = []
+    /** The fragment's open bullets in the innermost section, innermost last: a bullet's nesting is how many are shallower than it. */
+    const open: { indent: number; index: number }[] = []
+    let tailColumn = first.tailColumn
+    let endsWithFence = first.endsWithFence
+
+    for (let k = first.last + 1; k < lines.length; k++) {
+        if (beforeHeading[k]) continue
+        const line = lines[k]
+        const unit = fenceAt.get(k)
+        const owner = outline[k].owner
+        const blank = !unit && line.trim() === ''
+        // The block the fragment's lines currently belong to: the innermost section, else the caret's block.
+        const section = sections.at(-1)
+        const container = section ? { column: section.indent + MARKER_WIDTH, nest: section.indent + INDENT_UNIT } : { column: target.contentColumn, nest: target.nestIndent }
+        let delta: number
+        if (heading[k]) {
+            // A section of its own, under the innermost open one of a lower level, else under the caret's block.
+            const level = headingLevel(line)
+            while (sections.length && sections[sections.length - 1].level >= level) sections.pop()
+            const parent = sections.at(-1)
+            const at = parent ? parent.indent + INDENT_UNIT : target.nestIndent
+            sections.push({ level, indent: at })
+            open.length = 0
+            out.push(' '.repeat(at) + '- ' + line.trimStart())
+            tailColumn = at + MARKER_WIDTH
+            endsWithFence = false
+            continue
+        }
+        if (isBulletLine(line)) {
+            // A child of the container, nested as deep as the fragment nests it.
+            const indent = lineIndent(line)
+            while (open.length && open[open.length - 1].indent >= indent) open.pop()
+            const at = container.nest + INDENT_UNIT * open.length
+            open.push({ indent, index: k })
+            delta = at - indent
+            placed.set(k, { shift: delta, column: at + MARKER_WIDTH })
+            tailColumn = at + MARKER_WIDTH
+        } else {
+            // The line of a fragment bullet still open (a soft line, a soft blank, a form-2 fence), or the
+            // container's own line (prose, a bare blank line, a fenced block of its own).
+            const at = owner >= 0 ? open.findIndex((entry) => entry.index === owner) : -1
+            const bullet = at >= 0 || (owner === 0 && sections.length === 0) ? placed.get(owner) : undefined
+            const column = bullet?.column ?? container.column
+            // How many open bullets are the owner and its ancestors: none for the container. Any open past
+            // them are the owner's children, which this line follows, so it sits at the owner's content
+            // column exactly, as its paragraph after them: any deeper is inside the last child's branch
+            // short of that child's text, where nothing owns it.
+            const depth = bullet ? at + 1 : 0
+            const afterChildren = open.length > depth
+            open.length = depth
+            tailColumn = column
+            if (blank) {
+                // A blank line has no text to keep in place: it sits at its block's content column, since
+                // one short of it is in no block.
+                out.push(' '.repeat(column))
+                endsWithFence = false
+                continue
+            }
+            // A line whose bullet a heading closed is the section's own: its indentation was that
+            // bullet's, so it sits at the section's content column exactly, as one after children does.
+            const ownerClosed = owner >= 0 && !bullet
+            if (afterChildren || ownerClosed) delta = column - lineIndent(line)
+            else delta = bullet ? bullet.shift : container.column
+        }
+        out.push(shiftLeading(line, delta))
+        endsWithFence = unit !== undefined
+        if (unit) {
+            out.push(...fenceBody(lines, unit, delta))
+            k = unit.end
+        }
     }
     // The caret line's tail follows the last pasted line; after a closing fence it takes a soft line of
     // its own, or it would become the closer's info string and dissolve the block.
@@ -316,6 +495,7 @@ function pasteTargetAt(state: EditorState, lines: string[], blocks: FencedBlockR
         emptyBullet,
         replacesMarker,
         lineMarker: emptyBullet ? line.text.slice(lineIndent(line.text), start) : newBulletMarker(line.text),
+        startsLine: !onBullet && before.trim() === '',
         after: tail,
     }
 }
@@ -347,7 +527,9 @@ export function pasteClamp(): Extension {
                 // A single line is typed text, unless it is a bullet line taking over an empty bullet or a
                 // paste over selected blocks, which are blocks either way.
                 if (!multiLine && !target.replacesMarker && !(target.emptyBullet && isBulletLine(text))) return tr
-                const { insert, replacesLine } = pastedTextAsBlocks(text, target)
+                // A Plain Paste keeps its lines in the caret's block; any other paste makes a block of each.
+                const place = tr.isUserEvent(PLAIN_PASTE_USER_EVENT) ? pastedTextAsOneBlock : pastedTextAsBlocks
+                const { insert, replacesLine } = place(text, target)
                 const start = replacesLine ? line.from : from
                 if (start === from && insert === text) return tr
                 return {

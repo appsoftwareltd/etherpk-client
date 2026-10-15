@@ -48,6 +48,12 @@ export interface SavedAsset {
      * `assets/`, a synced graph asks the server with a blinded token (ADR 0053).
      */
     reused?: boolean
+    /**
+     * True when the Sync Server could not be reached, so the file was sealed and kept on this
+     * device, to be uploaded when it can be (ADR 0143). The reference is final: the upload goes
+     * up under the id it names. Only a synced graph queues.
+     */
+    queued?: boolean
 }
 
 /**

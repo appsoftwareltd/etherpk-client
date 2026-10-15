@@ -15,6 +15,7 @@ import { managedBearerToken } from '$lib/auth/managed-token'
 import { normaliseServerOrigin } from './account-scope'
 import { DevicePasscodeLockedError, devicePasscode } from './device-passcode'
 import { createSyncApi, type SyncApi } from './sync-api'
+import { keepingVaultCopy } from './vault-copy'
 import {
     connectionKey,
     readStoredSyncConnections,
@@ -146,9 +147,13 @@ export function forgetSyncConnection(origin: string, managedBaseUrl: string | nu
     if (entry) removeStoredSyncConnection(entry.key)
 }
 
-/** A Sync API over `connection`, whose refusals say which kind of credential was refused. */
+/**
+ * A Sync API over `connection`, whose refusals say which kind of credential was refused. Every
+ * vault it reads or writes is kept as this device's copy, so a graph on that server opens when the
+ * server cannot be reached (`vault-copy.ts`).
+ */
 export function syncApiFor(connection: ResolvedSyncConnection): SyncApi {
-    return createSyncApi({ baseUrl: connection.serverBaseUrl, token: connection.token, kind: connection.kind })
+    return keepingVaultCopy(createSyncApi({ baseUrl: connection.serverBaseUrl, token: connection.token, kind: connection.kind }), connection.origin)
 }
 
 /** A Sync API for the server at `origin`, or null when this device holds no connection to it. */

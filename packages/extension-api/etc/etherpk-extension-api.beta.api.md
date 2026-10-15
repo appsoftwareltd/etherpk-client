@@ -368,6 +368,7 @@ export interface FenceOptions {
     identify?(body: readonly string[]): string | null;
     keepsHistory?: boolean;
     publish?(fence: PublishFenceRequest): PublishedFence | null | Promise<PublishedFence | null>;
+    quote?(fence: QuoteFenceRequest): PublishedFence | null | Promise<PublishedFence | null>;
     title?: string;
 }
 
@@ -508,6 +509,14 @@ export type PublishedFence = {
 // @public
 export interface PublishFenceRequest {
     readonly body: readonly string[];
+    readonly document: string;
+    readonly info: string;
+}
+
+// @public
+export interface QuoteFenceRequest {
+    readonly body: readonly string[];
+    readonly dark: boolean;
     readonly document: string;
     readonly info: string;
 }

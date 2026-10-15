@@ -132,13 +132,13 @@
      reference itself is emphasised only while highlighting. -->
 {#snippet line(text: string)}<InlineMarkdown {text} matches={emphasis} {sourcePanelId} />{/snippet}
 <!-- A whole block (a reference's body), drawn as the editor draws it: QuotedText. -->
-{#snippet quote(text: string)}<QuotedText {text} matches={emphasis} {sourcePanelId} />{/snippet}
+{#snippet quote(text: string, sourceConcept: string)}<QuotedText {text} {sourceConcept} matches={emphasis} {sourcePanelId} />{/snippet}
 
 <!-- One block of a block reference's subtree, with its children nested under it. A block with
      children hangs the editor's outline guide thread from its dot beside them (outline-guides.ts);
      a task shows its checkbox, which the index keeps apart from the text (read-only here, as
      everything in the list is). -->
-{#snippet branch(branchOf: SubtreeBranch<RefSubtreeNode>)}
+{#snippet branch(branchOf: SubtreeBranch<RefSubtreeNode>, sourceConcept: string)}
     <div
         class="ref__branch"
         class:ref__branch--parent={branchOf.children.length > 0}
@@ -163,11 +163,11 @@
                     data-done={branchOf.node.done}
                 ></span>
             {/if}
-            {@render quote(branchOf.node.text)}
+            {@render quote(branchOf.node.text, sourceConcept)}
         </div>
         {#if branchOf.children.length > 0}
             <div class="ref__children">
-                {#each branchOf.children as child, c (c)}{@render branch(child)}{/each}
+                {#each branchOf.children as child, c (c)}{@render branch(child, sourceConcept)}{/each}
             </div>
         {/if}
     </div>
@@ -223,9 +223,9 @@
                             onkeydown={(event) => onRefKeydown(event, ref)}
                         >
                             {#if ref.kind === "block"}
-                                {#each nestSubtree(ref.subtree) as root, n (n)}{@render branch(root)}{/each}
+                                {#each nestSubtree(ref.subtree) as root, n (n)}{@render branch(root, ref.sourceConcept)}{/each}
                             {:else if ref.context}
-                                <div class="ref__text">{@render quote(ref.context.text)}</div>
+                                <div class="ref__text">{@render quote(ref.context.text, ref.sourceConcept)}</div>
                             {/if}
                         </div>
                     </li>

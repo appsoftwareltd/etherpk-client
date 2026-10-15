@@ -233,6 +233,21 @@ describe("an extension's editor, dialogs and frames", () => {
         }
     })
 
+    it("tells its fences' quotes when its own settings change, and not when another's do", () => {
+        const { context, contributions, settings } = setUp()
+        context.editor.registerFence('graph-view.plan', widget, { quote: () => null })
+        context.editor.registerFence('graph-view', widget)
+        const plan = contributions.get('interactive-fence', 'graph-view.plan') as { quotesChanged?(listener: () => void): () => void }
+        const heard = vi.fn()
+        plan.quotesChanged?.(heard)
+        settings.set('extension.kanban.lanes', '3')
+        expect(heard).not.toHaveBeenCalled()
+        context.settings.set('labels', 'false')
+        expect(heard).toHaveBeenCalledTimes(1)
+        // A fence with no quote has nothing to be told.
+        expect((contributions.get('interactive-fence', 'graph-view') as { quotesChanged?: unknown }).quotesChanged).toBeUndefined()
+    })
+
     it('takes its fences back when it stops', () => {
         const { scoped, context, contributions } = setUp()
         context.editor.registerFence('graph-view.plan', widget)

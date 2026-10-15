@@ -131,6 +131,25 @@ export function createScopedContext(
     const dataPrefix = extensionDataKey(id, '')
     const recordsNow = () => JSON.stringify(client.settings.keys(dataPrefix).map((key) => [key, client.settings.get(key)]))
 
+    /**
+     * Hear when one of the extension's own settings changes, and not another's: what its fences'
+     * quotes answer may follow them, so a kept quote is asked for again (ADR 0146).
+     */
+    const settingsPrefix = extensionSettingKey(id, '')
+    const settingsNow = () => JSON.stringify(client.settings.keys(settingsPrefix).map((key) => [key, client.settings.get(key)]))
+    const ownSettingsChanged = (listener: () => void): (() => void) => {
+        if (disposed) return noop
+        let last = settingsNow()
+        return keep(
+            client.settings.subscribe(() => {
+                const now = settingsNow()
+                if (now === last) return
+                last = now
+                listener()
+            }),
+        )
+    }
+
     const context: ExtensionContext = {
         extensionId: id,
         graphId: graph.graphId,
@@ -308,7 +327,7 @@ export function createScopedContext(
                 const owned = dot === -1 ? info === id : info.slice(0, dot) === id && FENCE_NAME.test(info.slice(dot + 1))
                 if (!owned) throw new Error(`A fence's info word must be "${id}" or "${id}.<name>", not "${info}".`)
                 if (disposed) return noop
-                const fence = toInteractiveFence(manifest.displayName, widget, options, fenceIsolation)
+                const fence = toInteractiveFence(manifest.displayName, widget, options, fenceIsolation, ownSettingsChanged)
                 return keep(graph.contributions.register(INTERACTIVE_FENCE_KIND, info, fence))
             },
             insertBlock: (text, options) => (disposed ? false : graph.editor.insertBlock(text, options)),

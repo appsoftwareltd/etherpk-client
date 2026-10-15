@@ -51,6 +51,7 @@
         findFolderOwner,
         openAsLocalGraphRefusal,
     } from "$lib/storage/server/mirror-takeover";
+    import { deleteAssetCopies } from "$lib/storage/server/asset-copies";
     import {
         discardIndexPool,
         discardUnlistedIndexPools,
@@ -3057,6 +3058,8 @@
                             confirmedFingerprint,
                         );
                         await deleteGraphCache(accepted.graphId);
+                        // Its kept files and queued uploads too, so none is sent into the graph rejoined (ADR 0143).
+                        await deleteAssetCopies(accepted.graphId);
                     },
                 });
                 if (outcome.kind === "confirm" || !accepted) {

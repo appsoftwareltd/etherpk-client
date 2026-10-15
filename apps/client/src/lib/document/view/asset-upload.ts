@@ -99,6 +99,11 @@ export interface UploadOutcome {
     givenBytes: number
     /** The bytes actually stored: less than `givenBytes` by what optimisation saved. */
     storedBytes: number
+    /**
+     * Of `uploaded`, how many a synced graph kept on this device because the Sync Server could
+     * not be reached (ADR 0143): referenced already, uploaded later.
+     */
+    queued: number
 }
 
 export interface UploadOptions {
@@ -148,7 +153,8 @@ export async function uploadAndInsert(
     let optimized = 0
     let givenBytes = 0
     let storedBytes = 0
-    const outcome = (cancelled: boolean): UploadOutcome => ({ uploaded, reused, cancelled, optimized, givenBytes, storedBytes })
+    let queued = 0
+    const outcome = (cancelled: boolean): UploadOutcome => ({ uploaded, reused, cancelled, optimized, givenBytes, storedBytes, queued })
 
     // Encodes run one at a time, whatever the upload concurrency: a decoded image is
     // width × height × 4 bytes, and six 12-megapixel canvases at once is a phone's whole
@@ -200,6 +206,7 @@ export async function uploadAndInsert(
                 givenBytes += given
                 storedBytes += stored
                 if (wasOptimized) optimized += 1
+                if (asset.queued) queued += 1
             }
         }
     }

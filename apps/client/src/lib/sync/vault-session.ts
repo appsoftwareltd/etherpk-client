@@ -7,6 +7,12 @@
  *
  * With a Device Passcode set (ADR 0129) each cached key is stored sealed under it, and read from
  * the memory of a tab that has been unlocked (`device-passcode.ts`).
+ *
+ * Beside each key the device keeps a copy of the account's vault as the server last sent it, so a
+ * synced graph opens when its server cannot be reached (`vault-copy.ts`). The copy is ciphertext
+ * the cached key opens, kept in the same partition and removed with the key, so the two are held
+ * or lost together. This module is the one place both are stored, which is what a platform with a
+ * secure key store of its own would replace.
  */
 import { fromBase64Url, toBase64Url } from '$lib/crypto'
 import { readSyncAccount } from './account-scope'
@@ -18,23 +24,40 @@ import { UnlockCancelledError, VaultLockedError } from './vault-locked'
 const LEGACY_KEY = 'etherpk:vault-wrap-key'
 /** Every account's cached key is stored under this prefix, scoped by server and account. */
 const SCOPED_PREFIX = `${LEGACY_KEY}:`
+/**
+ * Every account's vault copy is stored under this prefix, in the same partition as its key. A
+ * different prefix from the key's, so the Device Passcode, which seals every entry under that
+ * one, leaves the copy as it is: it is ciphertext already, and the key it needs is what is sealed.
+ */
+const COPY_PREFIX = 'etherpk:vault-copy:'
 
-function scopedKey(serverOrigin: string): string | null {
+/** The partition of the account confirmed on `serverOrigin`, or null when none is. */
+function accountPartition(serverOrigin: string): { name: string; principalId: string } | null {
     const account = readSyncAccount(serverOrigin)
     return account
-        ? `${SCOPED_PREFIX}${encodeURIComponent(account.serverOrigin)}:${encodeURIComponent(account.principalId)}`
+        ? { name: `${encodeURIComponent(account.serverOrigin)}:${encodeURIComponent(account.principalId)}`, principalId: account.principalId }
         : null
 }
 
-/** The storage keys of every account's cached vault key. */
-function heldKeyNames(): string[] {
+function scopedKey(serverOrigin: string): string | null {
+    const partition = accountPartition(serverOrigin)
+    return partition ? `${SCOPED_PREFIX}${partition.name}` : null
+}
+
+/** The storage keys under `prefix`: every account's cached vault key, or every vault copy. */
+function storedNames(prefix: string): string[] {
     if (typeof localStorage === 'undefined') return []
     const held: string[] = []
     for (let index = 0; index < localStorage.length; index++) {
         const key = localStorage.key(index)
-        if (key?.startsWith(SCOPED_PREFIX)) held.push(key)
+        if (key?.startsWith(prefix)) held.push(key)
     }
     return held
+}
+
+/** The storage keys of every account's cached vault key. */
+function heldKeyNames(): string[] {
+    return storedNames(SCOPED_PREFIX)
 }
 
 // The cached vault keys are secrets the Device Passcode seals, opens and removes as a set.
@@ -134,6 +157,7 @@ export function lockEveryVault(): void {
         // Every tab drops it from memory too, where a Device Passcode keeps it.
         devicePasscode.forget(key)
     }
+    for (const copy of storedNames(COPY_PREFIX)) localStorage.removeItem(copy)
 }
 
 /** Lock the account on `serverOrigin` without touching keys cached for any other account or server. */
@@ -143,6 +167,55 @@ export function lockVault(serverOrigin: string): void {
     if (!key || typeof localStorage === 'undefined') return
     localStorage.removeItem(key)
     devicePasscode.forget(key)
+    forgetVaultCopy(serverOrigin)
+}
+
+/** The account's vault as its Sync Server last sent it: the sealed blob, its version and its account. */
+export interface VaultCopy {
+    vault: string
+    version: number
+    principalId: string
+}
+
+function copyName(serverOrigin: string): { name: string; principalId: string } | null {
+    const partition = accountPartition(serverOrigin)
+    return partition ? { name: `${COPY_PREFIX}${partition.name}`, principalId: partition.principalId } : null
+}
+
+/**
+ * Keep `copy` as the vault of the account confirmed on `serverOrigin`, replacing any older one. A
+ * vault that names another account is not kept: the server answered for someone else.
+ */
+export function keepVaultCopy(serverOrigin: string, copy: VaultCopy): void {
+    const target = copyName(serverOrigin)
+    if (!target || target.principalId !== copy.principalId || typeof localStorage === 'undefined') return
+    try {
+        localStorage.setItem(target.name, JSON.stringify({ vault: copy.vault, version: copy.version, principalId: copy.principalId }))
+    } catch (error) {
+        // A full storage quota: the copy is only for opening offline, and the server still has the vault.
+        console.warn('[keys] could not keep a copy of the vault on this device', error)
+    }
+}
+
+/** The vault copy of the account confirmed on `serverOrigin`, or null when none is kept or it is damaged. */
+export function readVaultCopy(serverOrigin: string): VaultCopy | null {
+    const target = copyName(serverOrigin)
+    if (!target || typeof localStorage === 'undefined') return null
+    const raw = localStorage.getItem(target.name)
+    if (!raw) return null
+    try {
+        const parsed = JSON.parse(raw) as Partial<VaultCopy>
+        if (typeof parsed.vault !== 'string' || typeof parsed.version !== 'number' || parsed.principalId !== target.principalId) return null
+        return { vault: parsed.vault, version: parsed.version, principalId: parsed.principalId }
+    } catch {
+        return null
+    }
+}
+
+/** Remove the vault copy of the account confirmed on `serverOrigin`, as when the account has no vault. */
+export function forgetVaultCopy(serverOrigin: string): void {
+    const target = copyName(serverOrigin)
+    if (target && typeof localStorage !== 'undefined') localStorage.removeItem(target.name)
 }
 
 export { UnlockCancelledError, VaultLockedError }

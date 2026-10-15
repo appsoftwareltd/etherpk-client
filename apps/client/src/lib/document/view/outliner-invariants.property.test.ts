@@ -18,7 +18,7 @@ import { frontmatterLines } from '$lib/storage/fs/frontmatter-span'
 
 import { fencedBlocks, fenceLineInfo } from '../fenced-code'
 import { normaliseIndentUnit, outlineLines } from '../indent-unit'
-import { bulletContent, contentStart, formOneOpeners, isBulletLine, lineIndent, markerLength, opaqueLineFlags, parentIndex } from '../outliner'
+import { branchRange, bulletContent, contentStart, formOneOpeners, isBulletLine, lineIndent, markerLength, opaqueLineFlags, ownerBulletIndex, parentIndex } from '../outliner'
 import { analysisFor } from './analysis/editor-analysis'
 import { interactiveFenceAugmentation } from './augmentations/interactive-fence'
 import { type InteractiveFence, registerInteractiveFence } from './augmentations/interactive-fence-contract'
@@ -26,6 +26,7 @@ import { collapsedInteractiveFences, interactiveFences } from './augmentations/i
 import { isBlockSelection, snappedBlockSelection } from './block-select'
 import { clampColumn } from './caret-clamp'
 import { toggleBullet } from './outliner-keymap'
+import { PLAIN_PASTE_USER_EVENT } from './paste-clamp'
 import { bulletToggleable } from './task-toggleable'
 import { editorFixture, type HeadlessEditor } from './testing/editor-state-fixture'
 
@@ -539,6 +540,33 @@ describe('outliner invariants under random key sequences', { timeout: 30_000 }, 
                 const after = editor.text().split('\n')
                 expect(fencesBalanced(after)).toBeGreaterThanOrEqual(fences)
                 expect(noOrphans(after)).toBe(true)
+            }),
+            fuzz(300),
+        )
+    })
+
+    it('a multi-line Plain Paste keeps every pasted line in the caret’s block, and creates no orphan', () => {
+        // The 2026-10-14 amendment to ADR 0089: whatever indentation, bullet or heading mark a fragment's
+        // lines carry, each lands as the caret's block's own line or inside one of its pasted children (a
+        // heading as a block owning its section), so the outline reads every one of them as inside the
+        // block. Fence lines are out of scope, as above.
+        const fragment = fc
+            .array(fc.stringMatching(/^ {0,5}(- |#{1,3} )?[a-z]{0,5}$/), { minLength: 2, maxLength: 6 })
+            .map((l) => l.join('\n'))
+        fc.assert(
+            fc.property(outlineArb, fc.double({ min: 0, max: 1, noNaN: true }), fragment, (outline, caretAt, text) => {
+                const editor = editorFor(outline, caretAt)
+                const lines = editor.text().split('\n')
+                const index = editor.state.doc.lineAt(editor.head()).number - 1
+                if (fencedBlocks(lines).some((b) => index >= b.start && index <= b.end)) return
+                const owner = ownerBulletIndex(lines, index)
+                if (owner === null) return
+                editor.paste(text, PLAIN_PASTE_USER_EVENT)
+                const after = editor.text().split('\n')
+                expect(noOrphans(after)).toBe(true)
+                const last = editor.state.doc.lineAt(editor.head()).number - 1
+                expect(last, JSON.stringify({ text, after })).toBeLessThanOrEqual(branchRange(after, owner).end)
+                for (let i = owner; i <= last; i++) expect(ownerBulletIndex(after, i), JSON.stringify({ i, text, after })).not.toBeNull()
             }),
             fuzz(300),
         )

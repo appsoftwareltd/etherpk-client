@@ -169,4 +169,13 @@ describe('uploadDetail', () => {
             '2 assets uploaded, 1 already in this graph, reused, 2 KiB → 900 B',
         )
     })
+
+    it('says a file kept on this device uploads later, rather than claim it was uploaded', () => {
+        expect(uploadDetail({ uploaded: 1, reused: 0, optimized: 0, givenBytes: 10, storedBytes: 10, queued: 1 })).toBe(
+            '1 asset saved on this device, to upload when the sync server can be reached',
+        )
+        expect(uploadDetail({ uploaded: 3, reused: 1, optimized: 0, givenBytes: 10, storedBytes: 10, queued: 1 })).toBe(
+            '1 asset uploaded, 1 already in this graph, reused, 1 saved on this device, to upload when the sync server can be reached',
+        )
+    })
 })

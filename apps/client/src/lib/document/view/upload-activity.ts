@@ -85,14 +85,24 @@ export function startAssetUpload(
  * never happened. When a stored file was optimised (ADR 0080) the bytes that moved follow, before
  * and after - "3.1 MB → 480.0 KB" - which is the only place a user sees what it did, the dialog
  * having closed. The outcome's figures already leave reused files out (nothing moved for them),
- * so an all-reused batch has no saving to show.
+ * so an all-reused batch has no saving to show. A file a synced graph kept on this device for
+ * want of the server (ADR 0143) is said to be saved here, to upload later, never "uploaded".
  */
-export function uploadDetail(outcome: Omit<UploadOutcome, 'cancelled'>): string {
+export function uploadDetail(outcome: Omit<UploadOutcome, 'cancelled' | 'queued'> & { queued?: number }): string {
     const { uploaded, reused, optimized, givenBytes, storedBytes } = outcome
+    const queued = outcome.queued ?? 0
     const plural = (n: number) => (n === 1 ? 'asset' : 'assets')
-    const fresh = uploaded - reused
+    const fresh = uploaded - reused - queued
     const saving = optimized > 0 ? `, ${formatBytes(givenBytes)} → ${formatBytes(storedBytes)}` : ''
-    if (reused === 0) return `${uploaded} ${plural(uploaded)} uploaded${saving}`
-    if (fresh === 0) return `${reused} ${plural(reused)} already in this graph, reused`
-    return `${fresh} ${plural(fresh)} uploaded, ${reused} already in this graph, reused${saving}`
+    // The first part names the noun ("2 assets"); the rest are counts of the same assets.
+    const parts = [
+        ...(fresh > 0 ? [{ count: fresh, says: 'uploaded' }] : []),
+        ...(reused > 0 ? [{ count: reused, says: 'already in this graph, reused' }] : []),
+        ...(queued > 0 ? [{ count: queued, says: 'saved on this device, to upload when the sync server can be reached' }] : []),
+    ]
+    if (parts.length === 0) return `${uploaded} ${plural(uploaded)} uploaded${saving}`
+    const [first, ...rest] = parts
+    const said = [`${first.count} ${plural(first.count)} ${first.says}`, ...rest.map((part) => `${part.count} ${part.says}`)].join(', ')
+    // An all-reused batch moved no bytes, so it has no saving to show.
+    return fresh === 0 && queued === 0 ? said : `${said}${saving}`
 }

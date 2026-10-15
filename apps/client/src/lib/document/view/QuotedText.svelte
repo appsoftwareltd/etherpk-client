@@ -3,8 +3,9 @@
      * A block of another document's text, quoted read-only and drawn as the editor draws it with
      * the caret elsewhere: its lines through `InlineMarkdown`, headings at their size, a quote on
      * its panel, a rule, a table as the editor's grid, and fenced code on its code panel (or drawn
-     * by its renderer, a `mermaid` or `math` fence, or as a picture of the map for a `map` fence,
-     * where the editor draws a live Map Block). What the Backlinks panel shows for a reference's
+     * by its renderer, a `mermaid` or `math` fence, as a picture of the map for a `map` fence,
+     * where the editor draws a live Map Block, or as its extension quotes it for a fence an
+     * extension draws, `QuotedFence.svelte`). What the Backlinks panel shows for a reference's
      * body. The reading is `quote-segments.ts`; this is only the markup and the styles,
      * which mirror the editor's value for value (markdown-format.ts, markdown-table.ts).
      *
@@ -16,18 +17,22 @@
     import { type QuoteLine, quoteSegments } from "../quote-segments";
     import InlineMarkdown from "./InlineMarkdown.svelte";
     import QuotedCode from "./QuotedCode.svelte";
+    import QuotedFence from "./QuotedFence.svelte";
     import QuotedMap from "./QuotedMap.svelte";
     import { quotedMapPictures } from "./quoted-map-pictures";
     import RenderedSource from "./RenderedSource.svelte";
 
     let {
         text,
+        /** The document the text is quoted from, which an extension quoting a fence is told. */
+        sourceConcept,
         /** Passed through to `InlineMarkdown`: the concept the host is emphasising, if any. */
         matches,
         /** Passed through to `InlineMarkdown`: the panel whose Pane a wikilink opens in. */
         sourcePanelId,
     }: {
         text: string;
+        sourceConcept: string;
         matches?: (concept: string) => boolean;
         sourcePanelId?: string;
     } = $props();
@@ -49,17 +54,20 @@
      string has no other identity. -->
 {#each segments as segment, i (`${i}-${segment.kind}`)}
     {#if segment.kind === "code"}
-        <!-- A fence the maps extension draws as a picture (a `map` fence), else one an Augmentation
-             renderer draws, else code. -->
+        <!-- A fence the maps extension draws as a picture (a `map` fence), else one an extension
+             quotes (QuotedFence: an Extension Fence is never shown as code), else one an
+             Augmentation renderer draws, else code. -->
         {@const pictures = quotedMapPictures(segment.lang)}
         {#if pictures}
             <QuotedMap source={segment.code} {pictures}>
                 <QuotedCode lang={segment.lang} code={segment.code} />
             </QuotedMap>
         {:else}
-            <RenderedSource info={segment.lang} source={segment.code}>
-                <QuotedCode lang={segment.lang} code={segment.code} />
-            </RenderedSource>
+            <QuotedFence info={segment.lang} code={segment.code} {sourceConcept}>
+                <RenderedSource info={segment.lang} source={segment.code}>
+                    <QuotedCode lang={segment.lang} code={segment.code} />
+                </RenderedSource>
+            </QuotedFence>
         {/if}
     {:else if segment.kind === "quote"}
         <div class="quoted-quote" data-testid="reference-quote">

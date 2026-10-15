@@ -14,6 +14,7 @@ import { parseFrontmatter } from '$lib/storage/fs/frontmatter'
 
 import { backlinksFor, conceptKey } from '../backlinks/backlink-index'
 import { extensionOfFence, isExtensionFenceInfo } from '../extension-fence'
+import { checkedFenceAnswer } from '../fence-answer'
 import { MAP_FENCE_INFO, mapAltText } from '../map-text'
 import { wikilinkOccurrencesInSource } from '../wikilink/source'
 import { searchIndexJson, searchIndexScript, sitemapXml, feedXml, type SearchEntry, type FeedItem, type SitemapEntry } from './derived'
@@ -116,21 +117,11 @@ function bodyLines(code: string): string[] {
 
 const PICTURE_EXTENSIONS = { 'image/svg+xml': 'svg', 'image/png': 'png', 'image/webp': 'webp' } as const
 
-/** An `https` address as written, or null for any other. */
-function httpsAddress(value: unknown): string | null {
-    if (typeof value !== 'string') return null
-    try {
-        return new URL(value).protocol === 'https:' ? value : null
-    } catch {
-        return null
-    }
-}
-
 /**
- * What an extension's `publish` answered for a fence, checked, its picture kept for the site under
- * a name taken from its bytes: a picture, a link (`https` only, as is any picture in it), null when
- * it is left out, or undefined when it could not be made, after which an ordinary fence is published
- * as code and an Extension Fence left out, with a warning either way.
+ * What an extension's `publish` answered for a fence, checked (`fence-answer.ts`), its picture kept
+ * for the site under a name taken from its bytes: a picture, a link (`https` only, as is any picture
+ * in it), null when it is left out, or undefined when it could not be made, after which an ordinary
+ * fence is published as code and an Extension Fence left out, with a warning either way.
  */
 async function publishedFence(
     asked: Promise<PublishedFenceOutput | null>,
@@ -140,28 +131,20 @@ async function publishedFence(
     warnings: PublishIssue[],
 ): Promise<FenceOutputRef | null | undefined> {
     try {
-        const out = await asked
+        // Checked as a quote's answer is (fence-answer.ts): read once, bytes copied, https links only.
+        const out = checkedFenceAnswer(await asked)
         if (out === null) return null
         if (out.kind === 'picture') {
-            const extension = PICTURE_EXTENSIONS[out.type]
-            if (!(out.bytes instanceof Uint8Array) || !extension) throw new Error('its picture is not an SVG, PNG or WebP file')
             const digest = await crypto.subtle.digest('SHA-256', out.bytes as Uint8Array<ArrayBuffer>)
             const name = [...new Uint8Array(digest)]
                 .slice(0, 8)
                 .map((byte) => byte.toString(16).padStart(2, '0'))
                 .join('')
-            const path = `pictures/${name}.${extension}`
+            const path = `pictures/${name}.${PICTURE_EXTENSIONS[out.type]}`
             pictures.set(path, out.bytes)
-            return { kind: 'picture', src: path, alt: String(out.alt ?? ''), width: Math.round(out.width), height: Math.round(out.height) }
+            return { kind: 'picture', src: path, alt: out.alt, width: Math.round(out.width), height: Math.round(out.height) }
         }
-        if (out.kind === 'link') {
-            const href = httpsAddress(out.href)
-            if (!href) throw new Error('its link is not an https address')
-            const src = httpsAddress(out.image?.src)
-            const image = src && out.image ? { src, alt: String(out.image.alt ?? ''), width: out.image.width, height: out.image.height } : undefined
-            return { kind: 'link', href, text: String(out.text ?? href), ...(image ? { image } : {}) }
-        }
-        throw new Error('it answered with something that is neither a picture nor a link')
+        return { kind: 'link', href: out.href, text: out.text, ...(out.image ? { image: out.image } : {}) }
     } catch (error) {
         const why = error instanceof Error ? error.message : String(error)
         const extensionFence = isExtensionFenceInfo(info)

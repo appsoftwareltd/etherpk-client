@@ -10,8 +10,9 @@
 
 import katexCss from 'katex/dist/katex.min.css?raw'
 
-import { cleanedSvgFile } from '../../../security/svg-file'
+import { cleanedFencePicture } from '../../../security/svg-file'
 
+import { checkedFenceAnswer } from '../../fence-answer'
 import { mermaidRenderer } from '../../view/augmentations/renderers/mermaid-renderer'
 import type { MapPictureRenderer } from '../map-picture-renderer'
 import type { PublishedFenceOutput, PublishEnvironment } from '../publish'
@@ -65,15 +66,6 @@ async function katexAssets(): Promise<Map<string, string | Uint8Array>> {
     return katexAssetsPromise
 }
 
-/** An extension's answer with an SVG picture cleaned for the site; any other answer as it is. */
-function cleanedPicture(out: PublishedFenceOutput | null): PublishedFenceOutput | null {
-    // Anything not a picture's bytes is checked, and refused, by the publisher.
-    if (out?.kind !== 'picture' || out.type !== 'image/svg+xml' || !(out.bytes instanceof Uint8Array)) return out
-    const svg = cleanedSvgFile(new TextDecoder().decode(out.bytes))
-    if (svg === null) throw new Error('its picture is not an SVG file the Client could check')
-    return { ...out, bytes: new TextEncoder().encode(svg) }
-}
-
 export interface BrowserEnvironmentDeps {
     /** The graph's theme container lookup. */
     graphTheme(id: string): Promise<GraphTheme | null>
@@ -112,8 +104,9 @@ export function createBrowserPublishEnvironment(deps: BrowserEnvironmentDeps): P
         publishFence(fence) {
             const publish = deps.fencePublisher?.(fence.info)
             if (!publish) return undefined
-            // Whatever the extension does, the publisher gets a promise it can wait on and catch.
-            return (async () => cleanedPicture(await publish(fence)))()
+            // Whatever the extension does, the publisher gets a promise it can wait on and catch. The
+            // answer is checked before its SVG is cleaned, so what is cleaned is what is published.
+            return (async () => cleanedFencePicture(checkedFenceAnswer(await publish(fence))))()
         },
         katexAssets,
     }

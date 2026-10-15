@@ -6,10 +6,13 @@ import type { SyncApi } from './sync-api'
 import { DevicePasscodeLockedError, devicePasscode } from './device-passcode'
 import {
     VaultLockedError,
+    forgetVaultCopy,
     getVaultWrapKey,
     isVaultUnlocked,
+    keepVaultCopy,
     lockEveryVault,
     lockVault,
+    readVaultCopy,
     requireVaultWrapKey,
     setVaultWrapKey,
     unlockWithRecoveryCode,
@@ -213,4 +216,97 @@ describe('vault-session', () => {
         expect(getVaultWrapKey(MANAGED)).toBeNull()
         expect(localStorage.getItem('etherpk-recents:graph-1')).toBe('kept')
     })
+})
+
+describe('the vault copy kept for opening graphs offline', () => {
+    const copyA = { vault: 'sealed-vault-a', version: 3, principalId: 'principal-a' }
+
+    it("keeps the vault under the account confirmed on that server, and reads it back", () => {
+        setSyncAccount(accountA)
+        keepVaultCopy(MANAGED, copyA)
+        expect(readVaultCopy(MANAGED)).toEqual(copyA)
+    })
+
+    it('keeps no copy of a vault that belongs to an account other than the one confirmed there', () => {
+        setSyncAccount(accountA)
+        keepVaultCopy(MANAGED, { ...copyA, principalId: 'principal-b' })
+        expect(readVaultCopy(MANAGED)).toBeNull()
+
+        clearSyncAccount(MANAGED)
+        keepVaultCopy(MANAGED, copyA)
+        setSyncAccount(accountA)
+        expect(readVaultCopy(MANAGED)).toBeNull()
+    })
+
+    it("does not read one account's copy after another account signs in on the same server", () => {
+        setSyncAccount(accountA)
+        keepVaultCopy(MANAGED, copyA)
+        setSyncAccount(accountB)
+        expect(readVaultCopy(MANAGED)).toBeNull()
+        setSyncAccount(accountA)
+        expect(readVaultCopy(MANAGED)).toEqual(copyA)
+    })
+
+    it('replaces the copy with a newer one, and forgets it when the account has no vault', () => {
+        setSyncAccount(accountA)
+        keepVaultCopy(MANAGED, copyA)
+        keepVaultCopy(MANAGED, { ...copyA, vault: 'sealed-vault-a2', version: 4 })
+        expect(readVaultCopy(MANAGED)?.version).toBe(4)
+
+        forgetVaultCopy(MANAGED)
+        expect(readVaultCopy(MANAGED)).toBeNull()
+    })
+
+    it('reads a damaged copy as none', () => {
+        setSyncAccount(accountA)
+        keepVaultCopy(MANAGED, copyA)
+        const name = [...Array(localStorage.length)].map((_, index) => localStorage.key(index)).find((key) => key?.startsWith('etherpk:vault-copy:'))!
+        localStorage.setItem(name, '{"vault":42}')
+        expect(readVaultCopy(MANAGED)).toBeNull()
+        localStorage.setItem(name, 'not json')
+        expect(readVaultCopy(MANAGED)).toBeNull()
+    })
+
+    it('locking a vault removes its copy with its key, and leaves other servers alone', () => {
+        setSyncAccount(accountA)
+        setSyncAccount(teamAccount)
+        setVaultWrapKey(MANAGED, new Uint8Array(32).fill(1))
+        keepVaultCopy(MANAGED, copyA)
+        keepVaultCopy(TEAM, { vault: 'sealed-vault-team', version: 1, principalId: 'principal-team' })
+
+        lockVault(MANAGED)
+
+        expect(readVaultCopy(MANAGED)).toBeNull()
+        expect(readVaultCopy(TEAM)?.vault).toBe('sealed-vault-team')
+    })
+
+    it('locking every vault removes every copy, for every account, and nothing else', () => {
+        setSyncAccount(accountA)
+        keepVaultCopy(MANAGED, copyA)
+        setSyncAccount(teamAccount)
+        keepVaultCopy(TEAM, { vault: 'sealed-vault-team', version: 1, principalId: 'principal-team' })
+        setSyncAccount(accountB)
+        keepVaultCopy(MANAGED, { vault: 'sealed-vault-b', version: 1, principalId: 'principal-b' })
+        localStorage.setItem('etherpk-recents:graph-1', 'kept')
+
+        lockEveryVault()
+
+        expect(readVaultCopy(MANAGED)).toBeNull()
+        expect(readVaultCopy(TEAM)).toBeNull()
+        setSyncAccount(accountA)
+        expect(readVaultCopy(MANAGED)).toBeNull()
+        expect(localStorage.getItem('etherpk-recents:graph-1')).toBe('kept')
+    })
+
+    it('is ciphertext the Device Passcode leaves as it is: the vault key it needs is what the passcode seals', async () => {
+        setSyncAccount(accountA)
+        setVaultWrapKey(MANAGED, new Uint8Array(32).fill(5))
+        keepVaultCopy(MANAGED, copyA)
+
+        await devicePasscode.set('1234')
+        devicePasscode.lock()
+
+        expect(readVaultCopy(MANAGED)).toEqual(copyA)
+        expect(getVaultWrapKey(MANAGED)).toBeNull()
+    }, 30_000)
 })

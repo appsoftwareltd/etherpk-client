@@ -72,6 +72,7 @@ describe('uploadAndInsert', () => {
             optimized: 0,
             givenBytes: COUNT * 10,
             storedBytes: COUNT * 10,
+            queued: 0,
         })
         expect(inserts.map((i) => i.insert)).toEqual(
             Array.from({ length: COUNT }, (_, n) => `[doc${n}](../assets/doc${n}.pdf)`),
@@ -103,9 +104,30 @@ describe('uploadAndInsert', () => {
         }
         const result = await uploadAndInsert(view, store, [file('new.pdf'), file('again.pdf')], 0)
         // The byte figures cover only what was stored: the reused file moved nothing.
-        expect(result).toEqual({ uploaded: 2, reused: 1, cancelled: false, optimized: 0, givenBytes: 10, storedBytes: 10 })
+        expect(result).toEqual({ uploaded: 2, reused: 1, cancelled: false, optimized: 0, givenBytes: 10, storedBytes: 10, queued: 0 })
         // A reused asset is still referenced in the document exactly like a fresh one.
         expect(inserts.map((i) => i.insert)).toEqual(['[new](../assets/new.pdf)', '[again](../assets/again.pdf)'])
+    })
+
+    it('counts the files kept on this device to upload later (queued), and references them like any other', async () => {
+        // A synced graph with no server to reach seals the file and keeps it on the device (ADR 0143).
+        const { view, inserts } = fakeView()
+        const store: AssetStore = {
+            async save({ name }): Promise<SavedAsset> {
+                const stem = name.replace(/\.pdf$/, '')
+                return { ref: `../assets/${name}`, name, stem, isImage: false, queued: stem === 'later' }
+            },
+            async readBytes() {
+                return null
+            },
+            async resolve() {
+                return null
+            },
+            dispose() {},
+        }
+        const result = await uploadAndInsert(view, store, [file('now.pdf'), file('later.pdf')], 0)
+        expect(result).toEqual({ uploaded: 2, reused: 0, cancelled: false, optimized: 0, givenBytes: 20, storedBytes: 20, queued: 1 })
+        expect(inserts.map((i) => i.insert)).toEqual(['[now](../assets/now.pdf)', '[later](../assets/later.pdf)'])
     })
 
     it('uploads in parallel, bounded by the limit', async () => {
@@ -424,7 +446,7 @@ describe('uploadAndInsert with an image optimiser (ADR 0080)', () => {
 
         const result = await uploadAndInsert(view, store, files, 0, { optimize: halvingOptimizer })
 
-        expect(result).toEqual({ uploaded: 3, reused: 0, cancelled: false, optimized: 2, givenBytes: 160, storedBytes: 90 })
+        expect(result).toEqual({ uploaded: 3, reused: 0, cancelled: false, optimized: 2, givenBytes: 160, storedBytes: 90, queued: 0 })
     })
 
     it('shrinks the reported total by each saving as it is found, ending with done equal to total', async () => {
@@ -478,7 +500,7 @@ describe('uploadAndInsert with an image optimiser (ADR 0080)', () => {
 
         const result = await uploadAndInsert(view, store, files, 0, { optimize: halvingOptimizer })
 
-        expect(result).toEqual({ uploaded: 2, reused: 1, cancelled: false, optimized: 0, givenBytes: 20, storedBytes: 20 })
+        expect(result).toEqual({ uploaded: 2, reused: 1, cancelled: false, optimized: 0, givenBytes: 20, storedBytes: 20, queued: 0 })
     })
 
     it('cancelling stops the encodes still queued: a file whose turn had not come is neither encoded nor saved', async () => {

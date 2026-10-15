@@ -49,6 +49,7 @@ export type {
     MountedFence,
     PublishedFence,
     PublishFenceRequest,
+    QuoteFenceRequest,
 } from './editor'
 export type { ExtensionEmbeds, FrameOptions } from './embeds'
 export type { ExtensionEventName, ExtensionEventPayloads, ExtensionEvents } from './events'

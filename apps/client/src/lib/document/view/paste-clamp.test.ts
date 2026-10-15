@@ -6,10 +6,10 @@
 
 import { describe, expect, it } from 'vitest'
 
-import { clampPastedText, healPastedBullets, healPastedTree, pasteClamp } from './paste-clamp'
+import { clampPastedText, healPastedBullets, healPastedTree, pasteClamp, PLAIN_PASTE_USER_EVENT } from './paste-clamp'
 import { editorFixture } from './testing/editor-state-fixture'
 
-function paste(before: string, text: string, event: 'input.paste' | 'input.drop' = 'input.paste'): string {
+function paste(before: string, text: string, event: 'input.paste' | 'input.drop' | typeof PLAIN_PASTE_USER_EVENT = 'input.paste'): string {
     const editor = editorFixture(before)
     editor.paste(text, event)
     return editor.fixture()
@@ -155,6 +155,7 @@ describe('paste into a block: a block per line', () => {
         { rule: 'a fenced block owned by no bullet is one block of its own', precedent: 'EtherPK', before: '- |', text: 'Install\n```\nnpm i\n```\nRun', after: '- Install\n- ```\n  npm i\n  ```\n- Run|' },
         { rule: 'a fence pasted onto an empty bullet is the bullet’s own fence', precedent: 'EtherPK', before: '- |', text: '```\ncode\n```', after: '- ```\n  code\n  ```|' },
         { rule: 'a fence pasted after a block’s text starts on its own line inside the block', precedent: 'EtherPK', before: '- a|', text: '```\ncode\n```', after: '- a\n  ```\n  code\n  ```|' },
+        { rule: 'a pasted bullet’s own fence after the block’s text starts on its own line inside the block, never as the block’s text', precedent: 'EtherPK', before: '- a|\n  - c', text: '- ```\n    - z\n  ```', after: '- a\n  ```\n    - z\n  ```|\n  - c' },
         { rule: 'text after the caret takes a soft line of its own after a pasted fence, never the closer’s info string', precedent: 'EtherPK', before: '- a|b', text: '```\ncode\n```', after: '- a\n  ```\n  code\n  ```\n  |b' },
         { rule: 'the same after a pasted block’s own fence', precedent: 'EtherPK', before: '- a|b', text: 'x\n- y\n  ```\n  code\n  ```', after: '- ax\n  - y\n    ```\n    code\n    ```\n    |b' },
     ]
@@ -182,6 +183,81 @@ describe('paste into a block: a block per line', () => {
         const editor = editorFixture('- a|\n- b')
         editor.paste('one\n- two\nthree')
         expect(editor.fixture()).toBe('- aone\n  - two\n- three|\n- b')
+        editor.key('Mod-z')
+        expect(editor.fixture()).toBe('- a|\n- b')
+    })
+})
+
+/**
+ * A [[Plain Paste]] into an outliner block (Editor Content Rules → *Pasting into a block*, the
+ * 2026-10-14 amendment to ADR 0089): the browser's paste-as-plain-text shortcut keeps the lines in
+ * the caret's block, every line after the first a continuation line. A pasted bullet line is still a
+ * bullet, nested under the block, because markdown has no other reading of it.
+ */
+describe('Plain Paste into a block: one block', () => {
+    const rows: { rule: string; precedent: 'Logseq' | 'EtherPK'; before: string; text: string; after: string }[] = [
+        { rule: 'the lines after the first become the block’s continuation lines', precedent: 'Logseq', before: '- a|', text: 'one\ntwo\nthree', after: '- aone\n  two\n  three|' },
+        { rule: 'onto an empty bullet, the first line is its text', precedent: 'Logseq', before: '- |', text: 'one\ntwo', after: '- one\n  two|' },
+        { rule: 'text after the caret follows the last pasted line, as typing would leave it', precedent: 'EtherPK', before: '- a|b', text: 'one\ntwo', after: '- aone\n  two|b' },
+        { rule: 'a blank line between pasted lines is a blank continuation line, so both paragraphs stay in the block', precedent: 'EtherPK', before: '- |', text: 'one\n\ntwo', after: '- one\n  \n  two|' },
+        { rule: 'blank lines at the start and the end of the fragment are dropped', precedent: 'EtherPK', before: '- a|', text: '\n\none\ntwo\n\n', after: '- aone\n  two|' },
+        { rule: 'a line’s own indentation past the first line’s is kept', precedent: 'EtherPK', before: '- a|', text: 'one\n  two\nthree', after: '- aone\n    two\n  three|' },
+        { rule: 'in a task, the lines sit at the content column, as Shift+Enter puts them', precedent: 'EtherPK', before: '- [ ] a|', text: 'one\ntwo', after: '- [ ] aone\n  two|' },
+        { rule: 'in a nested block, the lines sit at its content column', precedent: 'EtherPK', before: '- a\n  - b|', text: 'one\ntwo', after: '- a\n  - bone\n    two|' },
+        { rule: 'on a continuation line, the lines stay in the block that owns it', precedent: 'EtherPK', before: '- a\n  soft|', text: 'one\ntwo', after: '- a\n  softone\n  two|' },
+        { rule: 'at the end of a block with children, the lines go before its children and stay its own', precedent: 'EtherPK', before: '- a|\n  - c', text: 'one\ntwo', after: '- aone\n  two|\n  - c' },
+        // Heading lines: the outline ends a block at a heading, so each is a block of its own that owns
+        // its section, as a Rich Paste nests one (html-blocks.test.ts), all inside the caret's block.
+        { rule: 'a heading line is a block under the caret’s block, owning what follows it', precedent: 'Logseq', before: '- a|', text: 'one\n# Beds\nwater the beans\n- North', after: '- aone\n  - # Beds\n    water the beans\n    - North|' },
+        { rule: 'a heading’s section runs to the next heading of its level or higher, and blank lines before a heading are dropped', precedent: 'EtherPK', before: '- |', text: '# Garden Plan\n\n## Beds\n- **North**: water the beans\n- **South**: weed the path\n\n### Soil\ncompost\n\n## Tools\n- **Spade**: sharpen it', after: '- # Garden Plan\n  - ## Beds\n    - **North**: water the beans\n    - **South**: weed the path\n    - ### Soil\n      compost\n  - ## Tools\n    - **Spade**: sharpen it|' },
+        { rule: 'a heading higher than the first never leaves the caret’s block', precedent: 'EtherPK', before: '- a|', text: 'one\n## Beds\nx\n# Tools\ny', after: '- aone\n  - ## Beds\n    x\n  - # Tools\n    y|' },
+        { rule: 'over selected blocks, one block takes their place', precedent: 'Logseq', before: '«- a\n- b»\n- c', text: 'x\ny', after: '- x\n  y|\n- c' },
+        // Bullet lines in the fragment: children of the caret's block, whatever they followed.
+        { rule: 'pasted bullets become the block’s children, and a line after them stays the block’s own', precedent: 'EtherPK', before: '- |', text: 'Packing:\n- tent\n- stove\nThanks', after: '- Packing:\n  - tent\n  - stove\n  Thanks|' },
+        { rule: 'a pasted tree keeps its nesting under the block, put on the Indent Unit grid first (ADR 0067)', precedent: 'EtherPK', before: '- a|', text: 'one\n- x\n    - y', after: '- aone\n  - x\n    - y|' },
+        { rule: 'an empty bullet takes a pasted bullet first line whole, its task state included', precedent: 'Logseq', before: '- |', text: '- [ ] x\nmore', after: '- [ ] x\n  more|' },
+        { rule: 'a pasted bullet joining a block with text drops its marker, and its siblings become the block’s children', precedent: 'EtherPK', before: '- a|', text: '- x\n- y', after: '- ax\n  - y|' },
+        { rule: 'the first pasted bullet’s continuation lines stay at the block’s content column', precedent: 'EtherPK', before: '- |', text: '- x\n  soft\n- y', after: '- x\n  soft\n  - y|' },
+        { rule: 'a pasted bullet’s own continuation lines and fenced code travel with it', precedent: 'EtherPK', before: '- a|', text: 'one\n- x\n  soft\n  ```\n  code\n  ```', after: '- aone\n  - x\n    soft\n    ```\n    code\n    ```|' },
+        // A line indented short of a pasted bullet's text is no line of that bullet's (found in review).
+        { rule: 'a line indented short of a pasted bullet’s text is the block’s own paragraph after its children', precedent: 'EtherPK', before: '- a|\n- b', text: 'one\n- x\n continued\n- y', after: '- aone\n  - x\n  continued\n  - y|\n- b' },
+        { rule: 'the same under a nested pasted bullet', precedent: 'EtherPK', before: '- a|', text: 'one\n- x\n  - y\n   z', after: '- aone\n  - x\n    - y\n  z|' },
+        { rule: 'a heading line in a pasted bullet’s body closes that bullet’s list and opens its own section', precedent: 'EtherPK', before: '- a|', text: 'one\n- x\n  # h\n  more\n  - y', after: '- aone\n  - x\n  - # h\n    more\n    - y|' },
+        { rule: 'a heading first line on an empty continuation line takes the line as a block of its own', precedent: 'EtherPK', before: '- a\n  |', text: '# h\nmore', after: '- a\n  - # h\n    more|' },
+        { rule: 'a heading first line onto an empty bullet is the bullet’s own text', precedent: 'Logseq', before: '- |', text: '# h\nmore', after: '- # h\n  more|' },
+        { rule: 'a pasted bullet’s own fence after the block’s text starts on its own line inside the block', precedent: 'EtherPK', before: '- a|', text: '- ```\n  code\n  ```', after: '- a\n  ```\n  code\n  ```|' },
+        // Fenced code in the fragment.
+        { rule: 'a fenced block in the fragment is the block’s own, at its content column', precedent: 'EtherPK', before: '- a|', text: 'Install\n```\nnpm i\n```\nRun', after: '- aInstall\n  ```\n  npm i\n  ```\n  Run|' },
+        { rule: 'a fence pasted onto an empty bullet is the bullet’s own fence', precedent: 'EtherPK', before: '- |', text: '```\ncode\n```\nafter', after: '- ```\n  code\n  ```\n  after|' },
+        { rule: 'text after the caret takes a soft line of its own after a pasted fence, never the closer’s info string', precedent: 'EtherPK', before: '- a|b', text: 'one\n```\ncode\n```', after: '- aone\n  ```\n  code\n  ```\n  |b' },
+    ]
+    for (const row of rows) {
+        it(`${row.rule} (${row.precedent})`, () => {
+            expect(paste(row.before, row.text, PLAIN_PASTE_USER_EVENT)).toBe(row.after)
+        })
+    }
+
+    it('leaves a single line as an ordinary paste leaves it', () => {
+        expect(paste('- a|', 'x', PLAIN_PASTE_USER_EVENT)).toBe('- ax|')
+        expect(paste('- |', '- x', PLAIN_PASTE_USER_EVENT)).toBe('- x|')
+        expect(paste('- a|', 'x\n', PLAIN_PASTE_USER_EVENT)).toBe('- ax|')
+    })
+
+    it('leaves a paste into prose, a fenced block or the frontmatter as an ordinary paste leaves it', () => {
+        for (const [before, text] of [
+            ['p|', 'one\ntwo'],
+            ['|', '    - a\n      - b'],
+            ['- ```\n  |\n  ```', 'one\ntwo'],
+            ['---\ntags: |\n---', 'a\n  - b'],
+        ]) {
+            expect(paste(before, text, PLAIN_PASTE_USER_EVENT)).toBe(paste(before, text))
+        }
+    })
+
+    it('is one undo step, caret restored', () => {
+        const editor = editorFixture('- a|\n- b')
+        editor.paste('one\n- two\nthree', PLAIN_PASTE_USER_EVENT)
+        expect(editor.fixture()).toBe('- aone\n  - two\n  three|\n- b')
         editor.key('Mod-z')
         expect(editor.fixture()).toBe('- a|\n- b')
     })

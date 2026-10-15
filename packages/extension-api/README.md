@@ -259,6 +259,10 @@ The third argument to `registerFence` adds options:
   that would end the fence is changed so it can't.
 - `publish`, which says how a published site shows the fence, as a picture or a link card. An SVG
   picture is cleaned of scripts, event handlers and links that run code before the site gets it.
+- `quote`, which says how the Backlinks panel shows the fence where a reference's block holds it,
+  in the same shapes as `publish`, with the theme to draw a picture in. The widget is never mounted
+  there. Without `quote`, an ordinary fence shows as code and an Extension Fence as a note. A link's
+  picture is loaded from the web as the panel shows it, so give one only where the person agreed.
 - `identify`, which finds a fence again by an id in its body, so it can open in a tab.
 - `keepsHistory`, which leaves Mod+Z to the widget while it has the keyboard.
 

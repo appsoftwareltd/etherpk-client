@@ -47,7 +47,7 @@ import { deleteHeal } from '../delete-heal'
 import { leaveTidy } from '../leave-tidy'
 import { localHistoryExtension } from '../editor-history'
 import { outlinerBindings, outlinerKeymap } from '../outliner-keymap'
-import { pasteClamp } from '../paste-clamp'
+import { pasteClamp, type PLAIN_PASTE_USER_EVENT } from '../paste-clamp'
 import { wrapSelectionOnInput } from '../wrap-selection'
 
 export interface FixtureOptions {
@@ -191,8 +191,11 @@ export class HeadlessEditor {
         this.dispatch(this.state.update(wrapped ?? { ...this.state.replaceSelection(text), userEvent: 'input.type' }))
     }
 
-    /** Paste (or drop) text over the selection, the way CodeMirror's clipboard handling dispatches it. */
-    paste(text: string, event: 'input.paste' | 'input.drop' = 'input.paste'): void {
+    /**
+     * Paste (or drop) text over the selection, the way CodeMirror's clipboard handling dispatches it,
+     * or as a [[Plain Paste]] dispatches it (`augmentations/plain-paste.ts`).
+     */
+    paste(text: string, event: 'input.paste' | 'input.drop' | typeof PLAIN_PASTE_USER_EVENT = 'input.paste'): void {
         this.dispatch(this.state.update(this.state.replaceSelection(text), { userEvent: event }))
     }
 

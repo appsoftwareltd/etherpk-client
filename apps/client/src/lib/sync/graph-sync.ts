@@ -301,6 +301,12 @@ export interface GraphSync {
      */
     retryRefused(): void
     /**
+     * Connect now, in place of a retry the backoff is waiting out, and start the backoff again:
+     * the browser reports the network is back, or the person came back to the tab. Does nothing
+     * while a socket is open or being made, or once the session has ended.
+     */
+    reconnectNow(): void
+    /**
      * Encrypt and send every pending update. On a large [[Import]] this is where the minutes
      * go, so it reports as each document's engine finishes - without it the Activity sat at
      * "0 of 2401" until the first acknowledgement arrived, looking hung.
@@ -1191,11 +1197,14 @@ export function createGraphSync(deps: GraphSyncDeps): GraphSync {
     let forceToken = false
     let credentialRefusals = 0
     let reconnectTimer: ReturnType<typeof setTimeout> | undefined
+    /** True while a retry waits on `reconnectTimer`: no socket is open or being made. */
+    let retryWaiting = false
     const retryDelay = deps.retryDelayMs ?? ((attempt: number) => reconnectDelayMs(attempt))
 
     function scheduleConnect(delayMs: number): void {
         if (disposed || lost || protocolMismatch) return
         clearTimeout(reconnectTimer)
+        retryWaiting = true
         reconnectTimer = setTimeout(connect, delayMs)
     }
 
@@ -1230,6 +1239,7 @@ export function createGraphSync(deps: GraphSyncDeps): GraphSync {
      * on open. Only rebuildable snapshot uploads use a volatile queue.
      */
     function connect(): void {
+        retryWaiting = false
         if (disposed || lost || protocolMismatch) return
         const force = forceToken
         forceToken = false
@@ -1571,6 +1581,13 @@ export function createGraphSync(deps: GraphSyncDeps): GraphSync {
             clearTimeout(refusalTimer)
             refusalTimer = undefined
             resendRefused()
+        },
+        reconnectNow() {
+            if (!retryWaiting || disposed || lost || protocolMismatch) return
+            // The wait was for a network that was away. With it back, a failure now is new, and
+            // the backoff starts again from its shortest wait.
+            attempts = 0
+            scheduleConnect(0)
         },
         async flushAll({ onProgress } = {}) {
             const all = [...engines.values()]

@@ -5,10 +5,27 @@ What changed in each release of the EtherPK Client and the Headless Client
 They are released together, under the version number they share with the Sync Server. This log
 starts at 0.9.3.
 
-## Unreleased
+## 0.12.0 - 2026-10-15
 
 ### Client
 
+- **Synced graphs open when the Sync Server can't be reached.** If the app is already loaded, a
+  synced graph now opens from the copy on your device when you are offline or the server is down.
+  You can read, search and edit it, and unlock protected documents with their passphrase. Your
+  edits are sent when the server can be reached again. This works once the device has connected
+  to the server since updating.
+- **EtherPK starts with no network.** Once you have opened EtherPK online, it keeps its files on
+  your device, so a reload, a new tab or the installed app opens without a connection. Graph View
+  and extensions you have used work offline too.
+- **Images in synced graphs show offline.** An image or file you have viewed or uploaded on a
+  device is kept there, encrypted as the server stores it, so it shows with no connection and
+  opens at once afterwards.
+- **You can add images to a synced graph offline.** A file you paste or drop with no connection
+  is saved on your device and shows at once. It uploads when the sync server can be reached.
+- **Sync starts again as soon as you are back online.** After a long time offline, a synced graph
+  used to wait up to 30 seconds before it tried the server again. It now tries at once when the
+  connection returns or when you come back to the tab. A graph that could not open because the
+  server was out of reach opens by itself when the connection returns.
 - **A publish removes old map and extension pictures.** A picture under `maps/` or `pictures/`
   that no published page uses any more is deleted from the site folder, as old pages and assets
   already were.
@@ -31,6 +48,19 @@ starts at 0.9.3.
 - **Add frontmatter** offers the `template` key on pages.
 - **Importing from Logseq, Obsidian or AS Notes brings templates across** as Templates, with their
   variables rewritten, and sets the Journal Template from the app's own setting.
+- **Paste several lines into one block.** Ctrl+Shift+V (Cmd+Shift+V on a Mac, Cmd+Option+Shift+V
+  in Safari) pastes as plain text and keeps every line in the block you paste into, where Ctrl+V
+  makes a block of each line. Bullets in the pasted text become children of the block, each heading
+  becomes a block with its section nested under it, and a link stays a link.
+- **A copied bullet that starts with a code block, pasted after a block's text,** keeps its code
+  block. Its backticks used to join the text.
+- **Drawings and videos in backlinks.** The Backlinks panel and the backlinks under a document show
+  an Excalidraw drawing as a picture in your theme, and a video as a link to its page. This needs a
+  version of the extension that supports it. Until then, and where the extension isn't running, a
+  drawing shows as a note naming the extension instead of its data.
+- **Extension API:** a fence registration can give `quote(fence)`, which says how the backlinks
+  show the fence: a picture drawn in the theme it is asked for, or a link, in the same shapes as
+  `publish`. The new `QuoteFenceRequest` type describes what it is given.
 
 ### Headless Client
 

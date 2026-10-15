@@ -164,6 +164,23 @@ export type PublishedFence =
       }
 
 /**
+ * A fence as the Client hands it to the extension to quote it read-only: in the Backlinks panel and in
+ * the backlinks under a document, where a reference's block holds the fence.
+ *
+ * @public
+ */
+export interface QuoteFenceRequest {
+    /** The fence's info word. */
+    readonly info: string
+    /** The fence's body lines. */
+    readonly body: readonly string[]
+    /** The document the fence is in, by its concept. */
+    readonly document: string
+    /** Whether the dark theme shows: a picture is drawn for it. */
+    readonly dark: boolean
+}
+
+/**
  * Options for a fence registration.
  *
  * @public
@@ -191,6 +208,20 @@ export interface FenceOptions {
      * off), an Extension Fence is left out and an ordinary fence is published as code.
      */
     publish?(fence: PublishFenceRequest): PublishedFence | null | Promise<PublishedFence | null>
+    /**
+     * How a read-only quote of the fence shows it, such as a reference in the Backlinks panel: a
+     * picture, drawn in the theme asked for, or a link. Null, or no `quote`, shows what the quote
+     * shows without the extension: an ordinary fence's text as code, and for an Extension Fence a note
+     * naming the extension. The Client never mounts the widget in a quote.
+     *
+     * Called as a quote shows the fence, and again when its text, the theme or one of the extension's
+     * own settings changes. The Client keeps the last answers it was given, so a reference shown
+     * again does not ask again, and it treats an answer that takes more than 30 seconds as a failure.
+     * A link's picture is loaded from the web as the quote shows it, so give one only where the
+     * person has agreed to that, as a setting for thumbnails does. An SVG picture is cleaned first, as
+     * one for a published site is.
+     */
+    quote?(fence: QuoteFenceRequest): PublishedFence | null | Promise<PublishedFence | null>
     /**
      * The fence's own id, read from its body, or null. A fence with an id can be opened in a tab or a
      * window, where the Client finds it again by the id after every change.

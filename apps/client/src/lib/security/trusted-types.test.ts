@@ -36,7 +36,7 @@ describe('the default Trusted Types policy (ADR 0130)', () => {
     })
 
     it('takes script URLs from this origin only, its own blob URLs included', () => {
-        expect(rules.createScriptURL('/sw.js')).toBe('/sw.js')
+        expect(rules.createScriptURL('/service-worker.js')).toBe('/service-worker.js')
         expect(rules.createScriptURL(`${ORIGIN}/_app/immutable/workers/index.js`)).toBe(`${ORIGIN}/_app/immutable/workers/index.js`)
         expect(rules.createScriptURL(`blob:${ORIGIN}/0f1e2d3c`)).toBe(`blob:${ORIGIN}/0f1e2d3c`)
     })

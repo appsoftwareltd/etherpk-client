@@ -18,7 +18,8 @@
  * they are and kept. Neither change is an `input.paste`, so no paste rule reshapes the fence either.
  *
  * Runs after `asset-paste.ts` (clipboard files are that route's) and before `rich-paste.ts`, since a
- * link copied from a page's address bar or a link on it can carry HTML beside its plain text.
+ * link copied from a page's address bar or a link on it can carry HTML beside its plain text. A
+ * [[Plain Paste]] never reaches it: `plain-paste.ts` runs first and pastes the text as it is.
  */
 import { isolateHistory } from '@codemirror/commands'
 import type { EditorState, Extension, Transaction } from '@codemirror/state'

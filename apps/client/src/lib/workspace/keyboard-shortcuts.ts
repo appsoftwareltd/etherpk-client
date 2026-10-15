@@ -100,6 +100,7 @@ export const EDITOR_SHORTCUTS: ShortcutGroup[] = [
             { key: 'Shift+Tab', label: 'Outdent the block (past the root it becomes prose)' },
             { key: 'Enter', label: 'New sibling block' },
             { key: 'Shift+Enter', label: 'Line break within the block' },
+            { key: 'Mod+Shift+V', label: 'Paste as plain text, every line in this block (Safari on a Mac: Cmd+Option+Shift+V)' },
             { key: 'Mod+Enter', label: 'Leave the outliner: a prose line after the tree' },
             { key: 'Alt+ArrowUp', label: 'Move the block up' },
             { key: 'Alt+ArrowDown', label: 'Move the block down' },

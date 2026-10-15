@@ -21,7 +21,17 @@ import { extensionStyleSheets } from './styles'
 /** How an extension's widgets mount: in a shadow root holding these stylesheets, or in the page (null). */
 export type FenceIsolation = { styles: readonly string[] } | null
 
-export function toInteractiveFence(extensionName: string, widget: FenceWidget, options: FenceOptions, isolation: FenceIsolation): InteractiveFence {
+/**
+ * @param settingsChanged hears when the extension's own settings change, which can change what its
+ *   `quote` answers (a video's thumbnail), so a quote kept from before is asked for again.
+ */
+export function toInteractiveFence(
+    extensionName: string,
+    widget: FenceWidget,
+    options: FenceOptions,
+    isolation: FenceIsolation,
+    settingsChanged?: (listener: () => void) => () => void,
+): InteractiveFence {
     return {
         height: (info) => widget.height(info),
         mount: (host, context) => (isolation ? mountInShadow(extensionName, widget, host, context, isolation.styles) : mountGuarded(extensionName, widget, host, context)),
@@ -30,6 +40,7 @@ export function toInteractiveFence(extensionName: string, widget: FenceWidget, o
         ...(options.identify ? { identify: options.identify.bind(options) } : {}),
         ...(options.fromPaste ? { fromPaste: options.fromPaste.bind(options) } : {}),
         ...(options.publish ? { publish: options.publish.bind(options) } : {}),
+        ...(options.quote ? { quote: options.quote.bind(options), ...(settingsChanged ? { quotesChanged: settingsChanged } : {}) } : {}),
     }
 }
 

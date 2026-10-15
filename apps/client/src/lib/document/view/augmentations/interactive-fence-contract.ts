@@ -15,7 +15,7 @@
  * id. With nothing registered for a word, the fence is an ordinary fenced block.
  */
 
-import type { FencePresentation, PublishedFence, PublishFenceRequest } from '@appsoftwareltd/etherpk-extension-api'
+import type { FencePresentation, PublishedFence, PublishFenceRequest, QuoteFenceRequest } from '@appsoftwareltd/etherpk-extension-api'
 import { StateEffect } from '@codemirror/state'
 
 import { type ContributionRegistry, tryGetActiveContributionRegistry } from '$lib/surface'
@@ -121,6 +121,17 @@ export interface InteractiveFence {
     fromPaste?(text: string): readonly string[] | null
     /** How a published site shows the fence, asked only in a publish run in the browser. */
     publish?(fence: PublishFenceRequest): PublishedFence | null | Promise<PublishedFence | null>
+    /**
+     * How a read-only quote of the fence shows it, in the reference lists of the Backlinks panel and
+     * beneath a document (`quoted-fences.ts`, ADR 0146): a picture in the theme asked for, or a link.
+     */
+    quote?(fence: QuoteFenceRequest): PublishedFence | null | Promise<PublishedFence | null>
+    /**
+     * Hear when what `quote` answers may have changed with nothing in the fence or the theme changing:
+     * the extension's own settings changed, such as whether Videos may fetch a thumbnail. Returns
+     * the way to stop hearing.
+     */
+    quotesChanged?(listener: () => void): () => void
 }
 
 /**

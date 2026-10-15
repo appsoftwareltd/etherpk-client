@@ -1,4 +1,5 @@
-import { describe, expect, it, vi } from 'vitest'
+import 'fake-indexeddb/auto'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ASSET_CHUNK_PLAINTEXT_BYTES } from '@appsoftwareltd/etherpk-shared'
 import {
     type GraphKeyring,
@@ -15,7 +16,8 @@ import {
 } from '$lib/crypto'
 import { AssetIntegrityError, AssetUnavailableError } from '$lib/storage/fs/asset-store'
 import { fixedSyncToken } from '$lib/sync/sync-token'
-import { assetIdFromRef, createServerAssetStore } from './server-asset-store'
+import { openAssetCopies, type AssetCopies } from './asset-copies'
+import { AssetRefusedError, assetIdFromRef, createServerAssetStore } from './server-asset-store'
 
 interface FakeBackendOptions {
     /**
@@ -809,6 +811,156 @@ describe('ServerAssetStore checks what the server hands back (ADR 0027, amended 
         const again = await store.save({ name: 'garden-copy.png', bytes: small(), type: 'image/png' })
         expect(again.reused).toBe(true)
         expect(assetIdFromRef(again.ref)).toBe(assetIdFromRef(garden.ref))
+    })
+})
+
+describe('ServerAssetStore with copies on this device (ADR 0143)', () => {
+    const graphId = 'g-copies'
+    const keyring = createGraphKeyring(graphId)
+    const offline = (async () => {
+        throw new TypeError('Failed to fetch')
+    }) as unknown as typeof fetch
+    /** No waiting between retries, so a server that cannot be reached is given up on at once. */
+    const noBackoff = { attempts: 2, baseDelayMs: 0, sleep: async () => {} }
+
+    afterEach(async () => {
+        await new Promise<void>((resolve) => {
+            const request = indexedDB.deleteDatabase('etherpk-assets')
+            request.onsuccess = () => resolve()
+            request.onerror = () => resolve()
+        })
+    })
+
+    function storeOver(fetchImpl: typeof fetch, copies: AssetCopies, extra: { online?: () => boolean } = {}) {
+        let id = 0
+        return createServerAssetStore({
+            graphId,
+            keyring,
+            baseUrl: 'https://sync.example',
+            syncToken: fixedSyncToken('sync-tok'),
+            fetch: fetchImpl,
+            newAssetId: () => `00000000-0000-4000-8000-0000000000${String(++id).padStart(2, '0')}`,
+            copies,
+            retry: noBackoff,
+            ...extra,
+        })
+    }
+
+    const garden = () => new TextEncoder().encode('garden photo '.repeat(50)) as Uint8Array<ArrayBuffer>
+
+    it('keeps what it downloads, reads the copy before the network, and shows it with no network', async () => {
+        const backend = fakeBackend()
+        const copies = openAssetCopies()
+        const online = storeOver(backend.fetchImpl, copies)
+        const saved = await online.save({ name: 'garden.png', bytes: garden(), type: 'image/png' })
+
+        expect((await online.readBytes(saved.ref))?.bytes).toEqual(garden())
+        const downloads = backend.chunkDownloads()
+        expect((await online.readBytes(saved.ref))?.bytes).toEqual(garden())
+        expect(backend.chunkDownloads()).toBe(downloads)
+
+        expect((await storeOver(offline, copies).readBytes(saved.ref))?.bytes).toEqual(garden())
+    })
+
+    it('fetches an asset again when its kept copy will not open', async () => {
+        const backend = fakeBackend()
+        const copies = openAssetCopies()
+        const store = storeOver(backend.fetchImpl, copies)
+        const saved = await store.save({ name: 'garden.png', bytes: garden(), type: 'image/png' })
+        await copies.keep(graphId, assetIdFromRef(saved.ref)!, { encryptedMetadata: 'not-a-sealed-envelope', chunks: [new Uint8Array(3)] })
+
+        expect((await store.readBytes(saved.ref))?.bytes).toEqual(garden())
+    })
+
+    it('queues an upload the server cannot be reached for, and its reference shows the file at once', async () => {
+        const copies = openAssetCopies()
+        const store = storeOver(offline, copies)
+        let reported = 0
+        const saved = await store.save({ name: 'garden.png', bytes: garden(), type: 'image/png' }, (n) => (reported += n))
+
+        expect(saved.queued).toBe(true)
+        expect(saved.ref).toBe('../assets/garden.00000000-0000-4000-8000-000000000001.png')
+        expect(reported).toBe(garden().length)
+        expect((await store.readBytes(saved.ref))?.bytes).toEqual(garden())
+        expect((await copies.queued(graphId)).map((asset) => asset.assetId)).toEqual(['00000000-0000-4000-8000-000000000001'])
+    })
+
+    it('queues at once, asking nothing of the network, while the browser says it is offline', async () => {
+        const calls: string[] = []
+        const counting = (async (input: string) => {
+            calls.push(input)
+            throw new TypeError('Failed to fetch')
+        }) as unknown as typeof fetch
+        const saved = await storeOver(counting, openAssetCopies(), { online: () => false }).save({ name: 'garden.png', bytes: garden(), type: 'image/png' })
+        expect(saved.queued).toBe(true)
+        expect(calls).toEqual([])
+    })
+
+    it('uploads what was queued once the server can be reached, under the id the document already names, with no reuse token', async () => {
+        const copies = openAssetCopies()
+        const saved = await storeOver(offline, copies).save({ name: 'garden.png', bytes: garden(), type: 'image/png' })
+        const backend = fakeBackend()
+
+        const result = await storeOver(backend.fetchImpl, copies).uploadQueued()
+
+        expect(result).toEqual({ sent: 1, waiting: 0 })
+        expect(backend.begins).toEqual([{ assetId: assetIdFromRef(saved.ref), dedupToken: undefined }])
+        expect(await copies.queued(graphId)).toEqual([])
+        // Another device, with no copies, reads the file the reference names.
+        const elsewhere = createServerAssetStore({ graphId, keyring, baseUrl: 'https://sync.example', syncToken: fixedSyncToken('t'), fetch: backend.fetchImpl })
+        expect((await elsewhere.readBytes(saved.ref))?.bytes).toEqual(garden())
+    })
+
+    it('counts a queued upload the server already holds as sent', async () => {
+        const copies = openAssetCopies()
+        await storeOver(offline, copies).save({ name: 'garden.png', bytes: garden(), type: 'image/png' })
+        const complete = (async (input: string, init?: RequestInit) =>
+            String(input).endsWith('/api/v1/sync/assets') && init?.method === 'POST'
+                ? new Response(JSON.stringify({ error: { code: 'asset_complete' } }), { status: 409 })
+                : new Response(null, { status: 404 })) as unknown as typeof fetch
+
+        expect(await storeOver(complete, copies).uploadQueued()).toEqual({ sent: 1, waiting: 0 })
+    })
+
+    it('keeps a queued upload the server refuses, and says why', async () => {
+        const copies = openAssetCopies()
+        await storeOver(offline, copies).save({ name: 'garden.png', bytes: garden(), type: 'image/png' })
+        const refusing = (async () =>
+            new Response(JSON.stringify({ error: 'quota_denied', code: 'owned_storage_limit', retryable: true }), { status: 403 })) as unknown as typeof fetch
+
+        const result = await storeOver(refusing, copies).uploadQueued()
+
+        expect(result.sent).toBe(0)
+        expect(result.waiting).toBe(1)
+        expect(result.refusal).toBeInstanceOf(AssetRefusedError)
+        expect(await copies.queued(graphId)).toHaveLength(1)
+    })
+
+    it('leaves a queued upload for later while the server still cannot be reached', async () => {
+        const copies = openAssetCopies()
+        await storeOver(offline, copies).save({ name: 'garden.png', bytes: garden(), type: 'image/png' })
+        expect(await storeOver(offline, copies).uploadQueued()).toEqual({ sent: 0, waiting: 1 })
+    })
+
+    it('does not queue a file the plan refuses, or one the person cancelled', async () => {
+        const copies = openAssetCopies()
+        const refusing = (async () =>
+            new Response(JSON.stringify({ error: 'quota_denied', code: 'owned_storage_limit', retryable: true }), { status: 403 })) as unknown as typeof fetch
+        await expect(storeOver(refusing, copies).save({ name: 'garden.png', bytes: garden(), type: 'image/png' })).rejects.toBeInstanceOf(AssetRefusedError)
+
+        const controller = new AbortController()
+        controller.abort()
+        const cancelled = createServerAssetStore({
+            graphId,
+            keyring,
+            baseUrl: 'https://sync.example',
+            syncToken: fixedSyncToken('t'),
+            fetch: offline,
+            copies,
+            signal: controller.signal,
+        })
+        await expect(cancelled.save({ name: 'garden.png', bytes: garden(), type: 'image/png' })).rejects.toThrow()
+        expect(await copies.queued(graphId)).toEqual([])
     })
 })
 

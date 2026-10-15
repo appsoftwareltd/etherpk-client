@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 
-import { readLoadedExtensions } from '../extensions-plugin'
+import { builtInFileAddresses, readLoadedExtensions } from '../extensions-plugin'
 
 let scratch: string
 
@@ -60,5 +60,16 @@ describe('reading the loaded extensions', () => {
 
     it('names none when the Client lists none', () => {
         expect(readLoadedExtensions(setUp([], {}))).toEqual([])
+    })
+})
+
+describe('builtInFileAddresses', () => {
+    it("lists the address of every file a build ships for its loaded extensions, for the service worker to keep", () => {
+        const client = setUp(['@appsoftwareltd/etherpk-extension-graph-view'], { 'graph-view': graphView('1.2.3') })
+        writeFileSync(join(scratch, 'graph-view', 'dist', 'main.css'), '.graph {}')
+        expect(builtInFileAddresses(readLoadedExtensions(client)).sort()).toEqual([
+            '/extensions/graph-view/1.2.3/dist/main.css',
+            '/extensions/graph-view/1.2.3/dist/main.js',
+        ])
     })
 })
