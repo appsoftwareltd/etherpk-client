@@ -13,7 +13,7 @@
  * CM owns the positioning; we own the DOM.
  */
 
-import { type EditorState, type Extension, Prec, StateEffect, StateField } from '@codemirror/state'
+import { type EditorState, type Extension, type Facet, Prec, StateEffect, StateField } from '@codemirror/state'
 import { EditorView, keymap, showTooltip, tooltips, type Tooltip, type TooltipView } from '@codemirror/view'
 
 import { setTrustedMarkup, type TrustedMarkup } from '$lib/security/trusted-types'
@@ -51,6 +51,8 @@ export interface PopoverMenuOptions<S extends PopoverBase> {
     accept(view: EditorView, menu: S, index: number): boolean
     /** The list's accessible name, for a list whose rows do not say what picking one does. */
     label?(menu: S): string
+    /** Where the menu says whether it is open, for code outside it that must know (slash-complete.ts). */
+    isOpen?: Facet<(state: EditorState) => boolean, readonly ((state: EditorState) => boolean)[]>
 }
 
 const TAILWIND_MENU =
@@ -294,5 +296,5 @@ export function popoverMenu<S extends PopoverBase>(opts: PopoverMenuOptions<S>):
         [`.${p}__detail`]: { minWidth: '0', maxWidth: '60%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
     })
 
-    return [paneTooltips, menuField, closeOnBlur, completionKeymap, theme]
+    return [paneTooltips, menuField, closeOnBlur, completionKeymap, theme, opts.isOpen ? opts.isOpen.of((state) => state.field(menuField, false) != null) : []]
 }

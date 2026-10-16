@@ -16,7 +16,7 @@
  */
 import MarkdownIt from 'markdown-it'
 
-import type { Turn } from '../chat/model'
+import { questionText, type Turn } from '../chat/model'
 
 const parser = new MarkdownIt()
 
@@ -60,7 +60,7 @@ export function chatOutline(turns: readonly Turn[], options: { date: string; ima
     const models = [...new Set(turns.map((turn) => turn.modelLabel))]
     const out = [`- Agent Chat with ${models.join(' and ')} on ${options.date}`]
     for (const turn of turns) {
-        const [first, ...rest] = turn.question.trim().split('\n')
+        const [first, ...rest] = questionText(turn).split('\n')
         out.push(`${LEVEL}- ${first ?? ''}`)
         // The question's own lines, then its images, at the question's content column.
         const images = turn.images.flatMap((image) => {

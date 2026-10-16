@@ -5,7 +5,10 @@
  * `DocumentView` mounts it through the same path as a real document and the Backlinks View
  * lights up for its concept without knowing the difference. Navigating to one writes nothing.
  * The FIRST change to its text promotes it: the page is created, seeded with the buffer, and
- * the view rebinds to the real document.
+ * the view rebinds to the real document. A change made while the Command Menu is open is held
+ * instead (`hold`), since the command may take its own text back out, as /Agent does: the Draft
+ * is promoted when the menu closes only if its text then differs from its starting text (ADR 0145,
+ * amended 2026-10-16).
  *
  * The promotion itself lives in `promoteDraft` rather than in the handle, because the handle
  * must stay synchronous — CodeMirror's own state IS the buffer, which is what makes the async
@@ -40,7 +43,8 @@ export interface DraftDocument extends EditorDocument {
      * Fill an untouched Draft with starting text: the [[Journal Template]] a new day opens holding
      * (ADR 0145). It reaches the editor as a document's content does, through `subscribe`, so it
      * is no edit and writes nothing; the first edit promotes the Draft with this text in it.
-     * Refused, returning false, once anything has been typed or a seed has been taken.
+     * Refused, returning false, once anything has been typed or a seed has been taken. A change
+     * taken in by `absorb` (a placement) is not typing, and the seed replaces it.
      */
     seed(text: string): boolean
     /** The text `seed` gave the Draft, or `''`. */
@@ -49,24 +53,48 @@ export interface DraftDocument extends EditorDocument {
      * Take in a change that only rode on a caret move: tidy on leave trimming a line the caret left.
      * The buffer follows the editor, but nothing is written, since only an edit creates the
      * document (ADR 0050, ADR 0145). Before any edit the change is part of the starting text, so the
-     * Draft still counts as untouched.
+     * Draft still counts as untouched, unless a command's text is held, which never becomes part of it.
      */
     absorb(change: TextChange): void
+    /**
+     * Take in a change made while the Command Menu is open, without creating the document: the
+     * command may take its own text back out as it runs. DocumentView holds every such change and
+     * calls `release` when the menu closes.
+     */
+    hold(change: TextChange): void
+    /**
+     * The Command Menu closed: create the document now if its text differs from its starting text,
+     * as when Escape closed the menu on a half-typed command, or the view is going away with one.
+     */
+    release(): void
+    /** Whether a change made while the Command Menu was open is waiting for it to close. */
+    isHolding(): boolean
 }
 
 /**
  * A Draft handle over `concept`.
  *
- * `onFirstChange` fires exactly once, on the first change that actually alters the text.
- * Selection and cursor movement never reach here (CodeMirror only reports document changes),
- * but a no-op change — replacing a range with itself — would, so it is filtered out: promotion
- * must mean content, not activity.
+ * `onFirstChange` fires exactly once, on the first edit that leaves the text other than its
+ * starting text, or on `release` when held text is left. Selection and cursor movement never reach
+ * here (CodeMirror only reports document changes), but a no-op change (replacing a range with
+ * itself) would, so it is filtered out: promotion must mean content, not activity.
  */
 export function createDraftDocument(concept: string, onFirstChange: () => void): DraftDocument {
     let buffer = ''
     let seededText = ''
     let promotionRequested = false
+    /** A change made while the Command Menu was open waits for it to close. */
+    let holding = false
+    /** A command was typed: the Draft takes no starting text after that. */
+    let commandTyped = false
+    /** The starting text has been given (`seed`): there is only ever one. */
+    let seedTaken = false
     const listeners = new Set<(text: string) => void>()
+    const promoteIfChanged = () => {
+        if (promotionRequested || buffer === seededText) return
+        promotionRequested = true
+        onFirstChange()
+    }
 
     return {
         isDraft: true,
@@ -75,7 +103,10 @@ export function createDraftDocument(concept: string, onFirstChange: () => void):
         getText: () => buffer,
         hasContent: () => buffer !== seededText,
         seed(text) {
-            if (promotionRequested || buffer !== '' || seededText !== '' || text === '') return false
+            // Typed text is the only thing that leaves the buffer other than its starting text; a
+            // placement `absorb` took in (an untouched end-of-document line) is still starting text.
+            if (promotionRequested || commandTyped || seedTaken || buffer !== seededText || text === '') return false
+            seedTaken = true
             buffer = seededText = text
             for (const listener of listeners) listener(text)
             return true
@@ -83,17 +114,26 @@ export function createDraftDocument(concept: string, onFirstChange: () => void):
         seeded: () => seededText,
         absorb(change) {
             buffer = buffer.slice(0, change.from) + change.insert + buffer.slice(change.to)
-            if (!promotionRequested) seededText = buffer
+            if (!promotionRequested && !holding) seededText = buffer
         },
         applyChange(change) {
             const next = buffer.slice(0, change.from) + change.insert + buffer.slice(change.to)
             if (next === buffer) return
             buffer = next
-            if (!promotionRequested) {
-                promotionRequested = true
-                onFirstChange()
-            }
+            holding = false
+            promoteIfChanged()
         },
+        hold(change) {
+            buffer = buffer.slice(0, change.from) + change.insert + buffer.slice(change.to)
+            holding = true
+            commandTyped = true
+        },
+        release() {
+            if (!holding) return
+            holding = false
+            promoteIfChanged()
+        },
+        isHolding: () => holding,
         subscribe(listener) {
             // A Draft has no external source to hear from — it exists only here. The
             // subscription is honoured anyway so DocumentView needs no special case.

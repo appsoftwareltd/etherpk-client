@@ -51,6 +51,7 @@
     import { currentWorkspaceServices, type ProtectionControls } from '$lib/workspace/workspace-services'
     import { createDocumentEditor, type DocumentEditor } from './cm-document'
     import { caretBesideFence } from './augmentations/interactive-fence'
+    import { commandMenuOpen } from './augmentations/slash-complete'
     import { frontmatterIdentityTick } from './augmentations/frontmatter'
     import { carrySpellCheck, spellCheckChanged } from './augmentations/spell-check'
     import { analysisFor } from './analysis/editor-analysis'
@@ -62,6 +63,9 @@
     import { createHeldReveal } from './held-reveal'
     import { setEditorOnScreen } from './editor-on-screen'
     import DocumentBacklinks from './DocumentBacklinks.svelte'
+    import EndOfDocument from './EndOfDocument.svelte'
+    import { type EndKind, startAtEnd } from './end-of-document'
+    import { bodyWritable } from './body-writable'
     import DocumentViewSelf from './DocumentView.svelte'
     import JournalRoll from './JournalRoll.svelte'
     import JournalPanels from './JournalPanels.svelte'
@@ -145,6 +149,23 @@
 
     let host = $state<HTMLDivElement>()
     /**
+     * The two buttons after the text (ADR 0149), first in the editor's scroller after its content,
+     * before the Journal Panels and the Backlinks, and moved from editor to editor as they are. On a
+     * tab's own document and each older day in a Journal Roll, not in an embedded editor: a
+     * [[Task Detail]] shows one task.
+     */
+    let endHolder: HTMLDivElement | undefined
+    let endSection: ReturnType<typeof mount> | undefined
+    /**
+     * Whether the mounted document's content has arrived. Until it has, an empty editor is not an
+     * empty document, and no hint is shown: "Type to start" over a day that has text would be a lie.
+     * Nor are the buttons after the text, which would write into a document still loading. Set by the
+     * seed that belongs to the current mount only (`seedToken`).
+     */
+    let contentReady = $state(false)
+    /** Whether the editor's body takes edits (`bodyWritable`), refreshed as its text and the lock change. */
+    let endWritable = $state(false)
+    /**
      * The [[Backlink]]s beneath the text (ADR 0135), in the editor's scroller after its content, so
      * they scroll with the text without being part of it. Mounted once for the View's life into a
      * holder of their own, and the holder is put into each editor's scroller as it is built (a
@@ -175,10 +196,61 @@
     let rollSection: ReturnType<typeof mount> | undefined
     /** Whether the roll draws anything: a bar, or loaded days. */
     let rollDrawn = $state(false)
+    /** Whether the buttons after the text are drawn: the body takes edits and its content is in. */
+    const endDrawn = $derived(!embedded && endWritable && contentReady)
     /** Something is drawn beneath the text, so the text gives up its full pane height. */
-    const belowTextDrawn = $derived(panelsDrawn || backlinksDrawn || rollDrawn)
+    const belowTextDrawn = $derived(endDrawn || panelsDrawn || backlinksDrawn || rollDrawn)
     /** Set once the View is gone, so a remount still on its way (a Draft promotion) builds nothing. */
     let destroyed = false
+
+    /** Put the buttons after `scroller`'s content, mounting them the first time. */
+    function placeEndButtons(scroller: HTMLElement): void {
+        if (embedded) return
+        if (!endHolder) {
+            endHolder = document.createElement('div')
+            endHolder.style.display = 'contents'
+            endHolder.addEventListener('mousedown', pressBesideEndButtons)
+            endSection = mount(EndOfDocument, {
+                target: endHolder,
+                props: {
+                    get shown() {
+                        return endDrawn
+                    },
+                    onstart: startAtEndOfText,
+                },
+            })
+        }
+        scroller.appendChild(endHolder)
+    }
+
+    function unmountEndButtons(): void {
+        if (endSection) void unmount(endSection)
+        endSection = undefined
+        endHolder?.remove()
+        endHolder = undefined
+    }
+
+    /**
+     * A press on the buttons' row beside the buttons puts the caret at the end of the text, as a
+     * press in the line of room under the last line did before the row took its place (ADR 0135),
+     * rather than leaving the press to the scroller, which takes the focus from the editor.
+     */
+    function pressBesideEndButtons(event: MouseEvent): void {
+        if (event.button !== 0 || !(event.target instanceof Element) || !event.target.matches('[data-end-of-document]')) return
+        const cm = editor?.view
+        if (!cm) return
+        event.preventDefault()
+        cm.dispatch({ selection: { anchor: cm.state.doc.length }, userEvent: 'select.pointer', scrollIntoView: true })
+        cm.focus()
+    }
+
+    /** A button after the text was pressed: start its line at the end and give the editor the keyboard. */
+    function startAtEndOfText(kind: EndKind): void {
+        const cm = editor?.view
+        if (!cm || !bodyWritable(cm.state)) return
+        startAtEnd(cm, kind)
+        cm.focus()
+    }
 
     /** Put the panels after `scroller`'s content, mounting them the first time. */
     function placeJournalPanels(scroller: HTMLElement): void {
@@ -278,12 +350,6 @@
     // seed queued behind the background materialisation walk) — the editor would otherwise
     // sit silently empty, which reads as "my notes are gone" (live, 2026-07-28).
     let seeding = $state(false)
-    /**
-     * Whether the mounted document's content has arrived. Until it has, an empty editor is not an
-     * empty document, and no hint is shown: "Type to start" over a day that has text would be a lie.
-     * Set by the seed that belongs to the current mount only (`seedToken`).
-     */
-    let contentReady = false
     /**
      * True from mounting until the store's `whenReady` settles, whether the content arrived or
      * failed to: a change heard meanwhile is that content arriving, not an edit (held-reveal.ts).
@@ -437,6 +503,7 @@
         let lastLocked = currentWorkspaceServices()?.protection?.status === 'locked'
         const detachLockWatch = tryGetActiveEventBus()?.on('protection:changed', () => {
             protection = currentWorkspaceServices()?.protection
+            if (editor) endWritable = bodyWritable(editor.view.state)
             const protectedDoc = isProtectedNow()
             if (collabBound && protectedDoc) remount()
             // The key came or went (masking is neither): the plaintext edits' undo steps must
@@ -540,6 +607,9 @@
         const promotingDraft = draft
         try {
             const promoted = await promoteDraft(store, promotingDraft)
+            // Created as the View was going away (a held command released on teardown): the page
+            // has its text, and there is no editor left to rebind.
+            if (destroyed) return
             // Read the caret AFTER the await, with the Draft's editor still mounted, so
             // characters typed during the create are already accounted for.
             const caret = editor
@@ -981,10 +1051,16 @@
             doc: doc.getText(),
             // A Draft is written by an edit alone (ADR 0050, ADR 0145). A change that only rode on a
             // caret move, tidy on leave trimming the Journal Template's line the caret left, is taken
-            // into its buffer and writes nothing.
+            // into its buffer and writes nothing. A change made while the Command Menu is open is
+            // held until the menu closes, since the command may take its text back out, as /Agent
+            // does (ADR 0145, amended 2026-10-16; released in `onUpdate` and on teardown).
             onChange: isCollab
                 ? () => {}
-                : (change, edited) => (draft && doc === draft && !edited ? draft.absorb(change) : doc!.applyChange(change, 'editor', hear)),
+                : (change, edited, after) => {
+                      if (draft && doc === draft && !edited) draft.absorb(change)
+                      else if (draft && doc === draft && commandMenuOpen(after)) draft.hold(change)
+                      else doc!.applyChange(change, 'editor', hear)
+                  },
             currentText: () => doc!.getText(),
             ...(collabYText ? { collab: { ytext: collabYText, awareness } } : {}),
             // The feature stack lives in editor-extensions.ts (order-tested); the View supplies
@@ -1041,11 +1117,17 @@
                     refreshEditorContext(cmView)
                 },
                 onUpdate(update) {
+                    // The Command Menu closed without a change (Escape, a click elsewhere): a Draft
+                    // holding a command's text is created now if that text is still there. A change
+                    // that closes the menu reaches the Draft through `onChange` instead.
+                    if (!update.docChanged && draft?.isHolding() && !commandMenuOpen(update.state)) draft.release()
                     // A keystroke, a click or a caret move here means the user has taken over
                     // from a held reveal, which must not put the caret back under them.
                     if (update.transactions.some((tr) => tr.annotation(Transaction.userEvent) !== undefined)) heldReveal.release()
                     // An accepted edit means the user has moved past the refused one.
                     if (update.docChanged && editRefusal) clearRefusal()
+                    // A lock or an unlock swaps the fence and the plaintext, which the buttons after the text follow.
+                    if (update.docChanged) endWritable = bodyWritable(update.state)
                     // Keep the Command Bar's outliner-block context in step with the caret.
                     if (update.selectionSet || update.docChanged) {
                         // The Command Bar describes the editor in use: the focused one, or the active
@@ -1098,9 +1180,11 @@
             dom.removeEventListener('focusin', noteFocus)
         }
         observeScrollbar(editor.view.scrollDOM)
-        // The Journal Panels, the backlinks and the roll beneath the text, after the content in the
-        // scroller (ADR 0120 amended 2026-10-12, ADR 0135, ADR 0136), and the presses and drops on
-        // the scroller outside the text, which CodeMirror does not hear.
+        // The buttons after the text, the Journal Panels, the backlinks and the roll beneath it, after
+        // the content in the scroller (ADR 0149, ADR 0120 amended 2026-10-12, ADR 0135, ADR 0136), and
+        // the presses and drops on the scroller outside the text, which CodeMirror does not hear.
+        endWritable = bodyWritable(editor.view.state)
+        placeEndButtons(editor.view.scrollDOM)
         placeJournalPanels(editor.view.scrollDOM)
         placeBacklinks(editor.view.scrollDOM)
         placeRoll(editor.view.scrollDOM)
@@ -1227,6 +1311,7 @@
         detachBelowText?.()
         detachBelowText = undefined
         // Kept for the next editor; out of this one's scroller before it goes.
+        endHolder?.remove()
         panelsHolder?.remove()
         backlinksHolder?.remove()
         rollHolder?.remove()
@@ -1241,12 +1326,16 @@
     $effect(() => visibility?.subscribe((onScreen) => editor?.view.dispatch({ effects: setEditorOnScreen.of(onScreen) })))
 
     onDestroy(() => {
+        // A command's text held in a Draft is the person's typing: create the document with it
+        // rather than let it go with the View.
+        if (draft?.isHolding()) draft.release()
         destroyed = true
         clearRefusal()
         detachRetry?.()
         detachDraftWatch?.()
         detachReveal?.()
         teardownEditor({ capturePosition: ownsTab })
+        unmountEndButtons()
         unmountJournalPanels()
         unmountBacklinks()
         unmountRoll()
@@ -1258,6 +1347,7 @@
         'document-view',
         showLock && 'document-view--lock',
         belowTextDrawn && 'document-view--below-text',
+        endDrawn && 'document-view--end-buttons',
         rolled && 'document-view--rolled',
     ]}
     data-testid="document-view"
@@ -1439,11 +1529,12 @@
         padding-bottom: 4.5rem;
     }
     /*
-     * A journal tab's Journal Panels (ADR 0120, amended 2026-10-12), the backlinks beneath the text
-     * (ADR 0135) and a journal tab's roll (ADR 0136), mounted into the editor's scroller after its
-     * content. CodeMirror lays the scroller out as a flex row, so while any of them is drawn the row
-     * wraps, each takes a row of its own (JournalPanels.svelte, DocumentBacklinks.svelte,
-     * JournalRoll.svelte), and the rows do not stretch to share the pane's height. The content gives
+     * The buttons after the text (ADR 0149), a journal tab's Journal Panels (ADR 0120, amended
+     * 2026-10-12), the backlinks beneath the text (ADR 0135) and a journal tab's roll (ADR 0136),
+     * mounted into the editor's scroller after its content. CodeMirror lays the scroller out as a
+     * flex row, so while any of them is drawn the row wraps, each takes a row of its own
+     * (EndOfDocument.svelte, JournalPanels.svelte, DocumentBacklinks.svelte, JournalRoll.svelte),
+     * and the rows do not stretch to share the pane's height. The content gives
      * up its full pane height for one line of room under the last line, where a click still puts
      * the caret at the end, so what is beneath follows the text instead of starting below the fold.
      */
@@ -1456,6 +1547,13 @@
     .document-view--below-text .document-view__editor :global(.cm-content) {
         min-height: 0;
         padding-bottom: calc(0.75rem + var(--gk-line-pitch));
+    }
+    /* The buttons after the text (ADR 0149) sit directly under the last line, or the placeholder,
+       a line's spacing below it, in place of the line of room above, which a press beside them
+       stands in for (`pressBesideEndButtons`). Child combinators, so a day's own buttons in a
+       Journal Roll decide its spacing. */
+    .document-view--end-buttons > .document-view__editor > :global(.cm-editor) > :global(.cm-scroller) > :global(.cm-content) {
+        padding-bottom: 0.25rem;
     }
     /* Child combinators: the older days in a Journal Roll are editors inside this one, and the
        Lock button's room belongs to the tab's own scroller only. */

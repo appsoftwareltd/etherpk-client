@@ -35,6 +35,9 @@ const paneSchema = z.object({
     id: z.string(),
     views: z.array(viewInstanceSchema),
     activePanelId: z.string().nullable(),
+    // The order the Pane's tabs were in front (ADR 0150). Optional for the same reason as
+    // `pinned`: a Layout saved before it reads back with only its front tab known.
+    recent: z.array(z.string()).optional(),
 })
 
 const regionSchema = z.object({
@@ -115,6 +118,7 @@ function renameViewKinds(layout: SerializedLayout, renames: Readonly<Record<stri
                     panes: region.panes.map((pane) => ({
                         ...pane,
                         activePanelId: id(pane.activePanelId),
+                        ...(pane.recent ? { recent: pane.recent.map((panelId) => id(panelId)!) } : {}),
                         views: pane.views.map((instance) => {
                             const to = renames[instance.view.kind]
                             return to === undefined ? instance : { ...instance, panelId: id(instance.panelId)!, view: { ...instance.view, kind: to } }

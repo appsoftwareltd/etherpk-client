@@ -126,6 +126,68 @@ describe('createDraftDocument', () => {
         expect(draft.hasContent()).toBe(false)
     })
 
+    // The Command Menu's text (ADR 0145, amended 2026-10-16): DocumentView holds each change made
+    // while the menu is open, and releases them when it closes.
+    it('holds a change made while the Command Menu is open, and stays a Draft when the command takes its text back out', () => {
+        const onFirstChange = vi.fn()
+        const draft = createDraftDocument('2026-10-16', onFirstChange)
+        draft.hold({ from: 0, to: 0, insert: '/' })
+        draft.hold({ from: 1, to: 1, insert: 'agent' })
+        expect(onFirstChange).not.toHaveBeenCalled()
+        expect(draft.isHolding()).toBe(true)
+        // Choosing Agent takes the typed text back out as the menu closes.
+        draft.applyChange({ from: 0, to: 6, insert: '' })
+        expect(onFirstChange).not.toHaveBeenCalled()
+        expect(draft.isHolding()).toBe(false)
+        expect(draft.hasContent()).toBe(false)
+
+        // Anything written after that is the first edit.
+        draft.applyChange({ from: 0, to: 0, insert: '- beans' })
+        expect(onFirstChange).toHaveBeenCalledTimes(1)
+    })
+
+    it('is created with what a closed menu left, as when Escape closes it on a half-typed command', () => {
+        const onFirstChange = vi.fn()
+        const draft = createDraftDocument('2026-10-16', onFirstChange)
+        draft.hold({ from: 0, to: 0, insert: '/agen' })
+        draft.release()
+        expect(onFirstChange).toHaveBeenCalledTimes(1)
+        expect(draft.getText()).toBe('/agen')
+        expect(draft.isHolding()).toBe(false)
+
+        const untouched = vi.fn()
+        const empty = createDraftDocument('2026-10-16', untouched)
+        empty.release()
+        expect(untouched).not.toHaveBeenCalled()
+    })
+
+    it('is created at once by a command that leaves text of its own', () => {
+        const onFirstChange = vi.fn()
+        const draft = createDraftDocument('Garden', onFirstChange)
+        draft.hold({ from: 0, to: 0, insert: '/todo' })
+        draft.applyChange({ from: 0, to: 5, insert: '' })
+        draft.applyChange({ from: 0, to: 0, insert: '- [ ] ' })
+        expect(onFirstChange).toHaveBeenCalledTimes(1)
+    })
+
+    it('never takes a held command into its starting text, whatever it takes in meanwhile', () => {
+        const draft = createDraftDocument('2026-10-16', () => {})
+        draft.seed('- a  \n- ')
+        draft.hold({ from: 8, to: 8, insert: '/agen' })
+        // Tidy on leave trims the line above: a change that writes nothing.
+        draft.absorb({ from: 3, to: 5, insert: '' })
+        expect(draft.getText()).toBe('- a\n- /agen')
+        expect(draft.hasContent()).toBe(true)
+    })
+
+    it('takes no starting text once a command has been typed into it', () => {
+        const draft = createDraftDocument('2026-10-16', () => {})
+        draft.hold({ from: 0, to: 0, insert: '/agent' })
+        draft.applyChange({ from: 0, to: 6, insert: '' })
+        expect(draft.seed('## Garden')).toBe(false)
+        expect(draft.getText()).toBe('')
+    })
+
     it('accumulates edits like any buffer', () => {
         const draft = createDraftDocument('Kanban', () => {})
         draft.applyChange({ from: 0, to: 0, insert: 'hello world' })
@@ -328,6 +390,20 @@ describe('a Draft seeded with its starting text', () => {
         draft.applyChange({ from: 7, to: 7, insert: ' good' })
         expect(onFirstChange).toHaveBeenCalledOnce()
         expect(draft.hasContent()).toBe(true)
+    })
+
+    it('still takes its starting text over a placement it took in, which nothing typed', () => {
+        // A button after the text pressed before the Journal Template arrived (ADR 0149): its line
+        // is a placement, so the day is still untouched and opens holding the Template.
+        const draft = createDraftDocument('2026-10-15', () => {})
+        const heard: string[] = []
+        draft.subscribe((text) => heard.push(text))
+        draft.absorb({ from: 0, to: 0, insert: '- ' })
+
+        expect(draft.seed(template)).toBe(true)
+        expect(draft.getText()).toBe(template)
+        expect(heard).toEqual([template])
+        expect(draft.hasContent()).toBe(false)
     })
 
     it('is refused a second time', () => {

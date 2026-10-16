@@ -83,20 +83,49 @@ export function activePaneOf(model: LayoutModel, region: Region): PaneModel | un
     )
 }
 
+/** Put `panelId` in front of `pane` and rank it as the tab most recently there (ADR 0150). */
+export function bringToFront(pane: PaneModel, panelId: string): void {
+    pane.activePanelId = panelId
+    pane.recent = [panelId, ...(pane.recent ?? []).filter((id) => id !== panelId)]
+}
+
+/**
+ * The tab to bring forward once `pane`'s front tab `gone` has left it (ADR 0150): the one most
+ * recently in front of the Pane that is still in it, else the gone tab's neighbour as the strip
+ * stood with it (`before`), right then left, else none. A Pane's order drops a tab that leaves it,
+ * so what is left of it is the Pane's own history.
+ */
+export function nextFront(pane: PaneModel, gone: string, before: readonly string[]): string | null {
+    const open = new Set(pane.views.map((v) => v.panelId))
+    const recent = (pane.recent ?? []).find((id) => id !== gone && open.has(id))
+    if (recent) return recent
+    const at = before.indexOf(gone)
+    if (at < 0) return pane.views[0]?.panelId ?? null
+    return before.slice(at + 1).find((id) => open.has(id)) ?? before.slice(0, at).reverse().find((id) => open.has(id)) ?? null
+}
+
 /**
  * Remove an instance by panel id, dropping its pane if that empties it. Named
  * regions themselves are never removed — they are persistent drop targets that
  * survive their last pane closing. Returns true if anything was removed.
+ *
+ * A Pane's front tab closing brings forward the tab most recently in front of it (`nextFront`,
+ * ADR 0150). When the closed tab had the keyboard, the keyboard goes to that tab, in the same
+ * Pane, and to wherever focus sensibly lands only once the Pane is gone.
  */
 export function removePanel(model: LayoutModel, panelId: string): boolean {
     const location = locatePanel(model, panelId)
     if (!location) return false
 
     const { region, pane } = location
+    const before = pane.views.map((v) => v.panelId)
     pane.views = pane.views.filter((v) => v.panelId !== panelId)
+    if (pane.recent) pane.recent = pane.recent.filter((id) => id !== panelId)
 
     if (pane.activePanelId === panelId) {
-        pane.activePanelId = pane.views.at(-1)?.panelId ?? null
+        const next = nextFront(pane, panelId, before)
+        if (next) bringToFront(pane, next)
+        else pane.activePanelId = null
     }
     if (pane.views.length === 0) {
         const regionModel = model.regions[region]
@@ -104,7 +133,7 @@ export function removePanel(model: LayoutModel, panelId: string): boolean {
         if (regionModel.activePaneId === pane.id) delete regionModel.activePaneId
     }
     if (model.activePanelId === panelId) {
-        model.activePanelId = remainingFocusTarget(model)
+        model.activePanelId = pane.views.length > 0 ? pane.activePanelId : remainingFocusTarget(model)
     }
     return true
 }
@@ -160,7 +189,7 @@ export function setPinned(model: LayoutModel, panelId: string, pinned: boolean):
 export function activatePanel(model: LayoutModel, panelId: string): void {
     const location = locatePanel(model, panelId)
     if (!location) return
-    location.pane.activePanelId = panelId
+    bringToFront(location.pane, panelId)
     model.regions[location.region].activePaneId = location.pane.id
     model.activePanelId = panelId
 }

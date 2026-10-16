@@ -5,7 +5,7 @@
  */
 
 import { undoDepth } from '@codemirror/commands'
-import { EditorState } from '@codemirror/state'
+import { EditorState, type Transaction } from '@codemirror/state'
 import { describe, expect, it } from 'vitest'
 
 import { createContributionRegistry, setActiveContributionRegistry } from '$lib/surface'
@@ -16,6 +16,7 @@ import { editorDocument } from './editor-document'
 import { editorIsOnScreen, setEditorOnScreen } from './editor-on-screen'
 import { localHistoryExtension } from './editor-history'
 import { editorExtensions, editorFeatures, type EditorExtensionServices } from './editor-extensions'
+import { startAtEnd } from './end-of-document'
 
 const services: EditorExtensionServices = {
     assetStore: () => null,
@@ -64,6 +65,7 @@ describe('editor feature stack', () => {
             'fence-render',
             'interactive-fence',
             'inline-panels',
+            'end-of-document',
             'math-inline',
             'image-embed',
             'asset-link',
@@ -139,6 +141,25 @@ describe('editor feature stack', () => {
         // the delete before it and refuses with its notice (edit-refused.ts); the guard's own refusal is
         // silent, as a consumed key is.
         before('fence-deletes', 'frontmatter-boundary')
+    })
+
+    it('takes an untouched end-of-document line back after the guards have judged the caret move', () => {
+        // At high precedence the take-back filter runs after every default filter, so the frontmatter
+        // boundary judges the caret move alone and not the take-back riding on it, which it refuses as
+        // a closer that ends the document losing the line after it (end-of-document.ts).
+        let state = EditorState.create({ doc: '---\ntitle: Garden\n---', selection: { anchor: 8 }, extensions: [localHistoryExtension(), editorAnalysis(), ...editorExtensions(services)] })
+        const editor = {
+            get state() {
+                return state
+            },
+            dispatch: (tr: Transaction) => {
+                state = tr.state
+            },
+        }
+        startAtEnd(editor, 'bullet')
+        expect(state.doc.toString()).toBe('---\ntitle: Garden\n---\n- ')
+        state = state.update({ selection: { anchor: 5 }, userEvent: 'select' }).state
+        expect(state.doc.toString()).toBe('---\ntitle: Garden\n---')
     })
 
     it('pads a code line short of its fence column before the caret clamp judges the caret', () => {

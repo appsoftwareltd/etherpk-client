@@ -41,6 +41,7 @@ import {
     EditorSelection,
     EditorState,
     type Extension,
+    Facet,
     Prec,
     type Range,
     RangeSet,
@@ -555,8 +556,30 @@ const pointer = EditorView.domEventHandlers({
 class AtomMark extends RangeValue {}
 const atomMark = new AtomMark()
 
+/** A run of lines the caret is kept off: its first line's start to its last line's end. */
+export interface CaretBlock {
+    blockFrom: number
+    blockTo: number
+}
+
 /**
- * Where the caret may not rest for each drawn [[Extension Fence]] (ADR 0138): from the end of the line
+ * Lines another augmentation keeps the caret off as it is kept off a drawn Extension Fence, by the
+ * same atomic ranges and caret filter: the empty bullet an inline panel is drawn beside
+ * (inline-panels.ts). Each source gives its blocks for a state.
+ */
+export const caretKeptOff = Facet.define<(state: EditorState) => readonly CaretBlock[]>()
+
+/** Every run of lines the caret passes over, in document order: the drawn Extension Fences and `caretKeptOff`'s. */
+function caretBlocks(state: EditorState): CaretBlock[] {
+    const fences: CaretBlock[] = collapsedExtensionFences(state)
+    const others = state.facet(caretKeptOff).flatMap((blocks) => blocks(state))
+    if (others.length === 0) return fences
+    return [...fences, ...others].sort((a, b) => a.blockFrom - b.blockFrom)
+}
+
+/**
+ * Where the caret may not rest for each drawn [[Extension Fence]] (ADR 0138), and each block
+ * `caretKeptOff` adds: from the end of the line
  * above its first line to the start of the line below its last, so the caret's motion, a press and a
  * deletion pass over the fence as one block and land beside it, never on its lines, where a keystroke
  * would write into its data or break its fences. The line breaks either side are part of the range,
@@ -564,7 +587,7 @@ const atomMark = new AtomMark()
  * range kind leaves drawn.
  */
 export function extensionFenceAtomRanges(state: EditorState): RangeSet<AtomMark> {
-    const fences = collapsedExtensionFences(state)
+    const fences = caretBlocks(state)
     if (fences.length === 0) return RangeSet.empty
     const length = state.doc.length
     return RangeSet.of(
@@ -575,8 +598,8 @@ export function extensionFenceAtomRanges(state: EditorState): RangeSet<AtomMark>
 
 const extensionFenceAtoms = EditorView.atomicRanges.of((view) => extensionFenceAtomRanges(view.state))
 
-/** Whether a position lies on a drawn Extension Fence's lines, its first line's start to its last line's end. */
-function onExtensionFence(fences: readonly InteractiveFenceRange[], pos: number): InteractiveFenceRange | undefined {
+/** Whether a position lies on a drawn Extension Fence's lines, its first line's start to its last line's end, or a block's. */
+function onExtensionFence(fences: readonly CaretBlock[], pos: number): CaretBlock | undefined {
     return fences.find((fence) => pos >= fence.blockFrom && pos <= fence.blockTo)
 }
 
@@ -588,9 +611,9 @@ function onExtensionFence(fences: readonly InteractiveFenceRange[], pos: number)
  * frontmatter's closing line above, which is no place for the caret. With no line either way, the
  * fence's edge it came from, where typing starts a line of its own (`extensionFenceEdits`).
  */
-export function extensionFenceRestingPlace(state: EditorState, fences: readonly InteractiveFenceRange[], fence: InteractiveFenceRange, down: boolean): number {
+export function extensionFenceRestingPlace(state: EditorState, fences: readonly CaretBlock[], fence: CaretBlock, down: boolean): number {
     const frontmatterEnd = analysisFor(state).frontmatterEnd
-    const past = (start: InteractiveFenceRange, goingDown: boolean): number | null => {
+    const past = (start: CaretBlock, goingDown: boolean): number | null => {
         let current = start
         // Each step passes one more fence, so there are at most as many steps as fences.
         for (let step = 0; step < fences.length; step++) {
@@ -609,8 +632,11 @@ export function extensionFenceRestingPlace(state: EditorState, fences: readonly 
  * Every way a caret is placed that the atomic ranges do not cover (an undo, a reveal, a command's
  * own selection, the caret clamp's ArrowLeft at the wall, a fence at the very start or end of the
  * document, where the atomic range has no line on one side) passes this filter, which moves a caret
- * resting on a drawn Extension Fence's lines past it (`extensionFenceRestingPlace`). A text range
- * that ends on one is widened to take the fence whole, so a selection never cuts into the data.
+ * resting on a drawn Extension Fence's lines past it (`extensionFenceRestingPlace`), and so do the
+ * blocks `caretKeptOff` adds. A text range that ends on one is widened to take it whole, so a
+ * selection never cuts into a fence's data. A block that comes in with the caret on it, as an
+ * inline panel opening at the caret's line does, moves the caret too, as a placement and never an
+ * edit: no step in the undo history, and no tidy of the line it leaves.
  *
  * It must see the caret where every other filter has left it, so it is registered at the highest
  * precedence, which CodeMirror runs last (`editor-extensions.test.ts` asserts the order against
@@ -618,9 +644,9 @@ export function extensionFenceRestingPlace(state: EditorState, fences: readonly 
  */
 export function extensionFenceCaret(): Extension {
     return EditorState.transactionFilter.of((tr) => {
-        if (!tr.selection && tr.changes.empty) return tr
+        if (!tr.selection && tr.changes.empty && tr.effects.length === 0) return tr
         const state = tr.state
-        const fences = collapsedExtensionFences(state)
+        const fences = caretBlocks(state)
         if (fences.length === 0) return tr
         let moved = false
         const before = tr.startState.selection.main.head
@@ -649,7 +675,15 @@ export function extensionFenceCaret(): Extension {
             return forward ? EditorSelection.range(from, to) : EditorSelection.range(to, from)
         })
         if (!moved) return tr
-        return [tr, { selection: EditorSelection.create(ranges, state.selection.mainIndex), sequential: true }]
+        const placedOnly = !tr.selection && tr.changes.empty
+        return [
+            tr,
+            {
+                selection: EditorSelection.create(ranges, state.selection.mainIndex),
+                sequential: true,
+                ...(placedOnly ? { annotations: Transaction.addToHistory.of(false) } : {}),
+            },
+        ]
     })
 }
 

@@ -11,7 +11,7 @@
  * - A press of the main button on the scroller's own space below everything in it puts the caret at
  *   the end of the text and focuses the editor, as a click below the text always did. Beside the
  *   section, and on the section itself, a press is the section's own business. The same holds for
- *   the [[Journal Panel]]s between the text and the section.
+ *   the buttons after the text (ADR 0149) and the [[Journal Panel]]s between the text and the section.
  * - A file dropped anywhere outside the text is uploaded and inserted at the end of the document,
  *   as a file dropped on the text is inserted where it lands (`asset-drop.ts`).
  *
@@ -27,6 +27,7 @@ import { EditorView } from '@codemirror/view'
 import type { AssetStore } from '$lib/storage/fs/asset-store'
 
 import { documentBacklinksOf } from './document-backlinks'
+import { endButtonsOf } from './end-of-document'
 import { drawnJournalPanelsOf } from './journal-panels-dom'
 import { JOURNAL_ROLL_ATTRIBUTE } from './journal-roll-dom'
 import { startAssetUpload } from './upload-activity'
@@ -52,9 +53,9 @@ export function handleEventsBelowText(view: EditorView, options: BelowTextOption
         return editor ? EditorView.findFromDOM(editor) : null
     }
 
-    /** The bottom edge of what the scroller holds: the text, the panels, the section below them, or the roll. */
+    /** The bottom edge of what the scroller holds: the text, the buttons after it, the panels, the section below them, or the roll. */
     function floor(): number {
-        const bottoms = [view.contentDOM, drawnJournalPanelsOf(view), documentBacklinksOf(view), roll()].map(
+        const bottoms = [view.contentDOM, endButtonsOf(view), drawnJournalPanelsOf(view), documentBacklinksOf(view), roll()].map(
             (element) => element?.getBoundingClientRect().bottom ?? Number.NEGATIVE_INFINITY,
         )
         return Math.max(...bottoms)

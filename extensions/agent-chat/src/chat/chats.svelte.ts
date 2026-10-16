@@ -18,7 +18,7 @@ import { PROVIDERS } from '../providers/catalogue'
 import { listModels, type ModelInfo } from '../providers/models'
 import { chatOutline } from '../save/outline'
 import { type AgentChatSettings, defaultConnection, EMPTY_SETTINGS, type ModelConnection, readSettings } from '../settings/connections'
-import { type Chat, type ChatImage, GRANT_ORDER, type GrantLevel, newId, titleFrom, todayOnDevice, type Turn } from './model'
+import { type Chat, type ChatImage, GRANT_ORDER, type GrantLevel, needsPrompt, newId, openingGrant, questionText, titleFrom, todayOnDevice, type Turn } from './model'
 import type { RunTurnInput } from './runner'
 import type { ChatStore } from './store'
 
@@ -188,6 +188,16 @@ export class AgentChats {
         return this.get(chat.id)!
     }
 
+    /**
+     * Set a chat that has nothing asked in it to the grant it starts on where it is open: Block
+     * siblings and ancestors when its bullet has an outline around it, else This document.
+     */
+    startWhereOpen(id: string): void {
+        const chat = this.get(id)
+        if (!chat || chat.turns.length > 0) return
+        this.setGrant(id, openingGrant(this.blockOutline(id)))
+    }
+
     rename(id: string, title: string): void {
         const chat = this.get(id)
         const next = title.trim()
@@ -317,18 +327,31 @@ export class AgentChats {
         return null
     }
 
+    /** The grant a message sent now goes with. An orphaned chat has no document to read: nothing. */
+    sendingGrant(chat: Chat): GrantLevel {
+        return this.isOrphaned(chat) && (chat.grant === 'block' || chat.grant === 'document' || chat.grant === 'links') ? 'nothing' : chat.grant
+    }
+
+    /**
+     * Whether a message with this text and these images can be sent: one with neither only where
+     * what the grant sends can hold the question (`needsPrompt`).
+     */
+    canSendEmpty(chat: Chat): boolean {
+        return !needsPrompt(this.sendingGrant(chat))
+    }
+
     /** Ask a question in a chat, and stream the answer into a new turn. */
     async send(id: string, question: string, images: ChatImage[] = []): Promise<void> {
         const chat = this.get(id)
         const text = question.trim()
-        if (!chat || this.isRunning(id) || (text === '' && images.length === 0) || this.cannotSend(chat) !== null) return
+        if (!chat || this.isRunning(id) || this.cannotSend(chat) !== null) return
+        if (text === '' && images.length === 0 && !this.canSendEmpty(chat)) return
         const connection = this.connectionOf(chat)!
         const modelId = chat.modelId!
         const known = this.modelInfo(chat)
         // A model the list does not know yet is taken to use tools and no images, as a local one is.
         const model: ModelInfo = known ?? { id: modelId, label: modelId, images: images.length > 0, tools: true }
-        // An orphaned chat has no document to read: what it may read falls back to nothing.
-        const grant: GrantLevel = this.isOrphaned(chat) && (chat.grant === 'block' || chat.grant === 'document' || chat.grant === 'links') ? 'nothing' : chat.grant
+        const grant = this.sendingGrant(chat)
         chat.turns.push({
             id: newId('turn'),
             question: text,
@@ -345,7 +368,7 @@ export class AgentChats {
             askedAt: this.#now(),
             saved: false,
         })
-        if (chat.turns.length === 1) chat.title = titleFrom(text)
+        if (chat.turns.length === 1) chat.title = titleFrom(questionText(chat.turns[0]))
         await this.#run(chat, chat.turns[chat.turns.length - 1], connection, model)
     }
 
@@ -385,6 +408,7 @@ export class AgentChats {
                 signal: controller.signal,
                 prepareImage: (image) => this.#deps.assets.prepareImage(image),
                 today: todayOnDevice(),
+                agentInstruction: this.settings.instruction,
                 changed: () => this.#persist(chat.id),
             })
         } catch (error) {

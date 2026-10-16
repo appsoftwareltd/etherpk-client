@@ -11,10 +11,12 @@ import {
     REGIONS,
     activatePanel,
     activePaneOf,
+    bringToFront,
     cloneModel,
     createEmptyModel,
     locateCanonical,
     locatePanel,
+    nextFront,
     remainingFocusTarget,
     removePanel,
     setPinned,
@@ -109,9 +111,16 @@ export function createLayoutController(options: LayoutControllerOptions): Layout
      * in the renderer's order, with the renderer's front tab. A View the renderer no longer
      * holds is dropped, exactly as a native close would drop it. A no-op for a renderer with no
      * arrangement of its own, and during restore, when the renderer is mid-build.
+     *
+     * The front tab is the model's, not the renderer's (ADR 0150). A Pane keeps its front tab while
+     * it is still there; one whose front tab left it (closed, or dragged away) brings forward its
+     * own previous tab (`nextFront`); a tab the renderer put in front that is new to the Pane (one
+     * just dragged in) is its front and its most recent; and a new Pane takes what the renderer
+     * shows. Returns the front tabs the renderer is not showing, which `frontsPutRight` brings
+     * forward: the renderer chose a tab of its own after a removal or a drag it made itself.
      */
-    function reconcile(): void {
-        if (restoring || !renderer.panes) return
+    function reconcile(): string[] {
+        if (restoring || !renderer.panes) return []
         const rendered = renderer.panes()
 
         const instances = new Map<string, ViewInstance>()
@@ -126,6 +135,7 @@ export function createLayoutController(options: LayoutControllerOptions): Layout
         const claimed = new Set<string>()
         const nextIdFor = new Map<string, string>()
         const panesByRegion: Record<Region, PaneModel[]> = { 'left-sidebar': [], main: [], 'right-sidebar': [] }
+        const notShown: string[] = []
 
         for (const shown of rendered) {
             const views = shown.panelIds.map((id) => instances.get(id)).filter((v): v is ViewInstance => !!v)
@@ -143,11 +153,21 @@ export function createLayoutController(options: LayoutControllerOptions): Layout
             }
             claimed.add(id)
             nextIdFor.set(shown.id, id)
-            const activePanelId =
-                shown.activePanelId && views.some((v) => v.panelId === shown.activePanelId)
-                    ? shown.activePanelId
-                    : views[0].panelId
-            panesByRegion[shown.region].push({ id, views, activePanelId })
+            const was = previous.find((p) => p.id === id)
+            const has = (panelId: string | null | undefined): panelId is string => !!panelId && views.some((v) => v.panelId === panelId)
+            const pane: PaneModel = { id, views, activePanelId: null }
+            const recent = (was?.recent ?? []).filter(has)
+            if (recent.length > 0) pane.recent = recent
+            const shownFront = has(shown.activePanelId) ? shown.activePanelId : null
+            const draggedIn = shownFront !== null && was !== undefined && !was.views.some((v) => v.panelId === shownFront)
+            if (draggedIn) bringToFront(pane, shownFront)
+            else if (was && has(was.activePanelId)) pane.activePanelId = was.activePanelId
+            else if (was && was.activePanelId) {
+                const next = nextFront(pane, was.activePanelId, was.views.map((v) => v.panelId))
+                bringToFront(pane, next ?? shownFront ?? views[0].panelId)
+            } else bringToFront(pane, shownFront ?? views[0].panelId)
+            if (pane.activePanelId !== shownFront) notShown.push(pane.activePanelId!)
+            panesByRegion[shown.region].push(pane)
         }
 
         paneIdFor = nextIdFor
@@ -163,6 +183,17 @@ export function createLayoutController(options: LayoutControllerOptions): Layout
         if (model.activePanelId && !locatePanel(model, model.activePanelId)) {
             model.activePanelId = remainingFocusTarget(model)
         }
+        return notShown
+    }
+
+    /**
+     * Reconcile, and bring forward in the renderer each front tab it is not showing, without
+     * moving the keyboard (`frontInPane`). True when there was any.
+     */
+    function frontsPutRight(): boolean {
+        const fronts = reconcile()
+        for (const panelId of fronts) renderer.frontInPane?.(panelId)
+        return fronts.length > 0
     }
 
     function handleFor(instance: ViewInstance): PaneHandle {
@@ -191,7 +222,7 @@ export function createLayoutController(options: LayoutControllerOptions): Layout
 
         if (isSplit) {
             const from = activePaneOf(model, region)
-            const pane = { id: nextPaneId(), views: [instance], activePanelId: instance.panelId }
+            const pane: PaneModel = { id: nextPaneId(), views: [instance], activePanelId: instance.panelId, recent: [instance.panelId] }
             const insertAt = from ? regionModel.panes.indexOf(from) + 1 : regionModel.panes.length
             regionModel.panes.splice(insertAt, 0, pane)
             if (activate) regionModel.activePaneId = pane.id
@@ -210,7 +241,7 @@ export function createLayoutController(options: LayoutControllerOptions): Layout
             // A pane must always have an active tab; only steal it on activate. The renderer is
             // told what was decided here, not what was asked: a background open into a pane
             // that had nothing in front still fronts this one.
-            if (activate || pane.activePanelId === null) pane.activePanelId = instance.panelId
+            if (activate || pane.activePanelId === null) bringToFront(pane, instance.panelId)
             const fronted = pane.activePanelId === instance.panelId
             if (activate) regionModel.activePaneId = pane.id
             placement = { region, paneId: pane.id, mode, ...(sibling ? { siblingPanelId: sibling } : {}), activate: fronted }
@@ -233,8 +264,11 @@ export function createLayoutController(options: LayoutControllerOptions): Layout
     function closePanel(panelId: string): void {
         reconcile()
         const previousActive = model.activePanelId
-        if (!removePanel(model, panelId)) return
-        renderer.removeView(panelId)
+        const pane = locatePanel(model, panelId)?.pane
+        const wasFront = pane?.activePanelId === panelId
+        if (!pane || !removePanel(model, panelId)) return
+        // The tab the model brings forward goes in front before the closed one goes (ADR 0150).
+        renderer.removeView(panelId, wasFront && pane.views.length > 0 ? (pane.activePanelId ?? undefined) : undefined)
         // If closing shifted global focus, surface the new active to the renderer.
         if (model.activePanelId && model.activePanelId !== previousActive) {
             renderer.focusView(model.activePanelId)
@@ -337,6 +371,17 @@ export function createLayoutController(options: LayoutControllerOptions): Layout
             if (model.activePanelId && model.activePanelId !== previousActive) {
                 renderer.focusView(model.activePanelId)
             }
+            onChange?.()
+            // The renderer brings forward a tab of its own choosing once it has told us, after
+            // this returns: put the model's choice back in front once it has (ADR 0150).
+            queueMicrotask(() => {
+                if (!restoring && frontsPutRight()) onChange?.()
+            })
+        },
+
+        noteRendererChanged() {
+            if (restoring) return
+            frontsPutRight()
             onChange?.()
         },
 

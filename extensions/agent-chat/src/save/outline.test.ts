@@ -64,6 +64,11 @@ describe('the blocks a Save writes (ADR 0147)', () => {
         ])
     })
 
+    it('writes a turn sent with no prompt as what was sent', () => {
+        const text = chatOutline([turn({ question: '', grant: 'block' })], { date: '2026-10-16' })
+        expect(text.split('\n').slice(1, 3)).toEqual(['  - Sent block siblings and ancestors', '    - Marigolds, as your [[Garden]] notes suggest.'])
+    })
+
     it("keeps a question's own lines, its images and the answer's sources", () => {
         const text = chatOutline(
             [

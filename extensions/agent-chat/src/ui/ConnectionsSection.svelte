@@ -15,7 +15,7 @@
     import { addressProblem, PROVIDER_ORDER, PROVIDERS, type ProviderId } from "../providers/catalogue";
     import { listModels, type ModelInfo, ProviderError } from "../providers/models";
     import { connectOpenRouter } from "../providers/openrouter-connect";
-    import { type ModelConnection, newConnectionId, readSettings, withConnection, withoutConnection, withPrimary, writeSettings } from "../settings/connections";
+    import { INSTRUCTION_LIMIT, type ModelConnection, newConnectionId, readSettings, withConnection, withInstruction, withoutConnection, withPrimary, writeSettings } from "../settings/connections";
     import { onEscape } from "./escape";
     import Listbox from "./Listbox.svelte";
     import ModelCombobox, { type ModelGroup } from "./ModelCombobox.svelte";
@@ -149,6 +149,11 @@
 
     function setWebSearch(event: Event) {
         writeSettings(context.personStorage, { ...settings, webSearchByDefault: (event.currentTarget as HTMLInputElement).checked });
+    }
+
+    /** Kept as it is typed: the person's settings write at once on the device and sync a moment later. */
+    function setInstruction(event: Event) {
+        writeSettings(context.personStorage, withInstruction(settings, (event.currentTarget as HTMLTextAreaElement).value));
     }
 
     const providerOptions = PROVIDER_ORDER.map((id) => ({ value: id, label: PROVIDERS[id].label }));
@@ -313,5 +318,21 @@
                 </span>
             </span>
         </label>
+    </div>
+
+    <div class="space-y-1">
+        <label class={label} for={`${fieldId}-instruction`}>Agent instruction</label>
+        <textarea
+            id={`${fieldId}-instruction`}
+            class="{input} min-h-24 resize-y"
+            rows="4"
+            maxlength={INSTRUCTION_LIMIT}
+            value={settings.instruction}
+            oninput={setInstruction}
+            placeholder="Add instruction that will be sent to all agents along with other context in all sessions."
+            aria-describedby={`${fieldId}-instruction-help`}
+            data-testid="agent-chat-instruction"
+        ></textarea>
+        <p id={`${fieldId}-instruction-help`} class={help}>Sent to every model in every chat, before your notes. Kept as you type.</p>
     </div>
 </section>

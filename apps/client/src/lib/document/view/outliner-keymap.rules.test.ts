@@ -15,6 +15,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { undoDepth } from '@codemirror/commands'
 import { type Transaction, type TransactionSpec } from '@codemirror/state'
 import { EditorView, keymap, showTooltip, type WidgetType } from '@codemirror/view'
 
@@ -22,6 +23,8 @@ import { createContributionRegistry, setActiveContributionRegistry } from '$lib/
 
 import { hiddenSyntax, type HiddenSyntaxSpec, hiddenSyntaxPieces } from './augmentations/base-renderer'
 import { followFenceRegistrations, interactiveFenceAugmentation } from './augmentations/interactive-fence'
+import { addInlinePanel, inlinePanelsField, panelCaretBlocks, removeInlinePanel } from './augmentations/inline-panels'
+import { endOfDocument, type EndKind, startAtEnd, takeBackIfLeft } from './end-of-document'
 import { type InteractiveFence, registerInteractiveFence } from './augmentations/interactive-fence-contract'
 import { pasteAsFence } from './augmentations/paste-to-fence'
 import { markdownWithCodeHighlight } from './augmentations/code-highlight'
@@ -32,7 +35,7 @@ import { guideThreadsFor } from './augmentations/outline-guides'
 import { wikilinkCompletion } from './augmentations/wikilink-complete'
 import { refreshWikilinks, wikilinkAugmentation } from './augmentations/wikilink'
 import { displayNameForRef } from '../../storage/fs/asset-store'
-import { collaborative } from './cm-document'
+import { collaborative, isEdit } from './cm-document'
 import { outdentBranch, toggleBullet } from './outliner-keymap'
 import { analysisFor } from './analysis/editor-analysis'
 import { bulletToggleable, taskToggleable } from './task-toggleable'
@@ -1940,6 +1943,310 @@ describe('the caret at an Extension Fence', () => {
         expect(editor.fixture()).toBe(`|${plan}\nAfter`)
         editor.paste('beans\npeas')
         expect(editor.text()).toBe(`beans\npeas\n${plan}\nAfter`)
+    })
+})
+
+// Inline panels (Editor Content Rules → Inline panels, ADR 0147): the empty bullet a panel is drawn
+// beside is the panel's place, where its first block goes, so the caret is kept off it as it is kept
+// off an Extension Fence's lines, by the same filter and atomic ranges: it passes over the line, and
+// comes back to it only once the panel closes.
+describe('the caret beside an inline panel', () => {
+    beforeEach(() => setActiveContributionRegistry(createContributionRegistry()))
+    afterEach(() => setActiveContributionRegistry(null))
+
+    const open = (doc: string) => editorFixture(doc, { extensions: [interactiveFenceAugmentation(), inlinePanelsField, panelCaretBlocks] })
+    type Fixture = ReturnType<typeof open>
+    /** Open a panel at the start of 1-based `line`, as `openPanel` places one at the caret's line. */
+    const openPanel = (editor: Fixture, line: number, id = 1) =>
+        editor.dispatch(editor.state.update({ effects: addInlinePanel.of({ id, lineStart: editor.state.doc.line(line).from, mode: 'line' }) }))
+    const select = (editor: Fixture, anchor: number, head = anchor) => editor.dispatch(editor.state.update({ selection: { anchor, head }, userEvent: 'select' }))
+
+    const opening: { rule: string; precedent: Rule['precedent']; before: string; line: number; after: string }[] = [
+        { rule: 'a panel opening beside the empty bullet the caret is on moves the caret to the end of the line above', precedent: 'EtherPK', before: '- Garden\n  - |\n- Kitchen', line: 2, after: '- Garden|\n  - \n- Kitchen' },
+        { rule: 'with the frontmatter above it, the caret goes to the start of the bullet below instead', precedent: 'EtherPK', before: '---\ntitle: Garden\n---\n- |\n- Kitchen', line: 4, after: '---\ntitle: Garden\n---\n- \n- |Kitchen' },
+        { rule: 'a panel opening beneath a line with text leaves the caret on that line', precedent: 'EtherPK', before: '- Gar|den\n- Kitchen', line: 1, after: '- Gar|den\n- Kitchen' },
+    ]
+    for (const row of opening) {
+        it(`${row.rule} (${row.precedent})`, () => {
+            const editor = open(row.before)
+            openPanel(editor, row.line)
+            expect(editor.fixture()).toBe(row.after)
+        })
+    }
+
+    it('moves the caret off without a step in the undo history or a tidy of the line it leaves (EtherPK)', () => {
+        const editor = open('- Garden\n  -   |\n- Kitchen')
+        openPanel(editor, 2)
+        expect(editor.text()).toBe('- Garden\n  -   \n- Kitchen')
+        expect(editor.fixture()).toBe('- Garden|\n  -   \n- Kitchen')
+    })
+
+    const placements: { rule: string; precedent: Rule['precedent']; before: string; line: number; to: (editor: Fixture) => number; after: string }[] = [
+        {
+            rule: 'a caret moving down onto it (a key, a press or a tap) rests at the start of the bullet below',
+            precedent: 'EtherPK',
+            before: '- Gar|den\n  - \n- Kitchen',
+            line: 2,
+            to: (editor) => editor.state.doc.line(2).to,
+            after: '- Garden\n  - \n- |Kitchen',
+        },
+        {
+            rule: 'a caret moving up onto it rests at the end of the line above',
+            precedent: 'EtherPK',
+            before: '- Garden\n  - \n- Kit|chen',
+            line: 2,
+            to: (editor) => editor.state.doc.line(2).to,
+            after: '- Garden|\n  - \n- Kitchen',
+        },
+        {
+            rule: 'ArrowLeft at the start of the bullet below it flows to the end of the line above, past it',
+            precedent: 'Logseq',
+            before: '- Garden\n  - \n- |Kitchen',
+            line: 2,
+            to: (editor) => editor.head() - 1,
+            after: '- Garden|\n  - \n- Kitchen',
+        },
+    ]
+    for (const row of placements) {
+        it(`${row.rule} (${row.precedent})`, () => {
+            const editor = open(row.before)
+            openPanel(editor, row.line)
+            select(editor, row.to(editor))
+            expect(editor.fixture()).toBe(row.after)
+        })
+    }
+
+    it('passes two panels in a row, as two Extension Fences in a row (EtherPK)', () => {
+        const editor = open('- Gar|den\n- \n- \n- Kitchen')
+        openPanel(editor, 2, 1)
+        openPanel(editor, 3, 2)
+        select(editor, editor.state.doc.line(2).to)
+        expect(editor.fixture()).toBe('- Garden\n- \n- \n- |Kitchen')
+    })
+
+    it('leaves Select all whole with a panel on the last line (EtherPK)', () => {
+        const editor = open('- Gar|den\n- Kitchen\n- ')
+        openPanel(editor, 3)
+        select(editor, 0, editor.state.doc.length)
+        expect(editor.fixture()).toBe('«- Garden\n- Kitchen\n- »')
+    })
+
+    it('gives the line back once the panel closes (EtherPK)', () => {
+        const editor = open('- Gar|den\n  - \n- Kitchen')
+        openPanel(editor, 2)
+        editor.dispatch(editor.state.update({ effects: removeInlinePanel.of(1) }))
+        select(editor, editor.state.doc.line(2).to)
+        expect(editor.fixture()).toBe('- Garden\n  - |\n- Kitchen')
+    })
+})
+
+// The two buttons after a document's text (ADR 0149, Editor Content Rules → End of document): each
+// always starts on a new line at the end, the text button an empty line after a blank line, the
+// bullet button a top-level bullet, and either is taken back out if the caret leaves it untouched.
+describe('the end of the document', () => {
+    beforeEach(() => setActiveContributionRegistry(createContributionRegistry()))
+    afterEach(() => setActiveContributionRegistry(null))
+
+    const open = (doc: string) => editorFixture(doc, { extensions: [endOfDocument(), interactiveFenceAugmentation(), inlinePanelsField, panelCaretBlocks] })
+    type Fixture = ReturnType<typeof open>
+    const select = (editor: Fixture, anchor: number, head = anchor) => editor.dispatch(editor.state.update({ selection: { anchor, head }, userEvent: 'select' }))
+
+    const starts: { rule: string; precedent: Rule['precedent']; kind: EndKind; before: string; after: string }[] = [
+        { rule: 'the text button starts an empty line after a blank line below the last text', precedent: 'EtherPK', kind: 'line', before: '- Gar|den\n- Kitchen', after: '- Garden\n- Kitchen\n\n|' },
+        { rule: 'after a paragraph too, so what is typed starts a paragraph of its own', precedent: 'EtherPK', kind: 'line', before: 'Some no|tes', after: 'Some notes\n\n|' },
+        { rule: 'a document ending in one line break gets one more', precedent: 'EtherPK', kind: 'line', before: 'Some no|tes\n', after: 'Some notes\n\n|' },
+        { rule: 'a blank line already after the text is reused', precedent: 'EtherPK', kind: 'line', before: 'Some no|tes\n\n', after: 'Some notes\n\n|' },
+        { rule: 'with more blank lines, the line after the first is used and the rest left alone', precedent: 'EtherPK', kind: 'line', before: 'Some no|tes\n\n\n', after: 'Some notes\n\n|\n' },
+        { rule: 'below a code block at the end, after a blank line', precedent: 'EtherPK', kind: 'line', before: '```\nco|de\n```', after: '```\ncode\n```\n\n|' },
+        { rule: 'a body with no text: the caret at its start, below the frontmatter', precedent: 'EtherPK', kind: 'line', before: '---\ntitle: Gar|den\n---\n', after: '---\ntitle: Garden\n---\n|' },
+        { rule: 'frontmatter that ends the document gets a line after it', precedent: 'EtherPK', kind: 'line', before: '---\ntitle: Gar|den\n---', after: '---\ntitle: Garden\n---\n|' },
+        { rule: 'the bullet button puts a top-level bullet straight under the last bullet, however deep', precedent: 'Logseq', kind: 'bullet', before: '- Garden\n  - wat|er', after: '- Garden\n  - water\n- |' },
+        { rule: 'straight under a code block inside a bullet, which is the bullet\'s own', precedent: 'EtherPK', kind: 'bullet', before: '- Garden\n  ```\n  co|de\n  ```', after: '- Garden\n  ```\n  code\n  ```\n- |' },
+        { rule: 'after a heading, a blank line first', precedent: 'EtherPK', kind: 'bullet', before: '# Gar|den', after: '# Garden\n\n- |' },
+        { rule: 'after a paragraph, a blank line first, reusing one already there', precedent: 'EtherPK', kind: 'bullet', before: 'Some no|tes\n\n', after: 'Some notes\n\n- |' },
+        { rule: 'after a code block at the top level, a blank line first', precedent: 'EtherPK', kind: 'bullet', before: '```\nco|de\n```', after: '```\ncode\n```\n\n- |' },
+        { rule: 'a document ending in a line break gets the bullet on that empty last line', precedent: 'EtherPK', kind: 'bullet', before: '- Gar|den\n', after: '- Garden\n- |' },
+        { rule: 'an empty top-level bullet already at the end is reused', precedent: 'EtherPK', kind: 'bullet', before: '- Gar|den\n- ', after: '- Garden\n- |' },
+        { rule: 'an empty nested bullet at the end still gets a top-level one under it', precedent: 'EtherPK', kind: 'bullet', before: '- Gar|den\n  - ', after: '- Garden\n  - \n- |' },
+        { rule: 'an empty document gets the bullet on its first line', precedent: 'EtherPK', kind: 'bullet', before: '|', after: '- |' },
+        { rule: 'frontmatter that ends the document gets the bullet on a line after it', precedent: 'EtherPK', kind: 'bullet', before: '---\ntitle: Gar|den\n---', after: '---\ntitle: Garden\n---\n- |' },
+    ]
+    for (const row of starts) {
+        it(`${row.rule} (${row.precedent})`, () => {
+            const editor = open(row.before)
+            startAtEnd(editor, row.kind)
+            expect(editor.fixture()).toBe(row.after)
+        })
+    }
+
+    const takeBacks: { rule: string; precedent: Rule['precedent']; kind: EndKind; before: string; to: number; after: string }[] = [
+        { rule: 'a new line left untouched is taken back out with its blank line when the caret leaves it', precedent: 'EtherPK', kind: 'line', before: 'Some no|tes', to: 4, after: 'Some| notes' },
+        { rule: 'a new bullet left untouched is taken back out when the caret leaves it', precedent: 'EtherPK', kind: 'bullet', before: '- Garden\n  - wat|er', to: 2, after: '- |Garden\n  - water' },
+        { rule: 'a blank line the button reused keeps the spaces it held', precedent: 'EtherPK', kind: 'bullet', before: '- Gar|den\n  ', to: 0, after: '- |Garden\n  ' },
+        { rule: 'the caret moving up onto the blank line above lands at the end of the text', precedent: 'EtherPK', kind: 'line', before: 'Some no|tes', to: 11, after: 'Some notes|' },
+        { rule: 'a bullet after frontmatter that ends the document is taken back out too', precedent: 'EtherPK', kind: 'bullet', before: '---\ntitle: Gar|den\n---', to: 5, after: '---\nt|itle: Garden\n---' },
+    ]
+    for (const row of takeBacks) {
+        it(`${row.rule} (${row.precedent})`, () => {
+            const editor = open(row.before)
+            startAtEnd(editor, row.kind)
+            select(editor, row.to)
+            expect(editor.fixture()).toBe(row.after)
+        })
+    }
+
+    it('ArrowLeft at the new bullet\'s wall flows to the end of the line above and takes the bullet back (Logseq)', () => {
+        const editor = open('- Garden\n  - wat|er')
+        startAtEnd(editor, 'bullet')
+        // The caret clamp turns a move into the bullet's margin into the end of the line above.
+        select(editor, editor.head() - 1)
+        expect(editor.fixture()).toBe('- Garden\n  - water|')
+    })
+
+    it('text put in where the line\'s added text begins is kept above it when the line is taken back (EtherPK)', () => {
+        // Another device or an external write typing at the end of the last text, before the line.
+        const editor = open('Some no|tes')
+        startAtEnd(editor, 'line')
+        editor.dispatch(editor.state.update({ changes: { from: 10, insert: 'X' } }))
+        editor.dispatch(editor.state.update({ changes: { from: 11, insert: 'Y' } }))
+        select(editor, 0)
+        expect(editor.fixture()).toBe('|Some notesXY')
+    })
+
+    it('a bullet a panel holds is not reused: the next bullet goes under it (EtherPK)', () => {
+        const editor = open('- Gar|den')
+        startAtEnd(editor, 'bullet')
+        editor.dispatch(editor.state.update({ effects: addInlinePanel.of({ id: 1, lineStart: editor.state.doc.line(2).from, mode: 'line' }) }))
+        startAtEnd(editor, 'bullet')
+        expect(editor.fixture()).toBe('- Garden\n- \n- |')
+    })
+
+    it('an edit elsewhere leaves the line, which is taken back after it and out of its undo step (EtherPK)', () => {
+        const editor = open('Some no|tes')
+        startAtEnd(editor, 'line')
+        editor.dispatch(editor.state.update({ changes: { from: 0, insert: 'Big ' }, selection: { anchor: 4 }, userEvent: 'input.type' }))
+        expect(editor.text()).toBe('Big Some notes\n\n')
+        takeBackIfLeft(editor)
+        expect(editor.fixture()).toBe('Big |Some notes')
+        editor.key('Mod-z')
+        expect(editor.text()).toBe('Some notes')
+    })
+
+    // The press is no step in the history, so the history maps its steps through it, and text it
+    // restores at the end of the last text would land on the new line. It goes back where it was.
+    const restores: { rule: string; precedent: Rule['precedent']; kind: EndKind; before: string; steps: (editor: Fixture) => void; after: string }[] = [
+        {
+            rule: 'Mod+Z of a deletion at the end of the text puts the text back there, not on the new line',
+            precedent: 'EtherPK',
+            kind: 'line',
+            before: 'Some notes!|',
+            steps: (editor) => editor.key('Backspace'),
+            after: 'Some notes!',
+        },
+        {
+            rule: 'and on a new bullet straight under a bullet',
+            precedent: 'EtherPK',
+            kind: 'bullet',
+            before: '- Garden!|',
+            steps: (editor) => editor.key('Backspace'),
+            after: '- Garden!',
+        },
+    ]
+    for (const row of restores) {
+        it(`${row.rule} (${row.precedent})`, () => {
+            const editor = open(row.before)
+            row.steps(editor)
+            startAtEnd(editor, row.kind)
+            editor.key('Mod-z')
+            takeBackIfLeft(editor)
+            expect(editor.text()).toBe(row.after)
+        })
+    }
+
+    it('Mod+Y of typing at the end of the text puts it back there, not on the new line (EtherPK)', () => {
+        const editor = open('Some notes|')
+        editor.type('!')
+        editor.key('Mod-z')
+        startAtEnd(editor, 'line')
+        editor.key('Mod-y')
+        takeBackIfLeft(editor)
+        expect(editor.text()).toBe('Some notes!')
+    })
+
+    it('once anything is typed on the line, it stays when the caret leaves (EtherPK)', () => {
+        const editor = open('Some no|tes')
+        startAtEnd(editor, 'line')
+        editor.type('x')
+        select(editor, 0)
+        expect(editor.fixture()).toBe('|Some notes\n\nx')
+    })
+
+    it('neither the press nor taking it back is a step in the undo history (EtherPK)', () => {
+        const editor = open('Some notes|')
+        editor.type('!')
+        const depth = undoDepth(editor.state)
+        startAtEnd(editor, 'line')
+        expect(undoDepth(editor.state)).toBe(depth)
+        select(editor, 0)
+        expect(undoDepth(editor.state)).toBe(depth)
+        editor.key('Mod-z')
+        expect(editor.text()).toBe('Some notes')
+    })
+
+    // The history's own transaction skips transaction filters, so the editor takes the line back in
+    // the transaction after it (`takeBackIfLeft`, which a view plugin calls after every update).
+    it('Mod+Z on the untouched line undoes the edit before it, and the line is taken back after it (EtherPK)', () => {
+        const editor = open('Some notes|')
+        editor.type('!')
+        startAtEnd(editor, 'line')
+        editor.key('Mod-z')
+        expect(editor.text()).toBe('Some notes\n\n')
+        takeBackIfLeft(editor)
+        expect(editor.fixture()).toBe('Some notes|')
+    })
+
+    it('leaves a line the caret is still on alone when asked after an update (EtherPK)', () => {
+        const editor = open('Some no|tes')
+        startAtEnd(editor, 'line')
+        takeBackIfLeft(editor)
+        expect(editor.fixture()).toBe('Some notes\n\n|')
+    })
+
+    it('pressing again, or the other button, starts afresh rather than adding to the untouched line (EtherPK)', () => {
+        const editor = open('Some no|tes')
+        startAtEnd(editor, 'line')
+        startAtEnd(editor, 'line')
+        expect(editor.fixture()).toBe('Some notes\n\n|')
+        startAtEnd(editor, 'bullet')
+        expect(editor.fixture()).toBe('Some notes\n\n- |')
+        select(editor, 0)
+        expect(editor.fixture()).toBe('|Some notes')
+    })
+
+    it('a bullet an inline panel opens on is kept, as an Agent Chat opened there holds it (EtherPK)', () => {
+        const editor = open('- Gar|den')
+        startAtEnd(editor, 'bullet')
+        editor.dispatch(editor.state.update({ effects: addInlinePanel.of({ id: 1, lineStart: editor.state.doc.line(2).from, mode: 'line' }) }))
+        expect(editor.fixture()).toBe('- Garden|\n- ')
+        select(editor, 0)
+        editor.dispatch(editor.state.update({ effects: removeInlinePanel.of(1) }))
+        select(editor, 4)
+        expect(editor.fixture()).toBe('- Ga|rden\n- ')
+    })
+
+    it('the press and the take-back are placements, which a Draft takes in without being created (EtherPK)', () => {
+        const editor = open('Some no|tes')
+        const edits: boolean[] = []
+        const dispatch = editor.dispatch
+        editor.dispatch = (tr) => {
+            if (tr.docChanged) edits.push(isEdit(tr))
+            dispatch(tr)
+        }
+        startAtEnd(editor, 'line')
+        // A caret the app places, with no user event of its own: the take-back adds none either.
+        editor.dispatch(editor.state.update({ selection: { anchor: 0 } }))
+        expect(editor.text()).toBe('Some notes')
+        expect(edits).toEqual([false, false])
     })
 })
 

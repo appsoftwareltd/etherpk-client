@@ -39,7 +39,7 @@ import { blockInsertableAfter, blockInsertableAt, blockTakesLine, insertContext,
 import { editorDocument } from '../editor-document'
 import { liveEditorView } from '../editor-succession'
 import { BLOCK_WIDGET_SPACING, BULLET_BLOCK_DROP, blockWidgetIndent, blockWidgetLineStart } from './content-clamp'
-import { historyChord, typingField } from './interactive-fence'
+import { type CaretBlock, caretKeptOff, historyChord, typingField } from './interactive-fence'
 import { isProtectedDocumentFacet } from './protected-document'
 
 /** Where one panel sits: the start of its line, or after the document's end. */
@@ -502,6 +502,21 @@ function panelIndent(state: EditorState, column: InlinePanelPlacement['column'])
     return column.edge === 'start' ? blockWidgetLineStart(state, column.line) : blockWidgetIndent(state, column.line)
 }
 
+/**
+ * The empty bullet each panel is drawn beside is the panel's place, where its first block goes, so
+ * the caret is kept off it as it is kept off a drawn Extension Fence (`caretKeptOff`,
+ * interactive-fence.ts): it passes over the line, and a panel opening there moves the caret past.
+ * Closing the panel gives the line back (`closeEntry`).
+ */
+export const panelCaretBlocks = caretKeptOff.of((state): CaretBlock[] =>
+    inlinePanelWidgets(state)
+        .filter((placement) => placement.beside)
+        .map((placement) => {
+            const line = state.doc.lineAt(placement.pos)
+            return { blockFrom: line.from, blockTo: line.to }
+        }),
+)
+
 const panelDecorations = EditorView.decorations.compute(['doc', inlinePanelsField], (state) =>
     Decoration.set(
         inlinePanelWidgets(state).map((placement) => {
@@ -650,7 +665,7 @@ const panelTheme = EditorView.baseTheme({
 
 /** The augmentation every document editor carries, so a panel can open in any of them. */
 export function inlinePanelsAugmentation() {
-    return [inlinePanelsField, panelDecorations, panelLifecycle, panelTheme]
+    return [inlinePanelsField, panelCaretBlocks, panelDecorations, panelLifecycle, panelTheme]
 }
 
 /** A panel as its opener holds it. */

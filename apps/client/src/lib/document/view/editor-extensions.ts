@@ -64,6 +64,7 @@ import { caretClamp } from './caret-clamp'
 import { fenceDeleteGuard, fencePad } from './fence-guard'
 import { type EditRefusal, editRefusalReporter } from './edit-refused'
 import { type EditorDocumentInfo, editorDocument } from './editor-document'
+import { endOfDocument } from './end-of-document'
 import { keepCaretVisible } from './keep-caret-visible'
 import { lineAnchor } from './line-anchor'
 import { editorOnScreen } from './editor-on-screen'
@@ -226,6 +227,9 @@ export function editorFeatures(services: EditorExtensionServices): EditorFeature
         // Inline panels: a block an extension draws beneath a line that is not the document's text,
         // an Agent Chat opened with /Agent among them (ADR 0147).
         { name: 'inline-panels', extension: inlinePanelsAugmentation() },
+        // The line the end-of-document buttons start (ADR 0149), taken back out if the caret leaves it
+        // untouched, unless an inline panel has come to hold it.
+        { name: 'end-of-document', extension: endOfDocument() },
         { name: 'math-inline', extension: mathInlineAugmentation() },
         // Assets: images resolve through the store; asset links download. Asset-link MUST precede
         // markdown-link, which skips any target the asset augmentation owns.

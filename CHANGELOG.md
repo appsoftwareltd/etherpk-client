@@ -5,7 +5,7 @@ What changed in each release of the EtherPK Client and the Headless Client
 They are released together, under the version number they share with the Sync Server. This log
 starts at 0.9.3.
 
-## Unreleased
+## 0.13.0 - 2026-10-16
 
 ### Client
 
@@ -15,10 +15,13 @@ starts at 0.9.3.
   OpenAI-compatible server with your own key, and EtherPK calls the provider from your browser. Each
   chat reads nothing else, the bullet's siblings and ancestors, the document, the document and the
   documents it links to, or the whole graph through search and read tools that the chat lists as the
-  model uses them. You choose the model from a list you can narrow by typing. A protected document
-  is never read or named, even while it is unlocked. You can paste images for a model that takes
+  model uses them. A chat opened on a bullet starts on that bullet's siblings and ancestors, and
+  where your notes already hold the question you can send without typing anything. You choose the
+  model from a list you can narrow by typing, and an agent instruction in the Agents settings goes
+  to every model in every chat. A protected document is never read or named, even while it is
+  unlocked. You can paste images for a model that takes
   them, and a chat can search the web through Anthropic, OpenAI or OpenRouter, starting as your
-  setting says. A chat is kept on the device you had it on, and only the turns you choose to save go
+  setting says. A chat is kept on the device you had it on, and only the turns you tick to save go
   into the document. On a phone the chat opens over the whole screen. Agent Chat is an extension
   that comes with EtherPK, so you can switch it off.
 - **The Agent Chats view** in the right sidebar lists every chat of the graph kept on the device,
@@ -27,6 +30,18 @@ starts at 0.9.3.
   cursor while you are typing and at the end of the document otherwise. A chat opened in a journal
   entry or page that has not been created yet leaves it uncreated until you save turns into it.
 - **The phone's font size buttons** are now the last of the command bar's scrolling buttons.
+- **The window an extension's block opens over the editor**, a drawing or a map, closes with a close
+  icon in place of a Return button.
+- **Closing a tab goes back to the tab you had open before it** in that pane, rather than to the
+  first or last tab, whether you close it with its ×, a tab menu row or by deleting the document,
+  and on a phone. The order is kept when you reload. Closing a tab in another pane leaves the
+  keyboard where you were typing.
+- **Two buttons under the last line of a document** start a new line or a new bullet at its end,
+  with the cursor on it, on a computer and a phone. A new line you leave without typing on is taken
+  out again, and a journal entry or page that has not been created yet is created only once you
+  type on it.
+- **Typing a slash command in a new journal entry or page** no longer creates it on its own. It is
+  created once the command or your typing adds text, so `/Agent` leaves a new day as it was.
 - **Agent Setup Code.** The one-time code that signs in an agent's computer is called an Agent Setup
   Code, created with **Create an Agent Setup Code** in the Agents settings, and the sign-in steps
   there are shorter. The settings no longer offer a login command without a code.
@@ -41,8 +56,8 @@ starts at 0.9.3.
 - **The slash menu puts a command named what you typed first**, ahead of a command that matches
   as well only through one of its other search words. `/agent` now offers Agent Chat before Copy
   task reference.
-- **EtherPK can reach a model server on your own computer** over plain HTTP at `localhost`,
-  `127.0.0.1` or `[::1]`, and nowhere else over plain HTTP.
+- **EtherPK can reach a model server on your own computer** over plain HTTP at `localhost` or
+  `127.0.0.1`, and nowhere else over plain HTTP.
 - **Extension API (Proposed):** `context.documents` reads the open graph's documents with every
   protected document left out, `context.records` keeps an extension's records for a graph on the
   device, `context.assets` adds images to the graph, `context.layout.openWindow` draws over the

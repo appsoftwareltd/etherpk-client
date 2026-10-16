@@ -18,7 +18,7 @@ import { GRAPH_TOOL_NAMES, graphTools, summarizeToolCall } from '../grants/tools
 import { type ProviderModel, providerModel } from '../providers/language-model'
 import { errorForStatus, type ModelInfo, ProviderError, unreachable } from '../providers/models'
 import type { ModelConnection } from '../settings/connections'
-import type { Turn } from './model'
+import { promptlessMessage, type Turn } from './model'
 
 /** The most steps one turn may take: each tool call and its answer is one. */
 export const MAX_STEPS = 12
@@ -46,6 +46,8 @@ export interface RunTurnInput {
     prepareImage(image: Blob): Promise<Blob>
     /** Today as `YYYY-MM-DD`, at the moment of sending. */
     today: string
+    /** The person's Agent Instruction, sent with every turn; empty for none. */
+    agentInstruction?: string
     /** Told when a tool chip or the turn's state changes, so the chat is kept. */
     changed(): void
     /** The model to call; the provider's own unless a test supplies one. */
@@ -68,8 +70,10 @@ async function imagePart(image: Blob, prepare: (image: Blob) => Promise<Blob>) {
 }
 
 async function userContent(turn: Turn, prepare: (image: Blob) => Promise<Blob>): Promise<UserContent> {
-    if (turn.images.length === 0) return turn.question
-    return [{ type: 'text', text: turn.question }, ...(await Promise.all(turn.images.map((image) => imagePart(image.blob, prepare))))]
+    // Sent with no prompt: the model is told where the question is (`promptlessMessage`).
+    const text = turn.question.trim() === '' ? promptlessMessage(turn.grant) : turn.question
+    if (turn.images.length === 0) return text
+    return [{ type: 'text', text }, ...(await Promise.all(turn.images.map((image) => imagePart(image.blob, prepare))))]
 }
 
 /** The chat so far as messages: each earlier turn that has an answer, then the question asked now. */
@@ -126,6 +130,7 @@ export async function runTurn(input: RunTurnInput): Promise<void> {
             today: input.today,
             formatGuide: turn.grant === 'nothing' ? '' : input.documents.formatGuide(),
             canSearchGraph: readsGraph,
+            agentInstruction: input.agentInstruction,
         })
         const messages = await chatMessages(input.history, turn, input.prepareImage)
         const { model, tools: searchTools } = await (input.providerModel ?? providerModel)(input.connection, turn.modelId, input.webSearch)

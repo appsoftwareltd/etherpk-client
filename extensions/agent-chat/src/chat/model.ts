@@ -25,10 +25,66 @@ export const GRANT_LABELS: Record<GrantLevel, string> = {
 /** A line that says what each grant sends, for the picker. */
 export const GRANT_HINTS: Record<GrantLevel, string> = {
     nothing: 'Only this chat is sent.',
-    block: "The bullet's ancestors, and its siblings with what is under them, are sent with each message.",
+    block: "This bullet's siblings and ancestors are sent with each message.",
     document: "The document's text is sent with each message.",
     links: 'The document and the documents it links to directly are sent with each message.',
     graph: 'The document and its links are sent, and the model can search and read any other document. Each one it reads is shown.',
+}
+
+/**
+ * The grant a new chat starts on: the outline around the bullet it opened on, when that bullet
+ * has siblings or ancestors to send, else the document (ADR 0147, amended 2026-10-16). `outline`
+ * is what Block siblings and ancestors would send now, or null where the chat is on no bullet.
+ */
+export function openingGrant(outline: string | null): GrantLevel {
+    return outline !== null && outline.trim() !== '' ? 'block' : 'document'
+}
+
+/**
+ * Whether a message must hold a prompt to be sent. Under the outline, the document, or the
+ * document and its links, what is sent may already hold the question, so Send works with the field
+ * empty. Nothing else sends no notes, and the whole graph has no one place the question could be.
+ */
+export function needsPrompt(grant: GrantLevel): boolean {
+    return grant === 'nothing' || grant === 'graph'
+}
+
+/** A grant's label as it reads inside a sentence: "this document". */
+function grantPhrase(grant: GrantLevel): string {
+    const label = GRANT_LABELS[grant]
+    return label.charAt(0).toLowerCase() + label.slice(1)
+}
+
+/** What the message field says while it is empty: what Send will do. */
+export function composerPlaceholder(grant: GrantLevel): string {
+    return needsPrompt(grant) ? 'Prompt the agent' : `Send ${grantPhrase(grant)}`
+}
+
+/**
+ * A turn's question as it is shown, titled and saved: what the person wrote, or for a turn sent
+ * with no prompt, what was sent ("Sent this document"). A picture sent on its own reads as nothing.
+ */
+export function questionText(turn: Pick<Turn, 'question' | 'grant' | 'images'>): string {
+    const written = turn.question.trim()
+    if (written !== '' || turn.images.length > 0) return written
+    return `Sent ${grantPhrase(turn.grant)}`
+}
+
+/**
+ * The message the model is given for a turn sent with no prompt: where the person's question is.
+ * Under a grant that needs a prompt, only a picture can be sent with none, and the picture is it.
+ */
+export function promptlessMessage(grant: GrantLevel): string {
+    switch (grant) {
+        case 'block':
+            return 'I have not written a message. The outline around this chat holds what I want: respond to it.'
+        case 'document':
+            return 'I have not written a message. This document holds what I want: respond to it.'
+        case 'links':
+            return 'I have not written a message. This document and the documents it links to hold what I want: respond to them.'
+        default:
+            return 'I have not written a message: respond to what I sent.'
+    }
 }
 
 /** An image the person put in a message. */

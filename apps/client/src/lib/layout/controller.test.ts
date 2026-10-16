@@ -615,3 +615,89 @@ describe('LayoutController — a native close under reconciliation', () => {
         expect(onChange).toHaveBeenCalledTimes(1)
     })
 })
+
+// ADR 0150: closing a Pane's front tab brings forward the tab that was in front before it, by the
+// model's rule, whichever way the tab closed, and the renderer is never left to choose its own.
+describe('LayoutController — the tab that comes forward on a close', () => {
+    const docC: ViewRef = { kind: 'document', target: 'doc-C' }
+    const A = viewKey(docA)
+    const B = viewKey(docB)
+    const C = viewKey(docC)
+
+    /** A, B and C open in one main Pane in that order, then B and A brought to the front: in front most recently A, then B, then C. */
+    function opened() {
+        const renderer = createStubRenderer()
+        const onChange = vi.fn()
+        const controller = createLayoutController({ renderer, onChange })
+        controller.openView(docA)
+        controller.openView(docB)
+        controller.openView(docC)
+        controller.focusView(docB)
+        controller.focusView(docA)
+        return { renderer, controller, onChange }
+    }
+    const front = (controller: LayoutController) => controller.serialize().model.regions.main.panes[0]?.activePanelId
+
+    it('tells the renderer which tab comes forward as it removes the closed one', () => {
+        const { renderer, controller } = opened()
+        controller.closeView(docA)
+        // B, the tab in front before A; the last tab, C, under the old rule.
+        expect(front(controller)).toBe(B)
+        expect(renderer.removedWithFront.at(-1)).toEqual({ panelId: A, front: B })
+        expect(controller.activeView()?.panelId).toBe(B)
+    })
+
+    it('names no tab to bring forward when a tab behind the front one closes', () => {
+        const { renderer, controller } = opened()
+        controller.closeView(docC)
+        expect(front(controller)).toBe(A)
+        expect(renderer.removedWithFront.at(-1)).toEqual({ panelId: C, front: undefined })
+    })
+
+    it("puts the renderer's own choice right after a removal it made itself", async () => {
+        const { renderer, controller } = opened()
+        // dockview removed A by itself, reported it, and brought forward a tab of its choosing.
+        renderer.panes = () => [{ region: 'main', id: 'g1', panelIds: [B, C], activePanelId: C }]
+        controller.forgetClosedView(A)
+        expect(front(controller)).toBe(B)
+        await Promise.resolve()
+        expect(renderer.frontedInPane).toEqual([B])
+    })
+
+    it('makes a tab dragged into another Pane its most recent, and brings forward the old Pane\'s own previous tab', () => {
+        const { renderer, controller } = opened()
+        // A, the front tab, dragged into a Pane of its own; dockview brought C forward in the Pane it left.
+        renderer.panes = () => [
+            { region: 'main', id: 'g1', panelIds: [B, C], activePanelId: C },
+            { region: 'main', id: 'g2', panelIds: [A], activePanelId: A },
+        ]
+        controller.noteRendererChanged()
+        const panes = controller.serialize().model.regions.main.panes
+        expect(panes.map((p) => p.activePanelId)).toEqual([B, A])
+        expect(panes[1].recent).toEqual([A])
+        expect(renderer.frontedInPane).toEqual([B])
+    })
+
+    it('keeps the order with the Layout, so a close after a reload still goes back', () => {
+        const { controller } = opened()
+        const saved = controller.serialize()
+        expect(saved.model.regions.main.panes[0].recent).toEqual([A, B, C])
+
+        const again = createLayoutController({ renderer: createStubRenderer() })
+        again.restore(saved)
+        again.closeView(docA)
+        expect(front(again)).toBe(B)
+    })
+
+    it('reads a Layout saved without an order, the closed tab\'s neighbour coming forward', () => {
+        const { controller } = opened()
+        const saved = controller.serialize()
+        delete saved.model.regions.main.panes[0].recent
+
+        const again = createLayoutController({ renderer: createStubRenderer() })
+        again.restore(saved)
+        again.closeView(docA)
+        // A was first in the strip: its right-hand neighbour, B, where the last tab, C, came forward before.
+        expect(front(again)).toBe(B)
+    })
+})

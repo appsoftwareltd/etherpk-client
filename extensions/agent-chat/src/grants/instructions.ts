@@ -17,6 +17,8 @@ export interface InstructionsInput {
     formatGuide: string
     /** Whether the model has the tools that search and read the graph. */
     canSearchGraph: boolean
+    /** The person's Agent Instruction, for every model in every chat; empty for none. */
+    agentInstruction?: string
 }
 
 /** A document as the model reads it, between tags that name it, and say when it is only part of it. */
@@ -36,6 +38,9 @@ export function instructions(input: InstructionsInput): string {
             'When something you need was not given to you, say what is missing rather than guessing.',
         ].join(' '),
     ]
+    // Theirs, so it comes before the notes and is never cut with them.
+    const own = input.agentInstruction?.trim() ?? ''
+    if (own !== '') parts.push(`The person's own instructions, for every chat:\n\n${own}`)
     if (input.grant === 'nothing') {
         parts.push('The person has not given you any of their notes for this chat. Answer from what they write here.')
         return parts.join('\n\n')

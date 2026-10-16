@@ -89,7 +89,72 @@ describe('model helpers', () => {
     it('removePanel returns false for an unknown panel', () => {
         expect(removePanel(createEmptyModel(), 'nope:1')).toBe(false)
     })
+})
 
+// ADR 0150: closing a Pane's front tab brings forward the tab that was in front before it.
+describe('which tab comes forward when the front tab closes', () => {
+    const doc = (name: string) => singletonInstance({ kind: 'document', target: name })
+    const id = (name: string) => `document:${name}`
+
+    /** One main Pane holding `names` in strip order, with `fronted` brought to the front in turn. */
+    function pane(names: string[], fronted: string[]): LayoutModel {
+        const model = createEmptyModel()
+        model.regions.main.panes.push({ id: 'pane-1', views: names.map(doc), activePanelId: id(names[0]) })
+        for (const name of fronted) activatePanel(model, id(name))
+        return model
+    }
+    const front = (model: LayoutModel) => model.regions.main.panes[0]?.activePanelId ?? null
+
+    it('brings forward the tab most recently in front, not the first or the last', () => {
+        // Strip: Garden, Kitchen, Shed, Attic. In front in turn: Kitchen, Garden, Shed.
+        const model = pane(['Garden', 'Kitchen', 'Shed', 'Attic'], ['Kitchen', 'Garden', 'Shed'])
+        removePanel(model, id('Shed'))
+        expect(front(model)).toBe(id('Garden'))
+        removePanel(model, id('Garden'))
+        expect(front(model)).toBe(id('Kitchen'))
+    })
+
+    it('falls back to the right-hand neighbour, then the left, for tabs never in front', () => {
+        const model = pane(['Garden', 'Kitchen', 'Shed', 'Attic'], ['Kitchen'])
+        // Kitchen was the only tab ever in front: its neighbour to the right comes forward.
+        removePanel(model, id('Kitchen'))
+        expect(front(model)).toBe(id('Shed'))
+        // And the last tab's neighbour is on its left.
+        const end = pane(['Garden', 'Kitchen', 'Shed'], ['Shed'])
+        removePanel(end, id('Shed'))
+        expect(front(end)).toBe(id('Kitchen'))
+    })
+
+    it('leaves the front alone when a tab behind it closes, and forgets the closed tab', () => {
+        const model = pane(['Garden', 'Kitchen', 'Shed'], ['Kitchen', 'Shed'])
+        removePanel(model, id('Kitchen'))
+        expect(front(model)).toBe(id('Shed'))
+        removePanel(model, id('Shed'))
+        // Kitchen is gone from the order: Garden, never in front, is all that is left.
+        expect(front(model)).toBe(id('Garden'))
+    })
+
+    it('moves the keyboard to the tab that came forward in the same Pane when the closed tab had it', () => {
+        const model = pane(['Garden', 'Kitchen'], ['Garden', 'Kitchen'])
+        model.regions['right-sidebar'].panes.push({ id: 'pane-2', views: [doc('Shed'), doc('Attic')], activePanelId: id('Shed') })
+        activatePanel(model, id('Attic'))
+        activatePanel(model, id('Shed'))
+        removePanel(model, id('Shed'))
+        // Not the main region's front tab: the keyboard stays in the Pane it was in.
+        expect(model.activePanelId).toBe(id('Attic'))
+    })
+
+    it('keeps the keyboard where it was when a tab closes in another Pane', () => {
+        const model = pane(['Garden', 'Kitchen'], ['Garden', 'Kitchen'])
+        model.regions['right-sidebar'].panes.push({ id: 'pane-2', views: [doc('Shed'), doc('Attic')], activePanelId: id('Shed') })
+        activatePanel(model, id('Kitchen'))
+        removePanel(model, id('Shed'))
+        expect(model.activePanelId).toBe(id('Kitchen'))
+        expect(model.regions['right-sidebar'].panes[0].activePanelId).toBe(id('Attic'))
+    })
+})
+
+describe('model helpers, continued', () => {
     it('cloneModel deep-copies (mutating the clone leaves the original intact)', () => {
         const model = twoInMain()
         const clone = cloneModel(model)

@@ -159,6 +159,18 @@ export interface DockviewRendererOptions {
      * keep the controller model in sync so the View is no longer considered open.
      */
     onViewClosed?: (panelId: string) => void
+    /**
+     * Called when a tab's × is pressed, in place of dockview removing the tab itself, so the
+     * close goes through the LayoutController and the model decides which tab comes forward
+     * (ADR 0150). Absent ⇒ the × removes the tab here, and `onViewClosed` reports it.
+     */
+    onCloseRequested?: (panelId: string) => void
+    /**
+     * Called when dockview has moved a tab on its own: a tab dragged into another group. Lets the
+     * app bring forward, in the group the tab left, the tab the model chooses rather than
+     * dockview's own (ADR 0150).
+     */
+    onViewMoved?: () => void
 }
 
 export interface DockviewRenderer extends LayoutRenderer {
@@ -219,6 +231,7 @@ export function createDockviewRenderer(options: DockviewRendererOptions): Dockvi
                 iconFor: (panelId) => registry.icon(parseViewKey(panelId)),
                 titleCharsFor: (panelId) => registry.tabTitleChars(parseViewKey(panelId)),
                 close: (panelId) => {
+                    if (options.onCloseRequested) return options.onCloseRequested(panelId)
                     const panel = api.getPanel(panelId)
                     if (panel) removePanelKeepingEditorArea(panel)
                 },
@@ -344,6 +357,19 @@ export function createDockviewRenderer(options: DockviewRendererOptions): Dockvi
         ? api.onDidRemovePanel((panel) => options.onViewClosed?.(panel.id))
         : undefined
 
+
+    /**
+     * Bring `panel` to the front of its group without making the group the active one: the group's
+     * own model opens it where it already is (its index, so the strip does not reorder) and is told
+     * not to activate the group. dockview reports a front change only for its active group, so the
+     * keyboard stays where it is.
+     */
+    function frontInGroup(panel: IDockviewPanel): void {
+        const group = panel.api.group
+        if (group.activePanel === panel) return
+        group.model.openPanel(panel, { index: group.panels.indexOf(panel), skipSetGroupActive: true })
+    }
+
     /** The region a group stands in: a Sidebar's own group, else the editor area. */
     function regionOf(groupId: string): Region {
         for (const region of ['left-sidebar', 'right-sidebar'] as const) {
@@ -390,6 +416,9 @@ export function createDockviewRenderer(options: DockviewRendererOptions): Dockvi
         if (building) return
         clampToPinnedBlock(event.panel)
         settleEditorArea()
+        // dockview has brought a tab of its own choosing forward in the group the tab left, which
+        // the app puts right (ADR 0150).
+        options.onViewMoved?.()
     })
 
     /**
@@ -594,9 +623,19 @@ export function createDockviewRenderer(options: DockviewRendererOptions): Dockvi
             }
         },
 
-        removeView(panelId: string) {
+        removeView(panelId: string, front?: string) {
             const panel = api.getPanel(panelId)
-            if (panel) removePanelKeepingEditorArea(panel)
+            if (!panel) return
+            // The tab the model brings forward goes in front first, so the closed tab is not the
+            // group's front tab as it goes and dockview has no tab of its own to bring forward.
+            const next = front ? api.getPanel(front) : undefined
+            if (next && next.api.group === panel.api.group) frontInGroup(next)
+            removePanelKeepingEditorArea(panel)
+        },
+
+        frontInPane(panelId: string) {
+            const panel = api.getPanel(panelId)
+            if (panel) frontInGroup(panel)
         },
 
         focusView(panelId: string) {

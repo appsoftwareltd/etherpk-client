@@ -10,7 +10,7 @@
  * The pure trigger/ranking logic is in `slash-complete-core.ts`; this is the CM binding.
  */
 
-import type { Extension } from '@codemirror/state'
+import { type EditorState, type Extension, Facet } from '@codemirror/state'
 import type { EditorView } from '@codemirror/view'
 
 import {
@@ -35,6 +35,16 @@ import { iconSvg } from '$lib/surface/icons'
 
 import { openWikilinkContext } from './wikilink-complete-core'
 import { openSlashContext, rankCommandMenu } from './slash-complete-core'
+
+const commandMenuOpenProbe = Facet.define<(state: EditorState) => boolean>()
+
+/**
+ * Whether the Command Menu is open in this editor: the `/` command being typed is not text yet, so
+ * a [[Draft]] holds it until the menu closes (draft.ts, ADR 0145 amended 2026-10-16).
+ */
+export function commandMenuOpen(state: EditorState): boolean {
+    return state.facet(commandMenuOpenProbe).some((open) => open(state))
+}
 
 /** A row as the menu shows it: its help text worked out for this caret. */
 type MenuRow = Omit<CommandMenuItem, 'detail'> & { detail?: string }
@@ -114,5 +124,6 @@ export function slashCompletion(): Extension {
         compute,
         rows,
         accept,
+        isOpen: commandMenuOpenProbe,
     })
 }

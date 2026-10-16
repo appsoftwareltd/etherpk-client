@@ -1,6 +1,6 @@
 /**
- * The person's Agent Chat settings: their [[Model Connection]]s and whether new chats search the web
- * (ADR 0147). Kept as one record with the person (`personStorage`), so they follow the person to
+ * The person's Agent Chat settings: their [[Model Connection]]s, whether new chats search the web,
+ * and their Agent Instruction, sent to every model in every chat (ADR 0147). Kept as one record with the person (`personStorage`), so they follow the person to
  * their devices through the account's Settings Vault and never belong to a graph: members of a
  * shared graph never see another member's connections or keys, and an agent the person signs in
  * with the Headless Client never gets the Settings Vault (ADR 0148).
@@ -39,9 +39,17 @@ export interface AgentChatSettings {
      * switch it on or off for itself. Off until the person turns it on.
      */
     webSearchByDefault: boolean
+    /**
+     * What the person tells every model in every chat, sent with the context at the start of each
+     * turn's instructions (`grants/instructions.ts`). Empty when they have written none.
+     */
+    instruction: string
 }
 
-export const EMPTY_SETTINGS: AgentChatSettings = { connections: [], defaultConnection: null, webSearchByDefault: false }
+/** The most an Agent Instruction may hold, so it never crowds out the notes it is sent with. */
+export const INSTRUCTION_LIMIT = 4000
+
+export const EMPTY_SETTINGS: AgentChatSettings = { connections: [], defaultConnection: null, webSearchByDefault: false, instruction: '' }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -72,7 +80,13 @@ export function readSettings(storage: Pick<ExtensionPersonStorage, 'get'>): Agen
         connections: unique,
         defaultConnection: typeof raw.defaultConnection === 'string' && ids.has(raw.defaultConnection) ? raw.defaultConnection : null,
         webSearchByDefault: raw.webSearchByDefault === true,
+        instruction: typeof raw.instruction === 'string' ? raw.instruction.slice(0, INSTRUCTION_LIMIT) : '',
     }
+}
+
+/** The settings with the Agent Instruction as written, cut at its limit. */
+export function withInstruction(settings: AgentChatSettings, instruction: string): AgentChatSettings {
+    return { ...settings, instruction: instruction.slice(0, INSTRUCTION_LIMIT) }
 }
 
 export function writeSettings(storage: Pick<ExtensionPersonStorage, 'set'>, settings: AgentChatSettings): void {

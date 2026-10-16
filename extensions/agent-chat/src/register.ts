@@ -134,12 +134,27 @@ export function registerAgentChat(context: ExtensionContext, ui: AgentChatUi): A
         const onNew = () => {
             session.chatId = chats.create(home).id
             track()
+            chats.startWhereOpen(session.chatId)
         }
         const openWindow = () => {
             window = context.layout.openWindow({
                 title: 'Agent Chat',
-                mount: (host, opened) =>
-                    ui.opening(host, { chats, home, session, where: 'window', panel, actions, onChoose, onNew, onClose: () => opened.close(), onSaved: () => opened.close() }),
+                mount: (host, opened) => {
+                    // Going somewhere else from a chat over the whole window closes it, so the
+                    // person sees where they went rather than the chat still in front of it.
+                    const leaving: ChatActions = {
+                        ...actions,
+                        openSettings() {
+                            opened.close()
+                            actions.openSettings()
+                        },
+                        openDocument(name) {
+                            opened.close()
+                            actions.openDocument(name)
+                        },
+                    }
+                    return ui.opening(host, { chats, home, session, where: 'window', panel, actions: leaving, onChoose, onNew, onClose: () => opened.close(), onSaved: () => opened.close() })
+                },
                 onClose: () => {
                     window = null
                 },
@@ -166,6 +181,8 @@ export function registerAgentChat(context: ExtensionContext, ui: AgentChatUi): A
             return null
         }
         track()
+        // A new chat reads the outline around its bullet when there is one, else the document.
+        if (session.chatId && !options.chatId) chats.startWhereOpen(session.chatId)
         if (!desktop && options.showWindow !== false) openWindow()
         panel.focus()
         return panel

@@ -38,6 +38,23 @@ import { sequentialTextChanges } from './sequential-text-changes'
 export const EXTERNAL = Annotation.define<boolean>()
 
 /**
+ * Marks a change the editor makes as a placement, not an edit, where the transaction is no `select`
+ * event to say so: an untouched line the end-of-document buttons started, taken back out
+ * (end-of-document.ts). Without a user event of its own, the transaction moves nothing else that
+ * listens for one (a held reveal, spell check's first edit, a pinned reveal).
+ */
+export const placementChange = Annotation.define<boolean>()
+
+/**
+ * Whether a transaction is an edit: it changes the text, and not only by riding on a caret move (a
+ * `select` event, as tidy on leave trimming the line the caret left) or as a placement
+ * (`placementChange`). A [[Draft]] is written only by an edit (ADR 0145).
+ */
+export function isEdit(tr: Transaction): boolean {
+    return tr.docChanged && !tr.isUserEvent('select') && tr.annotation(placementChange) !== true
+}
+
+/**
  * Whether this editor is bound to a shared Y.Text. A transaction filter reads it to leave
  * Y-originated transactions alone: y-codemirror dispatches a remote member's change, and the
  * shared undo manager's undo, as ordinary transactions with no user event and no exported
@@ -89,11 +106,13 @@ export interface DocumentEditorOptions {
     doc: string
     /**
      * Fired for every editor-originated change. `edited` is false when the change only rode on a
-     * caret move (a `select` transaction): tidy on leave trimming the line the caret walked away
-     * from. Every other change, typing or a Command's insert alike, is an edit. A [[Draft]] is
-     * written only by an edit (ADR 0145).
+     * caret move (a `select` transaction), tidy on leave trimming the line the caret walked away
+     * from, or was a placement (`isEdit`). Every other change, typing or a Command's insert alike,
+     * is an edit. A [[Draft]] is
+     * written only by an edit (ADR 0145). `after` is the editor's state once the change is in, which
+     * says whether the Command Menu is open (a Draft holds a change made while it is).
      */
-    onChange: (change: TextChange, edited: boolean) => void
+    onChange: (change: TextChange, edited: boolean, after: EditorState) => void
     /**
      * The document's text in the store now. Read when text arrives while this editor is still
      * sending a transaction's changes (send-and-hear.ts).
@@ -168,8 +187,8 @@ export function createDocumentEditor(options: DocumentEditorOptions): DocumentEd
         // A single transaction can carry several changes (a wrap key, a format toggle, a
         // multi-caret edit). `applyChange` takes one at a time and every store splices as it goes, so
         // each change is expressed against the text the ones before it leave (sequential-text-changes.ts).
-        const edited = update.transactions.some((tr) => tr.docChanged && !tr.isUserEvent('select'))
-        exchange.send(sequentialTextChanges(update.changes), (change) => onChange(change, edited))
+        const edited = update.transactions.some(isEdit)
+        exchange.send(sequentialTextChanges(update.changes), (change) => onChange(change, edited, update.state))
     })
 
     const view = new EditorView({

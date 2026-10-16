@@ -4643,10 +4643,16 @@
                     // Then the shared focus policy — the same call the mobile renderer makes.
                     if (view) focusActivatedDocument(viewKey(view));
                 },
-                // Keep the model in sync when a tab is closed via dockview's native ×,
-                // so reopening it from the tree works (and a reload won't re-open it).
+                // Keep the model in sync when dockview removes a tab on its own, so reopening
+                // it from the tree works (and a reload won't re-open it).
                 onViewClosed: (panelId) =>
                     controller?.forgetClosedView(panelId),
+                // A tab's × closes through the controller, which decides the tab that comes
+                // forward (ADR 0150), as every other close does.
+                onCloseRequested: (panelId) => controller?.closePanel(panelId),
+                // A tab dragged to another group: the group it left brings forward the model's
+                // choice, not dockview's (ADR 0150).
+                onViewMoved: () => controller?.noteRendererChanged(),
             });
         }
         controller = createLayoutController({

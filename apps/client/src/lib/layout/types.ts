@@ -102,6 +102,12 @@ export interface LayoutController {
      */
     notePanelActivated(panelId: string): void
     /**
+     * Sync the model after the renderer rearranged its tabs on its own (a tab dragged to another
+     * Pane), and put right a front tab it chose itself: a Pane whose front tab left it brings
+     * forward its own previous tab (ADR 0150). A no-op during restore.
+     */
+    noteRendererChanged(): void
+    /**
      * The globally focused View and where it lives, or null when none. The
      * Visit engine reads this to decide whether a change is a main-region
      * active-document change (ADR 0023).
@@ -144,6 +150,12 @@ export interface PaneModel {
     views: ViewInstance[]
     /** Panel id of the active tab, or `null` for an empty pane. */
     activePanelId: string | null
+    /**
+     * Panel ids in the order they were last in front of the Pane, most recent first (ADR 0150):
+     * which tab comes forward when the front one closes. A tab opened behind the front one is
+     * not in it until it is brought forward. Absent for a Pane saved before the order was kept.
+     */
+    recent?: string[]
 }
 
 /** A named region and its ordered panes. */
@@ -223,8 +235,19 @@ export interface RenderedPane {
  */
 export interface LayoutRenderer {
     addView(instance: ViewInstance, placement: ViewPlacement): void
-    removeView(panelId: string): void
+    /**
+     * Remove a View. `front` is the tab of the same Pane the model brings forward when the removed
+     * one was in front (ADR 0150): put in front first, so the renderer never brings forward a tab
+     * of its own choosing as the removed one goes.
+     */
+    removeView(panelId: string, front?: string): void
     focusView(panelId: string): void
+    /**
+     * Bring a View to the front of its Pane without making the Pane the active one, so the
+     * keyboard stays where it is: how the controller puts right a front tab the renderer chose on
+     * its own (ADR 0150). Optional: a renderer that only ever shows the model's choice needs none.
+     */
+    frontInPane?(panelId: string): void
     /**
      * Update the tab title of every open View of `kind`. The registry sets a
      * View's title once at creation; this lets the composition root retitle a

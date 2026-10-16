@@ -144,6 +144,25 @@ describe('running a turn of an Agent Chat (ADR 0147)', () => {
         expect(run.turn.tools.map((tool) => tool.status)).toEqual(['done'])
     })
 
+    it("sends the person's Agent Instruction in every turn's instructions, under any grant", async () => {
+        const model = new MockLanguageModelV4({ doStream: says('Ok.') })
+        await runTurn(input(model, { agentInstruction: 'Answer in British English.', turn: turn({ grant: 'nothing' }) }))
+        expect(JSON.stringify(model.doStreamCalls[0].prompt[0])).toContain('Answer in British English.')
+        const without = new MockLanguageModelV4({ doStream: says('Ok.') })
+        await runTurn(input(without, { agentInstruction: '  ' }))
+        expect(JSON.stringify(without.doStreamCalls[0].prompt[0])).not.toContain('own instructions')
+    })
+
+    it('tells the model where the question is when the person sent no prompt', async () => {
+        const model = new MockLanguageModelV4({ doStream: says('Shade suits ferns.') })
+        const run = input(model, { turn: turn({ question: '', grant: 'document' }) })
+        await runTurn(run)
+        const asked = model.doStreamCalls[0].prompt.at(-1)
+        expect(asked?.role).toBe('user')
+        expect(JSON.stringify(asked)).toContain('This document holds what I want')
+        expect(run.turn.answer).toBe('Shade suits ferns.')
+    })
+
     it('gives the model no tools for a narrower grant, or for a model that cannot call them', async () => {
         const narrow = new MockLanguageModelV4({ doStream: says('Ok.') })
         await runTurn(input(narrow, { turn: turn({ grant: 'links' }) }))

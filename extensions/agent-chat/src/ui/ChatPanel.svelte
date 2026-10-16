@@ -8,16 +8,20 @@
      *   a list the person can filter, the Context Grant, and web search where the provider has it.
      * - Each turn shows the question, the documents that were sent with it, a chip for each
      *   document the model read under the whole graph, the answer as it streams, and its sources.
-     * - Save turns the chat into a choice of turns, all ticked but those already saved, and writes
-     *   them into the home document as outline blocks.
+     * - Save turns the chat into a choice of turns, a box at each turn's top left, and writes the
+     *   ticked ones into the home document as outline blocks. The ticks are kept while this panel is
+     *   open: every turn not yet saved starts ticked, a new one arrives ticked, and a turn unticks
+     *   itself once saved, so a second Save never writes it twice.
+     * - Under the outline, the document, or the document and its links, Send works with the field
+     *   empty, since what is sent may hold the question; the field says so.
      */
     import type { InlinePanel } from "@appsoftwareltd/etherpk-extension-api";
-    import { SvelteSet } from "svelte/reactivity";
+    import { SvelteMap } from "svelte/reactivity";
     import type { Attachment } from "svelte/attachments";
     import { untrack } from "svelte";
 
     import type { AgentChats } from "../chat/chats.svelte";
-    import { type ChatImage, GRANT_HINTS, GRANT_LABELS, type GrantLevel, newId, type Turn } from "../chat/model";
+    import { type ChatImage, composerPlaceholder, GRANT_HINTS, GRANT_LABELS, type GrantLevel, newId, questionText, type Turn } from "../chat/model";
     import { PROVIDERS } from "../providers/catalogue";
     import Listbox from "./Listbox.svelte";
     import Markdown from "./Markdown.svelte";
@@ -91,7 +95,12 @@
     let saveBusy = $state(false);
     /** How many of the saved turns' images are in the graph so far, while a Save adds them. */
     let saveProgress = $state<{ done: number; total: number } | null>(null);
-    const ticked = new SvelteSet<string>();
+    /** Each turn's tick as the person left it while this panel is open; a turn not in it is ticked unless saved. */
+    const choices = new SvelteMap<string, boolean>();
+    const isTicked = (turn: Turn) => choices.get(turn.id) ?? !turn.saved;
+    /** The turns a Save can take: every one but a turn still being answered. */
+    const pickable = $derived(chat ? chat.turns.filter((turn) => turn.status !== "streaming") : []);
+    const tickedIds = $derived(pickable.filter(isTicked).map((turn) => turn.id));
 
     // ── The model, the grant and web search ──────────────────────────────────────────────────
 
@@ -213,12 +222,12 @@
     }
 
     function send() {
-        // Nothing to send yet: Send takes the person to the field rather than doing nothing.
-        if (chat && !running && !blocked && draft.trim() === "" && images.length === 0) {
+        if (!chat || running || blocked) return;
+        // Nothing typed where a prompt is needed: Send takes the person to the field rather than doing nothing.
+        if (draft.trim() === "" && images.length === 0 && !chats.canSendEmpty(chat)) {
             composer?.focus();
             return;
         }
-        if (!chat || running || blocked) return;
         const question = draft;
         const sending = images;
         draft = "";
@@ -239,14 +248,12 @@
 
     function startSave() {
         if (!chat) return;
-        ticked.clear();
-        for (const turn of chat.turns) if (!turn.saved && turn.status !== "streaming") ticked.add(turn.id);
         saveMode = true;
         notice = null;
     }
 
     async function save() {
-        if (!chat || saveBusy || ticked.size === 0) return;
+        if (!chat || saveBusy || tickedIds.length === 0) return;
         saveBusy = true;
         try {
             const target = where === "inline" && panel?.isOpen ? panel : ((await saveTarget?.()) ?? null);
@@ -254,8 +261,11 @@
                 notice = `Could not open ${chat.home} to save into it. Open the document, then save again.`;
                 return;
             }
-            const count = ticked.size;
-            if (await chats.save(chatId, [...ticked], target, (done, total) => (saveProgress = { done, total }))) {
+            const saving = [...tickedIds];
+            const count = saving.length;
+            if (await chats.save(chatId, saving, target, (done, total) => (saveProgress = { done, total }))) {
+                // Saved turns untick themselves, so the next Save offers only what is new.
+                for (const id of saving) choices.set(id, false);
                 notice = `Saved ${count} ${count === 1 ? "turn" : "turns"} into ${chat.home}.`;
                 saveMode = false;
                 onSaved?.();
@@ -268,9 +278,12 @@
         }
     }
 
-    function toggleTick(id: string) {
-        if (ticked.has(id)) ticked.delete(id);
-        else ticked.add(id);
+    function toggleTick(turn: Turn) {
+        choices.set(turn.id, !isTicked(turn));
+    }
+
+    function tickAll(on: boolean) {
+        for (const turn of pickable) choices.set(turn.id, on);
     }
 
     async function copyAnswer(turn: Turn) {
@@ -349,7 +362,7 @@
                         <!-- The robot says what this is; its words are for a screen reader. -->
                         <RobotIcon class="size-8 text-(--gk-text-muted)" />
                         <p class="ac-visually-hidden">Chat with your agent.</p>
-                        <p class="ac-muted" data-testid="agent-chat-grant-hint">{GRANT_HINTS[chat.grant]} Change it with Context, above.</p>
+                        <p class="ac-muted" data-testid="agent-chat-grant-hint">{GRANT_HINTS[chat.grant]}</p>
                         <p class="ac-muted">Chat turn data is only added to the document when you save it.</p>
                     {/if}
                 </div>
@@ -358,79 +371,81 @@
                 {#if grantChanged(chat.turns, index)}
                     <p class="ac-divider">Context now: {GRANT_LABELS[turn.grant]}</p>
                 {/if}
-                <article class="ac-turn" data-testid="agent-chat-turn" data-status={turn.status}>
-                    <div class="ac-question-row">
-                        {#if saveMode}
-                            <label class="ac-tick">
-                                <input type="checkbox" checked={ticked.has(turn.id)} onchange={() => toggleTick(turn.id)} disabled={turn.status === "streaming"} data-testid="agent-chat-save-tick" />
-                                <span class="ac-visually-hidden">Save this turn</span>
-                            </label>
+                <article class="ac-turn" class:ac-turn--picking={saveMode} data-testid="agent-chat-turn" data-status={turn.status}>
+                    {#if saveMode}
+                        <label class="ac-tick">
+                            <input type="checkbox" checked={isTicked(turn) && turn.status !== "streaming"} onchange={() => toggleTick(turn)} disabled={turn.status === "streaming"} data-testid="agent-chat-save-tick" />
+                            <span class="ac-visually-hidden">Save this turn: {questionText(turn) || "an image"}</span>
+                        </label>
+                    {/if}
+                    <div class="ac-turn-body">
+                        <div class="ac-question-row">
+                            <div class="ac-question" data-testid="agent-chat-question">
+                                <p class="ac-question-text" class:ac-question-text--sent={turn.question.trim() === "" && turn.images.length === 0}>{questionText(turn)}</p>
+                                {#if turn.images.length > 0}
+                                    <p class="ac-muted">{turn.images.length === 1 ? "1 image" : `${turn.images.length} images`}</p>
+                                {/if}
+                            </div>
+                        </div>
+                        {#if turn.saved}
+                            <p class="ac-badge" title="Saved into the document" data-testid="agent-chat-saved">
+                                <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" class="size-4">
+                                    <path
+                                        fill-rule="evenodd"
+                                        d="M3 3.5A1.5 1.5 0 0 1 4.5 2h6.879a1.5 1.5 0 0 1 1.06.44l4.122 4.12A1.5 1.5 0 0 1 17 7.622V16.5a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 3 16.5v-13Zm10.857 5.691a.75.75 0 0 0-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 0 0-1.06 1.061l2.5 2.5a.75.75 0 0 0 1.137-.089l4-5.5Z"
+                                        clip-rule="evenodd"
+                                    />
+                                </svg>
+                                <span class="ac-visually-hidden">Saved into the document</span>
+                            </p>
                         {/if}
-                        <div class="ac-question" data-testid="agent-chat-question">
-                            <p class="ac-question-text">{turn.question}</p>
-                            {#if turn.images.length > 0}
-                                <p class="ac-muted">{turn.images.length === 1 ? "1 image" : `${turn.images.length} images`}</p>
+                        {#if turn.context?.unwritten}
+                            <p class="ac-context" data-testid="agent-chat-context">{chat.home} has no text yet, so nothing of it was sent.</p>
+                        {:else if turn.context && turn.context.included.length > 0}
+                            <p class="ac-context" data-testid="agent-chat-context">
+                                Sent with this question:
+                                {#if turn.context.excerpt}the outline around this chat in{/if}
+                                {#each turn.context.included as name, i (name)}<button type="button" class="ac-text-button" onclick={() => openDocument(name)}>{name}</button>{i < turn.context.included.length - 1 ? ", " : ""}{/each}
+                                {#if turn.context.leftOut.length > 0}. Left out because they are too long: {turn.context.leftOut.join(", ")}{/if}
+                            </p>
+                        {/if}
+                        {#if turn.tools.length > 0}
+                            <ul class="ac-chips" aria-label="What the model read">
+                                {#each turn.tools as tool (tool.id)}
+                                    <li class="ac-chip" data-status={tool.status} data-testid="agent-chat-tool">
+                                        <span aria-hidden="true">{tool.status === "running" ? "…" : tool.status === "done" ? "✓" : "!"}</span>
+                                        {tool.summary}
+                                    </li>
+                                {/each}
+                            </ul>
+                        {/if}
+                        <div class="ac-answer" data-testid="agent-chat-answer">
+                            {#if turn.answer}
+                                <Markdown markdown={turn.answer} {openDocument} />
+                            {:else if turn.status === "streaming" && slow}
+                                <p class="ac-muted ac-thinking" data-testid="agent-chat-thinking"><span class="ac-spinner" aria-hidden="true" data-testid="agent-chat-spinner"></span>Thinking…</p>
                             {/if}
                         </div>
-                    </div>
-                    {#if turn.saved}
-                        <p class="ac-badge" title="Saved into the document" data-testid="agent-chat-saved">
-                            <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" class="size-4">
-                                <path
-                                    fill-rule="evenodd"
-                                    d="M3 3.5A1.5 1.5 0 0 1 4.5 2h6.879a1.5 1.5 0 0 1 1.06.44l4.122 4.12A1.5 1.5 0 0 1 17 7.622V16.5a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 3 16.5v-13Zm10.857 5.691a.75.75 0 0 0-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 0 0-1.06 1.061l2.5 2.5a.75.75 0 0 0 1.137-.089l4-5.5Z"
-                                    clip-rule="evenodd"
-                                />
-                            </svg>
-                            <span class="ac-visually-hidden">Saved into the document</span>
-                        </p>
-                    {/if}
-                    {#if turn.context?.unwritten}
-                        <p class="ac-context" data-testid="agent-chat-context">{chat.home} has no text yet, so nothing of it was sent.</p>
-                    {:else if turn.context && turn.context.included.length > 0}
-                        <p class="ac-context" data-testid="agent-chat-context">
-                            Sent with this question:
-                            {#if turn.context.excerpt}the outline around this chat in{/if}
-                            {#each turn.context.included as name, i (name)}<button type="button" class="ac-text-button" onclick={() => openDocument(name)}>{name}</button>{i < turn.context.included.length - 1 ? ", " : ""}{/each}
-                            {#if turn.context.leftOut.length > 0}. Left out because they are too long: {turn.context.leftOut.join(", ")}{/if}
-                        </p>
-                    {/if}
-                    {#if turn.tools.length > 0}
-                        <ul class="ac-chips" aria-label="What the model read">
-                            {#each turn.tools as tool (tool.id)}
-                                <li class="ac-chip" data-status={tool.status} data-testid="agent-chat-tool">
-                                    <span aria-hidden="true">{tool.status === "running" ? "…" : tool.status === "done" ? "✓" : "!"}</span>
-                                    {tool.summary}
-                                </li>
-                            {/each}
-                        </ul>
-                    {/if}
-                    <div class="ac-answer" data-testid="agent-chat-answer">
-                        {#if turn.answer}
-                            <Markdown markdown={turn.answer} {openDocument} />
-                        {:else if turn.status === "streaming" && slow}
-                            <p class="ac-muted" data-testid="agent-chat-thinking">Thinking…</p>
+                        {#if turn.sources.length > 0}
+                            <p class="ac-sources">
+                                Sources:
+                                {#each turn.sources as source, i (source.url)}<a href={source.url} target="_blank" rel="noopener noreferrer">{source.title}</a>{i < turn.sources.length - 1 ? ", " : ""}{/each}
+                            </p>
                         {/if}
-                    </div>
-                    {#if turn.sources.length > 0}
-                        <p class="ac-sources">
-                            Sources:
-                            {#each turn.sources as source, i (source.url)}<a href={source.url} target="_blank" rel="noopener noreferrer">{source.title}</a>{i < turn.sources.length - 1 ? ", " : ""}{/each}
-                        </p>
-                    {/if}
-                    {#if turn.status === "failed"}
-                        <p class="ac-error" role="alert" data-testid="agent-chat-error">{turn.error ?? "The answer failed."}</p>
-                    {:else if turn.status === "stopped"}
-                        <p class="ac-muted" data-testid="agent-chat-stopped">Stopped.</p>
-                    {/if}
-                    <div class="ac-turn-meta">
-                        <span class="ac-muted">{turn.modelLabel}</span>
-                        {#if turn.status === "done" && turn.answer}
-                            <button type="button" class="ac-text-button" onclick={() => copyAnswer(turn)}>Copy</button>
+                        {#if turn.status === "failed"}
+                            <p class="ac-error" role="alert" data-testid="agent-chat-error">{turn.error ?? "The answer failed."}</p>
+                        {:else if turn.status === "stopped"}
+                            <p class="ac-muted" data-testid="agent-chat-stopped">Stopped.</p>
                         {/if}
-                        {#if index === chat.turns.length - 1 && !running && (turn.status === "failed" || turn.status === "stopped" || turn.status === "done") && !saveMode}
-                            <button type="button" class="ac-text-button" onclick={() => chats.retry(chatId)} data-testid="agent-chat-retry">{turn.status === "done" ? "Answer again" : "Retry"}</button>
-                        {/if}
+                        <div class="ac-turn-meta">
+                            <span class="ac-muted">{turn.modelLabel}</span>
+                            {#if turn.status === "done" && turn.answer}
+                                <button type="button" class="ac-text-button" onclick={() => copyAnswer(turn)}>Copy</button>
+                            {/if}
+                            {#if index === chat.turns.length - 1 && !running && (turn.status === "failed" || turn.status === "stopped" || turn.status === "done") && !saveMode}
+                                <button type="button" class="ac-text-button" onclick={() => chats.retry(chatId)} data-testid="agent-chat-retry">{turn.status === "done" ? "Answer again" : "Retry"}</button>
+                            {/if}
+                        </div>
                     </div>
                 </article>
             {/each}
@@ -439,6 +454,10 @@
         {#if saveMode}
             <footer class="ac-composer ac-save">
                 <p class="ac-hint">Choose the turns to save into {chat.home}.</p>
+                <div class="ac-pick-actions">
+                    <button type="button" class="ac-button" onclick={() => tickAll(true)} disabled={tickedIds.length === pickable.length} data-testid="agent-chat-select-all">Select all</button>
+                    <button type="button" class="ac-button" onclick={() => tickAll(false)} disabled={tickedIds.length === 0} data-testid="agent-chat-deselect-all">Deselect all</button>
+                </div>
                 {#if saveProgress}
                     <div class="ac-progress" data-testid="agent-chat-save-progress">
                         <p class="ac-hint" role="status">Adding images to the graph: {saveProgress.done} of {saveProgress.total}</p>
@@ -455,8 +474,8 @@
                     </div>
                 {/if}
                 <div class="ac-save-actions">
-                    <button type="button" class="ac-button ac-primary" onclick={save} aria-disabled={saveBusy || ticked.size === 0} aria-busy={saveBusy} data-testid="agent-chat-save-confirm">
-                        {saveBusy ? "Saving…" : ticked.size === 1 ? "Save 1 turn" : `Save ${ticked.size} turns`}
+                    <button type="button" class="ac-button ac-primary" onclick={save} aria-disabled={saveBusy || tickedIds.length === 0} aria-busy={saveBusy} data-testid="agent-chat-save-confirm">
+                        {saveBusy ? "Saving…" : tickedIds.length === 1 ? "Save 1 turn" : `Save ${tickedIds.length} turns`}
                     </button>
                     <button type="button" class="ac-button" onclick={() => (saveMode = false)} data-testid="agent-chat-save-cancel">Cancel</button>
                 </div>
@@ -482,7 +501,7 @@
                         oninput={grow}
                         onkeydown={onKeydown}
                         onpaste={onPaste}
-                        placeholder={blocked ? "Add a model connection first" : "Ask a question"}
+                        placeholder={blocked ? "Add a model connection first" : composerPlaceholder(chats.sendingGrant(chat))}
                         aria-label="Message"
                         aria-describedby={`${chatId}-composer-keys${blocked || composerNote ? ` ${chatId}-composer-note` : ""}`}
                         data-testid="agent-chat-input"
@@ -636,6 +655,31 @@
         font-size: 0.875rem;
         color: var(--gk-text-muted);
     }
+    /* Waiting for the answer's first words: a turning ring beside the line, still under reduced motion. */
+    .ac-thinking {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    .ac-spinner {
+        flex-shrink: 0;
+        width: 0.875rem;
+        height: 0.875rem;
+        border-radius: 999px;
+        border: 2px solid var(--gk-border-strong);
+        border-top-color: var(--gk-accent);
+        animation: ac-spin 0.8s linear infinite;
+    }
+    @keyframes ac-spin {
+        to {
+            transform: rotate(360deg);
+        }
+    }
+    @media (prefers-reduced-motion: reduce) {
+        .ac-spinner {
+            animation: none;
+        }
+    }
     .ac-divider {
         margin: 0;
         text-align: center;
@@ -643,9 +687,20 @@
         color: var(--gk-text-muted);
     }
     .ac-turn {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+    }
+    /* Choosing turns to save: each turn's box at its top left, the turn beside it. */
+    .ac-turn--picking {
+        grid-template-columns: auto minmax(0, 1fr);
+        column-gap: 0.5rem;
+        align-items: start;
+    }
+    .ac-turn-body {
         display: flex;
         flex-direction: column;
         gap: 0.375rem;
+        min-width: 0;
     }
     .ac-question-row {
         display: flex;
@@ -665,7 +720,29 @@
         overflow-wrap: anywhere;
     }
     .ac-tick {
-        padding-top: 0.5rem;
+        display: flex;
+        padding: 0.25rem;
+        cursor: pointer;
+    }
+    .ac-tick input {
+        width: 1rem;
+        height: 1rem;
+        margin: 0;
+        accent-color: var(--gk-accent);
+    }
+    @media (pointer: coarse) {
+        .ac-tick {
+            padding: 0.625rem;
+        }
+        .ac-tick input {
+            width: 1.25rem;
+            height: 1.25rem;
+        }
+    }
+    /* A turn sent with no prompt reads as what was sent, set apart from words the person wrote. */
+    .ac-question-text--sent {
+        font-style: italic;
+        color: var(--gk-text-muted);
     }
     .ac-badge {
         align-self: flex-end;
@@ -780,7 +857,8 @@
         color: var(--gk-text-default);
         max-height: 180px;
     }
-    .ac-save-actions {
+    .ac-save-actions,
+    .ac-pick-actions {
         display: flex;
         gap: 0.5rem;
         margin-top: 0.5rem;

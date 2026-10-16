@@ -18,7 +18,11 @@ export interface RecordedAdd {
 export interface StubRenderer extends LayoutRenderer {
     readonly added: RecordedAdd[]
     readonly removed: string[]
+    /** Every removal with the tab the controller named to bring forward first (ADR 0150), in order. */
+    readonly removedWithFront: { panelId: string; front: string | undefined }[]
     readonly focused: string[]
+    /** Every tab brought to the front of its Pane without the Pane being made active, in order. */
+    readonly frontedInPane: string[]
     readonly collapsed: { region: Region; collapsed: boolean }[]
     /** Every pin change the controller reflected, in order. */
     readonly pinned: { panelId: string; pinned: boolean; index: number }[]
@@ -37,7 +41,9 @@ export interface StubRendererOptions {
 export function createStubRenderer(options: StubRendererOptions = {}): StubRenderer {
     const added: RecordedAdd[] = []
     const removed: string[] = []
+    const removedWithFront: { panelId: string; front: string | undefined }[] = []
     const focused: string[] = []
+    const frontedInPane: string[] = []
     const collapsed: { region: Region; collapsed: boolean }[] = []
     const pinned: { panelId: string; pinned: boolean; index: number }[] = []
     const present = new Set<string>()
@@ -45,7 +51,9 @@ export function createStubRenderer(options: StubRendererOptions = {}): StubRende
     const renderer: StubRenderer = {
         added,
         removed,
+        removedWithFront,
         focused,
+        frontedInPane,
         collapsed,
         pinned,
         present,
@@ -54,12 +62,16 @@ export function createStubRenderer(options: StubRendererOptions = {}): StubRende
             added.push({ instance, placement })
             present.add(instance.panelId)
         },
-        removeView(panelId) {
+        removeView(panelId, front) {
             removed.push(panelId)
+            removedWithFront.push({ panelId, front })
             present.delete(panelId)
         },
         focusView(panelId) {
             focused.push(panelId)
+        },
+        frontInPane(panelId) {
+            frontedInPane.push(panelId)
         },
         hasView(panelId) {
             return present.has(panelId)
