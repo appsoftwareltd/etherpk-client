@@ -717,6 +717,17 @@
         rowMessage = { ...rowMessage, [graphId]: { text, tone } };
     }
 
+    /**
+     * Add a line after the row's message rather than replace it. Cancelling an invite or removing a
+     * member makes the graph due a new key, which this page then makes at once. Replacing the
+     * message took away the confirmation of what the person just did, a moment after it appeared.
+     */
+    function addRowStatus(graphId: string, text: string) {
+        const shown = rowMessage[graphId];
+        if (shown?.tone === "info" && shown.text.includes(text)) return;
+        setRowStatus(graphId, shown?.tone === "info" ? `${shown.text} ${text}` : text);
+    }
+
     function clearRowStatus(graphId: string) {
         if (!rowMessage[graphId]) return;
         const next = { ...rowMessage };
@@ -2960,7 +2971,7 @@
             const result = await rotateGraphKeyOnce(server.api, heldKey, server.origin, view.id);
             const told = describeRotation(result, view.name);
             if (told) setRowStatus(view.id, told.text, told.tone);
-            else setRowStatus(view.id, "This graph has a new key. Former members cannot read what is written from now on.");
+            else addRowStatus(view.id, "This graph has a new key. Former members cannot read what is written from now on.");
             if (result.kind === "rotated")
                 server.graphs = server.graphs.map((graph) =>
                     graph.id === view.id ? { ...graph, rotationDue: false } : graph,
@@ -2979,6 +2990,8 @@
      * the next device, then make the new key.
      */
     async function rotateKeyNow(server: SyncServerView, view: SyncedGraphView) {
+        // A press of its own: what the row said before is not added to.
+        clearRowStatus(view.id);
         if (!server.heldKey()) {
             setRowStatus(view.id, "Unlock your Encryption Keys on the Sync tab to change this graph’s Graph Key.", "error");
             return;

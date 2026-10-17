@@ -12,6 +12,7 @@
      * rather than Svelte context (a separate Svelte root has none to inherit).
      */
     import { onDestroy, onMount } from "svelte";
+    import { createSubscriber } from "svelte/reactivity";
 
     import {
         getActiveGraphIndex,
@@ -124,9 +125,13 @@
      * [[Draft]] — naming something here is a question about tasks, not a request to go there.
      * [[Pageless Concept]]s are offered too: a wikilink is enough to give a concept tasks.
      */
+    // The names are read again whenever the index updates, not only when the box changes: a name
+    // typed before the index had read a new page otherwise never offered that page.
+    const watchIndex = createSubscriber((update) => getActiveGraphIndex()?.onUpdated(update) ?? (() => {}));
     const suggestions = $derived.by(() => {
         const q = nameMatchKey(nameQuery);
         if (q === "") return [];
+        watchIndex();
         const all = getActiveGraphIndex()?.allConcepts() ?? [];
         return all
             .map((candidate) => ({ candidate, score: matchScore(nameMatchKey(candidate.display), q) }))

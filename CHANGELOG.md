@@ -5,6 +5,15 @@ What changed in each release of the EtherPK Client and the Headless Client
 They are released together, under the version number they share with the Sync Server. This log
 starts at 0.9.3.
 
+## Unreleased
+
+### Client
+
+- After you cancel an invite or remove a member, the graph's row on the Graphs page keeps saying so.
+  The note that the graph has a new key now follows it, where before it replaced it.
+- The Tasks view's name box offers a page you created a moment ago. Before, it was missing until you
+  typed in the box again.
+
 ## 0.13.0 - 2026-10-16
 
 ### Client
