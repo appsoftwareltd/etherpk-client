@@ -52,6 +52,12 @@ export interface LoadedExtension {
     directory: string
     /** The top-level folders of the package that are served: those `main` and `styles` sit in. */
     folders: string[]
+    /**
+     * A Built-in Extension: named in the Client's package.json, or a dev folder holding one of
+     * those by id. It may use the Proposed API (ADR 0120). Any other dev folder is an extension
+     * being written to go elsewhere, so it gets what a Directory release gets.
+     */
+    builtIn: boolean
 }
 
 /** Read the loaded extensions: the ones the Client's package.json names, then the dev folders. */
@@ -60,9 +66,12 @@ export function readLoadedExtensions(clientRoot: string, devFolders: readonly st
     const named = (clientPackage.etherpk as { builtInExtensions?: unknown } | undefined)?.builtInExtensions
     const builtIn = Array.isArray(named) ? named.filter((name): name is string => typeof name === 'string') : []
     const byId = new Map<string, LoadedExtension>()
-    const read = (directory: string) => {
+    const builtInIds = new Set<string>()
+    const read = (directory: string, named: boolean) => {
         const extension = describe(directory)
-        byId.set(idOf(extension.packageJson) ?? directory, extension)
+        const id = idOf(extension.packageJson)
+        if (named && id) builtInIds.add(id)
+        byId.set(id ?? directory, { ...extension, builtIn: named || (id !== undefined && builtInIds.has(id)) })
     }
     // A workspace package is a symlink into the repository: served from where it really is.
     for (const name of builtIn) {
@@ -72,13 +81,13 @@ export function readLoadedExtensions(clientRoot: string, devFolders: readonly st
         } catch {
             throw new Error(`The Client's package.json names ${name} under etherpk.builtInExtensions, but it is not installed. Run pnpm install.`)
         }
-        read(directory)
+        read(directory, true)
     }
-    for (const folder of devFolders) read(resolve(clientRoot, folder))
+    for (const folder of devFolders) read(resolve(clientRoot, folder), false)
     return [...byId.values()]
 }
 
-function describe(directory: string): LoadedExtension {
+function describe(directory: string): Omit<LoadedExtension, 'builtIn'> {
     const packageJson = readJson(join(directory, 'package.json'))
     const manifest = (packageJson.etherpk ?? {}) as { id?: unknown; main?: unknown; styles?: unknown }
     const id = typeof manifest.id === 'string' ? manifest.id : 'unknown'
@@ -166,7 +175,7 @@ export function extensionsPlugin(): Plugin {
         load(id) {
             if (id !== RESOLVED_ID) return undefined
             for (const extension of extensions) this.addWatchFile(join(extension.directory, 'package.json'))
-            return `export default ${JSON.stringify(extensions.map(({ packageJson, base }) => ({ packageJson, base })))}`
+            return `export default ${JSON.stringify(extensions.map(({ packageJson, base, builtIn }) => ({ packageJson, base, builtIn })))}`
         },
         configureServer(server) {
             server.middlewares.use((req, res, next) => {

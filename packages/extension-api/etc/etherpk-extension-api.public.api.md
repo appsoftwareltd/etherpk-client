@@ -10,17 +10,33 @@ export interface AuthorizeOptions {
 }
 
 // @public
+export const CLIENT_COMMANDS: readonly string[];
+
+// @public
+export interface CommandBarButton {
+    args?: unknown;
+    command: string;
+    icon: string;
+    id: string;
+    pinned?: boolean;
+    title: string;
+}
+
+// @public
 export type CommandHandler = (arg?: unknown) => unknown;
 
 // @public
 export interface CommandMenuContext {
     bodyWritable: boolean;
+    readonly conceptsAtCaret?: readonly string[];
     inTable: boolean;
     protectedDocument?: boolean;
+    tableInsertable: boolean;
 }
 
 // @public
 export interface CommandMenuItem {
+    args?: unknown;
     command: string;
     detail?: string | ((context: CommandMenuContext) => string | undefined);
     group?: string;
@@ -33,9 +49,98 @@ export interface CommandMenuItem {
 }
 
 // @public
+export interface ConceptCandidate {
+    canonical?: string;
+    display: string;
+    key: string;
+    kind: ConceptKind;
+    protected?: true;
+    references?: number;
+}
+
+// @public
+export type ConceptKind = 'page' | 'journal' | 'alias' | 'pageless';
+
+// @public
+export interface ContextMenuItem {
+    command: string;
+    danger?: boolean;
+    icon?: string;
+    id: string;
+    label: string | ((target: MenuTarget) => string);
+    order?: number;
+    separatorBefore?: boolean | ((target: MenuTarget) => boolean);
+    when?: (target: MenuTarget) => boolean;
+}
+
+// @public
+export interface DocumentBacklink extends Omit<DocumentSummary, 'aliases'> {
+    // (undocumented)
+    references: {
+        line: number;
+        breadcrumb: string[];
+        text: string;
+    }[];
+}
+
+// @public
+export interface DocumentMenuTarget {
+    concept: string;
+    kind: 'document-tab' | 'favourite' | 'recent' | 'document-row';
+    panelId?: string;
+    vertical?: boolean;
+}
+
+// @public
+export interface DocumentSearchResult extends Omit<DocumentSummary, 'aliases'> {
+    hits: {
+        line: number;
+        breadcrumb: string[];
+        snippet: string;
+    }[];
+    matches: number;
+}
+
+// @public
+export interface DocumentSummary {
+    aliases: string[];
+    kind: 'page' | 'journal';
+    name: string;
+}
+
+// @public
+export interface DocumentTask extends Omit<DocumentSummary, 'aliases'> {
+    breadcrumb: string[];
+    due: string | null;
+    line: number;
+    priority: 1 | 2 | 3 | null;
+    scheduled: string | null;
+    // (undocumented)
+    status: 'open' | 'doing' | 'waiting' | 'done' | 'cancelled';
+    text: string;
+}
+
+// @public
+export interface DocumentText extends DocumentSummary {
+    text: string;
+    truncated: boolean;
+}
+
+// @public
+export interface ExtensionAssets {
+    prepareImage(image: Blob): Promise<Blob>;
+    saveImage(image: Blob, name: string): Promise<string | null>;
+}
+
+// @public
 export interface ExtensionAuth {
     authorize(url: string, options?: AuthorizeOptions): Promise<Record<string, string>>;
     readonly redirectUri: string;
+}
+
+// @public
+export interface ExtensionCommandBar {
+    register(button: CommandBarButton): () => void;
 }
 
 // @public
@@ -45,27 +150,53 @@ export interface ExtensionCommandMenu {
 
 // @public
 export interface ExtensionCommands {
+    execute(id: string, arg?: unknown): Promise<unknown>;
+    has(id: string): boolean;
     register(id: string, handler: CommandHandler): () => void;
 }
 
 // @public
+export interface ExtensionConcepts {
+    canonicalName(name: string): string;
+    key(name: string): string;
+}
+
+// @public
 export interface ExtensionContext {
+    readonly assets: ExtensionAssets;
     readonly auth: ExtensionAuth;
+    readonly clientVersion: string;
+    readonly commandBar: ExtensionCommandBar;
     readonly commandMenu: ExtensionCommandMenu;
     readonly commands: ExtensionCommands;
+    readonly concepts: ExtensionConcepts;
+    readonly contextMenu: ExtensionContextMenu;
+    readonly dev: boolean;
     readonly dialogs: ExtensionDialogs;
+    readonly documents: ExtensionDocuments;
     readonly editor: ExtensionEditor;
     readonly embeds: ExtensionEmbeds;
     readonly events: ExtensionEvents;
+    readonly extensionId: string;
+    readonly graphId: string;
     readonly graphSidebar: ExtensionGraphSidebar;
+    readonly icons: ExtensionIcons;
+    readonly index: ExtensionIndex;
     readonly journalPanels: ExtensionJournalPanels;
+    readonly keybindings: ExtensionKeybindings;
     readonly layout: ExtensionLayout;
     notify(text: string): void;
     readonly personStorage: ExtensionPersonStorage;
+    readonly records: ExtensionGraphRecords;
     readonly settings: ExtensionSettings;
     readonly storage: ExtensionStorage;
     readonly theme: ExtensionTheme;
     readonly views: ExtensionViews;
+}
+
+// @public
+export interface ExtensionContextMenu {
+    register(item: ContextMenuItem): () => void;
 }
 
 // @public
@@ -74,10 +205,48 @@ export interface ExtensionDialogs {
 }
 
 // @public
+export interface ExtensionDocuments {
+    backlinks(name: string): Promise<DocumentBacklink[] | null>;
+    formatGuide(): string;
+    links(name: string): Promise<string[] | null>;
+    list(options?: {
+        kind?: 'page' | 'journal';
+        offset?: number;
+        limit?: number;
+    }): Promise<{
+        documents: DocumentSummary[];
+        total: number;
+        hasMore: boolean;
+    }>;
+    read(name: string): Promise<DocumentText | null>;
+    search(query: string, options?: {
+        offset?: number;
+        limit?: number;
+    }): Promise<{
+        results: DocumentSearchResult[];
+        total: number;
+        hasMore: boolean;
+    }>;
+    tasks(options?: {
+        concept?: string;
+        statuses?: DocumentTask['status'][];
+        offset?: number;
+        limit?: number;
+    }): Promise<{
+        tasks: DocumentTask[];
+        total: number;
+        hasMore: boolean;
+    }>;
+}
+
+// @public
 export interface ExtensionEditor {
     insertBlock(text: string, options?: {
         focus?: boolean;
     }): boolean;
+    openPanel(options: InlinePanelOptions & {
+        at?: 'caret' | 'end' | 'caret-or-end';
+    }): InlinePanel | null;
     registerFence(info: string, widget: FenceWidget, options?: FenceOptions): () => void;
 }
 
@@ -120,8 +289,32 @@ export interface ExtensionEvents {
 }
 
 // @public
+export interface ExtensionGraphRecords {
+    get<T>(key: string): Promise<T | undefined>;
+    keys(): Promise<string[]>;
+    remove(key: string): Promise<void>;
+    set(key: string, value: unknown): Promise<void>;
+}
+
+// @public
 export interface ExtensionGraphSidebar {
     register(button: GraphSidebarButton): () => void;
+}
+
+// @public
+export interface ExtensionIcons {
+    svg(name: string, options?: {
+        size?: number;
+        strokeWidth?: number;
+        label?: string;
+    }): IconMarkup;
+}
+
+// @public
+export interface ExtensionIndex {
+    allConcepts(): readonly ConceptCandidate[];
+    linkGraph(): Promise<LinkGraph>;
+    onUpdated(listener: (update: IndexUpdate) => void): () => void;
 }
 
 // @public
@@ -133,7 +326,13 @@ export interface ExtensionJournalPanels {
 }
 
 // @public
+export interface ExtensionKeybindings {
+    register(binding: Keybinding): () => void;
+}
+
+// @public
 export interface ExtensionLayout {
+    activeDocument(): string | null;
     isDesktop(): boolean;
     openDocument(concept: string, options?: {
         line?: number;
@@ -144,6 +343,18 @@ export interface ExtensionLayout {
         inPaneOf?: string;
         beside?: string;
     }): void;
+    openWindow(options: {
+        title: string;
+        mount(host: HTMLElement, window: {
+            close(): void;
+        }): {
+            destroy(): void;
+        };
+        onClose?(): void;
+    }): {
+        close(): void;
+    };
+    reveal(kind: string): void;
 }
 
 // @public
@@ -161,8 +372,24 @@ export interface ExtensionManifest {
 }
 
 // @public
+export interface ExtensionMenuTarget {
+    [field: string]: unknown;
+    kind: `${string}.${string}`;
+}
+
+// @public
 export interface ExtensionModule {
     activate(context: ExtensionContext): void | (() => void);
+    settingsSections?: readonly SettingsSection[];
+}
+
+// @public
+export interface ExtensionPackage {
+    description?: string;
+    license?: string;
+    manifest: ExtensionManifest;
+    name: string;
+    version: string;
 }
 
 // @public
@@ -275,6 +502,39 @@ export interface GraphSidebarButton {
 }
 
 // @public
+export interface IconMarkup {
+    readonly __brand: 'IconMarkup';
+}
+
+// @public
+export interface IndexUpdate {
+    backlinkTargetsChanged: ReadonlySet<string>;
+    changedConceptKeys: ReadonlySet<string>;
+    full: boolean;
+    mapsChanged: boolean;
+}
+
+// @public
+export interface InlinePanel {
+    close(): void;
+    readonly document: string | null;
+    focus(): void;
+    insertBlock(text: string): boolean;
+    readonly isOpen: boolean;
+    outline(): string | null;
+    resize(height: number): void;
+}
+
+// @public
+export interface InlinePanelOptions {
+    height?: number;
+    mount(host: HTMLElement, panel: InlinePanel): {
+        destroy(): void;
+    };
+    onClose?(): void;
+}
+
+// @public
 export interface JournalPanel {
     id: string;
     mount(element: HTMLElement, props: JournalPanelProps): MountedJournalPanel;
@@ -288,6 +548,40 @@ export interface JournalPanelProps {
 }
 
 // @public
+export interface Keybinding {
+    command: string;
+    group?: string;
+    key: string;
+    label: string;
+}
+
+// @public
+export interface LinkGraph {
+    concepts: LinkGraphConcept[];
+    links: LinkGraphLink[];
+}
+
+// @public
+export interface LinkGraphConcept {
+    day?: string;
+    key: string;
+    kind: 'page' | 'journal' | 'pageless';
+    name: string;
+    protected?: true;
+}
+
+// @public
+export interface LinkGraphLink {
+    inTitle?: true;
+    mentions: number;
+    source: number;
+    target: number;
+}
+
+// @public
+export type MenuTarget = DocumentMenuTarget | TabMenuTarget | WikilinkMenuTarget | ExtensionMenuTarget;
+
+// @public
 export interface MountedFence {
     destroy(): void;
     update(context: FenceContext): void;
@@ -295,6 +589,11 @@ export interface MountedFence {
 
 // @public
 export interface MountedJournalPanel {
+    destroy(): void;
+}
+
+// @public
+export interface MountedSettingsSection {
     destroy(): void;
 }
 
@@ -350,6 +649,18 @@ export interface QuoteFenceRequest {
 }
 
 // @public
+export function readExtensionPackage(packageJson: unknown): ReadExtensionPackageResult;
+
+// @public
+export type ReadExtensionPackageResult = {
+    ok: true;
+    extension: ExtensionPackage;
+} | {
+    ok: false;
+    errors: string[];
+};
+
+// @public
 export interface SettingDeclaration {
     default?: boolean;
     description?: string;
@@ -361,6 +672,33 @@ export interface SettingDeclaration {
     placeholder?: string;
     title: string;
     type: 'text' | 'secret' | 'boolean';
+}
+
+// @public
+export interface SettingsSection {
+    id: string;
+    mount(element: HTMLElement, context: SettingsSectionContext): MountedSettingsSection;
+    tab: SettingsSectionTab;
+}
+
+// @public
+export interface SettingsSectionContext {
+    readonly auth: ExtensionAuth;
+    readonly extensionId: string;
+    notify(text: string): void;
+    readonly personStorage: ExtensionPersonStorage;
+    readonly settings: ExtensionSettings;
+    readonly theme: ExtensionTheme;
+}
+
+// @public
+export type SettingsSectionTab = 'extension' | 'agents';
+
+// @public
+export interface TabMenuTarget {
+    kind: 'tab';
+    panelId: string;
+    vertical?: boolean;
 }
 
 // @public
@@ -377,6 +715,10 @@ export interface ViewDeclaration {
     icon?: string;
     kind: string;
     region: ViewRegion;
+    resident?: {
+        side: 'left' | 'right';
+        desktopOnly?: boolean;
+    };
     target?: string;
     title: string;
 }
@@ -401,6 +743,13 @@ export type ViewRegion = 'main' | 'left-sidebar' | 'right-sidebar';
 export interface ViewVisibility {
     readonly onScreen: boolean;
     subscribe(listener: (onScreen: boolean) => void): () => void;
+}
+
+// @public
+export interface WikilinkMenuTarget {
+    concept: string;
+    kind: 'wikilink';
+    panelId?: string;
 }
 
 ```

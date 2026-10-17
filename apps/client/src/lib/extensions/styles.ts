@@ -1,5 +1,7 @@
 /**
- * A loaded extension's stylesheets, for the shadow roots its Views mount in (ADR 0121).
+ * A loaded extension's stylesheets, for the shadow roots its Views mount in (ADR 0121), and the
+ * Client's own sheets each of those shadow roots starts with: the host's base rules, then EtherPK's
+ * control classes (`controls.css`, ADR 0151), so the extension's buttons and fields are the Client's.
  *
  * Each sheet is fetched once from the Client's own origin and kept as a constructed stylesheet,
  * which every shadow root of every View of the extension adopts, so two Graph View tabs parse its
@@ -13,17 +15,28 @@
  * into a stylesheet the document adopts. Never one naming the Client's own `--gk-*` properties,
  * which would change them for the whole page (`claimsClientProperty`).
  */
+import controlsCss from '@appsoftwareltd/etherpk-extension-api/controls.css?raw'
+
 import { claimsClientProperty } from './page-styles'
 
 const sheets = new Map<string, Promise<CSSStyleSheet>>()
 
-/** What every extension shadow root starts with: the host fills its panel, as a View in the page does. */
-let baseSheet: CSSStyleSheet | undefined
+/** The Client's sheets for an extension shadow root, made once and shared by every shadow root. */
+let clientSheets: CSSStyleSheet[] | undefined
+
+/**
+ * What every extension shadow root starts with, ahead of the extension's own sheets: the host fills
+ * its panel, as a View in the page does, and EtherPK's control classes. An extension mounted in the
+ * page needs neither, since the Client's own stylesheet imports the controls.
+ */
+export function clientShadowSheets(): CSSStyleSheet[] {
+    clientSheets ??= [constructed(':host { display: block; height: 100%; } .extension-view, .extension-fence { height: 100%; }'), constructed(controlsCss)]
+    return clientSheets
+}
 
 /** The constructed stylesheets for these addresses, fetching each the first time it is asked for. */
 export function extensionStyleSheets(urls: readonly string[]): Promise<CSSStyleSheet[]> {
-    baseSheet ??= constructed(':host { display: block; height: 100%; } .extension-view, .extension-fence { height: 100%; }')
-    return Promise.all(urls.map(sheetFor)).then((loaded) => [baseSheet!, ...loaded])
+    return Promise.all(urls.map(sheetFor))
 }
 
 function sheetFor(url: string): Promise<CSSStyleSheet> {

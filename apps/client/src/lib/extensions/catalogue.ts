@@ -39,6 +39,12 @@ export type CatalogueEntry =
           base: string
           /** Set for a release installed from the Extension Directory (ADR 0123), not a built-in. */
           installed?: { version: string; integrity: string }
+          /**
+           * A Built-in Extension, which may use the Proposed API (ADR 0120). A dev folder holding an
+           * extension that is not one of them is not: it gets what a Directory release gets, so its
+           * author meets the Stable API's limits while testing.
+           */
+          builtIn?: boolean
       }
 
 /** One package the catalogue refused, and why. */
@@ -58,8 +64,8 @@ export interface CatalogueInput {
     clientVersion: string
     /** Each compiled-in package: its folder under `extensions/`, its package.json and its module. */
     compiledIn: { folder: string; packageJson: unknown; module: unknown }[]
-    /** Each loaded package: its package.json and the address its root is served at. */
-    loaded: { packageJson: unknown; base: string }[]
+    /** Each loaded package: its package.json, the address its root is served at, and whether it is a Built-in Extension. */
+    loaded: { packageJson: unknown; base: string; builtIn?: boolean }[]
 }
 
 /** Read and check every built-in extension. Pure, so it is tested without a build. */
@@ -97,7 +103,7 @@ export function buildCatalogue(input: CatalogueInput): Catalogue {
                 : ['src/extension.ts does not export an activate function.'],
         )
     }
-    for (const { packageJson, base } of input.loaded) {
+    for (const { packageJson, base, builtIn = true } of input.loaded) {
         const where = packageName(packageJson)
         admit(where, packageJson, (extension) => {
             const minimum = extension.manifest.minClientVersion
@@ -105,7 +111,7 @@ export function buildCatalogue(input: CatalogueInput): Catalogue {
             if (compareVersions(minimum, input.clientVersion) > 0) {
                 return [`It needs Client ${minimum} or later, and this Client is ${input.clientVersion}.`]
             }
-            return { id: extension.manifest.id, package: extension, source: 'loaded', base }
+            return { id: extension.manifest.id, package: extension, source: 'loaded', base, builtIn }
         })
     }
     return { extensions, broken }

@@ -133,22 +133,22 @@
                 <div class="ac-view-tools">
                     {#if active}
                         <label class="ac-view-check">
-                            <input type="checkbox" bind:checked={onlyActive} data-testid="agent-chats-only-active" />
+                            <input type="checkbox" class="gk-checkbox" bind:checked={onlyActive} data-testid="agent-chats-only-active" />
                             <span>Only {active}</span>
                         </label>
                     {/if}
                     {#if ticked.size > 0}
-                        <button type="button" class="ac-view-button" onclick={() => askDelete([...ticked], ticked.size === 1 ? "the ticked chat" : `${ticked.size} ticked chats`)} data-testid="agent-chats-delete-ticked">Delete ticked</button>
+                        <button type="button" class="gk-button" onclick={() => askDelete([...ticked], ticked.size === 1 ? "the ticked chat" : `${ticked.size} ticked chats`)} data-testid="agent-chats-delete-ticked">Delete ticked</button>
                     {/if}
-                    <button type="button" class="ac-view-button" onclick={() => askDelete(listed.map((chat) => chat.id), listed.length === 1 ? "the only chat" : `all ${listed.length} chats`)} data-testid="agent-chats-delete-all">Delete all</button>
+                    <button type="button" class="gk-button" onclick={() => askDelete(listed.map((chat) => chat.id), listed.length === 1 ? "the only chat" : `all ${listed.length} chats`)} data-testid="agent-chats-delete-all">Delete all</button>
                 </div>
             {/if}
             {#if confirming}
                 <div class="ac-confirm" role="alert" data-testid="agent-chats-confirm">
                     <p>Delete {confirming.label} from this device? A deleted chat cannot be brought back. What you saved into documents stays.</p>
                     <div class="ac-confirm-actions">
-                        <button type="button" class="ac-view-button ac-danger" onclick={confirmDelete} data-testid="agent-chats-confirm-delete">Delete</button>
-                        <button type="button" class="ac-view-button" onclick={() => (confirming = null)}>Cancel</button>
+                        <button type="button" class="gk-button gk-button--danger" onclick={confirmDelete} data-testid="agent-chats-confirm-delete">Delete</button>
+                        <button type="button" class="gk-button" onclick={() => (confirming = null)}>Cancel</button>
                     </div>
                 </div>
             {/if}
@@ -163,10 +163,10 @@
             <ul class="ac-view-list">
                 {#each shown as chat (chat.id)}
                     <li class="ac-view-row" data-testid="agent-chats-row" {@attach opensOnPress(chat)}>
-                        <input type="checkbox" checked={ticked.has(chat.id)} onchange={() => toggle(chat.id)} aria-label={`Tick ${chat.title}`} />
+                        <input type="checkbox" class="gk-checkbox" checked={ticked.has(chat.id)} onchange={() => toggle(chat.id)} aria-label={`Tick ${chat.title}`} />
                         <div class="ac-view-main">
                             {#if renaming === chat.id}
-                                <input class="ac-view-rename" bind:value={renameText} onkeydown={renameKey} onblur={() => finishRename(true)} aria-label="Chat name" {@attach focusInput} />
+                                <input class="gk-input ac-view-rename" bind:value={renameText} onkeydown={renameKey} onblur={() => finishRename(true)} aria-label="Chat name" {@attach focusInput} />
                             {:else}
                                 <button type="button" class="ac-view-open" onclick={() => open(chat)} data-testid="agent-chats-open">{chat.title}</button>
                             {/if}
@@ -175,8 +175,8 @@
                             </span>
                             <!-- Under the title rather than beside it, so a narrow sidebar never squeezes the title. -->
                             <span class="ac-view-actions">
-                                <button type="button" class="ac-view-icon" onclick={() => startRename(chat)} aria-label={`Rename ${chat.title}`}>Rename</button>
-                                <button type="button" class="ac-view-icon" onclick={() => askDelete([chat.id], `"${chat.title}"`)} aria-label={`Delete ${chat.title}`} data-testid="agent-chats-delete">Delete</button>
+                                <button type="button" class="gk-button gk-button--quiet gk-button--small" onclick={() => startRename(chat)} aria-label={`Rename ${chat.title}`}>Rename</button>
+                                <button type="button" class="gk-button gk-button--quiet gk-button--small" onclick={() => askDelete([chat.id], `"${chat.title}"`)} aria-label={`Delete ${chat.title}`} data-testid="agent-chats-delete">Delete</button>
                             </span>
                         </div>
                     </li>
@@ -240,24 +240,6 @@
         font-size: 0.875rem;
         margin-right: auto;
     }
-    .ac-view-button {
-        font-size: 0.875rem;
-        font-weight: 500;
-        padding: 0.25rem 0.625rem;
-        min-height: 2rem;
-        border-radius: 0.5rem;
-        border: 1px solid var(--gk-border-strong);
-        background: var(--gk-surface-0);
-        color: var(--gk-text-default);
-        cursor: pointer;
-    }
-    .ac-view-button:hover {
-        background: var(--gk-surface-2);
-    }
-    .ac-danger {
-        color: var(--gk-text-danger);
-        border-color: var(--gk-text-danger);
-    }
     .ac-confirm {
         margin-top: 0.5rem;
         padding: 0.5rem;
@@ -316,41 +298,27 @@
     .ac-view-open:hover {
         color: var(--gk-accent);
     }
+    /* EtherPK's own field (`gk-input`), at the size of the title it stands in for, so the row
+       keeps its height while the chat is renamed. */
     .ac-view-rename {
         font: inherit;
         font-size: 0.9375rem;
         padding: 0.125rem 0.25rem;
-        border: 1px solid var(--gk-border-strong);
-        border-radius: 0.375rem;
-        background: var(--gk-surface-0);
-        color: var(--gk-text-default);
     }
     .ac-view-meta {
         font-size: 0.875rem;
         color: var(--gk-text-muted);
         overflow-wrap: anywhere;
     }
+    /* Quiet buttons (`gk-button--quiet`), pulled left by their own padding so their words line up
+       with the title and the line above. */
     .ac-view-actions {
         display: flex;
         flex-wrap: wrap;
-        gap: 0.75rem;
+        gap: 0.25rem;
+        margin-left: -0.5rem;
     }
-    .ac-view-icon {
-        font-size: 0.875rem;
-        background: none;
-        border: 0;
-        padding: 0.125rem 0;
-        color: var(--gk-text-muted);
-        cursor: pointer;
-        text-decoration: underline;
-        text-underline-offset: 2px;
-    }
-    .ac-view-icon:hover {
-        color: var(--gk-text-default);
-    }
-    .ac-view-button:focus-visible,
-    .ac-view-open:focus-visible,
-    .ac-view-icon:focus-visible {
+    .ac-view-open:focus-visible {
         outline: 2px solid var(--gk-accent);
         outline-offset: 1px;
     }

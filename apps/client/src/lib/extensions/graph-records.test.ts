@@ -25,6 +25,16 @@ describe("an extension's records for one graph on this device (ADR 0147)", () =>
         expect(await records.keys()).toEqual(['chat:a'])
     })
 
+    it('refuses a record over 4 MB, counting the bytes of a Blob in it, and keeps the one before', async () => {
+        const records = graphRecords('graph-1', 'agent-chat')
+        await records.set('chat:a', { title: 'Garden' })
+        await expect(records.set('chat:a', { title: 'Garden', notes: 'x'.repeat(4 * 1024 * 1024 + 1) })).rejects.toThrow('The record "chat:a" holds more than 4 MB')
+        await expect(records.set('chat:a', { image: new Blob([new Uint8Array(4 * 1024 * 1024 + 1)]) })).rejects.toThrow(/more than 4 MB/)
+        expect(await records.get('chat:a')).toEqual({ title: 'Garden' })
+        await records.set('chat:b', { notes: 'x'.repeat(1024 * 1024) })
+        expect(await records.keys()).toEqual(['chat:a', 'chat:b'])
+    })
+
     it("keeps one graph's and one extension's records apart from another's", async () => {
         await graphRecords('graph-1', 'agent-chat').set('chat:a', 1)
         await graphRecords('graph-2', 'agent-chat').set('chat:a', 2)

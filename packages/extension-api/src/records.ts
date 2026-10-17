@@ -9,18 +9,20 @@
  * The extension's records for the open graph on this device.
  *
  * Each record is stored as the browser's structured clone of the value, so it may hold a `Blob`,
- * an `ArrayBuffer`, a `Date` or plain data, but no function. Records live in the browser's
+ * an `ArrayBuffer`, a `Date` or plain data, but no function. A record holds at most 4 MB: its text
+ * and the bytes of every `Blob` and buffer in it. A larger one is refused. Records live in the browser's
  * IndexedDB, which a private window or a full disk may refuse: a refused write rejects, and a
  * refused read answers as if there were nothing.
  *
- * @beta
+ * @public
  */
 export interface ExtensionGraphRecords {
     /** The record under `key`, or undefined when there is none. */
     get<T>(key: string): Promise<T | undefined>
     /**
      * Keep a record under `key`: letters, digits, `.`, `_`, `:` and `-`, at most 200 of them.
-     * Rejects when the key is not one of those or the browser refuses the write.
+     * Rejects when the key is not one of those, the record is over 4 MB, or the browser refuses
+     * the write (a full disk, a private window).
      */
     set(key: string, value: unknown): Promise<void>
     /** Remove the record under `key`. */

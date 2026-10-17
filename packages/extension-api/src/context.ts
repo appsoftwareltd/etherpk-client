@@ -3,9 +3,10 @@
  *
  * Everything an extension adds through it sits under the extension's id and is removed when the
  * graph closes or the extension is switched off, so an extension never has to undo its own
- * registrations. It holds no document store, no keys and no sync: an extension reads documents
- * only through the index's answers and its own fences, and changes them only through its fences,
- * the blocks it puts at the caret and the Client's Commands.
+ * registrations. It holds no document store, no keys and no sync. An extension reads documents
+ * through the index's answers, `documents` (which leaves out every Protected Document) and its own
+ * fences, and changes them only through its fences, the blocks it puts at the caret, the images it
+ * keeps as assets and the Commands it may run.
  */
 import type { ExtensionAssets } from './assets'
 import type { ExtensionAuth } from './auth'
@@ -37,16 +38,12 @@ export interface ExtensionCommands {
     /** Add a Command, its id under the extension's id. Throws if the id is taken or outside it. */
     register(id: string, handler: CommandHandler): () => void
     /**
-     * Run any Command, the Client's or an extension's. Rejects if no Command has the id.
-     *
-     * @beta
+     * Run a Command: the extension's own, another running extension's, or one of the Client's that
+     * {@link CLIENT_COMMANDS} names. Rejects if no Command has the id, or if it is one of the
+     * Client's that the list does not name. An extension that comes with EtherPK may run any.
      */
     execute(id: string, arg?: unknown): Promise<unknown>
-    /**
-     * Whether any Command has the id.
-     *
-     * @beta
-     */
+    /** Whether a Command the extension may run has the id. */
     has(id: string): boolean
 }
 
@@ -66,7 +63,7 @@ export interface ExtensionViews {
 /**
  * Adding Context Menu rows.
  *
- * @beta
+ * @public
  */
 export interface ExtensionContextMenu {
     /** Add a row, its id under the extension's id. */
@@ -87,7 +84,7 @@ export interface ExtensionCommandMenu {
  * Adding buttons to the Command Bar, the row of buttons across the bottom of a phone's screen:
  * after the editing buttons that scroll, or in the pinned group at its right end.
  *
- * @beta
+ * @public
  */
 export interface ExtensionCommandBar {
     /** Add a button, its id under the extension's id. */
@@ -107,7 +104,7 @@ export interface ExtensionGraphSidebar {
 /**
  * A key chord that runs a Command.
  *
- * @beta
+ * @public
  */
 export interface Keybinding {
     /** `Alt+M`, `Mod+Shift+K`: `Mod` is Cmd on Apple devices and Ctrl elsewhere. */
@@ -123,10 +120,15 @@ export interface Keybinding {
 /**
  * Adding key chords.
  *
- * @beta
+ * @public
  */
 export interface ExtensionKeybindings {
-    /** Add a chord. Throws if the Client or another extension already binds it. */
+    /**
+     * Add a chord for one of the extension's own Commands. Throws for another's Command. When the
+     * Client or another extension binds the chord already, the chord is left to them and this one
+     * does nothing: the call still succeeds, and the Client says so in the browser's console. So a
+     * shortcut the Client adds in a later release never stops an extension from starting.
+     */
     register(binding: Keybinding): () => void
 }
 
@@ -143,9 +145,8 @@ export interface ExtensionLayout {
      */
     openView(view: ViewRef, options?: { inPaneOf?: string; beside?: string }): void
     /**
-     * Bring a Sidebar resident to the front of its expanded Sidebar.
-     *
-     * @beta
+     * Bring one of the extension's own Sidebar residents (a View kind its manifest declares with a
+     * `resident` side) to the front of its expanded Sidebar. Does nothing for any other kind.
      */
     reveal(kind: string): void
     /**
@@ -156,9 +157,8 @@ export interface ExtensionLayout {
      */
     openDocument(concept: string, options?: { line?: number; inPaneOf?: string; beside?: string }): void
     /**
-     * The document the user is working in, or null.
-     *
-     * @beta
+     * The name of the document the person is working in, as its tab names it (a page's title, or a
+     * journal entry's day, `YYYY-MM-DD`), or null when no document's tab is in front.
      */
     activeDocument(): string | null
     /** True while the desktop presenter is showing, 1024 pixels wide and more. */
@@ -167,8 +167,6 @@ export interface ExtensionLayout {
      * Draw something over the whole EtherPK window, with a heading and a close button the Client
      * draws, as a fence's widget opens over the window. One at a time: opening another closes the
      * one before. The close button, Escape and `close` all close it, and `onClose` is told once.
-     *
-     * @beta
      */
     openWindow(options: {
         /** The heading the Client draws beside the close button. */
@@ -182,10 +180,14 @@ export interface ExtensionLayout {
 /**
  * The rules for naming a concept, which every index answer follows.
  *
- * @beta
+ * @public
  */
 export interface ExtensionConcepts {
-    /** The case-insensitive key of a name. */
+    /**
+     * The key the Client tells two names apart by: two names with the same key are one concept.
+     * How it is made may change in a later release, so compare keys from this, and never make
+     * one another way.
+     */
     key(name: string): string
     /** The name a concept resolves to: an alias's page, a page's own title, or the name itself. */
     canonicalName(name: string): string
@@ -284,7 +286,7 @@ export interface ExtensionTheme {
  * it goes into the page as it is. A string built from it is a plain string again, which the
  * Client's default policy sanitizes.
  *
- * @beta
+ * @public
  */
 export interface IconMarkup {
     /** Never present at run time. It marks the type, so a plain string is not one. */
@@ -294,7 +296,7 @@ export interface IconMarkup {
 /**
  * Drawing the Client's icons and the extension's own.
  *
- * @beta
+ * @public
  */
 export interface ExtensionIcons {
     /**
@@ -332,26 +334,18 @@ export interface ExtensionContributions {
 export interface ExtensionContext {
     /**
      * The extension's id, from its manifest.
-     *
-     * @beta
      */
     readonly extensionId: string
     /**
      * The open graph.
-     *
-     * @beta
      */
     readonly graphId: string
     /**
      * The Client's version, `x.y.z`.
-     *
-     * @beta
      */
     readonly clientVersion: string
     /**
      * True in a development build of the Client, where tests may reach in.
-     *
-     * @beta
      */
     readonly dev: boolean
     /** Supplying the Views the manifest declares. */
@@ -360,8 +354,6 @@ export interface ExtensionContext {
     readonly commands: ExtensionCommands
     /**
      * Adding Context Menu rows.
-     *
-     * @beta
      */
     readonly contextMenu: ExtensionContextMenu
     /** Adding Command Menu rows. */
@@ -370,16 +362,12 @@ export interface ExtensionContext {
     readonly graphSidebar: ExtensionGraphSidebar
     /**
      * Adding buttons to the phone's Command Bar.
-     *
-     * @beta
      */
     readonly commandBar: ExtensionCommandBar
     /** Adding panels beneath each Journal Entry. */
     readonly journalPanels: ExtensionJournalPanels
     /**
      * Adding key chords.
-     *
-     * @beta
      */
     readonly keybindings: ExtensionKeybindings
     /**
@@ -392,34 +380,24 @@ export interface ExtensionContext {
     readonly events: ExtensionEvents
     /**
      * Questions to the open graph's index.
-     *
-     * @beta
      */
     readonly index: ExtensionIndex
     /**
      * Reading the open graph's documents, with every Protected Document left out, name and all.
-     *
-     * @beta
      */
     readonly documents: ExtensionDocuments
     /**
      * The extension's records for the open graph, kept on this device only.
-     *
-     * @beta
      */
     readonly records: ExtensionGraphRecords
     /**
      * Images kept as the open graph's assets.
-     *
-     * @beta
      */
     readonly assets: ExtensionAssets
     /** Opening Views and documents. */
     readonly layout: ExtensionLayout
     /**
      * The rules for naming a concept.
-     *
-     * @beta
      */
     readonly concepts: ExtensionConcepts
     /** The extension's own storage on this device. */
@@ -434,8 +412,6 @@ export interface ExtensionContext {
     readonly theme: ExtensionTheme
     /**
      * The Client's icons and the extension's own.
-     *
-     * @beta
      */
     readonly icons: ExtensionIcons
     /** Widgets over the extension's own fences, and blocks put at the caret. */
@@ -461,10 +437,9 @@ export interface ExtensionModule {
      */
     activate(context: ExtensionContext): void | (() => void)
     /**
-     * Sections the extension adds to the Client's settings tabs, which the Client mounts while the
-     * extension is switched on, whether or not a graph is open.
-     *
-     * @beta
+     * Sections the extension adds to the Client's settings, which the Client mounts while the
+     * extension is switched on: in a graph's Settings and Extensions, and, for an extension that
+     * comes with EtherPK, on the Graphs page with no graph open (see {@link SettingsSection}).
      */
     settingsSections?: readonly SettingsSection[]
 }

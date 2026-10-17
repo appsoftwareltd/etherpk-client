@@ -19,7 +19,7 @@
     import type { ViewProps } from "$lib/layout";
 
     import type { ExtensionHost, ViewSlot } from "./host";
-    import { extensionStyleSheets } from "./styles";
+    import { clientShadowSheets, extensionStyleSheets } from "./styles";
 
     interface Props extends ViewProps {
         slot: ViewSlot;
@@ -76,9 +76,9 @@
             if (slot.isolation) {
                 const shadow = target.shadowRoot ?? target.attachShadow({ mode: "open" });
                 extensionStyleSheets(slot.isolation.styles).then(
-                    (sheets) => {
+                    (own) => {
                         if (cancelled) return;
-                        shadow.adoptedStyleSheets = sheets;
+                        shadow.adoptedStyleSheets = [...clientShadowSheets(), ...own];
                         root = document.createElement("div");
                         root.className = "extension-view";
                         shadow.append(root);

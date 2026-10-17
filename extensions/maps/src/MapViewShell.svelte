@@ -59,12 +59,7 @@
         {:catch}
             <div class="flex h-full flex-col items-center justify-center gap-3 p-6 text-center" role="alert" data-testid="map-view-load-failed">
                 <p class="m-0 max-w-sm text-sm text-(--gk-text-muted)">The map couldn't load. Check your connection, then try again.</p>
-                <button
-                    type="button"
-                    class="rounded-md border border-(--gk-border-strong) px-3 py-1.5 text-sm font-medium text-(--gk-text-default) hover:bg-(--gk-surface-1)"
-                    onclick={retry}
-                    data-testid="map-view-retry">Try again</button
-                >
+                <button type="button" class="gk-button" onclick={retry} data-testid="map-view-retry">Try again</button>
             </div>
         {/await}
     {/if}

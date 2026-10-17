@@ -6,7 +6,7 @@
 /**
  * The open graph's assets, as far as an extension may add to them.
  *
- * @beta
+ * @public
  */
 export interface ExtensionAssets {
     /**
@@ -16,9 +16,12 @@ export interface ExtensionAssets {
      */
     prepareImage(image: Blob): Promise<Blob>
     /**
-     * Keep an image as one of the graph's assets, and answer the markdown that shows it in a
-     * document, such as `![photo](assets/photo.webp)`. Null where the graph keeps no assets here,
-     * or the image was refused.
+     * Keep an image as one of the graph's assets, made smaller first as {@link ExtensionAssets.prepareImage}
+     * does, and answer the markdown that shows it in a document, such as
+     * `![photo](assets/photo.3f9a1c2e.webp)`. The file is named from `name` and a short hash of its
+     * bytes, so two images never take the same name, and the same image kept twice is one file.
+     * An asset is part of the graph: it syncs, and every member of a shared graph can see it. Null
+     * where the graph keeps no assets here, or the image was refused.
      */
     saveImage(image: Blob, name: string): Promise<string | null>
 }

@@ -122,20 +122,20 @@
         oncontextmenu={(e) => e.preventDefault()}
         style:left="{pos.x}px"
         style:top="{pos.y}px"
-        class="fixed z-50 min-w-48 rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-(--gk-surface-1) py-1 shadow-lg focus:outline-none"
+        class="gk-menu fixed z-50 focus:outline-none"
     >
+        <!-- EtherPK's menu classes (controls.css, ADR 0151), which an extension's menus use too. The
+             row the keyboard is on is lit as the pointer lights one. -->
         {#each rows as row, index (row.id)}
             {#if row.separatorBefore && index > 0}
-                <div class="my-1 h-px bg-gray-100 dark:bg-white/10" role="separator"></div>
+                <div class="gk-menu-separator" role="separator"></div>
             {/if}
             <button
                 type="button"
                 role="menuitem"
                 data-testid="context-menu-item"
                 data-command={row.command}
-                class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-gray-700 pointer-coarse:min-h-11 dark:text-gray-200 {index === active
-                    ? 'bg-gray-100 dark:bg-white/10'
-                    : ''} hover:bg-gray-100 dark:hover:bg-white/10"
+                class={["gk-menu-item", row.danger && "gk-menu-item--danger", index === active && "bg-(--gk-menu-hover)"]}
                 onpointerenter={() => (active = index)}
                 onclick={() => void run(index)}
             >

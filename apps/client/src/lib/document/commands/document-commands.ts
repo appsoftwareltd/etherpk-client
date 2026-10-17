@@ -259,6 +259,7 @@ export function registerDocumentCommands(
             // Grouped away from the constructive actions: a destructive row sitting flush
             // against "Rename" is one mis-click from an irreversible delete (ADR 0039 §3).
             separatorBefore: true,
+            danger: true,
         }),
         // The copy rows: the last group, after the tab-management rows (tab-commands.ts,
         // 90-120). Both hand the document to something outside the app - a wikilink typed

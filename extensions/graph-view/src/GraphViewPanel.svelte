@@ -343,16 +343,12 @@
 
 {#snippet toggles()}
     <label class="flex items-center gap-1.5 text-sm text-(--gk-text-default)">
-        <input type="checkbox" bind:checked={preferences.journals} data-testid="graph-view-journals" />
+        <input type="checkbox" class="gk-checkbox" bind:checked={preferences.journals} data-testid="graph-view-journals" />
         Journal entries
     </label>
     <label class="flex items-center gap-1.5 text-sm text-(--gk-text-default)">
         <span class="text-(--gk-text-muted)">Pageless</span>
-        <select
-            bind:value={preferences.pageless}
-            class="rounded-md border border-(--gk-border-strong) bg-(--gk-surface-0) px-1.5 py-1 text-sm text-(--gk-text-default)"
-            data-testid="graph-view-pageless"
-        >
+        <select bind:value={preferences.pageless} class="gk-select" data-testid="graph-view-pageless">
             <option value="all">All</option>
             <option value="mentioned-twice">In two or more documents</option>
             <option value="none">None</option>
@@ -374,9 +370,10 @@
             <span class="block truncate">{row.name}</span>
             {#if detail}<span class="block truncate text-(--gk-text-muted)">{detail}</span>{/if}
         </button>
+        <!-- A link, padded to the row's height so it is as easy to hit as the row. -->
         <button
             type="button"
-            class="shrink-0 rounded px-1.5 py-1 text-sm text-(--gk-accent) hover:bg-(--gk-surface-1)"
+            class="gk-link shrink-0 px-1.5 py-1 text-sm"
             onclick={() => open(row.key)}
             aria-label="Open {row.name}"
         >
@@ -400,13 +397,13 @@
                 <div class="flex items-center gap-1.5" role="group" aria-label="Steps out from the document">
                     <span class="text-sm text-(--gk-text-muted)">Steps</span>
                     {#each [1, 2, 3] as const as depth (depth)}
+                        <!-- EtherPK's small button, filled with the accent while it is the one chosen.
+                             The fill is a utility, so it holds on hover too. -->
                         <button
                             type="button"
                             class={[
-                                "min-w-7 rounded-md border px-2 py-0.5 text-sm",
-                                preferences.depth === depth
-                                    ? "border-(--gk-accent) bg-(--gk-accent) text-(--gk-surface-0)"
-                                    : "border-(--gk-border-strong) text-(--gk-text-default) hover:bg-(--gk-surface-1)",
+                                "gk-button gk-button--small min-w-7",
+                                preferences.depth === depth && "border-(--gk-accent) bg-(--gk-accent) text-(--gk-surface-0)",
                             ]}
                             aria-pressed={preferences.depth === depth}
                             onclick={() => (preferences.depth = depth)}
@@ -415,12 +412,13 @@
                     {/each}
                 </div>
                 <label class="flex items-center gap-1.5 text-sm text-(--gk-text-default)">
-                    <input type="checkbox" bind:checked={preferences.journals} data-testid="graph-view-journals" />
+                    <input type="checkbox" class="gk-checkbox" bind:checked={preferences.journals} data-testid="graph-view-journals" />
                     Journal entries
                 </label>
+                <!-- A link to the other View, padded so it is as easy to hit as a button. -->
                 <button
                     type="button"
-                    class="ml-auto flex items-center gap-1 rounded-md px-1.5 py-1 text-sm text-(--gk-accent) hover:bg-(--gk-surface-1)"
+                    class="gk-link ml-auto flex items-center gap-1 px-1.5 py-1 text-sm"
                     onclick={() => context?.commands.execute("graph-view.openWhole")}
                     data-testid="graph-view-open-whole"
                 >
@@ -432,7 +430,7 @@
                 {#if pick}
                     <button
                         type="button"
-                        class="flex max-w-56 items-center gap-1 rounded-md border border-(--gk-border-strong) px-2 py-0.5 text-sm hover:bg-(--gk-surface-1)"
+                        class="gk-button gk-button--small max-w-56"
                         onclick={() => (pick = null)}
                         data-testid="graph-view-clear-pick"
                     >
@@ -448,6 +446,7 @@
         {#if failed && data}
             <div role="alert" class="mx-3 mt-2 flex items-center gap-3 rounded-lg bg-(--gk-warning-surface) px-3 py-2 text-sm text-(--gk-text-warning)">
                 <span class="min-w-0 flex-1">Couldn't refresh the picture from the index, so it may be out of date.</span>
+                <!-- Drawn in the banner's own colour, which no control class has. -->
                 <button type="button" class="shrink-0 rounded-md border border-current px-2 py-1 font-medium" onclick={read}>Try again</button>
             </div>
         {/if}
@@ -482,7 +481,7 @@
                             </p>
                             <button
                                 type="button"
-                                class="rounded-md border border-(--gk-border-strong) px-3 py-1.5 text-sm font-medium hover:bg-(--gk-surface-1)"
+                                class="gk-button"
                                 onclick={read}
                                 data-testid="graph-view-retry-read">Try again</button
                             >
@@ -508,15 +507,16 @@
                 </div>
             {/if}
 
-            <!-- Zoom: the buttons a mouse needs, and what the keys do for a keyboard. -->
-            <div class="absolute right-2 bottom-2 flex flex-col gap-1">
-                <button type="button" class="map-button" onclick={() => host?.zoom(1)} aria-label="Zoom in" data-testid="graph-view-zoom-in">
+            <!-- Zoom: the buttons a mouse needs, and what the keys do for a keyboard. EtherPK's
+                 icon buttons on a card of their own, so the picture never shows through them. -->
+            <div class="absolute right-2 bottom-2 flex flex-col rounded-lg border border-(--gk-control-border) bg-(--gk-surface-0)">
+                <button type="button" class="gk-icon-button" onclick={() => host?.zoom(1)} aria-label="Zoom in" data-testid="graph-view-zoom-in">
                     {@render icon("zoom-in")}
                 </button>
-                <button type="button" class="map-button" onclick={() => host?.zoom(-1)} aria-label="Zoom out">
+                <button type="button" class="gk-icon-button" onclick={() => host?.zoom(-1)} aria-label="Zoom out">
                     {@render icon("zoom-out")}
                 </button>
-                <button type="button" class="map-button" onclick={() => host?.zoom(0)} aria-label="Fit the whole picture">
+                <button type="button" class="gk-icon-button" onclick={() => host?.zoom(0)} aria-label="Fit the whole picture">
                     {@render icon("fit")}
                 </button>
             </div>
@@ -527,7 +527,7 @@
             <div class="flex items-center gap-3 border-t border-(--gk-border-soft) px-3 py-2" data-testid="graph-view-replay">
                 <button
                     type="button"
-                    class="rounded-md border border-(--gk-border-strong) px-2.5 py-1 text-sm font-medium hover:bg-(--gk-surface-1)"
+                    class="gk-button"
                     onclick={togglePlay}
                     data-testid="graph-view-replay-play"
                 >
@@ -551,7 +551,7 @@
                     {#if replayDay}{replayDay}, {replayCount?.toLocaleString()} concepts{:else}Every day{/if}
                 </span>
                 {#if replayIndex !== null}
-                    <button type="button" class="rounded-md px-2 py-1 text-sm text-(--gk-accent) hover:bg-(--gk-surface-1)" onclick={stopReplay}>Show all</button>
+                    <button type="button" class="gk-link px-2 py-1 text-sm" onclick={stopReplay}>Show all</button>
                 {/if}
             </div>
         {/if}
@@ -661,7 +661,7 @@
                     {/each}
                 </ul>
                 {#if isolatedList.length > isolatedShown}
-                    <button type="button" class="mx-3 mb-2 text-sm text-(--gk-accent) hover:underline" onclick={() => (isolatedShown += 50)}>
+                    <button type="button" class="gk-link mx-3 mb-2 text-sm" onclick={() => (isolatedShown += 50)}>
                         Show {Math.min(50, isolatedList.length - isolatedShown)} more
                     </button>
                 {/if}
@@ -678,7 +678,7 @@
                             <ol class="m-0 list-decimal pl-6 text-sm" data-testid="graph-view-path-steps">
                                 {#each path as key (key)}
                                     <li>
-                                        <button type="button" class="text-left text-(--gk-text-default) hover:underline" onclick={() => host?.focus(key)}>{nameOf(key)}</button>
+                                        <button type="button" class="gk-link text-left" onclick={() => host?.focus(key)}>{nameOf(key)}</button>
                                     </li>
                                 {/each}
                             </ol>
@@ -695,21 +695,6 @@
 </div>
 
 <style>
-    .map-button {
-        display: flex;
-        width: 2rem;
-        height: 2rem;
-        align-items: center;
-        justify-content: center;
-        border: 1px solid var(--gk-border-strong);
-        border-radius: 0.375rem;
-        background: var(--gk-surface-0);
-        color: var(--gk-text-default);
-        font-size: 1rem;
-    }
-    .map-button:hover {
-        background: var(--gk-surface-1);
-    }
     .insight-heading {
         cursor: pointer;
         padding: 0.5rem 0.75rem;

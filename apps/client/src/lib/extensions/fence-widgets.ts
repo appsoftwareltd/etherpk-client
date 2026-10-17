@@ -16,7 +16,7 @@ import type { FenceOptions, FenceWidget, MountedFence } from '@appsoftwareltd/et
 
 import type { InteractiveFence, InteractiveFenceContext, InteractiveFenceView } from '$lib/document/view/augmentations/interactive-fence-contract'
 
-import { extensionStyleSheets } from './styles'
+import { clientShadowSheets, extensionStyleSheets } from './styles'
 
 /** How an extension's widgets mount: in a shadow root holding these stylesheets, or in the page (null). */
 export type FenceIsolation = { styles: readonly string[] } | null
@@ -96,9 +96,9 @@ function mountInShadow(extensionName: string, widget: FenceWidget, host: HTMLEle
     let view: InteractiveFenceView | null = null
     let destroyed = false
     extensionStyleSheets(styles).then(
-        (sheets) => {
+        (own) => {
             if (destroyed) return
-            shadow.adoptedStyleSheets = sheets
+            shadow.adoptedStyleSheets = [...clientShadowSheets(), ...own]
             const root = document.createElement('div')
             root.className = 'extension-fence'
             shadow.append(root)

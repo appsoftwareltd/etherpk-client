@@ -206,6 +206,15 @@ export function registerIcons(icons: Record<string, string>): () => void {
 }
 
 /** The `<svg>` markup for a named icon, falling back to a neutral dot for an unknown name. */
+/**
+ * Every icon name the Client draws, as an extension may name one (`icons.svg`, an `icon` field).
+ * Each is Stable since 0.14.0 (ADR 0120, amended 2026-10-17), and the Extension API's README lists
+ * them: an icon may be added, never taken away.
+ */
+export function clientIconNames(): string[] {
+    return [...Object.keys(ICON_PATHS), ...Object.keys(HEROICON_PATHS)].filter((name) => name !== 'default').sort()
+}
+
 export function iconSvg(name: string, options: IconOptions = {}): TrustedMarkup {
     const { size = 16, strokeWidth = 1.4, label } = options
     // The label is the one value here that is not a number or a table entry, so it is escaped.

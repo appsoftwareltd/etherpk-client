@@ -60,7 +60,7 @@
             {/if}
         {:else if node.kind === "codeblock"}
             <div class="ac-pre">
-                <button type="button" class="ac-copy" onclick={() => copy(node.text, i)} aria-label="Copy code">{copied === i ? "Copied" : "Copy"}</button>
+                <button type="button" class="gk-button gk-button--small gk-button--raised ac-copy" onclick={() => copy(node.text, i)} aria-label="Copy code">{copied === i ? "Copied" : "Copy"}</button>
                 <pre><code>{node.text}</code></pre>
             </div>
         {:else if node.kind === "quote"}
@@ -142,19 +142,14 @@
         font-size: 0.875rem;
         line-height: 1.5;
     }
+    /*
+     * EtherPK's small raised button (`gk-button--small gk-button--raised`) in the code block's
+     * corner: a long line of code runs under it, so it has a solid face.
+     */
     .ac-copy {
         position: absolute;
         top: 0.3rem;
         right: 0.3rem;
-        font-size: 0.875rem;
-        padding: 0.1rem 0.5rem;
-        border-radius: 0.375rem;
-        border: 1px solid var(--gk-border-soft);
-        background: var(--gk-surface-1);
-        color: var(--gk-text-muted);
-    }
-    .ac-copy:hover {
-        color: var(--gk-text-default);
     }
     .ac-wikilink,
     .ac-link {

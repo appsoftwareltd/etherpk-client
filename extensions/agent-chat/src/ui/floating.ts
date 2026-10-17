@@ -46,6 +46,8 @@ export function onPressOutside(elements: () => (HTMLElement | null)[], close: ()
     return () => document.removeEventListener('pointerdown', listener, true)
 }
 
-/** Classes that undo the browser's own popover box, so the list is placed by `placeAgainst`. */
-export const POPUP_CLASSES =
-    'fixed m-0 overflow-y-auto overscroll-contain rounded-lg border border-(--gk-border-soft) bg-(--gk-surface-1) p-1 text-sm text-(--gk-text-default) shadow-lg [inset:auto]'
+/**
+ * Classes that undo the browser's own popover box, so the list is placed by `placeAgainst`, and
+ * draw it as EtherPK's menus and a select's own list are drawn (`gk-menu`, ADR 0151).
+ */
+export const POPUP_CLASSES = 'gk-menu fixed m-0 overflow-y-auto overscroll-contain [inset:auto]'

@@ -15,7 +15,7 @@ import type { JournalPanelProps, MountedJournalPanel } from '@appsoftwareltd/eth
 
 import type { ClientJournalPanel } from '$lib/surface/journal-panels'
 
-import { extensionStyleSheets } from './styles'
+import { clientShadowSheets, extensionStyleSheets } from './styles'
 
 export interface MountedClientJournalPanel {
     destroy(): void
@@ -73,9 +73,9 @@ export function mountJournalPanel(host: HTMLElement, panel: ClientJournalPanel, 
     let destroyed = false
     // Mounted once the extension's stylesheets are in, so the panel never draws unstyled.
     extensionStyleSheets(panel.isolation.styles).then(
-        ([base, ...own]) => {
+        (own) => {
             if (destroyed) return
-            shadow.adoptedStyleSheets = [base, naturalHeightSheet(), ...own]
+            shadow.adoptedStyleSheets = [...clientShadowSheets(), naturalHeightSheet(), ...own]
             const root = document.createElement('div')
             root.className = 'extension-journal-panel'
             shadow.append(root)

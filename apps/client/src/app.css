@@ -1,4 +1,8 @@
 @import "tailwindcss";
+/* EtherPK's control classes (`gk-button`, `gk-input`, `gk-select`, ADR 0151), which the Client's
+   own pages and every extension draw with. The Client also gives the same sheet to each extension
+   shadow root (lib/extensions/styles.ts). */
+@import "@appsoftwareltd/etherpk-extension-api/controls.css";
 @plugin "@tailwindcss/typography";
 /* Broadened when components and pages moved into the package: Tailwind v4 does not scan
    node_modules by default, and the workspace package is injected there. */
@@ -139,6 +143,27 @@ html.dark select {
     --gk-border-soft: rgba(3, 7, 18, 0.08);
     --gk-border-strong: rgba(3, 7, 18, 0.16);
     --gk-shadow: 0 18px 45px rgba(3, 7, 18, 0.12);
+    /* The controls' own colours (ADR 0151), the Tailwind greys the Client's buttons, fields and
+       menus were drawn in, as tokens so that `controls.css` draws them the same in an extension's
+       shadow root. Button and menu ink is at least 4.5:1 on every surface it sits on. */
+    --gk-control-border: #d1d5db;
+    --gk-control-text: #374151;
+    /* Translucent, so a hover shows on a tinted surface (surface-1) as well as on white, where it
+       reads as the grey 50 the Client's buttons used. */
+    --gk-control-hover: rgba(3, 7, 18, 0.04);
+    --gk-control-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.08);
+    --gk-field-bg: #ffffff;
+    --gk-field-text: #030712;
+    --gk-field-focus: #030712;
+    --gk-menu-bg: #ffffff;
+    --gk-menu-border: #e5e7eb;
+    --gk-menu-hover: #f3f4f6;
+    --gk-menu-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
+    --gk-primary-bg: #111827;
+    --gk-primary-hover: #1f2937;
+    --gk-primary-text: #ffffff;
+    --gk-danger-border: #fca5a5;
+    --gk-danger-hover: #fef2f2;
     --gk-danger-surface: rgba(239, 68, 68, 0.12);
     --gk-success-surface: rgba(34, 197, 94, 0.14);
     --gk-info-surface: rgba(59, 130, 246, 0.14);
@@ -182,6 +207,24 @@ html.dark {
     --gk-border-soft: rgba(161, 161, 170, 0.16);
     --gk-border-strong: rgba(161, 161, 170, 0.28);
     --gk-shadow: 0 18px 45px rgba(0, 0, 0, 0.45);
+    /* The controls in dark mode (see the light values). The field focus is the blue the dark
+       theme gives the Client's own fields (the `focus:ring-gray-950` override below). */
+    --gk-control-border: #374151;
+    --gk-control-text: #e5e7eb;
+    --gk-control-hover: rgba(255, 255, 255, 0.05);
+    --gk-control-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.5);
+    --gk-field-bg: rgba(255, 255, 255, 0.1);
+    --gk-field-text: #f3f4f6;
+    --gk-field-focus: rgba(96, 165, 250, 0.85);
+    --gk-menu-bg: #1c1c20;
+    --gk-menu-border: rgba(255, 255, 255, 0.1);
+    --gk-menu-hover: rgba(255, 255, 255, 0.1);
+    --gk-menu-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5), 0 4px 6px -4px rgba(0, 0, 0, 0.5);
+    --gk-primary-bg: #f3f4f6;
+    --gk-primary-hover: #e5e7eb;
+    --gk-primary-text: #111827;
+    --gk-danger-border: rgba(239, 68, 68, 0.4);
+    --gk-danger-hover: rgba(69, 10, 10, 0.3);
     --gk-text-danger: #fca5a5;
     --gk-text-warning: #fcd34d;
     /* The same hues lifted for the dark code panel, each at least 4.5:1 on it. Without these the

@@ -6,6 +6,10 @@
      *
      * It picks, it never navigates: the Graph View decides what picking means (centre on it, or
      * end a path there).
+     *
+     * The label and the box are EtherPK's own field (`gk-label`, `gk-input`, ADR 0151). The list
+     * of matches is drawn here, as the Client draws its own suggestion lists, since the control
+     * classes have no list of options.
      */
     let {
         label,
@@ -70,8 +74,8 @@
     }
 </script>
 
-<div class="relative">
-    <label for="{uid}-input" class="mb-1 block text-sm font-medium text-(--gk-text-muted)">{label}</label>
+<div class="gk-field relative">
+    <label for="{uid}-input" class="gk-label">{label}</label>
     <input
         id="{uid}-input"
         type="text"
@@ -91,7 +95,7 @@
         onfocus={() => (open = true)}
         onblur={() => (open = false)}
         {onkeydown}
-        class="w-full rounded-md border border-(--gk-border-strong) bg-(--gk-surface-0) px-2 py-1.5 text-sm text-(--gk-text-default) placeholder:text-(--gk-text-subtle) focus:border-(--gk-accent) focus:outline-none"
+        class="gk-input"
         data-testid={testid}
     />
     {#if listShown}

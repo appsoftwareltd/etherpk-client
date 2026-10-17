@@ -387,7 +387,7 @@
     {#if answer === null && failed}
         <div class="centred" role="alert" data-testid="map-view-failed">
             <p>The places couldn't be read from this graph's index.</p>
-            <button type="button" class="gk-map-button" onclick={() => (dirty = true)}>Try again</button>
+            <button type="button" class="gk-button" onclick={() => (dirty = true)}>Try again</button>
         </div>
     {:else if answer === null}
         <!-- The same frame the map and list will fill, so nothing moves when they arrive. -->
@@ -401,7 +401,7 @@
             {#if concept !== null}
                 <p class="empty-title" data-testid="map-view-empty-title">No places or routes belong to {concept} yet.</p>
                 <p>Maps on its page, or nested under a link to it, appear here. Type <kbd>/map</kbd> in a document to add one.</p>
-                <button type="button" class="gk-map-link-button" onclick={openWhole}>Show the Graph Map</button>
+                <button type="button" class="gk-link" onclick={openWhole}>Show the Graph Map</button>
             {:else}
                 <p class="empty-title" data-testid="map-view-empty-title">No document in this graph has a map yet.</p>
                 <p>Type <kbd>/map</kbd> in any document to add one.</p>
@@ -424,7 +424,7 @@
                     {#if mapbox}
                         <button
                             type="button"
-                            class="gk-map-button"
+                            class="gk-button gk-button--raised"
                             aria-pressed={satellite}
                             onclick={() => services?.basemaps.setSatellite(!satellite)}
                             data-testid="map-view-satellite"
@@ -433,7 +433,7 @@
                         </button>
                     {/if}
                     {#if engine}
-                        <button type="button" class="gk-map-button" onclick={showEverything} data-testid="map-view-fit">
+                        <button type="button" class="gk-button gk-button--raised" onclick={showEverything} data-testid="map-view-fit">
                             {@render icon('fit')}<span>Show everything</span>
                         </button>
                     {/if}
@@ -446,7 +446,7 @@
                     {#if failed}
                         <p class="gk-map-notice gk-map-notice--warn" role="status">
                             The map couldn't be brought up to date.
-                            <button type="button" class="gk-map-link-button" onclick={() => (dirty = true)}>Try again</button>
+                            <button type="button" class="gk-link gk-map-link-button" onclick={() => (dirty = true)}>Try again</button>
                         </p>
                     {/if}
                     {#if note}
@@ -460,7 +460,7 @@
                     {:else if basemapProblem === 'unavailable'}
                         <p class="gk-map-notice" role="status" data-testid="map-view-basemap">
                             The map couldn't load. Places and routes are shown without it.
-                            <button type="button" class="gk-map-link-button" onclick={() => engine?.retryBasemap(basemap)}>Try again</button>
+                            <button type="button" class="gk-link gk-map-link-button" onclick={() => engine?.retryBasemap(basemap)}>Try again</button>
                         </p>
                     {/if}
                 </div>
@@ -475,7 +475,7 @@
                         {#if reading}<span class="updating" aria-hidden="true">Updating…</span>{/if}
                     </p>
                     {#if concept !== null}
-                        <button type="button" class="gk-map-link-button whole" onclick={openWhole} data-testid="map-view-whole">Show the Graph Map</button>
+                        <button type="button" class="gk-link whole" onclick={openWhole} data-testid="map-view-whole">Show the Graph Map</button>
                     {/if}
                     <label class="filter">
                         <span class="gk-map-search-icon">{@render icon('search')}</span>
@@ -530,10 +530,10 @@
                                                     {item.kind === 'place' ? formatMapPoint(item.point) : `A route of ${item.points.length} points`}
                                                 </p>
                                                 <div class="actions">
-                                                    <button type="button" class="gk-map-button gk-map-button--primary" onclick={() => showInDocument(hit)} data-testid="map-view-show">Show in document</button>
+                                                    <button type="button" class="gk-button gk-button--primary" onclick={() => showInDocument(hit)} data-testid="map-view-show">Show in document</button>
                                                     {#if item.kind === 'place'}
-                                                        <button type="button" class="gk-map-button" onclick={() => copyCoordinates(item.point)} data-testid="map-view-copy">{@render icon('copy')}Copy coordinates</button>
-                                                        <a class="gk-map-button" href={mapsAppUrl(item.point, item.name, services?.apple ?? false)} target="_blank" rel="noopener noreferrer" data-testid="map-view-open-app">
+                                                        <button type="button" class="gk-button" onclick={() => copyCoordinates(item.point)} data-testid="map-view-copy">{@render icon('copy')}Copy coordinates</button>
+                                                        <a class="gk-button" href={mapsAppUrl(item.point, item.name, services?.apple ?? false)} target="_blank" rel="noopener noreferrer" data-testid="map-view-open-app">
                                                             {@render icon('open-external')}Open in maps app
                                                         </a>
                                                     {/if}
@@ -546,7 +546,7 @@
                         </section>
                     {/each}
                     {#if unlisted > 0}
-                        <button type="button" class="gk-map-button more" onclick={() => (listLimit += LIST_PAGE)}>
+                        <button type="button" class="gk-button more" onclick={() => (listLimit += LIST_PAGE)}>
                             Show {Math.min(unlisted, LIST_PAGE).toLocaleString()} more
                         </button>
                     {/if}
@@ -560,7 +560,7 @@
             <div class="spot-box">
                 <header class="spot-head">
                     <h2 id="{uid}-spot-title">{spotHeading(spot)}</h2>
-                    <button type="button" class="spot-close" aria-label="Close" onclick={() => spotDialog?.close()} data-testid="map-view-spot-close">
+                    <button type="button" class="gk-icon-button" aria-label="Close" onclick={() => spotDialog?.close()} data-testid="map-view-spot-close">
                         {@render icon('close')}
                     </button>
                 </header>
@@ -572,7 +572,7 @@
                                 <span class="spot-document" title={hit.concept}>{hit.concept}</span>
                                 {#if spotName === null}<span class="spot-name">{itemLabel(hit.item)}</span>{/if}
                             </span>
-                            <button type="button" class="gk-map-button" aria-describedby="{uid}-spot-{i}" onclick={() => showFromSpot(hit)} data-testid="map-view-spot-show">
+                            <button type="button" class="gk-button" aria-describedby="{uid}-spot-{i}" onclick={() => showFromSpot(hit)} data-testid="map-view-spot-show">
                                 Show in document
                             </button>
                         </li>
@@ -689,23 +689,25 @@
 
     .whole {
         align-self: flex-start;
-        margin: 0;
     }
 
+    /* The filter's icon sits inside the field, so the label is drawn with a `gk-input`'s border,
+       colours and focus ring around a bare input. */
     .filter {
         display: flex;
         align-items: center;
         gap: 6px;
         margin-top: 6px;
         padding: 0 8px;
-        border: 1px solid var(--gk-border-strong);
-        border-radius: 6px;
-        background: var(--gk-surface-0);
+        border: 1px solid var(--gk-control-border);
+        border-radius: 0.5rem;
+        background: var(--gk-field-bg);
+        color: var(--gk-field-text);
     }
 
     .filter:focus-within {
-        outline: 2px solid var(--gk-accent);
-        outline-offset: 1px;
+        border-color: var(--gk-field-focus);
+        box-shadow: 0 0 0 1px var(--gk-field-focus);
     }
 
     .filter input {
@@ -917,27 +919,6 @@
         white-space: nowrap;
     }
 
-    .spot-close {
-        display: inline-flex;
-        flex: 0 0 auto;
-        padding: 6px;
-        border: 0;
-        border-radius: 6px;
-        background: none;
-        color: var(--gk-text-muted);
-        cursor: pointer;
-    }
-
-    .spot-close:hover {
-        background: var(--gk-surface-2);
-        color: var(--gk-text-default);
-    }
-
-    .spot-close :global(svg) {
-        width: 16px;
-        height: 16px;
-    }
-
     .spot-summary {
         margin: 0;
         padding: 0 16px 10px;
@@ -983,21 +964,10 @@
         color: var(--gk-text-muted);
     }
 
-    .spot-row .gk-map-button {
+    /* The button keeps its width and the place's name gives way. On a touch screen the kit makes it
+       44px tall, and the Close button 44px square. */
+    .spot-row .gk-button {
         flex: 0 0 auto;
-    }
-
-    .spot-close:focus-visible {
-        outline: 2px solid var(--gk-accent);
-        outline-offset: 1px;
-    }
-
-    @media (pointer: coarse) {
-        .spot-close,
-        .spot-row .gk-map-button {
-            min-width: 44px;
-            min-height: 44px;
-        }
     }
 
     kbd {

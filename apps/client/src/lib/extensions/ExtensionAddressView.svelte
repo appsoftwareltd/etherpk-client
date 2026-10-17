@@ -116,10 +116,10 @@
         button.focus();
     };
 
-    const secondaryButton =
-        "rounded-lg border border-gray-300 dark:border-gray-700 px-3 py-1.5 text-sm font-medium text-gray-950 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 aria-disabled:cursor-progress";
-    const primaryButton =
-        "rounded-lg bg-gray-900 dark:bg-gray-100 px-3 py-1.5 text-sm font-medium text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-200 aria-disabled:cursor-progress";
+    // EtherPK's control classes (controls.css, ADR 0151). A busy button is aria-disabled, and shows
+    // the wait cursor rather than the not-allowed one.
+    const secondaryButton = "gk-button aria-disabled:cursor-progress";
+    const primaryButton = "gk-button gk-button--primary aria-disabled:cursor-progress";
 </script>
 
 <div class="mx-auto max-w-xl space-y-3 p-6" data-testid="extension-address" data-extension={extensionId}>

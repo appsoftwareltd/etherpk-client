@@ -14,8 +14,8 @@
 
 <div class="ac-stub" data-testid="agent-chat-stub">
     <span class="ac-stub-title">Agent Chat: {title}</span>
-    <button type="button" class="ac-stub-button" onclick={onOpen} data-testid="agent-chat-stub-open">Open</button>
-    <button type="button" class="ac-stub-button" onclick={onClose} aria-label="Close the chat">×</button>
+    <button type="button" class="gk-button" onclick={onOpen} data-testid="agent-chat-stub-open">Open</button>
+    <button type="button" class="gk-icon-button ac-glyph" onclick={onClose} aria-label="Close the chat">×</button>
 </div>
 
 <style>
@@ -40,15 +40,9 @@
         overflow: hidden;
         text-overflow: ellipsis;
     }
-    .ac-stub-button {
-        min-width: 2.75rem;
-        min-height: 2.25rem;
-        padding: 0 0.875rem;
-        font-size: 0.875rem;
-        font-weight: 500;
-        border-radius: 0.5rem;
-        border: 1px solid var(--gk-border-strong);
-        background: var(--gk-surface-0);
-        color: var(--gk-text-default);
+    /* Open and the close cross are EtherPK's own buttons (ADR 0151), which a touch screen makes
+       44px tall. The cross is a character, drawn at the size an icon would be. */
+    .ac-glyph {
+        font-size: 1rem;
     }
 </style>

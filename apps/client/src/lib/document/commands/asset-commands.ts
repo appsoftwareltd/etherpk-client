@@ -250,6 +250,7 @@ export function registerAssetCommands(
             // Grouped away from the constructive rows, as the document delete is: a destructive
             // row flush against an ordinary one is a mis-click from something permanent.
             separatorBefore: true,
+            danger: true,
             // Only where the reference can be edited: a surface that merely shows one (the
             // Backlinks View, quoting another document) has no line for the cut to land on.
             when: isEditableAssetTarget,

@@ -7,13 +7,16 @@
  * reads here may be sent to a model provider. A document whose text holds an encrypted fence
  * anywhere counts as protected here too.
  *
- * Every answer is bounded: a list is paged, and a document's text is cut at a cap and says so.
+ * Every answer is bounded: a list is paged, and a document's text is cut at a cap and says so. A
+ * page of a listing holds at most 200 documents or tasks, and a page of a search 50 results. A
+ * document's text is cut after 200,000 characters. The format guide's wording changes as the format
+ * does, so an extension passes it on and never reads meaning into its words.
  */
 
 /**
  * A document as a listing names it.
  *
- * @beta
+ * @public
  */
 export interface DocumentSummary {
     /** The document's name: a page's title, or a journal entry's day, `YYYY-MM-DD`. */
@@ -27,7 +30,7 @@ export interface DocumentSummary {
 /**
  * A document's text, as {@link ExtensionDocuments.read} answers.
  *
- * @beta
+ * @public
  */
 export interface DocumentText extends DocumentSummary {
     /** The body: the text after the frontmatter block, cut at the cap. */
@@ -39,7 +42,7 @@ export interface DocumentText extends DocumentSummary {
 /**
  * One document a search matched, with the lines that matched.
  *
- * @beta
+ * @public
  */
 export interface DocumentSearchResult extends Omit<DocumentSummary, 'aliases'> {
     /** How many lines matched. */
@@ -58,7 +61,7 @@ export interface DocumentSearchResult extends Omit<DocumentSummary, 'aliases'> {
 /**
  * One document whose text links to the concept asked about, with each place it does.
  *
- * @beta
+ * @public
  */
 export interface DocumentBacklink extends Omit<DocumentSummary, 'aliases'> {
     references: {
@@ -74,7 +77,7 @@ export interface DocumentBacklink extends Omit<DocumentSummary, 'aliases'> {
 /**
  * One task, as the Tasks View lists it.
  *
- * @beta
+ * @public
  */
 export interface DocumentTask extends Omit<DocumentSummary, 'aliases'> {
     /** The task's line in the document's text, from 0. */
@@ -95,7 +98,7 @@ export interface DocumentTask extends Omit<DocumentSummary, 'aliases'> {
 /**
  * Reading the open graph's documents.
  *
- * @beta
+ * @public
  */
 export interface ExtensionDocuments {
     /** Pages and journal entries, journals newest first and then pages by name, a page at a time. */

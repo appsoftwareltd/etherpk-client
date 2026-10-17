@@ -1,6 +1,6 @@
 {
     "name": "@appsoftwareltd/etherpk-extension-api",
-    "version": "0.13.0",
+    "version": "0.14.0",
     "license": "MIT",
     "description": "The API an EtherPK extension is written against: the context it is started with, its manifest, and the contract its Views follow.",
     "type": "module",
@@ -9,7 +9,8 @@
         ".": {
             "types": "./src/index.ts",
             "default": "./src/index.ts"
-        }
+        },
+        "./controls.css": "./controls.css"
     },
     "publishConfig": {
         "access": "public",
@@ -17,11 +18,13 @@
             ".": {
                 "types": "./dist/index.d.ts",
                 "default": "./dist/index.js"
-            }
+            },
+            "./controls.css": "./controls.css"
         }
     },
     "files": [
         "dist",
+        "controls.css",
         "LICENSE",
         "README.md"
     ],

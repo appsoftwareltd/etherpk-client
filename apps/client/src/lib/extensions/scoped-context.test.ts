@@ -31,14 +31,18 @@ const graphView: ExtensionPackage = {
     },
 }
 
-/** An extension's context. `installed` makes it a release from the Extension Directory rather than a built-in. */
-function setUp({ installed = false } = {}) {
+/**
+ * An extension's context. `installed` makes it a release from the Extension Directory, and
+ * `sideLoaded` a dev folder holding no built-in, rather than a built-in.
+ */
+function setUp({ installed = false, sideLoaded = false } = {}) {
     const entry: CatalogueEntry = {
         id: 'graph-view',
         package: graphView,
         source: 'loaded',
         base: '/extensions/graph-view/0.8.54/',
         installed: installed ? { version: '0.8.54', integrity: `sha512-${'A'.repeat(86)}==` } : undefined,
+        builtIn: !installed && !sideLoaded,
     }
     const { services, bindings, indexListeners } = fakeGraphServices()
     const storage = memoryStorage()
@@ -49,7 +53,7 @@ function setUp({ installed = false } = {}) {
         return () => void supplied.delete(kind)
     }
     const client = fakeClientServices(storage, settings)
-    const scoped = createScopedContext(entry, services, client, supplyView)
+    const scoped = createScopedContext(entry, services, client, supplyView, () => ['graph-view', 'kanban'])
     const { commands, contributions, events } = services
     return { scoped, context: scoped.context, client, services, commands, contributions, events, bindings, indexListeners, storage, settings, supplied }
 }
@@ -89,7 +93,7 @@ describe('an extension context', () => {
         context.contextMenu.register({ id: 'graph-view.showConcept', label: 'Show in Graph View', command: 'graph-view.showConcept', icon: 'graph-view' })
         context.commandMenu.register({ id: 'graph-view.insert', title: 'Graph', command: 'graph-view.openWhole', icon: 'link' })
         expect(listContextMenuItems(contributions, { kind: 'document-tab', concept: 'Home' })).toEqual([
-            { id: 'graph-view.showConcept', label: 'Show in Graph View', command: 'graph-view.showConcept', icon: 'graph-view.graph-view', separatorBefore: false },
+            { id: 'graph-view.showConcept', label: 'Show in Graph View', command: 'graph-view.showConcept', icon: 'graph-view.graph-view', separatorBefore: false, danger: false },
         ])
         expect(commandMenuItemsInOrder(contributions).map((item) => [item.id, item.icon])).toEqual([['graph-view.insert', 'link']])
         expect(() => context.contextMenu.register({ id: 'show', label: 'Show', command: 'graph-view.showConcept' })).toThrow('Context Menu row "show" must start with "graph-view."')
@@ -125,11 +129,33 @@ describe('an extension context', () => {
         expect(context.icons.svg('close')).toBe('<svg data-icon="close"/>')
     })
 
-    it('binds a chord no one else binds', () => {
+    it('binds a chord no one else binds, and leaves one bound already to whoever bound it', () => {
         const { context, bindings } = setUp()
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
         context.keybindings.register({ key: 'Alt+M', command: 'graph-view.reveal', label: 'Graph View' })
         expect(bindings.map((binding) => binding.key)).toEqual(['Alt+J', 'Alt+M'])
-        expect(() => context.keybindings.register({ key: 'Alt+J', command: 'graph-view.reveal', label: 'Graph View' })).toThrow('Alt+J is bound already.')
+        // A chord the Client binds already, perhaps one it added in a later release: the extension still starts.
+        expect(() => context.keybindings.register({ key: 'Alt+J', command: 'graph-view.reveal', label: 'Graph View' })).not.toThrow()
+        expect(bindings.map((binding) => [binding.key, binding.command])).toEqual([
+            ['Alt+J', 'document.openTodayJournal'],
+            ['Alt+M', 'graph-view.reveal'],
+        ])
+        expect(warn).toHaveBeenCalledWith('[extensions] graph-view: Alt+J is not bound to graph-view.reveal', expect.any(Error))
+        warn.mockRestore()
+    })
+
+    it("binds a chord to the extension's own Command only", () => {
+        const { context, bindings } = setUp()
+        expect(() => context.keybindings.register({ key: 'Alt+K', command: 'kanban.open', label: 'Kanban' })).toThrow('The chord Alt+K\'s Command "kanban.open" must start with "graph-view."')
+        expect(bindings.map((binding) => binding.key)).toEqual(['Alt+J'])
+    })
+
+    it('brings forward its own Sidebar residents, and no other kind', () => {
+        const { context, services } = setUp()
+        context.layout.reveal('graph-view.whole')
+        context.layout.reveal('agent-chat.chats')
+        expect(services.layout.reveal).toHaveBeenCalledTimes(1)
+        expect(services.layout.reveal).toHaveBeenCalledWith('graph-view.whole')
     })
 
     it('listens to the Events an extension may hear, and refuses the rest', () => {
@@ -327,7 +353,7 @@ describe('an extension from the Extension Directory', () => {
         context.graphSidebar.register({ id: 'graph-view.openWhole', title: 'Graph View', command: 'graph-view.openWhole' })
         expect(graphSidebarButtons(contributions).map((button) => button.id)).toEqual(['graph-view.openWhole'])
         context.layout.openDocument('2026-10-12')
-        expect(services.layout.openDocument).toHaveBeenCalledWith('2026-10-12', undefined)
+        expect(services.layout.openDocument).toHaveBeenCalledWith('2026-10-12')
         expect(context.theme.isDark()).toBe(false)
         const heard = vi.fn()
         context.events.on('theme:changed', heard)
@@ -346,32 +372,67 @@ describe('an extension from the Extension Directory', () => {
         expect(contributions.has('journal-panel', 'graph-view.day')).toBe(true)
     })
 
-    // The Proposed part is for the extensions that come with EtherPK. Through `contributions` an
-    // extension could take any kind's entries, another extension's fence word among them.
+    // Everything is Stable since 0.14.0 but `contributions` (ADR 0120, amended 2026-10-17). Through
+    // it an extension could take any kind's entries, another extension's fence word among them.
     it.each<[string, (context: ExtensionContext) => unknown]>([
         ['contributions.register', (context) => context.contributions.register('interactive-fence', 'map', {})],
         ['contributions.list', (context) => context.contributions.list('context-menu')],
-        ['contextMenu.register', (context) => context.contextMenu.register({ id: 'graph-view.show', label: 'Show', command: 'graph-view.show' })],
-        ['keybindings.register', (context) => context.keybindings.register({ key: 'Alt+M', command: 'graph-view.reveal', label: 'Graph View' })],
-        ['index.allConcepts', (context) => context.index.allConcepts()],
-        ['concepts.key', (context) => context.concepts.key('Garden')],
-        ['icons.svg', (context) => context.icons.svg('close')],
-        ['commands.execute', (context) => context.commands.execute('layout.toggleSidebar')],
-        ['commands.has', (context) => context.commands.has('layout.toggleSidebar')],
-        ['layout.activeDocument', (context) => context.layout.activeDocument()],
-        ['layout.reveal', (context) => context.layout.reveal('graph-view.whole')],
-        // Added for Agent Chat (ADR 0147): what reads a graph's text for a language model, keeps
-        // records on the device, adds assets, and draws in a document outside a fence.
-        ['layout.openWindow', (context) => context.layout.openWindow({ title: 'Plan', mount: () => ({ destroy() {} }) })],
-        ['editor.openPanel', (context) => context.editor.openPanel({ mount: () => ({ destroy() {} }) })],
-        ['documents.read', (context) => context.documents.read('Garden')],
-        ['documents.search', (context) => context.documents.search('beans')],
-        ['records.keys', (context) => context.records.keys()],
-        ['assets.saveImage', (context) => context.assets.saveImage(new Blob(), 'image.png')],
+        ['contributions.get', (context) => context.contributions.get('interactive-fence', 'map')],
     ])('cannot use the Proposed %s', (member, use) => {
         const { context, contributions } = setUp({ installed: true })
         expect(() => use(context)).toThrow(`context.${member} is in the Proposed part of the Extension API, which only the extensions that come with EtherPK may use.`)
         expect(contributions.has('interactive-fence', 'map')).toBe(false)
+    })
+
+    it('uses the parts made Stable in 0.14.0', async () => {
+        const { context, contributions, bindings, services } = setUp({ installed: true })
+        context.commands.register('graph-view.reveal', () => 'revealed')
+        context.contextMenu.register({ id: 'graph-view.show', label: 'Show', command: 'graph-view.reveal', danger: true })
+        expect(listContextMenuItems(contributions, { kind: 'document-tab', concept: 'Garden' }).map((row) => [row.id, row.danger])).toEqual([['graph-view.show', true]])
+        context.commandBar.register({ id: 'graph-view.bar', title: 'Graph', icon: 'graph-view', command: 'graph-view.reveal' })
+        context.keybindings.register({ key: 'Alt+M', command: 'graph-view.reveal', label: 'Graph View' })
+        expect(bindings.map((binding) => binding.key)).toEqual(['Alt+J', 'Alt+M'])
+        expect([context.index.allConcepts(), context.concepts.key('Garden'), context.icons.svg('close')]).toEqual([[], 'garden', '<svg data-icon="close"/>'])
+        expect(context.layout.activeDocument()).toBeNull()
+        context.layout.reveal('graph-view.whole')
+        expect(services.layout.reveal).toHaveBeenCalledWith('graph-view.whole')
+        await expect(context.records.keys()).resolves.toEqual([])
+    })
+
+    it("runs its own Commands, another extension's, and the Client's that CLIENT_COMMANDS names, and no other", async () => {
+        const { context, commands } = setUp({ installed: true })
+        commands.register('graph-view.reveal', () => 'own')
+        commands.register('kanban.open', () => 'another extension')
+        commands.register('agents.settings', () => 'listed')
+        commands.register('layout.toggleSidebar', () => 'unlisted')
+        expect(await context.commands.execute('graph-view.reveal')).toBe('own')
+        expect(await context.commands.execute('kanban.open')).toBe('another extension')
+        expect(await context.commands.execute('agents.settings')).toBe('listed')
+        await expect(context.commands.execute('layout.toggleSidebar')).rejects.toThrow('runs "layout.toggleSidebar", a Command of the Client that extensions may not run.')
+        expect([context.commands.has('agents.settings'), context.commands.has('layout.toggleSidebar')]).toEqual([true, false])
+    })
+
+    it('adds no menu row or button for a Command of the Client that extensions may not run', () => {
+        const { context, contributions } = setUp({ installed: true })
+        expect(() => context.commandMenu.register({ id: 'graph-view.toggle', title: 'Toggle', command: 'layout.toggleSidebar' })).toThrow(
+            'Command Menu row "graph-view.toggle" runs "layout.toggleSidebar"',
+        )
+        expect(() => context.graphSidebar.register({ id: 'graph-view.toggle', title: 'Toggle', command: 'layout.toggleSidebar' })).toThrow(/Graph Sidebar button/)
+        expect(() => context.contextMenu.register({ id: 'graph-view.toggle', label: 'Toggle', command: 'layout.toggleSidebar' })).toThrow(/Context Menu row/)
+        expect(() => context.commandBar.register({ id: 'graph-view.toggle', title: 'Toggle', icon: 'close', command: 'layout.toggleSidebar' })).toThrow(/Command Bar button/)
+        expect(commandMenuItemsInOrder(contributions)).toEqual([])
+        context.graphSidebar.register({ id: 'graph-view.settings', title: 'Agents', command: 'agents.settings' })
+        expect(graphSidebarButtons(contributions).map((button) => button.id)).toEqual(['graph-view.settings'])
+    })
+})
+
+describe('an extension side-loaded while it is written', () => {
+    // So its author meets the Stable API's limits while testing, not after a Directory install.
+    it('gets what a Directory release gets', async () => {
+        const { context, commands } = setUp({ sideLoaded: true })
+        expect(() => context.contributions.list('context-menu')).toThrow('context.contributions.list is in the Proposed part')
+        commands.register('layout.toggleSidebar', () => 'unlisted')
+        await expect(context.commands.execute('layout.toggleSidebar')).rejects.toThrow(/may not run/)
     })
 })
 

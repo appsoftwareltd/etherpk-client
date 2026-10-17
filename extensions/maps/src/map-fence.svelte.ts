@@ -81,7 +81,7 @@ export function createMapFence(services: MapBlockServices): InteractiveFence {
                             textContent: "The map couldn't load. Check your connection, then try again.",
                         })
                         const retry = Object.assign(document.createElement('button'), { type: 'button', textContent: 'Try again' })
-                        retry.className = 'gk-map-button'
+                        retry.className = 'gk-button'
                         retry.setAttribute('data-testid', 'map-load-retry')
                         retry.addEventListener('click', show)
                         waiting.removeAttribute('aria-busy')

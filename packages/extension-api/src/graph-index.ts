@@ -7,7 +7,7 @@
 /**
  * What kind of name a concept is.
  *
- * @beta
+ * @public
  */
 export type ConceptKind = 'page' | 'journal' | 'alias' | 'pageless'
 
@@ -15,7 +15,7 @@ export type ConceptKind = 'page' | 'journal' | 'alias' | 'pageless'
  * One name the index knows: a page, a journal entry, an alias, or a Pageless Concept (a name
  * wikilinks use that has no page).
  *
- * @beta
+ * @public
  */
 export interface ConceptCandidate {
     /** The name as written. */
@@ -35,7 +35,7 @@ export interface ConceptCandidate {
 /**
  * One concept in the link graph.
  *
- * @beta
+ * @public
  */
 export interface LinkGraphConcept {
     /** The case-insensitive key every other answer uses. */
@@ -54,7 +54,7 @@ export interface LinkGraphConcept {
  * One line, from the document whose text holds the wikilinks to the concept they name. Both ends
  * are positions in {@link LinkGraph.concepts}.
  *
- * @beta
+ * @public
  */
 export interface LinkGraphLink {
     /** The document whose text holds the wikilinks, by its position in `concepts`. */
@@ -70,7 +70,7 @@ export interface LinkGraphLink {
 /**
  * Every concept and every line a wikilink draws between two of them.
  *
- * @beta
+ * @public
  */
 export interface LinkGraph {
     /** Sorted by key, so two answers over the same index are identical. */
@@ -82,7 +82,7 @@ export interface LinkGraph {
 /**
  * What changed in one update the index committed.
  *
- * @beta
+ * @public
  */
 export interface IndexUpdate {
     /** The whole index was read again, so anything may have changed. */
@@ -98,7 +98,7 @@ export interface IndexUpdate {
 /**
  * The questions an extension may ask the open graph's index.
  *
- * @beta
+ * @public
  */
 export interface ExtensionIndex {
     /** Every name the index knows, aliases and Pageless Concepts included. */

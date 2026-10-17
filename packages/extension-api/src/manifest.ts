@@ -37,8 +37,6 @@ export interface ViewDeclaration {
     /**
      * The View lives in a Sidebar from the moment a graph opens, beside the Client's own residents,
      * and the Sidebar's toggle brings it back if it was closed. `desktopOnly` keeps it off a phone.
-     *
-     * @beta
      */
     resident?: { side: 'left' | 'right'; desktopOnly?: boolean }
     /**
@@ -129,7 +127,7 @@ export interface ExtensionManifest {
  * An extension's package as the Client reads it: the standard package.json fields it uses and the
  * manifest.
  *
- * @beta
+ * @public
  */
 export interface ExtensionPackage {
     /** The npm package name. */
@@ -147,7 +145,7 @@ export interface ExtensionPackage {
 /**
  * The answer of {@link readExtensionPackage}: the package, or every way its manifest is wrong.
  *
- * @beta
+ * @public
  */
 export type ReadExtensionPackageResult = { ok: true; extension: ExtensionPackage } | { ok: false; errors: string[] }
 
@@ -163,7 +161,7 @@ const ICON_MARKUP_LIMIT = 4096
  * Checks what the Client depends on: names it uses as keys, paths it resolves, and declarations
  * it registers before any of the extension's code runs. It does not check that files exist.
  *
- * @beta
+ * @public
  */
 export function readExtensionPackage(packageJson: unknown): ReadExtensionPackageResult {
     const errors: string[] = []

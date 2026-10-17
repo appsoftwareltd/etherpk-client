@@ -84,6 +84,12 @@ export interface ExtensionHost {
     /** Stop an extension and start it again in the open graph: what "Try again" runs. */
     retry(id: string): Promise<void>
     status(id: string): ExtensionStatus
+    /**
+     * The main module of an extension running in the open graph, or null: what its settings
+     * sections are read from, so a loaded extension's are drawn while it runs (ADR 0134, amended
+     * 2026-10-17).
+     */
+    runningModule(id: string): ExtensionModule | null
     /** Called after any status or slot changes. Returns the unsubscribe. */
     subscribe(listener: () => void): () => void
     /**
@@ -115,6 +121,8 @@ export interface ExtensionHostOptions {
 interface Running {
     scoped: ScopedContext
     returned: (() => void) | undefined
+    /** Its main module, for the settings sections it exports. */
+    module: ExtensionModule
 }
 
 export function createExtensionHost(options: ExtensionHostOptions): ExtensionHost {
@@ -222,7 +230,13 @@ export function createExtensionHost(options: ExtensionHostOptions): ExtensionHos
 
     /** Run `activate` with a fresh context, and judge what the extension supplied. */
     function activate(entry: CatalogueEntry, module: ExtensionModule, services: GraphServices): void {
-        const scoped = createScopedContext(entry, services, client, (kind, view) => slots.get(kind)!.supply(view))
+        const scoped = createScopedContext(
+            entry,
+            services,
+            client,
+            (kind, view) => slots.get(kind)!.supply(view),
+            () => catalogue.extensions.map((extension) => extension.id),
+        )
         let returned: unknown
         try {
             returned = module.activate(scoped.context)
@@ -230,7 +244,7 @@ export function createExtensionHost(options: ExtensionHostOptions): ExtensionHos
             scoped.dispose()
             throw error
         }
-        running.set(entry.id, { scoped, returned: typeof returned === 'function' ? (returned as () => void) : undefined })
+        running.set(entry.id, { scoped, returned: typeof returned === 'function' ? (returned as () => void) : undefined, module })
         const name = entry.package.manifest.displayName
         for (const slot of slotsOf(entry)) {
             if (slot.state().status === 'waiting') slot.set({ status: 'failed', message: `${name} did not supply this View.` })
@@ -351,6 +365,7 @@ export function createExtensionHost(options: ExtensionHostOptions): ExtensionHos
             await startOne(entry, graph)
         },
         status: (id) => statuses.get(id) ?? { state: 'off' },
+        runningModule: (id) => running.get(id)?.module ?? null,
         subscribe(listener) {
             listeners.add(listener)
             return () => listeners.delete(listener)

@@ -939,6 +939,7 @@
                 data-testid="kanban-error"
             >
                 <span class="min-w-0 flex-1">Couldn't read the task index, so the board may be out of date.</span>
+                <!-- The banners' buttons take the banner's own colour, which no control class has. -->
                 <button
                     type="button"
                     onclick={retry}
@@ -1014,7 +1015,8 @@
                         data-status={lane.status}
                         aria-labelledby="{uid}-{lane.status}"
                     >
-                        <header class="flex items-center justify-between gap-2 border-b border-(--gk-border-soft) py-1.5 pl-3 pr-1.5">
+                        <!-- py-1 around EtherPK's 32px icon button keeps the header the height it was. -->
+                        <header class="flex items-center justify-between gap-2 border-b border-(--gk-border-soft) py-1 pl-3 pr-1.5">
                             <h2 id="{uid}-{lane.status}" class="m-0 text-sm font-semibold text-(--gk-text-strong)" data-testid="kanban-lane-label">
                                 {lane.label}
                             </h2>
@@ -1025,7 +1027,7 @@
                                 <button
                                     type="button"
                                     onclick={() => toggleCollapsed(lane.status)}
-                                    class="grid size-7 place-items-center rounded-md text-(--gk-text-muted) hover:bg-(--gk-surface-2) hover:text-(--gk-text-strong) focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-(--gk-accent)"
+                                    class="gk-icon-button"
                                     aria-label="Collapse the {lane.label} lane"
                                     title="Collapse the {lane.label} lane"
                                     data-testid="kanban-lane-collapse"
@@ -1147,7 +1149,7 @@
                                             <button
                                                 type="button"
                                                 onclick={() => showMore(cell, section.cards.length)}
-                                                class="mt-1 flex w-full items-baseline justify-between gap-2 rounded-md px-2 py-1.5 text-left text-sm font-medium text-(--gk-text-muted) hover:bg-(--gk-surface-2) hover:text-(--gk-text-strong) focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-(--gk-accent)"
+                                                class="gk-button gk-button--quiet mt-1 flex w-full items-baseline justify-between gap-2"
                                                 data-testid="kanban-section-more"
                                             >
                                                 <span>Show {Math.min(SECTION_PAGE_SIZE, section.total - section.cards.length)} more</span>
@@ -1201,7 +1203,8 @@
                 data-testid="kanban-detail"
                 data-document={detail.document}
             >
-                <header class="flex items-center gap-2 border-b border-(--gk-border-soft) bg-(--gk-surface-1) py-1 pl-3 pr-1.5">
+                <!-- py-0.5 around EtherPK's 32px icon button keeps the header the height it was. -->
+                <header class="flex items-center gap-2 border-b border-(--gk-border-soft) bg-(--gk-surface-1) py-0.5 pl-3 pr-1.5">
                     <h2 id="{uid}-detail-title" class="m-0 flex min-w-0 flex-1 items-baseline gap-2 text-sm">
                         <span class="shrink-0 text-(--gk-text-muted)">Task Detail</span>
                         <span class="truncate font-semibold text-(--gk-text-strong)" data-testid="kanban-detail-document">{detail.document}</span>
@@ -1209,7 +1212,7 @@
                     <button
                         type="button"
                         onclick={openDetailInTab}
-                        class="shrink-0 rounded-md px-2 py-1 text-sm font-medium text-(--gk-text-muted) hover:bg-(--gk-surface-2) hover:text-(--gk-text-strong) focus-visible:outline-2 focus-visible:outline-(--gk-accent)"
+                        class="gk-button gk-button--quiet shrink-0"
                         data-testid="kanban-detail-open"
                     >
                         Open in tab
@@ -1217,7 +1220,7 @@
                     <button
                         type="button"
                         onclick={closeDetail}
-                        class="grid size-7 shrink-0 place-items-center rounded-md text-(--gk-text-muted) hover:bg-(--gk-surface-2) hover:text-(--gk-text-strong) focus-visible:outline-2 focus-visible:outline-(--gk-accent)"
+                        class="gk-icon-button"
                         aria-label="Close the Task Detail"
                         title="Close the Task Detail"
                         data-testid="kanban-detail-close"

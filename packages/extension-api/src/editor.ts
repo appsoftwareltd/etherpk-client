@@ -242,7 +242,7 @@ export interface FenceOptions {
  * the editor when the editor is rebuilt (a Draft becoming a document, say). It closes when the
  * person closes it, or when the document's editor closes for good: the panel lasts for the visit.
  *
- * @beta
+ * @public
  */
 export interface InlinePanel {
     /** The document the panel is in, by its concept. */
@@ -280,7 +280,7 @@ export interface InlinePanel {
 /**
  * What an inline panel is drawn with.
  *
- * @beta
+ * @public
  */
 export interface InlinePanelOptions {
     /**
@@ -333,8 +333,6 @@ export interface ExtensionEditor {
      * document (the editor has the keyboard, as a Command Bar button leaves it), else at the end: for
      * a button pressed from outside the text. Null where no panel can go: no editor, a Protected
      * Document, or a caret in the frontmatter, a fenced block or a table.
-     *
-     * @beta
      */
     openPanel(options: InlinePanelOptions & { at?: 'caret' | 'end' | 'caret-or-end' }): InlinePanel | null
 }

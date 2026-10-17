@@ -936,7 +936,7 @@
                     />
                     {#if searching}<span class="gk-map-search-busy" aria-label="Searching" role="status"></span>{/if}
                     <!-- Enter does the same; the return key's mark says so. -->
-                    <button type="submit" class="gk-map-search-go" disabled={query.trim() === ''} title="Search (Enter)" aria-label="Search" data-testid="map-search-go">
+                    <button type="submit" class="gk-icon-button gk-map-search-go" disabled={query.trim() === ''} title="Search (Enter)" aria-label="Search" data-testid="map-search-go">
                         {@render icon('maps.enter')}
                     </button>
                 </form>
@@ -947,7 +947,7 @@
                 {#if mapbox}
                     <button
                         type="button"
-                        class="gk-map-icon-button"
+                        class="gk-icon-button gk-button--raised"
                         title="Satellite"
                         aria-label="Satellite"
                         aria-pressed={satellite}
@@ -957,16 +957,16 @@
                         {@render icon('maps.layers')}
                     </button>
                 {/if}
-                <button type="button" class="gk-map-icon-button" title="Places and routes" aria-label="Places and routes" aria-pressed={listOpen} onclick={() => (listOpen = !listOpen)} data-testid="map-list-toggle">
+                <button type="button" class="gk-icon-button gk-button--raised" title="Places and routes" aria-label="Places and routes" aria-pressed={listOpen} onclick={() => (listOpen = !listOpen)} data-testid="map-list-toggle">
                     {@render icon('list')}
                 </button>
-                <button type="button" class="gk-map-icon-button" title="Fold the map" aria-label="Fold the map" aria-expanded="true" onclick={() => setFolded(true)} data-testid="map-fold">
+                <button type="button" class="gk-icon-button gk-button--raised" title="Fold the map" aria-label="Fold the map" aria-expanded="true" onclick={() => setFolded(true)} data-testid="map-fold">
                     {@render icon('fold')}
                 </button>
                 <button
                     bind:this={menuButton}
                     type="button"
-                    class="gk-map-icon-button"
+                    class="gk-icon-button gk-button--raised"
                     title="More"
                     aria-label="More map actions"
                     aria-haspopup="menu"
@@ -977,14 +977,14 @@
                     {@render icon('more')}
                 </button>
                 {#if menuOpen}
-                    <div bind:this={menuElement} class="gk-map-menu" role="menu" aria-label="Map actions" tabindex="-1" onkeydown={menuKeys} data-testid="map-menu-items">
-                        <button type="button" role="menuitem" onclick={showEverything}>{@render icon('fit')}Show everything</button>
+                    <div bind:this={menuElement} class="gk-menu gk-map-menu" role="menu" aria-label="Map actions" tabindex="-1" onkeydown={menuKeys} data-testid="map-menu-items">
+                        <button type="button" role="menuitem" class="gk-menu-item" onclick={showEverything}>{@render icon('fit')}Show everything</button>
                         {#if editable && services.storeFile}
-                            <button type="button" role="menuitem" onclick={chooseFile} data-testid="map-import">{@render icon('import')}Import a GPX file…</button>
+                            <button type="button" role="menuitem" class="gk-menu-item" onclick={chooseFile} data-testid="map-import">{@render icon('import')}Import a GPX file…</button>
                         {/if}
                         {#if editable}
-                            <button type="button" role="menuitem" onclick={editAsText} data-testid="map-edit-as-text">{@render icon('code')}Edit as text</button>
-                            <button type="button" role="menuitem" class="gk-map-danger" onclick={deleteMap} data-testid="map-delete">{@render icon('trash')}Delete map</button>
+                            <button type="button" role="menuitem" class="gk-menu-item" onclick={editAsText} data-testid="map-edit-as-text">{@render icon('code')}Edit as text</button>
+                            <button type="button" role="menuitem" class="gk-menu-item gk-menu-item--danger" onclick={deleteMap} data-testid="map-delete">{@render icon('trash')}Delete map</button>
                         {/if}
                     </div>
                 {/if}
@@ -1028,7 +1028,7 @@
             {#if read.unread.length > 0}
                 <p class="gk-map-notice gk-map-notice--warn" data-testid="map-unread">
                     {read.unread.length === 1 ? "1 line can't be read as a place or a route." : `${read.unread.length} lines can't be read as places or routes.`}
-                    {#if editable}<button type="button" class="gk-map-link-button" onclick={editAsText}>Edit as text</button>{/if}
+                    {#if editable}<button type="button" class="gk-link gk-map-link-button" onclick={editAsText}>Edit as text</button>{/if}
                 </p>
             {/if}
             {#if refused}
@@ -1039,13 +1039,13 @@
             {:else if basemapProblem === 'unavailable'}
                 <p class="gk-map-notice" role="status" data-testid="map-basemap">
                     The map couldn't load. Places and routes are shown without it.
-                    <button type="button" class="gk-map-link-button" onclick={() => engine?.retryBasemap(basemap)}>Try again</button>
+                    <button type="button" class="gk-link gk-map-link-button" onclick={() => engine?.retryBasemap(basemap)}>Try again</button>
                 </p>
             {/if}
             {#if removed}
                 <p class="gk-map-notice" role="status" data-testid="map-removed">
                     {removed.name} removed.
-                    <button type="button" class="gk-map-link-button" onclick={undoRemove} data-testid="map-undo-remove">Undo</button>
+                    <button type="button" class="gk-link gk-map-link-button" onclick={undoRemove} data-testid="map-undo-remove">Undo</button>
                 </p>
             {/if}
         </div>
@@ -1074,11 +1074,12 @@
         <div class="gk-map-bottom">
             {#if pending}
                 <form class="gk-map-sheet" onsubmit={savePending} data-testid="map-pending">
-                    <label class="gk-map-field">
-                        <span>{pending.kind === 'place' ? 'Name this place' : 'Name this route'}</span>
+                    <label class="gk-field">
+                        <span class="gk-label">{pending.kind === 'place' ? 'Name this place' : 'Name this route'}</span>
                         <input
                             bind:this={nameInput}
                             bind:value={pending.name}
+                            class="gk-input"
                             type="text"
                             autocomplete="off"
                             aria-describedby="{uid}-pending-where"
@@ -1107,8 +1108,8 @@
                         </p>
                     {/if}
                     <div class="gk-map-sheet-actions">
-                        <button type="submit" class="gk-map-button gk-map-button--primary" data-testid="map-pending-add">{pending.kind === 'place' ? 'Add place' : 'Add route'}</button>
-                        <button type="button" class="gk-map-button" onclick={cancelPending}>Cancel</button>
+                        <button type="submit" class="gk-button gk-button--primary" data-testid="map-pending-add">{pending.kind === 'place' ? 'Add place' : 'Add route'}</button>
+                        <button type="button" class="gk-button" onclick={cancelPending}>Cancel</button>
                     </div>
                 </form>
             {:else if mode === 'drawing'}
@@ -1119,11 +1120,11 @@
                             : `${draft.length} ${draft.length === 1 ? 'point' : 'points'}${draft.length > 1 ? `, ${formatDistance(routeLengthMeters(draft))}` : ''}. Click the map for the next point.`}
                     </p>
                     <div class="gk-map-sheet-actions">
-                        <button type="button" class="gk-map-button gk-map-button--primary" onclick={finishDrawing} data-testid="map-finish-route">Finish</button>
-                        <button type="button" class="gk-map-button" onclick={() => (draft = draft.slice(0, -1))} disabled={draft.length === 0}>Undo point</button>
+                        <button type="button" class="gk-button gk-button--primary" onclick={finishDrawing} data-testid="map-finish-route">Finish</button>
+                        <button type="button" class="gk-button" onclick={() => (draft = draft.slice(0, -1))} disabled={draft.length === 0}>Undo point</button>
                         <button
                             type="button"
-                            class="gk-map-button"
+                            class="gk-button"
                             onclick={() => {
                                 mode = 'idle'
                                 draft = []
@@ -1135,20 +1136,20 @@
                 <div class="gk-map-sheet" data-testid="map-adding">
                     <p class="gk-map-sheet-detail">Click the map where the place is.</p>
                     <div class="gk-map-sheet-actions">
-                        <button type="button" class="gk-map-button" onclick={() => (mode = 'idle')}>Cancel</button>
+                        <button type="button" class="gk-button" onclick={() => (mode = 'idle')}>Cancel</button>
                     </div>
                 </div>
             {:else if selected}
                 <div class="gk-map-sheet" data-testid="map-selected">
                     {#if renaming}
                         <form class="gk-map-rename" onsubmit={saveRename}>
-                            <label class="gk-map-field">
-                                <span>Rename</span>
-                                <input bind:this={renameInput} bind:value={renameText} type="text" autocomplete="off" data-testid="map-rename-input" />
+                            <label class="gk-field">
+                                <span class="gk-label">Rename</span>
+                                <input bind:this={renameInput} bind:value={renameText} class="gk-input" type="text" autocomplete="off" data-testid="map-rename-input" />
                             </label>
                             <div class="gk-map-sheet-actions">
-                                <button type="submit" class="gk-map-button gk-map-button--primary">Save</button>
-                                <button type="button" class="gk-map-button" onclick={stopRenaming}>Cancel</button>
+                                <button type="submit" class="gk-button gk-button--primary">Save</button>
+                                <button type="button" class="gk-button" onclick={stopRenaming}>Cancel</button>
                             </div>
                         </form>
                     {:else}
@@ -1158,37 +1159,37 @@
                                 {selected.kind === 'place' ? formatMapPoint(selected.point) : formatDistance(routeLengthMeters(selected.points))}
                                 {#if selected.kind === 'route' && selected.track}<span>, from a recording</span>{/if}
                             </span>
-                            <button type="button" class="gk-map-icon-button gk-map-close" aria-label="Close" onclick={() => (selectedKey = null)}>{@render icon('close')}</button>
+                            <button type="button" class="gk-icon-button gk-map-close" aria-label="Close" onclick={() => (selectedKey = null)}>{@render icon('close')}</button>
                         </div>
                         {#if mode === 'moving'}
                             <p class="gk-map-sheet-detail">Drag the pin, or click the map where it should go.</p>
                         {/if}
                         <div class="gk-map-sheet-actions">
                             {#if editable}
-                                <button bind:this={renameButton} type="button" class="gk-map-button" onclick={startRename} data-testid="map-rename">{@render icon('rename')}Rename</button>
+                                <button bind:this={renameButton} type="button" class="gk-button" onclick={startRename} data-testid="map-rename">{@render icon('rename')}Rename</button>
                                 {#if selected.kind === 'place'}
-                                    <button type="button" class="gk-map-button" aria-pressed={mode === 'moving'} onclick={() => (mode = mode === 'moving' ? 'idle' : 'moving')} data-testid="map-move">
+                                    <button type="button" class="gk-button" aria-pressed={mode === 'moving'} onclick={() => (mode = mode === 'moving' ? 'idle' : 'moving')} data-testid="map-move">
                                         {@render icon('move')}{mode === 'moving' ? 'Done' : 'Move'}
                                     </button>
                                 {/if}
                             {/if}
                             {#if selected.kind === 'place'}
                                 {@const point = selected.point}
-                                <button type="button" class="gk-map-button" onclick={() => copyCoordinates(point)} data-testid="map-copy">{@render icon('copy')}Copy coordinates</button>
-                                <a class="gk-map-button" href={mapsAppUrl(point, selected.name, services.apple)} target="_blank" rel="noopener noreferrer" data-testid="map-open-app">
+                                <button type="button" class="gk-button" onclick={() => copyCoordinates(point)} data-testid="map-copy">{@render icon('copy')}Copy coordinates</button>
+                                <a class="gk-button" href={mapsAppUrl(point, selected.name, services.apple)} target="_blank" rel="noopener noreferrer" data-testid="map-open-app">
                                     {@render icon('open-external')}Open in maps app
                                 </a>
                             {/if}
                             {#if editable}
-                                <button type="button" class="gk-map-button gk-map-danger" onclick={removeSelected} data-testid="map-remove">{@render icon('trash')}Remove</button>
+                                <button type="button" class="gk-button gk-button--danger" onclick={removeSelected} data-testid="map-remove">{@render icon('trash')}Remove</button>
                             {/if}
                         </div>
                     {/if}
                 </div>
             {:else if editable}
                 <div class="gk-map-tools">
-                    <button type="button" class="gk-map-button" onclick={() => ((mode = 'adding'), (selectedKey = null))} data-testid="map-add-place">{@render icon('pin')}<span>Add a place</span></button>
-                    <button type="button" class="gk-map-button" onclick={startDrawing} data-testid="map-draw-route">{@render icon('maps.route')}<span>Draw a route</span></button>
+                    <button type="button" class="gk-button gk-button--raised" onclick={() => ((mode = 'adding'), (selectedKey = null))} data-testid="map-add-place">{@render icon('pin')}<span>Add a place</span></button>
+                    <button type="button" class="gk-button gk-button--raised" onclick={startDrawing} data-testid="map-draw-route">{@render icon('maps.route')}<span>Draw a route</span></button>
                     {#if importing}<span class="gk-map-sheet-detail" role="status">Importing…</span>{/if}
                 </div>
             {/if}

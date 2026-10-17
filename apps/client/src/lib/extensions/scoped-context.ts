@@ -12,8 +12,12 @@
  *   extension never has to undo its own registrations, and one that forgets cannot leave a dead
  *   Command behind.
  * - **Reach.** Only the Events the API names can be heard, and nothing here leads to a document
- *   store, a key or a sync engine. An extension from the Extension Directory reaches only the API's
- *   Stable part (`stableOnly`): the Proposed part is for the extensions that come with EtherPK.
+ *   store, a key or a sync engine. An extension that does not come with EtherPK (one from the
+ *   Extension Directory, or one side-loaded while it is written) reaches only the API's Stable part
+ *   (`stableOnly`, ADR 0120, amended 2026-10-17): every part but `contributions`. It runs its own
+ *   Commands, the other extensions' and the Client's that `CLIENT_COMMANDS` names, and no other.
+ * - **Chords.** A key chord the Client or another extension binds already stays theirs: the
+ *   extension's binding is skipped with a warning rather than stopping the extension starting.
  *
  * After `dispose` the context adds nothing: a callback that fires late does no harm.
  */
@@ -29,6 +33,7 @@ import type {
     IconMarkup,
     ViewContribution,
 } from '@appsoftwareltd/etherpk-extension-api'
+import { CLIENT_COMMANDS } from '@appsoftwareltd/etherpk-extension-api'
 
 import { PLAYER_FRAME_HOSTS } from '@appsoftwareltd/etherpk-shared/frame-hosts'
 
@@ -68,10 +73,29 @@ export function createScopedContext(
     graph: GraphServices,
     client: ClientServices,
     supplyView: (kind: string, view: ViewContribution) => () => void,
+    /** The ids of every extension in the catalogue, whose Commands another extension may run. */
+    extensionIds: () => readonly string[] = () => [],
 ): ScopedContext {
     const id = entry.id
     const manifest = entry.package.manifest
     const declaredKinds = new Set((manifest.views ?? []).map((view) => view.kind))
+    /**
+     * An extension that comes with EtherPK, which may use the Proposed part and run any Command: one
+     * compiled in, or a loaded one the Client names, or a dev folder standing in for one of those.
+     */
+    const builtIn = entry.source === 'compiled-in' || (entry.builtIn === true && !entry.installed)
+    /**
+     * Whether the extension may run a Command (ADR 0120, amended 2026-10-17): its own, another
+     * extension's, or one of the Client's Stable Commands. One that comes with EtherPK may run any.
+     */
+    const mayRun = (command: string) => {
+        if (builtIn || command.startsWith(`${id}.`) || CLIENT_COMMANDS.includes(command)) return true
+        const dot = command.indexOf('.')
+        return dot > 0 && extensionIds().includes(command.slice(0, dot))
+    }
+    const runs = (what: string, command: string) => {
+        if (!mayRun(command)) throw new Error(`${what} runs "${command}", a Command of the Client that extensions may not run. Run one of the extension's own, another extension's, or one CLIENT_COMMANDS names.`)
+    }
     const ownIcons = new Set(Object.keys(manifest.icons ?? {}))
     const disposers: (() => void)[] = []
     let disposed = false
@@ -163,12 +187,20 @@ export function createScopedContext(
                 own('Command', commandId)
                 return disposed ? noop : keep(graph.commands.register(commandId, handler))
             },
-            execute: (commandId, arg) => graph.commands.execute(commandId, arg),
-            has: (commandId) => graph.commands.has(commandId),
+            execute: (commandId, arg) => {
+                try {
+                    runs('The extension', commandId)
+                } catch (error) {
+                    return Promise.reject(error)
+                }
+                return graph.commands.execute(commandId, arg)
+            },
+            has: (commandId) => mayRun(commandId) && graph.commands.has(commandId),
         },
         contextMenu: {
             register(item: ContextMenuItem) {
                 own('Context Menu row', item.id)
+                runs(`Context Menu row "${item.id}"`, item.command)
                 if (disposed) return noop
                 const row = { ...item, icon: icon(item.icon) } as unknown as ClientContextMenuItem
                 return keep(registerContextMenuItem(graph.contributions, row))
@@ -177,6 +209,7 @@ export function createScopedContext(
         commandMenu: {
             register(item: CommandMenuItem) {
                 own('Command Menu row', item.id)
+                runs(`Command Menu row "${item.id}"`, item.command)
                 if (disposed) return noop
                 const row = { ...item, icon: icon(item.icon) } as ClientCommandMenuItem
                 return keep(registerCommandMenuItem(graph.contributions, row))
@@ -185,6 +218,7 @@ export function createScopedContext(
         commandBar: {
             register(button: CommandBarButton) {
                 own('Command Bar button', button.id)
+                runs(`Command Bar button "${button.id}"`, button.command)
                 if (disposed) return noop
                 // Pinned, in the group at the bar's right end; otherwise after every editing button.
                 return keep(
@@ -203,6 +237,7 @@ export function createScopedContext(
         graphSidebar: {
             register(button: GraphSidebarButton) {
                 own('Graph Sidebar button', button.id)
+                runs(`Graph Sidebar button "${button.id}"`, button.command)
                 if (disposed) return noop
                 return keep(registerGraphSidebarButton(graph.contributions, { ...button, icon: icon(button.icon) }))
             },
@@ -222,7 +257,18 @@ export function createScopedContext(
             },
         },
         keybindings: {
-            register: (binding) => (disposed ? noop : keep(graph.keybindings.add(binding))),
+            register(binding) {
+                own(`The chord ${binding.key}'s Command`, binding.command)
+                if (disposed) return noop
+                try {
+                    return keep(graph.keybindings.add(binding))
+                } catch (error) {
+                    // Bound already, by the Client or another extension: theirs it stays, so a chord the
+                    // Client adds in a later release never stops an extension from starting.
+                    console.warn(`[extensions] ${id}: ${binding.key} is not bound to ${binding.command}`, error)
+                    return noop
+                }
+            },
         },
         contributions,
         events: {
@@ -242,6 +288,10 @@ export function createScopedContext(
         assets: graph.assets,
         layout: {
             ...graph.layout,
+            // Only the extension's own Sidebar residents: another's is theirs to bring forward.
+            reveal: (kind) => {
+                if (declaredKinds.has(kind)) graph.layout.reveal(kind)
+            },
             // A window the extension opened closes with its context, as its other registrations go.
             openWindow(options) {
                 if (disposed) return { close: noop }
@@ -322,7 +372,7 @@ export function createScopedContext(
     }
 
     return {
-        context: entry.source === 'loaded' && entry.installed ? stableOnly(context) : context,
+        context: builtIn ? context : stableOnly(context),
         dispose() {
             if (disposed) return
             disposed = true
@@ -346,42 +396,16 @@ function refuse(member: string): () => never {
 }
 
 /**
- * The context an extension from the Extension Directory gets: the Stable part of `context`, with
- * every Proposed member refusing. The Proposed part may change in any release, and `contributions`
- * reaches the Client's own registries, where an extension could take any kind's entries, another
- * extension's fence word among them. The reviewer checks a listed release uses only the Stable part,
- * and this keeps it to that. The plain values (`extensionId`, `graphId`, `clientVersion`, `dev`)
- * stay readable, since reading one reaches nothing.
+ * The context an extension that does not come with EtherPK gets: every Stable part, with the one
+ * Proposed member, `contributions`, refusing (ADR 0120, amended 2026-10-17). It reaches the
+ * Client's own registries, where an extension could take any kind's entries, another extension's
+ * fence word among them, and its kinds and values are the Client's internals, which change between
+ * releases. Each part that a registry serves through `contributions` is reached through a checked
+ * part instead, such as `editor.registerFence`.
  */
 function stableOnly(context: ExtensionContext): ExtensionContext {
-    const { layout, commands, editor } = context
     return {
         ...context,
-        commands: { register: (commandId, handler) => commands.register(commandId, handler), execute: refuse('commands.execute'), has: refuse('commands.has') },
-        layout: {
-            isDesktop: () => layout.isDesktop(),
-            openView: (view, options) => layout.openView(view, options),
-            openDocument: (concept, options) => layout.openDocument(concept, options),
-            activeDocument: refuse('layout.activeDocument'),
-            reveal: refuse('layout.reveal'),
-            openWindow: refuse('layout.openWindow'),
-        },
-        editor: {
-            registerFence: (info, widget, options) => editor.registerFence(info, widget, options),
-            insertBlock: (text, options) => editor.insertBlock(text, options),
-            openPanel: refuse('editor.openPanel'),
-        },
-        documents: {
-            list: refuse('documents.list'),
-            read: refuse('documents.read'),
-            links: refuse('documents.links'),
-            search: refuse('documents.search'),
-            backlinks: refuse('documents.backlinks'),
-            formatGuide: refuse('documents.formatGuide'),
-            tasks: refuse('documents.tasks'),
-        },
-        records: { get: refuse('records.get'), set: refuse('records.set'), remove: refuse('records.remove'), keys: refuse('records.keys') },
-        assets: { prepareImage: refuse('assets.prepareImage'), saveImage: refuse('assets.saveImage') },
         contributions: {
             register: refuse('contributions.register'),
             unregister: refuse('contributions.unregister'),
@@ -389,12 +413,6 @@ function stableOnly(context: ExtensionContext): ExtensionContext {
             has: refuse('contributions.has'),
             list: refuse('contributions.list'),
         },
-        contextMenu: { register: refuse('contextMenu.register') },
-        commandBar: { register: refuse('commandBar.register') },
-        keybindings: { register: refuse('keybindings.register') },
-        index: { allConcepts: refuse('index.allConcepts'), linkGraph: refuse('index.linkGraph'), onUpdated: refuse('index.onUpdated') },
-        concepts: { canonicalName: refuse('concepts.canonicalName'), key: refuse('concepts.key') },
-        icons: { svg: refuse('icons.svg') },
     }
 }
 

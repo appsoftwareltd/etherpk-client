@@ -18,6 +18,31 @@ const RECORDS = 'records'
 /** A record's key, as the API states it. */
 const KEY = /^[A-Za-z0-9._:-]{1,200}$/
 
+/** The most one record may hold (the API's 4 MB), so no extension fills the device's storage with one write. */
+export const GRAPH_RECORD_LIMIT = 4 * 1024 * 1024
+
+/**
+ * About how many bytes a record holds: its text and keys, eight for each other value, and the
+ * bytes of every `Blob` and buffer in it, which JSON would count as nothing. Stops counting once
+ * it is past the limit, and counts a value met twice once, as the structured clone keeps it.
+ */
+export function recordSize(value: unknown, seen = new Set<unknown>()): number {
+    if (typeof value === 'string') return value.length
+    if (value === null || typeof value !== 'object') return 8
+    if (seen.has(value)) return 0
+    seen.add(value)
+    if (value instanceof Blob) return value.size
+    if (value instanceof ArrayBuffer) return value.byteLength
+    if (ArrayBuffer.isView(value)) return value.byteLength
+    let size = 0
+    const entries: [unknown, unknown][] = value instanceof Map ? [...value.entries()] : Array.isArray(value) || value instanceof Set ? [...(value as Iterable<unknown>)].map((item) => [null, item]) : Object.entries(value)
+    for (const [key, item] of entries) {
+        size += (typeof key === 'string' ? key.length : 0) + recordSize(item, seen)
+        if (size > GRAPH_RECORD_LIMIT) break
+    }
+    return size
+}
+
 let connection: Promise<ReopenableConnection> | null = null
 
 function openDb(): Promise<IDBDatabase> {
@@ -73,6 +98,7 @@ export function graphRecords(graphId: string, extensionId: string): ExtensionGra
         },
         async set(key, value) {
             if (!KEY.test(key)) throw new Error(`A record's key is letters, digits, ".", "_", ":" and "-", at most 200 of them, not "${key}".`)
+            if (recordSize(value) > GRAPH_RECORD_LIMIT) throw new Error(`The record "${key}" holds more than 4 MB, the most one record may hold.`)
             const transaction = await (await db()).transaction(RECORDS, 'readwrite')
             await done(transaction.objectStore(RECORDS).put(value, at(key)))
         },

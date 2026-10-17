@@ -40,15 +40,14 @@
         revealed = false;
     }
 
-    const secondaryButton =
-        "rounded-lg border border-gray-300 dark:border-gray-700 px-3 py-1.5 text-sm font-medium text-gray-950 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50";
-    const primaryButton =
-        "rounded-lg bg-gray-900 dark:bg-gray-100 px-3 py-1.5 text-sm font-medium text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-200 disabled:bg-gray-300 disabled:text-gray-600 dark:disabled:bg-gray-700 dark:disabled:text-gray-300";
+    // EtherPK's control classes (controls.css, ADR 0151): the same buttons and fields an extension draws.
+    const secondaryButton = "gk-button";
+    const primaryButton = "gk-button gk-button--primary";
 </script>
 
 <div data-testid="extension-setting" data-setting={setting.id}>
     {#if setting.type === "boolean"}
-        <label class="flex items-start gap-2 text-sm text-gray-950 dark:text-gray-100">
+        <label class="gk-label flex items-start gap-2">
             <input
                 id={inputId}
                 type="checkbox"
@@ -56,24 +55,24 @@
                 onchange={(e) => settings.set(key, e.currentTarget.checked ? "true" : "false")}
                 aria-describedby={setting.description ? descriptionId : undefined}
                 data-testid="extension-setting-switch"
-                class="mt-0.5 h-4 w-4 rounded border-gray-300 dark:border-gray-700"
+                class="gk-checkbox mt-0.5"
             />
-            <span class="font-medium">{setting.title}</span>
+            <span>{setting.title}</span>
         </label>
         {#if setting.description}
-            <p id={descriptionId} class="mt-1 text-sm text-gray-600 dark:text-gray-400">{setting.description}</p>
+            <p id={descriptionId} class="gk-hint mt-1">{setting.description}</p>
         {/if}
     {:else}
-        <label for={inputId} class="mb-1 block text-sm font-medium text-gray-950 dark:text-gray-100">{setting.title}</label>
+        <label for={inputId} class="gk-label mb-1 block">{setting.title}</label>
         {#if setting.description}
-            <p class="mb-1.5 text-sm text-gray-600 dark:text-gray-400">{setting.description}</p>
+            <p class="gk-hint mb-1.5">{setting.description}</p>
         {/if}
         <div class="flex flex-wrap items-center gap-2">
             <input
                 id={inputId}
                 type={secret && !revealed ? "password" : "text"}
                 class={[
-                    "block min-w-0 flex-1 basis-60 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-950 dark:border-gray-700 dark:bg-white/10 dark:text-gray-100",
+                    "gk-input flex-1 basis-60",
                     // A key or a token is read character by character.
                     { "font-mono": secret },
                 ]}
@@ -109,7 +108,7 @@
     {/if}
     {#if setting.link}
         <p class="mt-1.5 text-sm">
-            <a href={setting.link.url} target="_blank" rel="noopener noreferrer" class="font-medium text-agent-600 hover:underline dark:text-agent-300">{setting.link.title}</a>
+            <a href={setting.link.url} target="_blank" rel="noopener noreferrer" class="gk-link">{setting.link.title}</a>
         </p>
     {/if}
 </div>

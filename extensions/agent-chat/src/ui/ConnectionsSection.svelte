@@ -162,12 +162,15 @@
         { key: "models", label: null, status: "ready", models: (models ?? []).map((model) => ({ key: model.id, label: model.label, id: model.id, note: model.images ? undefined : "text only" })) },
     ]);
 
-    const button = "rounded-lg border border-gray-300 dark:border-gray-700 px-3 py-1.5 text-sm font-medium text-gray-950 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 aria-disabled:cursor-progress";
-    const primary = "rounded-lg bg-gray-900 dark:bg-gray-100 px-3 py-1.5 text-sm font-medium text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-200 aria-disabled:cursor-progress";
-    const input = "w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-2 py-1.5 text-sm text-gray-950 dark:text-gray-100";
-    const label = "block text-sm font-medium text-gray-950 dark:text-gray-100";
-    const help = "text-sm text-gray-600 dark:text-gray-400";
-    const fieldError = "text-sm text-red-700 dark:text-red-400";
+    // EtherPK's control classes (controls.css, ADR 0151): the buttons and fields the rest of the
+    // settings draw. A button that is working says so with its cursor while it waits.
+    const button = "gk-button aria-disabled:cursor-progress";
+    const primary = "gk-button gk-button--primary aria-disabled:cursor-progress";
+    const danger = "gk-button gk-button--danger";
+    const input = "gk-input";
+    const label = "gk-label block";
+    const help = "gk-hint";
+    const fieldError = "gk-error";
 </script>
 
 <section class="space-y-4" aria-labelledby={`${fieldId}-heading`} data-testid="agent-chat-settings">
@@ -196,7 +199,7 @@
                     </div>
                     {#if removing === connection.id}
                         <span class="text-sm text-gray-950 dark:text-gray-100">Remove {connection.name}? Chats that used it keep their answers.</span>
-                        <button type="button" class={button} onclick={() => remove(connection.id)} data-testid="agent-chat-connection-remove-confirm">Remove</button>
+                        <button type="button" class={danger} onclick={() => remove(connection.id)} data-testid="agent-chat-connection-remove-confirm">Remove</button>
                         <button type="button" class={button} onclick={() => (removing = null)}>Cancel</button>
                     {:else}
                         {#if !isDefault}<button type="button" class={button} onclick={() => makePrimary(connection.id)} data-testid="agent-chat-connection-primary">Make primary</button>{/if}
@@ -216,7 +219,7 @@
                 {#if editing}<p class={help}>A connection keeps its provider. To use another, add a new connection.</p>{/if}
             </div>
             <div class="space-y-1">
-                <label class={label} for={`${fieldId}-name`}>Name <span class="font-normal text-gray-600 dark:text-gray-400">(optional)</span></label>
+                <label class={label} for={`${fieldId}-name`}>Name <span class="font-normal text-(--gk-text-muted)">(optional)</span></label>
                 <input id={`${fieldId}-name`} class={input} bind:value={form.name} placeholder={info.label} autocomplete="off" />
             </div>
             {#if info.address !== "fixed"}
@@ -261,7 +264,7 @@
                     <button type="button" class={button} onclick={() => (showKey = !showKey)} aria-pressed={showKey}>{showKey ? "Hide" : "Show"}</button>
                 </div>
                 <p id={`${fieldId}-key-help`} class={errors.key ? fieldError : help}>
-                    {#if errors.key}{errors.key}{:else if info.keyUrl}Get a key at <a class="underline underline-offset-2" href={info.keyUrl} target="_blank" rel="noreferrer">{new URL(info.keyUrl).host}</a>.{/if}
+                    {#if errors.key}{errors.key}{:else if info.keyUrl}Get a key at <a class="gk-link" href={info.keyUrl} target="_blank" rel="noreferrer">{new URL(info.keyUrl).host}</a>.{/if}
                 </p>
                 {#if info.connect === "openrouter"}
                     <div class="flex flex-wrap items-center gap-2">
@@ -308,10 +311,10 @@
     {/if}
 
     <div class="space-y-1">
-        <label class="flex items-start gap-2 text-sm text-gray-950 dark:text-gray-100">
-            <input type="checkbox" class="mt-0.5 accent-(--gk-accent)" checked={settings.webSearchByDefault} onchange={setWebSearch} data-testid="agent-chat-web-search-default" />
+        <label class="flex items-start gap-2 text-sm">
+            <input type="checkbox" class="gk-checkbox mt-0.5" checked={settings.webSearchByDefault} onchange={setWebSearch} data-testid="agent-chat-web-search-default" />
             <span>
-                <span class="font-medium">Search the web by default</span><br />
+                <span class="gk-label">Search the web by default</span><br />
                 <span class={help}>
                     New chats start with Search the web on. Each chat can switch it on or off for itself. Anthropic, OpenAI and OpenRouter run the search while they answer, and
                     charge for it. The words searched for go to the provider's search, and text in a note the model reads can steer what it searches for.
@@ -324,7 +327,7 @@
         <label class={label} for={`${fieldId}-instruction`}>Agent instruction</label>
         <textarea
             id={`${fieldId}-instruction`}
-            class="{input} min-h-24 resize-y"
+            class="{input} min-h-24"
             rows="4"
             maxlength={INSTRUCTION_LIMIT}
             value={settings.instruction}

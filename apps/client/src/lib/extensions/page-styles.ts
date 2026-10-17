@@ -140,8 +140,7 @@ function firstLine(text: string): string {
  * the way to take them back out, or rejects naming the rules that reach outside the extension.
  */
 export async function adoptPageStyleSheets(urls: readonly string[], id: string): Promise<() => void> {
-    // The first sheet is the shadow roots' base sheet (`:host`), which a page mount does not use.
-    const [, ...sheets] = await extensionStyleSheets(urls)
+    const sheets = await extensionStyleSheets(urls)
     const violations = sheets.flatMap((sheet) => scopeViolations(sheet.cssRules as unknown as Iterable<RuleLike>, id))
     if (violations.length > 0) {
         const shown = violations.slice(0, 3).join(' ')

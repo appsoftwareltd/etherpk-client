@@ -3,6 +3,14 @@
  * draws for both. Global, because the pins and MapLibre's own controls are made outside Svelte, so
  * every class carries the `gk-map-` prefix. Text is 14px or more and recedes by colour, never by
  * opacity (ADR 0106), MapLibre's own 12px included.
+ *
+ * The buttons, fields, links and the menu are EtherPK's own controls (`gk-button`, `gk-icon-button`,
+ * `gk-link`, `gk-input`, `gk-menu` and the rest, from the Extension API's controls.css, ADR 0151),
+ * so they look like the Client's in both themes. That sheet is in a cascade layer and this one is
+ * not, so a rule here beats it whatever its specificity. A control drawn over the map is a raised
+ * one (`gk-button--raised`), and a toggle that is on is drawn by the kit (`aria-pressed`). Rules
+ * here place a control, or draw what the kit has no class for (the Search button's accent), and
+ * never copy one.
  */
 
 .gk-map-block {
@@ -54,6 +62,9 @@
     font-weight: 600;
 }
 
+/* The search box: its icon, spinner and Search button sit inside the field, so the box is drawn with
+   a `gk-input`'s border, colours and focus ring around a bare input. Its background is the field's,
+   laid over an opaque surface, since in the dark theme the field's own is a translucent white. */
 .gk-map-search {
     display: flex;
     flex: 1 1 auto;
@@ -61,15 +72,16 @@
     gap: 6px;
     max-width: 26rem;
     padding: 0 8px;
-    border: 1px solid var(--gk-border-strong);
-    border-radius: 6px;
-    background: var(--gk-surface-0);
+    border: 1px solid var(--gk-control-border);
+    border-radius: 0.5rem;
+    background: linear-gradient(var(--gk-field-bg), var(--gk-field-bg)), var(--gk-surface-0);
+    color: var(--gk-field-text);
     box-shadow: 0 1px 3px var(--gk-shadow);
 }
 
 .gk-map-search:focus-within {
-    outline: 2px solid var(--gk-accent);
-    outline-offset: 1px;
+    border-color: var(--gk-field-focus);
+    box-shadow: 0 0 0 1px var(--gk-field-focus);
 }
 
 .gk-map-search input {
@@ -83,34 +95,14 @@
     outline: none;
 }
 
-/* Search: what Enter does, as a button. In the accent while there is something to search. */
+/* Search: what Enter does, as an icon button (`gk-icon-button`) at the end of the box. In the accent
+   while there is something to search, and in the kit's disabled ink while there is not. */
 .gk-map-search-go {
-    display: flex;
-    flex: none;
-    align-items: center;
-    justify-content: center;
-    width: 28px;
-    height: 28px;
     margin-right: -4px;
-    border: 0;
-    border-radius: 4px;
-    background: transparent;
+}
+
+.gk-map-search-go:enabled {
     color: var(--gk-accent);
-    cursor: pointer;
-}
-
-.gk-map-search-go:hover:not(:disabled) {
-    background: var(--gk-surface-2);
-}
-
-.gk-map-search-go:focus-visible {
-    outline: 2px solid var(--gk-accent);
-    outline-offset: 1px;
-}
-
-.gk-map-search-go:disabled {
-    color: var(--gk-text-subtle);
-    cursor: default;
 }
 
 .gk-map-search-icon {
@@ -141,29 +133,6 @@
     margin-left: auto;
 }
 
-.gk-map-icon-button {
-    display: inline-flex;
-    width: 32px;
-    height: 32px;
-    align-items: center;
-    justify-content: center;
-    border: 1px solid var(--gk-border-strong);
-    border-radius: 6px;
-    background: var(--gk-surface-0);
-    color: var(--gk-text-default);
-    box-shadow: 0 1px 3px var(--gk-shadow);
-    cursor: pointer;
-}
-
-.gk-map-icon-button:hover {
-    background: var(--gk-surface-2);
-}
-
-.gk-map-icon-button[aria-pressed='true'],
-.gk-map-button[aria-pressed='true'] {
-    background: var(--gk-surface-3);
-}
-
 /* Mapbox's logo (mapbox.ts), in the lower right with the credits while a Mapbox style draws. */
 .gk-mapbox-logo {
     display: block;
@@ -173,9 +142,7 @@
     line-height: 0;
 }
 
-.gk-map-icon-button:focus-visible,
-.gk-map-button:focus-visible,
-.gk-map-link-button:focus-visible,
+/* The map's own rows and bars, which are not EtherPK controls; the controls bring their own ring. */
 .gk-map-folded-open:focus-visible,
 .gk-map-results button:focus-visible,
 .gk-map-list button:focus-visible {
@@ -183,43 +150,15 @@
     outline-offset: 2px;
 }
 
+/* The block's menu of actions: EtherPK's own menu (`gk-menu`), under the button that opens it at
+   whatever height that button is drawn, and as wide as its longest row, since the row of buttons it
+   hangs from is narrower than the menu. */
 .gk-map-menu {
     position: absolute;
-    top: 36px;
+    top: calc(100% + 4px);
     right: 0;
     z-index: 3;
-    display: flex;
-    min-width: 13rem;
-    flex-direction: column;
-    padding: 4px;
-    border: 1px solid var(--gk-border-strong);
-    border-radius: 8px;
-    background: var(--gk-surface-0);
-    box-shadow: 0 6px 20px var(--gk-shadow);
-}
-
-.gk-map-menu button {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 6px 10px;
-    border: 0;
-    border-radius: 5px;
-    background: none;
-    color: inherit;
-    font: inherit;
-    text-align: left;
-    cursor: pointer;
-}
-
-.gk-map-menu button:hover,
-.gk-map-menu button:focus-visible {
-    background: var(--gk-surface-2);
-    outline: none;
-}
-
-:is(.gk-map-block, .gk-map-view) .gk-map-danger {
-    color: var(--gk-text-danger);
+    width: max-content;
 }
 
 .gk-map-notices {
@@ -248,15 +187,9 @@
     color: var(--gk-text-warning);
 }
 
+/* A notice's action (`gk-link`), a little apart from the notice's words. */
 .gk-map-link-button {
     margin-left: 4px;
-    padding: 0;
-    border: 0;
-    background: none;
-    color: var(--gk-accent);
-    font: inherit;
-    text-decoration: underline;
-    cursor: pointer;
 }
 
 .gk-map-results,
@@ -362,41 +295,6 @@
     gap: 6px;
 }
 
-.gk-map-button {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 5px 10px;
-    border: 1px solid var(--gk-border-strong);
-    border-radius: 6px;
-    background: var(--gk-surface-0);
-    color: var(--gk-text-default);
-    box-shadow: 0 1px 3px var(--gk-shadow);
-    font: inherit;
-    font-weight: 500;
-    text-decoration: none;
-    cursor: pointer;
-}
-
-.gk-map-button:hover {
-    background: var(--gk-surface-2);
-}
-
-.gk-map-button:disabled {
-    color: var(--gk-text-subtle);
-    cursor: not-allowed;
-}
-
-.gk-map-button--primary {
-    border-color: var(--gk-accent);
-    background: var(--gk-accent);
-    color: var(--gk-surface-0);
-}
-
-.gk-map-button--primary:hover {
-    background: var(--gk-accent-hover);
-}
-
 .gk-map-sheet {
     display: flex;
     max-width: 34rem;
@@ -437,30 +335,6 @@
     gap: 8px;
 }
 
-.gk-map-field {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-}
-
-.gk-map-field span {
-    font-weight: 600;
-}
-
-.gk-map-field input {
-    padding: 5px 8px;
-    border: 1px solid var(--gk-border-strong);
-    border-radius: 6px;
-    background: var(--gk-surface-0);
-    color: inherit;
-    font: inherit;
-}
-
-.gk-map-field input:focus-visible {
-    outline: 2px solid var(--gk-accent);
-    outline-offset: 1px;
-}
-
 .gk-map-selected-head {
     display: flex;
     flex-wrap: wrap;
@@ -472,12 +346,9 @@
     font-weight: 600;
 }
 
+/* The selected item's Close (`gk-icon-button`), at the end of its heading. */
 .gk-map-close {
-    width: 28px;
-    height: 28px;
     margin-left: auto;
-    border-color: transparent;
-    box-shadow: none;
 }
 
 .gk-map-folded {
@@ -677,7 +548,7 @@
 
 /* A narrow map (a phone, a split pane): the tools keep their icons, and their names for screen readers. */
 @container (max-width: 520px) {
-    .gk-map-tools .gk-map-button span {
+    .gk-map-tools .gk-button span {
         position: absolute;
         width: 1px;
         height: 1px;
@@ -688,6 +559,19 @@
 
     .gk-map-search {
         max-width: none;
+    }
+}
+
+/* On a touch screen EtherPK's buttons are 44px tall (controls.css), so the block's top row is 12px
+   taller and what sits under it moves down with it. */
+@media (pointer: coarse) {
+    .gk-map-notices,
+    .gk-map-list {
+        top: 60px;
+    }
+
+    .gk-map-fallback {
+        padding-top: 68px;
     }
 }
 

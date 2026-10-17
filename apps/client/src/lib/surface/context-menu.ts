@@ -192,6 +192,8 @@ export interface ContextMenuItem {
      * rows, which leave out the lane the card is in.
      */
     separatorBefore?: boolean | ((target: ContextMenuTarget) => boolean)
+    /** The row deletes or removes something for good: drawn in the danger colour (`gk-menu-item--danger`). */
+    danger?: boolean
     /** Applicability; absent ⇒ shown for every target. */
     when?: (target: ContextMenuTarget) => boolean
 }
@@ -205,7 +207,7 @@ export function registerContextMenuItem(registry: ContributionRegistry, item: Co
 export function listContextMenuItems(
     registry: ContributionRegistry,
     target: ContextMenuTarget,
-): { id: string; label: string; command: string; icon?: string; separatorBefore: boolean }[] {
+): { id: string; label: string; command: string; icon?: string; separatorBefore: boolean; danger: boolean }[] {
     return registry
         .list(CONTEXT_MENU_KIND)
         .map((e) => e.value as ContextMenuItem)
@@ -217,5 +219,6 @@ export function listContextMenuItems(
             command: item.command,
             ...(item.icon === undefined ? {} : { icon: item.icon }),
             separatorBefore: typeof item.separatorBefore === 'function' ? item.separatorBefore(target) : (item.separatorBefore ?? false),
+            danger: item.danger === true,
         }))
 }

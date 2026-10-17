@@ -48,7 +48,19 @@ describe('reading the loaded extensions', () => {
         mkdirSync(join(local, 'dist'), { recursive: true })
         writeFileSync(join(local, 'package.json'), JSON.stringify(graphView('1.3.0')))
         const extensions = readLoadedExtensions(client, ['../my-graph-view'])
-        expect(extensions.map((extension) => [extension.base, extension.directory])).toEqual([['/extensions/graph-view/1.3.0/', local]])
+        expect(extensions.map((extension) => [extension.base, extension.directory, extension.builtIn])).toEqual([['/extensions/graph-view/1.3.0/', local, true]])
+    })
+
+    it('marks a development folder that holds no built-in as not built in, so it gets what a Directory release gets', () => {
+        const client = setUp(['@appsoftwareltd/etherpk-extension-graph-view'], { 'graph-view': graphView('1.2.3') })
+        const local = join(scratch, 'my-garden')
+        mkdirSync(join(local, 'dist'), { recursive: true })
+        writeFileSync(join(local, 'package.json'), JSON.stringify({ name: 'etherpk-extension-garden', version: '0.1.0', etherpk: { id: 'garden', main: './dist/main.js' } }))
+        const extensions = readLoadedExtensions(client, ['../my-garden'])
+        expect(extensions.map((extension) => [(extension.packageJson.etherpk as { id: string }).id, extension.builtIn])).toEqual([
+            ['graph-view', true],
+            ['garden', false],
+        ])
     })
 
     it('says plainly when a named package is not installed', () => {

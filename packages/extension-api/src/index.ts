@@ -9,7 +9,8 @@
  *
  * A declaration, or a member of one, is Stable (`@public`) or Proposed (`@beta`). A Stable one never
  * breaks: it is deprecated and kept. A Proposed one may change in any release, and only the
- * extensions that come with EtherPK may use it. An extension from the Extension Directory uses the
+ * extensions that come with EtherPK may use it. Since 0.14.0 everything is Stable but
+ * `contributions`, the Client's own registries. An extension from the Extension Directory uses the
  * Stable part alone, which `etc/etherpk-extension-api.public.api.md` lists.
  *
  * @packageDocumentation
@@ -70,6 +71,7 @@ export type {
     ViewRegion,
 } from './manifest'
 export { readExtensionPackage } from './manifest'
+export { CLIENT_COMMANDS } from './client-commands'
 export type {
     CommandBarButton,
     CommandMenuContext,

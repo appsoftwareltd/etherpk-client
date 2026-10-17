@@ -6,7 +6,7 @@
 /**
  * A document, reached from its tab, a Favourite, Recents or an All Documents row.
  *
- * @beta
+ * @public
  */
 export interface DocumentMenuTarget {
     /** Where the menu was raised: the document's tab, or a row naming it. */
@@ -22,7 +22,7 @@ export interface DocumentMenuTarget {
 /**
  * A tab that is not a document's.
  *
- * @beta
+ * @public
  */
 export interface TabMenuTarget {
     /** Any tab that is not a document's. */
@@ -36,7 +36,7 @@ export interface TabMenuTarget {
 /**
  * A wikilink in an editor.
  *
- * @beta
+ * @public
  */
 export interface WikilinkMenuTarget {
     /** A wikilink in an editor. */
@@ -51,7 +51,7 @@ export interface WikilinkMenuTarget {
  * A thing an extension raises a menu on, of a kind the extension names under its own id
  * (`kanban.card`). Only rows that check for that kind apply to it.
  *
- * @beta
+ * @public
  */
 export interface ExtensionMenuTarget {
     /** `<extension id>.<name>`. */
@@ -63,16 +63,17 @@ export interface ExtensionMenuTarget {
 /**
  * What a Context Menu can be raised on that an extension may add rows to. The Client also raises
  * menus on things this list does not name, an Asset or a misspelt word, so a row's `when` answers
- * false for any kind it does not check for.
+ * false for any kind it does not check for. Kinds are only ever added to the list: when the Client
+ * no longer raises a menu on one, its rows are simply not shown.
  *
- * @beta
+ * @public
  */
 export type MenuTarget = DocumentMenuTarget | TabMenuTarget | WikilinkMenuTarget | ExtensionMenuTarget
 
 /**
  * One Context Menu row.
  *
- * @beta
+ * @public
  */
 export interface ContextMenuItem {
     /** Under the extension's id: `graph-view.showConcept`. */
@@ -87,6 +88,8 @@ export interface ContextMenuItem {
     icon?: string
     /** A separator above the row. */
     separatorBefore?: boolean | ((target: MenuTarget) => boolean)
+    /** The row deletes or removes something for good, so it is drawn in the danger colour, as the Client's own Delete rows are. */
+    danger?: boolean
     /** Whether the row applies to a target. Absent means every target. */
     when?: (target: MenuTarget) => boolean
 }
@@ -101,8 +104,6 @@ export interface CommandMenuContext {
     inTable: boolean
     /**
      * A table may be inserted at the caret.
-     *
-     * @beta
      */
     tableInsertable: boolean
     /** The document's body may be written: false in a locked Protected Document. */
@@ -117,8 +118,6 @@ export interface CommandMenuContext {
      * caret line's links, the links above it in the outline, the document's own concept, then the
      * scopes in its name. Names are as written, an alias as the alias. Worked out only when a row
      * reads it. Absent reads as none.
-     *
-     * @beta
      */
     readonly conceptsAtCaret?: readonly string[]
 }
@@ -152,8 +151,6 @@ export interface CommandMenuItem {
     command: string
     /**
      * What the Command is given.
-     *
-     * @beta
      */
     args?: unknown
 }
@@ -163,7 +160,7 @@ export interface CommandMenuItem {
  * it runs `command` and leaves the keyboard where it was, so a Command can tell whether the caret
  * is in the document.
  *
- * @beta
+ * @public
  */
 export interface CommandBarButton {
     /** Under the extension's id. */

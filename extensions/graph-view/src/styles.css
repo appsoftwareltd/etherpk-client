@@ -1,5 +1,11 @@
 /* The Graph View's own stylesheet, adopted into the shadow root of each Graph View tab (ADR 0121):
    Tailwind's reset, theme and the utilities these components use. The Client's `--gk-*` tokens
-   reach in from the page, so colours follow its theme without anything here naming one. */
+   reach in from the page, so colours follow its theme without anything here naming one.
+
+   The buttons and fields are EtherPK's own control classes (`gk-button`, `gk-input`, ADR 0151),
+   from a sheet the Client adopts ahead of this one. That sheet declares Tailwind's layer order and
+   puts its rules in `components`, so the reset here cannot undo a control and a utility can still
+   adjust one. A rule written here outside a layer would win over them, so element resets belong in
+   `@layer base`. */
 @import "tailwindcss";
 @source "./";

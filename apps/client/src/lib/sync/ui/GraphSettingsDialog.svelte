@@ -1456,7 +1456,7 @@
      Agent Chat's Model Connections, which belong to the person and so show on the Graphs page too),
      then the heading over what follows, the Headless Client this graph's agents use. -->
 {#snippet agentChatSections()}
-    <ExtensionSettingsSections tab="agents" switches={extensions ?? undefined} />
+    <ExtensionSettingsSections tab="agents" host={extensions} />
     <div class="space-y-1 border-t border-gray-900/10 dark:border-gray-100/15 pt-4">
         <h3 class="flex items-center gap-2 text-base font-semibold text-gray-950 dark:text-gray-100">
             <span class="text-gray-600 dark:text-gray-400">

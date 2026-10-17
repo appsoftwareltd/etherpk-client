@@ -45,8 +45,8 @@
 
 <div class="ac-picker" role="group" aria-label="Start or resume an Agent Chat" data-testid="agent-chat-picker" {@attach onEscape(onCancel)}>
     <div class="ac-picker-head">
-        <button type="button" class="ac-new" onclick={onNew} data-testid="agent-chat-new" {@attach focusFirst}>New Agent Chat in {home}</button>
-        <button type="button" class="ac-cancel" onclick={onCancel} aria-label="Close">×</button>
+        <button type="button" class="gk-button gk-button--primary ac-new" onclick={onNew} data-testid="agent-chat-new" {@attach focusFirst}>New Agent Chat in {home}</button>
+        <button type="button" class="gk-icon-button ac-glyph" onclick={onCancel} aria-label="Close">×</button>
     </div>
     {#if own.length > 0}
         <h4 class="ac-pick-heading">Chats about {home}</h4>
@@ -76,30 +76,17 @@
         gap: 0.5rem;
         align-items: center;
     }
+    /* EtherPK's primary button (`gk-button--primary`), filling the row, its words at the start and
+       free to wrap, since they carry the document's name. */
     .ac-new {
         flex: 1;
+        justify-content: flex-start;
         text-align: left;
-        font-size: 0.9375rem;
-        font-weight: 600;
-        padding: 0.5rem 0.75rem;
-        border-radius: 0.5rem;
-        border: 1px solid var(--gk-accent);
-        background: var(--gk-accent);
-        color: var(--gk-surface-0);
-        cursor: pointer;
+        white-space: normal;
     }
-    .ac-new:hover {
-        background: var(--gk-accent-hover);
-    }
-    .ac-cancel {
-        min-width: 2rem;
-        min-height: 2rem;
+    /* The close cross, drawn as a character, at the size an icon would be. */
+    .ac-glyph {
         font-size: 1rem;
-        border-radius: 0.5rem;
-        border: 1px solid var(--gk-border-strong);
-        background: var(--gk-surface-0);
-        color: var(--gk-text-default);
-        cursor: pointer;
     }
     .ac-pick-heading {
         margin: 0.875rem 0 0.375rem;
@@ -145,8 +132,6 @@
         font-size: 0.875rem;
         color: var(--gk-text-muted);
     }
-    .ac-new:focus-visible,
-    .ac-cancel:focus-visible,
     .ac-pick-row:focus-visible {
         outline: 2px solid var(--gk-accent);
         outline-offset: 1px;

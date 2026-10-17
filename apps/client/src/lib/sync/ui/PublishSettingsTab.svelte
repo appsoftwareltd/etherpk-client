@@ -438,12 +438,13 @@
 
     const inputClass = "block w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-gray-950 dark:text-gray-100";
     const labelClass = "mb-1 block text-sm font-medium text-gray-500 dark:text-gray-400";
-    // Disabled by colour rather than opacity: a faded light button on the dark surface left its
-    // label unreadable ("Publish to folder" with no folder chosen read as a blank grey block).
-    const primaryButton = "rounded-lg bg-gray-900 dark:bg-gray-100 px-3 py-1.5 text-sm font-medium text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-200 disabled:bg-gray-300 disabled:text-gray-600 dark:disabled:bg-gray-700 dark:disabled:text-gray-300";
-    const secondaryButton = "rounded-lg border border-gray-300 dark:border-gray-700 px-3 py-1.5 text-sm font-medium text-gray-950 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50";
-    const dangerButton = "rounded-lg border border-red-300 dark:border-red-800 px-3 py-1.5 text-sm font-medium text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-950/40 disabled:opacity-50";
-    const linkButton = "text-sm font-medium text-agent-600 dark:text-agent-300 hover:underline";
+    // EtherPK's control classes (controls.css, ADR 0151), which are disabled by colour rather than
+    // opacity: a faded light button on the dark surface left its label unreadable ("Publish to
+    // folder" with no folder chosen read as a blank grey block).
+    const primaryButton = "gk-button gk-button--primary";
+    const secondaryButton = "gk-button";
+    const dangerButton = "gk-button gk-button--danger";
+    const linkButton = "gk-link text-sm";
     /** The same link while it cannot be followed: the text colour, underlined, no hover change. */
     const linkButtonUnavailable = "text-sm font-medium text-gray-700 dark:text-gray-300 underline underline-offset-2 cursor-default";
     const helpClass = "mt-1 text-sm text-gray-500 dark:text-gray-400";

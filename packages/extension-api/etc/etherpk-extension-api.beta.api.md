@@ -9,7 +9,10 @@ export interface AuthorizeOptions {
     signal?: AbortSignal;
 }
 
-// @beta
+// @public
+export const CLIENT_COMMANDS: readonly string[];
+
+// @public
 export interface CommandBarButton {
     args?: unknown;
     command: string;
@@ -25,17 +28,14 @@ export type CommandHandler = (arg?: unknown) => unknown;
 // @public
 export interface CommandMenuContext {
     bodyWritable: boolean;
-    // @beta
     readonly conceptsAtCaret?: readonly string[];
     inTable: boolean;
     protectedDocument?: boolean;
-    // @beta
     tableInsertable: boolean;
 }
 
 // @public
 export interface CommandMenuItem {
-    // @beta
     args?: unknown;
     command: string;
     detail?: string | ((context: CommandMenuContext) => string | undefined);
@@ -48,7 +48,7 @@ export interface CommandMenuItem {
     when?: (context: CommandMenuContext) => boolean;
 }
 
-// @beta
+// @public
 export interface ConceptCandidate {
     canonical?: string;
     display: string;
@@ -58,12 +58,13 @@ export interface ConceptCandidate {
     references?: number;
 }
 
-// @beta
+// @public
 export type ConceptKind = 'page' | 'journal' | 'alias' | 'pageless';
 
-// @beta
+// @public
 export interface ContextMenuItem {
     command: string;
+    danger?: boolean;
     icon?: string;
     id: string;
     label: string | ((target: MenuTarget) => string);
@@ -72,7 +73,7 @@ export interface ContextMenuItem {
     when?: (target: MenuTarget) => boolean;
 }
 
-// @beta
+// @public
 export interface DocumentBacklink extends Omit<DocumentSummary, 'aliases'> {
     // (undocumented)
     references: {
@@ -82,7 +83,7 @@ export interface DocumentBacklink extends Omit<DocumentSummary, 'aliases'> {
     }[];
 }
 
-// @beta
+// @public
 export interface DocumentMenuTarget {
     concept: string;
     kind: 'document-tab' | 'favourite' | 'recent' | 'document-row';
@@ -90,7 +91,7 @@ export interface DocumentMenuTarget {
     vertical?: boolean;
 }
 
-// @beta
+// @public
 export interface DocumentSearchResult extends Omit<DocumentSummary, 'aliases'> {
     hits: {
         line: number;
@@ -100,14 +101,14 @@ export interface DocumentSearchResult extends Omit<DocumentSummary, 'aliases'> {
     matches: number;
 }
 
-// @beta
+// @public
 export interface DocumentSummary {
     aliases: string[];
     kind: 'page' | 'journal';
     name: string;
 }
 
-// @beta
+// @public
 export interface DocumentTask extends Omit<DocumentSummary, 'aliases'> {
     breadcrumb: string[];
     due: string | null;
@@ -119,13 +120,13 @@ export interface DocumentTask extends Omit<DocumentSummary, 'aliases'> {
     text: string;
 }
 
-// @beta
+// @public
 export interface DocumentText extends DocumentSummary {
     text: string;
     truncated: boolean;
 }
 
-// @beta
+// @public
 export interface ExtensionAssets {
     prepareImage(image: Blob): Promise<Blob>;
     saveImage(image: Blob, name: string): Promise<string | null>;
@@ -137,7 +138,7 @@ export interface ExtensionAuth {
     readonly redirectUri: string;
 }
 
-// @beta
+// @public
 export interface ExtensionCommandBar {
     register(button: CommandBarButton): () => void;
 }
@@ -149,14 +150,12 @@ export interface ExtensionCommandMenu {
 
 // @public
 export interface ExtensionCommands {
-    // @beta
     execute(id: string, arg?: unknown): Promise<unknown>;
-    // @beta
     has(id: string): boolean;
     register(id: string, handler: CommandHandler): () => void;
 }
 
-// @beta
+// @public
 export interface ExtensionConcepts {
     canonicalName(name: string): string;
     key(name: string): string;
@@ -164,45 +163,32 @@ export interface ExtensionConcepts {
 
 // @public
 export interface ExtensionContext {
-    // @beta
     readonly assets: ExtensionAssets;
     readonly auth: ExtensionAuth;
-    // @beta
     readonly clientVersion: string;
-    // @beta
     readonly commandBar: ExtensionCommandBar;
     readonly commandMenu: ExtensionCommandMenu;
     readonly commands: ExtensionCommands;
-    // @beta
     readonly concepts: ExtensionConcepts;
-    // @beta
     readonly contextMenu: ExtensionContextMenu;
     // @beta
     readonly contributions: ExtensionContributions;
-    // @beta
     readonly dev: boolean;
     readonly dialogs: ExtensionDialogs;
-    // @beta
     readonly documents: ExtensionDocuments;
     readonly editor: ExtensionEditor;
     readonly embeds: ExtensionEmbeds;
     readonly events: ExtensionEvents;
-    // @beta
     readonly extensionId: string;
-    // @beta
     readonly graphId: string;
     readonly graphSidebar: ExtensionGraphSidebar;
-    // @beta
     readonly icons: ExtensionIcons;
-    // @beta
     readonly index: ExtensionIndex;
     readonly journalPanels: ExtensionJournalPanels;
-    // @beta
     readonly keybindings: ExtensionKeybindings;
     readonly layout: ExtensionLayout;
     notify(text: string): void;
     readonly personStorage: ExtensionPersonStorage;
-    // @beta
     readonly records: ExtensionGraphRecords;
     readonly settings: ExtensionSettings;
     readonly storage: ExtensionStorage;
@@ -210,7 +196,7 @@ export interface ExtensionContext {
     readonly views: ExtensionViews;
 }
 
-// @beta
+// @public
 export interface ExtensionContextMenu {
     register(item: ContextMenuItem): () => void;
 }
@@ -232,7 +218,7 @@ export interface ExtensionDialogs {
     prompt(options: PromptOptions): Promise<string | undefined>;
 }
 
-// @beta
+// @public
 export interface ExtensionDocuments {
     backlinks(name: string): Promise<DocumentBacklink[] | null>;
     formatGuide(): string;
@@ -272,7 +258,6 @@ export interface ExtensionEditor {
     insertBlock(text: string, options?: {
         focus?: boolean;
     }): boolean;
-    // @beta
     openPanel(options: InlinePanelOptions & {
         at?: 'caret' | 'end' | 'caret-or-end';
     }): InlinePanel | null;
@@ -317,7 +302,7 @@ export interface ExtensionEvents {
     on<K extends ExtensionEventName>(name: K, listener: (payload: ExtensionEventPayloads[K]) => void): () => void;
 }
 
-// @beta
+// @public
 export interface ExtensionGraphRecords {
     get<T>(key: string): Promise<T | undefined>;
     keys(): Promise<string[]>;
@@ -330,7 +315,7 @@ export interface ExtensionGraphSidebar {
     register(button: GraphSidebarButton): () => void;
 }
 
-// @beta
+// @public
 export interface ExtensionIcons {
     svg(name: string, options?: {
         size?: number;
@@ -339,7 +324,7 @@ export interface ExtensionIcons {
     }): IconMarkup;
 }
 
-// @beta
+// @public
 export interface ExtensionIndex {
     allConcepts(): readonly ConceptCandidate[];
     linkGraph(): Promise<LinkGraph>;
@@ -354,14 +339,13 @@ export interface ExtensionJournalPanels {
     register(panel: JournalPanel): () => void;
 }
 
-// @beta
+// @public
 export interface ExtensionKeybindings {
     register(binding: Keybinding): () => void;
 }
 
 // @public
 export interface ExtensionLayout {
-    // @beta
     activeDocument(): string | null;
     isDesktop(): boolean;
     openDocument(concept: string, options?: {
@@ -373,7 +357,6 @@ export interface ExtensionLayout {
         inPaneOf?: string;
         beside?: string;
     }): void;
-    // @beta
     openWindow(options: {
         title: string;
         mount(host: HTMLElement, window: {
@@ -385,7 +368,6 @@ export interface ExtensionLayout {
     }): {
         close(): void;
     };
-    // @beta
     reveal(kind: string): void;
 }
 
@@ -403,7 +385,7 @@ export interface ExtensionManifest {
     views?: ViewDeclaration[];
 }
 
-// @beta
+// @public
 export interface ExtensionMenuTarget {
     [field: string]: unknown;
     kind: `${string}.${string}`;
@@ -412,11 +394,10 @@ export interface ExtensionMenuTarget {
 // @public
 export interface ExtensionModule {
     activate(context: ExtensionContext): void | (() => void);
-    // @beta
     settingsSections?: readonly SettingsSection[];
 }
 
-// @beta
+// @public
 export interface ExtensionPackage {
     description?: string;
     license?: string;
@@ -534,12 +515,12 @@ export interface GraphSidebarButton {
     when?: () => boolean;
 }
 
-// @beta
+// @public
 export interface IconMarkup {
     readonly __brand: 'IconMarkup';
 }
 
-// @beta
+// @public
 export interface IndexUpdate {
     backlinkTargetsChanged: ReadonlySet<string>;
     changedConceptKeys: ReadonlySet<string>;
@@ -547,7 +528,7 @@ export interface IndexUpdate {
     mapsChanged: boolean;
 }
 
-// @beta
+// @public
 export interface InlinePanel {
     close(): void;
     readonly document: string | null;
@@ -558,7 +539,7 @@ export interface InlinePanel {
     resize(height: number): void;
 }
 
-// @beta
+// @public
 export interface InlinePanelOptions {
     height?: number;
     mount(host: HTMLElement, panel: InlinePanel): {
@@ -580,7 +561,7 @@ export interface JournalPanelProps {
     visibility: ViewVisibility;
 }
 
-// @beta
+// @public
 export interface Keybinding {
     command: string;
     group?: string;
@@ -588,13 +569,13 @@ export interface Keybinding {
     label: string;
 }
 
-// @beta
+// @public
 export interface LinkGraph {
     concepts: LinkGraphConcept[];
     links: LinkGraphLink[];
 }
 
-// @beta
+// @public
 export interface LinkGraphConcept {
     day?: string;
     key: string;
@@ -603,7 +584,7 @@ export interface LinkGraphConcept {
     protected?: true;
 }
 
-// @beta
+// @public
 export interface LinkGraphLink {
     inTitle?: true;
     mentions: number;
@@ -611,7 +592,7 @@ export interface LinkGraphLink {
     target: number;
 }
 
-// @beta
+// @public
 export type MenuTarget = DocumentMenuTarget | TabMenuTarget | WikilinkMenuTarget | ExtensionMenuTarget;
 
 // @public
@@ -625,7 +606,7 @@ export interface MountedJournalPanel {
     destroy(): void;
 }
 
-// @beta
+// @public
 export interface MountedSettingsSection {
     destroy(): void;
 }
@@ -681,10 +662,10 @@ export interface QuoteFenceRequest {
     readonly info: string;
 }
 
-// @beta
+// @public
 export function readExtensionPackage(packageJson: unknown): ReadExtensionPackageResult;
 
-// @beta
+// @public
 export type ReadExtensionPackageResult = {
     ok: true;
     extension: ExtensionPackage;
@@ -707,14 +688,14 @@ export interface SettingDeclaration {
     type: 'text' | 'secret' | 'boolean';
 }
 
-// @beta
+// @public
 export interface SettingsSection {
     id: string;
     mount(element: HTMLElement, context: SettingsSectionContext): MountedSettingsSection;
     tab: SettingsSectionTab;
 }
 
-// @beta
+// @public
 export interface SettingsSectionContext {
     readonly auth: ExtensionAuth;
     readonly extensionId: string;
@@ -724,10 +705,10 @@ export interface SettingsSectionContext {
     readonly theme: ExtensionTheme;
 }
 
-// @beta
-export type SettingsSectionTab = 'agents';
+// @public
+export type SettingsSectionTab = 'extension' | 'agents';
 
-// @beta
+// @public
 export interface TabMenuTarget {
     kind: 'tab';
     panelId: string;
@@ -748,7 +729,6 @@ export interface ViewDeclaration {
     icon?: string;
     kind: string;
     region: ViewRegion;
-    // @beta
     resident?: {
         side: 'left' | 'right';
         desktopOnly?: boolean;
@@ -779,7 +759,7 @@ export interface ViewVisibility {
     subscribe(listener: (onScreen: boolean) => void): () => void;
 }
 
-// @beta
+// @public
 export interface WikilinkMenuTarget {
     concept: string;
     kind: 'wikilink';

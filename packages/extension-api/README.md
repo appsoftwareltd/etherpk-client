@@ -54,7 +54,8 @@ documentation says which, with `@public` for Stable and `@beta` for Proposed.
   it. In an extension installed from the Extension Directory, a call to a Proposed member throws an
   error that names it.
 
-An extension listed in the Extension Directory uses only the Stable part.
+Since 0.14.0 every part is Stable but `contributions` (see *Proposed parts* below). An extension
+listed in the Extension Directory uses only the Stable part.
 [`etc/etherpk-extension-api.public.api.md`](etc/etherpk-extension-api.public.api.md) lists the
 Stable part, and [`etc/etherpk-extension-api.beta.api.md`](etc/etherpk-extension-api.beta.api.md)
 lists everything. A Proposed part becomes Stable when an extension from another publisher needs it.
@@ -90,6 +91,18 @@ These are the Stable parts of the context.
 A row can have a `detail` line, an `icon`, `keywords` that find it, a `group` and an `order`. Its
 `when(menu)` says whether it is offered at the caret, from what `menu` reports: `bodyWritable`,
 `inTable` and `protectedDocument`.
+
+`context.commands.execute(id, arg)` runs a Command, and `context.commands.has(id)` says whether there
+is one. An extension may run three kinds of Command, by `execute` or as the Command of a row or a
+button it adds:
+
+- Its own.
+- Another running extension's, by its id (`kanban.open`).
+- One of the Client's that `CLIENT_COMMANDS` names. Each keeps its id and argument in every release.
+
+The Client's other Commands may change, so `execute` rejects for them, and a row or button naming one
+is refused. `CLIENT_COMMANDS` holds `agents.settings` (open Settings at the Agents tab), and more are
+added as extensions need them.
 
 ### Notices
 
@@ -212,6 +225,13 @@ keep the buttons readable together:
 
 - `context.layout.openDocument(concept)` opens a document as following a wikilink does. A day's
   name, `YYYY-MM-DD`, opens its journal entry.
+- `context.layout.activeDocument()` names the document the person is working in, as its tab names
+  it, or null.
+- `context.layout.openWindow({ title, mount })` draws something over the whole window, with a heading
+  and a close button the Client draws. One is open at a time: opening another closes it, even
+  another extension's.
+- `context.layout.reveal(kind)` brings one of the extension's own Sidebar Views to the front (see
+  *Views* below). It does nothing for any other kind.
 - `context.theme.isDark()` says whether the dark theme shows, and the `theme:changed` Event reports a
   switch. EtherPK's `--gk-*` colour tokens reach into a shadow root and change with the theme by
   themselves.
@@ -272,6 +292,91 @@ The third argument to `registerFence` adds options:
 goes in. It returns false where nothing went in, such as a document that cannot be written, a
 Protected Document, or a caret in the frontmatter, in a fence or in a table.
 
+`context.editor.openPanel({ mount, at })` draws a panel of the extension's own in the document,
+beneath the caret's line, or beneath the document's last line with `at: 'end'`, without changing
+the text. It returns null where no panel can go, by the same rules as `insertBlock`. A panel closes
+when the extension stops.
+
+### Context Menu rows and Command Bar buttons
+
+`context.contextMenu.register({ id, label, command, when })` adds a row to the menu raised on a
+document's tab, a Favourite, a Recent, an All Documents row, any other tab, or a wikilink. The row's
+Command is given the target, and its `when(target)` says whether it applies. More kinds of target may
+be added, and when the Client stops raising a menu on one, the rows for it are no longer shown, so a
+`when` answers false for any kind it does not check. A row that deletes or removes something for good
+sets `danger: true`, and is drawn in the danger colour.
+
+`context.commandBar.register({ id, title, icon, command, pinned })` adds a button to the row of
+buttons across the bottom of a phone's screen: after the editing buttons that scroll, or with
+`pinned`, at the bar's right end, where it never scrolls away.
+
+### Key chords
+
+`context.keybindings.register({ key, command, label })` binds a chord such as `Alt+M` to one of the
+extension's own Commands. `Mod` is Cmd on Apple devices and Ctrl elsewhere. When the Client or another
+extension binds the chord already, the chord stays theirs: the call still succeeds, the binding is
+left out, and the browser's console says so. So a shortcut the Client adds in a later release never
+stops an extension from starting.
+
+### The graph's index and the names of concepts
+
+- `context.index.allConcepts()` lists the graph's concepts, `context.index.linkGraph()` gives every
+  concept and the links between them, and `context.index.onUpdated(listener)` hears each change to
+  the index.
+- `context.concepts.canonicalName(name)` gives the name a concept resolves to: an alias's page, a
+  page's own title, or the name itself. `context.concepts.key(name)` gives the key the Client tells
+  two names apart by. The way the key is made may change, so compare keys from `key`, and never make
+  one another way.
+
+### Reading documents
+
+`context.documents` reads the graph's documents for the person, for example for a language model they
+use: `list`, `read`, `links`, `search`, `backlinks` and `tasks`. Every answer leaves out each Protected
+Document, its name included, and a document holding an encrypted fence. Answers are bounded. A page
+of a listing holds at most 200 documents or tasks, and a page of a search 50 results, and a
+document's text is cut after 200,000 characters, saying so. `formatGuide()` describes how the
+graph's documents are written, in the words the Client gives agents. Its wording changes as the
+format does, so pass it on rather than read meaning into it.
+
+### Records for one graph
+
+`context.records` keeps the extension's records for the open graph on this device alone, such as a
+chat the person has not saved: `get`, `set`, `remove` and `keys`. They are never synced, and they go
+when the graph's data leaves the device. A record may hold a `Blob`, an `ArrayBuffer`, a `Date` or
+plain data, at most 4 MB of it, and a larger one is refused. A write the browser refuses, such as on
+a full disk, rejects.
+
+### Images as assets
+
+`context.assets.prepareImage(blob)` makes an image smaller, as a pasted image is.
+`context.assets.saveImage(blob, name)` keeps it as one of the graph's assets and answers the markdown
+that shows it, such as `![photo](assets/photo.3f9a1c2e.webp)`. The file's name ends in a hash of its
+bytes, so two images never take the same name, and the same image kept twice is one file. An asset
+is part of the graph: it syncs, and every member of a shared graph can see it.
+
+### Icons
+
+`context.icons.svg(name)` draws one of the extension's own icons or one of the Client's, as markup the
+Client trusts. The Client's icons, which every `icon` field may name too, are `alias`, `backlinks`, `bold`, `bullet`, `calendar`, `check`, `clock`, `close`, `code`, `copy`, `download`, `fit`, `flag`, `fold`, `frontmatter`, `globe`, `graph`, `grip`, `headless-client`, `highlight`, `image`, `import`, `indent`, `italic`, `list`, `lock`, `lock-open`, `more`, `move`, `move-down`, `move-up`, `new-page`, `open-external`, `outdent`, `page`, `pageless`, `pin`, `redo`, `rename`, `reset`, `search`, `slash`, `spell-check`, `table`, `table-add-column`, `table-add-row`, `table-format`, `table-remove-column`, `table-remove-row`, `task`, `template`, `text-lines`, `today`, `todays-journal`, `trash`, `undo`, `wikilink-close`, `wikilink-open`, `zoom-in`, `zoom-out`. An
+icon may be added in a later release, never taken away. An unknown name draws a small dot.
+
+### Settings sections
+
+The main module can export `settingsSections`, for settings that need more than the fields a
+manifest declares, such as a list of accounts with a button that connects one. Each section has an
+`id`, a `tab` and a `mount(element, context)` that draws it. The context holds the extension's
+settings, its records kept with the person, signing in, the theme and `notify`, and nothing from a
+graph.
+
+```ts
+export const settingsSections: SettingsSection[] = [{ id: 'hello.accounts', tab: 'extension', mount: drawAccounts }]
+```
+
+`tab: 'extension'` draws the section under the extension's own entry in Settings and Extensions,
+beside its declared settings, and `tab: 'agents'` in the Agents tab. The Client draws an extension's
+sections in a graph's settings while the extension runs there. An extension's code is loaded only
+once a graph opens, so its sections are not drawn on the Graphs page.
+
 ### Dialogs
 
 `context.dialogs.prompt(options)` asks for one line of text in a dialog the Client draws. Its
@@ -313,6 +418,10 @@ and offers to install it, if the directory lists it.
 `context.layout.openView({ kind, target })` opens a View. `context.layout.isDesktop()` says whether
 the desktop layout is showing, which it is at 1024 pixels wide and more.
 
+A View kind can live in a Sidebar from the moment a graph opens, beside the Client's own Sidebar
+Views, with `"resident": { "side": "left" }` (or `"right"`, and `"desktopOnly": true` for the desktop
+alone). `context.layout.reveal(kind)` brings it to the front of its Sidebar.
+
 ## Styles
 
 The manifest's `styles` are the extension's stylesheets. By default, each widget and View the
@@ -328,6 +437,54 @@ An extension's stylesheet can't register one of them with `@property`.
 
 Either way, the shadow root and the check keep styles apart, and nothing more. They don't limit
 what the extension's code can do in the page.
+
+## Controls
+
+The Client draws its own buttons, fields, links and menus with a set of classes, and gives the same
+stylesheet to every shadow root an extension draws in, ahead of the extension's own stylesheets. An
+extension mounted in the page has it from the Client's own stylesheet. So an element with one of
+these classes looks like the Client's control, in the light and dark themes alike, and keeps
+looking like it as the Client changes. The classes are Stable, and the Client has them from
+EtherPK 0.14.0. The stylesheet is in this package as `controls.css`, for reference and for an
+extension's own tests.
+
+| Class | Use it on |
+| --- | --- |
+| `gk-button` | A `<button>` or `<a>`, as the Client's everyday button: a thin border, filled faintly on hover. |
+| `gk-button--primary` | With `gk-button`, the one main action of a form or dialog. |
+| `gk-button--danger` | With `gk-button`, an action that removes or ends something. |
+| `gk-button--quiet` | With `gk-button`, a button with no border, in a toolbar or beside other text. |
+| `gk-button--small` | With `gk-button`, a button on the line of a heading or a row, 24px tall. |
+| `gk-button--raised` | With `gk-button` or `gk-icon-button`, a button over content such as a map, a picture or code: a solid surface and a small shadow. |
+| `gk-icon-button` | A square button holding only an icon. Give it an `aria-label`. |
+| `gk-link` | A `<button>` or `<a>` that reads as a link: the accent colour, underlined. |
+| `gk-field` | An element holding a field's label, its control and any hint or error, stacked. |
+| `gk-label` | A field's `<label>`. |
+| `gk-hint` | Help text under a field. |
+| `gk-error` | An error under a field. Set `aria-invalid="true"` on the control too. |
+| `gk-input` | An `<input>` or `<textarea>`, the full width of its column. |
+| `gk-select` | A `<select>`. Where the browser can, it draws the option list in the menu's colours, with `<optgroup>` labels and a tick on the chosen option. Elsewhere it shows the browser's own list. |
+| `gk-checkbox` | An `<input type="checkbox">`. |
+| `gk-menu` | A list of actions, such as a menu a button opens. |
+| `gk-menu-item` | A row of a `gk-menu`. |
+| `gk-menu-item--danger` | With `gk-menu-item`, a row that removes something. |
+| `gk-menu-separator` | A rule between groups of rows in a `gk-menu`. |
+
+A disabled control (`disabled`, or `aria-disabled="true"`) recedes by colour. A toggle button with
+`aria-pressed="true"` is drawn as the primary button while it is on. On a touch screen buttons,
+fields and menu rows are at least 44px tall.
+
+```ts
+const save = document.createElement('button')
+save.className = 'gk-button gk-button--primary'
+save.textContent = 'Save'
+```
+
+The rules are in the `components` cascade layer, after the layer order Tailwind v4 uses
+(`properties`, `theme`, `base`, `components`, `utilities`). So Tailwind's utilities can adjust a control
+(`gk-button w-full`), and Tailwind's preflight doesn't undo one. A rule of yours outside any layer
+wins over every layered rule, so keep element resets such as `button { color: inherit }` in
+`@layer base`, or they will override the controls.
 
 ## Writing to the page
 
@@ -345,24 +502,19 @@ code runs under them.
 
 ## Proposed parts
 
-The Proposed parts are for the extensions that come with EtherPK, and may change in any release.
-They include:
-
-- Context Menu rows (`contextMenu`) and key chords (`keybindings`).
-- Questions to the graph's index (`index`) and the rules for naming a concept (`concepts`).
-- The Client's icons (`icons`) and a View that lives in a Sidebar (`resident`).
-- Running another extension's Commands (`commands.execute`), and the document the person is working
-  in (`layout.activeDocument`).
-
-`contributions`, which reaches the Client's own registries, stays Proposed for good, since its
-shape is the Client's internals.
+The one Proposed part is `contributions`, which reaches the Client's own registries by kind. Only
+the extensions that come with EtherPK may use it, and it stays Proposed for good: its kinds and
+their values are the Client's internals, which change between releases, and through it one
+extension could take another's entries. Where an extension from another Publisher needs what a
+registry gives, the Client adds a checked part for it, as it did for fences and Journal Panels.
 
 ## Trying an extension
 
 To try an extension, build it, and start a development copy of the EtherPK Client with the
 extension's folder named in `ETHERPK_DEV_EXTENSIONS`. Separate several folders with commas. The
 Client loads each one as it loads the extensions it comes with, and one with the same id replaces
-it.
+it. An extension loaded this way gets what a Directory release gets, the Stable part alone, unless it
+stands in for one that comes with EtherPK, so a Proposed part it calls fails while you test.
 
 ```bash
 ETHERPK_DEV_EXTENSIONS=/path/to/my-extension pnpm dev

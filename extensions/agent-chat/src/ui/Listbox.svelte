@@ -4,6 +4,8 @@
      * showing the choice, and a list that opens beneath it in the top layer, so an inline panel's
      * edges never clip it (`floating.ts`). It follows the select-only combobox pattern: the keyboard
      * stays on the button, the arrows move through the list, Enter or Space chooses, Escape closes.
+     * The button is drawn as EtherPK's own select (`gk-select`, ADR 0151), and the list in the
+     * colours of the select's own list.
      */
     import { onDestroy } from "svelte";
 
@@ -118,7 +120,7 @@
         aria-disabled={disabled}
         onclick={() => (open ? hide(true) : show())}
         onkeydown={onKeydown}
-        class="flex w-full min-w-0 items-center gap-2 rounded-md border border-(--gk-border-soft) bg-(--gk-surface-0) py-1 pr-1.5 pl-2.5 text-left text-sm text-(--gk-text-default) hover:border-(--gk-border-strong) focus-visible:outline-2 focus-visible:outline-(--gk-accent) aria-disabled:cursor-not-allowed aria-disabled:text-(--gk-text-subtle) pointer-coarse:min-h-11"
+        class="gk-select flex w-full items-center gap-2 pr-1.5 text-left aria-disabled:cursor-not-allowed aria-disabled:bg-(--gk-surface-1) aria-disabled:text-(--gk-text-muted) pointer-coarse:min-h-11"
         data-testid={testid ? `${testid}-button` : undefined}
     >
         <span class="min-w-0 flex-1 truncate">{selected?.label ?? ""}</span>
@@ -142,9 +144,9 @@
                 onclick={() => choose(index)}
                 onpointermove={() => (active = index)}
                 class={[
-                    "flex w-full items-center gap-2 rounded-md py-1.5 pr-2 pl-2 text-left text-sm whitespace-nowrap pointer-coarse:min-h-11",
-                    index === active && "bg-(--gk-surface-2)",
-                    option.value === value ? "font-medium text-(--gk-text-strong)" : "text-(--gk-text-default)",
+                    "flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm whitespace-nowrap pointer-coarse:min-h-11",
+                    index === active && "bg-(--gk-menu-hover)",
+                    option.value === value && "font-semibold",
                 ]}
             >
                 <span class="flex-1">{option.label}</span>

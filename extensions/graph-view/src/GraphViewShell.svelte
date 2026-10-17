@@ -69,7 +69,7 @@
                 </p>
                 <button
                     type="button"
-                    class="rounded-md border border-(--gk-border-strong) px-3 py-1.5 text-sm font-medium text-(--gk-text-default) hover:bg-(--gk-surface-1)"
+                    class="gk-button"
                     onclick={retry}
                     data-testid="graph-view-retry">Try again</button
                 >

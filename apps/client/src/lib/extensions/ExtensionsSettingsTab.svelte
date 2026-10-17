@@ -32,6 +32,7 @@
     import type { DirectoryState, ExtensionDirectory } from "./directory";
     import { type DirectoryExtension, type DirectoryRelease, isHttpsAddress, newestRelease } from "./directory-format";
     import ExtensionSettingField from "./ExtensionSettingField.svelte";
+    import ExtensionSettingsSections from "./ExtensionSettingsSections.svelte";
     import InstallConsent from "./InstallConsent.svelte";
     import type { ExtensionHost, ExtensionStatus } from "./host";
     import { installedIds, type InstalledReport, type InstalledSync } from "./installed-sync";
@@ -100,6 +101,12 @@
         return installedIds(settings);
     });
 
+    /** Whether a module exports a settings section for its own entry here. */
+    function sectionsUnderEntry(module: { settingsSections?: unknown } | null): boolean {
+        const sections = module?.settingsSections;
+        return Array.isArray(sections) && sections.some((section) => (section as { tab?: unknown } | null)?.tab === "extension");
+    }
+
     const rows = $derived.by(() => {
         watchHost();
         return host.catalogue.extensions.map((entry) => ({
@@ -111,6 +118,8 @@
             on: host.isOn(entry.id),
             status: host.status(entry.id),
             settings: entry.package.manifest.settings ?? [],
+            // A section of its own under its entry (ADR 0134, amended 2026-10-17), while it runs here.
+            hasSection: sectionsUnderEntry(entry.source === "compiled-in" ? entry.module : host.runningModule(entry.id)),
             fromDirectory: entry.installed !== undefined,
             listed: entry.installed ? (listing?.extensions.find((extension) => extension.id === entry.id) ?? null) : null,
             report: reports[entry.id] ?? {},
@@ -312,10 +321,10 @@
         }
     }
 
-    const secondaryButton =
-        "rounded-lg border border-gray-300 dark:border-gray-700 px-3 py-1.5 text-sm font-medium text-gray-950 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 aria-disabled:cursor-progress";
-    const primaryButton =
-        "rounded-lg bg-gray-900 dark:bg-gray-100 px-3 py-1.5 text-sm font-medium text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-200 aria-disabled:cursor-progress";
+    // EtherPK's control classes (controls.css, ADR 0151). A busy button is aria-disabled, and shows
+    // the wait cursor rather than the not-allowed one.
+    const secondaryButton = "gk-button aria-disabled:cursor-progress";
+    const primaryButton = "gk-button gk-button--primary aria-disabled:cursor-progress";
     const link = "text-sm text-gray-700 underline underline-offset-2 hover:text-gray-950 dark:text-gray-300 dark:hover:text-gray-100";
 </script>
 
@@ -375,13 +384,16 @@
                         <button type="button" class={secondaryButton} aria-disabled={busy[row.id] !== undefined} onclick={() => remove(row.id, row.name)} data-testid="extension-remove">Remove</button>
                     </div>
                 {/if}
-                {#if row.settings.length > 0}
+                {#if row.settings.length > 0 || row.hasSection}
                     <details class="mt-2" data-testid="extension-settings">
                         <summary class="cursor-pointer text-sm font-medium text-gray-950 dark:text-gray-100">Settings</summary>
                         <div class="mt-3 space-y-4 border-l-2 border-gray-100 pl-3 dark:border-gray-800">
                             {#each row.settings as setting (setting.id)}
                                 <ExtensionSettingField extensionId={row.id} {setting} {settings} />
                             {/each}
+                            {#if row.hasSection}
+                                <ExtensionSettingsSections tab="extension" {host} extensionId={row.id} />
+                            {/if}
                             <p class="text-sm text-gray-500 dark:text-gray-400" data-testid="extension-settings-sync" data-state={syncState}>{syncNote(syncState)}</p>
                         </div>
                     </details>

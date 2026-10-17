@@ -5,10 +5,31 @@ What changed in each release of the EtherPK Client and the Headless Client
 They are released together, under the version number they share with the Sync Server. This log
 starts at 0.9.3.
 
-## Unreleased
+## 0.14.0 - 2026-10-17
 
 ### Client
 
+- **Extensions draw EtherPK's own buttons, fields and menus.** The Client gives every extension
+  its control classes (`gk-button`, `gk-input`, `gk-select`, `gk-menu` and others), so an
+  extension's controls look like the Client's in the light and dark themes. Agent Chat, Kanban,
+  Maps and the Graph View now use them.
+- **Extension API (Stable):** the control classes, in `controls.css` in
+  `@appsoftwareltd/etherpk-extension-api`, and listed in its README under Controls. A select with
+  `gk-select` draws its option list in EtherPK's colours in Chrome and Edge.
+- **Settings and Extensions** draws its buttons, fields and links with the same classes, so a few
+  buttons there are a little lighter.
+- **Delete in a document's or an image's menu** is drawn in red.
+- **Extension API (Stable):** every part that was Proposed is Stable, apart from `contributions`:
+  running Commands, Context Menu rows, Command Bar buttons, key chords, the graph's index, concept
+  names, icons, Sidebar Views, reading documents, records for one graph, images as assets, panels
+  in a document, windows and settings sections. `CLIENT_COMMANDS` lists the Client's Commands an
+  extension may run.
+- **An extension's own settings section** can now sit under its entry in Settings and Extensions,
+  for settings that need more than a text field or a switch.
+- **A key chord an extension binds** that the Client or another extension already uses is skipped,
+  and the extension still starts.
+- **An extension tried from a folder** (`ETHERPK_DEV_EXTENSIONS`) gets what a release from the
+  Extension Directory gets, so a part it may not use fails while it is being tested.
 - After you cancel an invite or remove a member, the graph's row on the Graphs page keeps saying so.
   The note that the graph has a new key now follows it, where before it replaced it.
 - The Tasks view's name box offers a page you created a moment ago. Before, it was missing until you

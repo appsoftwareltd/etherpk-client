@@ -27,6 +27,8 @@
      * several. The keyboard stays in the field: the arrows move through the matches, Enter chooses,
      * Escape closes and keeps the model chosen before. With `allowCustom`, what was typed can be
      * used as a model ID the list does not name, such as a model the provider has not listed yet.
+     * The field is EtherPK's own (`gk-input`, ADR 0151), and the list is in the colours of a
+     * select's own list.
      */
     import { onDestroy } from "svelte";
 
@@ -189,7 +191,7 @@
         onclick={show}
         oninput={onInput}
         onkeydown={onKeydown}
-        class="w-full min-w-0 truncate rounded-md border border-(--gk-border-soft) bg-(--gk-surface-0) py-1 pr-7 pl-2.5 text-sm text-(--gk-text-default) placeholder:text-(--gk-text-subtle) hover:border-(--gk-border-strong) focus:border-(--gk-border-strong) focus-visible:outline-2 focus-visible:outline-(--gk-accent) aria-disabled:cursor-not-allowed aria-disabled:text-(--gk-text-subtle) aria-invalid:border-(--gk-text-danger) pointer-coarse:min-h-11"
+        class="gk-input truncate pr-7 aria-disabled:cursor-not-allowed aria-disabled:bg-(--gk-surface-1) aria-disabled:text-(--gk-text-muted) pointer-coarse:min-h-11"
         data-testid={testid ? `${testid}-input` : undefined}
     />
     <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" class="pointer-events-none absolute top-1/2 right-1.5 size-4 -translate-y-1/2 text-(--gk-text-muted)">
@@ -206,7 +208,7 @@
                 <div role="group" aria-label={group.label ?? "Models"}>
                     {#if group.label}
                         <!-- Kept in view while the group scrolls, so the connection a model is reached through is always named. -->
-                        <p class="sticky -top-1 z-10 -mx-1 bg-(--gk-surface-1) px-3 pt-2 pb-1 text-sm font-medium text-(--gk-text-muted)" aria-hidden="true">{group.label}</p>
+                        <p class="sticky -top-1 z-10 bg-(--gk-menu-bg) px-3 pt-2 pb-1 text-sm font-semibold text-(--gk-text-muted)" aria-hidden="true">{group.label}</p>
                     {/if}
                     {#each group.models as model (model.key)}
                         {@const index = indexOf(model)}
@@ -219,9 +221,9 @@
                             onclick={() => choose(model)}
                             onpointermove={() => (active = index)}
                             class={[
-                                "flex w-full items-center gap-2 rounded-md py-1.5 pr-2 pl-2 text-left text-sm pointer-coarse:min-h-11",
-                                index === active && "bg-(--gk-surface-2)",
-                                model.key === value ? "font-medium text-(--gk-text-strong)" : "text-(--gk-text-default)",
+                                "flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm pointer-coarse:min-h-11",
+                                index === active && "bg-(--gk-menu-hover)",
+                                model.key === value && "font-semibold",
                             ]}
                             data-testid="model-option"
                         >
@@ -234,9 +236,9 @@
                         </button>
                     {/each}
                     {#if group.status === "loading" && group.models.length === 0}
-                        <p class="px-2 py-1.5 text-sm text-(--gk-text-muted)" role="presentation">Loading models…</p>
+                        <p class="px-3 py-1.5 text-sm text-(--gk-text-muted)" role="presentation">Loading models…</p>
                     {:else if group.status === "failed" && group.models.length === 0}
-                        <p class="px-2 py-1.5 text-sm text-(--gk-text-muted)" role="presentation">The models could not be listed.</p>
+                        <p class="px-3 py-1.5 text-sm text-(--gk-text-muted)" role="presentation">The models could not be listed.</p>
                     {/if}
                 </div>
             {/if}
@@ -251,17 +253,17 @@
                 aria-selected="false"
                 onclick={() => choose(custom)}
                 onpointermove={() => (active = index)}
-                class={["flex w-full items-center gap-2 rounded-md py-1.5 pr-2 pl-2 text-left text-sm text-(--gk-text-default) pointer-coarse:min-h-11", index === active && "bg-(--gk-surface-2)"]}
+                class={["flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm pointer-coarse:min-h-11", index === active && "bg-(--gk-menu-hover)"]}
                 data-testid="model-option-custom"
             >
                 <span class="min-w-0 flex-1 truncate">{custom.label}</span>
             </button>
         {/if}
         {#if listed.length === 0 && !loading && query.trim() === ""}
-            <p class="px-2 py-1.5 text-sm text-(--gk-text-muted)" role="presentation">No models listed yet.{allowCustom ? " Type a model ID." : ""}</p>
+            <p class="px-3 py-1.5 text-sm text-(--gk-text-muted)" role="presentation">No models listed yet.{allowCustom ? " Type a model ID." : ""}</p>
         {/if}
         {#if flat.length === 0 && !loading && query.trim() !== ""}
-            <p class="px-2 py-1.5 text-sm text-(--gk-text-muted)" role="presentation" data-testid="model-no-match">No model matches "{query.trim()}".</p>
+            <p class="px-3 py-1.5 text-sm text-(--gk-text-muted)" role="presentation" data-testid="model-no-match">No model matches "{query.trim()}".</p>
         {/if}
     </div>
 </div>

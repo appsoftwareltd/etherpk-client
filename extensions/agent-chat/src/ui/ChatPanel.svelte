@@ -304,13 +304,13 @@
                 <h3 class="ac-title" title={chat.title}>{chat.title}</h3>
                 <div class="ac-actions">
                     {#if chat.turns.length > 0 && !saveMode}
-                        <button type="button" class="ac-button ac-primary" onclick={startSave} disabled={running} data-testid="agent-chat-save">Save</button>
+                        <button type="button" class="gk-button gk-button--primary" onclick={startSave} disabled={running} data-testid="agent-chat-save">Save</button>
                     {/if}
                     {#if where === "inline" && onOpenInView}
-                        <button type="button" class="ac-button" onclick={onOpenInView} data-testid="agent-chat-open-in-view">Open in side panel</button>
+                        <button type="button" class="gk-button" onclick={onOpenInView} data-testid="agent-chat-open-in-view">Open in side panel</button>
                     {/if}
                     {#if onClose}
-                        <button type="button" class="ac-button ac-icon" onclick={onClose} aria-label={where === "view" ? "Back to all chats" : "Close the chat"} data-testid="agent-chat-close">
+                        <button type="button" class="gk-icon-button ac-glyph" onclick={onClose} aria-label={where === "view" ? "Back to all chats" : "Close the chat"} data-testid="agent-chat-close">
                             {#if where === "view"}<span aria-hidden="true">←</span>{:else}<span aria-hidden="true">×</span>{/if}
                         </button>
                     {/if}
@@ -318,7 +318,7 @@
             </div>
             <div class="ac-controls">
                 <div class="ac-field">
-                    <label class="ac-label" for={`${fieldId}-model`}>Model</label>
+                    <label class="gk-label" for={`${fieldId}-model`}>Model</label>
                     <ModelCombobox
                         id={`${fieldId}-model`}
                         class="w-64 max-w-full @max-[48rem]:w-full"
@@ -330,26 +330,26 @@
                     />
                 </div>
                 <div class="ac-field">
-                    <span class="ac-label" id={`${fieldId}-context`}>Context</span>
+                    <span class="gk-label" id={`${fieldId}-context`}>Context</span>
                     <Listbox class="w-64 max-w-full @max-[48rem]:w-full" options={grantOptions} value={chat.grant} onChange={chooseGrant} labelledBy={`${fieldId}-context`} disabled={running} testid="agent-chat-grant" />
                 </div>
                 {#if chats.canSearchWeb(chat)}
-                    <label class="ac-check" title="Each new chat starts as set in Settings, Agents, and this chat can change it.">
-                        <input type="checkbox" checked={chat.webSearch} onchange={(event) => chats.setWebSearch(chatId, event.currentTarget.checked)} disabled={running} data-testid="agent-chat-web-search" />
+                    <label class="gk-label ac-check" title="Each new chat starts as set in Settings, Agents, and this chat can change it.">
+                        <input type="checkbox" class="gk-checkbox" checked={chat.webSearch} onchange={(event) => chats.setWebSearch(chatId, event.currentTarget.checked)} disabled={running} data-testid="agent-chat-web-search" />
                         <span>Search the web</span>
                     </label>
                 {/if}
             </div>
             {#if modelError}
-                <p class="ac-hint ac-warning" role="alert">
+                <p class="gk-hint ac-hint ac-warning" role="alert">
                     Could not list the models: {modelError}
-                    <button type="button" class="ac-text-button" onclick={() => chat.connectionId && chats.modelsFor(chat.connectionId, { fresh: true })}>Try again</button>
+                    <button type="button" class="gk-link" onclick={() => chat.connectionId && chats.modelsFor(chat.connectionId, { fresh: true })}>Try again</button>
                 </p>
             {/if}
             {#if orphaned}
-                <p class="ac-hint ac-warning" data-testid="agent-chat-orphaned">{chat.home} has been deleted. You can still read and continue this chat, but it can no longer read that document.</p>
+                <p class="gk-hint ac-hint ac-warning" data-testid="agent-chat-orphaned">{chat.home} has been deleted. You can still read and continue this chat, but it can no longer read that document.</p>
             {/if}
-            {#if notice}<p class="ac-hint" role="status" data-testid="agent-chat-notice">{notice}</p>{/if}
+            {#if notice}<p class="gk-hint ac-hint" role="status" data-testid="agent-chat-notice">{notice}</p>{/if}
         </header>
 
         <div class="ac-transcript" bind:this={transcript} onscroll={onScroll} data-testid="agent-chat-transcript">
@@ -357,7 +357,7 @@
                 <div class="ac-empty" data-testid="agent-chat-empty">
                     {#if chats.settings.connections.length === 0}
                         <p>To chat, add a model connection: your own key for Anthropic, OpenAI, Gemini or OpenRouter, or a model running on this computer.</p>
-                        <button type="button" class="ac-button ac-primary" onclick={openSettings} data-testid="agent-chat-add-connection">Add a model connection</button>
+                        <button type="button" class="gk-button gk-button--primary" onclick={openSettings} data-testid="agent-chat-add-connection">Add a model connection</button>
                     {:else}
                         <!-- The robot says what this is; its words are for a screen reader. -->
                         <RobotIcon class="size-8 text-(--gk-text-muted)" />
@@ -374,7 +374,7 @@
                 <article class="ac-turn" class:ac-turn--picking={saveMode} data-testid="agent-chat-turn" data-status={turn.status}>
                     {#if saveMode}
                         <label class="ac-tick">
-                            <input type="checkbox" checked={isTicked(turn) && turn.status !== "streaming"} onchange={() => toggleTick(turn)} disabled={turn.status === "streaming"} data-testid="agent-chat-save-tick" />
+                            <input type="checkbox" class="gk-checkbox" checked={isTicked(turn) && turn.status !== "streaming"} onchange={() => toggleTick(turn)} disabled={turn.status === "streaming"} data-testid="agent-chat-save-tick" />
                             <span class="ac-visually-hidden">Save this turn: {questionText(turn) || "an image"}</span>
                         </label>
                     {/if}
@@ -405,7 +405,7 @@
                             <p class="ac-context" data-testid="agent-chat-context">
                                 Sent with this question:
                                 {#if turn.context.excerpt}the outline around this chat in{/if}
-                                {#each turn.context.included as name, i (name)}<button type="button" class="ac-text-button" onclick={() => openDocument(name)}>{name}</button>{i < turn.context.included.length - 1 ? ", " : ""}{/each}
+                                {#each turn.context.included as name, i (name)}<button type="button" class="gk-link" onclick={() => openDocument(name)}>{name}</button>{i < turn.context.included.length - 1 ? ", " : ""}{/each}
                                 {#if turn.context.leftOut.length > 0}. Left out because they are too long: {turn.context.leftOut.join(", ")}{/if}
                             </p>
                         {/if}
@@ -429,7 +429,7 @@
                         {#if turn.sources.length > 0}
                             <p class="ac-sources">
                                 Sources:
-                                {#each turn.sources as source, i (source.url)}<a href={source.url} target="_blank" rel="noopener noreferrer">{source.title}</a>{i < turn.sources.length - 1 ? ", " : ""}{/each}
+                                {#each turn.sources as source, i (source.url)}<a class="gk-link" href={source.url} target="_blank" rel="noopener noreferrer">{source.title}</a>{i < turn.sources.length - 1 ? ", " : ""}{/each}
                             </p>
                         {/if}
                         {#if turn.status === "failed"}
@@ -440,10 +440,10 @@
                         <div class="ac-turn-meta">
                             <span class="ac-muted">{turn.modelLabel}</span>
                             {#if turn.status === "done" && turn.answer}
-                                <button type="button" class="ac-text-button" onclick={() => copyAnswer(turn)}>Copy</button>
+                                <button type="button" class="gk-link" onclick={() => copyAnswer(turn)}>Copy</button>
                             {/if}
                             {#if index === chat.turns.length - 1 && !running && (turn.status === "failed" || turn.status === "stopped" || turn.status === "done") && !saveMode}
-                                <button type="button" class="ac-text-button" onclick={() => chats.retry(chatId)} data-testid="agent-chat-retry">{turn.status === "done" ? "Answer again" : "Retry"}</button>
+                                <button type="button" class="gk-link" onclick={() => chats.retry(chatId)} data-testid="agent-chat-retry">{turn.status === "done" ? "Answer again" : "Retry"}</button>
                             {/if}
                         </div>
                     </div>
@@ -453,14 +453,14 @@
 
         {#if saveMode}
             <footer class="ac-composer ac-save">
-                <p class="ac-hint">Choose the turns to save into {chat.home}.</p>
+                <p class="gk-hint ac-hint">Choose the turns to save into {chat.home}.</p>
                 <div class="ac-pick-actions">
-                    <button type="button" class="ac-button" onclick={() => tickAll(true)} disabled={tickedIds.length === pickable.length} data-testid="agent-chat-select-all">Select all</button>
-                    <button type="button" class="ac-button" onclick={() => tickAll(false)} disabled={tickedIds.length === 0} data-testid="agent-chat-deselect-all">Deselect all</button>
+                    <button type="button" class="gk-button" onclick={() => tickAll(true)} disabled={tickedIds.length === pickable.length} data-testid="agent-chat-select-all">Select all</button>
+                    <button type="button" class="gk-button" onclick={() => tickAll(false)} disabled={tickedIds.length === 0} data-testid="agent-chat-deselect-all">Deselect all</button>
                 </div>
                 {#if saveProgress}
                     <div class="ac-progress" data-testid="agent-chat-save-progress">
-                        <p class="ac-hint" role="status">Adding images to the graph: {saveProgress.done} of {saveProgress.total}</p>
+                        <p class="gk-hint ac-hint" role="status">Adding images to the graph: {saveProgress.done} of {saveProgress.total}</p>
                         <div
                             class="ac-progress-track"
                             role="progressbar"
@@ -474,10 +474,10 @@
                     </div>
                 {/if}
                 <div class="ac-save-actions">
-                    <button type="button" class="ac-button ac-primary" onclick={save} aria-disabled={saveBusy || tickedIds.length === 0} aria-busy={saveBusy} data-testid="agent-chat-save-confirm">
+                    <button type="button" class="gk-button gk-button--primary" onclick={save} aria-disabled={saveBusy || tickedIds.length === 0} aria-busy={saveBusy} data-testid="agent-chat-save-confirm">
                         {saveBusy ? "Saving…" : tickedIds.length === 1 ? "Save 1 turn" : `Save ${tickedIds.length} turns`}
                     </button>
-                    <button type="button" class="ac-button" onclick={() => (saveMode = false)} data-testid="agent-chat-save-cancel">Cancel</button>
+                    <button type="button" class="gk-button" onclick={() => (saveMode = false)} data-testid="agent-chat-save-cancel">Cancel</button>
                 </div>
             </footer>
         {:else}
@@ -487,14 +487,14 @@
                         {#each images as image (image.id)}
                             <li class="ac-chip">
                                 {image.name}
-                                <button type="button" class="ac-text-button" onclick={() => removeImage(image.id)} aria-label={`Remove ${image.name}`}>Remove</button>
+                                <button type="button" class="gk-link" onclick={() => removeImage(image.id)} aria-label={`Remove ${image.name}`}>Remove</button>
                             </li>
                         {/each}
                     </ul>
                 {/if}
                 <div class="ac-compose-row">
                     <textarea
-                        class="ac-input"
+                        class="gk-input ac-compose-input"
                         rows="1"
                         bind:this={composer}
                         bind:value={draft}
@@ -508,20 +508,20 @@
                         {@attach focusComposer}
                     ></textarea>
                     {#if takesImages}
-                        <label class="ac-button ac-attach" title="Add an image">
+                        <label class="gk-button ac-attach" title="Add an image">
                             <input type="file" accept="image/*" multiple class="ac-visually-hidden" onchange={pickImages} />
                             <span aria-hidden="true">+</span><span class="ac-visually-hidden">Add an image</span>
                         </label>
                     {/if}
                     {#if running}
-                        <button type="button" class="ac-button" onclick={() => chats.stop(chatId)} data-testid="agent-chat-stop">Stop</button>
+                        <button type="button" class="gk-button" onclick={() => chats.stop(chatId)} data-testid="agent-chat-stop">Stop</button>
                     {:else}
-                        <button type="button" class="ac-button ac-primary" onclick={send} data-testid="agent-chat-send">Send</button>
+                        <button type="button" class="gk-button gk-button--primary" onclick={send} data-testid="agent-chat-send">Send</button>
                     {/if}
                 </div>
                 <p id={`${chatId}-composer-keys`} class="ac-visually-hidden">Enter sends. Shift and Enter start a new line.</p>
                 {#if blocked || composerNote}
-                    <p id={`${chatId}-composer-note`} class="ac-hint" data-testid="agent-chat-composer-note">{composerNote ?? blocked}</p>
+                    <p id={`${chatId}-composer-note`} class="gk-hint ac-hint" data-testid="agent-chat-composer-note">{composerNote ?? blocked}</p>
                 {/if}
             </footer>
         {/if}
@@ -591,15 +591,18 @@
         gap: 0.375rem;
         min-width: 0;
     }
-    .ac-label {
-        font-size: 0.875rem;
-        color: var(--gk-text-muted);
+    /* The header is a toolbar, so its pickers keep to a line's height, as the Client's compact
+       selects do: EtherPK's own field (ADR 0151), with less room above and below the text. */
+    .ac-controls :global(.gk-input),
+    .ac-controls :global(.gk-select) {
+        padding-block: 0.25rem;
     }
+    /* The box and its words on one line. The words are a field's label (`gk-label`), as Model and
+       Context are. */
     .ac-check {
         display: flex;
         align-items: center;
         gap: 0.375rem;
-        font-size: 0.875rem;
     }
     /* Narrow, the labels and fields line up as a table: labels in one column, fields filling the
        other, and Search the web on a row of its own. */
@@ -617,13 +620,9 @@
             grid-column: 1 / -1;
         }
     }
-    .ac-check input {
-        accent-color: var(--gk-accent);
-    }
+    /* The room above a hint. Its size and colour are EtherPK's `gk-hint`. */
     .ac-hint {
         margin: 0.375rem 0 0;
-        font-size: 0.875rem;
-        color: var(--gk-text-muted);
     }
     .ac-warning {
         color: var(--gk-text-warning);
@@ -724,12 +723,7 @@
         padding: 0.25rem;
         cursor: pointer;
     }
-    .ac-tick input {
-        width: 1rem;
-        height: 1rem;
-        margin: 0;
-        accent-color: var(--gk-accent);
-    }
+    /* The box is EtherPK's `gk-checkbox`, a little larger on a touch screen. */
     @media (pointer: coarse) {
         .ac-tick {
             padding: 0.625rem;
@@ -755,9 +749,6 @@
         margin: 0;
         font-size: 0.875rem;
         color: var(--gk-text-muted);
-    }
-    .ac-sources a {
-        color: var(--gk-accent);
     }
     /* What a Save is adding to the graph: a bar that fills image by image, and moves while one uploads. */
     .ac-progress {
@@ -824,10 +815,13 @@
         padding: 0.375rem 0.5rem;
         border-radius: 0.5rem;
     }
+    /* The model's name and the turn's links, all at the line's 14px: a `gk-link` takes the size of
+       the text around it. */
     .ac-turn-meta {
         display: flex;
         gap: 0.75rem;
         align-items: center;
+        font-size: 0.875rem;
     }
     .ac-composer {
         border-top: 1px solid var(--gk-border-soft);
@@ -839,23 +833,18 @@
         gap: 0.375rem;
         align-items: flex-end;
     }
-    /* The field and the buttons beside it are one height, 2.5rem, until the field grows. */
-    .ac-input {
+    /*
+     * EtherPK's own field (`gk-input`) and buttons (`gk-button`, ADR 0151), laid out as one row of
+     * one height, 2.5rem, until the field grows. On a touch screen the kit makes its buttons 2.75rem
+     * tall, and the field and the square image button follow.
+     */
+    .ac-compose-input {
         flex: 1;
-        min-width: 0;
         box-sizing: border-box;
         height: 2.5rem;
         min-height: 2.5rem;
-        resize: none;
-        font: inherit;
-        font-size: 0.9375rem;
-        line-height: 1.5rem;
-        padding: 0.4375rem 0.625rem;
-        border: 1px solid var(--gk-border-strong);
-        border-radius: 0.5rem;
-        background: var(--gk-surface-0);
-        color: var(--gk-text-default);
         max-height: 180px;
+        resize: none;
     }
     .ac-save-actions,
     .ac-pick-actions {
@@ -863,60 +852,9 @@
         gap: 0.5rem;
         margin-top: 0.5rem;
     }
-    .ac-button {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        gap: 0.25rem;
-        font-size: 0.875rem;
-        font-weight: 500;
-        padding: 0.3125rem 0.625rem;
-        min-height: 2rem;
-        border-radius: 0.5rem;
-        border: 1px solid var(--gk-border-strong);
-        background: var(--gk-surface-0);
-        color: var(--gk-text-default);
-        cursor: pointer;
-        white-space: nowrap;
-    }
-    /*
-     * Every state keeps its text at 4.5:1 or more in both themes (ADR 0106): the plain button's text
-     * on its surface, the primary's surface-0 text on the accent and on the accent's hover, and a
-     * disabled button of either kind as muted text on a grey fill. Hover never reaches a disabled
-     * button, so its text never sits on a colour it was not chosen for.
-     */
-    .ac-button:hover:not(:disabled, [aria-disabled="true"]) {
-        background: var(--gk-surface-2);
-    }
-    .ac-button[aria-disabled="true"],
-    .ac-button:disabled {
-        cursor: not-allowed;
-        color: var(--gk-text-subtle);
-    }
-    .ac-primary {
-        background: var(--gk-accent);
-        border-color: var(--gk-accent);
-        color: var(--gk-surface-0);
-    }
-    .ac-primary:hover:not(:disabled, [aria-disabled="true"]) {
-        background: var(--gk-accent-hover);
-        border-color: var(--gk-accent-hover);
-    }
-    .ac-primary:disabled,
-    .ac-primary[aria-disabled="true"] {
-        background: var(--gk-surface-2);
-        border-color: var(--gk-border-soft);
-        color: var(--gk-text-muted);
-    }
-    .ac-icon {
-        min-width: 2rem;
-        padding: 0.3125rem;
-        font-size: 1rem;
-    }
-    .ac-compose-row .ac-button {
+    .ac-compose-row .gk-button {
         box-sizing: border-box;
         height: 2.5rem;
-        min-height: 2.5rem;
         padding-inline: 0.875rem;
     }
     .ac-compose-row .ac-attach {
@@ -924,22 +862,22 @@
         padding: 0;
         font-size: 1.125rem;
     }
-    .ac-text-button {
-        background: none;
-        border: 0;
-        padding: 0;
-        font: inherit;
-        font-size: 0.875rem;
-        color: var(--gk-accent);
-        cursor: pointer;
-        text-decoration: underline;
-        text-underline-offset: 2px;
-    }
-    .ac-button:focus-visible,
-    .ac-text-button:focus-visible,
-    .ac-input:focus-visible {
+    /* The image button is a label round a hidden file input, and the input takes the keyboard. */
+    .ac-attach:has(input:focus-visible) {
         outline: 2px solid var(--gk-accent);
-        outline-offset: 1px;
+        outline-offset: 2px;
+    }
+    @media (pointer: coarse) {
+        .ac-compose-input {
+            min-height: 2.75rem;
+        }
+        .ac-compose-row .ac-attach {
+            width: 2.75rem;
+        }
+    }
+    /* A close or back arrow drawn as a character, at the size an icon would be. */
+    .ac-glyph {
+        font-size: 1rem;
     }
     .ac-visually-hidden {
         position: absolute;
