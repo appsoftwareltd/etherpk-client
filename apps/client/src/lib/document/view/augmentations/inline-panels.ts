@@ -19,10 +19,12 @@
  *   editor is rebuilt (a Draft promoted, a document protected), the panel moves to the new editor at
  *   the same line (`editor-succession.ts`), unless the new one shows a Protected Document, where it
  *   closes. A panel is never drawn in a Protected Document, unlocked or not.
- * - **What it may write.** A block at its line, by the rule `insertBlock` follows at the caret
- *   (block-insert.ts), as one undoable change, after which the panel moves beneath the block, and
- *   a later block goes after that one (`planPanelInsert`), read from the text so an undo in either
- *   history leaves nothing nested.
+ * - **What it may write.** A block at its line, as one undoable change: beneath a bullet with text
+ *   as the bullet's first child, after its own lines, and elsewhere by the rule `insertBlock`
+ *   follows at the caret (block-insert.ts). The panel then moves beneath the block, and a later
+ *   block goes after that one (`planPanelInsert`), read from the text so an undo in either history
+ *   leaves nothing nested. A block that would rearrange the outline around it is refused
+ *   (`keepsOutline`).
  *
  * The state half is pure over `EditorState` and tested in Node. The widget, its content kept across
  * a scroll, focus given back on close and Mod+Z from inside it are covered by the Client's browser
@@ -32,10 +34,10 @@ import { type EditorState, type Line, StateEffect, StateField, type Text, type T
 import { Decoration, EditorView, runScopeHandlers, ViewPlugin, WidgetType } from '@codemirror/view'
 
 import { fencedBlocks, type FencedBlockRange } from '../../fenced-code'
-import { blockBodyEnd, branchRange, bulletContent, isBulletLine, lineIndent, nextSiblingRange, parentIndex, prevSiblingRange, taskDone } from '../../outliner'
+import { blockBodyEnd, branchRange, bulletContent, contentColumn, firstChildSpot, indentBlock, isBulletLine, lineIndent, nextSiblingRange, parentIndex, prevSiblingRange, taskDone, withoutEdgeBlankLines } from '../../outliner'
 import { analysisFor } from '../analysis/editor-analysis'
 import { bodyWritable } from '../body-writable'
-import { blockInsertableAfter, blockInsertableAt, blockTakesLine, insertContext, planBlockInsert } from '../block-insert'
+import { blockInsertableAfter, blockInsertableAt, blockTakesLine, changeKeepsOutline, insertContext, planBlockInsert } from '../block-insert'
 import { editorDocument } from '../editor-document'
 import { liveEditorView } from '../editor-succession'
 import { BLOCK_WIDGET_SPACING, BULLET_BLOCK_DROP, blockWidgetIndent, blockWidgetLineStart } from './content-clamp'
@@ -47,16 +49,29 @@ export interface InlinePanelSpot {
     id: number
     /** The line the panel opened at, or once it has put a block in, that block's first line. */
     lineStart: number
+    /**
+     * Once the panel has put a block in, the line it opened at, as `lineStart` held it before. A
+     * block taken out by Mod+Z leaves `lineStart` on the line the block went beneath, which for a
+     * bullet with more lines is its last own line, so the panel reads its line from here again.
+     */
+    anchor?: number
     mode: 'line' | 'end'
     /**
      * The shape of the block the panel last put in: the indentation of its first line, and how many
      * outline branches it was put in as (one for an outline with one root). Absent until a block is
      * put in, and for `end`. See {@link lastBlock}.
      */
-    block?: { indent: number; branches: number }
+    block?: { indent: number; branches: number; kind: BlockStart }
     /** The panel's height in CSS pixels, which its content scrolls inside; {@link DEFAULT_HEIGHT} when absent. */
     height?: number
 }
+
+/**
+ * What a block's first line is: a bullet, a fence's opener, or another line. A line the panel's spot
+ * comes back to after an undo (the bullet's own last line, a fence's closer) is of another kind, so
+ * it is never read as the block.
+ */
+type BlockStart = 'bullet' | 'fence' | 'other'
 
 /** Open a panel at a spot (or move an open one there). */
 export const addInlinePanel = StateEffect.define<InlinePanelSpot>()
@@ -81,7 +96,9 @@ export const inlinePanelsField = StateField.define<readonly InlinePanelSpot[]>({
     create: () => [],
     update(spots, tr) {
         let next = spots
-        if (tr.docChanged && next.length > 0) next = next.map((spot) => ({ ...spot, lineStart: mapLineStart(tr, spot.lineStart) }))
+        if (tr.docChanged && next.length > 0) {
+            next = next.map((spot) => ({ ...spot, lineStart: mapLineStart(tr, spot.lineStart), ...(spot.anchor === undefined ? {} : { anchor: mapLineStart(tr, spot.anchor) }) }))
+        }
         for (const effect of tr.effects) {
             if (effect.is(addInlinePanel)) next = [...next.filter((spot) => spot.id !== effect.value.id), effect.value]
             else if (effect.is(removeInlinePanel)) next = next.filter((spot) => spot.id !== effect.value)
@@ -171,6 +188,10 @@ function lastBlock(state: EditorState, spot: InlinePanelSpot): { first: Line; la
     const first = state.doc.lineAt(Math.min(spot.lineStart, state.doc.length))
     if (blockTakesLine(first.text) || lineIndent(first.text) !== spot.block.indent) return null
     const { lines, fencedBlocks: blocks } = analysisFor(state)
+    // After Mod+Z the spot is on the line the block went beneath, which can sit at the block's
+    // indentation (a bullet's continuation line, a fence's closer): only a line of the block's kind is it.
+    if (spot.block.kind === 'bullet' && !isBulletLine(first.text)) return null
+    if (spot.block.kind === 'fence' && !blocks.some((block) => block.start === first.number - 1)) return null
     // branchRange reads the lines and never changes them.
     const all = lines as string[]
     const fences = blocks as FencedBlockRange[]
@@ -184,10 +205,29 @@ function lastBlock(state: EditorState, spot: InlinePanelSpot): { first: Line; la
     return { first, last: state.doc.line(end + 1) }
 }
 
-/** The start of the line a panel is drawn beneath. */
+/** The line a panel opened at, as it is now: where its first block goes while it has saved none. */
+function openedLine(state: EditorState, spot: InlinePanelSpot): Line {
+    return state.doc.lineAt(Math.min(spot.anchor ?? spot.lineStart, state.doc.length))
+}
+
+/** The start of the line a panel is drawn beneath: the last of its bullet's own lines, where its first block goes. */
 function drawnLineStart(state: EditorState, spot: InlinePanelSpot): number {
     if (spot.mode === 'end') return state.doc.lineAt(state.doc.length).from
-    return lastBlock(state, spot)?.last.from ?? state.doc.lineAt(Math.min(spot.lineStart, state.doc.length)).from
+    const saved = lastBlock(state, spot)
+    if (saved) return saved.last.from
+    return state.doc.line(bodyEnd(state, openedLine(state, spot)) + 1).from
+}
+
+/**
+ * The last of a bullet's own lines, 0-based (`blockBodyEnd`): its continuation lines and its own
+ * code block, before its first child. A panel beneath a bullet with text goes after them, so it
+ * never stands between the bullet's lines, and neither does its block. Any other line is its own.
+ */
+function bodyEnd(state: EditorState, line: Line): number {
+    if (!isBulletLine(line.text) || isEmptyBullet(line.text)) return line.number - 1
+    const { lines, fencedBlocks: fences } = analysisFor(state)
+    // blockBodyEnd reads the lines and never changes them.
+    return blockBodyEnd(lines as string[], line.number - 1, fences as FencedBlockRange[])
 }
 
 /** How one panel is drawn. */
@@ -221,7 +261,8 @@ export function inlinePanelWidgets(state: EditorState): InlinePanelPlacement[] {
             if (spot.mode === 'end') return { id: spot.id, pos, height, beside: false, column: null, spaceAbove: true }
             const saved = lastBlock(state, spot)
             if (saved) return { id: spot.id, pos, height, beside: false, column: { line: saved.first.from, edge: 'start' }, spaceAbove: false }
-            const line = state.doc.lineAt(Math.min(spot.lineStart, state.doc.length))
+            const line = openedLine(state, spot)
+            // Beside an empty bullet's dot, or beneath the bullet's own lines from its text.
             return { id: spot.id, pos, height, beside: isEmptyBullet(line.text), column: { line: line.from, edge: 'text' }, spaceAbove: false }
         })
         .sort((a, b) => a.pos - b.pos || a.id - b.id)
@@ -238,7 +279,7 @@ export function panelOutline(state: EditorState, id: number): string | null {
     const spot = (state.field(inlinePanelsField, false) ?? []).find((candidate) => candidate.id === id)
     if (!spot || spot.mode === 'end' || !panelsAllowed(state)) return null
     const saved = lastBlock(state, spot)
-    const anchor = saved?.first ?? state.doc.lineAt(Math.min(spot.lineStart, state.doc.length))
+    const anchor = saved?.first ?? openedLine(state, spot)
     if (!isBulletLine(anchor.text)) return null
     const { lines: analysed, fencedBlocks: analysedFences } = analysisFor(state)
     // The outliner reads the lines and never changes them.
@@ -255,6 +296,39 @@ export function panelOutline(state: EditorState, id: number): string | null {
     if (!saved && !isEmptyBullet(anchor.text)) ranges.push(branchRange(lines, at, fences))
     for (let sibling = nextSiblingRange(lines, at, fences); sibling; sibling = nextSiblingRange(lines, sibling.start, fences)) ranges.push(sibling)
     return ranges.flatMap((range) => lines.slice(range.start, range.end + 1)).join('\n')
+}
+
+/**
+ * The text of the bullet starting at `lineStart`: its content without the bullet marker or a task's
+ * box, and its continuation lines without their indentation, joined with line breaks. Null for an
+ * empty bullet or a line that is not a bullet.
+ */
+export function panelLineText(state: EditorState, lineStart: number): string | null {
+    const line = state.doc.lineAt(Math.min(lineStart, state.doc.length))
+    if (!isBulletLine(line.text) || isEmptyBullet(line.text)) return null
+    const end = bodyEnd(state, line)
+    // Each continuation line from the bullet's content column: the indentation of its own code stays.
+    const column = contentColumn(line.text)
+    const rest: string[] = []
+    for (let n = line.number + 1; n <= end + 1; n++) {
+        const text = state.doc.line(n).text
+        rest.push(text.slice(Math.min(lineIndent(text), column)).trimEnd())
+    }
+    const text = [bulletContent(line.text), ...rest].join('\n').trim()
+    return text === '' ? null : text
+}
+
+/**
+ * The 0-based line the caret goes back to when a panel that had the keyboard closes: the line it was
+ * opened on, so typing goes on where `/Agent` was typed, or the last line of the block it saved.
+ * Under the last line, the last line. Null when no panel has the id.
+ */
+export function panelReturnLine(state: EditorState, id: number): number | null {
+    const spot = (state.field(inlinePanelsField, false) ?? []).find((candidate) => candidate.id === id)
+    if (!spot) return null
+    if (spot.mode === 'end') return state.doc.lines - 1
+    const saved = lastBlock(state, spot)
+    return (saved ? state.doc.lineAt(saved.last.from) : openedLine(state, spot)).number - 1
 }
 
 /** The 0-based line a panel sits under, or null when no panel has the id. */
@@ -299,9 +373,11 @@ type PanelChange = { from: number; to: number; insert: string }
  * cannot be written, or a line that is in the frontmatter, a fenced block or a table, as it can have
  * become since the panel opened.
  *
- * - The first block goes at the panel's line by the rule `insertBlock` follows at the caret
- *   (block-insert.ts), except that an outline put on an empty bullet takes the bullet's place at its
- *   indentation, so an outline of several roots stays several roots.
+ * - The first block goes beneath a bullet with text as its first child, after its own lines, at
+ *   its children's indentation where it has children (`firstChildSpot`). On an empty bullet an
+ *   outline takes the bullet's place at its indentation, so an outline of several roots stays
+ *   several roots. At any other line it goes by the rule `insertBlock` follows at the caret
+ *   (block-insert.ts).
  * - A later block goes after the one before ({@link lastBlock}), at the indentation of that block's
  *   first line, so saving twice gives two siblings rather than a block inside the one before.
  * - A panel opened under the last line (`end`) puts every block on new top-level lines at the end.
@@ -309,11 +385,13 @@ type PanelChange = { from: number; to: number; insert: string }
 export function planPanelInsert(state: EditorState, id: number, text: string): { changes: PanelChange; effects: StateEffect<unknown>[] } | null {
     const spot = (state.field(inlinePanelsField, false) ?? []).find((candidate) => candidate.id === id)
     if (!spot || !panelsAllowed(state)) return null
-    const lines = text.replace(/\r\n?/g, '\n').split('\n')
+    const lines = withoutEdgeBlankLines(text.replace(/\r\n?/g, '\n').split('\n'))
     if (lines.every((line) => line.trim() === '')) return null
     const before = lastBlock(state, spot)
-    const change = spot.mode === 'end' ? atEnd(state, lines) : before ? afterBlock(state, before, lines) : atLine(state, spot.lineStart, lines)
-    if (!change) return null
+    const change = spot.mode === 'end' ? atEnd(state, lines) : before ? afterBlock(state, before, lines) : atLine(state, openedLine(state, spot).from, lines)
+    // Any extension can put a block in: one that would rearrange the outline around it is refused,
+    // and the document stays as it was.
+    if (!change || !changeKeepsOutline(state, change)) return null
     // A fence that took a line with no neighbours brings an empty line for the caret, not the block's.
     const block = change.insert.endsWith('\n') ? change.insert.slice(0, -1) : change.insert
     const firstLineStart = block.startsWith('\n') ? change.from + 1 : change.from
@@ -322,16 +400,43 @@ export function planPanelInsert(state: EditorState, id: number, text: string): {
     const moved: InlinePanelSpot =
         spot.mode === 'end'
             ? { id, lineStart: change.from + block.lastIndexOf('\n') + 1, mode: 'end', ...kept }
-            : { id, lineStart: firstLineStart, mode: 'line', block: { indent: lineIndent(firstLine), branches: outlineBranches(lines) }, ...kept }
+            : {
+                  id,
+                  lineStart: firstLineStart,
+                  mode: 'line',
+                  // The line it opened at, in the new text: one the block took the place of is the block's first line.
+                  anchor: mappedThrough(change, openedLine(state, spot).from),
+                  block: { indent: lineIndent(firstLine), branches: outlineBranches(lines), kind: blockStart(lines) },
+                  ...kept,
+              }
     return { changes: change, effects: [addInlinePanel.of(moved)] }
 }
 
-/** The first block, at the panel's line. */
+/** Where `pos` is after `change`: a position inside what it replaced is where the new text starts. */
+function mappedThrough(change: PanelChange, pos: number): number {
+    if (pos < change.from) return pos
+    if (pos > change.to) return pos + change.insert.length - (change.to - change.from)
+    return change.from
+}
+
+/**
+ * The first block, at the panel's line. Beneath a bullet with text it goes after the bullet's own
+ * lines, as the bullet's first child: at its children's indentation where it has children, which can
+ * sit deeper than its content column, else at the content column.
+ */
 function atLine(state: EditorState, lineStart: number, lines: readonly string[]): PanelChange | null {
     const line = state.doc.lineAt(Math.min(lineStart, state.doc.length))
     if (!blockInsertableAt(state, line.from)) return null
     if (isEmptyBullet(line.text) && isBulletLine(lines[0]) && lineIndent(lines[0]) === 0) {
         return { from: line.from, to: line.to, insert: indented(lines, line.text.slice(0, lineIndent(line.text))) }
+    }
+    if (isBulletLine(line.text) && !isEmptyBullet(line.text)) {
+        const { lines: all, fencedBlocks: fences } = analysisFor(state)
+        // The outliner reads the lines and never changes them.
+        const child = firstChildSpot(all as string[], line.number - 1, fences as FencedBlockRange[])
+        const end = state.doc.line(child.after + 1)
+        if (!blockInsertableAfter(state, end.from)) return null
+        return { from: end.to, to: end.to, insert: `\n${indented(lines, ' '.repeat(child.indent))}` }
     }
     const plan = planBlockInsert(line, insertContext(state, line.from), lines)
     return { from: plan.from, to: plan.to, insert: plan.insert }
@@ -347,8 +452,14 @@ function afterBlock(state: EditorState, before: { first: Line; last: Line }, lin
 function atEnd(state: EditorState, lines: readonly string[]): PanelChange | null {
     const last = state.doc.line(state.doc.lines)
     if (isEmptyBullet(last.text)) return atLine(state, last.from, lines)
-    if (last.text.trim() === '') return blockInsertableAt(state, last.from) ? { from: last.from, to: last.to, insert: lines.join('\n') } : null
-    return blockInsertableAfter(state, last.from) ? { from: last.to, to: last.to, insert: `\n${lines.join('\n')}` } : null
+    if (last.text.trim() === '') return blockInsertableAt(state, last.from) ? { from: last.from, to: last.to, insert: indented(lines, '') } : null
+    return blockInsertableAfter(state, last.from) ? { from: last.to, to: last.to, insert: `\n${indented(lines, '')}` } : null
+}
+
+/** What the first of `lines` is, for {@link lastBlock}. */
+function blockStart(lines: readonly string[]): BlockStart {
+    if (isBulletLine(lines[0])) return 'bullet'
+    return fencedBlocks([...lines]).some((block) => block.start === 0) ? 'fence' : 'other'
 }
 
 /** How many outline branches `lines` make at their own top level (blank lines between them aside). */
@@ -364,9 +475,9 @@ function outlineBranches(lines: readonly string[]): number {
     return Math.max(count, 1)
 }
 
-/** `lines` joined, with `indent` before each that is not blank. */
+/** `lines` joined, with `indent` before each, a blank line kept in its block (`indentBlock`). */
 function indented(lines: readonly string[], indent: string): string {
-    return lines.map((line) => (line === '' ? '' : indent + line)).join('\n')
+    return indentBlock(lines, indent).join('\n')
 }
 
 /** An empty bullet, which a block takes the place of (block-insert.ts). A task's is not empty. */
@@ -541,7 +652,7 @@ function closeEntry(entry: PanelEntry, dispatch = true): void {
     if (dispatch) {
         try {
             const hadFocus = entry.host.contains(document.activeElement)
-            const line = inlinePanelLine(entry.view.state, entry.id)
+            const line = panelReturnLine(entry.view.state, entry.id)
             entry.view.dispatch({ effects: removeInlinePanel.of(entry.id) })
             if (hadFocus && line !== null) {
                 entry.view.focus()
@@ -619,7 +730,7 @@ function place(entry: PanelEntry): void {
     entry.waiting = null
     const lineAt = (pos: number) => next.state.doc.lineAt(Math.min(live.mapPos(pos), next.state.doc.length)).from
     const { spot } = waiting
-    const carried: InlinePanelSpot = { ...spot, lineStart: lineAt(spot.lineStart) }
+    const carried: InlinePanelSpot = { ...spot, lineStart: lineAt(spot.lineStart), ...(spot.anchor === undefined ? {} : { anchor: lineAt(spot.anchor) }) }
     try {
         next.dispatch({ effects: addInlinePanel.of(carried) })
     } catch {
@@ -661,6 +772,8 @@ const panelTheme = EditorView.baseTheme({
     // the text above, so the panel never reads as part of the last block. Padding, as above.
     '.gk-inline-panel.gk-inline-panel--end': { paddingTop: 'calc(1lh + 6px)' },
     '.gk-inline-panel-host': { position: 'relative', overflow: 'hidden' },
+    // The panel takes the focus from a press so its text can be selected; it draws no ring for it.
+    '.gk-inline-panel-host:focus': { outline: 'none' },
 })
 
 /** The augmentation every document editor carries, so a panel can open in any of them. */
@@ -679,6 +792,8 @@ export interface InlinePanelHandle {
     resize(height: number): void
     /** The outline around the panel's line ({@link panelOutline}), or null. */
     outline(): string | null
+    /** The text of the bullet the panel opened on, read as it opened ({@link panelLineText}), or null. */
+    lineText(): string | null
     close(): void
 }
 
@@ -695,8 +810,15 @@ export function openInlinePanel(
     if (!anchor) return null
     const id = nextId++
     const height = panelHeight(options.height)
+    // Read now, before the person types on: what the line said when the panel was asked for.
+    const lineText = anchor.mode === 'line' ? panelLineText(view.state, anchor.lineStart) : null
     const host = document.createElement('div')
     host.className = 'gk-inline-panel-host'
+    // A press on the panel's text gives the panel the focus, not the editor around it. With the
+    // editor focused, CodeMirror would draw its own caret over a selection made in the panel, and
+    // Mod+C would copy the document's line rather than what was selected. Its own fields still
+    // take the focus themselves.
+    host.tabIndex = -1
     const handle: InlinePanelHandle = {
         get isOpen() {
             return !entry.closed
@@ -732,6 +854,7 @@ export function openInlinePanel(
             if (spot && (spot.height ?? DEFAULT_HEIGHT) !== resized) entry.view.dispatch({ effects: resizeInlinePanel.of({ id, height: resized }) })
         },
         outline: () => (entry.closed || entry.waiting ? null : panelOutline(entry.view.state, id)),
+        lineText: () => lineText,
         close: () => closeEntry(entry),
     }
     const entry: PanelEntry = {

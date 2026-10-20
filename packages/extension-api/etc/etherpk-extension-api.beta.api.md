@@ -535,6 +535,8 @@ export interface InlinePanel {
     focus(): void;
     insertBlock(text: string): boolean;
     readonly isOpen: boolean;
+    // @beta
+    lineText(): string | null;
     outline(): string | null;
     resize(height: number): void;
 }

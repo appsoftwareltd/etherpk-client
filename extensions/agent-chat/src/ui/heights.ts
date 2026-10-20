@@ -5,7 +5,7 @@
  */
 import type { AgentChats } from '../chat/chats.svelte'
 
-/** A chat with turns: room to read an answer. */
+/** A chat with exchanges: room to read an answer. */
 export const INLINE_HEIGHT = 460
 /**
  * A chat with no question yet: its header, three lines of help (one of them wrapping in a narrow
@@ -21,6 +21,6 @@ const PICKER_ROW = 52
 
 /** The height for an opening showing `chatId`, or the picker for `home` when it is null. */
 export function openingHeight(chats: AgentChats, chatId: string | null, home: string): number {
-    if (chatId === null) return Math.min(INLINE_HEIGHT, PICKER_BASE + PICKER_ROW * (chats.chatsFor(home).length + chats.orphans().length))
-    return (chats.get(chatId)?.turns.length ?? 0) > 0 ? INLINE_HEIGHT : COMPACT_HEIGHT
+    if (chatId === null) return Math.min(INLINE_HEIGHT, PICKER_BASE + PICKER_ROW * (chats.chatsFor(home).length + chats.withoutDocuments().length))
+    return (chats.get(chatId)?.exchanges.length ?? 0) > 0 ? INLINE_HEIGHT : COMPACT_HEIGHT
 }

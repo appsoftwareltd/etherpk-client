@@ -19,7 +19,7 @@ import type { EditorState } from '@codemirror/state'
 import type { EditorView } from '@codemirror/view'
 
 import { fenceLineInfo } from '../fenced-code'
-import { bulletContent, contentColumn, isBulletLine, lineIndent, taskDone } from '../outliner'
+import { bulletContent, contentColumn, indentBlock, isBulletLine, keepsOutline, lineIndent, taskDone, withoutEdgeBlankLines } from '../outliner'
 import { analysisFor } from './analysis/editor-analysis'
 import { requestFenceFocus, settleFenceFocus } from './augmentations/interactive-fence'
 import { isProtectedDocumentFacet } from './augmentations/protected-document'
@@ -68,7 +68,7 @@ export function planBlockInsert(line: { from: number; to: number; text: string }
         // The block takes the line: an empty bullet keeps its marker and opens the block after it.
         const column = emptyBullet ? contentColumn(line.text) : lineIndent(line.text)
         const opener = emptyBullet ? line.text.slice(0, column) : ' '.repeat(column)
-        const block = [opener + lines[0], ...lines.slice(1).map((text) => (text === '' ? '' : ' '.repeat(column) + text))].join('\n')
+        const block = [opener + lines[0], ...indentBlock(lines, ' '.repeat(column)).slice(1)].join('\n')
         if (!fence) return { from: line.from, to: line.to, insert: block, caret: line.from + block.length, blockStart: line.from }
         const after = line.from + block.length + 1
         const caret = caretBeside(context, line.from - 1, after)
@@ -76,8 +76,19 @@ export function planBlockInsert(line: { from: number; to: number; text: string }
         return { from: line.from, to: line.to, insert: block, caret, blockStart: line.from }
     }
     const indent = ' '.repeat(contentColumn(line.text))
-    const insert = `\n${lines.map((text) => (text === '' ? '' : indent + text)).join('\n')}`
+    const insert = `\n${indentBlock(lines, indent).join('\n')}`
     return { from: line.to, to: line.to, insert, caret: fence ? line.to : line.to + insert.length, blockStart: line.to + 1 }
+}
+
+/**
+ * {@link keepsOutline} for a change to `state`'s document that puts whole lines in: after a line's
+ * end (`insert` starting with a line break), or over whole lines.
+ */
+export function changeKeepsOutline(state: EditorState, change: { from: number; to: number; insert: string }): boolean {
+    const { lines, outline } = analysisFor(state)
+    const start = state.doc.lineAt(change.from)
+    if (change.from === change.to && change.insert.startsWith('\n')) return keepsOutline(lines, start.number, 0, change.insert.slice(1).split('\n'), outline)
+    return keepsOutline(lines, start.number - 1, state.doc.lineAt(change.to).number - start.number + 1, change.insert.split('\n'), outline)
 }
 
 /**
@@ -148,10 +159,13 @@ export function insertContext(state: EditorState, pos = state.selection.main.hea
 /** The plan for putting `text` at the caret of `state`, or null where no block can go. */
 export function blockInsertPlan(state: EditorState, text: string): BlockInsertPlan | null {
     if (!blockInsertable(state)) return null
-    const lines = text.replace(/\r\n?/g, '\n').split('\n')
+    // Blank lines before the block and after it are no part of it: a trailing newline adds none.
+    const lines = withoutEdgeBlankLines(text.replace(/\r\n?/g, '\n').split('\n'))
     if (lines.every((line) => line.trim() === '')) return null
     const line = state.doc.lineAt(state.selection.main.head)
-    return planBlockInsert(line, insertContext(state), lines)
+    const plan = planBlockInsert(line, insertContext(state), lines)
+    // Any extension can put a block in: one that would rearrange the outline around it is refused.
+    return changeKeepsOutline(state, plan) ? plan : null
 }
 
 /**

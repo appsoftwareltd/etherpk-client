@@ -253,10 +253,12 @@ export interface InlinePanel {
      * Put a block at the panel's line, by the rule {@link ExtensionEditor.insertBlock} follows at the
      * caret: an empty line is replaced, an empty bullet takes an outline's place at its own
      * indentation (or any other block as its content), and after any other line the block goes on new
-     * lines beneath at the line's content column. The panel then sits beneath the block, and the next
-     * block goes after it at the indentation of its first line. One undoable change. False where
-     * nothing was put in: the panel is closed, its editor has closed, or its line is now in the
-     * frontmatter, a fenced block or a table.
+     * lines beneath at the line's content column. Beneath a bullet with text it goes in as the
+     * bullet's first child, after the bullet's own lines and at its children's indentation. The panel
+     * then sits beneath the block, and the next block goes after it at the indentation of its first
+     * line. One undoable change. False where nothing was put in: the panel is closed, its editor has
+     * closed, its line is now in the frontmatter, a fenced block or a table, or the block would
+     * rearrange the outline around it (an indented heading, say, or a blank line that ends a branch).
      */
     insertBlock(text: string): boolean
     /** Bring the panel into view. */
@@ -273,6 +275,15 @@ export interface InlinePanel {
      * the line is not a bullet, or the panel is closed or under the document's last line.
      */
     outline(): string | null
+    /**
+     * The text of the bullet the panel opened on, as it was when the panel opened: without its
+     * bullet marker or a task's box, its continuation lines joined with line breaks. Null when the
+     * panel opened on an empty bullet, on a line that is not a bullet, or under the document's last
+     * line. An Agent Chat opened with `/Agent` on a line with text starts with this as its prompt.
+     *
+     * @beta
+     */
+    lineText(): string | null
     /** Close the panel. Its `onClose` is told. */
     close(): void
 }
@@ -320,9 +331,11 @@ export interface ExtensionEditor {
      * Put a block at the caret of the editor the person is working in, as a code block or a table
      * goes in: an empty bullet takes it as its content, an empty line is replaced, and after any other
      * line it goes on new lines beneath at the line's content column. `text` is the block's lines
-     * without indentation. A block that is a fence leaves the caret outside it, and with `focus` its
-     * widget is told to `takeFocus`. False where nothing was put in: no editor, a body that cannot be
-     * written, or a caret in the frontmatter, a fence or a table.
+     * without indentation. A blank line inside the block takes the indentation of the line after it,
+     * so the block stays one branch. A block that is a fence leaves the caret outside it, and with
+     * `focus` its widget is told to `takeFocus`. False where nothing was put in: no editor, a body
+     * that cannot be written, a caret in the frontmatter, a fence or a table, or a block that would
+     * rearrange the outline around it.
      */
     insertBlock(text: string, options?: { focus?: boolean }): boolean
     /**

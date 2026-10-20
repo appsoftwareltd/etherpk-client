@@ -1,7 +1,12 @@
 /**
  * An [[Agent Chat]] as the extension keeps it (ADR 0147): on this device only, in the graph's
- * records, until the person deletes it. A chat's turns are what the person may save into its home
- * document; nothing else of it ever enters the graph.
+ * records, until the person deletes it. A chat is made of turns, each one message: the person's, or
+ * the model's answer to it. The turns are what the person may save into a document, each on its
+ * own; nothing else of a chat ever enters the graph.
+ *
+ * In code the person's turn and the model's turn to it are kept together, as an `Exchange`, since
+ * retrying, the model's name, the context sent and the history the model is given all belong to the
+ * pair. Each half has its own saved flag, so a Save can keep either.
  */
 
 /**
@@ -61,13 +66,13 @@ export function composerPlaceholder(grant: GrantLevel): string {
 }
 
 /**
- * A turn's question as it is shown, titled and saved: what the person wrote, or for a turn sent
+ * The person's turn as it is shown, titled and saved: what the person wrote, or for a turn sent
  * with no prompt, what was sent ("Sent this document"). A picture sent on its own reads as nothing.
  */
-export function questionText(turn: Pick<Turn, 'question' | 'grant' | 'images'>): string {
-    const written = turn.question.trim()
-    if (written !== '' || turn.images.length > 0) return written
-    return `Sent ${grantPhrase(turn.grant)}`
+export function questionText(exchange: Pick<Exchange, 'question' | 'grant' | 'images'>): string {
+    const written = exchange.question.trim()
+    if (written !== '' || exchange.images.length > 0) return written
+    return `Sent ${grantPhrase(exchange.grant)}`
 }
 
 /**
@@ -96,10 +101,10 @@ export interface ChatImage {
 
 /** One tool the model used while answering: a read of the graph, shown as a chip. */
 export interface ToolUse {
-    /** The chip's own id, unique within the turn. */
+    /** The chip's own id, unique within the answer. */
     id: string
     /**
-     * The provider's id for the call, which its result names. Not unique across a turn's steps for
+     * The provider's id for the call, which its result names. Not unique across an answer's steps for
      * every provider: some local servers number each step's calls from 0 again.
      */
     callId: string
@@ -114,20 +119,26 @@ export interface ChatSource {
     title: string
 }
 
-export type TurnStatus = 'streaming' | 'done' | 'stopped' | 'failed'
+export type ExchangeStatus = 'streaming' | 'done' | 'stopped' | 'failed'
 
-/** The person's message and the model's reply to it. */
-export interface Turn {
+/** The person's turn and the model's turn that answers it. */
+export interface Exchange {
     id: string
     question: string
     images: ChatImage[]
     /** The reply's markdown, as much as has arrived. */
     answer: string
+    /**
+     * What a reasoning model streamed while it worked the answer out, shown while it thinks and
+     * then folded away. Kept with the chat on the device, never saved into a document and never
+     * sent back to a model.
+     */
+    reasoning?: string
     connectionId: string
     modelId: string
     /** The model's name as the picker showed it, kept so a saved chat can name it. */
     modelLabel: string
-    /** What the turn was allowed to read. */
+    /** What the question was sent with. */
     grant: GrantLevel
     /**
      * The documents sent whole with the question, and those left out for length, once known.
@@ -138,19 +149,36 @@ export interface Turn {
     webSearch: boolean
     tools: ToolUse[]
     sources: ChatSource[]
-    status: TurnStatus
-    /** Why a failed turn failed, in the person's words. */
+    status: ExchangeStatus
+    /** Why a failed answer failed, in the person's words. */
     error?: string
     askedAt: number
-    /** Whether a Save has written the turn into the home document. */
-    saved: boolean
+    /** Whether a Save has written the person's turn into a document. */
+    questionSaved: boolean
+    /** Whether a Save has written the model's turn into a document. */
+    answerSaved: boolean
+}
+
+/** The turns of one exchange a Save keeps: the person's, the model's, or both. */
+export interface SavePick {
+    id: string
+    question: boolean
+    answer: boolean
+}
+
+/** Whether the model's turn is there to save: it has text, and is not still arriving. */
+export function hasAnswer(exchange: Pick<Exchange, 'answer' | 'status'>): boolean {
+    return exchange.status !== 'streaming' && exchange.answer.trim() !== ''
 }
 
 export interface Chat {
     id: string
     title: string
-    /** The document the chat was started in, by its name: its home. */
-    home: string
+    /**
+     * The document the chat was started in, by its name: its home. Null for a chat without a
+     * document, one started in the Agent Chats View, which is saved into today's Journal Entry.
+     */
+    home: string | null
     /** What the next message may read. */
     grant: GrantLevel
     /** The connection and model the next message goes to. */
@@ -158,7 +186,7 @@ export interface Chat {
     modelId: string | null
     /** Whether the next message may search the web, where web search is allowed. */
     webSearch: boolean
-    turns: Turn[]
+    exchanges: Exchange[]
     createdAt: number
     updatedAt: number
 }
@@ -170,14 +198,19 @@ export function titleFrom(question: string): string {
     return line.length > 80 ? `${line.slice(0, 79).trimEnd()}…` : line
 }
 
-/** "Unsaved", or how many of the turns a Save has written. */
-export function savedState(chat: Pick<Chat, 'turns'>): string {
-    const saved = chat.turns.filter((turn) => turn.saved).length
+/** "Unsaved", or how many of the chat's turns, the person's and the model's, a Save has written. */
+export function savedState(chat: Pick<Chat, 'exchanges'>): string {
+    let saved = 0
+    let turns = 0
+    for (const exchange of chat.exchanges) {
+        turns += hasAnswer(exchange) ? 2 : 1
+        saved += Number(exchange.questionSaved) + Number(exchange.answerSaved && hasAnswer(exchange))
+    }
     if (saved === 0) return 'Unsaved'
-    return `Saved ${saved} of ${chat.turns.length} ${chat.turns.length === 1 ? 'turn' : 'turns'}`
+    return `Saved ${saved} of ${turns} ${turns === 1 ? 'turn' : 'turns'}`
 }
 
-/** A random id for a chat, a turn or an image. */
+/** A random id for a chat, an exchange or an image. */
 export function newId(prefix: string): string {
     return `${prefix}-${crypto.randomUUID()}`
 }

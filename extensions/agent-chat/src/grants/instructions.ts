@@ -8,7 +8,8 @@ import type { AssembledContext } from './assemble'
 
 export interface InstructionsInput {
     grant: GrantLevel
-    home: string
+    /** The chat's home document, or null for a chat without a document. */
+    home: string | null
     context: AssembledContext
     /** The home is a Draft, not written yet, rather than a document that has gone. */
     homeUnwritten?: boolean
@@ -45,7 +46,9 @@ export function instructions(input: InstructionsInput): string {
         parts.push('The person has not given you any of their notes for this chat. Answer from what they write here.')
         return parts.join('\n\n')
     }
-    if (input.context.homeMissing && input.homeUnwritten) {
+    if (input.home === null) {
+        parts.push('The person started this chat outside any of their documents, so none was given to you with it.')
+    } else if (input.context.homeMissing && input.homeUnwritten) {
         parts.push(`The person started this chat in a new document called "${input.home}", which has no text yet.`)
     } else if (input.context.homeMissing) {
         parts.push(`The person started this chat in a document called "${input.home}", which can no longer be read: it may have been deleted.`)

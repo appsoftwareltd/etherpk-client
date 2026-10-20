@@ -6,9 +6,12 @@
  *   window, with a short line in the document where `/Agent` was typed;
  * - the Agent button pinned to the phone's Command Bar, which opens a chat at the caret while the
  *   person is typing in the document, and at its end otherwise;
- * - the [[Agent Chats View]], a resident of the right Sidebar;
+ * - the [[Agent Chats View]], a resident of the right Sidebar, where a chat without a document is
+ *   started, and Alt+A starts one when no document is open;
  * - what keeps the chats right as the graph changes: a renamed home is followed, and a deleted one
- *   leaves its chats orphaned.
+ *   leaves its chats without a document.
+ *
+ * `/Agent` on a line with text opens the chat with that text in its message field, not yet sent.
  *
  * The Client takes all of it back when the graph closes or the extension is switched off, and the
  * chats are kept on the device as they change. The Svelte parts arrive as `ui`, so this module is
@@ -18,6 +21,7 @@ import type { ExtensionContext, InlinePanel, ViewContribution } from '@appsoftwa
 
 import { AgentChats } from './chat/chats.svelte'
 import type { Chat } from './chat/model'
+import { todayOnDevice } from './chat/model'
 import { chatStore } from './chat/store'
 import type { ChatActions } from './ui/actions'
 import { openingHeight, STUB_HEIGHT } from './ui/heights'
@@ -41,6 +45,8 @@ export interface OpeningProps {
     onClose(): void
     /** After a Save from the window on a phone: back to the document. */
     onSaved?(): void
+    /** What the chat's message field starts with: the text of the line `/Agent` was typed on. */
+    prompt?: string
 }
 
 export interface AgentChatUi {
@@ -79,7 +85,7 @@ export function registerAgentChat(context: ExtensionContext, ui: AgentChatUi): A
     })
     void chats.load()
 
-    // A home deleted or made: whether a chat is orphaned is asked again.
+    // A home deleted or made: whether a chat has a document is asked again.
     context.index.onUpdated(() => chats.documentsChanged())
     context.events.on('documents:changed', () => chats.documentsChanged())
     context.events.on('concept:renamed', ({ from, to }) => chats.conceptRenamed(from, to))
@@ -91,16 +97,22 @@ export function registerAgentChat(context: ExtensionContext, ui: AgentChatUi): A
             chats.selected = chatId
             context.layout.reveal(CHATS_VIEW)
         },
+        startWithoutDocument() {
+            chats.selected = chats.create(null).id
+            context.layout.reveal(CHATS_VIEW)
+        },
         async saveTarget(chatId) {
             const open = chats.inline.get(chatId)
             if (open?.isOpen) return open
             const chat = chats.get(chatId)
-            if (!chat || chats.isOrphaned(chat)) return null
-            // The home document, opened if it is not the one in front, with the chat beneath its
-            // last line: where the saved turns land, in view.
-            if (context.layout.activeDocument() !== chat.home) {
-                context.layout.openDocument(chat.home)
-                if (!(await until(() => context.layout.activeDocument() === chat.home, 4000))) return null
+            if (!chat) return null
+            // The home document, or for a chat without one today's Journal Entry (a Draft until the
+            // block is written), opened if it is not the one in front, with the chat beneath its last
+            // line: where the saved turns land, in view. Asked for now: a tab stays open for days.
+            const target = chat.home !== null && !chats.withoutDocument(chat) ? chat.home : todayOnDevice()
+            if (context.layout.activeDocument() !== target) {
+                context.layout.openDocument(target)
+                if (!(await until(() => context.layout.activeDocument() === target, 4000))) return null
                 await new Promise((resolve) => setTimeout(resolve, 100))
             }
             return openChat({ at: 'end', chatId, showWindow: false })
@@ -114,11 +126,12 @@ export function registerAgentChat(context: ExtensionContext, ui: AgentChatUi): A
     function openChat(options: { at: 'caret' | 'end' | 'caret-or-end'; chatId?: string; showWindow?: boolean }): InlinePanel | null {
         const home = context.layout.activeDocument()
         if (!home) {
-            context.notify('Open a document, then type /Agent in it to start an Agent Chat.')
+            // No document to start in: a chat without one, in the Agent Chats View.
+            actions.startWithoutDocument()
             return null
         }
         const desktop = context.layout.isDesktop()
-        const anything = chats.chatsFor(home).length + chats.orphans().length > 0
+        const anything = chats.chatsFor(home).length + chats.withoutDocuments().length > 0
         const session = ui.session(options.chatId ?? (anything ? null : chats.create(home).id))
         let panel: InlinePanel | null = null
         let window: { close(): void } | null = null
@@ -126,8 +139,10 @@ export function registerAgentChat(context: ExtensionContext, ui: AgentChatUi): A
         const track = () => {
             if (panel && session.chatId) chats.inline.set(session.chatId, panel)
         }
+        // The line's text, read as the panel draws: what the chat's field starts with, once.
+        let prompt = ''
         const onChoose = (chat: Chat) => {
-            if (chats.isOrphaned(chat)) chats.rehome(chat.id, home)
+            if (chats.withoutDocument(chat)) chats.rehome(chat.id, home)
             session.chatId = chat.id
             track()
         }
@@ -153,7 +168,10 @@ export function registerAgentChat(context: ExtensionContext, ui: AgentChatUi): A
                             actions.openDocument(name)
                         },
                     }
-                    return ui.opening(host, { chats, home, session, where: 'window', panel, actions: leaving, onChoose, onNew, onClose: () => opened.close(), onSaved: () => opened.close() })
+                    const opening = ui.opening(host, { chats, home, session, where: 'window', panel, actions: leaving, onChoose, onNew, onClose: () => opened.close(), onSaved: () => opened.close(), prompt })
+                    // A window opened again from the stub shows what the person left, not the line again.
+                    prompt = ''
+                    return opening
                 },
                 onClose: () => {
                     window = null
@@ -165,10 +183,14 @@ export function registerAgentChat(context: ExtensionContext, ui: AgentChatUi): A
             at: options.at,
             // Compact until the chat has a question, then taller (ChatHost resizes it as that changes).
             height: desktop ? openingHeight(chats, session.chatId, home) : STUB_HEIGHT,
-            mount: (host, opened) =>
-                desktop
-                    ? ui.opening(host, { chats, home, session, where: 'inline', panel: opened, actions, onChoose, onNew, onClose: () => opened.close() })
-                    : ui.stub(host, { chats, session, onOpen: openWindow, onClose: () => opened.close() }),
+            mount: (host, opened) => {
+                // Not for a chat opened to be saved into: it was not asked for on a line.
+                if (!options.chatId) prompt = opened.lineText() ?? ''
+                if (!desktop) return ui.stub(host, { chats, session, onOpen: openWindow, onClose: () => opened.close() })
+                const opening = ui.opening(host, { chats, home, session, where: 'inline', panel: opened, actions, onChoose, onNew, onClose: () => opened.close(), prompt })
+                prompt = ''
+                return opening
+            },
             onClose: () => {
                 for (const [chatId, open] of chats.inline) if (open === panel) chats.inline.delete(chatId)
                 window?.close()

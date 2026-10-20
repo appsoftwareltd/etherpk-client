@@ -1,8 +1,11 @@
 <script lang="ts">
     /**
      * What `/Agent` shows when there is a chat to go back to (ADR 0147): a new chat first, then the
-     * document's own chats, newest first, then the chats whose document was deleted. Resuming one
-     * of those makes this document its home.
+     * document's own chats, newest first, then the chats without a document (started in the Agent
+     * Chats View, or whose document was deleted). Resuming one of those makes this document its home.
+     *
+     * Up and Down move between the choices, Home and End go to the first and the last, stopping at
+     * the ends, as the Tasks list and the model picker do. Tab still reaches the close button.
      */
     import type { Attachment } from "svelte/attachments";
 
@@ -26,36 +29,55 @@
     } = $props();
 
     const own = $derived(chats.chatsFor(home));
-    const orphans = $derived(chats.orphans());
+    const withoutDocument = $derived(chats.withoutDocuments());
 
     const focusFirst: Attachment<HTMLButtonElement> = (button) => {
         requestAnimationFrame(() => button.focus({ preventScroll: true }));
+    };
+
+    /**
+     * The arrow keys, Home and End move the focus through the choices, the buttons marked
+     * `data-pick`. The picker listens for them from its buttons; it takes no focus itself.
+     */
+    const arrowKeys: Attachment<HTMLElement> = (picker) => {
+        const onKeydown = (event: KeyboardEvent) => {
+            if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key) || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+            const choices = [...picker.querySelectorAll<HTMLButtonElement>("[data-pick]")];
+            if (choices.length === 0) return;
+            event.preventDefault();
+            const at = choices.indexOf(document.activeElement as HTMLButtonElement);
+            const next = event.key === "Home" ? 0 : event.key === "End" ? choices.length - 1 : event.key === "ArrowDown" ? Math.min(choices.length - 1, at + 1) : Math.max(0, at - 1);
+            choices[next].focus();
+            choices[next].scrollIntoView({ block: "nearest" });
+        };
+        picker.addEventListener("keydown", onKeydown);
+        return () => picker.removeEventListener("keydown", onKeydown);
     };
 
 </script>
 
 {#snippet row(chat: Chat)}
     <li>
-        <button type="button" class="ac-pick-row" onclick={() => onChoose(chat)} data-testid="agent-chat-resume">
+        <button type="button" class="ac-pick-row" onclick={() => onChoose(chat)} data-pick data-testid="agent-chat-resume">
             <span class="ac-pick-title">{chat.title}</span>
             <span class="ac-pick-meta">{since(chat.updatedAt)}, {savedState(chat)}</span>
         </button>
     </li>
 {/snippet}
 
-<div class="ac-picker" role="group" aria-label="Start or resume an Agent Chat" data-testid="agent-chat-picker" {@attach onEscape(onCancel)}>
+<div class="ac-picker" role="group" aria-label="Start or resume an Agent Chat" data-testid="agent-chat-picker" {@attach arrowKeys} {@attach onEscape(onCancel)}>
     <div class="ac-picker-head">
-        <button type="button" class="gk-button gk-button--primary ac-new" onclick={onNew} data-testid="agent-chat-new" {@attach focusFirst}>New Agent Chat in {home}</button>
+        <button type="button" class="gk-button gk-button--primary ac-new" onclick={onNew} data-pick data-testid="agent-chat-new" {@attach focusFirst}>New Agent Chat in {home}</button>
         <button type="button" class="gk-icon-button ac-glyph" onclick={onCancel} aria-label="Close">×</button>
     </div>
     {#if own.length > 0}
         <h4 class="ac-pick-heading">Chats about {home}</h4>
         <ul class="ac-pick-list">{#each own as chat (chat.id)}{@render row(chat)}{/each}</ul>
     {/if}
-    {#if orphans.length > 0}
+    {#if withoutDocument.length > 0}
         <h4 class="ac-pick-heading">Chats without a document</h4>
-        <p class="ac-pick-note">Their document was deleted. Resuming one here makes {home} its document.</p>
-        <ul class="ac-pick-list">{#each orphans as chat (chat.id)}{@render row(chat)}{/each}</ul>
+        <p class="ac-pick-note">Started in Agent Chats, or their document was deleted. Resuming one here makes {home} its document.</p>
+        <ul class="ac-pick-list">{#each withoutDocument as chat (chat.id)}{@render row(chat)}{/each}</ul>
     {/if}
 </div>
 

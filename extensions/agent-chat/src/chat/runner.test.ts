@@ -4,7 +4,7 @@ import { MockLanguageModelV4 } from 'ai/test'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { ModelConnection } from '../settings/connections'
-import type { Turn } from './model'
+import type { Exchange } from './model'
 import { MAX_STEPS, runTurn, type RunTurnInput } from './runner'
 
 const connection: ModelConnection = { id: 'c1', provider: 'anthropic', name: 'Claude', apiKey: 'sk-test', address: '', defaultModel: 'fake' }
@@ -39,7 +39,7 @@ function documents(texts: Record<string, string>): ExtensionDocuments {
     }
 }
 
-function turn(over: Partial<Turn> = {}): Turn {
+function exchange(over: Partial<Exchange> = {}): Exchange {
     return {
         id: 't1',
         question: 'What should I plant?',
@@ -54,7 +54,8 @@ function turn(over: Partial<Turn> = {}): Turn {
         sources: [],
         status: 'streaming',
         askedAt: 0,
-        saved: false,
+        questionSaved: false,
+        answerSaved: false,
         ...over,
     }
 }
@@ -62,7 +63,7 @@ function turn(over: Partial<Turn> = {}): Turn {
 function input(model: MockLanguageModelV4, over: Partial<RunTurnInput> = {}): RunTurnInput {
     return {
         history: [],
-        turn: turn(),
+        exchange: exchange(),
         home: 'Garden',
         connection,
         model: { id: 'fake', label: 'Fake', images: true, tools: true },
@@ -78,24 +79,55 @@ function input(model: MockLanguageModelV4, over: Partial<RunTurnInput> = {}): Ru
     }
 }
 
-describe('running a turn of an Agent Chat (ADR 0147)', () => {
-    it("streams the answer into the turn, with the home document in the model's instructions", async () => {
+describe("the model's turn in an Agent Chat (ADR 0147)", () => {
+    it('keeps the answer as each piece arrives, and streams the reasoning apart from it, never sending it back', async () => {
+        const model = new MockLanguageModelV4({
+            doStream: {
+                stream: simulateReadableStream({
+                    chunks: [
+                        { type: 'reasoning-start' as const, id: 'r' },
+                        { type: 'reasoning-delta' as const, id: 'r', delta: 'The bed is ' },
+                        { type: 'reasoning-delta' as const, id: 'r', delta: 'shady.' },
+                        { type: 'reasoning-end' as const, id: 'r' },
+                        { type: 'text-start' as const, id: 't' },
+                        { type: 'text-delta' as const, id: 't', delta: 'Plant ' },
+                        { type: 'text-delta' as const, id: 't', delta: 'chard.' },
+                        { type: 'text-end' as const, id: 't' },
+                        finish('stop'),
+                    ],
+                }),
+            },
+        })
+        const run = input(model)
+        await runTurn(run)
+        expect(run.exchange.reasoning).toBe('The bed is shady.')
+        expect(run.exchange.answer).toBe('Plant chard.')
+        // Once for the context, once for each of the four pieces, once as the answer ends.
+        expect(run.changed).toHaveBeenCalledTimes(6)
+
+        // A later question sends the earlier answer, never what the model thought on the way.
+        const next = new MockLanguageModelV4({ doStream: says('Yes.') })
+        await runTurn(input(next, { history: [run.exchange] }))
+        expect(JSON.stringify(next.doStreamCalls[0].prompt)).not.toContain('shady')
+    })
+
+    it("streams the answer into the exchange, with the home document in the model's instructions", async () => {
         const model = new MockLanguageModelV4({ doStream: says('Plant ', 'beans.') })
         const run = input(model)
         await runTurn(run)
-        expect(run.turn.answer).toBe('Plant beans.')
-        expect(run.turn.status).toBe('done')
+        expect(run.exchange.answer).toBe('Plant beans.')
+        expect(run.exchange.status).toBe('done')
         const prompt = model.doStreamCalls[0].prompt
         expect(prompt[0]).toMatchObject({ role: 'system' })
         expect(JSON.stringify(prompt[0])).toContain('- water the beans')
         expect(JSON.stringify(prompt[0])).toContain('2026-10-15')
-        expect(run.turn.context).toEqual({ included: ['Garden'], leftOut: [] })
+        expect(run.exchange.context).toEqual({ included: ['Garden'], leftOut: [] })
     })
 
-    it('sends the chat so far, leaving out a turn that failed', async () => {
+    it('sends the chat so far, leaving out an exchange that failed', async () => {
         const model = new MockLanguageModelV4({ doStream: says('Yes.') })
-        const history = [turn({ id: 'a', question: 'First?', answer: 'One.', status: 'done' }), turn({ id: 'b', question: 'Broken?', answer: '', status: 'failed' })]
-        await runTurn(input(model, { history, turn: turn({ question: 'Second?' }) }))
+        const history = [exchange({ id: 'a', question: 'First?', answer: 'One.', status: 'done' }), exchange({ id: 'b', question: 'Broken?', answer: '', status: 'failed' })]
+        await runTurn(input(model, { history, exchange: exchange({ question: 'Second?' }) }))
         const roles = model.doStreamCalls[0].prompt.map((message) => message.role)
         expect(roles).toEqual(['system', 'user', 'assistant', 'user'])
         expect(JSON.stringify(model.doStreamCalls[0].prompt)).not.toContain('Broken?')
@@ -104,49 +136,49 @@ describe('running a turn of an Agent Chat (ADR 0147)', () => {
     it('reads the graph through its tools under the whole graph, showing each read as a chip', async () => {
         const model = new MockLanguageModelV4({ doStream: [calls('read_document', { name: 'Kitchen' }), says('Basil grows there.')] })
         const docs = documents({ Garden: '- beans', Kitchen: '- basil' })
-        const run = input(model, { turn: turn({ grant: 'graph' }), documents: docs })
+        const run = input(model, { exchange: exchange({ grant: 'graph' }), documents: docs })
         await runTurn(run)
-        expect(run.turn.tools).toEqual([{ id: 't1-tool-0', callId: 'call-1', summary: 'Read Kitchen', status: 'done' }])
-        expect(run.turn.answer).toBe('Basil grows there.')
+        expect(run.exchange.tools).toEqual([{ id: 't1-tool-0', callId: 'call-1', summary: 'Read Kitchen', status: 'done' }])
+        expect(run.exchange.answer).toBe('Basil grows there.')
         expect(docs.read).toHaveBeenCalledWith('Kitchen')
         expect(model.doStreamCalls[0].tools?.map((tool) => tool.name)).toContain('read_document')
     })
 
     it('shows a chip for each call when a provider gives two steps’ calls the same id', async () => {
         const model = new MockLanguageModelV4({ doStream: [calls('list_documents', {}), calls('read_document', { name: 'Kitchen' }), says('Done.')] })
-        const run = input(model, { turn: turn({ grant: 'graph' }), documents: documents({ Garden: '- beans', Kitchen: '- basil' }) })
+        const run = input(model, { exchange: exchange({ grant: 'graph' }), documents: documents({ Garden: '- beans', Kitchen: '- basil' }) })
         await runTurn(run)
-        expect(run.turn.tools.map((tool) => [tool.summary, tool.status])).toEqual([
+        expect(run.exchange.tools.map((tool) => [tool.summary, tool.status])).toEqual([
             ['Listed documents', 'done'],
             ['Read Kitchen', 'done'],
         ])
-        expect(new Set(run.turn.tools.map((tool) => tool.id)).size).toBe(2)
+        expect(new Set(run.exchange.tools.map((tool) => tool.id)).size).toBe(2)
     })
 
     it('takes the tools away for the last step, so a model that keeps reading still answers', async () => {
         const reading = Array.from({ length: MAX_STEPS - 1 }, () => calls('list_documents', {}))
         const model = new MockLanguageModelV4({ doStream: [...reading, says('Fern and ivy.')] })
-        const run = input(model, { turn: turn({ grant: 'graph' }), documents: documents({ Garden: '- beans', Kitchen: '- basil' }) })
+        const run = input(model, { exchange: exchange({ grant: 'graph' }), documents: documents({ Garden: '- beans', Kitchen: '- basil' }) })
         await runTurn(run)
         expect(model.doStreamCalls).toHaveLength(MAX_STEPS)
         expect(model.doStreamCalls[0].toolChoice).not.toEqual({ type: 'none' })
         expect(model.doStreamCalls.at(-1)?.toolChoice).toEqual({ type: 'none' })
-        expect(run.turn.status).toBe('done')
-        expect(run.turn.answer).toBe('Fern and ivy.')
+        expect(run.exchange.status).toBe('done')
+        expect(run.exchange.answer).toBe('Fern and ivy.')
     })
 
-    it('says so when the model ends a turn without answering, rather than showing nothing', async () => {
+    it('says so when the model ends an exchange without answering, rather than showing nothing', async () => {
         const model = new MockLanguageModelV4({ doStream: [calls('list_documents', {}), says()] })
-        const run = input(model, { turn: turn({ grant: 'graph' }), documents: documents({ Garden: '- beans' }) })
+        const run = input(model, { exchange: exchange({ grant: 'graph' }), documents: documents({ Garden: '- beans' }) })
         await runTurn(run)
-        expect(run.turn.status).toBe('failed')
-        expect(run.turn.error).toBe('The model finished without an answer. Answer again, or ask a narrower question.')
-        expect(run.turn.tools.map((tool) => tool.status)).toEqual(['done'])
+        expect(run.exchange.status).toBe('failed')
+        expect(run.exchange.error).toBe('The model finished without an answer. Answer again, or ask a narrower question.')
+        expect(run.exchange.tools.map((tool) => tool.status)).toEqual(['done'])
     })
 
-    it("sends the person's Agent Instruction in every turn's instructions, under any grant", async () => {
+    it("sends the person's Agent Instruction in every exchange's instructions, under any grant", async () => {
         const model = new MockLanguageModelV4({ doStream: says('Ok.') })
-        await runTurn(input(model, { agentInstruction: 'Answer in British English.', turn: turn({ grant: 'nothing' }) }))
+        await runTurn(input(model, { agentInstruction: 'Answer in British English.', exchange: exchange({ grant: 'nothing' }) }))
         expect(JSON.stringify(model.doStreamCalls[0].prompt[0])).toContain('Answer in British English.')
         const without = new MockLanguageModelV4({ doStream: says('Ok.') })
         await runTurn(input(without, { agentInstruction: '  ' }))
@@ -155,27 +187,27 @@ describe('running a turn of an Agent Chat (ADR 0147)', () => {
 
     it('tells the model where the question is when the person sent no prompt', async () => {
         const model = new MockLanguageModelV4({ doStream: says('Shade suits ferns.') })
-        const run = input(model, { turn: turn({ question: '', grant: 'document' }) })
+        const run = input(model, { exchange: exchange({ question: '', grant: 'document' }) })
         await runTurn(run)
         const asked = model.doStreamCalls[0].prompt.at(-1)
         expect(asked?.role).toBe('user')
         expect(JSON.stringify(asked)).toContain('This document holds what I want')
-        expect(run.turn.answer).toBe('Shade suits ferns.')
+        expect(run.exchange.answer).toBe('Shade suits ferns.')
     })
 
     it('gives the model no tools for a narrower grant, or for a model that cannot call them', async () => {
         const narrow = new MockLanguageModelV4({ doStream: says('Ok.') })
-        await runTurn(input(narrow, { turn: turn({ grant: 'links' }) }))
+        await runTurn(input(narrow, { exchange: exchange({ grant: 'links' }) }))
         expect(narrow.doStreamCalls[0].tools ?? []).toEqual([])
         const toolless = new MockLanguageModelV4({ doStream: says('Ok.') })
-        await runTurn(input(toolless, { turn: turn({ grant: 'graph' }), model: { id: 'fake', label: 'Fake', images: false, tools: false } }))
+        await runTurn(input(toolless, { exchange: exchange({ grant: 'graph' }), model: { id: 'fake', label: 'Fake', images: false, tools: false } }))
         expect(toolless.doStreamCalls[0].tools ?? []).toEqual([])
     })
 
     it('sends an image in the question as the model takes it', async () => {
         const model = new MockLanguageModelV4({ doStream: says('A leaf.') })
         const image = { id: 'i1', name: 'leaf.png', blob: new Blob([new Uint8Array([1, 2, 3])], { type: 'image/png' }) }
-        await runTurn(input(model, { turn: turn({ images: [image] }) }))
+        await runTurn(input(model, { exchange: exchange({ images: [image] }) }))
         const question = model.doStreamCalls[0].prompt.at(-1)
         expect(question).toMatchObject({ role: 'user', content: [{ type: 'text', text: 'What should I plant?' }, { type: 'file', mediaType: 'image/png' }] })
     })
@@ -188,9 +220,9 @@ describe('running a turn of an Agent Chat (ADR 0147)', () => {
         })
         const run = input(model)
         await runTurn(run)
-        expect(run.turn.status).toBe('failed')
-        expect(run.turn.error).toContain('refused the key')
-        expect(run.turn.error).toContain('invalid x-api-key')
+        expect(run.exchange.status).toBe('failed')
+        expect(run.exchange.error).toContain('refused the key')
+        expect(run.exchange.error).toContain('invalid x-api-key')
     })
 
     it('stops when the person stops it, keeping the answer so far', async () => {
@@ -208,6 +240,6 @@ describe('running a turn of an Agent Chat (ADR 0147)', () => {
         })
         const run = input(model, { signal: stop.signal })
         await runTurn(run)
-        expect(run.turn.status).toBe('stopped')
+        expect(run.exchange.status).toBe('stopped')
     })
 })

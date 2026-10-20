@@ -1,9 +1,10 @@
 /**
- * Running one turn of an [[Agent Chat]] (ADR 0147): the turn's Context Grant read now, the model's
- * instructions, the chat so far, and the answer streamed into the turn as it arrives.
+ * The model's turn in an [[Agent Chat]] (ADR 0147): the question's Context Grant read now, the
+ * model's instructions, the chat so far, and the answer streamed into the exchange as it arrives,
+ * with the model's reasoning where it streams any.
  *
- * The turn is the chat's own reactive record, so both places that show the chat (inline and the
- * Agent Chats View) draw each piece as it lands. A turn ends `done`, `stopped` (the person pressed
+ * The exchange is the chat's own reactive record, so both places that show the chat (inline and the
+ * Agent Chats View) draw each piece as it lands. An answer ends `done`, `stopped` (the person pressed
  * Stop, or the chat was closed) or `failed`, with a message that says what to do next.
  *
  * Imported by the chat state when a chat first sends, so the AI SDK stays out of the Client's first
@@ -18,20 +19,21 @@ import { GRAPH_TOOL_NAMES, graphTools, summarizeToolCall } from '../grants/tools
 import { type ProviderModel, providerModel } from '../providers/language-model'
 import { errorForStatus, type ModelInfo, ProviderError, unreachable } from '../providers/models'
 import type { ModelConnection } from '../settings/connections'
-import { promptlessMessage, type Turn } from './model'
+import { promptlessMessage, type Exchange } from './model'
 
-/** The most steps one turn may take: each tool call and its answer is one. */
+/** The most steps one answer may take: each tool call and its answer is one. */
 export const MAX_STEPS = 12
 
-/** A turn that ended with no text: shown as its error, so the person is never left with an empty answer. */
+/** An answer that ended with no text: shown as its error, so the person is never left with an empty answer. */
 export const NO_ANSWER = 'The model finished without an answer. Answer again, or ask a narrower question.'
 
 export interface RunTurnInput {
-    /** The chat's earlier turns, oldest first. */
-    history: readonly Turn[]
-    /** The turn being answered, filled in place. */
-    turn: Turn
-    home: string
+    /** The chat's earlier exchanges, oldest first. */
+    history: readonly Exchange[]
+    /** The exchange being answered, filled in place. */
+    exchange: Exchange
+    /** The chat's home document, or null for a chat without a document. */
+    home: string | null
     connection: ModelConnection
     model: ModelInfo
     documents: ExtensionDocuments
@@ -39,16 +41,16 @@ export interface RunTurnInput {
     block: string | null
     /** The home is a Draft, not written yet: it has no text, which the model and the person are told. */
     homeUnwritten?: boolean
-    /** Whether this turn may search the web: asked for, and the provider can. */
+    /** Whether this answer may search the web: asked for, and the provider can. */
     webSearch: boolean
     signal: AbortSignal
     /** Make an image ready to send (`context.assets.prepareImage`). */
     prepareImage(image: Blob): Promise<Blob>
     /** Today as `YYYY-MM-DD`, at the moment of sending. */
     today: string
-    /** The person's Agent Instruction, sent with every turn; empty for none. */
+    /** The person's Agent Instruction, sent with every question; empty for none. */
     agentInstruction?: string
-    /** Told when a tool chip or the turn's state changes, so the chat is kept. */
+    /** Told when the answer grows, a tool chip changes or the answer ends, so the chat is kept. */
     changed(): void
     /** The model to call; the provider's own unless a test supplies one. */
     providerModel?: (connection: ModelConnection, modelId: string, webSearch: boolean) => Promise<ProviderModel>
@@ -69,22 +71,22 @@ async function imagePart(image: Blob, prepare: (image: Blob) => Promise<Blob>) {
     return { type: 'file' as const, data: new Uint8Array(await prepared.arrayBuffer()), mediaType: prepared.type || image.type || 'image' }
 }
 
-async function userContent(turn: Turn, prepare: (image: Blob) => Promise<Blob>): Promise<UserContent> {
+async function userContent(exchange: Exchange, prepare: (image: Blob) => Promise<Blob>): Promise<UserContent> {
     // Sent with no prompt: the model is told where the question is (`promptlessMessage`).
-    const text = turn.question.trim() === '' ? promptlessMessage(turn.grant) : turn.question
-    if (turn.images.length === 0) return text
-    return [{ type: 'text', text }, ...(await Promise.all(turn.images.map((image) => imagePart(image.blob, prepare))))]
+    const text = exchange.question.trim() === '' ? promptlessMessage(exchange.grant) : exchange.question
+    if (exchange.images.length === 0) return text
+    return [{ type: 'text', text }, ...(await Promise.all(exchange.images.map((image) => imagePart(image.blob, prepare))))]
 }
 
-/** The chat so far as messages: each earlier turn that has an answer, then the question asked now. */
-async function chatMessages(history: readonly Turn[], turn: Turn, prepare: (image: Blob) => Promise<Blob>): Promise<ModelMessage[]> {
+/** The chat so far as messages: each earlier exchange that has an answer, then the question asked now. */
+async function chatMessages(history: readonly Exchange[], exchange: Exchange, prepare: (image: Blob) => Promise<Blob>): Promise<ModelMessage[]> {
     const messages: ModelMessage[] = []
     for (const earlier of history) {
         if (earlier.answer.trim() === '' || earlier.status === 'failed') continue
         messages.push({ role: 'user', content: await userContent(earlier, prepare) })
         messages.push({ role: 'assistant', content: earlier.answer })
     }
-    messages.push({ role: 'user', content: await userContent(turn, prepare) })
+    messages.push({ role: 'user', content: await userContent(exchange, prepare) })
     return messages
 }
 
@@ -113,30 +115,30 @@ export function failureMessage(error: unknown, connection: ModelConnection): str
 }
 
 export async function runTurn(input: RunTurnInput): Promise<void> {
-    const { turn, signal } = input
-    const readsGraph = turn.grant === 'graph' && input.model.tools
+    const { exchange, signal } = input
+    const readsGraph = exchange.grant === 'graph' && input.model.tools
     try {
-        const context = await assembleContext(turn.grant, input.home, input.documents, undefined, input.block)
+        const context = await assembleContext(exchange.grant, input.home, input.documents, undefined, input.block)
         // Shown under the question: exactly what was sent, and what was left out.
         const excerpt = context.documents.some((doc) => doc.excerpt)
-        const unwritten = input.homeUnwritten === true && turn.grant !== 'nothing'
-        turn.context = { included: context.included, leftOut: context.leftOut.map((doc) => doc.name), ...(excerpt ? { excerpt } : {}), ...(unwritten ? { unwritten } : {}) }
+        const unwritten = input.homeUnwritten === true && exchange.grant !== 'nothing'
+        exchange.context = { included: context.included, leftOut: context.leftOut.map((doc) => doc.name), ...(excerpt ? { excerpt } : {}), ...(unwritten ? { unwritten } : {}) }
         input.changed()
         const system = instructions({
-            grant: turn.grant,
+            grant: exchange.grant,
             home: input.home,
             context,
             homeUnwritten: input.homeUnwritten === true,
             today: input.today,
-            formatGuide: turn.grant === 'nothing' ? '' : input.documents.formatGuide(),
+            formatGuide: exchange.grant === 'nothing' ? '' : input.documents.formatGuide(),
             canSearchGraph: readsGraph,
             agentInstruction: input.agentInstruction,
         })
-        const messages = await chatMessages(input.history, turn, input.prepareImage)
-        const { model, tools: searchTools } = await (input.providerModel ?? providerModel)(input.connection, turn.modelId, input.webSearch)
+        const messages = await chatMessages(input.history, exchange, input.prepareImage)
+        const { model, tools: searchTools } = await (input.providerModel ?? providerModel)(input.connection, exchange.modelId, input.webSearch)
         const tools: ToolSet = readsGraph ? { ...graphTools(input.documents), ...searchTools } : searchTools
         if (signal.aborted) {
-            turn.status = 'stopped'
+            exchange.status = 'stopped'
             return
         }
         const result = streamText({
@@ -150,7 +152,7 @@ export async function runTurn(input: RunTurnInput): Promise<void> {
             prepareStep: ({ stepNumber }) => (stepNumber >= MAX_STEPS - 1 ? { toolChoice: 'none' } : undefined),
             abortSignal: signal,
             maxRetries: 1,
-            // An error arrives as an `error` part below and is shown in the turn; the SDK's own
+            // An error arrives as an `error` part below and is shown in the exchange; the SDK's own
             // handler would also write it to the console.
             onError: () => {},
         })
@@ -160,52 +162,60 @@ export async function runTurn(input: RunTurnInput): Promise<void> {
                 case 'start-step':
                     // Text from a later step (after a tool call) starts a new paragraph.
                     steps += 1
-                    if (steps > 1 && turn.answer.trim() !== '' && !turn.answer.endsWith('\n\n')) turn.answer += '\n\n'
+                    if (steps > 1 && exchange.answer.trim() !== '' && !exchange.answer.endsWith('\n\n')) exchange.answer += '\n\n'
                     break
                 case 'text-delta':
-                    turn.answer += part.text
+                    exchange.answer += part.text
+                    // Kept as it streams, at most about once a second, so a tab closed mid-answer
+                    // keeps what had arrived.
+                    input.changed()
+                    break
+                case 'reasoning-delta':
+                    // A reasoning model's thinking, shown while it works and never sent back.
+                    exchange.reasoning = (exchange.reasoning ?? '') + part.text
+                    input.changed()
                     break
                 case 'tool-call':
                     if ((GRAPH_TOOL_NAMES as readonly string[]).includes(part.toolName) || part.toolName === 'web_search' || part.toolName === 'google_search') {
-                        turn.tools.push({ id: `${turn.id}-tool-${turn.tools.length}`, callId: part.toolCallId, summary: summarizeToolCall(part.toolName, part.input), status: 'running' })
+                        exchange.tools.push({ id: `${exchange.id}-tool-${exchange.tools.length}`, callId: part.toolCallId, summary: summarizeToolCall(part.toolName, part.input), status: 'running' })
                         input.changed()
                     }
                     break
                 case 'tool-result':
                 case 'tool-error': {
                     // The latest running call with that id: a provider may use one id in two steps.
-                    const chip = turn.tools.findLast((candidate) => candidate.callId === part.toolCallId && candidate.status === 'running')
+                    const chip = exchange.tools.findLast((candidate) => candidate.callId === part.toolCallId && candidate.status === 'running')
                     if (chip) chip.status = part.type === 'tool-result' ? 'done' : 'failed'
                     break
                 }
                 case 'source':
-                    if (part.sourceType === 'url' && !turn.sources.some((source) => source.url === part.url)) {
-                        turn.sources.push({ url: part.url, title: part.title ?? new URL(part.url).hostname })
+                    if (part.sourceType === 'url' && !exchange.sources.some((source) => source.url === part.url)) {
+                        exchange.sources.push({ url: part.url, title: part.title ?? new URL(part.url).hostname })
                     }
                     break
                 case 'error':
                     throw part.error
                 case 'abort':
-                    turn.status = 'stopped'
+                    exchange.status = 'stopped'
                     break
             }
         }
-        if (turn.status === 'streaming') {
-            if (signal.aborted) turn.status = 'stopped'
-            else if (turn.answer.trim() === '') {
-                turn.status = 'failed'
-                turn.error = NO_ANSWER
-            } else turn.status = 'done'
+        if (exchange.status === 'streaming') {
+            if (signal.aborted) exchange.status = 'stopped'
+            else if (exchange.answer.trim() === '') {
+                exchange.status = 'failed'
+                exchange.error = NO_ANSWER
+            } else exchange.status = 'done'
         }
     } catch (error) {
         if (signal.aborted) {
-            turn.status = 'stopped'
+            exchange.status = 'stopped'
         } else {
-            turn.status = 'failed'
-            turn.error = failureMessage(error, input.connection)
+            exchange.status = 'failed'
+            exchange.error = failureMessage(error, input.connection)
         }
     } finally {
-        for (const chip of turn.tools) if (chip.status === 'running') chip.status = turn.status === 'done' ? 'done' : 'failed'
+        for (const chip of exchange.tools) if (chip.status === 'running') chip.status = exchange.status === 'done' ? 'done' : 'failed'
         input.changed()
     }
 }

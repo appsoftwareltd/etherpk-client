@@ -21,6 +21,9 @@ import {
     continuationFloor,
     cutsAfterBulletIntoProse,
     cycleTask,
+    firstChildSpot,
+    indentBlock,
+    keepsOutline,
     groupBounds,
     healOrphanIndent,
     isBulletLine,
@@ -540,5 +543,60 @@ describe('prevSiblingRange across a code block', () => {
     it('still finds a sibling whose own block sits deeper, and a form-1 sibling', () => {
         expect(prevSiblingRange(L('- a\n  ```\n  x\n  ```\n- b'), 4)).toEqual({ start: 0, end: 3 })
         expect(prevSiblingRange(L('- ```py\n  x\n  ```\n- b'), 3)).toEqual({ start: 0, end: 2 })
+    })
+})
+
+// A block put in beneath a line (an inline panel's save, `insertBlock` at the caret) may add to the
+// outline and never rearrange it (Editor Content Rules → Inline panels, ADR 0147 amended 2026-10-20).
+describe('a block put into the outline', () => {
+    const keeps = (doc: string, at: number, removed: number, block: string) => keepsOutline(L(doc), at, removed, L(block))
+
+    it('keeps the outline with prose and a list beneath a bullet, a wrapped paragraph and an indented code line', () => {
+        expect(keeps('- Kitchen\n- Shed', 1, 0, '  Intro\n  - water the beans\n  - pick the peas')).toBe(true)
+        expect(keeps('- Kitchen\n- Shed', 1, 0, '  Steps\n      indented code')).toBe(true)
+        expect(keeps('- Kitchen\n- Shed', 1, 0, '  Para one\n    wrapped line')).toBe(true)
+    })
+
+    it('keeps the outline taking the place of an empty bullet that has children', () => {
+        expect(keeps('- Garden\n  - \n    - beans\n- Shed', 1, 1, '  - Agent Chat\n    - What?')).toBe(true)
+        expect(keeps('- Garden\n  - \n    - beans\n- Shed', 1, 1, '  - ```sh\n    water\n    ```')).toBe(true)
+    })
+
+    it('keeps a heading at the top level, where a heading belongs', () => {
+        expect(keeps('- Garden', 1, 0, '# Notes\nA line of prose.')).toBe(true)
+    })
+
+    it('refuses an indented heading anywhere in the block, at its root\'s indentation too, since the keys end every branch at one', () => {
+        expect(keeps('- Garden\n  - Kitchen\n- Pantry', 2, 0, '    - Agent Chat\n    ## Sowing')).toBe(false)
+        expect(keeps('- Garden\n  - Kitchen\n- Pantry', 2, 0, '    - Agent Chat\n      ## Sowing')).toBe(false)
+    })
+
+    it('refuses a block that would end the branch it sits in, leaving later bullets with another parent', () => {
+        expect(keeps('- Garden\n  - Kitchen\n    - beans\n    - peas\n  - Shed', 3, 0, '      - Agent Chat\n\n          2. Sow')).toBe(false)
+    })
+
+    it('refuses a block that would take the lines after it as its own', () => {
+        expect(keeps('- Kitchen\n    - beans\n- Shed', 1, 0, '  - Agent Chat')).toBe(false)
+    })
+})
+
+describe('indentBlock', () => {
+    it('gives a blank line the indentation of the next line with text, and leaves one in a fence bare', () => {
+        expect(indentBlock(L('- a\n\n  b\n```\nx\n\ny\n```'), '  ')).toEqual(L('  - a\n    \n    b\n  ```\n  x\n\n  y\n  ```'))
+    })
+
+    it('reads only fences as opaque: a block that starts and ends with --- is no frontmatter', () => {
+        expect(indentBlock(L('---\na\n\nb\n---'), '  ')).toEqual(L('  ---\n  a\n  \n  b\n  ---'))
+    })
+})
+
+describe('firstChildSpot (ADR 0019)', () => {
+    it("is after the bullet's own lines, at its children's indentation, or its content column with none", () => {
+        expect(firstChildSpot(L('- Kitchen\n  more\n    - beans\n- Shed'), 0)).toEqual({ after: 1, indent: 4 })
+        expect(firstChildSpot(L('- Kitchen\n  more\n- Shed'), 0)).toEqual({ after: 1, indent: 2 })
+    })
+
+    it('reads a heading deeper than the bullet as no child of it', () => {
+        expect(firstChildSpot(L('- Kitchen\n    ## Sowing\n- Shed'), 0)).toEqual({ after: 0, indent: 2 })
     })
 })

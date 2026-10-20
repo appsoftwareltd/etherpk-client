@@ -37,14 +37,17 @@ export interface AssembledContext {
     included: string[]
     /** Linked documents not sent, and why. */
     leftOut: { name: string; reason: string }[]
-    /** The home document could not be read: deleted, protected since, or never written. */
+    /**
+     * The home document could not be read: deleted, protected since, or never written. Also true
+     * for a chat without a document, which has no home to read.
+     */
     homeMissing: boolean
 }
 
-export async function assembleContext(grant: GrantLevel, home: string, documents: ExtensionDocuments, budget = LINKS_BUDGET, block: string | null = null): Promise<AssembledContext> {
+export async function assembleContext(grant: GrantLevel, home: string | null, documents: ExtensionDocuments, budget = LINKS_BUDGET, block: string | null = null): Promise<AssembledContext> {
     const context: AssembledContext = { documents: [], included: [], leftOut: [], homeMissing: false }
     if (grant === 'nothing') return context
-    const own = await documents.read(home)
+    const own = home === null ? null : await documents.read(home)
     if (!own) {
         context.homeMissing = true
         return context

@@ -290,7 +290,7 @@ describe("an extension's editor, dialogs and frames", () => {
 
     it('opens a panel in the document through the workspace, and closes it when stopped', () => {
         const { scoped, context, services } = setUp()
-        const panel = { document: 'Garden', isOpen: true, insertBlock: vi.fn(), focus: vi.fn(), resize: vi.fn(), outline: vi.fn(() => null), close: vi.fn() }
+        const panel = { document: 'Garden', isOpen: true, insertBlock: vi.fn(), focus: vi.fn(), resize: vi.fn(), outline: vi.fn(() => null), lineText: vi.fn(() => null), close: vi.fn() }
         vi.mocked(services.editor.openPanel).mockReturnValue(panel)
         expect(context.editor.openPanel({ mount: () => ({ destroy() {} }) })).toBe(panel)
         scoped.dispose()
@@ -382,6 +382,25 @@ describe('an extension from the Extension Directory', () => {
         const { context, contributions } = setUp({ installed: true })
         expect(() => use(context)).toThrow(`context.${member} is in the Proposed part of the Extension API, which only the extensions that come with EtherPK may use.`)
         expect(contributions.has('interactive-fence', 'map')).toBe(false)
+    })
+
+    it("cannot read the text of an inline panel's line, which is Proposed, and keeps every Stable part of the panel", () => {
+        const opened = { document: 'Garden', isOpen: true, insertBlock: vi.fn(() => true), focus: vi.fn(), resize: vi.fn(), outline: vi.fn(() => '- water'), lineText: vi.fn(() => 'water the beans'), close: vi.fn() }
+        const installed = setUp({ installed: true })
+        let mounted: unknown = null
+        vi.mocked(installed.services.editor.openPanel).mockImplementation((options) => {
+            options.mount({} as HTMLElement, opened)
+            return opened
+        })
+        const panel = installed.context.editor.openPanel({ mount: (_host, given) => ((mounted = given), { destroy() {} }) })!
+        // The panel the mount is given is the one openPanel returns, so the extension knows it.
+        expect(mounted).toBe(panel)
+        expect(() => panel.lineText()).toThrow('context.editor.openPanel().lineText is in the Proposed part of the Extension API')
+        expect([panel.document, panel.isOpen, panel.insertBlock('- a'), panel.outline()]).toEqual(['Garden', true, true, '- water'])
+
+        const builtIn = setUp()
+        vi.mocked(builtIn.services.editor.openPanel).mockReturnValue(opened)
+        expect(builtIn.context.editor.openPanel({ mount: () => ({ destroy() {} }) })!.lineText()).toBe('water the beans')
     })
 
     it('uses the parts made Stable in 0.14.0', async () => {

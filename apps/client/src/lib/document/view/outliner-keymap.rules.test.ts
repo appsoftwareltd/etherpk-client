@@ -23,7 +23,7 @@ import { createContributionRegistry, setActiveContributionRegistry } from '$lib/
 
 import { hiddenSyntax, type HiddenSyntaxSpec, hiddenSyntaxPieces } from './augmentations/base-renderer'
 import { followFenceRegistrations, interactiveFenceAugmentation } from './augmentations/interactive-fence'
-import { addInlinePanel, inlinePanelsField, panelCaretBlocks, removeInlinePanel } from './augmentations/inline-panels'
+import { addInlinePanel, inlinePanelsField, panelCaretBlocks, planPanelInsert, removeInlinePanel } from './augmentations/inline-panels'
 import { endOfDocument, type EndKind, startAtEnd, takeBackIfLeft } from './end-of-document'
 import { type InteractiveFence, registerInteractiveFence } from './augmentations/interactive-fence-contract'
 import { pasteAsFence } from './augmentations/paste-to-fence'
@@ -1944,6 +1944,58 @@ describe('the caret at an Extension Fence', () => {
         editor.paste('beans\npeas')
         expect(editor.text()).toBe(`beans\npeas\n${plan}\nAfter`)
     })
+})
+
+// Where an inline panel's block lands (Editor Content Rules → Inline panels, ADR 0147, amended
+// 2026-10-20): the block is the panel's line's first child, after the line's own text, and it never
+// rearranges the outline around it. `line` is the 1-based line the panel opened on, `after` the text
+// once the block is in, or null where the block is refused and the text stays as it was. The caret
+// is on the panel's line, where `/Agent` was typed.
+describe("where an inline panel's block lands", () => {
+    const rows: { rule: string; precedent: Rule['precedent']; before: string; line: number; block: string; after: string | null }[] = [
+        {
+            rule: "beneath a bullet with continuation lines it goes after them, never between the bullet's lines",
+            precedent: 'EtherPK',
+            before: '- Kitchen|\n  more about the kitchen\n- Shed',
+            line: 1,
+            block: '- Agent Chat\n  - What?',
+            after: '- Kitchen\n  more about the kitchen\n  - Agent Chat\n    - What?\n- Shed',
+        },
+        {
+            rule: "beneath a bullet whose children sit deeper than its content column it goes in at their indentation, as their sibling, as Enter makes a first child (ADR 0019)",
+            precedent: 'Logseq',
+            before: '- Kitchen|\n    - beans\n- Shed',
+            line: 1,
+            block: '- Agent Chat\n  - What?',
+            after: '- Kitchen\n    - Agent Chat\n      - What?\n    - beans\n- Shed',
+        },
+        {
+            rule: 'a blank line inside the block takes the indentation of the line after it, so the block stays one branch',
+            precedent: 'EtherPK',
+            before: '- Garden\n  - Kitchen|\n  - Shed',
+            line: 2,
+            block: '- Agent Chat\n  - 1. Dig\n\n    Then rake.',
+            after: '- Garden\n  - Kitchen\n    - Agent Chat\n      - 1. Dig\n        \n        Then rake.\n  - Shed',
+        },
+        {
+            rule: 'a block with an indented heading in it, which would end every branch around it, is refused',
+            precedent: 'EtherPK',
+            before: '- Garden\n  - Kitchen|\n  - Shed',
+            line: 2,
+            block: '- Agent Chat\n  - What?\n  ## Sowing',
+            after: null,
+        },
+    ]
+    for (const row of rows) {
+        it(`${row.rule} (${row.precedent})`, () => {
+            const editor = editorFixture(row.before, { extensions: [inlinePanelsField] })
+            editor.dispatch(editor.state.update({ effects: addInlinePanel.of({ id: 1, lineStart: editor.state.doc.line(row.line).from, mode: 'line' }) }))
+            const plan = planPanelInsert(editor.state, 1, row.block)
+            if (plan) editor.dispatch(editor.state.update({ changes: plan.changes, effects: plan.effects }))
+            expect(plan === null ? null : editor.text()).toBe(row.after)
+            if (row.after === null) expect(editor.text()).toBe(row.before.replace('|', ''))
+        })
+    }
 })
 
 // Inline panels (Editor Content Rules → Inline panels, ADR 0147): the empty bullet a panel is drawn

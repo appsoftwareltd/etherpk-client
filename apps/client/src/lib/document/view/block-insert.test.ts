@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { type ProtectionStatus, setActiveProtectionStatus } from '../protection/active-protection'
 import { editorAnalysis } from './analysis/editor-analysis'
 import { isProtectedDocumentFacet } from './augmentations/protected-document'
-import { type BlockInsertNeighbour, blockInsertable, planBlockInsert } from './block-insert'
+import { type BlockInsertNeighbour, blockInsertable, blockInsertPlan, planBlockInsert } from './block-insert'
 
 // Where `context.editor.insertBlock` puts a block: where a code block, a table or a map goes, on an
 // empty bullet's line beside its dot, and a fence with the caret outside it.
@@ -55,10 +55,38 @@ describe('insertBlock', () => {
         expect(result.blockStart).toBe('- Kitchen ideas\n'.length)
     })
 
+    it('gives a blank line inside the block the indentation of the line after it, so the block stays one branch', () => {
+        const result = insert(['- Garden', '  - Kitchen', '  - Shed'], 1, ['- Agent Chat', '  - 1. Dig', '', '    Then rake.'])
+        expect(result.text).toBe('- Garden\n  - Kitchen\n    - Agent Chat\n      - 1. Dig\n        \n        Then rake.\n  - Shed')
+    })
+
+    it('leaves a blank line inside a fence bare, as the fence is opaque to the outline', () => {
+        const result = insert(['- Kitchen', '- After'], 0, ['```sh', 'water', '', 'mulch', '```'])
+        expect(result.text).toBe('- Kitchen\n  ```sh\n  water\n\n  mulch\n  ```\n- After')
+    })
+
     it('leaves the caret at the end of a block that is not a fence', () => {
         const result = insert(['Intro', ''], 1, ['Garden notes'])
         expect(result.text).toBe('Intro\nGarden notes')
         expect(result.caret).toBe(result.text.length)
+    })
+})
+
+describe('a block that would break the outline', () => {
+    const at = (doc: string, line: number) => {
+        const s = EditorState.create({ doc, extensions: [editorAnalysis()] })
+        return s.update({ selection: { anchor: s.doc.line(line + 1).to } }).state
+    }
+
+    it('is refused when a line of it would end the branch it sits in, or move a later line to another parent', () => {
+        // A heading below the block's first line ends every branch, and so does a bare blank line in
+        // a fence the editor does not pair.
+        expect(blockInsertPlan(at('- Garden\n  - Kitchen\n  - Shed', 1), '- Agent Chat\n  # Heading\n  - Q')).toBeNull()
+        expect(blockInsertPlan(at('- Garden\n  - Kitchen\n  - Shed', 1), '- Agent Chat\n  ~~~\n\n  # water\n  ~~~')).toBeNull()
+    })
+
+    it('goes in when it keeps the outline around it', () => {
+        expect(blockInsertPlan(at('- Garden\n  - Kitchen\n  - Shed', 1), '- Agent Chat\n  - Q')).not.toBeNull()
     })
 })
 

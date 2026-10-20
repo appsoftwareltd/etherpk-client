@@ -2,8 +2,9 @@ import { history, redo, undo } from '@codemirror/commands'
 import { ChangeSet, EditorState } from '@codemirror/state'
 import { describe, expect, it } from 'vitest'
 
+import { outlineLines } from '../../indent-unit'
 import { editorAnalysis } from '../analysis/editor-analysis'
-import { addInlinePanel, inlinePanelLine, inlinePanelsField, inlinePanelWidgets, panelAnchorAt, panelAnchorFor, panelOutline, planPanelInsert, removeInlinePanel, resizeInlinePanel } from './inline-panels'
+import { addInlinePanel, inlinePanelLine, inlinePanelsField, inlinePanelWidgets, panelAnchorAt, panelAnchorFor, panelLineText, panelOutline, panelReturnLine, planPanelInsert, removeInlinePanel, resizeInlinePanel } from './inline-panels'
 import { isProtectedDocumentFacet } from './protected-document'
 
 // An inline panel (ADR 0147): a block the editor draws beneath one line that is not part of the
@@ -119,6 +120,28 @@ describe('the outline around a panel', () => {
         s = s.update({ effects: addInlinePanel.of({ id: 1, ...panelAnchorFor(s, 'end')! }) }).state
         expect(panelOutline(s, 1)).toBeNull()
         expect(panelOutline(withPanel(doc, 4), 2)).toBeNull()
+    })
+})
+
+describe("the text of a panel's line", () => {
+    const text = (doc: string, line: number) => {
+        const s = state(doc)
+        return panelLineText(s, s.doc.line(line + 1).from)
+    }
+
+    it("is the bullet's text without its marker or a task's box, its continuation lines included", () => {
+        expect(text('- Garden\n  - water the beans\n- Kitchen', 1)).toBe('water the beans')
+        expect(text('- Kitchen\n  more about the kitchen\n  - beans', 0)).toBe('Kitchen\nmore about the kitchen')
+        expect(text('- [ ] sow the peas', 0)).toBe('sow the peas')
+    })
+
+    it("keeps the indentation of the bullet's own code beyond its content column", () => {
+        expect(text('- Kitchen\n  ```py\n  def water():\n      return 1\n  ```', 0)).toBe('Kitchen\n```py\ndef water():\n    return 1\n```')
+    })
+
+    it('is null on an empty bullet or a line that is not a bullet', () => {
+        expect(text('- Garden\n- \n- Kitchen', 1)).toBeNull()
+        expect(text('Garden notes', 0)).toBeNull()
     })
 })
 
@@ -317,6 +340,89 @@ describe('where a block the panel puts in lands', () => {
             s = s.update({ changes: plan.changes, effects: plan.effects }).state
         }
         expect(s.doc.toString()).toBe(`- Garden\n${fenced}\n- Agent Chat\n  - Next?`)
+    })
+
+    it("goes after the whole of a bullet with continuation lines or its own code block, never between the bullet's lines", () => {
+        let s = withPanel('- Garden\n  - Kitchen\n    more about the kitchen\n    - beans\n- Shed', 1)
+        expect(inlinePanelWidgets(s)).toMatchObject([{ id: 1, pos: s.doc.line(3).to, beside: false, column: { line: s.doc.line(2).from, edge: 'text' } }])
+        let plan = planPanelInsert(s, 1, '- Agent Chat\n  - What?')!
+        s = s.update({ changes: plan.changes, effects: plan.effects }).state
+        expect(s.doc.toString()).toBe('- Garden\n  - Kitchen\n    more about the kitchen\n    - Agent Chat\n      - What?\n    - beans\n- Shed')
+
+        s = withPanel('- Kitchen\n  ```sh\n  water\n  ```\n- Shed', 0)
+        plan = planPanelInsert(s, 1, '- Agent Chat\n  - What?')!
+        s = s.update({ changes: plan.changes, effects: plan.effects }).state
+        expect(s.doc.toString()).toBe('- Kitchen\n  ```sh\n  water\n  ```\n  - Agent Chat\n    - What?\n- Shed')
+    })
+
+    it("goes in at the indentation of the line's children where they sit deeper than its content column", () => {
+        let s = withPanel('- Kitchen\n    - beans\n- Shed', 0)
+        const plan = planPanelInsert(s, 1, '- Agent Chat\n  - What?')!
+        s = s.update({ changes: plan.changes, effects: plan.effects }).state
+        expect(s.doc.toString()).toBe('- Kitchen\n    - Agent Chat\n      - What?\n    - beans\n- Shed')
+    })
+
+    it('gives a blank line inside the block the indentation of the line after it, on an empty bullet too', () => {
+        let s = withPanel('- Garden\n  - \n  - Shed', 1)
+        const plan = planPanelInsert(s, 1, '- Agent Chat\n  - 1. Dig\n\n    Then rake.')!
+        s = s.update({ changes: plan.changes, effects: plan.effects }).state
+        expect(s.doc.toString()).toBe('- Garden\n  - Agent Chat\n    - 1. Dig\n      \n      Then rake.\n  - Shed')
+    })
+
+    it('refuses a block that would not stay whole where it lands, leaving the document as it is', () => {
+        const s = withPanel('- Garden\n  - Kitchen\n    - water the beans\n    - pick the peas\n  - Shed\n- Pantry', 2)
+        expect(planPanelInsert(s, 1, '- Agent Chat\n  - What?\n  ## Sowing')).toBeNull()
+        expect(planPanelInsert(s, 1, '- Agent Chat\n  - What?\n    - ```sh\n      # water')).toBeNull()
+    })
+
+    it('keeps every later line of the document where it was, for any block at any depth', () => {
+        const blocks = [
+            '- Agent Chat\n  - What should I plant?\n    - 1. Dig the bed.\n\n      2. Sow the beans.',
+            '- Agent Chat\n  - Look:\n\n    What grows?\n    - Beans.',
+            '- Agent Chat\n  - Run:\n    - ```\n      water\n\n      mulch\n      ```',
+            '- Agent Chat\n  - What?\n    - Beans.\n- Agent Chat\n  - Next?',
+        ]
+        const doc = '- Garden\n  - Kitchen\n    - water the beans\n      - soak first\n    - pick the peas\n  - Shed\n- Pantry'
+        for (let line = 0; line < 4; line++) {
+            for (const block of blocks) {
+                const s = withPanel(doc, line)
+                const plan = planPanelInsert(s, 1, block)
+                expect(plan, `${block} at line ${line}`).not.toBeNull()
+                const after = s.update({ changes: plan!.changes, effects: plan!.effects }).state
+                const before = outlineLines(doc.split('\n'))
+                const now = outlineLines(after.doc.toString().split('\n'))
+                const shift = after.doc.lines - s.doc.lines
+                // The lines after the panel's branch keep their depth.
+                const tail = doc.split('\n').findIndex((text, k) => k > line && text.search(/\S/) <= doc.split('\n')[line].search(/\S/))
+                for (let k = Math.max(tail, line + 1); k < before.length && tail >= 0; k++) expect(now[k + shift].depth, `${block} at line ${line}, line ${k}`).toBe(before[k].depth)
+            }
+        }
+    })
+
+    it("reads the bullet's own last line as its own after Mod+Z takes a block out from beneath it, not as the block", () => {
+        let s = EditorState.create({ doc: '- Garden\n  - Kitchen\n    more about the kitchen\n  - Shed', extensions: [editorAnalysis(), history(), inlinePanelsField, isProtectedDocumentFacet.of(() => false)] })
+        s = s.update({ effects: addInlinePanel.of({ id: 1, lineStart: s.doc.line(2).from, mode: 'line' }) }).state
+        const before = panelOutline(s, 1)
+        const plan = planPanelInsert(s, 1, '- Agent Chat\n  - What?\n- Agent Chat\n  - Next?')!
+        s = s.update({ changes: plan.changes, effects: plan.effects, userEvent: 'input.complete' }).state
+        undo({ state: s, dispatch: (tr) => (s = tr.state) })
+        expect(s.doc.toString()).toBe('- Garden\n  - Kitchen\n    more about the kitchen\n  - Shed')
+        // Drawn beneath the bullet's own lines from its text, reading its outline, as before the save.
+        expect(inlinePanelWidgets(s)).toMatchObject([{ id: 1, pos: s.doc.line(3).to, column: { edge: 'text' } }])
+        expect(panelOutline(s, 1)).not.toBeNull()
+        const again = planPanelInsert(s, 1, '- Agent Chat\n  - Again?')!
+        expect(s.update({ changes: again.changes, effects: again.effects }).state.doc.toString()).toBe(
+            '- Garden\n  - Kitchen\n    more about the kitchen\n    - Agent Chat\n      - Again?\n  - Shed',
+        )
+        expect(before).not.toBeNull()
+    })
+
+    it("gives the caret back on the line it was opened on, not the bullet's last own line, and after a saved block on its last line", () => {
+        let s = withPanel('- Kitchen\n  ```sh\n  water\n  ```\n- Shed', 0)
+        expect(panelReturnLine(s, 1)).toBe(0)
+        const plan = planPanelInsert(s, 1, '- Agent Chat\n  - What?')!
+        s = s.update({ changes: plan.changes, effects: plan.effects }).state
+        expect(s.doc.line(panelReturnLine(s, 1)! + 1).text).toBe('    - What?')
     })
 
     it('puts nothing in once its line has become part of a code block or a table', () => {

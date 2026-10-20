@@ -24,6 +24,7 @@
         onNew,
         onClose,
         onSaved,
+        prompt = "",
     }: {
         chats: AgentChats;
         home: string;
@@ -39,6 +40,8 @@
         onClose: () => void;
         /** After a Save: on a phone, back to the document where it landed. */
         onSaved?: () => void;
+        /** What the chat's message field starts with: the text of the line `/Agent` was typed on. */
+        prompt?: string;
     } = $props();
 
     // The inline panel's height follows what it shows (heights.ts): it grows once, when the chat
@@ -63,5 +66,6 @@
         saveTarget={() => (panel?.isOpen ? Promise.resolve(panel) : actions.saveTarget(session.chatId ?? ""))}
         {onSaved}
         autofocus
+        initialPrompt={prompt}
     />
 {/if}

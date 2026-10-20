@@ -54,7 +54,8 @@ documentation says which, with `@public` for Stable and `@beta` for Proposed.
   it. In an extension installed from the Extension Directory, a call to a Proposed member throws an
   error that names it.
 
-Since 0.14.0 every part is Stable but `contributions` (see *Proposed parts* below). An extension
+Since 0.14.0 every part is Stable but `contributions` and an inline panel's `lineText` (see
+*Proposed parts* below). An extension
 listed in the Extension Directory uses only the Stable part.
 [`etc/etherpk-extension-api.public.api.md`](etc/etherpk-extension-api.public.api.md) lists the
 Stable part, and [`etc/etherpk-extension-api.beta.api.md`](etc/etherpk-extension-api.beta.api.md)
@@ -295,7 +296,9 @@ Protected Document, or a caret in the frontmatter, in a fence or in a table.
 `context.editor.openPanel({ mount, at })` draws a panel of the extension's own in the document,
 beneath the caret's line, or beneath the document's last line with `at: 'end'`, without changing
 the text. It returns null where no panel can go, by the same rules as `insertBlock`. A panel closes
-when the extension stops.
+when the extension stops. The panel's `insertBlock` puts a block at its line: beneath a bullet with
+text as the bullet's first child, after its own lines. A block that would rearrange the outline
+around it, from `insertBlock` here or at the caret, is refused, and the call returns false.
 
 ### Context Menu rows and Command Bar buttons
 
@@ -502,11 +505,14 @@ code runs under them.
 
 ## Proposed parts
 
-The one Proposed part is `contributions`, which reaches the Client's own registries by kind. Only
-the extensions that come with EtherPK may use it, and it stays Proposed for good: its kinds and
-their values are the Client's internals, which change between releases, and through it one
-extension could take another's entries. Where an extension from another Publisher needs what a
-registry gives, the Client adds a checked part for it, as it did for fences and Journal Panels.
+`contributions` reaches the Client's own registries by kind. Only the extensions that come with
+EtherPK may use it, and it stays Proposed for good: its kinds and their values are the Client's
+internals, which change between releases, and through it one extension could take another's
+entries. Where an extension from another Publisher needs what a registry gives, the Client adds a
+checked part for it, as it did for fences and Journal Panels.
+
+An inline panel's `lineText()`, the text of the bullet the panel opened on, is Proposed while
+Agent Chat is its only user, and becomes Stable when an extension from another Publisher needs it.
 
 ## Trying an extension
 

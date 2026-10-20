@@ -31,6 +31,7 @@ import type {
     ExtensionEventPayloads,
     GraphSidebarButton,
     IconMarkup,
+    InlinePanel,
     ViewContribution,
 } from '@appsoftwareltd/etherpk-extension-api'
 import { CLIENT_COMMANDS } from '@appsoftwareltd/etherpk-extension-api'
@@ -396,16 +397,51 @@ function refuse(member: string): () => never {
 }
 
 /**
- * The context an extension that does not come with EtherPK gets: every Stable part, with the one
- * Proposed member, `contributions`, refusing (ADR 0120, amended 2026-10-17). It reaches the
+ * An inline panel as an extension that may not use the Proposed part holds it: every Stable member,
+ * and `lineText` (Proposed since 2026-10-20) refusing. The same wrapper for the panel `openPanel`
+ * returns and the one its `mount` is given, so the extension can tell its panel by identity.
+ */
+function stablePanel(panel: InlinePanel, wrapped: WeakMap<InlinePanel, InlinePanel>): InlinePanel {
+    const known = wrapped.get(panel)
+    if (known) return known
+    const stable: InlinePanel = {
+        get document() {
+            return panel.document
+        },
+        get isOpen() {
+            return panel.isOpen
+        },
+        insertBlock: (text) => panel.insertBlock(text),
+        focus: () => panel.focus(),
+        resize: (height) => panel.resize(height),
+        outline: () => panel.outline(),
+        lineText: refuse('editor.openPanel().lineText'),
+        close: () => panel.close(),
+    }
+    wrapped.set(panel, stable)
+    return stable
+}
+
+/**
+ * The context an extension that does not come with EtherPK gets: every Stable part, with the
+ * Proposed members, `contributions` and an inline panel's `lineText`, refusing (ADR 0120, amended
+ * 2026-10-17). It reaches the
  * Client's own registries, where an extension could take any kind's entries, another extension's
  * fence word among them, and its kinds and values are the Client's internals, which change between
  * releases. Each part that a registry serves through `contributions` is reached through a checked
  * part instead, such as `editor.registerFence`.
  */
 function stableOnly(context: ExtensionContext): ExtensionContext {
+    const panels = new WeakMap<InlinePanel, InlinePanel>()
     return {
         ...context,
+        editor: {
+            ...context.editor,
+            openPanel(options) {
+                const panel = context.editor.openPanel({ ...options, mount: (host, opened) => options.mount(host, stablePanel(opened, panels)) })
+                return panel ? stablePanel(panel, panels) : null
+            },
+        },
         contributions: {
             register: refuse('contributions.register'),
             unregister: refuse('contributions.unregister'),

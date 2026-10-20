@@ -5,6 +5,30 @@ What changed in each release of the EtherPK Client and the Headless Client
 They are released together, under the version number they share with the Sync Server. This log
 starts at 0.9.3.
 
+## Unreleased
+
+### Client
+
+- **Agent Chat.** `/Agent` on a line with text opens the chat with that text in its message box,
+  ready to send or change. The up and down arrow keys move through the list of chats to start or
+  resume. The model you choose in a chat is the one each new chat starts on until you reload.
+  Escape closes a chat without saving, and the chat keeps what you had typed for when you open it
+  again.
+- **Agent Chat.** A model that reasons before it answers shows its reasoning while it works, folded
+  away once the answer starts. An answer is kept on the device as it arrives, so closing the tab
+  keeps what had come. You can select text in a chat and copy it.
+- **Agent Chat.** Your question and the agent's answer are separate turns, each with its own box
+  when you save, and **Mine** and **Agent's** tick only yours or only the answers. A saved chat's
+  first line is bold.
+- **Agent Chat.** **New chat** in the Agent Chats view starts a chat without a document, which
+  saves at the end of today's journal entry. A chat whose document was deleted saves there too.
+- **Agent Chat.** Saved answers keep to the outline wherever the chat is: lists, headings and code
+  become bullets of their own, and the blocks after a nested bullet keep their place. Beneath a
+  bullet with more lines of text, the turns go after them.
+- **Extension API:** a block put in through a panel or `editor.insertBlock` that would rearrange
+  the outline around it is refused. `InlinePanel.lineText()` (Proposed) gives the text of the line
+  a panel opened on.
+
 ## 0.14.0 - 2026-10-17
 
 ### Client

@@ -92,6 +92,16 @@ describe("the model's instructions", () => {
         expect(text).not.toContain('leeks')
     })
 
+    it('say a chat without a document was started outside every document, and read nothing of one', async () => {
+        const graph = documents({ Garden: '- beans' })
+        const context = await assembleContext('graph', null, graph)
+        expect(context.documents).toEqual([])
+        const text = instructions({ grant: 'graph', home: null, context, today: '2026-10-20', formatGuide: '', canSearchGraph: true })
+        expect(text).toContain('outside any of their documents')
+        expect(text).toContain('search the graph')
+        expect(text).not.toContain('deleted')
+    })
+
     it('say a Draft has no text yet, rather than that it may have been deleted', async () => {
         const graph = documents({})
         const context = await assembleContext('document', '2026-10-16', graph)

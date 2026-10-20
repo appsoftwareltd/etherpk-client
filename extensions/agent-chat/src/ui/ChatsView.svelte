@@ -3,8 +3,9 @@
      * The [[Agent Chats View]] (ADR 0147): every Agent Chat of the open graph kept on this device,
      * saved or not, in the right Sidebar. A chat chosen here, by its name or a press anywhere on its
      * row that is not a control, shows in full, where it can be continued and saved, and its home
-     * document opens beside it. Chats can be renamed, and deleted one at a time, ticked together, or
-     * all at once.
+     * document opens beside it. New chat starts a chat without a document here, which a Save puts at
+     * the end of today's Journal Entry. Chats can be renamed, and deleted one at a time, ticked
+     * together, or all at once.
      *
      * Deleting is permanent: a chat lives only on this device, so it asks first, saying how many.
      */
@@ -45,12 +46,25 @@
     let notice = $state<string | null>(null);
 
     /** The chats with something asked in them: one just opened is listed from its first question. */
-    const listed = $derived(chats.chats.filter((chat) => chat.turns.length > 0));
+    const listed = $derived(chats.chats.filter((chat) => chat.exchanges.length > 0));
     const shown = $derived(onlyActive && active ? listed.filter((chat) => chat.home === active) : listed);
 
     function open(chat: Chat) {
         chats.selected = chat.id;
-        if (!chats.isOrphaned(chat)) actions.openDocument(chat.home);
+        if (chat.home !== null && !chats.withoutDocument(chat)) actions.openDocument(chat.home);
+    }
+
+    /** Back to the list: a chat left with nothing asked in it is not kept. */
+    function backToList() {
+        const id = chats.selected;
+        chats.selected = null;
+        if (id) chats.discardIfEmpty(id);
+    }
+
+    /** Where a row says its chat belongs. */
+    function homeLabel(chat: Chat): string {
+        if (chat.home === null) return "No document";
+        return chats.homeDeleted(chat) ? `${chat.home} (deleted)` : chat.home;
     }
 
     /**
@@ -122,13 +136,17 @@
             where="view"
             openDocument={actions.openDocument}
             openSettings={actions.openSettings}
-            onClose={() => (chats.selected = null)}
+            onClose={backToList}
             saveTarget={() => actions.saveTarget(chats.selected ?? "")}
+            autofocus={(chats.get(chats.selected)?.exchanges.length ?? 0) === 0}
         />
     {:else}
         <header class="ac-view-head">
-            <h2 class="ac-view-title"><RobotIcon class="size-4 text-(--gk-text-muted)" />Agent Chats</h2>
-            <p class="ac-view-note">Kept on this device only. Type <kbd>/Agent</kbd> in a document to start one.</p>
+            <div class="ac-view-title-row">
+                <h2 class="ac-view-title"><RobotIcon class="size-4 text-(--gk-text-muted)" />Agent Chats</h2>
+                <button type="button" class="gk-button gk-button--primary gk-button--small" onclick={actions.startWithoutDocument} data-testid="agent-chats-new">New chat</button>
+            </div>
+            <p class="ac-view-note">Kept on this device only. Start one here, or type <kbd>/Agent</kbd> in a document.</p>
             {#if listed.length > 0}
                 <div class="ac-view-tools">
                     {#if active}
@@ -171,7 +189,7 @@
                                 <button type="button" class="ac-view-open" onclick={() => open(chat)} data-testid="agent-chats-open">{chat.title}</button>
                             {/if}
                             <span class="ac-view-meta">
-                                {chats.isOrphaned(chat) ? `${chat.home} (deleted)` : chat.home}, {since(chat.updatedAt)}, {savedState(chat)}{chats.isRunning(chat.id) ? ", answering" : ""}
+                                {homeLabel(chat)}, {since(chat.updatedAt)}, {savedState(chat)}{chats.isRunning(chat.id) ? ", answering" : ""}
                             </span>
                             <!-- Under the title rather than beside it, so a narrow sidebar never squeezes the title. -->
                             <span class="ac-view-actions">
@@ -199,6 +217,12 @@
     .ac-view-head {
         padding: 0.75rem;
         border-bottom: 1px solid var(--gk-border-soft);
+    }
+    .ac-view-title-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.5rem;
     }
     .ac-view-title {
         display: flex;

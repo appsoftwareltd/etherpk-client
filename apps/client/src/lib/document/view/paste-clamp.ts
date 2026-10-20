@@ -64,6 +64,7 @@ import {
     newBulletMarker,
     opaqueLineFlags,
     ownerBulletIndex,
+    withoutEdgeBlankLines,
 } from '../outliner'
 import { clampColumn } from './caret-clamp'
 
@@ -312,14 +313,6 @@ export function pastedTextAsBlocks(text: string, target: PasteTarget): PastedBlo
     return { insert: out.join('\n'), replacesLine: takesLine }
 }
 
-/** The lines without the blank lines at their start and their end: the trailing newline of a line-wise copy, say. */
-function withoutEdgeBlankLines(lines: string[]): string[] {
-    let start = 0
-    let end = lines.length
-    while (start < end && lines[start].trim() === '') start++
-    while (end > start && lines[end - 1].trim() === '') end--
-    return start === end ? [''] : lines.slice(start, end)
-}
 
 /** A heading line's level: how many `#` open it. */
 function headingLevel(line: string): number {

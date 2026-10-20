@@ -871,3 +871,94 @@ export function computeMove(
     caretOffset += Math.min(newCaretCol, out[caretLineInOut].length)
     return { fromLine, toLine, text: out.join('\n'), caretOffset }
 }
+
+/**
+ * Where a new first child of bullet `owner` goes, as Enter at the end of a bullet with children
+ * puts one (ADR 0019): after the bullet's own lines, at the indentation of the children it has,
+ * which can sit deeper than its content column on a foreign grid (ADR 0067), else at its content
+ * column. `after` is the index of the bullet's last own line.
+ */
+export function firstChildSpot(lines: string[], owner: number, blocks: FencedBlockRange[] = fencedBlocks(lines)): { after: number; indent: number } {
+    const after = blockBodyEnd(lines, owner, blocks)
+    const hasChildren = branchRange(lines, owner, blocks).end > after
+    return { after, indent: hasChildren ? lineIndent(lines[after + 1]) : contentColumn(lines[owner]) }
+}
+
+/**
+ * A block's lines with `indent` before each, as they go in beneath a line. A blank line outside a
+ * fence takes the indentation of the next line with text, so it stays in the block it sits in: a
+ * bare blank line ends every branch around it, which would leave the document's later bullets
+ * with no parent (Editor Content Rules → Inline panels). A blank line inside a fence stays bare,
+ * since a fence is opaque to the outline, and so does one with no line of text after it. Only
+ * fences are read: the block is not a document, so a `---` in it is no frontmatter.
+ */
+export function indentBlock(lines: readonly string[], indent: string): string[] {
+    const inFence = new Array<boolean>(lines.length).fill(false)
+    for (const block of fencedBlocks(lines)) for (let k = block.start; k <= block.end; k++) inFence[k] = true
+    return lines.map((line, i) => {
+        if (line.trim() !== '' || inFence[i]) return line === '' ? '' : indent + line
+        const next = lines.slice(i + 1).find((other) => other.trim() !== '')
+        return next === undefined ? '' : indent + ' '.repeat(lineIndent(next))
+    })
+}
+
+/**
+ * Whether replacing `removed` lines of `lines` from line `at` with `inserted` (as written, with
+ * their indentation) keeps the outline: a block put in may add to the outline, never rearrange it.
+ * Whichever extension wrote the block, three things are read:
+ *
+ * - No line of the block outside a fence is an indented heading. The keys end every branch at a
+ *   heading (`branchRange`, `parentIndex`), where the drawing reads an indented one as a
+ *   continuation line, so it can never sit inside an outline. A heading at the top level can.
+ * - The block stays whole: from its first line, each root's branch ends where the next root starts,
+ *   every root at the first one's indentation, and the last ends with the block. The last may run on
+ *   over the lines a replaced bullet held, as an empty bullet's children become the block's.
+ * - Every later line of the document keeps its depth and its owner as the outline walk reads them
+ *   (`outlineLines`), a line taken out standing for the first line put in.
+ *
+ * Lines before the change cannot move: the walk reads downwards. `was` is the walk over `lines`,
+ * when the caller has it (the editor's analysis does).
+ */
+export function keepsOutline(lines: readonly string[], at: number, removed: number, inserted: readonly string[], was: readonly OutlineLine[] = outlineLines(lines)): boolean {
+    const first = inserted.findIndex((line) => line.trim() !== '')
+    if (first < 0) return true
+    const last = at + inserted.findLastIndex((line) => line.trim() !== '')
+    const after = [...lines.slice(0, at), ...inserted, ...lines.slice(at + removed)]
+    const blocks = fencedBlocks(after)
+    const inFence = opaqueLineFlags(after, blocks)
+    for (let k = at + first; k <= last; k++) if (!inFence[k] && isHeadingLine(after[k]) && lineIndent(after[k]) > 0) return false
+
+    const shift = inserted.length - removed
+    // A replaced bullet's own branch: an empty bullet's children, which the block's last root takes.
+    const held = removed > 0 && isBulletLine(lines[at]) ? branchRange([...lines], at).end + shift : -1
+    const rootIndent = lineIndent(after[at + first])
+    for (let i = at + first; i <= last; ) {
+        const end = branchRange(after, i, blocks).end
+        if (end > Math.max(last, held)) return false
+        let next = end + 1
+        while (next <= last && after[next].trim() === '') next++
+        if (next <= last && lineIndent(after[next]) !== rootIndent) return false
+        i = next
+    }
+
+    const now = outlineLines(after, blocks)
+    const moved = (owner: number) => (owner < at ? owner : owner >= at + removed ? owner + shift : at)
+    for (let k = at + removed; k < lines.length; k++) {
+        if (lines[k].trim() === '') continue
+        const line = now[k + shift]
+        if (line.depth !== was[k].depth || line.owner !== (was[k].owner < 0 ? -1 : moved(was[k].owner))) return false
+    }
+    return true
+}
+
+/**
+ * The lines without the blank lines at their start and their end: the trailing newline of a
+ * line-wise copy, say, or of a block an extension puts in. All blank gives one empty line.
+ */
+export function withoutEdgeBlankLines(lines: readonly string[]): string[] {
+    let start = 0
+    let end = lines.length
+    while (start < end && lines[start].trim() === '') start++
+    while (end > start && lines[end - 1].trim() === '') end--
+    return start === end ? [''] : lines.slice(start, end)
+}

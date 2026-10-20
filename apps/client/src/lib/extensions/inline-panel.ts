@@ -23,12 +23,18 @@ export function openExtensionPanel(view: EditorView | null, options: InlinePanel
         focus: () => handle?.focus(),
         resize: (height) => handle?.resize(height),
         outline: () => handle?.outline() ?? null,
+        lineText: () => handle?.lineText() ?? null,
         close: () => handle?.close(),
     }
     handle = openInlinePanel(view, {
         at: options.at ?? 'caret',
         height: options.height,
-        mount: (host) => options.mount(host, panel),
+        // The editor mounts the panel before `openInlinePanel` returns, so the handle it mounts with
+        // is taken here: the extension can ask the panel what it is (its line's text) as it draws.
+        mount: (host, opened) => {
+            handle ??= opened
+            return options.mount(host, panel)
+        },
         onClose: () => options.onClose?.(),
     })
     return handle ? panel : null
