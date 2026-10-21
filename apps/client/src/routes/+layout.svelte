@@ -7,9 +7,19 @@
     import { continueIfSignedInElsewhere } from "@appsoftwareltd/etherpk-shared";
     import { updated } from "$app/state";
     import { dev } from "$app/environment";
+    import { goto } from "$app/navigation";
     import { watchAppInstall } from "$lib/storage/app-install";
+    import InstallAppDialog from "$lib/install/InstallAppDialog.svelte";
+    import { welcomeInstalledApp } from "$lib/install/install-notices";
+    import { launchTarget } from "$lib/install/launch-target";
 
     let { children, data } = $props();
+
+    /** Chromium's launch queue, where the manifest's `launch_handler` delivers a launch. */
+    type LaunchQueue = { setConsumer(consumer: (params: { targetURL?: string }) => void): void };
+    // The address this page was opened at, read before any client-side navigation: the launch
+    // that opened the page also arrives in the queue, and must not be carried out twice.
+    const openedHref = typeof location === "undefined" ? "" : location.href;
 
     // A deployed update must not leave this tab running stale client code: once the
     // version poll (svelte.config `kit.version.pollInterval`) sees a new build, the next
@@ -33,11 +43,23 @@
                 console.warn("[sw] Registration failed:", err);
             });
         }
-        // Catch the browser's one-shot install offer now, so the Install section in Graph
-        // Settings can show it later: an installed app is what earns persistent storage on a
-        // phone (the workspace layout asks for it).
-        return watchAppInstall();
+        // Catch the browser's one-shot install offer now (or adopt the one `app.html` held), so
+        // every Install entry can show it later: an installed app is what earns persistent
+        // storage on a phone (the workspace layout asks for it).
+        const stopWatching = watchAppInstall();
+        welcomeInstalledApp();
+        // The manifest's `launch_handler` focuses the open window for a new launch instead of
+        // opening another. A plain launch leaves the person where they were; a shortcut or a
+        // share is carried out in this window.
+        const queue = (window as Window & { launchQueue?: LaunchQueue }).launchQueue;
+        queue?.setConsumer((params) => {
+            const target = launchTarget(params.targetURL, location.origin, openedHref);
+            if (target) void goto(target);
+        });
+        return stopWatching;
     });
 </script>
 
 {@render children()}
+
+<InstallAppDialog />

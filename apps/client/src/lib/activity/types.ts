@@ -83,6 +83,8 @@ export interface Activity {
     detail?: string
     /** Offered by the toast once finished. */
     action?: ActivityAction
+    /** While running: what the run is doing that the progress line cannot say, shown in its place. */
+    note?: string
     /** True while the tenant supports cancellation and the Activity is still running. */
     cancellable: boolean
     /** True once cancellation has been requested but the run has not yet unwound. */

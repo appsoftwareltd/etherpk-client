@@ -9,7 +9,7 @@
  *   etherpk-mcp stop   [--graph <id or name> [--sync-server <url>] | --folder <path> | --all]
  *   etherpk-mcp logout [--sync-server <url> | --all]
  *   etherpk-mcp semantic setup | status | remove
- *   etherpk-mcp publish (--graph <id or name> | --folder <path>) --publication <id> [--out <dir> | --dry-run]
+ *   etherpk-mcp publish (--graph <id or name> | --folder <path>) --publication <id> [--out <dir> | --github <owner/name[#branch]> | --dry-run] [--replace]
  *   etherpk-mcp diagrams setup | status
  *
  * One config file holds a login per Sync Server (ADR 0075). `--sync-server` names the one a
@@ -80,7 +80,18 @@ import {
 } from './login'
 import { createMcpServer } from './mcp-server'
 import { chromiumStatus, setupDiagrams } from './diagrams'
-import { defaultPublishFoldersPath, publishFolderOf, publishGraphKey, readPublishFolders, withPublishFolder, writePublishFolders } from './publish-folders'
+import {
+    defaultPublishFoldersPath,
+    parseRepositoryArgument,
+    publishFolderOf,
+    publishGraphKey,
+    publishRepositoryOf,
+    readPublishFolders,
+    repositoryLabel,
+    withPublishFolder,
+    withPublishRepository,
+    writePublishFolders,
+} from './publish-folders'
 import { checkPublishFolder, cliPublishOutput, findPublication, publish as publishTool } from './publish-tools'
 import { ToolError } from './tools'
 import { createNodeDirectoryAdapter, isGraphFolder } from './node-directory-adapter'
@@ -148,8 +159,9 @@ const USAGE = `etherpk-mcp - EtherPK Headless Client (an MCP server over one syn
       to a service to be embedded.
   ${CMD} semantic status | remove
       Whether it is set up here, or delete it (logout --all deletes it too).
-  ${CMD} publish (--graph <id or name> | --folder <path>) --publication <id> [--out <dir> | --dry-run]
-      Publish one publication of a graph to a folder on this machine and print the report.
+  ${CMD} publish (--graph <id or name> | --folder <path>) --publication <id> [--out <dir> | --github <owner/name[#branch]> | --dry-run] [--replace]
+      Publish one publication of a graph to a folder on this machine, or to a branch of a
+      GitHub repository, and print the report.
       --out sets the publish folder for that graph and publication and is remembered: from
       then on this command without --out, and the agent's publish tool, write to the same
       folder (the agent cannot choose one). It must be a folder of its own, outside the
@@ -157,6 +169,13 @@ const USAGE = `etherpk-mcp - EtherPK Headless Client (an MCP server over one syn
       and feed files) are rewritten and their strays removed - everything else in it is left
       alone. Publishing writes files - deploying them (a git push, say) is yours. Run it from
       cron for a site that republishes itself.
+      --github commits the site to the repository's branch (main unless #branch says) as one
+      commit, with the token in ETHERPK_GITHUB_TOKEN, and is remembered in place of a folder.
+      The host watching the branch then deploys it. The same files are owned and the rest of
+      the branch is left alone. A publish never creates the branch. The agent's publish tool
+      never commits to a repository: this command is how a publication there is published.
+      --replace lets a first publish replace files on a branch that does not hold this site
+      yet, which it otherwise lists and refuses.
       --dry-run renders and checks the publication and prints the whole report, with the
       names of the pages it mentions, but writes nothing and needs no folder. Keep its output
       out of public logs.
@@ -591,20 +610,27 @@ async function diagramsCommand(what: string | undefined): Promise<void> {
  * open, so a publish while agents work reads what they wrote and writes no copy of its own.
  * `--out` is how a person sets the Publish Folder; the tool never takes one.
  */
-async function publishCommand(args: ServeArgs & { publication?: string; out?: string; 'dry-run'?: boolean }): Promise<void> {
+async function publishCommand(args: ServeArgs & { publication?: string; out?: string; github?: string; replace?: boolean; 'dry-run'?: boolean }): Promise<void> {
     const request = graphRequest('publish', args)
     const publication = args.publication?.trim()
     if (!publication) fail('publish needs --publication <id>. The agent\'s list_publications tool, or Settings → Publish in EtherPK, shows the ids.')
     const dryRun = args['dry-run'] === true
     const out = args.out?.trim()
-    if (dryRun && out) fail('publish --dry-run writes nothing, so it takes no --out. Leave --out off, or drop --dry-run to publish.')
+    const githubArg = args.github?.trim()
+    if (dryRun && (out || githubArg)) fail('publish --dry-run writes nothing, so it takes no --out or --github. Leave them off, or drop --dry-run to publish.')
+    if (out && githubArg) fail('publish takes --out or --github, not both: a publication publishes to one place on this machine.')
+    const github = githubArg ? parseRepositoryArgument(githubArg) : null
+    if (githubArg && !github) fail(`--github takes owner/name, or owner/name#branch, such as you/garden-site#main ("${githubArg}" is not one).`)
     const found = await findGraph(request).catch((error: unknown) => fail(`etherpk-mcp: ${describeError(error)}`))
     const env = publishSettings(process.env)
+    const replace = args.replace === true ? { replace: true } : {}
     const { reply, socket } = await requestHost(
         launcherFor(found),
         dryRun
             ? { etherpk: 'publish-check', protocol: HOST_PROTOCOL, publication, env }
-            : { etherpk: 'publish', protocol: HOST_PROTOCOL, publication, ...(out ? { out: resolve(out) } : {}), env },
+            : github
+              ? { etherpk: 'publish-github', protocol: HOST_PROTOCOL, publication, github, ...replace, env }
+              : { etherpk: 'publish', protocol: HOST_PROTOCOL, publication, ...(out ? { out: resolve(out) } : {}), ...replace, env },
     ).catch((error: unknown) => fail(`etherpk-mcp: ${describeError(error)}`))
     socket.destroy()
     switch (reply.etherpk) {
@@ -616,9 +642,9 @@ async function publishCommand(args: ServeArgs & { publication?: string; out?: st
         case 'refused':
             return fail(reply.message)
         case 'failed':
-            // A host from before dry runs existed answers this to a request kind it does not know.
-            if (dryRun && reply.message === 'The request was not understood.') {
-                return fail(`etherpk-mcp: this graph is served on this computer by an older etherpk-mcp, which cannot run a dry run. Run: ${CMD} stop, then try again.`)
+            // A host from before dry runs, or before repositories, answers this to a request kind it does not know.
+            if ((dryRun || github) && reply.message === 'The request was not understood.') {
+                return fail(`etherpk-mcp: this graph is served on this computer by an older etherpk-mcp, which cannot ${dryRun ? 'run a dry run' : 'publish to a repository'}. Run: ${CMD} stop, then try again.`)
             }
             return fail(`etherpk-mcp: ${reply.message}`)
         case 'unsupported':
@@ -630,9 +656,10 @@ async function publishCommand(args: ServeArgs & { publication?: string; out?: st
 
 /**
  * A command-line publish, as the graph's host runs it: the publication first, so a mistyped id is
- * never remembered as a publish folder, then `--out` checked against the graph's folder and
- * remembered, then the publish the agent's tool runs. The answer is what the command prints, in
- * its own words.
+ * never remembered as a destination, then `--out` checked against the graph's folder, or
+ * `--github` checked as a repository, and remembered, then the publish the agent's tool runs, as
+ * the person (`via: 'cli'`), which may commit to a repository. The answer is what the command
+ * prints, in its own words.
  */
 async function publishInHost(graph: HeadlessGraph, request: PublishRequest): Promise<HostReply> {
     const env = withPublishSettings(process.env, request.env ?? {})
@@ -648,15 +675,27 @@ async function publishInHost(graph: HeadlessGraph, request: PublishRequest): Pro
         await findPublication(graph, request.publication, host)
         const configPath = defaultPublishFoldersPath(env)
         const key = publishGraphKey(graph.backend, graph.graphId)
-        if (request.out) {
+        if (request.etherpk === 'publish-github') {
+            // Checked as it is set: a mistyped repository or branch is never written down.
+            const repo = parseRepositoryArgument(`${request.github.owner}/${request.github.name}#${request.github.branch}`)
+            if (!repo) return { etherpk: 'refused', message: 'etherpk-mcp: --github takes owner/name, or owner/name#branch.' }
+            await writePublishFolders(configPath, withPublishRepository(await readPublishFolders(configPath), key, request.publication, repo))
+            notes.push(`etherpk-mcp: "${request.publication}" of "${graph.name}" now publishes to ${repositoryLabel(repo)} (remembered in ${configPath}, in place of any folder).`)
+        } else if (request.out) {
             // Before it is remembered: a folder that would cost the graph files is never written down.
             await checkPublishFolder(graph, request.publication, request.out, host)
             await writePublishFolders(configPath, withPublishFolder(await readPublishFolders(configPath), key, request.publication, request.out))
             notes.push(`etherpk-mcp: publish folder for "${request.publication}" of "${graph.name}" set to ${request.out} (remembered in ${configPath}).`)
-        } else if (!publishFolderOf(await readPublishFolders(configPath), key, request.publication)) {
-            return { etherpk: 'refused', message: `No publish folder is set for "${request.publication}" of "${graph.name}" on this machine. Pass --out <dir> once - it is remembered.` }
+        } else {
+            const remembered = await readPublishFolders(configPath)
+            if (!publishFolderOf(remembered, key, request.publication) && !publishRepositoryOf(remembered, key, request.publication)) {
+                return {
+                    etherpk: 'refused',
+                    message: `No publish folder or repository is set for "${request.publication}" of "${graph.name}" on this machine. Pass --out <dir> or --github <owner/name> once - it is remembered.`,
+                }
+            }
         }
-        const result = await publishTool(graph, { id: request.publication }, host)
+        const result = await publishTool(graph, { id: request.publication, replace: request.replace === true }, host)
         // Names nothing the site leaves out: this output often lands in a scheduled job's log.
         return { etherpk: 'published', output: cliPublishOutput(result), notes, exitCode: result.ok ? 0 : 1 }
     } catch (error) {
@@ -1186,6 +1225,8 @@ async function main(): Promise<void> {
             'no-semantic': { type: 'boolean' },
             publication: { type: 'string' },
             out: { type: 'string' },
+            github: { type: 'string' },
+            replace: { type: 'boolean' },
             'dry-run': { type: 'boolean' },
             all: { type: 'boolean' },
             name: { type: 'string' },

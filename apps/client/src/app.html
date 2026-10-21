@@ -29,6 +29,13 @@
                 root.style.colorScheme = resolvedTheme;
             })();
         </script>
+        <script>
+            // Chromium's install offer can fire before the app starts; hold it for app-install.ts.
+            window.addEventListener('beforeinstallprompt', (event) => {
+                event.preventDefault();
+                window.__etherpkInstallOffer = event;
+            });
+        </script>
         %sveltekit.head%
     </head>
 

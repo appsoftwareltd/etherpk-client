@@ -26,13 +26,47 @@ export interface PublicationFolderState {
     publishedAt?: string
 }
 
-export type PublishTarget = 'folder' | 'zip'
+/** A [[Publish Repository]] as the tab shows it (ADR 0152). */
+export interface PublicationRepositoryState {
+    owner: string
+    name: string
+    branch: string
+    /** When the token last proved it can write there. */
+    checkedAt?: string
+    publishedAt?: string
+    /** The last publish's commit. */
+    commitUrl?: string
+}
+
+/** Where a publication publishes on this device: one folder or one repository, never both. */
+export type PublicationDestinationState = ({ kind: 'folder' } & PublicationFolderState) | ({ kind: 'repository' } & PublicationRepositoryState)
+
+export type PublishTarget = 'folder' | 'zip' | 'repository'
 
 export interface PublishOutcome {
     report: PublishReport
     /** Where it went. */
     target: PublishTarget
     written?: { written: number; unchanged: number; deleted: string[] }
+    /** For a repository: the branch, and the commit made, or null when nothing had changed. */
+    repository?: { owner: string; name: string; branch: string }
+    commit?: { sha: string; url: string } | null
+}
+
+/**
+ * What pressing Publish came to. A first publish to a repository branch that does not say it
+ * holds this site stops before replacing files there, and the tab asks (ADR 0152).
+ */
+export type PublishAttempt = { state: 'published'; outcome: PublishOutcome } | { state: 'needs-confirmation'; replaced: string[] }
+
+/** What the repository check found, or `unchecked` when no GitHub token is set to check with. */
+export type RepositoryCheckState = 'ready' | 'empty' | 'branch-missing' | 'unchecked'
+
+/** The person's GitHub token, as far as the tab may know it: whether there is one, never its value. */
+export interface GitHubTokenState {
+    set: boolean
+    /** True when the person's settings sync to their account, so the token follows them to other devices. */
+    follows: boolean
 }
 
 export interface PublishTabProps {
@@ -40,13 +74,33 @@ export interface PublishTabProps {
     folderSupported: boolean
     /** Read the graph for its publications. Slow on a large graph; called when the tab opens and after a change. */
     load(): Promise<GraphPublishingState>
-    /** The remembered folder for a publication on this device, or null. */
-    folderOf(publicationId: string): Promise<PublicationFolderState | null>
-    /** Pick a folder for a publication (a native dialog; needs the click) and remember it. Null when cancelled. */
+    /** Where a publication publishes on this device, or null. */
+    destinationOf(publicationId: string): Promise<PublicationDestinationState | null>
+    /** Pick a folder for a publication (a native dialog; needs the click) and remember it in place of any repository. Null when cancelled. */
     onchoosefolder(publicationId: string): Promise<PublicationFolderState | null>
-    onforgetfolder(publicationId: string): Promise<void>
-    /** Publish to the remembered folder or as a zip download. Progress is reported through the Activity rail. */
-    onpublish(publication: Publication, target: PublishTarget): Promise<PublishOutcome>
+    /** Forget where the publication publishes on this device. */
+    onforgetdestination(publicationId: string): Promise<void>
+    /**
+     * Remember a repository for the publication in place of any folder, then check it with the
+     * person's GitHub token. A refusal throws a `GitHubError` worded for the person; the
+     * repository is remembered either way.
+     */
+    onsaverepository(publicationId: string, repository: { owner: string; name: string; branch: string }): Promise<RepositoryCheckState>
+    /** Start the remembered repository's branch holding the publication's README (the person asked: a publish never does). */
+    oncreatebranch(publication: Publication): Promise<RepositoryCheckState>
+    /** The person's GitHub token, live: whether one is set. */
+    githubToken: {
+        read(): GitHubTokenState
+        save(token: string): void
+        forget(): void
+        subscribe(listener: () => void): () => void
+    }
+    /**
+     * Publish to the remembered folder or repository, or as a zip download. Progress is reported
+     * through the Activity rail. `confirmed` is the person's go-ahead to replace files a first
+     * publish to a repository listed.
+     */
+    onpublish(publication: Publication, target: PublishTarget, options?: { confirmed?: boolean }): Promise<PublishAttempt>
     /**
      * The last outcome of each publication this session, by id: the workspace keeps them, so
      * the report a finished publish's toast points at is still here when the tab opens later.

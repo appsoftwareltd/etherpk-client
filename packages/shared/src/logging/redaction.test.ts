@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
     redactPath,
     redactQueryString,
+    redactRequestQuery,
     redactUrl,
     redactUrlQuery,
     shouldCaptureErrorResponseBody,
@@ -63,6 +64,13 @@ describe('redactQueryString', () => {
         expect(redactQueryString('?redirect=%2Fgraphs%3Fmanaged%3Dconnected')).toBe('?redirect=%2Fgraphs%3Fmanaged%3Dconnected')
     })
 
+    it('redacts a shared note carried in a return path to the share page', () => {
+        // A share opened before sign-in comes back through /auth/login?redirect=/share?...
+        expect(redactQueryString('?redirect=%2Fshare%3Ftext%3Dwater%2520the%2520beans&prompt=none')).toBe(
+            '?redirect=/share?[redacted]&prompt=none',
+        )
+    })
+
     it('leaves diagnostic parameters intact', () => {
         expect(redactQueryString('?page=2&sort=name&graphId=abc-123')).toBe(
             '?page=2&sort=name&graphId=abc-123',
@@ -75,6 +83,25 @@ describe('redactQueryString', () => {
 
     it('does not treat a secret appearing in a value as a parameter name', () => {
         expect(redactQueryString('?next=/login?token%3Dabc')).toBe('?next=/login?token%3Dabc')
+    })
+})
+
+describe('redactRequestQuery', () => {
+    it('redacts the whole query string of the share page, which is the shared note itself', () => {
+        expect(redactRequestQuery('/share', '?title=Garden&text=water%20the%20beans&url=https%3A%2F%2Fexample.test%2Fbeans')).toBe(
+            '?[redacted]',
+        )
+        expect(redactRequestQuery('/SHARE/', '?text=water%20the%20beans')).toBe('?[redacted]')
+    })
+
+    it('returns undefined for a share page with no query string', () => {
+        expect(redactRequestQuery('/share', '')).toBeUndefined()
+        expect(redactRequestQuery('/share', '?')).toBeUndefined()
+    })
+
+    it('judges every other path parameter by parameter', () => {
+        expect(redactRequestQuery('/graphs', '?token=abc&page=2')).toBe('?token=[redacted]&page=2')
+        expect(redactRequestQuery('/shared', '?text=Garden')).toBe('?text=Garden')
     })
 })
 
@@ -137,6 +164,14 @@ describe('redactUrl', () => {
         expect(redactUrl('/api/auth/reset-password/tok?callbackURL=/x')).toBe(
             '/api/auth/reset-password/[redacted]?callbackURL=/x',
         )
+    })
+
+    it('redacts the query string of a redirect to the share page, keeping its fragment', () => {
+        expect(redactUrl('/share?text=water%20the%20beans#add')).toBe('/share?[redacted]#add')
+        expect(redactUrl('https://app.test/share?title=Garden&url=https%3A%2F%2Fexample.test')).toBe(
+            'https://app.test/share?[redacted]',
+        )
+        expect(redactUrl('https://app.test/share')).toBe('https://app.test/share')
     })
 
     it('leaves an ordinary target alone and passes through null', () => {

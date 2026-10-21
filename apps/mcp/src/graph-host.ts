@@ -42,7 +42,7 @@ export interface HostedGraph {
 }
 
 /** A command-line publish, or its dry run. */
-export type PublishRequest = Extract<HostRequest, { etherpk: 'publish' | 'publish-check' }>
+export type PublishRequest = Extract<HostRequest, { etherpk: 'publish' | 'publish-check' | 'publish-github' }>
 
 /** What a host tells the process that started it, as one line on stdout. */
 export type HostAnnouncement = { endpoint: string; pid: number } | { failed: string }
@@ -330,6 +330,7 @@ export async function runGraphHost(deps: GraphHostDeps): Promise<GraphHostHandle
                 return startSession(socket, request, reply)
             case 'publish':
             case 'publish-check':
+            case 'publish-github':
                 if (stopping) return answer({ etherpk: 'stopping' })
                 return runPublish(request, answer)
             default:

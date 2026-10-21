@@ -1,10 +1,12 @@
 <script lang="ts">
     /**
      * The **Publish** tab of the Settings modal (ADR 0082): the graph's [[Publication]]s, each
-     * with its theme, includes, output folder and last report; the public documents no
+     * with its theme, includes, destination and last report; the public documents no
      * publication takes; the graph's [[Theme]]s. Everything here is graph content edited through
-     * the publication page (the workspace rewrites its frontmatter) except the output folder,
-     * which is per device.
+     * the publication page (the workspace rewrites its frontmatter) except where a publication
+     * publishes, which is per device: a [[Publish Folder]] or a [[Publish Repository]] (ADR 0152),
+     * one or the other. The person's GitHub token, one for every repository, has a section of its
+     * own at the top; the tab knows whether one is set, never what it is.
      *
      * A card's fields edit a draft and **Save changes** writes it in one go: writing the page on
      * every field change re-read the graph mid-edit and made a half-typed url a saved one
@@ -21,19 +23,24 @@
     import LoadingSweep from "$lib/components/LoadingSweep.svelte";
 
     import { conceptKey } from "$lib/document/backlinks/backlink-index";
+    import { GitHubError } from "$lib/document/publish/host/github-api";
+    import { isBranchName, parseRepository } from "$lib/document/publish/host/github-repository";
     import type { GraphTheme } from "$lib/document/publish/theme/graph-theme";
     import type { Publication, PublicationKind, PublicationSelection } from "$lib/document/publish/types";
     import { suggestPublicationId } from "$lib/workspace/publish-service";
     import type { NewPublicationInput, PublicationChanges, PublishDocumentSummary } from "$lib/workspace/publish-service";
 
-    import type { GraphPublishingState, PublicationFolderState, PublishTabProps } from "./publish-tab";
+    import type { GitHubTokenState, GraphPublishingState, PublicationDestinationState, PublishTabProps, PublishTarget, RepositoryCheckState } from "./publish-tab";
 
     let {
         folderSupported,
         load,
-        folderOf,
+        destinationOf,
         onchoosefolder,
-        onforgetfolder,
+        onforgetdestination,
+        onsaverepository,
+        oncreatebranch,
+        githubToken,
         onpublish,
         outcomes,
         showReport = undefined,
@@ -53,7 +60,8 @@
     let loading = $state(true);
     let loadError = $state<string | null>(null);
     let themes = $state<GraphTheme[]>([]);
-    let folders = $state<Record<string, PublicationFolderState | null>>({});
+    /** Where each publication publishes on this device, as remembered. */
+    let destinations = $state<Record<string, PublicationDestinationState | null>>({});
     let busy = $state<Record<string, string>>({});
     let errors = $state<Record<string, string | null>>({});
     let slots = $state<Record<string, { name: string; description: string; kind?: "html" | "css" }[] | null>>({});
@@ -138,6 +146,113 @@
         drafts = kept;
     }
 
+    // ── Destinations ──────────────────────────────────────────────────────────────────────
+    // A card shows one destination: the kind it remembers, or the one the person has picked and
+    // not yet set up. Picking does not forget the other; setting one up replaces it.
+    let choices = $state<Record<string, "folder" | "github">>({});
+    /** A card's repository fields as typed. */
+    interface RepositoryDraft {
+        repository: string;
+        branch: string;
+    }
+    let repositoryDrafts = $state<Record<string, RepositoryDraft>>({});
+    /** What the last check of a card's repository found this session; null before one ran. */
+    let repositoryChecks = $state<Record<string, RepositoryCheckState | null>>({});
+    /** What is wrong with a card's repository fields as typed, before anything is sent. */
+    let repositoryFieldErrors = $state<Record<string, string | null>>({});
+    /** Files a first publish to a repository would replace, waiting for the person's go-ahead. */
+    let confirmations = $state<Record<string, string[] | null>>({});
+
+    function choiceOf(p: Publication): "folder" | "github" {
+        const chosen = choices[p.id];
+        if (chosen) return chosen;
+        const remembered = destinations[p.id];
+        if (remembered?.kind === "repository") return "github";
+        return folderSupported ? "folder" : "github";
+    }
+
+    function savedRepositoryOf(p: Publication): Extract<PublicationDestinationState, { kind: "repository" }> | null {
+        const remembered = destinations[p.id];
+        return remembered?.kind === "repository" ? remembered : null;
+    }
+
+    function repositoryDraftOf(p: Publication): RepositoryDraft {
+        const saved = savedRepositoryOf(p);
+        return repositoryDrafts[p.id] ?? { repository: saved ? `${saved.owner}/${saved.name}` : "", branch: saved?.branch ?? "main" };
+    }
+
+    /** True when the fields differ from the remembered repository. */
+    function repositoryEdited(p: Publication): boolean {
+        const saved = savedRepositoryOf(p);
+        const draft = repositoryDraftOf(p);
+        if (!saved) return draft.repository.trim() !== "";
+        const parsed = parseRepository(draft.repository);
+        return !parsed || parsed.owner !== saved.owner || parsed.name !== saved.name || (draft.branch.trim() || "main") !== saved.branch;
+    }
+
+    function editRepository(p: Publication, change: Partial<RepositoryDraft>): void {
+        repositoryDrafts = { ...repositoryDrafts, [p.id]: { ...repositoryDraftOf(p), ...change } };
+        // Validated on save, then again as the person corrects the field.
+        if (repositoryFieldErrors[p.id]) repositoryFieldErrors = { ...repositoryFieldErrors, [p.id]: repositoryFieldProblem(repositoryDraftOf(p)) };
+    }
+
+    function repositoryFieldProblem(draft: RepositoryDraft): string | null {
+        if (!parseRepository(draft.repository)) return "Enter the repository as owner/name, such as you/garden-site, or paste its address on GitHub.";
+        if (!isBranchName(draft.branch.trim() || "main")) return `"${draft.branch.trim()}" is not a branch name git takes. Leave it empty for main.`;
+        return null;
+    }
+
+    // ── The GitHub token ──────────────────────────────────────────────────────────────────
+    // Read at once so the section never flashes "no token" before the subscription in onMount.
+    // svelte-ignore state_referenced_locally
+    let token = $state<GitHubTokenState>(githubToken.read());
+    let tokenDraft = $state("");
+    let tokenError = $state<string | null>(null);
+    let replacingToken = $state(false);
+    let forgetTokenArmed = $state(false);
+    /** GitHub refused the token this session: it has expired or been revoked. */
+    let tokenRefused = $state(false);
+    let tokenInput = $state<HTMLInputElement>();
+
+    const showGitHub = $derived(token.set || (graph?.publications ?? []).some((p) => choiceOf(p) === "github"));
+
+    function saveToken(): void {
+        const value = tokenDraft.trim();
+        if (value === "") {
+            tokenError = "Paste the token GitHub gave you.";
+            tokenInput?.focus();
+            return;
+        }
+        if (/\s/.test(value)) {
+            tokenError = "A GitHub token has no spaces in it. Copy it again from GitHub.";
+            tokenInput?.focus();
+            return;
+        }
+        githubToken.save(value);
+        tokenDraft = "";
+        tokenError = null;
+        replacingToken = false;
+        tokenRefused = false;
+    }
+
+    function cancelReplaceToken(): void {
+        replacingToken = false;
+        tokenDraft = "";
+        tokenError = null;
+    }
+
+    function forgetToken(): void {
+        githubToken.forget();
+        forgetTokenArmed = false;
+        tokenRefused = false;
+    }
+
+    async function focusTokenField(): Promise<void> {
+        if (token.set) replacingToken = true;
+        await tick();
+        tokenInput?.focus();
+    }
+
     // New publication form.
     let creating = $state(false);
     let newTitle = $state("");
@@ -173,9 +288,9 @@
             const next = await load();
             adoptDrafts(graph?.publications ?? [], next.publications);
             graph = next;
-            const nextFolders: Record<string, PublicationFolderState | null> = {};
-            for (const p of next.publications) nextFolders[p.id] = await folderOf(p.id);
-            folders = nextFolders;
+            const nextDestinations: Record<string, PublicationDestinationState | null> = {};
+            for (const p of next.publications) nextDestinations[p.id] = await destinationOf(p.id);
+            destinations = nextDestinations;
             for (const p of next.publications) void loadSlots(p.theme);
         } catch (error) {
             loadError = error instanceof Error ? error.message : String(error);
@@ -198,9 +313,14 @@
             await tick();
             document.querySelector(`[data-testid="publication-${CSS.escape(showReport)}-report"]`)?.scrollIntoView({ block: "nearest" });
         });
-        return subscribeThemes((list) => {
+        const stopToken = githubToken.subscribe(() => (token = githubToken.read()));
+        const stopThemes = subscribeThemes((list) => {
             themes = list;
         });
+        return () => {
+            stopToken();
+            stopThemes();
+        };
     });
 
     function setBusy(id: string, what: string | null): void {
@@ -217,6 +337,13 @@
         try {
             await work();
         } catch (error) {
+            // A branch that is not there yet is a state of the repository, shown beside its
+            // fields with Create branch, rather than an error under the card.
+            if (error instanceof GitHubError && (error.code === "branch-missing" || error.code === "empty-repository")) {
+                repositoryChecks = { ...repositoryChecks, [id]: error.code === "empty-repository" ? "empty" : "branch-missing" };
+                return;
+            }
+            if (error instanceof GitHubError && error.code === "bad-token") tokenRefused = true;
             errors = { ...errors, [id]: error instanceof Error ? error.message : String(error) };
         } finally {
             setBusy(id, null);
@@ -226,24 +353,82 @@
     async function chooseFolder(p: Publication): Promise<void> {
         await guarded(p.id, "Choosing a folder", async () => {
             const chosen = await onchoosefolder(p.id);
-            if (chosen) folders = { ...folders, [p.id]: chosen };
-        });
-    }
-
-    async function forgetFolder(p: Publication): Promise<void> {
-        await guarded(p.id, "Forgetting the folder", async () => {
-            await onforgetfolder(p.id);
-            folders = { ...folders, [p.id]: null };
-        });
-    }
-
-    async function publish(p: Publication, target: "folder" | "zip"): Promise<void> {
-        await guarded(p.id, target === "zip" ? "Building the zip" : "Publishing", async () => {
-            const outcome = await onpublish(p, target);
-            if (target === "folder" && outcome.report.ok) {
-                folders = { ...folders, [p.id]: { ...(folders[p.id] ?? { folder: "" }), publishedAt: outcome.report.generatedAt } };
+            if (chosen) {
+                destinations = { ...destinations, [p.id]: { kind: "folder", ...chosen } };
+                repositoryChecks = { ...repositoryChecks, [p.id]: null };
+                confirmations = { ...confirmations, [p.id]: null };
             }
         });
+    }
+
+    async function forgetDestination(p: Publication): Promise<void> {
+        await guarded(p.id, "Forgetting", async () => {
+            await onforgetdestination(p.id);
+            destinations = { ...destinations, [p.id]: null };
+            repositoryDrafts = { ...repositoryDrafts, [p.id]: { repository: "", branch: "main" } };
+            repositoryChecks = { ...repositoryChecks, [p.id]: null };
+            confirmations = { ...confirmations, [p.id]: null };
+        });
+    }
+
+    async function saveRepository(p: Publication): Promise<void> {
+        const draft = repositoryDraftOf(p);
+        const problem = repositoryFieldProblem(draft);
+        repositoryFieldErrors = { ...repositoryFieldErrors, [p.id]: problem };
+        if (problem) {
+            document.getElementById(problem.startsWith("Enter") ? `publication-${p.id}-repository` : `publication-${p.id}-branch`)?.focus();
+            return;
+        }
+        const parsed = parseRepository(draft.repository) as { owner: string; name: string };
+        const branch = draft.branch.trim() || "main";
+        await guarded(p.id, "Checking", async () => {
+            repositoryChecks = { ...repositoryChecks, [p.id]: null };
+            confirmations = { ...confirmations, [p.id]: null };
+            try {
+                const state = await onsaverepository(p.id, { ...parsed, branch });
+                repositoryChecks = { ...repositoryChecks, [p.id]: state };
+                if (state !== "unchecked") tokenRefused = false;
+            } finally {
+                // Remembered whatever the check found, and shown as the workspace wrote it.
+                destinations = { ...destinations, [p.id]: await destinationOf(p.id) };
+                repositoryDrafts = { ...repositoryDrafts, [p.id]: { repository: `${parsed.owner}/${parsed.name}`, branch } };
+            }
+        });
+    }
+
+    async function createBranch(p: Publication): Promise<void> {
+        await guarded(p.id, "Creating the branch", async () => {
+            const state = await oncreatebranch(p);
+            repositoryChecks = { ...repositoryChecks, [p.id]: state };
+            destinations = { ...destinations, [p.id]: await destinationOf(p.id) };
+        });
+    }
+
+    async function publish(p: Publication, target: PublishTarget, confirmed = false): Promise<void> {
+        await guarded(p.id, target === "zip" ? "Building the zip" : "Publishing", async () => {
+            confirmations = { ...confirmations, [p.id]: null };
+            const attempt = await onpublish(p, target, { confirmed });
+            if (attempt.state === "needs-confirmation") {
+                confirmations = { ...confirmations, [p.id]: attempt.replaced };
+                return;
+            }
+            if (target === "repository") {
+                repositoryChecks = { ...repositoryChecks, [p.id]: "ready" };
+                tokenRefused = false;
+            }
+            if (target !== "zip" && attempt.outcome.report.ok) destinations = { ...destinations, [p.id]: await destinationOf(p.id) };
+        });
+    }
+
+    /** The files a confirmation names, the first few in full. */
+    function fileList(paths: string[]): string {
+        const shown = paths.slice(0, 5).join(", ");
+        return paths.length > 5 ? `${shown} and ${paths.length - 5} more` : shown;
+    }
+
+    /** Focus a node as it appears: the confirmation's Cancel, so a keyboard user lands on the question with the safe answer. */
+    function focusOnMount(node: HTMLElement): void {
+        node.focus();
     }
 
     async function create(): Promise<void> {
@@ -454,7 +639,7 @@
 <div class="space-y-5" data-testid="publish-tab">
     <p class="text-sm text-gray-600 dark:text-gray-400">
         A publication is a named selection of public documents rendered as one website, into a
-        folder you deploy yourself. A document is published when its frontmatter says
+        folder or a GitHub repository that your host deploys from. A document is published when its frontmatter says
         <code>public: true</code> and names the publication in <code>publications</code>
         (right-click a document for <strong>Publish…</strong>). The publication page's outline is
         the site's navigation.
@@ -487,6 +672,93 @@
                 {#if issue.concept}<button type="button" class={linkButton} onclick={() => onopenpage(issue.concept as string)}>{issue.concept}</button>: {/if}{issue.message}
             </p>
         {/each}
+
+        {#if showGitHub}
+            <!-- One token for every repository the person publishes to, kept with their settings
+                 rather than the graph (ADR 0152). Its value is never read back into the page. -->
+            <section class="space-y-2 rounded-lg border border-gray-200 dark:border-gray-800 p-3" aria-labelledby="publish-github-heading" data-testid="publish-github">
+                <h3 id="publish-github-heading" class="text-sm font-semibold text-gray-950 dark:text-gray-100">GitHub</h3>
+                {#if token.set && !replacingToken}
+                    <p class="text-sm text-gray-950 dark:text-gray-100" data-testid="publish-github-token-state">
+                        A GitHub token is set{token.follows ? ". It follows you to your other devices through your account." : " on this device."}
+                    </p>
+                    {#if tokenRefused}
+                        <p role="alert" class="text-sm text-red-700 dark:text-red-300" data-testid="publish-github-token-refused">
+                            GitHub refused this token the last time EtherPK used it. It has expired, been revoked or was mistyped. Replace it with a new one.
+                        </p>
+                    {/if}
+                    <div class="flex flex-wrap items-center gap-2">
+                        {#if forgetTokenArmed}
+                            <span class="text-sm text-gray-950 dark:text-gray-100">Forget the token on this device{token.follows ? " and your other devices" : ""}? Publishing to GitHub then needs a new one.</span>
+                            <button type="button" class={dangerButton} onclick={forgetToken} data-testid="publish-github-forget-confirm">Forget token</button>
+                            <button type="button" class={secondaryButton} onclick={() => (forgetTokenArmed = false)}>Keep</button>
+                        {:else}
+                            <button type="button" class={secondaryButton} onclick={() => void focusTokenField()} data-testid="publish-github-replace">Replace token</button>
+                            <button type="button" class={secondaryButton} onclick={() => (forgetTokenArmed = true)} data-testid="publish-github-forget">Forget token…</button>
+                        {/if}
+                    </div>
+                {:else}
+                    <form
+                        class="space-y-2"
+                        data-testid="publish-github-token-form"
+                        onsubmit={(e) => {
+                            e.preventDefault();
+                            saveToken();
+                        }}
+                    >
+                        <label for="publish-github-token" class={labelClass}>GitHub token</label>
+                        <input
+                            id="publish-github-token"
+                            bind:this={tokenInput}
+                            class={inputClass}
+                            type="password"
+                            autocomplete="off"
+                            spellcheck="false"
+                            bind:value={tokenDraft}
+                            oninput={() => {
+                                if (tokenError) tokenError = null;
+                            }}
+                            onkeydown={(e) => {
+                                // Esc backs out of replacing; it must not close the whole modal.
+                                if (e.key === "Escape" && replacingToken) {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    cancelReplaceToken();
+                                }
+                            }}
+                            placeholder="github_pat_…"
+                            aria-describedby="publish-github-token-help"
+                            aria-invalid={tokenError ? "true" : undefined}
+                            data-testid="publish-github-token"
+                        />
+                        <p id="publish-github-token-help" class={helpClass}>
+                            {#if tokenError}<span class="text-red-700 dark:text-red-300" data-testid="publish-github-token-error">{tokenError}</span>{:else}Your own token, which EtherPK commits the site with. It is not shown again once saved.{/if}
+                        </p>
+                        <div class="flex flex-wrap gap-2">
+                            <button type="submit" class={primaryButton} data-testid="publish-github-token-save">Save token</button>
+                            {#if replacingToken}
+                                <button type="button" class={secondaryButton} onclick={cancelReplaceToken}>Cancel</button>
+                            {/if}
+                        </div>
+                    </form>
+                {/if}
+                <details class="text-sm" data-testid="publish-github-steps">
+                    <summary class="cursor-pointer font-medium text-gray-700 dark:text-gray-300">How to make a token</summary>
+                    <ol class="mt-2 list-decimal space-y-1 pl-5 text-gray-600 dark:text-gray-400">
+                        <li>On GitHub, open <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener" class="underline">Settings → Developer settings → Fine-grained tokens → Generate new token</a>.</li>
+                        <li>Give it a name and an expiry date. When it expires, make a new one and replace it here.</li>
+                        <li>For Resource owner, choose the account or organisation that owns the site's repository. An organisation's owners may have to approve the token before it works.</li>
+                        <li>For Repository access, choose Only select repositories, and pick the site's repositories.</li>
+                        <li>Under Permissions, on the Repositories tab, select Add permissions, search for Contents and tick it. Contents then shows in the list with an access menu: set it to Read and write. GitHub adds Metadata, read-only, by itself. Add nothing else.</li>
+                        <li>Generate the token, copy it and paste it here.</li>
+                    </ol>
+                </details>
+                <p class={helpClass}>
+                    Limited scope for the token is important for your security (EtherPK community extensions are reviewed before they are listed, but they run
+                    in EtherPK's browser tab and have the potential to read data from it).
+                </p>
+            </section>
+        {/if}
 
         <section class="space-y-4" aria-labelledby="publications-heading">
             <div class="flex items-center justify-between gap-3">
@@ -568,7 +840,14 @@
             {/if}
 
             {#each graph.publications as p (p.id)}
-                {@const folder = folders[p.id] ?? null}
+                {@const destination = destinations[p.id] ?? null}
+                {@const folder = destination?.kind === "folder" ? destination : null}
+                {@const savedRepository = savedRepositoryOf(p)}
+                {@const choice = choiceOf(p)}
+                {@const repositoryDraft = repositoryDraftOf(p)}
+                {@const repositoryCheck = repositoryChecks[p.id] ?? null}
+                {@const repositoryUnsaved = repositoryEdited(p)}
+                {@const confirmation = confirmations[p.id] ?? null}
                 {@const outcome = outcomes[p.id]}
                 {@const working = busy[p.id]}
                 {@const draft = drafts[p.id]}
@@ -781,28 +1060,156 @@
                         </div>
                     {/if}
 
-                    <div class="space-y-2 rounded-md bg-gray-50 dark:bg-white/5 p-2">
+                    <div class="space-y-3 rounded-md bg-gray-50 dark:bg-white/5 p-2" data-testid="publication-{p.id}-destination">
                         {#if folderSupported}
+                            <!-- One destination per device: picking only shows the other's controls; setting
+                                 one up (choosing a folder, saving a repository) replaces the remembered one. -->
+                            <fieldset>
+                                <legend class={labelClass}>Publish to</legend>
+                                <div class="flex flex-wrap gap-x-5 gap-y-2">
+                                    <label class="inline-flex items-center gap-2 text-sm text-gray-950 dark:text-gray-100">
+                                        <input type="radio" name="publication-{p.id}-destination" value="folder" checked={choice === "folder"} onchange={() => (choices = { ...choices, [p.id]: "folder" })} disabled={!!working} data-testid="publication-{p.id}-destination-folder" />
+                                        A folder on this device
+                                    </label>
+                                    <label class="inline-flex items-center gap-2 text-sm text-gray-950 dark:text-gray-100">
+                                        <input type="radio" name="publication-{p.id}-destination" value="github" checked={choice === "github"} onchange={() => (choices = { ...choices, [p.id]: "github" })} disabled={!!working} data-testid="publication-{p.id}-destination-github" />
+                                        A GitHub repository
+                                    </label>
+                                </div>
+                            </fieldset>
+                        {:else}
+                            <p class="text-sm text-gray-600 dark:text-gray-400">This browser cannot write a folder, so the site goes to a GitHub repository or into a zip. Chrome or Edge on a desktop, or Chrome on Android, can also publish straight into a folder.</p>
+                        {/if}
+
+                        {#if choice === "folder"}
                             <p class="text-sm text-gray-950 dark:text-gray-100" data-testid="publication-{p.id}-folder">
                                 {#if folder}
                                     Folder: <strong>{folder.folder}</strong>{#if folder.publishedAt} · last published {new Date(folder.publishedAt).toLocaleString()}{/if}
-                                    <button type="button" class={linkButton + " ml-2"} onclick={() => void forgetFolder(p)} disabled={!!working}>Forget</button>
+                                    <button type="button" class={linkButton + " ml-2"} onclick={() => void forgetDestination(p)} disabled={!!working}>Forget</button>
+                                {:else if savedRepository}
+                                    No folder chosen on this device. Choosing one replaces the repository {savedRepository.owner}/{savedRepository.name}.
                                 {:else}
                                     No folder chosen on this device.
                                 {/if}
                             </p>
-                        {:else}
-                            <p class="text-sm text-gray-600 dark:text-gray-400">This browser cannot write a folder. Download the site as a zip instead, or use Chrome or Edge on a desktop, or Chrome on Android, to publish straight into a folder.</p>
-                        {/if}
-                        <div class="flex flex-wrap gap-2">
-                            {#if folderSupported}
+                            <div class="flex flex-wrap gap-2">
                                 <button type="button" class={secondaryButton} onclick={() => void chooseFolder(p)} disabled={!!working} data-testid="publication-{p.id}-choose-folder">{folder ? "Change folder…" : "Choose folder…"}</button>
                                 <button type="button" class={primaryButton} onclick={() => void publish(p, "folder")} disabled={!!working || !folder} data-testid="publication-{p.id}-publish">{working === "Publishing" ? "Publishing…" : "Publish to folder"}</button>
+                                <button type="button" class={secondaryButton} onclick={() => void publish(p, "zip")} disabled={!!working} data-testid="publication-{p.id}-zip">{working === "Building the zip" ? "Building…" : "Download zip"}</button>
+                            </div>
+                            {#if !folder}
+                                <p class="text-sm text-gray-500 dark:text-gray-400">Choose a folder of its own to publish into, outside any graph. The same folder is reused on this device each time.</p>
                             {/if}
-                            <button type="button" class={folderSupported ? secondaryButton : primaryButton} onclick={() => void publish(p, "zip")} disabled={!!working} data-testid="publication-{p.id}-zip">{working === "Building the zip" ? "Building…" : "Download zip"}</button>
-                        </div>
-                        {#if folderSupported && !folder}
-                            <p class="text-sm text-gray-500 dark:text-gray-400">Choose a folder of its own to publish into, outside any graph. The same folder is reused on this device each time.</p>
+                        {:else}
+                            <form
+                                class="space-y-2"
+                                data-testid="publication-{p.id}-repository-form"
+                                onsubmit={(e) => {
+                                    e.preventDefault();
+                                    void saveRepository(p);
+                                }}
+                            >
+                                <div class="grid gap-3 sm:grid-cols-3">
+                                    <div class="sm:col-span-2">
+                                        <label for="publication-{p.id}-repository" class={labelClass}>Repository</label>
+                                        <input
+                                            id="publication-{p.id}-repository"
+                                            class={inputClass}
+                                            value={repositoryDraft.repository}
+                                            oninput={(e) => editRepository(p, { repository: (e.currentTarget as HTMLInputElement).value })}
+                                            placeholder="you/garden-site"
+                                            autocomplete="off"
+                                            spellcheck="false"
+                                            aria-describedby="publication-{p.id}-repository-help"
+                                            aria-invalid={repositoryFieldErrors[p.id] ? "true" : undefined}
+                                            disabled={!!working}
+                                            data-testid="publication-{p.id}-repository"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label for="publication-{p.id}-branch" class={labelClass}>Branch</label>
+                                        <input
+                                            id="publication-{p.id}-branch"
+                                            class={inputClass}
+                                            value={repositoryDraft.branch}
+                                            oninput={(e) => editRepository(p, { branch: (e.currentTarget as HTMLInputElement).value })}
+                                            placeholder="main"
+                                            autocomplete="off"
+                                            spellcheck="false"
+                                            aria-describedby="publication-{p.id}-repository-help"
+                                            disabled={!!working}
+                                            data-testid="publication-{p.id}-branch"
+                                        />
+                                    </div>
+                                </div>
+                                <p id="publication-{p.id}-repository-help" class={helpClass}>
+                                    {#if repositoryFieldErrors[p.id]}
+                                        <span class="text-red-700 dark:text-red-300" data-testid="publication-{p.id}-repository-invalid">{repositoryFieldErrors[p.id]}</span>
+                                    {:else}
+                                        The repository and branch the site is committed to, as owner/name or its address on GitHub. Each publish is one commit, and what it publishes stays in the repository's history.
+                                    {/if}
+                                </p>
+                                <div class="flex flex-wrap items-center gap-2">
+                                    <button type="submit" class={secondaryButton} disabled={!!working} data-testid="publication-{p.id}-save-repository">{working === "Checking" ? "Checking…" : "Save and check"}</button>
+                                    {#if (repositoryCheck === "empty" || repositoryCheck === "branch-missing") && savedRepository && !repositoryUnsaved}
+                                        <button type="button" class={secondaryButton} onclick={() => void createBranch(p)} disabled={!!working} data-testid="publication-{p.id}-create-branch">{working === "Creating the branch" ? "Creating…" : `Create branch ${savedRepository.branch}`}</button>
+                                    {/if}
+                                    <span role="status" class="text-sm {repositoryUnsaved ? 'text-amber-800 dark:text-amber-200' : 'text-gray-600 dark:text-gray-400'}" data-testid="publication-{p.id}-repository-state">
+                                        {#if working === "Checking"}
+                                            Checking {repositoryDraft.repository.trim()}…
+                                        {:else if repositoryUnsaved}
+                                            {savedRepository ? "Unsaved changes. A publish uses the saved repository." : "Not saved yet."}
+                                        {:else if savedRepository && repositoryCheck === "ready"}
+                                            Ready. The token can write to {savedRepository.owner}/{savedRepository.name} on {savedRepository.branch}.
+                                        {:else if savedRepository && repositoryCheck === "empty"}
+                                            {savedRepository.owner}/{savedRepository.name} is empty. Create the branch to make its first commit.
+                                        {:else if savedRepository && repositoryCheck === "branch-missing"}
+                                            {savedRepository.owner}/{savedRepository.name} has no branch "{savedRepository.branch}" yet. A publish never creates one, in case the name is mistyped.
+                                        {:else if savedRepository && repositoryCheck === "unchecked"}
+                                            Saved. Set a GitHub token above to check it.
+                                        {:else if savedRepository}
+                                            {savedRepository.checkedAt ? "Saved." : "Saved, not checked yet. The first publish checks it."}{#if savedRepository.publishedAt} Last published {new Date(savedRepository.publishedAt).toLocaleString()}.{/if}
+                                        {/if}
+                                    </span>
+                                </div>
+                                {#if repositoryCheck === "unchecked" && !token.set}
+                                    <button type="button" class={linkButton} onclick={() => void focusTokenField()} data-testid="publication-{p.id}-set-token">Set a GitHub token</button>
+                                {/if}
+                            </form>
+
+                            {#if confirmation && savedRepository}
+                                <!-- Asked once, before the first publish replaces files on a branch that does not
+                                     say it holds this site. Focus lands on Cancel, the safe answer. -->
+                                <div
+                                    class="space-y-2 rounded-lg border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/40 p-3 text-sm text-amber-900 dark:text-amber-100"
+                                    role="group"
+                                    aria-labelledby="publication-{p.id}-confirm-title"
+                                    data-testid="publication-{p.id}-confirm"
+                                >
+                                    <p id="publication-{p.id}-confirm-title" class="font-medium">{savedRepository.owner}/{savedRepository.name} does not hold this site on {savedRepository.branch} yet.</p>
+                                    <p>
+                                        Publishing replaces or deletes {confirmation.length} file{confirmation.length === 1 ? "" : "s"} there that this site did not write: {fileList(confirmation)}.
+                                        The old versions stay in the branch's history.
+                                    </p>
+                                    <div class="flex flex-wrap gap-2">
+                                        <button type="button" class={dangerButton} onclick={() => void publish(p, "repository", true)} disabled={!!working} data-testid="publication-{p.id}-confirm-publish">Publish and replace {confirmation.length} file{confirmation.length === 1 ? "" : "s"}</button>
+                                        <button type="button" class={secondaryButton} {@attach focusOnMount} onclick={() => (confirmations = { ...confirmations, [p.id]: null })} data-testid="publication-{p.id}-confirm-cancel">Cancel</button>
+                                    </div>
+                                </div>
+                            {/if}
+
+                            <div class="flex flex-wrap gap-2">
+                                <button type="button" class={primaryButton} onclick={() => void publish(p, "repository")} disabled={!!working || !savedRepository} data-testid="publication-{p.id}-publish-github">{working === "Publishing" ? "Publishing…" : "Publish to GitHub"}</button>
+                                <button type="button" class={secondaryButton} onclick={() => void publish(p, "zip")} disabled={!!working} data-testid="publication-{p.id}-zip">{working === "Building the zip" ? "Building…" : "Download zip"}</button>
+                                {#if savedRepository}
+                                    <button type="button" class={linkButton} onclick={() => void forgetDestination(p)} disabled={!!working} data-testid="publication-{p.id}-forget-repository">Forget the repository</button>
+                                {/if}
+                            </div>
+                            {#if !savedRepository}
+                                <p class="text-sm text-gray-500 dark:text-gray-400">
+                                    Save a repository to publish to it. It is remembered on this device{folder ? `, in place of the folder ${folder.folder}` : ""}.
+                                </p>
+                            {/if}
                         {/if}
                         {#if changes}
                             <p class="text-sm text-gray-500 dark:text-gray-400">A publish uses the saved settings, not the unsaved edits above.</p>
@@ -816,12 +1223,20 @@
                     {#if outcome}
                         {@const r = outcome.report}
                         <div class="space-y-1 text-sm" data-testid="publication-{p.id}-report" role="status">
-                            {#if r.ok}
+                            {#if r.ok && outcome.repository && outcome.commit === null}
+                                <p class="text-gray-950 dark:text-gray-100" data-testid="publication-{p.id}-unchanged">
+                                    Nothing had changed on {outcome.repository.owner}/{outcome.repository.name}@{outcome.repository.branch}, so no commit was made. The site has
+                                    {r.included.length} document{r.included.length === 1 ? "" : "s"}{#if r.warnings.length > 0}, and the report {r.warnings.length} warning{r.warnings.length === 1 ? "" : "s"}{/if}.
+                                </p>
+                            {:else if r.ok}
                                 <p class="text-gray-950 dark:text-gray-100">
                                     Published {r.included.length} document{r.included.length === 1 ? "" : "s"}
-                                    {#if outcome.target === "zip"}as a zip{:else if outcome.written}to the folder ({outcome.written.written} written, {outcome.written.unchanged} unchanged{#if outcome.written.deleted.length > 0}, {outcome.written.deleted.length} removed{/if}){/if}
+                                    {#if outcome.target === "zip"}as a zip{:else if outcome.repository && outcome.written}to {outcome.repository.owner}/{outcome.repository.name}@{outcome.repository.branch} ({outcome.written.written} written{#if outcome.written.deleted.length > 0}, {outcome.written.deleted.length} removed{/if}){:else if outcome.written}to the folder ({outcome.written.written} written, {outcome.written.unchanged} unchanged{#if outcome.written.deleted.length > 0}, {outcome.written.deleted.length} removed{/if}){/if}
                                     with the theme {r.theme?.source === "graph" ? themeTitle(p.theme) : themeTitle(r.theme?.name ?? p.theme)}{#if r.warnings.length > 0}, {r.warnings.length} warning{r.warnings.length === 1 ? "" : "s"}{/if}.
                                 </p>
+                                {#if outcome.commit}
+                                    <a href={outcome.commit.url} target="_blank" rel="noopener" class={linkButton} data-testid="publication-{p.id}-commit">View the commit on GitHub</a>
+                                {/if}
                             {:else}
                                 <p class="text-red-700 dark:text-red-300">Not published: {r.errors.map((e) => e.message).join(" ")}</p>
                             {/if}

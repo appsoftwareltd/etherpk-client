@@ -42,7 +42,22 @@ export type HostRequest = (
           publication: string
           /** `publish --out`: the folder to remember for this publication, absolute. */
           out?: string
+          /** `publish --replace`: a first publish to a repository may replace files on a branch that does not hold this site yet. */
+          replace?: boolean
           /** The command line's own settings for a publish, which may differ from the host's. */
+          env: Record<string, string>
+      }
+    | {
+          /**
+           * `publish --github`: remember the repository for this publication and publish to it
+           * (ADR 0152). A kind of its own, as `publish-check` is, so a host from before it answers
+           * that it does not understand instead of publishing into a remembered folder.
+           */
+          etherpk: 'publish-github'
+          protocol: number
+          publication: string
+          github: { owner: string; name: string; branch: string }
+          replace?: boolean
           env: Record<string, string>
       }
     | {
@@ -203,8 +218,10 @@ export async function hostRequest(endpoint: string, request: HostRequest, option
 /**
  * The settings a publish reads, which the command line decides even when the graph's host runs
  * the publish: where the publish folders are remembered, which browser draws diagrams and maps,
- * and which style a map's picture is drawn over. The host was started from another environment
- * (an agent's), and a scheduled publish may name its own browser or its own map host.
+ * which style a map's picture is drawn over, and the GitHub token and API a [[Publish
+ * Repository]] is committed with (ADR 0152). The host was started from another environment (an
+ * agent's), and a scheduled publish may name its own browser, map host or token. The token goes
+ * no further than this request: the host uses it for this publish and keeps nothing of it.
  */
 const PUBLISH_SETTINGS = [
     'ETHERPK_MCP_PUBLISH_CONFIG',
@@ -213,6 +230,8 @@ const PUBLISH_SETTINGS = [
     'PLAYWRIGHT_BROWSERS_PATH',
     'PLAYWRIGHT_CHROMIUM_EXECUTABLE',
     'ETHERPK_MAP_STYLE_URL',
+    'ETHERPK_GITHUB_TOKEN',
+    'ETHERPK_GITHUB_API_URL',
 ] as const
 
 /** The publish settings in `env`, for a `publish` request. */

@@ -9,6 +9,9 @@
      *   unset-or-stale pointer among many             → the /graphs picker
      *   exactly one graph / valid pointer             → open that graph
      *
+     * `rootDestination` then turns the target into an address: an installed app's launch marker
+     * and icon shortcuts (`?shortcut=today`) are read here and never carried on.
+     *
      * The public home stays addressable at `/home`; nothing here is a one-way door.
      *
      * Redirects replace history so Back never lands the user on this transient
@@ -17,7 +20,8 @@
     import { onMount } from 'svelte'
 
     import { goto } from '$app/navigation'
-    import { createIdbGraphRegistry, getLastGraphId, resolveGraphTarget } from '$lib/storage'
+    import { todayISO } from '$lib/document/calendar/month-grid-core'
+    import { createIdbGraphRegistry, getLastGraphId, resolveGraphTarget, rootDestination } from '$lib/storage'
 
     let message = $state('')
 
@@ -28,13 +32,8 @@
                 const graphs = await createIdbGraphRegistry().listGraphs()
                 if (cancelled) return
                 const target = resolveGraphTarget(graphs, getLastGraphId())
-                // Forward the query string (e.g. dev's ?fs=opfs) onto the destination.
-                const search = window.location.search
-                const dest =
-                    target.kind === 'open' ? `/g/${target.id}${search}`
-                    : target.kind === 'home' ? `/home${search}`
-                    : '/graphs'
-                await goto(dest, { replaceState: true })
+                // Today is read at the moment of the launch: an installed app is opened days apart.
+                await goto(rootDestination(target, window.location.search, () => todayISO()), { replaceState: true })
             } catch (err) {
                 message = (err as Error).message
             }

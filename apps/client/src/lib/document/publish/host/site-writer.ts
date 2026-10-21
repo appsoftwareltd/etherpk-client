@@ -42,6 +42,13 @@ export interface SiteFolder {
     remove(path: string): Promise<void>
     /** Every file path under the folder, relative. */
     listFiles(): Promise<string[]>
+    /**
+     * Whether the file at `path` already holds `content`, when the folder can tell without reading
+     * it. A local folder reads the file back, which is cheap, and leaves this out. A [[Publish
+     * Repository]] compares git's name for the content with the one in the branch's tree, where a
+     * read would be one download per file of the site.
+     */
+    sameContent?(path: string, content: SiteFile): Promise<boolean>
 }
 
 /**
@@ -64,6 +71,14 @@ function sameBytes(a: Uint8Array, b: Uint8Array): boolean {
     return true
 }
 
+/** Whether the folder already holds `content` at `path`: compared where it can, read back where it cannot. */
+async function holds(folder: SiteFolder, path: string, content: SiteFile): Promise<boolean> {
+    if (folder.sameContent) return folder.sameContent(path, content)
+    if (typeof content === 'string') return (await folder.readText(path)) === content
+    const existing = await folder.readBytes(path)
+    return existing !== null && sameBytes(existing, content)
+}
+
 /** Write a site into a folder under the rules above, whatever stands behind the folder. */
 export async function writeSite(folder: SiteFolder, bundle: SiteBundle, options: SiteWriteOptions): Promise<SiteWriteResult> {
     const result: SiteWriteResult = { written: 0, unchanged: 0, deleted: [] }
@@ -72,17 +87,9 @@ export async function writeSite(folder: SiteFolder, bundle: SiteBundle, options:
 
     for (const [path, content] of bundle) {
         options.onProgress?.(done++, total)
-        if (typeof content === 'string') {
-            if ((await folder.readText(path)) === content) {
-                result.unchanged++
-                continue
-            }
-        } else {
-            const existing = await folder.readBytes(path)
-            if (existing && sameBytes(existing, content)) {
-                result.unchanged++
-                continue
-            }
+        if (await holds(folder, path, content)) {
+            result.unchanged++
+            continue
         }
         await folder.writeFile(path, content)
         result.written++

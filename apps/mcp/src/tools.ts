@@ -125,6 +125,16 @@ export type ToolErrorCode =
     | 'no_publish_folder'
     /** The Publish Folder is the graph's own folder, inside it, or holds it, so a publish would delete the graph's files. */
     | 'publish_folder_overlaps_graph'
+    /** The publication publishes to a GitHub repository, which only the person's own publish command commits to (ADR 0152). */
+    | 'publishes_to_repository'
+    /** A publish to a repository with no `ETHERPK_GITHUB_TOKEN` to commit with. */
+    | 'no_github_token'
+    /** GitHub refused the publish: the token, the repository, the branch or its protection; the message says which. */
+    | 'github_refused'
+    /** A first publish would replace files on a branch that does not hold this site, and `--replace` was not given. */
+    | 'repository_needs_confirmation'
+    /** The repository's branch holds a knowledge graph, which a publish would gut. */
+    | 'repository_holds_graph'
     /** The publish needs a browser for Mermaid and none is set up (ADR 0084). */
     | 'chromium_unavailable'
     /** No theme answers to that reference: not in the graph, not bundled, not a url. */

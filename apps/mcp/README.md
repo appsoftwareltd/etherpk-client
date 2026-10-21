@@ -64,7 +64,7 @@ every tool refuses a protected document.
 | Tasks handed over | `read_task`, `add_task_note`, `set_task` | Paste the agent a task reference copied in EtherPK. The reference still finds the task after lines are added above it, and refuses once the task's words change. |
 | Rename | `plan_rename`, `rename` | Links to the old name are rewritten. Renaming onto a name in use merges two documents and needs confirming. |
 | Images and files | `upload_asset`, `read_asset`, `list_assets` | `upload_asset` returns the markdown to paste into a document. It refuses hidden files and folders (`.ssh`, `.env`), the Headless Client's own config and cache, and files over 100 MiB. |
-| Publishing | `list_publications`, `create_publication`, `update_publication`, `publish` | `publish` writes to the folder set with the `publish` command. The agent can't choose one. |
+| Publishing | `list_publications`, `create_publication`, `update_publication`, `publish` | `publish` writes to the folder set with the `publish` command. The agent can't choose one, and it never publishes to a GitHub repository, which only the `publish` command commits to. |
 | Themes | `list_themes`, `read_theme`, `read_theme_file`, `create_theme`, `customise_publication_theme`, `write_theme_file`, `delete_theme_file`, `import_theme_folder`, `delete_theme`, `preview_theme` | Bundled themes are read-only, and customising one copies it into the graph. `preview_theme` renders a site, with screenshots when a browser is set up. |
 
 `read_asset`, `read_theme` and `preview_theme` write only in the graph's `downloads` folder in the
@@ -187,6 +187,21 @@ npx @appsoftwareltd/etherpk-mcp publish --graph <id or name> --publication <id> 
   computer instead, which NixOS needs.
 - `list_publications`, or **Settings → Publish** in EtherPK, shows the publication ids.
 
+To publish straight to a branch of a GitHub repository, as one commit that the host watching the
+branch deploys, give `--github` in place of `--out`, with a GitHub token that may read and write the
+repository's Contents:
+
+```sh
+ETHERPK_GITHUB_TOKEN=<token> npx @appsoftwareltd/etherpk-mcp publish --graph <id or name> --publication <id> --github <owner/name[#branch]>
+```
+
+- The branch is `main` unless `#branch` names another. A publish never creates the branch.
+- `--github` is remembered in place of the folder, so later runs need only the token.
+- A publish that changes nothing makes no commit. The first publish to a branch that already holds
+  other files lists the files it would replace and stops, and `--replace` publishes anyway.
+- The agent's `publish` tool never commits to a repository, because a commit can put the site
+  live. It can check the publication with `dryRun: true`.
+
 ## The agent skill
 
 The `etherpk` agent skill teaches an agent to make a blog, docs site or wiki folder in EtherPK's
@@ -218,7 +233,7 @@ install the package globally once with `npm install -g @appsoftwareltd/etherpk-m
 | `semantic setup` | Install the embedding runtime and model into the cache directory. |
 | `semantic status` | Whether semantic search is set up, and each cached graph's embedding progress. |
 | `semantic remove` | Delete the runtime and model. Stored embeddings stay, and are reused if you set up again. |
-| `publish (--graph <id or name> \| --folder <path>) --publication <id> [--out <dir>]` | Publish one publication of a graph to a folder and print the report. |
+| `publish (--graph <id or name> \| --folder <path>) --publication <id> [--out <dir> \| --github <owner/name[#branch]> \| --dry-run] [--replace]` | Publish one publication of a graph to a folder, or as a commit to a GitHub repository, and print the report. |
 | `diagrams setup` | Install a Chromium into the cache directory, so a publish can draw Mermaid diagrams and maps. |
 | `diagrams status` | Which browser a publish would use, if any. |
 
@@ -236,6 +251,9 @@ install the package globally once with `npm install -g @appsoftwareltd/etherpk-m
 | `--all` | `logout`, `stop` | Every server, or every graph. |
 | `--publication <id>` | `publish` | Which publication of the graph. |
 | `--out <dir>` | `publish` | Where the site goes. Remembered for the graph and publication. |
+| `--github <owner/name[#branch]>` | `publish` | Commit the site to this repository's branch instead. Remembered in place of `--out`. |
+| `--replace` | `publish` | Let a first publish to a repository replace files on a branch that holds something else. |
+| `--dry-run` | `publish` | Render and check the publication, print the whole report, and write nothing. |
 
 ### Environment variables
 
@@ -249,7 +267,9 @@ because the agent starts `serve` with its own environment.
 | `ETHERPK_MCP_SECRETS` | `file` keeps the agent token and Encryption Keys in the login file even where there is a keychain. |
 | `ETHERPK_MCP_CONFIG` | The login file. Default `~/.config/etherpk/mcp.json`, or under `XDG_CONFIG_HOME` when that is set. |
 | `ETHERPK_MCP_CACHE_DIR` | The cache directory for graphs, the semantic runtime and the model. Default `~/.cache/etherpk/mcp`, or under `XDG_CACHE_HOME` when that is set. |
-| `ETHERPK_MCP_PUBLISH_CONFIG` | The file that remembers each publication's folder. Default `publish.json` beside the login file. |
+| `ETHERPK_MCP_PUBLISH_CONFIG` | The file that remembers each publication's folder or repository. Default `publish.json` beside the login file. |
+| `ETHERPK_GITHUB_TOKEN` | The GitHub token `publish --github` commits with. Read from the shell that runs `publish`. |
+| `ETHERPK_GITHUB_API_URL` | GitHub Enterprise Server's API (`https://<host>/api/v3`) in place of github.com's. |
 | `ETHERPK_MCP_SEMANTIC_THREADS` | Threads for the embedding model. Default a quarter of the cores, at most four. |
 | `ETHERPK_MCP_HOST_IDLE_SECONDS` | How long a graph's background process stays after its last agent has gone. Default 300. |
 | `ETHERPK_CHROMIUM` | A Chromium on this computer for drawing diagrams and maps, instead of the one `diagrams setup` installs. |

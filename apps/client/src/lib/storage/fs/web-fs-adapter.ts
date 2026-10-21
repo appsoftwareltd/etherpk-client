@@ -5,7 +5,8 @@
  * two roles):
  *
  * - `pickGraphDirectory()` — the File System Access API picker: the user's real
- *   directory; authoritative content; Chromium-desktop only; needs a user gesture.
+ *   directory; authoritative content; Chrome and Edge on a computer and Chrome on
+ *   Android (Brave turns it off); needs a user gesture.
  * - `getOpfsRoot()` — the Origin Private File System: browser-private; no picker;
  *   the automated test vehicle and (later) the home of derived caches/indexes.
  *
@@ -21,7 +22,7 @@ import { SUBDIRS } from './directory-adapter'
 import { writeFileContents } from './file-write'
 
 // `showDirectoryPicker` is part of the File System Access API but not yet in the
-// TS DOM lib. Declare the slice we use (Chromium desktop only; see isFsaSupported).
+// TS DOM lib. Declare the slice we use (Chromium only; see isFsaSupported).
 declare global {
     interface Window {
         showDirectoryPicker(options?: {
@@ -134,7 +135,11 @@ export function createWebFsDirectoryAdapter(root: FileSystemDirectoryHandle): Di
     }
 }
 
-/** True when the File System Access picker exists (Chromium desktop). */
+/**
+ * True when the File System Access picker exists: Chrome and Edge on a computer, and Chrome on
+ * Android from 132. Chrome on Android does not keep the permission between sessions, so a
+ * folder graph there asks for access each time it opens.
+ */
 export function isFsaSupported(): boolean {
     return typeof window !== 'undefined' && 'showDirectoryPicker' in window
 }

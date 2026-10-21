@@ -14,7 +14,7 @@ import { bundledTheme } from '@appsoftwareltd/etherpk-themes'
 import { withAliasesInAddedBlock } from '$lib/document/frontmatter/identity'
 import { withFrontmatterPatch } from '$lib/document/frontmatter/patch'
 import { type PublishingPatch, withPublishing } from '$lib/document/frontmatter/publishing'
-import { agentsMdWithManagedSection, seededFiles } from '$lib/document/publish/seeded'
+import { type SiteDestination, agentsMdWithManagedSection, seededFiles } from '$lib/document/publish/seeded'
 import { type PublishEnvironment, type PublishReport, publishPublication } from '$lib/document/publish/publish'
 import { type PublicationKind, type PublicationSelection, type Publication, type PublishSource } from '$lib/document/publish/types'
 import { DEFAULT_RECENT_POSTS, discoverPublications, isPublicationId, readMembership, readPublicationDefinition } from '$lib/document/publish/publication'
@@ -245,6 +245,8 @@ export interface PublishRunDeps {
     /** Documents whose text this device could not confirm; they are not in `source` and the report says so. */
     unsettled?: readonly string[]
     onProgress?: Parameters<typeof publishPublication>[3] extends { onProgress?: infer P } | undefined ? P : never
+    /** Where the site goes, which decides its seeded files (a repository gets no Pages workflow). */
+    destination?: SiteDestination
 }
 
 export interface PublishRun {
@@ -272,7 +274,7 @@ export async function runPublish(publication: Publication, deps: PublishRunDeps)
     return {
         report,
         bundle,
-        seeded: seededFiles(publication),
+        seeded: seededFiles(publication, deps.destination),
         agentsMd: (existing) => agentsMdWithManagedSection(existing, publication),
     }
 }

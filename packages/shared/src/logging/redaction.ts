@@ -87,7 +87,7 @@ export function redactQueryString(search: string | null | undefined): string | u
             // decoded value as a path; only a value the path rules cut is rewritten.
             const value = decodeQueryValue(pair.slice(separator + 1))
             if (value?.startsWith('/')) {
-                const redactedPath = redactPath(value)
+                const redactedPath = redactReturnPath(value)
                 if (redactedPath !== value) return `${name}=${redactedPath}`
             }
             return pair
@@ -95,6 +95,29 @@ export function redactQueryString(search: string | null | undefined): string | u
         .join('&')
 
     return `?${redacted}`
+}
+
+/**
+ * The query string to log for a request to `pathname`. On a path whose query string is the user's
+ * content (see {@link CONTENT_QUERY_PATHS}) it is replaced whole, and anywhere else each parameter
+ * is judged by {@link redactQueryString}.
+ */
+export function redactRequestQuery(pathname: string, search: string | null | undefined): string | undefined {
+    const redacted = redactQueryString(search)
+    if (redacted === undefined || !carriesContentInQuery(pathname)) return redacted
+    return `?${REDACTED}`
+}
+
+/**
+ * A return path judged as the request it names would be: the path by {@link redactPath}, and the
+ * whole query string when that path carries the user's content in it.
+ */
+function redactReturnPath(value: string): string {
+    const queryStart = value.indexOf('?')
+    if (queryStart !== -1 && carriesContentInQuery(value.slice(0, queryStart))) {
+        return `${value.slice(0, queryStart)}?${REDACTED}`
+    }
+    return redactPath(value)
 }
 
 function decodeQueryValue(raw: string): string | null {
@@ -143,6 +166,26 @@ const SENSITIVE_PATH_PREFIXES: RegExp[] = [
 ]
 
 /**
+ * Paths whose whole query string is the user's content, so no parameter of it is logged, whatever
+ * it is called. Matched case-insensitively, with or without a trailing slash.
+ *
+ * - The Client's Share Target, `/share`. Another app hands it the shared note as `title`, `text`
+ *   and `url` parameters.
+ */
+const CONTENT_QUERY_PATHS: RegExp[] = [/^\/share\/?$/i]
+
+function carriesContentInQuery(pathname: string): boolean {
+    return CONTENT_QUERY_PATHS.some((pattern) => pattern.test(pathname))
+}
+
+/** A `?query#fragment` tail with its query replaced whole and its fragment kept. */
+function redactWholeQuery(tail: string): string {
+    if (!tail.startsWith('?')) return tail
+    const fragmentStart = tail.indexOf('#')
+    return `?${REDACTED}${fragmentStart === -1 ? '' : tail.slice(fragmentStart)}`
+}
+
+/**
  * Replace the credential or content tail of a request path with `[redacted]`, leaving every
  * other path unchanged. Pair it with {@link redactQueryString}: this covers the path, that the
  * query.
@@ -168,7 +211,8 @@ export function redactUrl<T extends string | null | undefined>(url: T): T {
     const base = tailStart === -1 ? withQuery : withQuery.slice(0, tailStart)
     const tail = tailStart === -1 ? '' : withQuery.slice(tailStart)
     const origin = /^[a-z][a-z0-9+.-]*:\/\/[^/]*/i.exec(base)?.[0] ?? ''
-    return `${origin}${redactPath(base.slice(origin.length))}${tail}` as T
+    const path = base.slice(origin.length)
+    return `${origin}${redactPath(path)}${carriesContentInQuery(path) ? redactWholeQuery(tail) : tail}` as T
 }
 
 /**

@@ -210,6 +210,11 @@
         type SettingsTab,
     } from "$lib/workspace/device-memory";
     import { SETTINGS_PARAM, settingsTabFromUrl, withSettingsTab, withoutSettingsTab } from "$lib/workspace/settings-url";
+    import { WORKSPACE_LAUNCH_PARAM, withoutParams, workspaceLaunchFrom } from "$lib/navigation/launch-shortcuts";
+    import { claimInstallOfferHere } from "$lib/install/install-notices";
+    import { registerInstallCommands } from "$lib/install/install-commands";
+    import { installPlatform as installRoute, installState, startInstall } from "$lib/install/install-state.svelte";
+    import { canInstall } from "$lib/storage/install-platform";
     import { folderPublishReader, readPublishSource } from "$lib/document/publish/source";
     import { readMembership } from "$lib/document/publish/publication";
     import { createThemeLoader } from "$lib/document/publish/theme/sources";
@@ -218,13 +223,20 @@
     import { MAP_FENCE_INFO } from "$lib/document/map-text";
     import { writeSiteToDirectory } from "$lib/document/publish/host/site-writer";
     import { downloadZip, zipSite } from "$lib/document/publish/host/zip";
+    import { publishToRepository } from "$lib/document/publish/host/github-site-folder";
+    import { createBranch } from "$lib/document/publish/host/github-repository";
+    import { seededFiles } from "$lib/document/publish/seeded";
     import type { Publication, PublishSource } from "$lib/document/publish/types";
-    import type { PublishTabProps, PublishTarget, PublishOutcome } from "$lib/sync/ui/publish-tab";
+    import type { PublishAttempt, PublishTabProps, PublishTarget, PublishOutcome, RepositoryCheckState } from "$lib/sync/ui/publish-tab";
     import {
-        forgetPublicationFolder,
-        readPublicationFolder,
-        writePublicationFolder,
-    } from "$lib/storage/publication-folder-idb";
+        forgetPublicationDestination,
+        isRepositoryRecord,
+        publicationDestinationKey,
+        readPublicationDestination,
+        writePublicationDestination,
+        type PublicationRepositoryRecord,
+    } from "$lib/storage/publication-destination-idb";
+    import { checkWithToken, gitHubApiFor, gitHubTokenControls, personFacing, requireReady } from "$lib/workspace/publish-repository";
     import { containsCipherFence } from "$lib/document/protection/fence-info";
     import { registerProtectionCommands } from "$lib/document/commands/protection-commands";
     import { registerFrontmatterCommands } from "$lib/document/commands/frontmatter-commands";
@@ -383,6 +395,7 @@
         readMirrorFolder,
         setLastGraphId,
         STORAGE_RECOVERY_FOOTNOTE_OPEN_GRAPH,
+        STORAGE_RECOVERY_INSTALL_LINE,
         STORAGE_RECOVERY_HEADLINE,
         STORAGE_RECOVERY_INTRO,
         acknowledgeStorageRecoveries,
@@ -1071,6 +1084,9 @@
             dismissNotice(STORAGE_RECOVERY_NOTICE);
             return;
         }
+        // Installing is what makes the browser less likely to clear the data again, so the
+        // notice offers it, under the once-only rules every install offer follows.
+        const offerInstall = untrack(() => claimInstallOfferHere("storage-cleared"));
         showNotice({
             id: STORAGE_RECOVERY_NOTICE,
             tone: "info",
@@ -1078,7 +1094,12 @@
             title: STORAGE_RECOVERY_HEADLINE,
             text: STORAGE_RECOVERY_INTRO,
             items: [...storageRecoveryLines],
-            footnote: STORAGE_RECOVERY_FOOTNOTE_OPEN_GRAPH,
+            footnote: offerInstall
+                ? `${STORAGE_RECOVERY_FOOTNOTE_OPEN_GRAPH} ${STORAGE_RECOVERY_INSTALL_LINE}`
+                : STORAGE_RECOVERY_FOOTNOTE_OPEN_GRAPH,
+            actions: offerInstall
+                ? [{ label: "Install EtherPK", run: () => void startInstall(), primary: true, id: "storage-recovery-install" }]
+                : undefined,
             ondismiss: acknowledgeStorageRecoveries,
         });
     });
@@ -1358,6 +1379,7 @@
     let detachSpellingCommands: (() => void) | undefined;
     let detachBacklinksCommands: (() => void) | undefined;
     let detachJournalCommands: (() => void) | undefined;
+    let detachInstallCommands: (() => void) | undefined;
     let detachTemplateCommands: (() => void) | undefined;
     let detachProtectionCommands: (() => void) | undefined;
     let detachFrontmatterCommands: (() => void) | undefined;
@@ -4048,6 +4070,14 @@
         });
         // The Journal Roll beneath a journal tab (ADR 0136): Show older entry.
         detachJournalCommands = registerJournalCommands(commandRegistry, contributions);
+        // Install EtherPK: a permanent Install entry for the keyboard, beside the others.
+        detachInstallCommands = registerInstallCommands(commandRegistry, contributions, {
+            install: () => void startInstall(),
+            installable: () => {
+                const install = installState();
+                return !install.installed && !install.installedOnDevice && canInstall(installRoute);
+            },
+        });
         // `/Template` (ADR 0144): the list is the index's answer, and a picked Template is read
         // through the store's snapshot, which never opens an editor for it.
         detachTemplateCommands = registerTemplateCommands(commandRegistry, contributions, {
@@ -4727,9 +4757,23 @@
             settingsAskedBeforeSeed = null;
             if (asked) openGraphSettings(asked.tab, asked.options);
             else focusInitialDocument();
+            runLaunchFromUrl();
         } else {
             suppressNav = false;
         }
+    }
+
+    /**
+     * An app icon shortcut that is an action rather than a document (`?launch=search`, from the
+     * root resolver): run it once the graph is open, and take it off the address so a reload or a
+     * shared address does not run it again.
+     */
+    function runLaunchFromUrl() {
+        if (!new URLSearchParams(location.search).has(WORKSPACE_LAUNCH_PARAM)) return;
+        const launch = workspaceLaunchFrom(location.search);
+        replaceState(location.pathname + withoutParams(location.search, [WORKSPACE_LAUNCH_PARAM]) + location.hash, page.state);
+        if (launch === "search") void commandRegistry?.execute("search.open");
+        else if (launch === "quick-note") void commandRegistry?.execute(QUICK_NOTES_OPEN);
     }
 
     /**
@@ -5397,10 +5441,25 @@
         });
     }
 
-    async function publishTo(publication: Publication, target: PublishTarget): Promise<PublishOutcome> {
-        const record = target === "folder" ? await readPublicationFolder(graphId, publication.id) : undefined;
-        const handle = record?.handle as FileSystemDirectoryHandle | undefined;
+    /** "14:05": when a wait GitHub asked for ends, as the Activity says it. */
+    function clockTime(ms: number): string {
+        return new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    }
+
+    /** This publication's remembered repository on this device, or an error saying to save one. */
+    async function repositoryRecordOf(publicationId: string): Promise<PublicationRepositoryRecord> {
+        const record = await readPublicationDestination(graphId, publicationId);
+        if (!record || !isRepositoryRecord(record)) throw new Error("Save a repository first.");
+        return record;
+    }
+
+    async function publishTo(publication: Publication, target: PublishTarget, options: { confirmed?: boolean } = {}): Promise<PublishAttempt> {
+        const record = target === "zip" ? undefined : await readPublicationDestination(graphId, publication.id);
+        const folderRecord = target === "folder" && record && !isRepositoryRecord(record) ? record : undefined;
+        const repositoryRecord = target === "repository" && record && isRepositoryRecord(record) ? record : undefined;
+        const handle = folderRecord?.handle as FileSystemDirectoryHandle | undefined;
         if (target === "folder" && !handle) throw new Error("Choose a folder first.");
+        if (target === "repository" && !repositoryRecord) throw new Error("Save a repository first.");
         if (handle && !(await ensurePermission(handle, "readwrite"))) {
             throw new Error("EtherPK was not allowed to write to the folder. Choose it again to grant access.");
         }
@@ -5408,18 +5467,28 @@
         // graph opened there since.
         const overlap = handle ? await findPublishFolderOverlap(handle, await readKnownGraphFolders()) : null;
         if (overlap && handle) throw new Error(publishFolderOverlapMessage(handle.name, overlap));
+        // A repository never checked is checked before the graph is read, so a token that cannot
+        // write there fails in a second rather than after the render (ADR 0152).
+        if (repositoryRecord && !repositoryRecord.checkedAt) {
+            requireReady(await checkWithToken({ settings: personSettings() }, repositoryRecord.repository), repositoryRecord.repository);
+        }
         let outcome: PublishOutcome | null = null;
+        let replaced: string[] | null = null;
         let failure: unknown = null;
+        const writePhases =
+            target === "repository"
+                ? [
+                      { label: "Reading the branch", unit: "items" as const },
+                      { label: "Uploading", unit: "items" as const },
+                      { label: "Committing", unit: "items" as const },
+                  ]
+                : [{ label: target === "zip" ? "Building the zip" : "Writing the folder", unit: "items" as const }];
         await runActivity({
             kind: "publish",
             title: `Publishing ${publication.name}`,
             failureTitle: `Publishing ${publication.name} failed`,
             cancellable: false,
-            phases: [
-                { label: "Reading the graph", unit: "items" },
-                { label: "Rendering", unit: "items" },
-                { label: target === "zip" ? "Building the zip" : "Writing the folder", unit: "items" },
-            ],
+            phases: [{ label: "Reading the graph", unit: "items" }, { label: "Rendering", unit: "items" }, ...writePhases],
             run: async (activity) => {
                 try {
                     activity.beginPhase(0, 0);
@@ -5431,6 +5500,7 @@
                         source,
                         unsettled,
                         environment: publishEnvironment(),
+                        destination: target === "repository" ? "repository" : "folder",
                         onProgress: (p) => {
                             if (p.phase === "rendering") activity.report({ phase: 1, done: p.done, total: p.total });
                         },
@@ -5446,10 +5516,53 @@
                         };
                     }
                     activity.beginPhase(2, run.bundle.size);
+                    let where: string;
                     if (target === "zip") {
                         const bytes = zipSite(run.bundle, run.seeded, run.agentsMd(null));
                         downloadZip(bytes, `${publication.id}-site.zip`);
                         outcome = { report: run.report, target };
+                        where = " in the zip";
+                    } else if (repositoryRecord) {
+                        const repo = repositoryRecord.repository;
+                        const phaseOf = { reading: 2, uploading: 3, committing: 4 } as const;
+                        let result;
+                        try {
+                            const api = gitHubApiFor({ settings: personSettings() }, (until) => activity.note(`Waiting for GitHub until ${clockTime(until)}`));
+                            result = await publishToRepository(
+                                api,
+                                repo,
+                                { publicationId: publication.id, bundle: run.bundle, seeded: run.seeded, agentsMd: run.agentsMd },
+                                {
+                                    confirmed: options.confirmed,
+                                    onProgress: (phase, done, total) => {
+                                        activity.note(null);
+                                        activity.report({ phase: phaseOf[phase], done, total });
+                                    },
+                                },
+                            );
+                        } catch (error) {
+                            throw personFacing(error, repo);
+                        }
+                        if (result.state === "needs-confirmation") {
+                            // Nothing was committed; the tab asks, naming the files.
+                            replaced = result.replaced;
+                            return {
+                                state: "partial",
+                                title: `${publication.name} was not published`,
+                                detail: `Publishing would replace ${result.replaced.length} file${result.replaced.length === 1 ? "" : "s"} on ${repo.branch} that this site did not write. Confirm in Settings → Publish.`,
+                                action: { label: "Open Publish", run: () => openGraphSettings("publish") },
+                            };
+                        }
+                        const commit = result.state === "committed" ? result.commit : null;
+                        outcome = { report: run.report, target, written: result.written, repository: repo, commit };
+                        await writePublicationDestination({
+                            ...repositoryRecord,
+                            publishedAt: run.report.generatedAt,
+                            // A publish that reached GitHub proves the token as well as a check does.
+                            checkedAt: new Date().toISOString(),
+                            commitUrl: commit?.url ?? repositoryRecord.commitUrl,
+                        });
+                        where = commit ? ` to ${repo.owner}/${repo.name}@${repo.branch}` : `, nothing changed on ${repo.owner}/${repo.name}@${repo.branch}, so no commit`;
                     } else {
                         const written = await writeSiteToDirectory(handle as FileSystemDirectoryHandle, run.bundle, {
                             seeded: run.seeded,
@@ -5457,16 +5570,17 @@
                             onProgress: (done, total) => activity.report({ phase: 2, done, total }),
                         });
                         outcome = { report: run.report, target, written };
-                        if (record) await writePublicationFolder({ ...record, publishedAt: run.report.generatedAt });
+                        if (folderRecord) await writePublicationDestination({ ...folderRecord, publishedAt: run.report.generatedAt });
+                        where = ` in ${folderRecord?.folder ?? "the folder"}`;
                     }
                     publishOutcomes = { ...publishOutcomes, [publication.id]: outcome };
                     writeLastPublication(graphId, publication.id);
                     const warnings = run.report.warnings.length;
                     return {
                         title: `Published ${publication.name}`,
-                        detail: `${run.report.included.length} document${run.report.included.length === 1 ? "" : "s"}${
-                            target === "zip" ? " in the zip" : ` in ${record?.folder ?? "the folder"}`
-                        }${warnings > 0 ? `, ${warnings} warning${warnings === 1 ? "" : "s"} in the report` : ""}`,
+                        detail: `${run.report.included.length} document${run.report.included.length === 1 ? "" : "s"}${where}${
+                            warnings > 0 ? `, ${warnings} warning${warnings === 1 ? "" : "s"} in the report` : ""
+                        }`,
                         // The report is where the warnings are read, so the toast leads there; a
                         // clean publish still offers it, but goes by itself.
                         action: showReportAction(publication.id),
@@ -5479,8 +5593,9 @@
             },
         });
         if (failure) throw failure;
+        if (replaced) return { state: "needs-confirmation", replaced };
         if (!outcome) throw new Error("The publish did not finish.");
-        return outcome;
+        return { state: "published", outcome };
     }
 
     /** The toast's follow-on: Settings → Publish, with that publication's report open. */
@@ -5493,8 +5608,9 @@
 
     /**
      * The Publish command: the publication last published from this device (or the graph's
-     * only one) again, to its remembered folder, with no dialog in between. When it cannot tell
-     * which publication or where, the Publish tab opens instead, which is where both are chosen.
+     * only one) again, to its remembered folder or repository, with no dialog in between. When it
+     * cannot tell which publication or where, or a first publish to a repository needs the
+     * person's go-ahead, the Publish tab opens instead, which is where those are settled.
      */
     async function publishAgain(): Promise<void> {
         let candidate: Publication | undefined;
@@ -5510,14 +5626,16 @@
             openGraphSettings("publish");
             return;
         }
-        const record = await readPublicationFolder(graphId, candidate.id);
+        const record = await readPublicationDestination(graphId, candidate.id);
         if (!record) {
-            notify(`No folder is chosen for ${candidate.name} on this device - choose one to publish from the keyboard.`);
+            notify(`No folder or repository is chosen for ${candidate.name} on this device - choose one to publish from the keyboard.`);
             openGraphSettings("publish");
             return;
         }
         try {
-            await publishTo(candidate, "folder");
+            const attempt = await publishTo(candidate, isRepositoryRecord(record) ? "repository" : "folder");
+            // The toast says what would be replaced; the tab is where the person agrees to it.
+            if (attempt.state === "needs-confirmation") openGraphSettings("publish");
         } catch (error) {
             // The Activity toast has already reported a failed run; this is the step before it.
             notify((error as Error).message);
@@ -5532,9 +5650,13 @@
                 const summary = summarisePublishing(source);
                 return { ...summary, unsettled };
             },
-            folderOf: async (publicationId) => {
-                const record = await readPublicationFolder(graphId, publicationId);
-                return record ? { folder: record.folder, publishedAt: record.publishedAt } : null;
+            destinationOf: async (publicationId) => {
+                const record = await readPublicationDestination(graphId, publicationId);
+                if (!record) return null;
+                if (isRepositoryRecord(record)) {
+                    return { kind: "repository", ...record.repository, checkedAt: record.checkedAt, publishedAt: record.publishedAt, commitUrl: record.commitUrl };
+                }
+                return { kind: "folder", folder: record.folder, publishedAt: record.publishedAt };
             },
             onchoosefolder: async (publicationId) => {
                 let handle: FileSystemDirectoryHandle;
@@ -5547,8 +5669,9 @@
                 // Refused before it is remembered, and shown at the publication's row.
                 const overlap = await findPublishFolderOverlap(handle, await readKnownGraphFolders());
                 if (overlap) throw new Error(publishFolderOverlapMessage(handle.name, overlap));
-                await writePublicationFolder({
-                    key: `${graphId}/${publicationId}`,
+                // One destination per publication on a device: the folder replaces any repository.
+                await writePublicationDestination({
+                    key: publicationDestinationKey(graphId, publicationId),
                     graphId,
                     publicationId,
                     handle,
@@ -5556,7 +5679,41 @@
                 });
                 return { folder: handle.name };
             },
-            onforgetfolder: (publicationId) => forgetPublicationFolder(graphId, publicationId),
+            onforgetdestination: (publicationId) => forgetPublicationDestination(graphId, publicationId),
+            onsaverepository: async (publicationId, repository): Promise<RepositoryCheckState> => {
+                const existing = await readPublicationDestination(graphId, publicationId);
+                const same =
+                    existing &&
+                    isRepositoryRecord(existing) &&
+                    existing.repository.owner === repository.owner &&
+                    existing.repository.name === repository.name &&
+                    existing.repository.branch === repository.branch;
+                // Remembered before the check, in place of any folder, so a refusal keeps it as typed.
+                const record: PublicationRepositoryRecord = {
+                    key: publicationDestinationKey(graphId, publicationId),
+                    graphId,
+                    publicationId,
+                    repository,
+                    ...(same ? { publishedAt: existing.publishedAt, commitUrl: existing.commitUrl } : {}),
+                };
+                await writePublicationDestination(record);
+                const state = await checkWithToken({ settings: personSettings() }, repository);
+                if (state === "ready") await writePublicationDestination({ ...record, checkedAt: new Date().toISOString() });
+                return state;
+            },
+            oncreatebranch: async (publication): Promise<RepositoryCheckState> => {
+                const record = await repositoryRecordOf(publication.id);
+                const readme = seededFiles(publication, "repository").get("README.md") ?? `# ${publication.name}\n`;
+                try {
+                    await createBranch(gitHubApiFor({ settings: personSettings() }), record.repository, readme);
+                } catch (error) {
+                    throw personFacing(error, record.repository);
+                }
+                const state = await checkWithToken({ settings: personSettings() }, record.repository);
+                if (state === "ready") await writePublicationDestination({ ...record, checkedAt: new Date().toISOString() });
+                return state;
+            },
+            githubToken: gitHubTokenControls(personSettings()),
             onpublish: publishTo,
             outcomes: publishOutcomes,
             showReport: graphSettingsDialog?.publishReport,
@@ -6587,6 +6744,8 @@
         detachBacklinksCommands = undefined;
         detachJournalCommands?.();
         detachJournalCommands = undefined;
+        detachInstallCommands?.();
+        detachInstallCommands = undefined;
         detachTemplateCommands?.();
         detachTemplateCommands = undefined;
         detachProtectionCommands?.();

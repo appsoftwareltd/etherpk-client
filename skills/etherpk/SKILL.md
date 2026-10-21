@@ -137,7 +137,7 @@ wants.
 
 Tell the user how to open and publish the folder:
 
-- **Open it in EtherPK.** In Chrome, Edge, Brave or Arc on a desktop, go to
+- **Open it in EtherPK.** In Chrome or Edge on the same computer, go to
   <https://app.etherpk.com> (or their own EtherPK), select **Open folder (Local Graph)** on the
   Graphs page and pick the folder. Their edits and yours show up in each other.
   <https://docs.etherpk.com/local-graphs>
@@ -150,7 +150,10 @@ Tell the user how to open and publish the folder:
 
   The site folder is a folder of its own, outside the graph folder, and `--out` is remembered
   after the first run. The published folder comes with a GitHub Pages workflow and a Cloudflare
-  `wrangler.jsonc`. <https://docs.etherpk.com/hosting-a-published-site>
+  `wrangler.jsonc`. When the site lives in a GitHub repository, the user can publish straight to
+  it instead: **A GitHub repository** in the same tab, or `--github <owner/name>` in place of
+  `--out` with their token in `ETHERPK_GITHUB_TOKEN`. Only the user publishes there: your
+  `publish` tool refuses a publication with a repository. <https://docs.etherpk.com/hosting-a-published-site>
 
 Publish yourself when the user asks for it. Until then the dry run is your check.
 

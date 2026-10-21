@@ -1,8 +1,9 @@
 /**
  * The files a site folder is seeded with once and never rewritten (ADR 0082): the deploy
- * workflow for GitHub Pages, the Workers configuration, a README and a .gitignore, plus the
- * folder's AGENTS.md, whose managed section is rewritten every publish while the user's own
- * text outside it is kept (the ADR 0070 mechanism). Pure text; the host decides what exists.
+ * workflow for GitHub Pages (not in a [[Publish Repository]], ADR 0152), the Workers
+ * configuration, a README and a .gitignore, plus the folder's AGENTS.md, whose managed section
+ * is rewritten every publish while the user's own text outside it is kept (the ADR 0070
+ * mechanism). Pure text; the host decides what exists.
  */
 
 import type { Publication } from './types'
@@ -14,9 +15,20 @@ export const README_PATH = 'README.md'
 export const GITIGNORE_PATH = '.gitignore'
 export const AGENTS_PATH = 'AGENTS.md'
 
-/** Files written when absent and left alone afterwards. */
-export function seededFiles(publication: Publication): Map<string, string> {
-    return new Map([
+/**
+ * Where a site is written: a folder (or the zip, which is a folder to unpack) or a [[Publish
+ * Repository]], whose seeded files differ (ADR 0152).
+ */
+export type SiteDestination = 'folder' | 'repository'
+
+/**
+ * Files written when absent and left alone afterwards. A Publish Repository gets no Pages
+ * workflow: GitHub refuses a commit that adds one unless the token may also change workflows,
+ * and Pages serves a branch as it is without one ("Deploy from a branch"), so its README says
+ * that instead.
+ */
+export function seededFiles(publication: Publication, destination: SiteDestination = 'folder'): Map<string, string> {
+    const files = new Map([
         [
             PAGES_WORKFLOW_PATH,
             `# Publishes this folder to GitHub Pages as it is: the site is already built by EtherPK,
@@ -77,8 +89,13 @@ publish, so edit the notes, the publication page, its include pages and its them
 not here.
 
 - Preview: open \`index.html\` in a browser - search works from disk too.
-- GitHub Pages: push this folder to a repository and set Settings → Pages → Source to
-  "GitHub Actions" - \`.github/workflows/pages.yaml\` deploys every push to \`main\`.
+${
+    destination === 'repository'
+        ? `- GitHub Pages: in the repository's Settings → Pages, set Source to "Deploy from a branch" and
+  choose this branch and \`/ (root)\`. Every publish then deploys.`
+        : `- GitHub Pages: push this folder to a repository and set Settings → Pages → Source to
+  "GitHub Actions" - \`.github/workflows/pages.yaml\` deploys every push to \`main\`.`
+}
 - Cloudflare: \`npx wrangler deploy\` uses \`wrangler.jsonc\`, or connect the repository in the
   Workers dashboard with no build command.
 - Netlify, GitLab Pages, Vercel, S3 or your own server: the folder is plain files, so any of
@@ -103,6 +120,8 @@ README.md
 `,
         ],
     ])
+    if (destination === 'repository') files.delete(PAGES_WORKFLOW_PATH)
+    return files
 }
 
 const AGENTS_START = '<!-- etherpk:start -->'
@@ -124,13 +143,31 @@ and files that are no longer produced are deleted.
 - The navigation is the outline of the publication page in EtherPK - the theme and the include
   slots (head, favicon, logo, header, footer, before-content, after-content, scripts, styles) are chosen
   and edited there too, in the Publish settings and the Theme editor.
-- \`index.html\` opens from disk for a preview. \`.github/workflows/pages.yaml\` deploys the folder
-  to GitHub Pages, \`wrangler.jsonc\` deploys it to Cloudflare Workers, and any static host serves it
-  as it is (https://docs.etherpk.com/hosting-a-published-site).
+- EtherPK publishes this site into a folder, or straight to its repository on GitHub, from any
+  device. A change made here to a file it writes is lost on the next publish, wherever that runs.
+- \`index.html\` opens from disk for a preview. On GitHub Pages the site deploys through
+  \`.github/workflows/pages.yaml\` where there is one, or with Pages set to "Deploy from a branch".
+  \`wrangler.jsonc\` deploys it to Cloudflare Workers, and any static host serves it as it is
+  (https://docs.etherpk.com/hosting-a-published-site).
 
 This section is rewritten by EtherPK on every publish. Put your own notes above or below it.
 ${AGENTS_END}
 `
+}
+
+/**
+ * The publication whose site a folder's AGENTS.md says the folder holds, or null when it carries
+ * no published-site section. A first publish to a [[Publish Repository]] asks before it replaces
+ * files on a branch that does not say it holds this publication's site.
+ */
+export function publishedPublicationOf(agentsMd: string | null): string | null {
+    if (agentsMd === null) return null
+    const start = agentsMd.indexOf(AGENTS_START)
+    const end = agentsMd.indexOf(AGENTS_END)
+    if (start === -1 || end <= start) return null
+    const section = agentsMd.slice(start, end)
+    if (!section.includes('## EtherPK published site')) return null
+    return /from the publication\s+`([a-z0-9-]+)`/.exec(section)?.[1] ?? null
 }
 
 /** The folder's AGENTS.md with the managed section replaced or added, the user's text kept. */

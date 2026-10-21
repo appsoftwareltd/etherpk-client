@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { agentsMdWithManagedSection, seededFiles } from './seeded'
+import { agentsMdWithManagedSection, publishedPublicationOf, seededFiles } from './seeded'
 import type { Publication } from './types'
 
 const publication: Publication = { id: 'docs', name: 'Docs', concept: 'Docs Site', kind: 'docs', selection: 'named', theme: 'etherpk-docs', recent: 10, includes: {}, outline: '' }
@@ -32,5 +32,34 @@ describe('seeded files', () => {
 
     it('appends the section to an AGENTS.md that has none', () => {
         expect(agentsMdWithManagedSection('# Mine\n', publication)).toMatch(/^# Mine\n\n<!-- etherpk:start -->/)
+    })
+
+    it('seeds no workflow into a Publish Repository, and tells its README to serve the branch', () => {
+        // GitHub refuses a commit that adds a workflow unless the token may change workflows, and
+        // Pages can serve a branch without one (ADR 0152).
+        const files = seededFiles(publication, 'repository')
+        expect(files.has('.github/workflows/pages.yaml')).toBe(false)
+        expect(files.get('README.md')).toContain('Deploy from a branch')
+        expect(files.get('README.md')).not.toContain('pages.yaml')
+        expect(files.has('wrangler.jsonc')).toBe(true)
+    })
+
+    it('words the managed section the same for a folder and a repository, so publishing from both never flips it', () => {
+        const section = agentsMdWithManagedSection(null, publication)
+        expect(section).toContain('Deploy from a branch')
+        expect(section).toMatch(/straight to its repository/)
+    })
+})
+
+describe('publishedPublicationOf', () => {
+    it('reads the publication a site folder holds from its AGENTS.md', () => {
+        expect(publishedPublicationOf(agentsMdWithManagedSection('# Mine\n', publication))).toBe('docs')
+        expect(publishedPublicationOf(agentsMdWithManagedSection(null, { ...publication, id: 'garden-blog' }))).toBe('garden-blog')
+    })
+
+    it('finds none in an AGENTS.md without the section, or with none at all', () => {
+        expect(publishedPublicationOf(null)).toBeNull()
+        expect(publishedPublicationOf('# Mine\n\nfrom the publication `docs`\n')).toBeNull()
+        expect(publishedPublicationOf('<!-- etherpk:start -->\n## EtherPK knowledge graph\n<!-- etherpk:end -->')).toBeNull()
     })
 })

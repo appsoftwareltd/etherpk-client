@@ -5,9 +5,12 @@
  * which the Settings tab uses too, so a publication page an agent creates is the one a person
  * would have created.
  *
- * Two things are this host's own. The [[Publish Folder]] is configuration a person set on the
+ * Three things are this host's own. The [[Publish Folder]] is configuration a person set on the
  * command line, never a tool argument: the site writer deletes strays from the paths it owns,
- * and a folder an agent inferred could lose real files to that rule. And a publish whose pages
+ * and a folder an agent inferred could lose real files to that rule. A [[Publish Repository]] is
+ * set the same way, and only the person's own `etherpk-mcp publish` commits to it, with the
+ * token in `ETHERPK_GITHUB_TOKEN`: a commit there can deploy the site, so the agent's tool checks
+ * such a publication (a dry run) and never publishes it (ADR 0152). And a publish whose pages
  * hold Mermaid needs the browser `diagrams setup` installed; without one it refuses rather than
  * publishing a site with its diagrams turned to text.
  */
@@ -16,6 +19,9 @@ import { selectDocuments } from '$lib/document/publish/selection'
 import { isPublicationId } from '$lib/document/publish/publication'
 import type { Publication } from '$lib/document/publish/types'
 import { writeSite } from '$lib/document/publish/host/site-writer'
+import { GitHubError, type GitHubRepository, createGitHubApi } from '$lib/document/publish/host/github-api'
+import { describeGitHubError } from '$lib/document/publish/host/github-repository'
+import { type RepositoryPublishResult, publishToRepository } from '$lib/document/publish/host/github-site-folder'
 import {
     type PublicationChanges,
     createPublicationPage,
@@ -29,7 +35,15 @@ import { chromiumStatus, openDiagramRenderer } from './diagrams'
 import { needsMaps, openMapRenderer } from './map-pictures'
 import type { HeadlessGraph } from './headless-graph'
 import { createNodePublishEnvironment, needsMermaid, nodeSiteFolder } from './publish-environment'
-import { defaultPublishFoldersPath, publishFolderOf, publishFolderOverlap, publishGraphKey, readPublishFolders } from './publish-folders'
+import {
+    defaultPublishFoldersPath,
+    publishFolderOf,
+    publishFolderOverlap,
+    publishGraphKey,
+    publishRepositoryOf,
+    readPublishFolders,
+    repositoryLabel,
+} from './publish-folders'
 import { ToolError } from './tools'
 
 /** What the tools need from the process: the environment and how this CLI is spelled for the user. */
@@ -106,8 +120,17 @@ async function settle(graph: HeadlessGraph): Promise<void> {
     if (!result.settled) throw new ToolError('not_settled', result.message)
 }
 
-/** How a publication reads to an agent: its page's settings, and whether this machine can publish it. */
-function publicationView(publication: Publication, folder: string | null) {
+/** Where a publication publishes from this machine: a folder, a repository, or neither. */
+interface Destination {
+    folder: string | null
+    repository: GitHubRepository | null
+}
+
+/**
+ * How a publication reads to an agent: its page's settings, and where this machine publishes it.
+ * A repository shows as `owner/name#branch`; it is not the agent's to publish to.
+ */
+function publicationView(publication: Publication, destination: Destination) {
     return {
         id: publication.id,
         name: publication.name,
@@ -119,14 +142,15 @@ function publicationView(publication: Publication, folder: string | null) {
         theme: publication.theme,
         recent: publication.recent,
         includes: publication.includes,
-        publishFolder: folder,
+        publishFolder: destination.folder,
+        publishRepository: destination.repository ? repositoryLabel(destination.repository) : null,
     }
 }
 
-async function foldersFor(graph: HeadlessGraph, env: NodeJS.ProcessEnv) {
+async function destinationsFor(graph: HeadlessGraph, env: NodeJS.ProcessEnv): Promise<(publicationId: string) => Destination> {
     const folders = await readPublishFolders(defaultPublishFoldersPath(env))
     const key = publishGraphKey(graph.backend, graph.graphId)
-    return (publicationId: string) => publishFolderOf(folders, key, publicationId)
+    return (publicationId) => ({ folder: publishFolderOf(folders, key, publicationId), repository: publishRepositoryOf(folders, key, publicationId) })
 }
 
 /** The publications the graph defines, the issues in their pages, and the public documents none takes. */
@@ -135,9 +159,9 @@ export async function listPublications(graph: HeadlessGraph, host?: PublishHost)
     await graph.store.refresh()
     const { source, unsettled } = await graph.publishing.readSource()
     const summary = summarisePublishing(source)
-    const folderOf = await foldersFor(graph, env)
+    const destinationOf = await destinationsFor(graph, env)
     return {
-        publications: summary.publications.map((p) => publicationView(p, folderOf(p.id))),
+        publications: summary.publications.map((p) => publicationView(p, destinationOf(p.id))),
         issues: summary.issues,
         publicInNoPublication: summary.publicInNoPublication,
         ...(unsettled.length > 0 ? { unsettled } : {}),
@@ -194,8 +218,8 @@ export async function createPublication(graph: HeadlessGraph, args: CreatePublic
         await settle(graph)
     }
     const after = summarisePublishing((await graph.publishing.readSource()).source).publications.find((p) => p.id === id)
-    const folderOf = await foldersFor(graph, env)
-    return { created: true, publication: after ? publicationView(after, folderOf(id)) : { id, page: concept } }
+    const destinationOf = await destinationsFor(graph, env)
+    return { created: true, publication: after ? publicationView(after, destinationOf(id)) : { id, page: concept } }
 }
 
 export interface UpdatePublicationArgs {
@@ -223,8 +247,8 @@ export async function updatePublication(graph: HeadlessGraph, args: UpdatePublic
     await updatePublicationPage(frontmatterStore(graph), current.concept, current, changes)
     await settle(graph)
     const after = summarisePublishing((await graph.publishing.readSource()).source).publications.find((p) => p.id === current.id)
-    const folderOf = await foldersFor(graph, env)
-    return { publication: publicationView(after ?? current, folderOf(current.id)) }
+    const destinationOf = await destinationsFor(graph, env)
+    return { publication: publicationView(after ?? current, destinationOf(current.id)) }
 }
 
 export interface PublishArgs {
@@ -235,6 +259,20 @@ export interface PublishArgs {
      * since drawing them is part of what is checked.
      */
     dryRun?: boolean
+    /**
+     * The person's go-ahead, at the command line only (`--replace`), for a first publish to
+     * replace files on a repository branch that does not say it holds this site.
+     */
+    replace?: boolean
+}
+
+/** A GitHub refusal or a refused branch, as this host words it: the token is an environment variable here. */
+function repositoryRefusal(error: unknown, repo: GitHubRepository): unknown {
+    if (error instanceof GitHubError) {
+        return new ToolError('github_refused', `${describeGitHubError(error, repo, { replaceToken: 'Make a new one and set ETHERPK_GITHUB_TOKEN to it.' })} Nothing was published.`)
+    }
+    if (error instanceof Error && /knowledge graph/.test(error.message)) return new ToolError('repository_holds_graph', `${error.message} Nothing was published.`)
+    return error
 }
 
 /** How many items fall under each key. */
@@ -268,13 +306,28 @@ export async function publish(graph: HeadlessGraph, args: PublishArgs, host?: Pu
     const summary = summarisePublishing(source)
     const publication = summary.publications.find((p) => p.id === args.id.trim())
     if (!publication) throw publicationNotFound(args.id, summary.publications, via)
-    const folder = (await foldersFor(graph, env))(publication.id)
+    const { folder, repository } = (await destinationsFor(graph, env))(publication.id)
     const dryRun = args.dryRun === true
-    if (!folder && !dryRun) {
-        const where = graph.backend.kind === 'folder' ? `--folder "${graph.backend.path}"` : `--graph "${graph.name}"`
+    const where = graph.backend.kind === 'folder' ? `--folder "${graph.backend.path}"` : `--graph "${graph.name}"`
+    if (repository && !dryRun && via === 'agent') {
+        throw new ToolError(
+            'publishes_to_repository',
+            `"${publication.name}" publishes to the GitHub repository ${repositoryLabel(repository)}, and an agent's publish never commits to a repository, because a commit there can deploy the site. Use dryRun to check it. To publish it, ask the user to run: ${cmd} publish ${where} --publication ${publication.id}`,
+        )
+    }
+    const token = env.ETHERPK_GITHUB_TOKEN?.trim()
+    if (repository && !dryRun && !token) {
+        throw new ToolError(
+            'no_github_token',
+            `"${publication.name}" publishes to ${repositoryLabel(repository)}, and ETHERPK_GITHUB_TOKEN is not set. Set it to a GitHub token that may read and write the repository's Contents. Nothing was published.`,
+        )
+    }
+    if (!folder && !repository && !dryRun) {
         throw new ToolError(
             'no_publish_folder',
-            `No publish folder is set for "${publication.name}" on this machine. Ask the user to run: ${cmd} publish ${where} --publication ${publication.id} --out <dir> - that publishes once and remembers the folder for this tool.`,
+            via === 'cli'
+                ? `No publish folder or repository is set for "${publication.name}" on this machine. Run: ${cmd} publish ${where} --publication ${publication.id} --out <dir>, or --github <owner/name> - either is remembered.`
+                : `No publish folder is set for "${publication.name}" on this machine. Ask the user to run: ${cmd} publish ${where} --publication ${publication.id} --out <dir> - that publishes once and remembers the folder for this tool.`,
         )
     }
     if (folder && !dryRun) await checkPublishFolder(graph, publication.id, folder, host)
@@ -307,9 +360,32 @@ export async function publish(graph: HeadlessGraph, args: PublishArgs, host?: Pu
     }
     try {
         const environment = createNodePublishEnvironment({ graphTheme: (id) => graph.publishing.graphTheme(id), renderer, maps })
-        const run = await runPublish(publication, { source, environment, unsettled })
+        const run = await runPublish(publication, { source, environment, unsettled, destination: repository ? 'repository' : 'folder' })
+        let committed: RepositoryPublishResult | null = null
+        if (run.report.ok && repository && !dryRun) {
+            try {
+                const api = createGitHubApi({ token: token as string, baseUrl: env.ETHERPK_GITHUB_API_URL?.trim() || undefined })
+                committed = await publishToRepository(
+                    api,
+                    repository,
+                    { publicationId: publication.id, bundle: run.bundle, seeded: run.seeded, agentsMd: run.agentsMd },
+                    { confirmed: args.replace === true },
+                )
+            } catch (error) {
+                throw repositoryRefusal(error, repository)
+            }
+            if (committed.state === 'needs-confirmation') {
+                const listed = committed.replaced.slice(0, 10).join(', ') + (committed.replaced.length > 10 ? ` and ${committed.replaced.length - 10} more` : '')
+                throw new ToolError(
+                    'repository_needs_confirmation',
+                    `${repositoryLabel(repository)} does not hold this site yet, and publishing would replace or delete ${committed.replaced.length} file${committed.replaced.length === 1 ? '' : 's'} there that it did not write: ${listed}. Nothing was committed. Run the command again with --replace to publish anyway. The old versions stay in the branch's history.`,
+                )
+            }
+        }
         const written =
-            run.report.ok && folder && !dryRun ? await writeSite(nodeSiteFolder(folder), run.bundle, { seeded: run.seeded, agentsMd: run.agentsMd }) : null
+            run.report.ok && folder && !dryRun
+                ? await writeSite(nodeSiteFolder(folder), run.bundle, { seeded: run.seeded, agentsMd: run.agentsMd })
+                : (committed?.written ?? null)
         const excludedByReason: Record<string, number> = {}
         for (const e of run.report.excluded) excludedByReason[e.reason] = (excludedByReason[e.reason] ?? 0) + 1
         return {
@@ -317,6 +393,13 @@ export async function publish(graph: HeadlessGraph, args: PublishArgs, host?: Pu
             ...(dryRun ? { dryRun: true as const } : {}),
             publication: run.report.publication,
             folder,
+            ...(repository
+                ? {
+                      repository: repositoryLabel(repository),
+                      // Null when nothing had changed, so nothing was committed.
+                      commit: committed?.state === 'committed' ? committed.commit.url : null,
+                  }
+                : {}),
             written: written ? { written: written.written, unchanged: written.unchanged, deleted: head(written.deleted) } : null,
             included: head(run.report.included.map((d) => d.concept)),
             excluded: { total: run.report.excluded.length, byReason: excludedByReason },
@@ -358,10 +441,13 @@ export function cliPublishOutput(result: Awaited<ReturnType<typeof publish>>) {
 export async function publishingInfo(graph: HeadlessGraph, host?: PublishHost) {
     const { env, cmd } = hostOf(host)
     const { source } = await graph.publishing.readSource()
-    const folderOf = await foldersFor(graph, env)
+    const destinationOf = await destinationsFor(graph, env)
     const chromium = await chromiumStatus(env, cmd)
     return {
-        publications: summarisePublishing(source).publications.map((p) => ({ id: p.id, name: p.name, kind: p.kind, publishFolder: folderOf(p.id) })),
+        publications: summarisePublishing(source).publications.map((p) => {
+            const { folder, repository } = destinationOf(p.id)
+            return { id: p.id, name: p.name, kind: p.kind, publishFolder: folder, publishRepository: repository ? repositoryLabel(repository) : null }
+        }),
         mermaid: { available: chromium.executable !== null, ...(chromium.executable ? {} : { setup: chromium.setupCommand }) },
     }
 }

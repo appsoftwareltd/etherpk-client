@@ -5,6 +5,54 @@ What changed in each release of the EtherPK Client and the Headless Client
 They are released together, under the version number they share with the Sync Server. This log
 starts at 0.9.3.
 
+## 0.15.0 - 2026-10-21
+
+### Client
+
+- **Publish to a GitHub repository.** In Settings → Publish, a publication can publish to a branch
+  of a GitHub repository in place of a folder, from any browser, phones included. Each publish is
+  one commit, a publish that changes nothing makes no commit, and the host that watches the branch
+  (GitHub Pages, Cloudflare, Netlify) deploys it. You make a GitHub token on GitHub with the
+  Contents permission and paste it once, in a GitHub section at the top of the tab, and it follows
+  you to your other devices through your account. **Save and check** tests the token against the
+  repository, and offers **Create branch** when the branch isn't there yet. The first publish to a
+  branch that already holds other files lists them and asks first. Alt+Shift+P publishes to the
+  repository too.
+- **Install app.** EtherPK offers to install itself as an app from a button in the header (on a
+  computer, while Chrome or Edge offers its install dialog), a row in the phone's header menu, the
+  account menu, **Install EtherPK** in the Command Menu and **Settings > Install**. Where the
+  browser has no install dialog of its own, the **Install EtherPK** dialog gives the steps for that
+  browser: the Share sheet on an iPhone or iPad, Add to Dock in Safari on a Mac, and Add tab to
+  taskbar in Firefox on Windows.
+- **Install offers.** EtherPK offers the install once at a few moments where it helps: on an
+  iPhone or iPad before you sign in, when the browser has cleared some of EtherPK's data, on the
+  folder access screen on a computer, and in Quick notes on Android and ChromeOS. Each offer is
+  shown at most once on a device, and **Not now** closes it.
+- **Install in Settings.** Installing on this device has its own area, **Install**, after
+  **Settings** and **Extensions** at the top of the Settings dialog, in place of the section at
+  the foot of **General**.
+- **App icon shortcuts.** The installed app's icon menu on Chrome and Edge has **Today's journal**,
+  **Search** and **New quick note**, which open in the graph you used last. A new launch, shortcut
+  or share reuses the window that is already open.
+- **Installed app start.** An installed app with no graphs opens the Graphs page rather than the
+  public home page, and says once that it is installed on its first launch.
+- **Richer install dialog.** The web app manifest has screenshots, a padded icon for round masks
+  and a category, so Chrome can show a fuller install dialog. The app no longer locks phones and
+  tablets to portrait.
+- **Ways to run EtherPK.** The home page lists the ways to run EtherPK after its opening section:
+  in a browser, from the Node bundle and from the Docker image, with which browsers run synced
+  graphs and folder graphs.
+
+### Headless Client
+
+- **`publish --github owner/name[#branch]`** commits the site to a GitHub repository's branch,
+  with the token in `ETHERPK_GITHUB_TOKEN`, and is remembered in place of `--out`. `--replace`
+  lets a first publish replace files on a branch that holds something else, and
+  `ETHERPK_GITHUB_API_URL` points it at GitHub Enterprise Server. The agent's `publish` tool never
+  commits to a repository: it checks such a publication with a dry run and names the command for
+  you to run. `list_publications` and `graph_info` show a publication's repository as
+  `publishRepository`.
+
 ## 0.14.1 - 2026-10-20
 
 ### Client

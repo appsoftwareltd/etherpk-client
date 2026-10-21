@@ -71,6 +71,9 @@ export const STORAGE_RECOVERY_FOOTNOTE = 'Documents download again from the sync
  * empty Local Cache and is already pulling the graph back from the server, so "when you next
  * open" would read as a refresh being needed when it is not.
  */
+/** Added to the notice where installing is offered: an installed app is what the browser keeps. */
+export const STORAGE_RECOVERY_INSTALL_LINE = 'Installing EtherPK as an app makes this less likely to happen again.'
+
 export const STORAGE_RECOVERY_FOOTNOTE_OPEN_GRAPH =
     "This graph's documents are downloading again from the sync server in the background - no refresh is needed."
 

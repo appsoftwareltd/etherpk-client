@@ -12,6 +12,7 @@
      * the same way from the button, the Command Menu and a keybinding.
      */
     import { onDestroy, onMount } from "svelte";
+    import InstallOffer from "$lib/install/InstallOffer.svelte";
 
     import type { ViewRef } from "$lib/layout";
     import { tryGetActiveCommandRegistry, tryGetActiveEventBus } from "$lib/surface";
@@ -276,6 +277,12 @@
             </button>
         </div>
     </div>
+
+    <!-- Sharing from other apps lands here, and needs the installed app (Android and ChromeOS). -->
+    <InstallOffer
+        moment="quick-notes"
+        text="Install EtherPK to share text and links from other apps into Quick notes."
+    />
 
     <!-- ── The notes, newest first ────────────────────────────────────────────── -->
     {#if count === 0}

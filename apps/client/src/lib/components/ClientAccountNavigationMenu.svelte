@@ -28,6 +28,7 @@
     import { endManagedSessionInThisBrowser } from "$lib/sync/managed-sign-out";
     import { buildAccountMenu, dismissibleMenu, truncateNavigationEmail, type SyncAccountSummary } from "@appsoftwareltd/etherpk-shared";
     import AccountMenuLinks from "@appsoftwareltd/etherpk-shared/account-menu-links";
+    import InstallEntry from "$lib/install/InstallEntry.svelte";
 
     /** `locked`: the server's access token waits for this device's passcode (ADR 0129). */
     type AccountState = "checking" | "authenticated" | "signed-out" | "unavailable" | "disconnected" | "locked";
@@ -267,6 +268,7 @@
                 </div>
             {/if}
             <AccountMenuLinks {menu} />
+            <InstallEntry placement="account" />
             <div class="border-t border-gray-950/5 p-2 dark:border-white/10">
                 {#if connectionMode === "managed"}
                     {@render signOutOfEtherPK()}

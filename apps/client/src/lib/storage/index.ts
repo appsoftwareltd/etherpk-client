@@ -122,6 +122,7 @@ export {
     type StorageRecovery,
     STORAGE_RECOVERY_FOOTNOTE,
     STORAGE_RECOVERY_FOOTNOTE_OPEN_GRAPH,
+    STORAGE_RECOVERY_INSTALL_LINE,
     STORAGE_RECOVERY_HEADLINE,
     STORAGE_RECOVERY_INTRO,
     acknowledgeStorageRecoveries,
@@ -133,7 +134,7 @@ export {
 
 // Device-local "resume here" pointer + the pure root (`/`) resolver decision.
 export { clearLastGraphId, getLastGraphId, setLastGraphId } from './last-graph'
-export { type GraphTarget, resolveGraphTarget } from './graph-routing'
+export { type GraphTarget, resolveGraphTarget, rootDestination } from './graph-routing'
 
 // External-change reconciliation glue (focus + poll).
 export { type ReconciliationOptions, attachReconciliation } from './fs/reconciliation-dom'

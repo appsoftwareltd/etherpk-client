@@ -31,6 +31,11 @@ export interface ActivityHandle {
     report(progress: ActivityProgress): void
     /** Advance the current phase's `done` counter by `amount` (default 1). */
     tick(amount?: number): void
+    /**
+     * Say what the run is doing when the progress line cannot ("Waiting for GitHub until 14:05").
+     * Shown in place of the progress line until cleared with null, the next phase begins or the run ends.
+     */
+    note(text: string | null): void
 }
 
 interface Entry extends Activity {
@@ -157,6 +162,7 @@ export async function runActivity(options: RunActivityOptions): Promise<Activity
             entry.phase = phase
             entry.done = 0
             entry.total = total
+            delete entry.note
             emit()
         },
         report({ phase, done, total }) {
@@ -169,6 +175,12 @@ export async function runActivity(options: RunActivityOptions): Promise<Activity
         tick(amount = 1) {
             if (entry.state !== 'running') return
             entry.done += amount
+            emit()
+        },
+        note(text) {
+            if (entry.state !== 'running') return
+            if (text === null) delete entry.note
+            else entry.note = text
             emit()
         },
     }
@@ -187,6 +199,7 @@ export async function runActivity(options: RunActivityOptions): Promise<Activity
         if (options.failureTitle) entry.title = options.failureTitle
     } finally {
         entry.cancelling = false
+        delete entry.note
         entry.dismissal = requestedDismissal ?? defaultDismissal(entry)
         // Only a toast still on the list can go by itself: a reset mid-run has already dropped it.
         if (entry.dismissal === 'auto' && find(entry.id)) {

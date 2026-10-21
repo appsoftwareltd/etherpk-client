@@ -145,7 +145,7 @@
 
                 {#if activity.state === "running"}
                     <p class="mt-1 text-sm text-gray-600 dark:text-gray-400" aria-hidden="true" data-testid="activity-progress">
-                        {activity.cancelling ? "Cancelling…" : progressLine(activity)}
+                        {activity.cancelling ? "Cancelling…" : (activity.note ?? progressLine(activity))}
                     </p>
                     <!--
                         A determinate bar only when the phase has a real total. An uncounted

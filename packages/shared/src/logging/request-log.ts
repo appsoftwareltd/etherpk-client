@@ -10,7 +10,7 @@
  */
 import type { HandleServerError, RequestEvent } from '@sveltejs/kit'
 import type { AppLogger } from './better-auth-logger'
-import { redactPath, redactQueryString, redactUrl, shouldCaptureErrorResponseBody } from './redaction'
+import { redactPath, redactRequestQuery, redactUrl, shouldCaptureErrorResponseBody } from './redaction'
 
 export type RequestLogLevel = 'debug' | 'info' | 'warn' | 'error'
 
@@ -79,7 +79,7 @@ export async function logRequest(
         duration_ms: Math.round(detail.durationMs),
         ip: safeClientAddress(event),
         userAgent: event.request.headers.get('user-agent') ?? undefined,
-        query: redactQueryString(event.url.search),
+        query: redactRequestQuery(event.url.pathname, event.url.search),
         userId: detail.userId ?? localUserId(event),
         hostname: context.hostname,
     }
@@ -127,7 +127,7 @@ export function createHandleError(context: RequestLogContext): HandleServerError
                 status,
                 method: event.request.method,
                 path: redactPath(event.url.pathname),
-                query: redactQueryString(event.url.search),
+                query: redactRequestQuery(event.url.pathname, event.url.search),
                 error: error instanceof Error ? error.message : String(error),
                 stack: error instanceof Error ? error.stack : undefined,
                 ip: safeClientAddress(event),

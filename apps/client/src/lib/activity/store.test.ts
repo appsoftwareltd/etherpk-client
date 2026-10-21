@@ -75,6 +75,38 @@ describe('runActivity', () => {
         unsubscribe()
     })
 
+    it('shows a note in place of the progress line until it is cleared or the phase moves on', async () => {
+        const gate = deferred()
+        const finished = runActivity({
+            kind: 'publish',
+            title: 'Publishing "Garden"',
+            phases: PHASES,
+            cancellable: false,
+            run: async (handle) => {
+                handle.beginPhase(0, 3)
+                handle.note('Waiting for GitHub until 14:05')
+                await gate.promise
+            },
+        })
+        await vi.waitFor(() => expect(getActivities()[0]?.note).toBe('Waiting for GitHub until 14:05'))
+        gate.release()
+        expect((await finished).note).toBeUndefined()
+
+        await runActivity({
+            kind: 'publish',
+            title: 'Publishing "Garden"',
+            phases: PHASES,
+            run: async (handle) => {
+                handle.note('Waiting')
+                handle.beginPhase(1, 0)
+                expect(getActivities()[0].note).toBeUndefined()
+                handle.note('Waiting again')
+                handle.note(null)
+                expect(getActivities()[0].note).toBeUndefined()
+            },
+        })
+    })
+
     it('reports a failure as an outcome rather than rejecting the caller', async () => {
         const activity = await runActivity({
             kind: 'import',

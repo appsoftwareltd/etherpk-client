@@ -1,9 +1,10 @@
 <script lang="ts">
     /**
-     * The one **Settings and Extensions** modal, in two areas: **Settings**, in up to seven
-     * section tabs (below), and **Extensions**, an area of its own because what extensions offer
-     * there will grow (ADR 0121). The address names a section or `extensions` (`tab`), so every
-     * entry point and the browser's history work as they did when Extensions was a section.
+     * The one **Settings and Extensions** modal, in three areas: **Settings**, in up to seven
+     * section tabs (below), **Extensions**, an area of its own because what extensions offer
+     * there will grow (ADR 0121), and **Install**, installing EtherPK on this device. The address
+     * names a section, `extensions` or `install` (`tab`), so every entry point and the browser's
+     * history work as they did when Extensions was a section.
      *
      * - **General** — the graph name and the shared [[Graph Settings]] (ADR 0031). Both live in
      *   the encrypted root-doc meta map: the name is canonical (any member may rename — it renames
@@ -28,12 +29,8 @@
     import { onMount } from "svelte";
     import { normalizeDisplaySize } from "$lib/document";
     import { formatBytes } from "@appsoftwareltd/etherpk-shared";
-    import {
-        type AppInstallState,
-        type GraphSettings,
-        promptInstall,
-        subscribeAppInstall,
-    } from "$lib/storage";
+    import { type GraphSettings } from "$lib/storage";
+    import InstallSteps from "$lib/install/InstallSteps.svelte";
     import {
         DEFAULT_IMAGE_DISPLAY_SIZE,
         DEFAULT_RECENT_COUNT,
@@ -172,13 +169,13 @@
          * so the Publish chord or a history step can move an open dialog to another tab.
          * Omitted, or not offered for this graph, lands on General.
          */
-        tab?: "general" | "spelling" | "protection" | "mirror" | "agents" | "publish" | "extensions" | "maintenance";
+        tab?: "general" | "spelling" | "protection" | "mirror" | "agents" | "publish" | "extensions" | "install" | "maintenance";
         /**
          * The tab the dialog is on changed: the user picked one (click or arrow keys), or the
          * tab asked for is not offered on this graph and it opened on General instead. The
          * workspace remembers it and keeps the address honest.
          */
-        onchangetab?: (tab: "general" | "spelling" | "protection" | "mirror" | "agents" | "publish" | "extensions" | "maintenance") => void;
+        onchangetab?: (tab: "general" | "spelling" | "protection" | "mirror" | "agents" | "publish" | "extensions" | "install" | "maintenance") => void;
         onsave: (result: { name: string; settings: GraphSettings; folderPath?: string }) => void;
         onclose: () => void;
     } = $props();
@@ -233,25 +230,7 @@
         }
     }
 
-    /**
-     * Whether this device runs EtherPK as an installed app, and whether the browser has offered
-     * to install it. Per device, not per graph: it sits in this dialog because an installed app
-     * is what stops a phone's browser clearing the graph data kept here, and this is where
-     * someone looks when a graph is slow to open or has gone missing on a device.
-     */
-    let install = $state<AppInstallState>({
-        installed: false,
-        promptAvailable: false,
-    });
-    let installDismissed = $state(false);
-    // An external subscription, not derived state: the offer arrives on a window event.
-    onMount(() => subscribeAppInstall((next) => (install = next)));
-
-    async function installApp() {
-        installDismissed = (await promptInstall()) === "dismissed";
-    }
-
-    type Tab = "general" | "spelling" | "protection" | "mirror" | "agents" | "publish" | "extensions" | "maintenance";
+    type Tab = "general" | "spelling" | "protection" | "mirror" | "agents" | "publish" | "extensions" | "install" | "maintenance";
     const tabs = $derived(
         [
             { id: "general" as const, label: "General", shown: true },
@@ -280,32 +259,40 @@
     // graph does not offer (Mirror on a Filesystem graph, a stale address) falls back to General
     // rather than an empty panel. Derived, not seeded once: the workspace moves an open dialog
     // by changing the prop, and a pick here is an assignment the next prop change overrides.
-    let activeTab = $derived<Tab>(tab && (tab === "extensions" ? extensions !== null : tabs.some((t) => t.id === tab)) ? tab : "general");
+    let activeTab = $derived<Tab>(
+        tab && (tab === "extensions" ? extensions !== null : tab === "install" || tabs.some((t) => t.id === tab)) ? tab : "general",
+    );
 
-    /** The dialog's two areas: Settings, holding the sections above, and Extensions. */
-    type Area = "settings" | "extensions";
+    /**
+     * The dialog's areas: Settings, holding the sections above, Extensions, and Install, which
+     * installs EtherPK on this device. Extensions and Install are each an area with one panel, so
+     * the area and the tab share an id.
+     */
+    type Area = "settings" | "extensions" | "install";
     const areas = $derived(
         [
             { id: "settings" as const, label: "Settings", shown: true },
             { id: "extensions" as const, label: "Extensions", shown: extensions !== null },
+            { id: "install" as const, label: "Install", shown: true },
         ].filter((a) => a.shown),
     );
-    const area = $derived<Area>(activeTab === "extensions" ? "extensions" : "settings");
+    const isAreaTab = (t: Tab): t is "extensions" | "install" => t === "extensions" || t === "install";
+    const area = $derived<Area>(isAreaTab(activeTab) ? activeTab : "settings");
 
     /**
-     * The section shown last, so going back to Settings from Extensions lands where the person left
-     * it. Recorded as a section is chosen, and seeded with the one the dialog opened on. Read only
-     * when the area changes, so it is a plain variable, not state.
+     * The section shown last, so going back to Settings from another area lands where the person
+     * left it. Recorded as a section is chosen, and seeded with the one the dialog opened on. Read
+     * only when the area changes, so it is a plain variable, not state.
      */
     // svelte-ignore state_referenced_locally
-    let lastSection: Tab = activeTab === "extensions" ? "general" : activeTab;
+    let lastSection: Tab = isAreaTab(activeTab) ? "general" : activeTab;
 
     function selectArea(next: Area) {
-        if (next === "extensions") selectTab("extensions");
-        else selectTab(activeTab !== "extensions" ? activeTab : lastSection);
+        if (next === "settings") selectTab(isAreaTab(activeTab) ? lastSection : activeTab);
+        else selectTab(next);
     }
 
-    /** Left/Right/Home/End between the two areas, moving focus with the selection (ARIA tabs). */
+    /** Left/Right/Home/End between the areas, moving focus with the selection (ARIA tabs). */
     function onAreaKeydown(event: KeyboardEvent) {
         if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
         event.preventDefault();
@@ -331,7 +318,7 @@
 
     /** A tab the user chose, as opposed to the one the dialog was asked to be on. */
     function selectTab(next: Tab) {
-        if (next !== "extensions") lastSection = next;
+        if (!isAreaTab(next)) lastSection = next;
         activeTab = next;
         onchangetab?.(next);
     }
@@ -503,7 +490,6 @@
     placement="top"
     onclose={close}
     onsubmit={save}
-    tools={activeTab === "general" ? installTools : undefined}
 >
     {#snippet body()}
         {#if areas.length > 1}
@@ -515,7 +501,7 @@
             <div
                 class="mb-4 inline-flex gap-1 rounded-lg bg-gray-100 p-1 dark:bg-white/10"
                 role="tablist"
-                aria-label="Settings and Extensions"
+                aria-label="Settings, Extensions and Install"
             >
                 {#each areas as entry (entry.id)}
                     <button
@@ -641,6 +627,15 @@
             {:else if activeTab === "extensions" && extensions}
                 <!-- Each switch applies at once and is per device: nothing for Save to apply. -->
                 <ExtensionsSettingsTab host={extensions} directory={extensionDirectory} {installedSync} />
+            {:else if activeTab === "install"}
+                <!-- Per device, not per graph: it sits in this dialog because an installed app is
+                     what stops a phone's browser clearing the graph data kept here, and this is
+                     where someone looks when a graph is slow to open or has gone missing on a
+                     device. The same steps as the Install dialog. -->
+                <div class="space-y-2" data-testid="app-install">
+                    <h3 class="text-sm font-medium text-gray-500 dark:text-gray-400">Install on this device</h3>
+                    <InstallSteps />
+                </div>
             {:else if activeTab === "publish" && publish}
                 <!-- Nothing here is a setting the footer saves: each publication card has a Save of
                  its own (it writes a page), and the folder is per device. -->
@@ -1480,52 +1475,6 @@
      message beside the button that failed. -->
 {#snippet agentCommand(row: AgentCommandRow)}
     <AgentCommandRowView key={row.key} label={row.label} text={row.text} note={row.note} />
-{/snippet}
-
-{#snippet installTools()}
-    <div class="space-y-2" data-testid="app-install">
-        <p class="text-sm font-medium text-gray-500 dark:text-gray-400">
-            Install on this device
-        </p>
-        {#if install.installed}
-            <p
-                class="text-sm text-gray-600 dark:text-gray-300"
-                data-testid="app-install-installed"
-            >
-                EtherPK is installed on this device.
-            </p>
-        {:else if install.promptAvailable}
-            <button
-                type="button"
-                onclick={installApp}
-                data-testid="app-install-prompt"
-                class="rounded-lg border border-gray-300 dark:border-gray-700 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5"
-                >Install EtherPK</button
-            >
-        {:else if installDismissed}
-            <p
-                class="text-sm text-gray-600 dark:text-gray-300"
-                data-testid="app-install-dismissed"
-            >
-                Not installed. The browser will offer again on a later visit, or
-                look for <em>Install app</em> in its menu.
-            </p>
-        {:else}
-            <p
-                class="text-sm text-gray-600 dark:text-gray-300"
-                data-testid="app-install-unavailable"
-            >
-                Install EtherPK via your browser menu.
-            </p>
-        {/if}
-        <p class="text-sm text-gray-500 dark:text-gray-400">
-            Installation signals to your browser that EtherPK is a priority web
-            application, meaning graph data held on the device is less likely to
-            be cleared as part of storage optimisation (common on mobile
-            devices), and your graphs will open without having to download
-            again.
-        </p>
-    </div>
 {/snippet}
 
 {#snippet storageTools()}

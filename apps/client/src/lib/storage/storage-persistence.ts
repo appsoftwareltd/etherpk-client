@@ -10,7 +10,8 @@
  *
  * `persist()` is a request, not a command. Chromium grants it on engagement heuristics (an
  * installed PWA, a bookmark, high site engagement) and otherwise returns false without a
- * prompt; Firefox prompts the user; Safari has no persistence API at all. The outcome is
+ * prompt; Firefox prompts the user; Safari (from 17) grants it on heuristics too, one of which
+ * is running as a Home Screen web app. The outcome is
  * therefore returned to the caller to log rather than assumed, and calling this on every
  * load is fine: `persisted()` is answered first and costs nothing.
  */

@@ -45,14 +45,14 @@ describe('watchAppInstall', () => {
 
     it('does nothing outside a browser', () => {
         const stop = watchAppInstall(undefined)
-        expect(appInstallState()).toEqual({ installed: false, promptAvailable: false })
+        expect(appInstallState()).toEqual({ installed: false, promptAvailable: false, installedOnDevice: false })
         stop()
     })
 
     it('reports an installed app from standalone display mode', () => {
         const { host } = fakeHost({ standalone: true })
         watchAppInstall(host)
-        expect(appInstallState()).toEqual({ installed: true, promptAvailable: false })
+        expect(appInstallState()).toEqual({ installed: true, promptAvailable: false, installedOnDevice: false })
     })
 
     it('captures the browser offer and suppresses the mini-infobar', () => {
@@ -66,7 +66,7 @@ describe('watchAppInstall', () => {
         fire('beforeinstallprompt', event)
 
         expect(prevent).toHaveBeenCalled()
-        expect(seen.at(-1)).toEqual({ installed: false, promptAvailable: true })
+        expect(seen.at(-1)).toEqual({ installed: false, promptAvailable: true, installedOnDevice: false })
     })
 
     it('shows the offer once and reports the choice', async () => {
@@ -88,7 +88,7 @@ describe('watchAppInstall', () => {
         fire('beforeinstallprompt', offer('dismissed'))
 
         expect(await promptInstall()).toBe('dismissed')
-        expect(appInstallState()).toEqual({ installed: false, promptAvailable: false })
+        expect(appInstallState()).toEqual({ installed: false, promptAvailable: false, installedOnDevice: false })
     })
 
     it('flips to installed on appinstalled and re-requests persistent storage', async () => {
@@ -99,7 +99,7 @@ describe('watchAppInstall', () => {
 
         fire('appinstalled', new Event('appinstalled'))
 
-        expect(appInstallState()).toEqual({ installed: true, promptAvailable: false })
+        expect(appInstallState()).toEqual({ installed: true, promptAvailable: false, installedOnDevice: false })
         expect(ensurePersistentStorage).toHaveBeenCalled()
         expect(await promptInstall()).toBe('unavailable')
     })
@@ -110,5 +110,53 @@ describe('watchAppInstall', () => {
         stop()
         expect(handlers.get('beforeinstallprompt')?.size ?? 0).toBe(0)
         expect(handlers.get('appinstalled')?.size ?? 0).toBe(0)
+    })
+
+    it('adopts an offer the page caught before the app started', async () => {
+        const { host } = fakeHost()
+        const early = offer('accepted')
+        watchAppInstall({ ...host, heldOffer: () => early })
+
+        expect(appInstallState().promptAvailable).toBe(true)
+        expect(await promptInstall()).toBe('accepted')
+        expect(early.prompt).toHaveBeenCalledTimes(1)
+    })
+
+    it('follows the display mode as it changes, rather than reading it once', () => {
+        const { host } = fakeHost()
+        let matches = false
+        const changeListeners: Array<() => void> = []
+        watchAppInstall({
+            ...host,
+            matchMedia: () => ({
+                get matches() {
+                    return matches
+                },
+                addEventListener: (_type: 'change', listener: () => void) => void changeListeners.push(listener),
+                removeEventListener: () => {},
+            }),
+        })
+        expect(appInstallState().installed).toBe(false)
+
+        matches = true
+        for (const listener of changeListeners) listener()
+        expect(appInstallState().installed).toBe(true)
+    })
+
+    it('learns that the app is installed on this device while running in a tab', async () => {
+        const { host } = fakeHost()
+        watchAppInstall({ ...host, getInstalledRelatedApps: async () => [{ platform: 'webapp' }] })
+        await vi.waitFor(() => expect(appInstallState().installedOnDevice).toBe(true))
+    })
+
+    it('reports each outcome, and never throws if reporting fails', async () => {
+        const reported: string[] = []
+        const { host, fire } = fakeHost()
+        watchAppInstall({ ...host, report: (outcome) => void reported.push(outcome) })
+        fire('beforeinstallprompt', offer('dismissed'))
+        await promptInstall()
+        fire('appinstalled', new Event('appinstalled'))
+
+        expect(reported).toEqual(['dismissed', 'installed'])
     })
 })

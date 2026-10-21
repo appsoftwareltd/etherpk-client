@@ -31,6 +31,7 @@
         type ServerGraphScope,
         type StorageRecovery,
         STORAGE_RECOVERY_FOOTNOTE,
+        STORAGE_RECOVERY_INSTALL_LINE,
         STORAGE_RECOVERY_HEADLINE,
         STORAGE_RECOVERY_INTRO,
         acknowledgeStorageRecoveries,
@@ -173,6 +174,7 @@
     import { clearManagedAccessToken, freshManagedBearerToken } from "$lib/auth/managed-token";
     import { showNotice } from "$lib/activity/notices";
     import GraphPickerRow from "$lib/workspace/GraphPickerRow.svelte";
+    import InstallOffer from "$lib/install/InstallOffer.svelte";
     import SyncServerGroup, {
         type SyncServerGroupActions,
     } from "$lib/workspace/SyncServerGroup.svelte";
@@ -4055,6 +4057,9 @@
                             >
                                 {STORAGE_RECOVERY_FOOTNOTE}
                             </p>
+                            <div class="mt-3">
+                                <InstallOffer moment="storage-cleared" text={STORAGE_RECOVERY_INSTALL_LINE} />
+                            </div>
                         </div>
                         <button
                             type="button"
@@ -4082,6 +4087,15 @@
             {#if !firstRunKnown}
                 {@render loadingSkeleton("Loading your graphs…")}
             {:else}
+                {#if servers.length === 0}
+                    <!-- On an iPhone or iPad the installed app keeps storage apart from Safari's,
+                         so signing in here first would mean signing in again there. Shown only
+                         there, and only before this browser holds any server. -->
+                    <InstallOffer
+                        moment="before-sign-in"
+                        text="Install EtherPK before you sign in. On an iPhone or iPad the installed app keeps its own storage, apart from Safari, so you would otherwise sign in twice."
+                    />
+                {/if}
                 {#if firstRun}
                     <!-- A browser with nothing of its own yet. The header carries every way to a
                          graph, so the card names those actions rather than repeating them. -->

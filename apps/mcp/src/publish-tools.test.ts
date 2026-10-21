@@ -3,9 +3,10 @@ import { mkdtemp, readFile, readdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { afterEach, beforeAll, describe, expect, it } from 'vitest'
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import { createGraphKeyring } from '$lib/crypto'
+import { FakeGitHub } from '$lib/document/publish/host/testing/fake-github'
 import { frontmatterIdentity } from '$lib/document/frontmatter/identity'
 import { proposeFrontmatter } from '$lib/document/frontmatter/proposal'
 import { createLoopbackRelay } from '$lib/sync/loopback-relay'
@@ -16,7 +17,7 @@ import { createMemoryDirectoryAdapter } from '$lib/storage/fs/memory-adapter'
 import { chromiumOnThisMachine, WARM_UP_TIMEOUT, warmChromium } from './chromium-fixture'
 import { openHeadlessFolder } from './headless-folder'
 import { openHeadlessGraph, type HeadlessGraph } from './headless-graph'
-import { publishGraphKey, withPublishFolder, writePublishFolders } from './publish-folders'
+import { publishGraphKey, withPublishFolder, withPublishRepository, writePublishFolders } from './publish-folders'
 import { cliPublishOutput, createPublication, findPublication, listPublications, publish, publishingInfo, updatePublication } from './publish-tools'
 import { ToolError, readDocument, setAliases, setFrontmatter } from './tools'
 
@@ -175,7 +176,7 @@ describe.each(backends)('%s backend', (_name, openGraph) => {
 
         const site = join(dir, 'site')
         await writePublishFolders(env.ETHERPK_MCP_PUBLISH_CONFIG!, withPublishFolder({ folders: {} }, publishGraphKey(g.backend, g.graphId), 'docs', site))
-        expect((await publishingInfo(g, host)).publications).toEqual([{ id: 'docs', name: 'Docs', kind: 'docs', publishFolder: site }])
+        expect((await publishingInfo(g, host)).publications).toEqual([{ id: 'docs', name: 'Docs', kind: 'docs', publishFolder: site, publishRepository: null }])
 
         const first = await publish(g, { id: 'docs' }, host)
         expect(first.ok).toBe(true)
@@ -213,6 +214,69 @@ describe.each(backends)('%s backend', (_name, openGraph) => {
         const second = await publish(g, { id: 'docs' }, host)
         expect(second.written).toMatchObject({ written: 0, deleted: { total: 0 } })
         expect(second.written!.unchanged).toBeGreaterThan(0)
+    })
+
+    // A Publish Repository (ADR 0152): only the person's own command commits to it, with the token
+    // in ETHERPK_GITHUB_TOKEN. GitHub is the in-memory fake the Client's tests use.
+    describe('a publication that publishes to a GitHub repository', () => {
+        const REPO = 'someone/docs-site'
+        const repo = { owner: 'someone', name: 'docs-site', branch: 'main' }
+
+        afterEach(() => {
+            vi.unstubAllGlobals()
+        })
+
+        async function setUp(id: string, files: Record<string, string | Uint8Array> = { 'README.md': '# Docs\n' }) {
+            const g = await graph(id)
+            const { host, env } = await hostFor()
+            await createPublication(g, { title: 'Docs', home: 'Welcome' }, host)
+            await g.store.createPage('Welcome', '- hello from the site')
+            await g.settle()
+            await setFrontmatter(g, { concept: 'Welcome', patch: { public: true, publications: ['docs'] } })
+            const github = new FakeGitHub()
+            github.allow('github_pat_garden', REPO)
+            await github.createRepository(REPO, { files })
+            vi.stubGlobal('fetch', github.fetch)
+            await writePublishFolders(env.ETHERPK_MCP_PUBLISH_CONFIG!, withPublishRepository({ folders: {} }, publishGraphKey(g.backend, g.graphId), 'docs', repo))
+            const cli = (token?: string) => ({ env: { ...env, ETHERPK_GITHUB_TOKEN: token ?? '' }, cmd: 'etherpk-mcp', via: 'cli' as const })
+            return { g, host, cli, github }
+        }
+
+        it('is checked by an agent and never committed by one, and the command commits it once', async () => {
+            const { g, host, cli, github } = await setUp('g-pub-github')
+            expect((await listPublications(g, host)).publications[0]).toMatchObject({ publishFolder: null, publishRepository: `${REPO}#main` })
+
+            const refused = await rejectsWith(publish(g, { id: 'docs' }, host), 'publishes_to_repository')
+            expect(refused.message).toContain('etherpk-mcp publish')
+            expect((await publish(g, { id: 'docs', dryRun: true }, host)).ok).toBe(true)
+            expect(github.history(REPO)).toHaveLength(1)
+
+            await rejectsWith(publish(g, { id: 'docs' }, cli()), 'no_github_token')
+            const badToken = await rejectsWith(publish(g, { id: 'docs' }, cli('github_pat_mistyped')), 'github_refused')
+            expect(badToken.message).toContain('ETHERPK_GITHUB_TOKEN')
+
+            const first = await publish(g, { id: 'docs' }, cli('github_pat_garden'))
+            expect(first).toMatchObject({ ok: true, folder: null, repository: `${REPO}#main` })
+            expect(first.commit).toMatch(new RegExp(`^https://github\\.com/${REPO}/commit/`))
+            expect(github.text(REPO, 'index.html')).toContain('hello from the site')
+            expect(github.text(REPO, 'README.md')).toBe('# Docs\n')
+            expect(github.files(REPO).has('.github/workflows/pages.yaml')).toBe(false)
+            expect(github.history(REPO)).toHaveLength(2)
+
+            const again = await publish(g, { id: 'docs' }, cli('github_pat_garden'))
+            expect(again).toMatchObject({ ok: true, commit: null })
+            expect(github.history(REPO)).toHaveLength(2)
+        }, 60_000)
+
+        it('lists the files a first publish would replace, and replaces them only with --replace', async () => {
+            const { g, cli, github } = await setUp('g-pub-github-replace', { 'index.html': 'an older page', 'src/app.ts': 'code' })
+            const asked = await rejectsWith(publish(g, { id: 'docs' }, cli('github_pat_garden')), 'repository_needs_confirmation')
+            expect(asked.message).toContain('index.html')
+            expect(asked.message).toContain('--replace')
+            expect(github.history(REPO)).toHaveLength(1)
+            expect((await publish(g, { id: 'docs', replace: true }, cli('github_pat_garden'))).commit).not.toBeNull()
+            expect(github.text(REPO, 'src/app.ts')).toBe('code')
+        }, 60_000)
     })
 
     // An agent checks its work with a dry run before anyone publishes, so it needs no Publish

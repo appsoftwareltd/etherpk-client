@@ -72,6 +72,20 @@ describe('logRequest', () => {
         expect(JSON.stringify(logger.info.mock.calls)).not.toContain('Xk2pQ9')
     })
 
+    it('keeps a shared note out of the line for the share page', async () => {
+        const logger = appLogger()
+        const event = requestEvent('https://app.test/share?title=Garden&text=water%20the%20beans&url=https%3A%2F%2Fexample.test%2Fbeans')
+        await logRequest({ logger, hostname: 'pod-1' }, event, new Response(null, { status: 200 }), { durationMs: 3 })
+
+        expect(logger.info).toHaveBeenCalledWith('HTTP request', expect.objectContaining({
+            path: '/share',
+            query: '?[redacted]',
+        }))
+        const written = JSON.stringify(logger.info.mock.calls)
+        expect(written).not.toContain('Garden')
+        expect(written).not.toContain('beans')
+    })
+
     it('captures an API error body for diagnosis, but never a better-auth one', async () => {
         const logger = appLogger()
         await logRequest(
@@ -140,6 +154,22 @@ describe('createHandleError', () => {
             error: 'database is down',
             stack: expect.stringContaining('database is down'),
             hostname: 'pod-1',
+        }))
+    })
+
+    it('keeps a shared note out of an error line for the share page', () => {
+        const logger = appLogger()
+        const handleError = createHandleError({ logger, hostname: 'pod-1' })
+        handleError({
+            error: new Error('render failed'),
+            event: requestEvent('https://app.test/share?text=water%20the%20beans'),
+            status: 500,
+            message: 'Internal Error',
+        })
+
+        expect(logger.error).toHaveBeenCalledWith('Unexpected server error', expect.objectContaining({
+            path: '/share',
+            query: '?[redacted]',
         }))
     })
 })

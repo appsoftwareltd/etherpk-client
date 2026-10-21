@@ -454,7 +454,7 @@
                 },
                 {
                     lead: "On a synced graph",
-                    text: ", it goes through the Headless Client: a device of your account that keeps the graph in sync and serves it over MCP.",
+                    text: ", it goes through the Headless Client (`@appsoftwareltd/etherpk-mcp` on npm): a device of your account that keeps the graph in sync and serves it over MCP.",
                 },
                 {
                     lead: "Semantic search",
@@ -472,57 +472,66 @@
                 },
             ],
         },
-        {
-            id: "running",
-            label: "Running it",
-            heading: "Managed sync, or just your own machine",
-            intro: "The same Client in each case. What changes is where the graph is stored and who keeps it in sync.",
-            items: [
-                {
-                    lead: "Managed Sync",
-                    text: " with an EtherPK Account: sign in once and every managed app follows, with passkeys, two-factor and social sign-in, and a plan page that shows exact limits and usage.",
-                },
-                {
-                    lead: "The Client on your own machine",
-                    text: ", as a plain Node bundle or a Docker image, for a folder graph with no server and no account.",
-                },
-            ],
-            docs: [
-                { title: "Managed Sync", slug: "managed-sync" },
-                {
-                    title: "Running EtherPK on Your Own Computer",
-                    slug: "running-etherpk-on-your-own-computer",
-                },
-            ],
-        },
     ];
 
-    // What to know before choosing between a folder graph and a synced one. A self-hosted Client's
-    // server is run by its team, not by EtherPK, so that copy names the server rather than "we".
+    // What to know before choosing a synced graph. A self-hosted Client's server is run by its
+    // team, not by EtherPK, so that copy names the server rather than "we". Which browsers run
+    // which graphs is in "Ways to run EtherPK".
     const usageNotes = $derived([
-        "Folder graphs need Chrome or Edge on a desktop, or Chrome on Android. Safari, Firefox and every browser on an iPhone or iPad work with synced graphs.",
         `End-to-end encryption protects your data and privacy. An unlocked device or your Recovery Code is needed to decrypt your synced notes. ${managed ? "We cannot" : "Your Sync Server cannot"} decrypt or recover your notes for you. Keep a copy of your code safe and backed up.`,
     ]);
 
-    /**
-     * A self-hosted Client's copy leaves out what only EtherPK's managed service offers: the
-     * Managed Sync item and the links to its page.
-     */
+    /** A self-hosted Client's copy leaves out the links to the managed service's page. */
     const featureGroups = $derived(
         managed
             ? allFeatureGroups
             : allFeatureGroups.map((group) => ({
                   ...group,
-                  heading:
-                      group.id === "running"
-                          ? "Synced through a server, or just your own machine"
-                          : group.heading,
-                  items: group.items.filter(
-                      (item) => item.lead !== "Managed Sync",
-                  ),
                   docs: group.docs.filter((doc) => doc.slug !== "managed-sync"),
               })),
     );
+
+    /**
+     * "Ways to run EtherPK": the app in a browser, the Node bundle and the Docker image, then
+     * which browsers run which graphs. Facts only, in the docs' own words, each with its docs
+     * page. A managed page names the hosted Client's address; a self-hosted one has no address
+     * to name but its own.
+     */
+    const waysToRun = $derived([
+        {
+            id: "browser",
+            lead: "Browser",
+            source: managed ? { label: new URL(appHref, page.url.origin).host, href: appHref } : null,
+            text: managed
+                ? "Install it from the browser for its own window and a start with no network."
+                : "This Client, in a browser. Install it from the browser for its own window and a start with no network.",
+            docs: { label: "Install steps", slug: "installing-etherpk-as-an-app" },
+        },
+        {
+            id: "node",
+            lead: "Node.js 24+",
+            source: { label: "GitHub releases", href: `${CLIENT_REPOSITORY_URL}/releases` },
+            text: "Download `etherpk-client-<version>.tar.gz`, unpack it and run `node build`.",
+            docs: { label: "Setup", slug: "running-etherpk-on-your-own-computer" },
+        },
+        {
+            id: "docker",
+            lead: "Docker",
+            source: { label: "ghcr.io/appsoftwareltd/etherpk-client", href: `${CLIENT_REPOSITORY_URL}/pkgs/container/etherpk-client` },
+            text: "Listens on port 3000.",
+            docs: { label: "Setup", slug: "running-etherpk-on-your-own-computer" },
+        },
+    ]);
+    const browserSupport = [
+        {
+            lead: "Synced graphs",
+            text: "All platforms. Current Chrome, Edge, Firefox, Safari and Samsung Internet, phones and tablets included.",
+        },
+        {
+            lead: "Folder graphs",
+            text: "Chrome and Edge on a computer, and Chrome on Android. (Note: Firefox, all iOS browsers not supported. Brave requires folder access to be enabled)",
+        },
+    ];
 
     /** Splits text on backticks; the odd-numbered pieces were inside them. */
     function segments(text: string): { code: boolean; text: string }[] {
@@ -832,6 +841,41 @@
 
 <!-- ── The app's own section, if it passes one ───────────────────── -->
 {@render belowHero?.()}
+
+<!-- ── Ways to run EtherPK ────────────────────────────────────────── -->
+<section
+    class="mx-auto max-w-3xl px-4 pt-24 sm:px-6 sm:pt-32"
+    aria-labelledby="ways-heading"
+    data-testid="marketing-ways-to-run"
+>
+    <h2
+        id="ways-heading"
+        class="text-xl font-semibold tracking-tight text-gray-950 dark:text-white"
+    >
+        Ways to run EtherPK
+    </h2>
+    <dl class="mt-5 space-y-3 text-sm leading-6 text-gray-600 dark:text-gray-300">
+        {#each waysToRun as way (way.id)}
+            <div class="sm:flex sm:gap-4" data-testid="marketing-way-{way.id}">
+                <dt class="shrink-0 font-semibold text-gray-950 sm:w-32 dark:text-white">{way.lead}</dt>
+                <dd>
+                    <!-- The space sits between the blocks on one line: whitespace at the end of an
+                         {#if} block is dropped. -->
+                    {#if way.source}<a href={way.source.href} class={textLinkClass}>{way.source.label}</a>.{/if} {@render inline(way.text)}
+                    <a href="{docsHref}/{way.docs.slug}" class={textLinkClass}>{way.docs.label}</a>
+                </dd>
+            </div>
+        {/each}
+    </dl>
+    <dl class="mt-5 space-y-2 border-t border-gray-950/5 pt-5 text-sm leading-6 text-gray-600 dark:border-white/10 dark:text-gray-300">
+        {#each browserSupport as support (support.lead)}
+            <div class="sm:flex sm:gap-4">
+                <dt class="shrink-0 font-semibold text-gray-950 sm:w-32 dark:text-white">{support.lead}</dt>
+                <dd>{support.text}</dd>
+            </div>
+        {/each}
+    </dl>
+</section>
 
 <!-- ── Features ──────────────────────────────────────────────────── -->
 <section

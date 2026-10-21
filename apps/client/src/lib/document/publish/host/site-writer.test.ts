@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { writeSiteToDirectory } from './site-writer'
+import { type SiteFolder, writeSite, writeSiteToDirectory } from './site-writer'
 
 /** A memory File System Access directory: the subset the site writer uses. */
 interface MemFile {
@@ -152,5 +152,62 @@ describe('writeSiteToDirectory', () => {
         const result = await writeSiteToDirectory(dirHandle(root), new Map([['index.html', 'x']]), { seeded: new Map(), agentsMd })
         expect(result.deleted).toEqual(['stale.html'])
         expect(fileText(root, '.git/HEAD')).toBe('ref')
+    })
+})
+
+describe('writeSite over a folder that can compare without reading', () => {
+    /** A folder whose files are a map, recording every read, with `sameContent` answering from it. */
+    function comparingFolder(files: Map<string, string | Uint8Array>) {
+        const reads: string[] = []
+        const compared: string[] = []
+        const bytesOf = (value: string | Uint8Array) => (typeof value === 'string' ? new TextEncoder().encode(value) : value)
+        const folder: SiteFolder = {
+            async readText(path) {
+                reads.push(path)
+                const value = files.get(path)
+                return value === undefined ? null : typeof value === 'string' ? value : new TextDecoder().decode(value)
+            },
+            async readBytes(path) {
+                reads.push(path)
+                const value = files.get(path)
+                return value === undefined ? null : bytesOf(value)
+            },
+            async sameContent(path, content) {
+                compared.push(path)
+                const value = files.get(path)
+                if (value === undefined) return false
+                const [a, b] = [bytesOf(value), bytesOf(content)]
+                return a.length === b.length && a.every((byte, i) => byte === b[i])
+            },
+            async writeFile(path, content) {
+                files.set(path, content)
+            },
+            async remove(path) {
+                files.delete(path)
+            },
+            async listFiles() {
+                return [...files.keys()]
+            },
+        }
+        return { folder, reads, compared }
+    }
+
+    it('compares the published files instead of reading them back', async () => {
+        const files = new Map<string, string | Uint8Array>([
+            ['index.html', 'same'],
+            ['assets/logo.png', new Uint8Array([1, 2])],
+        ])
+        const { folder, reads, compared } = comparingFolder(files)
+        const bundle = new Map<string, string | Uint8Array>([
+            ['index.html', 'same'],
+            ['assets/logo.png', new Uint8Array([1, 2])],
+            ['about.html', 'new'],
+        ])
+        const result = await writeSite(folder, bundle, { seeded: new Map([['README.md', 'readme']]), agentsMd })
+        expect(compared.sort()).toEqual(['about.html', 'assets/logo.png', 'index.html'])
+        // Only the seeded file and AGENTS.md are read: what the folder already holds decides them.
+        expect(reads.sort()).toEqual(['AGENTS.md', 'README.md'])
+        expect(result).toMatchObject({ written: 3, unchanged: 2 })
+        expect(files.get('about.html')).toBe('new')
     })
 })

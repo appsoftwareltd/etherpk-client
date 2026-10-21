@@ -7,12 +7,16 @@ import { describe, expect, it } from 'vitest'
 import { nodeSiteFolder } from './publish-environment'
 import {
     parsePublishFolders,
+    parseRepositoryArgument,
     publishFolderOf,
     publishFolderOverlap,
     publishGraphKey,
+    publishRepositoryOf,
     readPublishFolders,
     relateFolders,
+    repositoryLabel,
     withPublishFolder,
+    withPublishRepository,
     writePublishFolders,
 } from './publish-folders'
 
@@ -43,6 +47,40 @@ describe('publish folders', () => {
         // Relative paths and junk are dropped, never thrown on.
         expect(parsePublishFolders('{"folders":{"a/b":{"docs":"relative/path","blog":"/ok"},"bad":"x","c/d":{"e":3}}}')).toEqual({ folders: { 'a/b': { blog: '/ok' } } })
         expect(parsePublishFolders('not json')).toEqual({ folders: {} })
+    })
+
+    // A publication publishes to one place on a machine (ADR 0152): setting a repository forgets
+    // the folder, and setting a folder forgets the repository, as in the Client.
+    it('keeps a repository in place of a folder, and a folder in place of a repository', async () => {
+        const dir = await mkdtemp(join(tmpdir(), 'etherpk-mcp-folders-'))
+        const path = join(dir, 'publish.json')
+        const repo = { owner: 'someone', name: 'garden-site', branch: 'gh-pages' }
+        let folders = withPublishFolder({ folders: {} }, 'host/g1', 'docs', '/sites/docs')
+        folders = withPublishFolder(folders, 'host/g1', 'blog', '/sites/blog')
+        folders = withPublishRepository(folders, 'host/g1', 'docs', repo)
+        expect(publishFolderOf(folders, 'host/g1', 'docs')).toBeNull()
+        expect(publishRepositoryOf(folders, 'host/g1', 'docs')).toEqual(repo)
+        expect(publishFolderOf(folders, 'host/g1', 'blog')).toBe('/sites/blog')
+        await writePublishFolders(path, folders)
+        expect(await readPublishFolders(path)).toEqual(folders)
+
+        folders = withPublishFolder(folders, 'host/g1', 'docs', '/sites/docs-again')
+        expect(publishRepositoryOf(folders, 'host/g1', 'docs')).toBeNull()
+        expect(folders.repositories).toBeUndefined()
+
+        // A hand-edited repository that is not one is dropped.
+        expect(parsePublishFolders('{"folders":{},"repositories":{"a/b":{"docs":{"owner":"x","name":"y","branch":"a b"},"blog":{"owner":"x","name":"y","branch":"main"},"c":"z"}}}')).toEqual({
+            folders: {},
+            repositories: { 'a/b': { blog: { owner: 'x', name: 'y', branch: 'main' } } },
+        })
+    })
+
+    it('reads --github as owner/name, owner/name#branch or a github.com address', () => {
+        expect(parseRepositoryArgument('someone/garden-site')).toEqual({ owner: 'someone', name: 'garden-site', branch: 'main' })
+        expect(parseRepositoryArgument('someone/garden-site#gh-pages')).toEqual({ owner: 'someone', name: 'garden-site', branch: 'gh-pages' })
+        expect(parseRepositoryArgument('https://github.com/someone/garden-site#site/live')).toEqual({ owner: 'someone', name: 'garden-site', branch: 'site/live' })
+        for (const bad of ['garden-site', 'someone/garden-site#a b', 'someone/garden-site#x#y', '']) expect(parseRepositoryArgument(bad), bad).toBeNull()
+        expect(repositoryLabel({ owner: 'someone', name: 'garden-site', branch: 'main' })).toBe('someone/garden-site#main')
     })
 })
 

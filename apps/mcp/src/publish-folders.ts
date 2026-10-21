@@ -1,15 +1,20 @@
 /**
- * Where each [[Publication]]'s [[Publish Folder]] is on this machine (ADR 0086): configuration a
- * person sets with `etherpk-mcp publish … --out <dir>`, read by the `publish` tool and by the
- * command without `--out`. A file of its own beside the logins (`publish.json`), because it is
- * not a secret and outlives a login; keyed by the graph the way its cache directory is keyed -
- * the server's host and graph id for a synced graph, the folder's path hash for a served folder -
- * so two graphs with a publication both called `blog` never share a folder. Never written into a
- * graph folder, which is the user's content (ADR 0079).
+ * Where each [[Publication]] publishes from this machine (ADR 0086, ADR 0152): its [[Publish
+ * Folder]], set with `etherpk-mcp publish … --out <dir>`, or its [[Publish Repository]], set with
+ * `--github owner/name[#branch]`. One or the other: setting one forgets the other, as in the
+ * Client. Read by the `publish` tool and by the command run without either. A file of its own
+ * beside the logins (`publish.json`), because it is not a secret and outlives a login (the GitHub
+ * token is never in it: it comes from `ETHERPK_GITHUB_TOKEN`); keyed by the graph the way its
+ * cache directory is keyed - the server's host and graph id for a synced graph, the folder's path
+ * hash for a served folder - so two graphs with a publication both called `blog` never share a
+ * destination. Never written into a graph folder, which is the user's content (ADR 0079).
  */
 
 import { mkdir, readFile, realpath, writeFile } from 'node:fs/promises'
 import nodePath, { basename, dirname, isAbsolute, join, resolve } from 'node:path'
+
+import { isBranchName, parseRepository } from '$lib/document/publish/host/github-repository'
+import type { GitHubRepository } from '$lib/document/publish/host/github-api'
 
 import { defaultConfigPath } from './config'
 import type { HeadlessBackend } from './headless-graph'
@@ -18,6 +23,26 @@ import { folderKey } from './persistence'
 export interface PublishFolders {
     /** graph key → publication id → absolute folder path. */
     folders: Record<string, Record<string, string>>
+    /** graph key → publication id → the repository and branch it is committed to. */
+    repositories?: Record<string, Record<string, GitHubRepository>>
+}
+
+/**
+ * `owner/name` or `owner/name#branch` (a github.com address works too), as `--github` takes it.
+ * Null when it is not a repository, or the branch is not a name git takes.
+ */
+export function parseRepositoryArgument(text: string): GitHubRepository | null {
+    const [repository, branch, ...rest] = text.trim().split('#')
+    if (rest.length > 0) return null
+    const parsed = parseRepository(repository)
+    const name = branch?.trim() || 'main'
+    if (!parsed || !isBranchName(name)) return null
+    return { ...parsed, branch: name }
+}
+
+/** How a repository is written for a person: `owner/name#branch`. */
+export function repositoryLabel(repo: GitHubRepository): string {
+    return `${repo.owner}/${repo.name}#${repo.branch}`
 }
 
 export function defaultPublishFoldersPath(env: NodeJS.ProcessEnv = process.env): string {
@@ -41,15 +66,30 @@ export function parsePublishFolders(raw: string): PublishFolders {
     } catch {
         return out
     }
+    const isMap = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value)
     const folders = (parsed as { folders?: unknown } | null)?.folders
-    if (typeof folders !== 'object' || folders === null || Array.isArray(folders)) return out
-    for (const [graphKey, byPublication] of Object.entries(folders as Record<string, unknown>)) {
-        if (typeof byPublication !== 'object' || byPublication === null || Array.isArray(byPublication)) continue
-        const kept: Record<string, string> = {}
-        for (const [publication, path] of Object.entries(byPublication as Record<string, unknown>)) {
-            if (typeof path === 'string' && isAbsolute(path)) kept[publication] = path
+    if (isMap(folders)) {
+        for (const [graphKey, byPublication] of Object.entries(folders)) {
+            if (!isMap(byPublication)) continue
+            const kept: Record<string, string> = {}
+            for (const [publication, path] of Object.entries(byPublication)) {
+                if (typeof path === 'string' && isAbsolute(path)) kept[publication] = path
+            }
+            if (Object.keys(kept).length > 0) out.folders[graphKey] = kept
         }
-        if (Object.keys(kept).length > 0) out.folders[graphKey] = kept
+    }
+    const repositories = (parsed as { repositories?: unknown } | null)?.repositories
+    if (isMap(repositories)) {
+        for (const [graphKey, byPublication] of Object.entries(repositories)) {
+            if (!isMap(byPublication)) continue
+            const kept: Record<string, GitHubRepository> = {}
+            for (const [publication, repo] of Object.entries(byPublication)) {
+                if (!isMap(repo) || typeof repo.owner !== 'string' || typeof repo.name !== 'string' || typeof repo.branch !== 'string') continue
+                const checked = parseRepositoryArgument(`${repo.owner}/${repo.name}#${repo.branch}`)
+                if (checked) kept[publication] = checked
+            }
+            if (Object.keys(kept).length > 0) (out.repositories ??= {})[graphKey] = kept
+        }
     }
     return out
 }
@@ -71,6 +111,30 @@ export async function writePublishFolders(path: string, folders: PublishFolders)
 /** The folder set for a publication on this machine, or null. */
 export function publishFolderOf(folders: PublishFolders, graphKey: string, publicationId: string): string | null {
     return folders.folders[graphKey]?.[publicationId] ?? null
+}
+
+/** The repository set for a publication on this machine, or null. */
+export function publishRepositoryOf(folders: PublishFolders, graphKey: string, publicationId: string): GitHubRepository | null {
+    return folders.repositories?.[graphKey]?.[publicationId] ?? null
+}
+
+/** `publications` with one entry dropped, and the graph's map dropped when it empties. */
+function without<T>(byGraph: Record<string, Record<string, T>> | undefined, graphKey: string, publicationId: string): Record<string, Record<string, T>> {
+    const out = { ...(byGraph ?? {}) }
+    const rest = { ...(out[graphKey] ?? {}) }
+    delete rest[publicationId]
+    if (Object.keys(rest).length > 0) out[graphKey] = rest
+    else delete out[graphKey]
+    return out
+}
+
+/** The same file with one publication's repository set, in place of any folder - the caller writes it. */
+export function withPublishRepository(folders: PublishFolders, graphKey: string, publicationId: string, repo: GitHubRepository): PublishFolders {
+    const repositories = folders.repositories ?? {}
+    return {
+        folders: without(folders.folders, graphKey, publicationId),
+        repositories: { ...repositories, [graphKey]: { ...(repositories[graphKey] ?? {}), [publicationId]: repo } },
+    }
 }
 
 /**
@@ -132,12 +196,14 @@ export async function publishFolderOverlap(graphFolder: string, publishFolder: s
     return relateFolders(await canonicalFolder(graphFolder), await canonicalFolder(publishFolder))
 }
 
-/** The same file with one publication's folder set (made absolute) - the caller writes it. */
+/** The same file with one publication's folder set (made absolute), in place of any repository - the caller writes it. */
 export function withPublishFolder(folders: PublishFolders, graphKey: string, publicationId: string, folder: string): PublishFolders {
+    const repositories = without(folders.repositories, graphKey, publicationId)
     return {
         folders: {
             ...folders.folders,
             [graphKey]: { ...(folders.folders[graphKey] ?? {}), [publicationId]: resolve(folder) },
         },
+        ...(Object.keys(repositories).length > 0 ? { repositories } : {}),
     }
 }

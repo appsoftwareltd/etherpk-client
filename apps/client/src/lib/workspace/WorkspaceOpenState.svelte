@@ -1,5 +1,6 @@
 <script lang="ts">
     import LoadingSweep from '$lib/components/LoadingSweep.svelte'
+    import InstallOffer from '$lib/install/InstallOffer.svelte'
     import { managedSignInHref, syncConnectHref } from '$lib/auth/sign-in-links'
 
     import type { AccessLossNotice } from '$lib/sync/access-loss'
@@ -291,6 +292,11 @@
     <div class="notice" data-testid="graph-needs-permission">
         <p>EtherPK needs permission to read and write this graph's folder.</p>
         <button data-testid="graph-grant" onclick={ongrant}>Grant access</button>
+        <!-- Chrome and Edge on a computer keep an installed app's folder access between visits,
+             so this question stops coming back; the offer shows only there. -->
+        <div class="notice__offer">
+            <InstallOffer moment="folder-access" text="Install EtherPK and Chrome keeps access to this folder, so you are not asked each time." />
+        </div>
         {@render shareWaits()}
     </div>
 {:else if phase === 'needs-unlock'}
@@ -362,6 +368,13 @@
     }
     .notice__error {
         color: var(--gk-text-danger, #b91c1c);
+    }
+    .notice__offer {
+        max-width: 32rem;
+        text-align: left;
+    }
+    .notice__offer:empty {
+        display: none;
     }
     .notice__share {
         color: var(--gk-text-subtle, #6b7280);
