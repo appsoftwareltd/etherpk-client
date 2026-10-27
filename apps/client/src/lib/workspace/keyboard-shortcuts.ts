@@ -17,6 +17,8 @@
 
 import type { Keybinding } from '$lib/surface'
 
+import { findKeysAvailable } from '$lib/document/find/find-events'
+
 export interface AppKeybinding extends Keybinding {
     /** What the chord does, as the dialog says it. */
     label: string
@@ -34,7 +36,7 @@ export interface ShortcutBinding extends Keybinding {
 }
 
 /** The card's app-level sections, in the order they are shown. */
-export const APP_SHORTCUT_GROUPS = ['Go to', 'Sidebars', 'Editor', 'Publish', 'Help'] as const
+export const APP_SHORTCUT_GROUPS = ['Go to', 'Sidebars', 'Editor', 'Find', 'Publish', 'Help'] as const
 export type AppShortcutGroup = (typeof APP_SHORTCUT_GROUPS)[number]
 
 export interface EditorShortcut {
@@ -79,6 +81,21 @@ export const APP_KEYBINDINGS: AppKeybinding[] = [
     // Ctrl+wheel over an editor was this zoom until 2026-10-09.
     { key: 'Alt+=', command: 'editor.zoomIn', label: 'Increase font size (this device)', group: 'Editor' },
     { key: 'Alt+-', command: 'editor.zoomOut', label: 'Decrease font size (this device)', group: 'Editor' },
+    // ── Find ──────────────────────────────────────────────────────────────────────────────
+    // Find and Replace (ADR 0153). Off the Alt convention like Mod+K: Mod+F is where everyone
+    // reaches, and the browser's own find cannot see the lines CodeMirror has not drawn. Each
+    // chord is the app's only while a document is in front with no dialog over it, and the
+    // browser's everywhere else. Ctrl+H deletes backwards in a Mac text field, and Cmd+H hides
+    // the app before the page sees it, so a Mac opens replace with Cmd+Option+F, as VS Code does.
+    { key: 'Mod+F', command: 'document.find', label: 'Find in this document', group: 'Find', when: findKeysAvailable },
+    { key: 'Ctrl+H', command: 'document.findReplace', label: 'Find and replace in this document', group: 'Find', platform: 'other', when: findKeysAvailable },
+    { key: 'Mod+Alt+F', command: 'document.findReplace', label: 'Find and replace in this document', group: 'Find', platform: 'apple', when: findKeysAvailable },
+    { key: 'F3', command: 'document.findNext', label: 'Next match', group: 'Find', when: findKeysAvailable },
+    { key: 'Mod+G', command: 'document.findNext', label: 'Next match', group: 'Find', when: findKeysAvailable },
+    { key: 'Shift+F3', command: 'document.findPrevious', label: 'Previous match', group: 'Find', when: findKeysAvailable },
+    { key: 'Mod+Shift+G', command: 'document.findPrevious', label: 'Previous match', group: 'Find', when: findKeysAvailable },
+    { key: 'F4', command: 'document.findNextLine', label: 'Next line in the list of matches', group: 'Find', when: findKeysAvailable },
+    { key: 'Shift+F4', command: 'document.findPreviousLine', label: 'Previous line in the list of matches', group: 'Find', when: findKeysAvailable },
     // ── Publish ───────────────────────────────────────────────────────────────────────────
     // After an edit: P opens the publication's settings (the Publish tab of Settings), Shift+P
     // publishes the last publication published from this device again, to its folder, with no
@@ -123,7 +140,8 @@ export const EDITOR_SHORTCUTS: ShortcutGroup[] = [
             { key: '/', label: 'Open the command menu' },
             { key: '[[', label: 'Link to a document' },
             { key: 'Alt+Enter', label: 'On a link: open the page it names' },
-            { key: 'Shift+F10', label: 'On a link: its menu (Show Backlinks, Rename…)' },
+            { key: 'Mod+Alt+Enter', label: 'On a link: open the page in the pane to the right' },
+            { key: 'Shift+F10', label: 'On a link: its menu (Open in pane to the right, Show Backlinks, Rename…)' },
             { key: '#', label: 'Add a task tag (on a task line)' },
             { key: '* _ ~ = [ ( `', label: 'Over selected text: wrap it (press again to add a layer, e.g. ** or [[)' },
             { key: 'Mod+B', label: 'Bold the selection, or unbold it' },

@@ -9,6 +9,7 @@ import {
     eventMatches,
     formatChord,
     formatChordHint,
+    type Keybinding,
     type KeyEventLike,
     sameChord,
     suppressBrowserChords,
@@ -78,6 +79,14 @@ describe('eventMatches', () => {
     it('does not fire a bare chord when an unexpected modifier is held', () => {
         expect(eventMatches('Alt+J', ev({ key: 'j', altKey: true, metaKey: true }))).toBe(false)
     })
+
+    // On a Mac, Option changes the character a key types: Cmd+Option+F reports "ƒ". With Mod held
+    // nothing is being typed, so the key's place on the keyboard decides.
+    it('matches a Mod and Alt chord by the key pressed, whatever character Option makes of it', () => {
+        expect(eventMatches('Mod+Alt+F', ev({ key: 'ƒ', code: 'KeyF', metaKey: true, altKey: true }))).toBe(true)
+        expect(eventMatches('Mod+Alt+F', ev({ key: '∂', code: 'KeyD', metaKey: true, altKey: true }))).toBe(false)
+        expect(eventMatches('Alt+J', ev({ key: '∆', code: 'KeyJ', altKey: true }))).toBe(false)
+    })
 })
 
 describe('attachKeybindings', () => {
@@ -100,6 +109,34 @@ describe('attachKeybindings', () => {
         target.fire(ev({ key: 'j', altKey: true }))
         await Promise.resolve()
         expect(opened).toBe(true)
+    })
+
+    /** Fire one key at a fresh target with the bindings, and say whether its default was prevented. */
+    function press(bindings: Keybinding[], event: KeyEventLike, apple = false) {
+        const reg = createCommandRegistry()
+        const ran: string[] = []
+        for (const binding of bindings) if (!reg.has(binding.command)) reg.register(binding.command, () => ran.push(binding.command))
+        let handler: ((e: KeyboardEvent) => void) | undefined
+        const target = { addEventListener: (_: string, h: (e: KeyboardEvent) => void) => (handler = h), removeEventListener: () => {} }
+        attachKeybindings(reg, bindings, target as unknown as Window, apple)
+        let prevented = false
+        handler?.({ ...event, preventDefault: () => (prevented = true) } as unknown as KeyboardEvent)
+        return { prevented, ran }
+    }
+
+    it('binds a chord only on the platform it names', async () => {
+        const bindings: Keybinding[] = [{ key: 'Ctrl+H', command: 'document.findReplace', platform: 'other' }]
+        expect(press(bindings, ev({ key: 'h', ctrlKey: true }), false).prevented).toBe(true)
+        // On a Mac, Ctrl+H deletes backwards in a text field, so it stays the browser's there.
+        expect(press(bindings, ev({ key: 'h', ctrlKey: true }), true).prevented).toBe(false)
+    })
+
+    it("leaves the key to the browser while a binding's condition does not hold", () => {
+        let open = false
+        const bindings: Keybinding[] = [{ key: 'Mod+F', command: 'document.find', when: () => open }]
+        expect(press(bindings, ev({ key: 'f', ctrlKey: true })).prevented).toBe(false)
+        open = true
+        expect(press(bindings, ev({ key: 'f', ctrlKey: true })).prevented).toBe(true)
     })
 
     it('skips a binding whose command is not registered, and detaches cleanly', () => {
@@ -159,6 +196,16 @@ describe('formatChord', () => {
 })
 
 describe('chordsFor', () => {
+    it("lists only the platform's chords when told which platform", () => {
+        const bindings: Keybinding[] = [
+            { key: 'Ctrl+H', command: 'document.findReplace', platform: 'other' },
+            { key: 'Mod+Alt+F', command: 'document.findReplace', platform: 'apple' },
+        ]
+        expect(chordsFor(bindings, 'document.findReplace', true)).toEqual(['Mod+Alt+F'])
+        expect(chordsFor(bindings, 'document.findReplace', false)).toEqual(['Ctrl+H'])
+        expect(chordsFor(bindings, 'document.findReplace')).toEqual(['Ctrl+H', 'Mod+Alt+F'])
+    })
+
     it('lists every chord bound to a Command, in the order the table holds them', () => {
         const bindings = [
             { key: 'Mod+K', command: 'search.open' },

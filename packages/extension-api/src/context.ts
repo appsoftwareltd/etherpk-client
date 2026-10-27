@@ -140,8 +140,12 @@ export interface ExtensionKeybindings {
 export interface ExtensionLayout {
     /**
      * Open a View. With `inPaneOf`, a panel id, it opens as a tab in that panel's Pane. With
-     * `beside`, it opens in another Pane beside that panel, so both show at once. Otherwise it
-     * opens where its kind belongs, or comes to the front if it is open already.
+     * `beside`, it opens in the Pane to the right of that panel's, so both show at once: at the
+     * end of that Pane's tabs, in a new Pane split off to the right when there is none, and moved
+     * there if it is open in any other Pane. It goes in front of that Pane without taking the
+     * keyboard, which stays in the View the person is working in. On a phone, or from a Sidebar,
+     * `beside` opens as `inPaneOf` does. Otherwise it opens where its kind belongs, or comes to the front if it is
+     * open already.
      */
     openView(view: ViewRef, options?: { inPaneOf?: string; beside?: string }): void
     /**

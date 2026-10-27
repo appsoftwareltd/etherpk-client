@@ -16,6 +16,7 @@ import { iconSvg } from '$lib/surface/icons'
 import type { ConceptCandidate } from '../../index-db'
 import { isInCode } from '../../wikilink/code-ranges'
 import { analysisFor } from '../analysis/editor-analysis'
+import { isFindReplace } from '../../find/find-edit'
 import { type PopoverBase, type PopoverRow, popoverMenu } from './popover-menu'
 import {
     closingBracketOffset,
@@ -57,7 +58,7 @@ const enclosingLinkCloses = StateField.define<readonly number[]>({
 
 /** The `]]` positions, in the new document, of the links this transaction typed a `[` inside. */
 function typedInsideLinks(tr: Transaction): number[] {
-    if (!tr.isUserEvent('input')) return []
+    if (!tr.isUserEvent('input') || isFindReplace(tr)) return []
     const closes: number[] = []
     tr.changes.iterChanges((fromA, _toA, _fromB, _toB, inserted) => {
         if (!inserted.toString().includes('[')) return

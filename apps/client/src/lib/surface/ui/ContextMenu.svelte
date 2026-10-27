@@ -36,17 +36,23 @@
 
     /**
      * What had focus when the menu opened: an editor after Shift+F10, a tab after a right-click.
-     * Given back when the menu closes without a row moving it elsewhere (Escape, a click on the
-     * backdrop), so a keyboard user is not left on the page body.
+     * Given back as the menu closes, so a keyboard user is not left on the page body - unless
+     * something else has taken focus since.
      */
     let returnFocus: HTMLElement | null = null;
 
-    $effect(() => {
-        if (menu.open || !returnFocus) return;
+    function giveFocusBack(): void {
         const target = returnFocus;
         returnFocus = null;
-        const nowhere = document.activeElement === null || document.activeElement === document.body;
-        if (nowhere && target.isConnected) target.focus();
+        if (!target?.isConnected) return;
+        const focused = document.activeElement;
+        const nowhere = focused === null || focused === document.body || (el?.contains(focused) ?? false);
+        if (nowhere) target.focus();
+    }
+
+    // Escape, or a click on the backdrop: nothing ran, so focus goes back where it was.
+    $effect(() => {
+        if (!menu.open && returnFocus) giveFocusBack();
     });
 
     // Re-clamp whenever the menu opens: it has no size until it is in the DOM.
@@ -72,6 +78,10 @@
         const row = rows[index];
         const target = menu.target;
         closeContextMenu();
+        // Back where it was BEFORE the row acts, as if the row had been a key pressed there: a
+        // row that moves focus on (Open in pane to the right, a dialog) then keeps it, where
+        // giving it back afterwards took it from them, and re-activated the link's own Pane.
+        giveFocusBack();
         if (!row || !target) return;
         await getActiveCommandRegistry().execute(row.command, target);
     }

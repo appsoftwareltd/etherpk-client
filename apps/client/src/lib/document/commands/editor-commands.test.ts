@@ -394,10 +394,12 @@ describe('registerEditorCommands — a locked Protected Document', () => {
         const contributions = createContributionRegistry()
         const teardown = registerEditorCommands(createCommandRegistry(), contributions)
         const ids = (ctx: { inTable: boolean; tableInsertable: boolean; bodyWritable: boolean }) => listCommandMenuItems(contributions, ctx).map((i) => i.id)
-        // Search reads; Reset workspace touches the Layout; spell check is a device preference.
-        // None of them writes into the locked body.
+        // Search reads; Find and replace reads the frontmatter and says why it cannot replace;
+        // Reset workspace touches the Layout; spell check is a device preference. None of them
+        // writes into the locked body.
         expect(ids({ inTable: true, tableInsertable: false, bodyWritable: false })).toEqual([
             'search.open',
+            'document.findReplace',
             'editor.spellCheckOff',
             'workspace.reset',
         ])

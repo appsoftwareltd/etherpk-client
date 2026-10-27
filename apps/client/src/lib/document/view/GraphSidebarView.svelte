@@ -35,7 +35,6 @@
         getActiveDocumentStore,
         getActiveGraphSettings,
     } from "$lib/document";
-    import { todayISO } from "$lib/document/calendar/month-grid-core";
     import JournalCalendar from "./JournalCalendar.svelte";
     import { FAVOURITE_MOVE } from "$lib/document/commands/document-commands";
     import { subscribeFavourites } from "$lib/document/favourites";
@@ -174,23 +173,28 @@
     }
 
     /**
-     * Open a Recents, Favourites or calendar entry by the name the index resolves it to: an entry
-     * can hold an alias, or the old name of a page renamed elsewhere, and opens the page it names.
+     * Open a Recents or Favourites entry by the name the index resolves it to: an entry can hold an
+     * alias, or the old name of a page renamed elsewhere, and opens the page it names. It opens at
+     * its remembered [[Reading Position]].
      */
     function open(concept: string) {
         openConcept(concept);
     }
 
     /**
-     * Today's [[Journal Concept]], resolved at the click and never cached: a tab left open
-     * overnight must reach the new day, not the one it mounted on. Computed, never created:
-     * reaching a day writes nothing until something is typed into it (ADR 0056), so this
-     * replaced an awaited `ensureTodayJournal` that minted an empty entry on every open. The
-     * button that calls this reads "Today" rather than the date, so nothing on it has to change at
-     * midnight.
+     * Today's [[Journal Entry]], through the Command Alt+J and the phone's Today icon run, so that
+     * the three behave the same: the day shows from its top (ADR 0154). The Command reads
+     * today at the press, so a tab left open overnight reaches the new day, and the button reads
+     * "Today" rather than the date, so nothing on it changes at midnight. Reaching a day writes
+     * nothing until something is typed into it (ADR 0056).
      */
     function openToday() {
-        open(todayISO());
+        void tryGetActiveCommandRegistry()?.execute(OPEN_TODAY);
+    }
+
+    /** A day picked on the [[Journal Calendar]], shown from its top as Today is (ADR 0154). */
+    function openDay(day: string) {
+        void tryGetActiveCommandRegistry()?.execute(OPEN_JOURNAL_DAY, day);
     }
 
     // ---- The action buttons -----------------------------------------------------------
@@ -229,8 +233,10 @@
      * shows too. The table is absent in the dev harnesses, where the text names no chord.
      */
     const helpFor = createControlHelp(workspaceService("keybindings"));
-    /** The Command Alt+J runs, whose chord today's button names. The button opens the same day. */
+    /** The Command Alt+J runs, whose chord today's button names. The button runs it too. */
     const OPEN_TODAY = "document.openTodayJournal";
+    /** The Command that shows a calendar day from its top. */
+    const OPEN_JOURNAL_DAY = "document.openJournalDay";
 
     /**
      * Every button, one look and one spacing: a solid grey fill and no visible border, darker on
@@ -655,7 +661,7 @@
             <JournalCalendar
                 {hasEntry}
                 {activeConcept}
-                onPick={(iso) => open(iso)}
+                onPick={openDay}
             />
         {/if}
     </section>

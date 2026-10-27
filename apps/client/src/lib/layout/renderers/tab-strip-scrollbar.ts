@@ -63,7 +63,18 @@ function activateTab(tab: HTMLElement): void {
     }
 }
 
-export function installTabStripScrollbar(api: DockviewApi, container: HTMLElement): () => void {
+/** What {@link installTabStripScrollbar} gives back. */
+export interface TabStripScrollbar {
+    /**
+     * Bring each strip's front tab into view, as an activation does. For a tab put in front of a
+     * group that is not the active one (Open in pane to the right, ADR 0155), which raises no
+     * activation for this module to follow.
+     */
+    revealFrontTabs(): void
+    dispose(): void
+}
+
+export function installTabStripScrollbar(api: DockviewApi, container: HTMLElement): TabStripScrollbar {
     // User-intended scroll position per tab list. Default (absent) is 0.
     const desired = new WeakMap<HTMLElement, number>()
     let current: HTMLElement | null = null
@@ -375,14 +386,17 @@ export function installTabStripScrollbar(api: DockviewApi, container: HTMLElemen
     const activeSub = api.onDidActivePanelChange(revealActiveTab)
     const layoutSub = api.onDidLayoutChange(restoreDesired)
 
-    return () => {
-        countObserver.disconnect()
-        activeSub.dispose()
-        layoutSub.dispose()
-        container.removeEventListener('mousemove', onMouseMove)
-        container.removeEventListener('wheel', onWheelCapture, { capture: true } as EventListenerOptions)
-        container.removeEventListener('scroll', onScrollCapture, true)
-        container.removeEventListener('click', onOverflowClick, true)
-        bar.remove()
+    return {
+        revealFrontTabs: revealActiveTab,
+        dispose() {
+            countObserver.disconnect()
+            activeSub.dispose()
+            layoutSub.dispose()
+            container.removeEventListener('mousemove', onMouseMove)
+            container.removeEventListener('wheel', onWheelCapture, { capture: true } as EventListenerOptions)
+            container.removeEventListener('scroll', onScrollCapture, true)
+            container.removeEventListener('click', onOverflowClick, true)
+            bar.remove()
+        },
     }
 }

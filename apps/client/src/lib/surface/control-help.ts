@@ -46,6 +46,6 @@ export function createControlHelp(table: KeybindingTable | undefined, apple: boo
     const watch = createSubscriber((update) => table?.subscribe(update) ?? (() => {}))
     return (description: string, command: string): ControlHelp => {
         watch()
-        return controlHelp(description, table ? chordsFor(table.bindings, command) : [], apple)
+        return controlHelp(description, table ? chordsFor(table.bindings, command, apple) : [], apple)
     }
 }

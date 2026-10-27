@@ -138,6 +138,27 @@ export function removePanel(model: LayoutModel, panelId: string): boolean {
     return true
 }
 
+/**
+ * Move an open instance into `to`, a Pane already in one of the model's regions (a new, empty
+ * one included), in front there: the end of the strip, or for a pinned View the end of the
+ * pinned block. It leaves its Pane as a close would - the Pane brings forward its own previous
+ * front tab (ADR 0150) and goes if it is left empty - but the instance itself carries on, pin
+ * and all. The active View stays the active View: the one that moved, when it was the active
+ * one, and otherwise whichever was. Returns the index it was seated at, or `null` when it is not
+ * open or is in `to` already.
+ */
+export function moveInstance(model: LayoutModel, panelId: string, to: PaneModel): number | null {
+    const from = locatePanel(model, panelId)
+    if (!from || from.pane === to) return null
+    const wasActive = model.activePanelId === panelId
+    removePanel(model, panelId)
+    const seat = from.instance.pinned ? pinnedCount(to) : to.views.length
+    to.views.splice(seat, 0, from.instance)
+    if (wasActive) activatePanel(model, panelId)
+    else bringToFront(to, panelId)
+    return seat
+}
+
 /** Pick a sensible new global focus after the active panel was removed. */
 export function remainingFocusTarget(model: LayoutModel): string | null {
     const main = activePaneOf(model, 'main')

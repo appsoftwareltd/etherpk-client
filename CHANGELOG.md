@@ -5,6 +5,41 @@ What changed in each release of the EtherPK Client and the Headless Client
 They are released together, under the version number they share with the Sync Server. This log
 starts at 0.9.3.
 
+## Unreleased
+
+### Client
+
+- **Today opens at the top of the day.** The Graph sidebar's **Today** button, **Alt+J**, the
+  phone's Today button and a day picked on the calendar show the journal entry from its top, with
+  the cursor at the start of its first line. This is the same when the entry is already open and
+  scrolled down. On a phone the keyboard stays down unless the entry is empty.
+- **Find and replace in a document.** **Ctrl+F** (**Cmd+F** on a Mac) opens a find box at the top
+  right of the document in front, and **Ctrl+H** (**Cmd+Option+F** on a Mac) opens it with a
+  replace field. It finds text anywhere in the document, including lines not yet scrolled into
+  view, with options for case, whole words and regular expressions. Every match is marked, and a
+  list at the bottom of the document shows each matching line and what a replace would change.
+  **Replace all** is one undo step. A replace never changes the page's title or aliases. If a
+  replace would change the name in a wikilink that other documents also use, EtherPK asks first,
+  and offers to rename it everywhere, to change only this document's links, or to replace outside
+  wikilinks only. On a phone, choose **Find and replace** from the `/` menu.
+- **Open a link in the pane to the right.** On a desktop, right-click a wikilink and choose **Open
+  in pane to the right**, or put the cursor in the link and press **Ctrl+Alt+Enter** (**Cmd+Option+Enter** on a Mac). The page
+  opens beside the note, at the end of the tabs of the pane to the right, or in a new pane split off
+  to the right when there is none. The cursor stays in the note you are reading, and Backlinks keeps
+  showing that note's backlinks. A page already open in another pane moves there with its scroll
+  position, cursor and undo history. A page already in front in the pane to the right scrolls to
+  its top.
+- **A sidebar keeps its width on a desktop.** Opening, closing and moving panes, hiding the other
+  sidebar and resizing the window change only the main area, and its panes keep their proportions.
+  Only a drag of the sidebar's edge or **Reset workspace** changes its width. In a window too
+  narrow for both sidebars, they get narrower, and they go back to their width when the window gets
+  wider. The width also comes back after the phone layout. A sidebar is one pane: a tab dragged onto
+  it joins its tabs.
+- **Extension API:** `layout.openView` and `layout.openDocument` with `beside` open in the pane to
+  the right of the given panel's pane, splitting one off when there is none, and move a View that is
+  open in another pane there. The View goes in front of that pane without taking the keyboard.
+- Updated dependencies.
+
 ## 0.15.0 - 2026-10-21
 
 ### Client

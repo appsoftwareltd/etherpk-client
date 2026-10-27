@@ -171,6 +171,20 @@ describe('the block may hold only text typed into it', () => {
         const after = '---\ntitle: Router\nabc\n---\nmore'
         expect(frontmatterWouldGrow(page, [{ from: closer, to: closer + 4, inserted: 0 }], () => after)).toBe(true)
     })
+
+    // One edit that changes a value in the block and text in the body (a Replace all, ADR 0153):
+    // only the change in the block moves the block's end, so only it may count.
+    it('allows one edit inside the block and one in the body together', () => {
+        const page = '---\nstatus: Garden\n---\nGarden'
+        const value = page.indexOf('Garden')
+        const body = page.lastIndexOf('Garden')
+        const after = '---\nstatus: Yard\n---\nYard'
+        const changes = [
+            { from: value, to: value + 6, inserted: 4 },
+            { from: body, to: body + 6, inserted: 4 },
+        ]
+        expect(frontmatterWouldGrow(page, changes, () => after)).toBe(false)
+    })
 })
 
 describe('joinsFrontmatterDelimiter', () => {

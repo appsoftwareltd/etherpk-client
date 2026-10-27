@@ -9,7 +9,7 @@
      * two features. The editor groups are the reference card for the CodeMirror keymap.
      */
     import Modal from "@appsoftwareltd/etherpk-shared/dialog";
-    import { formatChord, isApplePlatform } from "$lib/surface";
+    import { boundOnPlatform, formatChord, isApplePlatform } from "$lib/surface";
 
     import { APP_KEYBINDINGS, APP_SHORTCUT_GROUPS, EDITOR_SHORTCUTS, type AppShortcutGroup, type ShortcutBinding } from "./keyboard-shortcuts";
 
@@ -32,6 +32,7 @@
         "Go to": "From anywhere in the graph.",
         Sidebars: "A letter per view brings it to the front, and back if it was closed. L and R show or hide a whole sidebar.",
         Editor: "Spell check is set per device and applies to every graph. Its languages are in Settings, Spelling. In an underlined word, Shift+F10 opens its corrections.",
+        Find: "In the document in front. In the box, Enter and Shift+Enter go to the next and previous match, Up and Down to earlier queries, Alt+C, Alt+W and Alt+R match case, whole words or a regular expression, and Esc closes.",
         Publish: "Publishing again needs a publication published from this device before, or the graph's only one, with a folder chosen - otherwise the Publish tab opens.",
         Help: "",
     };
@@ -49,7 +50,9 @@
             .map((title) => {
                 const byCommand = new Map<string, Row>();
                 for (const binding of bindings) {
-                    if (sectionOf(binding) !== title) continue;
+                    // A chord for the other platform is not one this keyboard has (Ctrl+H is replace
+                    // on Windows and Linux only).
+                    if (sectionOf(binding) !== title || !boundOnPlatform(binding, apple)) continue;
                     const row = byCommand.get(binding.command) ?? { label: binding.label, chords: [] };
                     row.chords.push(formatChord(binding.key, apple));
                     byCommand.set(binding.command, row);

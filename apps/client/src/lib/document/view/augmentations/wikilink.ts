@@ -6,8 +6,9 @@
  * (as a [[Draft]] when it has no document yet). Holding the mod key (Ctrl / ⌘)
  * suppresses that and just places the cursor, which is how link text is edited —
  * inverted from the usual editor convention so touch, which has no modifier, can
- * follow a link at all. From the keyboard, Alt+Enter follows the link at the caret and
- * Shift+F10 or the ContextMenu key opens its menu there. The model lives in
+ * follow a link at all. From the keyboard, Alt+Enter follows the link at the caret,
+ * Mod+Alt+Enter opens it in the Pane to the right (ADR 0155), and Shift+F10 or the
+ * ContextMenu key opens its menu there. The model lives in
  * `$lib/document/wikilink` (see Wikilinks.md, ADR 0011).
  */
 
@@ -32,6 +33,7 @@ import {
 } from '../analysis/editor-analysis'
 import { EXTERNAL } from '../cm-document'
 import { isOwnEditing } from '../own-editing'
+import { isFindReplace } from '../../find/find-edit'
 import { type LinkAt, type WikilinkEdit, WikilinkEpisode } from './wikilink-episode'
 
 export interface WikilinkIndexUpdate {
@@ -42,8 +44,10 @@ export interface WikilinkIndexUpdate {
 export interface WikilinkAugmentationOptions {
     /** True if the concept has no document (→ `.cm-wikilink--missing`). */
     isMissing?: (concept: string) => boolean
-    /** Open the concept (plain click). Missing concepts are confirmed, then created, by the handler. */
+    /** Open the concept (plain click). A missing concept opens as a [[Draft]] (ADR 0050). */
     onOpen?: (concept: string) => void
+    /** Open the concept in the Pane to the right of the editor's (Mod+Alt+Enter, ADR 0155). */
+    onOpenToTheRight?: (concept: string) => void
     /**
      * Subscribe to graph-index updates; returns an unsubscribe. Without this the
      * missing/exists styling is only as fresh as the last EDIT: an editor mounted while
@@ -73,7 +77,8 @@ export interface WikilinkAugmentationOptions {
  * opens an episode only when one link holds every change it makes between its brackets.
  */
 export function opensWikilinkEpisode(tr: Transaction): boolean {
-    if (!isOwnEditing(tr)) return false
+    // A replace from the find box asked its rename question before it wrote (ADR 0153 §6).
+    if (!isOwnEditing(tr) || isFindReplace(tr)) return false
     if (!tr.isUserEvent('input.wrap') && !tr.isUserEvent('input.unwrap')) return true
     const ranges: { from: number; to: number }[] = []
     tr.changes.iterChangedRanges((fromA, toA) => ranges.push({ from: fromA, to: toA }))
@@ -90,7 +95,7 @@ export function opensWikilinkEpisode(tr: Transaction): boolean {
  * last `]`). Links never span lines; a link inside code or inside the frontmatter block is not a
  * reference and is left out.
  */
-function linksOnLineAt(state: EditorState, from: number, to: number): LinkAt[] {
+export function linksOnLineAt(state: EditorState, from: number, to: number): LinkAt[] {
     const analysis = analysisFor(state)
     if (from <= analysis.frontmatterEnd) return []
     const line = state.doc.lineAt(from)
@@ -163,12 +168,15 @@ export function wikilinkAtCaret(state: EditorState): string | null {
     return segment?.wikilink.concept ?? null
 }
 
-/** Alt+Enter: open the link at the caret, as a click on it does. Not handled outside a link. */
-function followLinkAtCaret(options: WikilinkAugmentationOptions): Command {
+/**
+ * Alt+Enter: open the link at the caret with `open`, as a click on it does; Mod+Alt+Enter, in
+ * the Pane to the right. Not handled outside a link, so the keys under it keep their meaning.
+ */
+function followLinkAtCaret(open: ((concept: string) => void) | undefined): Command {
     return ({ state }) => {
         const concept = wikilinkAtCaret(state)
-        if (!concept || !options.onOpen) return false
-        options.onOpen(concept)
+        if (!concept || !open) return false
+        open(concept)
         return true
     }
 }
@@ -445,7 +453,8 @@ export function wikilinkAugmentation(options: WikilinkAugmentationOptions = {}):
         },
     })
     const keys = keymap.of([
-        { key: 'Alt-Enter', run: followLinkAtCaret(options) },
+        { key: 'Alt-Enter', run: followLinkAtCaret(options.onOpen) },
+        { key: 'Mod-Alt-Enter', run: followLinkAtCaret(options.onOpenToTheRight) },
         { key: 'Shift-F10', run: linkMenuAtCaret(options) },
         { key: 'ContextMenu', run: linkMenuAtCaret(options) },
     ])

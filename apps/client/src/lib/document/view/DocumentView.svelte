@@ -4,6 +4,8 @@
     // View goes inactive and back, which a text assertion alone cannot prove
     // (the in-memory store retains flushed edits, so a remount would re-seed them).
     let mountCount = 0
+    /** Gives each tab's Match List an id the find box's list switch can name. */
+    let matchLists = 0
 </script>
 
 <script lang="ts">
@@ -20,7 +22,8 @@
     import { viewKey, type ViewRef, type ViewVisibility } from '$lib/layout'
     import { NOTICE_AUTO_DISMISS_MS } from '$lib/notice-dismissal'
     import { registerPositionAdapter, tryGetActiveReadingPositions } from '$lib/navigation'
-    import { openContextMenu, tryGetActiveEventBus } from '$lib/surface'
+    import { openContextMenu, tryGetActiveCommandRegistry, tryGetActiveEventBus } from '$lib/surface'
+    import { DOCUMENT_OPEN_TO_THE_RIGHT } from '../commands/document-commands'
     import { iconSvg } from '$lib/surface/icons'
 
     import { setActiveDocument } from '../active-document'
@@ -46,7 +49,7 @@
     import { placeholderText } from '../placeholder-text'
     import { conceptIsMissing, openConcept } from '../open-concept'
     import { documentBody } from '../protection/cipher-fence'
-    import { frontmatterLineOffset, subscribeReveal, takeReveal } from '../reveal'
+    import { frontmatterLineOffset, type RevealRequest, subscribeReveal, takeReveal } from '../reveal'
     import { DocumentNotFoundError, type EditorDocument } from '../types'
     import { currentWorkspaceServices, type ProtectionControls } from '$lib/workspace/workspace-services'
     import { createDocumentEditor, type DocumentEditor } from './cm-document'
@@ -61,8 +64,18 @@
     import { applyEditorPosition, editorPosition, placeSelection, type RevealAlign, revealEditorPosition } from './view-position'
     import { templateAsNewText } from './template-insert'
     import { createHeldReveal } from './held-reveal'
+    import { topOfBody } from './top-of-body'
     import { setEditorOnScreen } from './editor-on-screen'
     import DocumentBacklinks from './DocumentBacklinks.svelte'
+    import FindBox from './FindBox.svelte'
+    import MatchList from './MatchList.svelte'
+    import { FindController } from '../find/find-controller'
+    import { FIND_REQUEST, FIND_TARGET_GONE, FIND_TEXT_CHANGED, type FindRequestDetail } from '../find/find-events'
+    import { findSession } from '../find/find-session'
+    import { fenceInText, isProtectedDocumentFacet } from './augmentations/protected-fence'
+    import { editorDocument } from './editor-document'
+    import { prefersMobileLayout } from '$lib/layout/breakpoint'
+    import { isApplePlatform } from '$lib/surface'
     import EndOfDocument from './EndOfDocument.svelte'
     import { type EndKind, startAtEnd } from './end-of-document'
     import { bodyWritable } from './body-writable'
@@ -383,6 +396,103 @@
      */
     const showLock = $derived(!rolled && (protection?.status === 'unlocked' || protection?.status === 'masked'))
 
+    /**
+     * [[Find and Replace]] (ADR 0153), on a tab's own View only: the box over its top right and the
+     * [[Match List]] at its foot. A Journal Roll's older days are editors inside this View, so the
+     * box finds in whichever of them the caret is in. A request from any of them bubbles up to this
+     * View's root, the find host (`find-events.ts`), so neither the keys nor the editors need to
+     * know which View that is.
+     */
+    const findController = ownsTab
+        ? new FindController({
+              session: findSession(),
+              layout: () => (prefersMobileLayout() ? 'phone' : 'desktop'),
+              replaceRenames: () => {
+                  const service = currentWorkspaceServices()?.findReplace
+                  return service ? (request) => service.replace(request) : null
+              },
+              writable: (state) => bodyWritable(state),
+              bodyLocked: (state) => fenceInText(state.doc),
+              protectedDocument: (state) => state.facet(isProtectedDocumentFacet)(),
+              // An older day hidden from the roll takes its editor's DOM with it.
+              alive: (target) => (target as EditorView).dom.isConnected,
+              fallback: () => editor?.view ?? null,
+              documentOf: (target) => (target as EditorView).state.facet(editorDocument)?.concept ?? null,
+              undoKey: isApplePlatform() ? '⌘Z' : 'Ctrl+Z',
+          })
+        : null
+    let find = $state.raw(findController?.snapshot ?? null)
+    const detachFind = findController?.subscribe(() => (find = findController.snapshot))
+    const findListId = `document-matches-${++matchLists}`
+    /** The Match List's height while it shows, which lifts the Lock button and the refusal above it. */
+    let matchListHeight = $state(0)
+    const matchListShown = $derived(!!find?.open && find.listShown)
+
+    /** The editor an element is in, or null. */
+    function editorAt(element: EventTarget | null): EditorView | null {
+        const dom = element instanceof Element ? element.closest('.cm-editor') : null
+        return dom instanceof HTMLElement ? EditorView.findFromDOM(dom) : null
+    }
+
+    /**
+     * Make this View's root the find host: it answers the requests the keys and the editors in it
+     * send, works the matches out again as the text changes (never inside the editor's own update),
+     * lets an editor that goes away go, and follows the caret into another of its editors.
+     */
+    function findHost(root: HTMLElement): () => void {
+        const controller = findController
+        if (!controller) return () => {}
+        let refresh: ReturnType<typeof setTimeout> | undefined
+        const onRequest = (event: Event) => {
+            const detail = (event as CustomEvent<FindRequestDetail>).detail
+            event.preventDefault()
+            event.stopPropagation()
+            // The editor the request came from, when it came from one. From the box or the list,
+            // find stays where it is.
+            const from = detail.view ?? editorAt(event.target)
+            const own = editor?.view ?? null
+            if (detail.action === 'close') return controller.close({ focusEditor: true })
+            const where = from ?? controller.target ?? own
+            if (!where) return
+            if (detail.action === 'open' || detail.action === 'open-replace') {
+                return controller.open(where, { replace: detail.action === 'open-replace' })
+            }
+            // F3 and F4 with the box closed open it, on the match nearest the caret.
+            if (!controller.snapshot.open) return controller.open(where, { replace: false })
+            if (from) controller.retarget(from)
+            if (detail.action === 'next') controller.next()
+            else if (detail.action === 'previous') controller.previous()
+            else if (detail.action === 'next-line') controller.nextLine()
+            else controller.previousLine()
+        }
+        // At most every 150 ms while the text changes, rather than 150 ms after it stops: another
+        // member typing steadily would otherwise keep the matches from ever being worked out again.
+        // The marks and the positions the box acts on follow every change meanwhile (find-highlight.ts).
+        const onTextChanged = () => {
+            refresh ??= setTimeout(() => {
+                refresh = undefined
+                controller.textChanged()
+            }, 150)
+        }
+        const onTargetGone = (event: Event) => controller.targetGone((event as CustomEvent<{ view: EditorView }>).detail.view)
+        const onFocusIn = (event: FocusEvent) => {
+            if (!controller.snapshot.open) return
+            const cm = editorAt(event.target)
+            if (cm) controller.retarget(cm)
+        }
+        root.addEventListener(FIND_REQUEST, onRequest)
+        root.addEventListener(FIND_TEXT_CHANGED, onTextChanged)
+        root.addEventListener(FIND_TARGET_GONE, onTargetGone)
+        root.addEventListener('focusin', onFocusIn)
+        return () => {
+            clearTimeout(refresh)
+            root.removeEventListener(FIND_REQUEST, onRequest)
+            root.removeEventListener(FIND_TEXT_CHANGED, onTextChanged)
+            root.removeEventListener(FIND_TARGET_GONE, onTargetGone)
+            root.removeEventListener('focusin', onFocusIn)
+        }
+    }
+
     /** Live answer from the mounted document: protection is added and removed while it is open. */
     function isProtectedNow(): boolean {
         return (doc as { isProtected?: boolean } | undefined)?.isProtected ?? false
@@ -466,7 +576,11 @@
      * moment so the activation that follows does not restore the Reading Position over it, and
      * placed again as late content arrives (held-reveal.ts).
      */
-    const heldReveal = createHeldReveal({ reveal: revealLine, focus: focusEditor, focusIsFree })
+    const heldReveal = createHeldReveal({
+        reveal: (line, align) => (line === 'top' ? showTop() : revealLine(line, align)),
+        focus: focusEditor,
+        focusIsFree,
+    })
 
     onMount(() => {
         mountIndex = ++mountCount
@@ -528,7 +642,7 @@
             detachReveal = subscribeReveal((request) => {
                 if (request.target !== view.target || !editor) return
                 takeReveal(view.target)
-                heldReveal.hold(request.line)
+                holdReveal(request)
             })
         }
         if (tryMountDocument() || embeddedDocumentGone()) return
@@ -628,6 +742,43 @@
         } finally {
             promoting = false
         }
+    }
+
+    /**
+     * Hold a reveal addressed to this tab. A line takes the focus with it: "show me this" means the
+     * caret should be usable. The top of a journal day reached by its date (ADR 0154) leaves the
+     * focus to the workspace's activation policy, which a phone applies only to an empty entry.
+     */
+    function holdReveal(request: RevealRequest): void {
+        if (request.line === 'top') heldReveal.hold('top', { align: 'start', focus: false })
+        else heldReveal.hold(request.line)
+    }
+
+    /**
+     * Show the top of the document: scrolled to its very top, above any [[Frontmatter]], with the
+     * caret at the start of the body's first line (`topOfBody`, ADR 0154). `applyEditorPosition`
+     * asserts the scroll offset over the frames a just-activated panel takes to lay out.
+     *
+     * The focus goes to this tab's own entry, not to an older day in its [[Journal Roll]]: the next
+     * key typed there would scroll the tab back down to that day.
+     */
+    function showTop(): void {
+        const cm = editor?.view
+        if (!cm) return
+        rollFocus = null
+        // A phone gives no focus to an entry with text, so a keyboard left up in an older day would
+        // stay there. It is already up, so moving it to the entry raises nothing new. Before the
+        // scroll below, for the reason given there.
+        const active = document.activeElement
+        if (active && active !== cm.contentDOM && cm.dom.contains(active) && active.closest(`[${JOURNAL_ROLL_ATTRIBUTE}]`)) {
+            focusEditor()
+        }
+        // Now, as well as in the assert loop: CodeMirror's focus handler puts a scroller it finds at
+        // 0 back to the offset of its last scroll event, and the focus policy's frame can run before
+        // the event for this scroll has been dispatched.
+        cm.scrollDOM.scrollTop = 0
+        const head = topOfBody(cm.state)
+        applyEditorPosition(cm, { scrollTop: 0, anchor: head, head })
     }
 
     /**
@@ -1104,6 +1255,16 @@
                 editRefused: showRefusal,
                 conceptIsMissing,
                 openConcept: (concept) => void openConcept(concept, panelId),
+                // Mod+Alt+Enter runs the Command the link menu's row runs, so the key and the
+                // row are one behaviour (ADR 0155): the page opens beside this one and the caret
+                // stays here. Without a workspace (a harness) or a panel to start from, it opens as
+                // a click does.
+                openConceptToTheRight: (concept) => {
+                    const commands = tryGetActiveCommandRegistry()
+                    if (panelId && commands?.has(DOCUMENT_OPEN_TO_THE_RIGHT)) {
+                        void commands.execute(DOCUMENT_OPEN_TO_THE_RIGHT, { kind: 'wikilink', concept, panelId })
+                    } else void openConcept(concept, panelId)
+                },
                 // An edited link is a rename proposal (ADR 0065); the workspace owns the
                 // question. A right-click or long-press on one raises its Context Menu.
                 wikilinksEdited: (edits) =>
@@ -1165,6 +1326,9 @@
             setActiveEditorView(editor.view)
             refreshEditorContext(editor.view)
         }
+        // Find open across a rebuild finds in the new editor. Its text may still be arriving, and
+        // the matches follow it as it does (`find-highlight.ts` tells the host each change).
+        if (findController?.snapshot.open && !findController.target) findController.retarget(editor.view)
         // The font size zooms with Alt+= and Alt+- (keyboard-shortcuts.ts) and the Command Bar.
         // Ctrl+wheel over the editor is the browser's own, and over a map in it the map's.
         const dom = editor.view.dom
@@ -1213,7 +1377,7 @@
         // Reading Position, which describes the Draft that no longer exists.
         const reveal = takeReveal(view.target)
         if (reveal) {
-            heldReveal.hold(reveal.line)
+            holdReveal(reveal)
         } else if (pendingCaret !== undefined) {
             const head = pendingCaret
             pendingCaret = undefined
@@ -1302,6 +1466,9 @@
             // The Command Bar's context describes the active editor, so it is cleared only when
             // that was this one: a Task Detail closing beside a tab must not blank the tab's.
             const wasActive = getActiveEditorView() === editor.view
+            // Find lets go of the editor before it goes, and stays open: a remount builds a new one,
+            // which it finds in as soon as it exists.
+            findController?.release(editor.view)
             clearActiveEditorView(editor.view)
             // A dead end for anything still holding this view - an upload in flight - unless a
             // remount records its successor over this mark next (editor-succession.ts).
@@ -1326,6 +1493,8 @@
     $effect(() => visibility?.subscribe((onScreen) => editor?.view.dispatch({ effects: setEditorOnScreen.of(onScreen) })))
 
     onDestroy(() => {
+        findController?.close({ focusEditor: false })
+        detachFind?.()
         // A command's text held in a Draft is the person's typing: create the document with it
         // rather than let it go with the View.
         if (draft?.isHolding()) draft.release()
@@ -1354,10 +1523,21 @@
     data-doc-target={view.target}
     data-embedded={embedded || undefined}
     data-rolled={rolled || undefined}
+    data-find-host={ownsTab || undefined}
     style:--gk-scrollbar-inset="{scrollbarInset}px"
+    style:--gk-match-list-height="{matchListShown ? matchListHeight : 0}px"
+    {@attach findHost}
 >
     <div class="document-view__mounts" data-testid="document-mounts">{mountIndex}</div>
     <div class="document-view__editor" data-testid="document-editor" bind:this={host}></div>
+    {#if find?.open && findController}
+        <FindBox {find} controller={findController} entry={find.target && find.target !== view.target ? find.target : null} listId={findListId} />
+        {#if find.listShown}
+            <div class="document-view__matches" bind:clientHeight={matchListHeight}>
+                <MatchList {find} controller={findController} id={findListId} onescape={() => findController.focusBox()} />
+            </div>
+        {/if}
+    {/if}
     {#if showLock}
         <button
             type="button"
@@ -1456,7 +1636,7 @@
         position: absolute;
         left: 1rem;
         right: calc(1rem + var(--gk-scrollbar-inset, 0px));
-        bottom: 1rem;
+        bottom: calc(1rem + var(--gk-match-list-height, 0px));
         z-index: 2;
         display: flex;
         align-items: flex-start;
@@ -1483,7 +1663,12 @@
     /* Over an unlocked Protected Document the Lock button owns the bottom-right corner, so the
        strip sits above it (button height plus the gap) rather than giving up its right margin. */
     .document-view--lock .document-view__refusal {
-        bottom: calc(1rem + 2.75rem + 0.75rem);
+        bottom: calc(1rem + 2.75rem + 0.75rem + var(--gk-match-list-height, 0px));
+    }
+    /* The Match List (ADR 0153) takes the foot of the View in the flow, so the editor above it
+       gives up exactly its height and nothing covers the text. */
+    .document-view__matches {
+        flex: none;
     }
     .document-view__error {
         border-bottom: 1px solid var(--gk-danger-border, #fecaca);
@@ -1504,7 +1689,7 @@
     .document-view__lock {
         position: absolute;
         right: calc(1rem + var(--gk-scrollbar-inset, 0px));
-        bottom: 1rem;
+        bottom: calc(1rem + var(--gk-match-list-height, 0px));
         z-index: 2;
         display: inline-flex;
         align-items: center;

@@ -6,11 +6,11 @@
  * and maps the engine-agnostic region / open-mode vocabulary onto dockview's
  * groups and positions.
  *
- * Region persistence: dockview destroys a group when
- * its last panel closes, so this adapter — not dockview — owns region identity.
- * It keeps a `region → groupId` map and recreates the group at the correct edge
- * on demand, keeping every region a stable, addressable target regardless of
- * dockview's group lifecycle.
+ * Regions: each Sidebar is a dockview **edge group** (ADR 0156), outside the grid that holds the
+ * editor area's Panes. A Pane opening, closing or moving in the grid, and a window resize, change
+ * only the editor area, so a Sidebar keeps its width until the person drags its edge. dockview
+ * destroys a grid group when its last panel closes, so this adapter, not dockview, owns region
+ * identity: it keeps a `region → groupId` map and makes a region's group again on demand.
  *
  * The editor area is the exception: it is never allowed to disappear. Its last
  * group stays when its last tab closes, empty and saying no page is open, so
@@ -36,7 +36,8 @@ import {
     type IContentRenderer,
     type IDockviewPanel,
     type IWatermarkRenderer,
-    type SerializedDockview,
+    type SerializedEdgeGroups,
+    directionToPosition,
 } from 'dockview-core'
 
 import 'dockview-core/dist/styles/dockview.css'
@@ -59,6 +60,13 @@ import type {
 } from '../types'
 import { parseViewKey } from '../view-ref'
 import { createViewVisibility, watchPageVisibility, watchViewSize } from '../view-visibility'
+import {
+    SIDEBAR_EDGE,
+    SIDEBAR_EDGE_GROUP_ID,
+    sidebarsAsEdgeGroups,
+    type DockviewGeometry,
+    type SidebarRegion,
+} from './dockview-geometry'
 import { installTabStripScrollbar } from './tab-strip-scrollbar'
 import { NO_PAGE_OPEN } from './no-page-open'
 import { installTabContextMenu, labelOf } from './tab-context-menu'
@@ -68,37 +76,27 @@ import { unavailableViewMessage } from './unavailable-view'
 const VIEW_COMPONENT = 'view'
 
 /**
- * Default sidebar widths (first run, and when a collapsed sidebar is re-opened
- * with no remembered width). The same on both sides. The left is wide enough for
- * the Graph Sidebar's action buttons two by two, a classic scrollbar beside them
- * included (ADR 0139).
+ * A Sidebar's width until the person gives it another (a first run, Reset workspace). The same on
+ * both sides. The left is wide enough for the Graph Sidebar's action buttons two by two, a classic
+ * scrollbar beside them included (ADR 0139).
  */
-const DEFAULT_SIDEBAR_WIDTH: Record<'left-sidebar' | 'right-sidebar', number> = {
-    'left-sidebar': 304,
-    'right-sidebar': 304,
-}
-/** Minimum width a sidebar can be dragged to once it is resizable. */
+const DEFAULT_SIDEBAR_WIDTH = 304
+/** The least width a Sidebar can be dragged to. */
 const SIDEBAR_MIN_WIDTH = 160
+/**
+ * The least width dockview's shell gives the editor area before a narrow window squeezes the
+ * Sidebars (`CenterView.minimumSize` in dockview-core 6.6).
+ */
+const EDITOR_AREA_MIN_WIDTH = 100
 
 const SIDEBARS = ['left-sidebar', 'right-sidebar'] as const
+
+const isSidebar = (region: Region): region is SidebarRegion => region !== 'main'
 
 /** Params carried on every panel so it can be remounted after `fromJSON`. */
 interface PanelParams {
     kind: string
     target: string
-}
-
-/** The geometry the adapter contributes to {@link SerializedLayout.renderer}. */
-interface DockviewGeometry {
-    dockview: SerializedDockview
-    /** Region → dockview group id (group ids are preserved across toJSON/fromJSON). */
-    regions: Partial<Record<Region, string>>
-}
-
-const EDGE_FOR_REGION: Record<Region, Exclude<Direction, 'within'> | undefined> = {
-    main: undefined,
-    'left-sidebar': 'left',
-    'right-sidebar': 'right',
 }
 
 function splitDirection(mode: OpenMode): Direction {
@@ -192,14 +190,11 @@ export function createDockviewRenderer(options: DockviewRendererOptions): Dockvi
 
     // Region → its current dockview group id. Recreated on demand if emptied.
     const regionGroupId: Partial<Record<Region, string>> = {}
-    // Remembered sidebar widths so re-opening restores the prior size.
-    const sidebarWidth: Partial<Record<Region, number>> = {}
+    // Each Sidebar's own width (ADR 0156): the width the person last dragged it to, or the one the
+    // model brought. Never a width a narrow window squeezed it to, so the Sidebar grows back to it.
+    const sidebarWidth: Partial<Record<SidebarRegion, number>> = {}
     // Desired collapsed state, applied lazily if the group does not exist yet.
     const collapsedState: Partial<Record<Region, boolean>> = {}
-    // True between restoreGeometry() and the afterRestore() that follows it, so the
-    // latter trusts fromJSON's restored widths for OPEN sidebars instead of
-    // re-pinning them to a default (which loses the user's dragged width on reload).
-    let geometryRestored = false
 
     // The component rather than `createDockview` (which returns only `component.api`): its
     // `removePanel` takes the `removeEmptyGroup` option the api's does not, which is how the
@@ -314,7 +309,7 @@ export function createDockviewRenderer(options: DockviewRendererOptions): Dockvi
     // (at the top of the pane) on hover when they overflow. Disposed in destroy().
     // The scrollbar module also owns the overflow dropdown (repositioning it as a
     // proper dropdown, listing every tab, and scrolling the selected tab into view).
-    const disposeTabScrollbar = installTabStripScrollbar(api, container)
+    const tabStrips = installTabStripScrollbar(api, container)
 
     // Right-click / long-press on ANY tab → the Context Menu: the document rows (favourite,
     // rename) for a document tab, the tab-management rows for every tab. Resolved by label
@@ -368,6 +363,8 @@ export function createDockviewRenderer(options: DockviewRendererOptions): Dockvi
         const group = panel.api.group
         if (group.activePanel === panel) return
         group.model.openPanel(panel, { index: group.panels.indexOf(panel), skipSetGroupActive: true })
+        // No activation follows, so the strip is scrolled to show the tab here, as for any open.
+        tabStrips.revealFrontTabs()
     }
 
     /** The region a group stands in: a Sidebar's own group, else the editor area. */
@@ -416,6 +413,9 @@ export function createDockviewRenderer(options: DockviewRendererOptions): Dockvi
         if (building) return
         clampToPinnedBlock(event.panel)
         settleEditorArea()
+        // A tab dragged into an open Sidebar with no tab shows it; one that left a Sidebar empty
+        // has put it out of sight (dockview collapses an empty edge group itself).
+        for (const region of SIDEBARS) showSidebar(region)
         // dockview has brought a tab of its own choosing forward in the group the tab left, which
         // the app puts right (ADR 0150).
         options.onViewMoved?.()
@@ -439,10 +439,7 @@ export function createDockviewRenderer(options: DockviewRendererOptions): Dockvi
             if (stray) clampToPinnedBlock(stray)
         }
     }
-    const layoutSub = api.onDidLayoutChange(() => {
-        clampEveryStrip()
-        rememberSidebarWidths()
-    })
+    const layoutSub = api.onDidLayoutChange(() => clampEveryStrip())
 
     /** The groups that make up the editor area: every group that is not a Sidebar's own. */
     function editorGroups(): DockviewGroupPanel[] {
@@ -451,10 +448,10 @@ export function createDockviewRenderer(options: DockviewRendererOptions): Dockvi
 
     /**
      * Close a tab, keeping the editor area. Dockview deletes a group when its last tab goes; for
-     * the editor area's last group that would give the whole window to the Sidebars, so that one
-     * group stays, empty, showing the watermark, and the next page opens into it. Every other
-     * group goes as dockview would have it. Both close routes come here: the tab's ×, and a close
-     * the controller makes (`removeView`).
+     * the editor area's last group that would leave the window without one, so that one group
+     * stays, empty, showing the watermark, and the next page opens into it. Every other grid
+     * group goes as dockview would have it, and a Sidebar's edge group is never deleted. Both close
+     * routes come here: the tab's ×, and a close the controller makes (`removeView`).
      */
     function removePanelKeepingEditorArea(panel: IDockviewPanel): void {
         const group = panel.api.group
@@ -469,80 +466,48 @@ export function createDockviewRenderer(options: DockviewRendererOptions): Dockvi
      *
      * - **None left.** A drag of the area's last tab into a Sidebar (dockview deletes the group
      *   the tab left), or a Layout without one (the phone presenter hands over a model with no
-     *   geometry, and a saved geometry can lack one). A group is added where the area belongs.
+     *   geometry, and a saved geometry can lack one). A group is added to the grid.
      * - **An empty group beside pages.** A tab dropped on the empty area's edge, or on the
      *   window's edge, opens a group beside it; the empty one has no tab to close it by, so it
      *   goes, and the area is the groups that hold pages.
      *
-     * Either way dockview has moved width to or from the Sidebars, so the open ones are pinned
-     * back to their remembered widths. Returns whether anything changed.
+     * Returns whether anything changed.
      */
     function settleEditorArea(): boolean {
         const groups = editorGroups()
         const withPages = groups.filter((group) => group.panels.length > 0)
         if (groups.length === 0) {
-            ensureRegionGroup('main')
-        } else if (withPages.length > 0 && withPages.length < groups.length) {
+            ensureEditorGroup()
+            return true
+        }
+        if (withPages.length > 0 && withPages.length < groups.length) {
             for (const group of groups) {
                 if (group.panels.length === 0) component.removeGroup(group)
             }
             if (!api.getGroup(regionGroupId.main ?? '')) regionGroupId.main = withPages[0].id
-        } else {
-            return false
+            return true
         }
-        for (const region of SIDEBARS) {
-            if (sidebarGroup(region)) applyCollapsed(region, collapsedState[region] ?? false)
-        }
-        return true
+        return false
     }
 
-    /**
-     * Remember each open Sidebar's width while the editor area sits beside it, so
-     * `settleEditorArea` can put it back: by the time a drag has emptied the area, the Sidebars
-     * have already grown into its space. Dockview raises layout changes after the fact (on a
-     * microtask), so a repair has already run by the time this reads the widths.
-     */
-    function rememberSidebarWidths(): void {
-        if (building || editorGroups().length === 0) return
-        for (const region of SIDEBARS) {
-            const group = sidebarGroup(region)
-            if (group && !collapsedState[region] && group.width > 0) sidebarWidth[region] = group.width
-        }
+    /** The editor area's group a region-wide open lands in, made when there is none. */
+    function ensureEditorGroup(): string {
+        const existing = regionGroupId.main
+        if (existing && api.getGroup(existing)) return existing
+        // A split whose first group has gone is still the area: open into it rather than beside it.
+        const id = editorGroups()[0]?.id ?? api.addGroup().id
+        regionGroupId.main = id
+        return id
     }
 
     function ensureRegionGroup(region: Region): string {
-        const existing = regionGroupId[region]
-        if (existing && api.getGroup(existing)) return existing
-        const direction = EDGE_FOR_REGION[region]
-        // A Sidebar docks to a container edge (`direction`); `main` is the root.
-        // The controller renders `main` first, so by the time a Sidebar is created
-        // the centre already exists and the Sidebar docks beside it — never around
-        // an empty group (which dockview would destroy). We never pre-create an
-        // empty group here, for the same reason.
-        //
-        // But `main`'s group is NOT always created fresh into an empty grid: dockview
-        // destroys a region's group when its last panel closes, and the left Sidebar
-        // (the Document Tree drawer) is a persistent resident that outlives every
-        // editor tab closing. Closing every main-region tab and then opening one more
-        // hits this same function again, with the Sidebar's group still alive — a bare
-        // `addGroup()` defaults to inserting at the grid's absolute leftmost slot,
-        // which would land the new centre pane LEFT of the drawer. Anchoring beside the
-        // Sidebar's own group (when it exists) keeps the drawer pinned as the leftmost
-        // pane always, matching the one-time build order above instead of only holding
-        // for it.
-        const leftSidebar = !direction ? sidebarGroup('left-sidebar') : undefined
-        const group = direction
-            ? api.addGroup({ direction })
-            : leftSidebar
-              ? api.addGroup({ referenceGroup: leftSidebar.id, direction: 'right' })
-              : api.addGroup()
-        regionGroupId[region] = group.id
-        if (direction) {
-            // Pin the sidebar to a fixed width (collapsed → 0) so dockview does
-            // not split space evenly and let the sidebar swallow the viewport.
-            applyCollapsed(region, collapsedState[region] ?? false)
-        }
-        return group.id
+        return isSidebar(region) ? ensureSidebarGroup(region).id : ensureEditorGroup()
+    }
+
+    /** The editor-area group holding `panelId`: a split never comes off a Sidebar, which cannot split. */
+    function editorGroupOf(panelId: string | undefined) {
+        const group = panelId ? api.getPanel(panelId)?.api.group : undefined
+        return group && regionOf(group.id) === 'main' ? group : undefined
     }
 
     function sidebarGroup(region: Region) {
@@ -550,40 +515,132 @@ export function createDockviewRenderer(options: DockviewRendererOptions): Dockvi
         return id ? api.getGroup(id) : undefined
     }
 
-    function applyCollapsed(region: Region, collapsed: boolean): void {
+    /**
+     * A Sidebar's edge group, made the first time a View goes into the Sidebar (or a saved Layout
+     * has one), at the Sidebar's own width. It is made collapsed, as dockview keeps an edge group
+     * with no tab in it: `showSidebar` opens it once a tab is there.
+     */
+    function ensureSidebarGroup(region: SidebarRegion): NonNullable<ReturnType<typeof sidebarGroup>> {
+        const existing = sidebarGroup(region)
+        if (existing) return existing
+        const id = SIDEBAR_EDGE_GROUP_ID[region]
+        const edge = api.addEdgeGroup(SIDEBAR_EDGE[region], {
+            id,
+            initialSize: sidebarWidth[region] ?? DEFAULT_SIDEBAR_WIDTH,
+            minimumSize: SIDEBAR_MIN_WIDTH,
+            // Collapsed is out of sight: no strip of tabs left along the window's edge.
+            collapsedSize: 0,
+            collapsed: true,
+        })
+        // Tabs along the top, as on every other group: dockview puts an edge group's on its outer side.
+        edge.setHeaderPosition('top')
+        regionGroupId[region] = id
+        return api.getGroup(id)!
+    }
+
+    /**
+     * Show a Sidebar at its own width, or put it out of sight: when the model has it collapsed, and
+     * when it has no tab, as an empty Sidebar takes no room.
+     */
+    function showSidebar(region: SidebarRegion): void {
         const group = sidebarGroup(region)
         if (!group) return
-        if (collapsed) {
-            // Remember the width before collapsing so re-opening restores it.
-            if (group.width > 0) sidebarWidth[region] = group.width
-            // Pin to zero — a collapsed sidebar stays collapsed (not drag-resizable).
-            group.api.setConstraints({ minimumWidth: 0, maximumWidth: 0 })
-            group.api.setSize({ width: 0 })
+        const open = !(collapsedState[region] ?? false) && group.panels.length > 0
+        if (!open) {
+            if (!group.api.isCollapsed()) group.api.collapse()
             return
         }
-        // Open: pin to the target width first (min == max) so dockview honours it
-        // deterministically — setSize alone is only a proportional hint that loses
-        // to space redistribution. Then, once that width is laid out, relax the
-        // constraints so the divider becomes drag-resizable while keeping the width.
-        const width =
-            sidebarWidth[region] ??
-            DEFAULT_SIDEBAR_WIDTH[region as 'left-sidebar' | 'right-sidebar'] ??
-            DEFAULT_SIDEBAR_WIDTH['left-sidebar']
-        group.api.setConstraints({ minimumWidth: width, maximumWidth: width })
-        group.api.setSize({ width })
-        requestAnimationFrame(() => {
-            if (collapsedState[region]) return // re-collapsed before the frame fired
-            const g = sidebarGroup(region)
-            if (!g) return
-            g.api.setConstraints({ minimumWidth: SIDEBAR_MIN_WIDTH, maximumWidth: Number.MAX_SAFE_INTEGER })
-            // Force a relayout so dockview re-evaluates this boundary's sash as
-            // resizable *now* — otherwise the handle stays disabled until some
-            // other interaction (e.g. dragging another sash) triggers a relayout.
-            if (container.clientWidth > 0 && container.clientHeight > 0) {
-                api.layout(container.clientWidth, container.clientHeight)
-            }
-        })
+        // Expanding brings back the width it last had on screen, which a narrow window may have
+        // squeezed; `restoreSidebarWidth` puts its own width back where there is room.
+        if (group.api.isCollapsed()) group.api.expand()
+        restoreSidebarWidth(region)
     }
+
+    /**
+     * Put an open Sidebar back at its own width, as far as the window allows: a window too narrow
+     * for both Sidebars and the editor area squeezes them, and they grow back with it (ADR 0156).
+     * Growing takes width from the editor area only, down to the least dockview lets it have.
+     */
+    function restoreSidebarWidth(region: SidebarRegion): void {
+        const group = sidebarGroup(region)
+        if (!group || group.api.isCollapsed()) return
+        const want = sidebarWidth[region] ?? DEFAULT_SIDEBAR_WIDTH
+        const have = Math.round(group.width)
+        if (Math.abs(want - have) <= 1) return
+        const room = Math.max(0, api.width - EDITOR_AREA_MIN_WIDTH)
+        const width = want > have ? Math.min(want, have + room) : want
+        if (Math.abs(width - have) > 1) setSidebarWidth(region, width)
+    }
+
+    /**
+     * Give a Sidebar's edge group `width`. dockview-core 6.6 has no public setter for one: the width
+     * comes from `initialSize`, from collapse and expand, or from a saved Layout. The shell's own
+     * `fromJSON` for one edge is that setter, resizing the edge in the shell's splitview with the
+     * editor area taking or giving the difference, so this reaches the shell. Should a later dockview
+     * drop the field, a squeezed Sidebar stays squeezed until it is collapsed and opened again, and
+     * nothing else changes.
+     */
+    function setSidebarWidth(region: SidebarRegion, width: number): void {
+        const shell = (component as unknown as { _shellManager?: { fromJSON?(data: SerializedEdgeGroups): void } })._shellManager
+        shell?.fromJSON?.({ [SIDEBAR_EDGE[region]]: { size: width, visible: true } })
+    }
+
+    /** Whether a sash belongs to the shell, between a Sidebar and the editor area. */
+    const isSidebarSash = (sash: Element) => sash.closest('.dv-split-view-container')?.parentElement?.classList.contains('dv-shell') ?? false
+
+    /**
+     * A drag of a Sidebar's own edge is the one thing that gives it a new width (ADR 0156). Read at
+     * the pointer's release, which is where dockview ends the drag, and only for a Sidebar the drag
+     * changed: the other may be squeezed by a narrow window, which is not a width it was given.
+     * dockview reports no layout change for the shell's sashes, so the save is asked for here.
+     */
+    function onSashPointerDown(event: PointerEvent): void {
+        const sash = event.target instanceof Element ? event.target.closest('.dv-sash') : null
+        if (!sash || !isSidebarSash(sash)) return
+        const widthOf = (region: SidebarRegion) => {
+            const group = sidebarGroup(region)
+            return group && !group.api.isCollapsed() ? Math.round(group.width) : undefined
+        }
+        const before = Object.fromEntries(SIDEBARS.map((region) => [region, widthOf(region)]))
+        const end = () => {
+            document.removeEventListener('pointerup', end, true)
+            document.removeEventListener('pointercancel', end, true)
+            for (const region of SIDEBARS) {
+                const after = widthOf(region)
+                if (after !== undefined && after !== before[region]) sidebarWidth[region] = after
+            }
+            options.onGeometryChange?.()
+        }
+        document.addEventListener('pointerup', end, true)
+        document.addEventListener('pointercancel', end, true)
+    }
+    container.addEventListener('pointerdown', onSashPointerDown, true)
+
+    /**
+     * dockview collapses an edge group when its front tab is clicked. A Sidebar opens and closes by
+     * its toggle, and a click on one of its tabs only brings that tab forward, so the click is
+     * refused before dockview sees it (it checks `defaultPrevented`). Not on the tab's ×, whose own
+     * click handler checks it too.
+     */
+    function onTabClick(event: MouseEvent): void {
+        const target = event.target instanceof Element ? event.target : null
+        const tab = target?.closest('.dv-tab')
+        if (!tab?.classList.contains('dv-active-tab') || !tab.closest('.dv-edge-group')) return
+        if (target?.closest('.dv-default-tab-action')) return
+        event.preventDefault()
+    }
+    container.addEventListener('click', onTabClick, true)
+
+    // A window that has grown gives back to a squeezed Sidebar first. A frame later, so dockview's
+    // own observer has laid the shell out at the new size before the widths are read.
+    let resizeFrame = 0
+    const resizeObserver = new ResizeObserver(() => {
+        cancelAnimationFrame(resizeFrame)
+        resizeFrame = requestAnimationFrame(() => {
+            for (const region of SIDEBARS) restoreSidebarWidth(region)
+        })
+    })
+    resizeObserver.observe(container)
 
     const renderer: DockviewRenderer = {
         api,
@@ -593,34 +650,97 @@ export function createDockviewRenderer(options: DockviewRendererOptions): Dockvi
             const groupId = ensureRegionGroup(placement.region)
             const params: PanelParams = { kind: view.kind, target: view.target }
 
-            // A split of the empty editor area is the area itself: splitting it would leave an
-            // empty Pane beside the page, with no tab to close it by.
-            if (placement.mode.startsWith('split-') && (api.getGroup(groupId)?.panels.length ?? 0) > 0) {
-                // A split creates a new group in the requested direction off the
-                // region's group; routine reveal/tab opens still target the region.
+            // A Sidebar is one group, which dockview cannot split (ADR 0156): every open into it is
+            // a tab, and the Sidebar shows once it has one.
+            if (isSidebar(placement.region)) {
                 api.addPanel({
                     id: panelId,
                     component: VIEW_COMPONENT,
                     title: registry.title(view),
                     params,
-                    position: { referenceGroup: groupId, direction: splitDirection(placement.mode) },
+                    position: { referenceGroup: groupId },
+                    inactive: placement.activate === false,
                 })
+                showSidebar(placement.region)
+                return
+            }
+
+            // A split comes off the group holding a View of the Pane the model names, or off the
+            // region's own group when it names none.
+            const splitFrom = editorGroupOf(placement.fromPanelId)
+            const splitGroup = splitFrom ?? api.getGroup(groupId)
+            // A split of the empty editor area is the area itself: splitting it would leave an
+            // empty Pane beside the page, with no tab to close it by.
+            if (placement.mode.startsWith('split-') && splitGroup && splitGroup.panels.length > 0) {
+                // A split creates a new group in the requested direction; routine reveal/tab
+                // opens still target the region.
+                const panel = api.addPanel({
+                    id: panelId,
+                    component: VIEW_COMPONENT,
+                    title: registry.title(view),
+                    params,
+                    position: { referenceGroup: splitGroup.id, direction: splitDirection(placement.mode) },
+                    inactive: placement.background === true,
+                })
+                if (placement.background) frontInGroup(panel)
             } else {
                 // Into the group holding a tab already in the target pane when there is one - the
                 // split the user is working in - and only otherwise into the region's own group.
                 const sibling = placement.siblingPanelId ? api.getPanel(placement.siblingPanelId) : undefined
                 // dockview fronts every added panel unless told otherwise; the model already
                 // knows whether this one should take the front (a rename re-keying a background
-                // tab must not).
-                api.addPanel({
+                // tab must not). One in the background is added inactive, and fronted in its group
+                // alone, which leaves the active group and the keyboard as they are.
+                const panel = api.addPanel({
                     id: panelId,
                     component: VIEW_COMPONENT,
                     title: registry.title(view),
                     params,
                     position: { referenceGroup: sibling?.api.group.id ?? groupId },
-                    inactive: placement.activate === false,
+                    inactive: placement.activate === false || placement.background === true,
                 })
+                if (placement.background && placement.activate !== false) frontInGroup(panel)
             }
+        },
+
+        moveView(panelId: string, placement: ViewPlacement, index: number) {
+            const panel = api.getPanel(panelId)
+            if (!panel) return
+            // The same `moveGroupOrPanel` a tab drag takes, so the panel - and the component
+            // mounted in it - carries on, and `onDidMovePanel` settles the editor area and the
+            // pinned block and tells the app (ADR 0150) exactly as it does after a drag.
+            const regionGroup = () => {
+                const id = ensureRegionGroup(placement.region)
+                return api.groups.find((group) => group.id === id)
+            }
+            if (placement.mode.startsWith('split-') && !isSidebar(placement.region)) {
+                const from = editorGroupOf(placement.fromPanelId) ?? regionGroup()
+                if (placement.background && from) {
+                    // dockview activates the group a move to a group's edge makes, so a move in the
+                    // background makes the group first, inactive, and moves the panel into it: a
+                    // move into an empty group fronts the panel there and activates nothing.
+                    const group = api.addGroup({ referenceGroup: from, direction: splitDirection(placement.mode), skipSetActive: true })
+                    panel.api.moveTo({ group, index: 0, skipSetActive: true })
+                    return
+                }
+                // A move to a group's edge makes a new group there.
+                panel.api.moveTo({ group: from, position: directionToPosition(splitDirection(placement.mode)) })
+                return
+            }
+            const sibling = placement.siblingPanelId ? api.getPanel(placement.siblingPanelId) : undefined
+            panel.api.moveTo({
+                group: sibling?.api.group ?? regionGroup(),
+                index,
+                skipSetActive: placement.activate === false || placement.background === true,
+            })
+            if (placement.background && placement.activate !== false) frontInGroup(panel)
+        },
+
+        paneBounds(panelId: string) {
+            const group = api.getPanel(panelId)?.api.group
+            if (!group) return null
+            const { left, top, right, bottom } = group.element.getBoundingClientRect()
+            return { left, top, right, bottom }
         },
 
         removeView(panelId: string, front?: string) {
@@ -694,29 +814,25 @@ export function createDockviewRenderer(options: DockviewRendererOptions): Dockvi
 
         setRegionCollapsed(region: Region, collapsed: boolean) {
             collapsedState[region] = collapsed
-            applyCollapsed(region, collapsed)
+            if (isSidebar(region)) showSidebar(region)
+        },
+
+        setRegionWidth(region: Region, width: number) {
+            if (!isSidebar(region)) return
+            sidebarWidth[region] = Math.max(SIDEBAR_MIN_WIDTH, Math.round(width))
+            restoreSidebarWidth(region)
+        },
+
+        regionWidth(region: Region) {
+            return isSidebar(region) ? sidebarWidth[region] : undefined
         },
 
         afterRestore() {
-            // A Layout without an editor area gets one back, which pins every Sidebar around it.
-            if (settleEditorArea()) {
-                geometryRestored = false
-                return
-            }
-            // Sidebar pixel widths can't be set reliably while a *model-based* layout
-            // is still being assembled (groups split space as they are added), so pin
-            // them now: collapsed → 0, open → remembered/default width. After a
-            // *geometry* restore, fromJSON already laid in the exact saved widths — so
-            // open sidebars are left untouched (re-pinning would reset the user's
-            // dragged width); only collapsed ones still need pinning to 0.
-            for (const region of SIDEBARS) {
-                const groupId = regionGroupId[region]
-                if (!groupId || !api.getGroup(groupId)) continue
-                const collapsed = collapsedState[region] ?? false
-                if (geometryRestored && !collapsed) continue
-                applyCollapsed(region, collapsed)
-            }
-            geometryRestored = false
+            // A Layout without an editor area gets one back.
+            settleEditorArea()
+            // The model's word on each Sidebar, over the collapsed state and width a saved geometry
+            // carries: a Sidebar collapsed or empty is out of sight, an open one is at its own width.
+            for (const region of SIDEBARS) showSidebar(region)
         },
 
         serializeGeometry(): DockviewGeometry {
@@ -724,7 +840,17 @@ export function createDockviewRenderer(options: DockviewRendererOptions): Dockvi
         },
 
         restoreGeometry(data: unknown) {
-            const geometry = data as DockviewGeometry
+            // A Layout saved while the Sidebars were columns of the grid gets them as edge groups.
+            const geometry = sidebarsAsEdgeGroups(data as DockviewGeometry, DEFAULT_SIDEBAR_WIDTH)
+            for (const region of SIDEBARS) {
+                const saved = geometry.dockview.edgeGroups?.[SIDEBAR_EDGE[region]]
+                if (!saved) continue
+                // The width the model brought is the person's own. Without one, the saved size is
+                // the best there is.
+                sidebarWidth[region] ??= Math.max(SIDEBAR_MIN_WIDTH, Math.round(saved.size))
+                // Made before fromJSON, which would otherwise make it with dockview's defaults.
+                ensureSidebarGroup(region)
+            }
             building = true
             try {
                 api.fromJSON(geometry.dockview)
@@ -733,20 +859,6 @@ export function createDockviewRenderer(options: DockviewRendererOptions): Dockvi
             }
             // Group ids are preserved by fromJSON, so the saved region map is valid.
             Object.assign(regionGroupId, geometry.regions)
-            // fromJSON restored the exact saved widths. Seed the (empty-after-reload)
-            // width memory from those groups so a later collapse→reopen in this
-            // session restores the saved width. The actual pinning (collapsed → 0;
-            // open → trusted as restored) is done by afterRestore(), which the
-            // controller always calls immediately after this. Not from a Layout with no editor
-            // area: its Sidebars are stretched over the missing centre, and afterRestore puts the
-            // area back at their default widths instead.
-            if (editorGroups().length > 0) {
-                for (const region of SIDEBARS) {
-                    const group = sidebarGroup(region)
-                    if (group && group.width > 0) sidebarWidth[region] = group.width
-                }
-            }
-            geometryRestored = true
         },
 
         destroy() {
@@ -754,11 +866,15 @@ export function createDockviewRenderer(options: DockviewRendererOptions): Dockvi
             activeSub?.dispose()
             moveSub.dispose()
             layoutSub.dispose()
+            container.removeEventListener('pointerdown', onSashPointerDown, true)
+            container.removeEventListener('click', onTabClick, true)
+            resizeObserver.disconnect()
+            cancelAnimationFrame(resizeFrame)
             // Dispose before api.dispose() so its panel teardown does not fire as
             // user "closes" into the (about-to-be-discarded) controller.
             closeSub?.dispose()
             window.removeEventListener(THEME_CHANGE_EVENT, onThemeChange)
-            disposeTabScrollbar()
+            tabStrips.dispose()
             disposeTabMenu()
             api.dispose()
         },

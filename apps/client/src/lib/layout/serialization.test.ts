@@ -80,6 +80,27 @@ describe('empty model', () => {
     })
 })
 
+describe('a Sidebar width in the persisted shape (ADR 0156)', () => {
+    it('round-trips the width a Sidebar was given', () => {
+        const layout = defaultLayout({ journalTarget: '2026-06-01' })
+        layout.model.regions['left-sidebar'].width = 420
+        expect(parseSerializedLayout(JSON.parse(JSON.stringify(layout)))).toEqual(layout)
+    })
+
+    it('reads a width that is not a positive number as no width, keeping the rest of the Layout', () => {
+        const layout = defaultLayout({ journalTarget: '2026-06-01' })
+        const raw = JSON.parse(JSON.stringify(layout))
+        raw.model.regions['left-sidebar'].width = 'wide'
+        raw.model.regions['right-sidebar'].width = -40
+
+        const parsed = parseSerializedLayout(raw)
+
+        expect(parsed?.model.regions['left-sidebar'].width).toBeUndefined()
+        expect(parsed?.model.regions['right-sidebar'].width).toBeUndefined()
+        expect(parsed?.model.regions.main).toEqual(layout.model.regions.main)
+    })
+})
+
 describe('pinned tabs in the persisted shape', () => {
     it('round-trips a pinned View', () => {
         const layout = defaultLayout({ journalTarget: '2026-06-01' })

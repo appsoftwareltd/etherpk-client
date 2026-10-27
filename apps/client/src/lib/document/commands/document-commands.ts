@@ -1,7 +1,7 @@
 /**
- * Document-scoped [[Command]]s reachable from a [[Context Menu]]: showing a document's backlinks or
- * its tasks, favouriting, renaming, deleting, and copying a document's name or its full path on
- * disk.
+ * Document-scoped [[Command]]s reachable from a [[Context Menu]]: opening a linked concept in the
+ * Pane to the right, showing a document's backlinks or its tasks, favouriting, renaming, deleting,
+ * and copying a document's name or its full path on disk.
  *
  * These are Commands rather than inline handlers so the [[Context Menu]] stays a
  * *presentation surface* over the Command registry - the same relationship the
@@ -50,6 +50,13 @@ export const BACKLINKS_SHOW = 'backlinks.show'
  * the View on whatever it is filtered to.
  */
 export const TASKS_SHOW = 'tasks.show'
+/** Bring a document's tab to the front and open [[Find and Replace]] in it (ADR 0153). */
+export const DOCUMENT_FIND = 'document.findInTab'
+/**
+ * Open a wikilink's concept in the [[Pane]] to the right of the one the link is in, splitting one
+ * off when there is none, and moving its tab there when it is open elsewhere (ADR 0155).
+ */
+export const DOCUMENT_OPEN_TO_THE_RIGHT = 'document.openToTheRight'
 
 function conceptOf(arg: unknown): string {
     const target = arg as ContextMenuTarget | undefined
@@ -91,6 +98,18 @@ export interface DocumentCommandDeps {
      * filter (`task-filter-store.ts`) and the reveal; absent where there is no Tasks View.
      */
     showTasks?: (concept: string) => void
+    /** Bring the document's tab to the front and open find in it; absent where there are no tabs. */
+    findIn?: (concept: string) => void
+    /**
+     * Open a concept in the Pane to the right of the one holding `sourcePanelId` (ADR 0155). The
+     * workspace owns the Layout and the focus that follows; absent where there is no Layout.
+     */
+    openToTheRight?: (concept: string, sourcePanelId: string) => void
+    /**
+     * Whether the Layout can open beside the Pane holding `sourcePanelId`: it is a main-region
+     * Pane and Panes show side by side, which a phone's do not. Absent ⇒ never.
+     */
+    canOpenToTheRight?: (sourcePanelId: string) => boolean
     /** Surfaces a failure to the user (the workspace's status line). */
     onError?: (message: string) => void
     /**
@@ -184,9 +203,42 @@ export function registerDocumentCommands(
             const concept = conceptOf(arg)
             if (concept !== '') deps.showTasks?.(concept)
         }),
+        commands.register(DOCUMENT_FIND, (arg) => {
+            const concept = conceptOf(arg)
+            if (concept !== '') deps.findIn?.(concept)
+        }),
+        commands.register(DOCUMENT_OPEN_TO_THE_RIGHT, (arg) => {
+            const target = arg as ContextMenuTarget | undefined
+            if (target && isWikilinkTarget(target) && target.panelId) deps.openToTheRight?.(target.concept, target.panelId)
+        }),
     )
 
     disposers.push(
+        registerContextMenuItem(contributions, {
+            id: DOCUMENT_OPEN_TO_THE_RIGHT,
+            label: 'Open in pane to the right',
+            command: DOCUMENT_OPEN_TO_THE_RIGHT,
+            icon: 'pane-right',
+            // First on a link: following it is what a link is for. On a link only, from the Pane
+            // it sits in, and not offered where no Pane can be beside that one (the phone, a
+            // Sidebar): there a click on the link is all there is.
+            order: 1,
+            when: (target) =>
+                isWikilinkTarget(target) &&
+                target.panelId !== undefined &&
+                deps.openToTheRight !== undefined &&
+                (deps.canOpenToTheRight?.(target.panelId) ?? false),
+        }),
+        registerContextMenuItem(contributions, {
+            id: DOCUMENT_FIND,
+            label: 'Find in document',
+            command: DOCUMENT_FIND,
+            icon: 'search',
+            // First: it acts on the tab's own text, before the rows about the concept. On a tab
+            // only, since the find box belongs to the tab's View (ADR 0153).
+            order: 4,
+            when: (target) => target.kind === 'document-tab' && deps.findIn !== undefined,
+        }),
         registerContextMenuItem(contributions, {
             id: BACKLINKS_SHOW,
             label: 'Show Backlinks',

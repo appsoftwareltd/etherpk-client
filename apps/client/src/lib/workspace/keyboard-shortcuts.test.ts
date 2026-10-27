@@ -68,6 +68,22 @@ describe('APP_KEYBINDINGS', () => {
         expect(eventMatches('Alt+=', { ...key('='), altKey: false, ctrlKey: true })).toBe(false)
     })
 
+    // Find and Replace (ADR 0153): the chords every editor uses, each the app's only while a
+    // document is in front, and Mod+Shift+H left to Highlight.
+    it('finds on Mod+F and opens replace on Ctrl+H off a Mac and Cmd+Option+F on one', () => {
+        const keyFor = (command: string) => APP_KEYBINDINGS.filter((b) => b.command === command).map((b) => [b.key, b.platform ?? 'all'])
+        expect(keyFor('document.find')).toEqual([['Mod+F', 'all']])
+        expect(keyFor('document.findReplace')).toEqual([
+            ['Ctrl+H', 'other'],
+            ['Mod+Alt+F', 'apple'],
+        ])
+        expect(keyFor('document.findNext')).toEqual([['F3', 'all'], ['Mod+G', 'all']])
+        expect(keyFor('document.findPrevious')).toEqual([['Shift+F3', 'all'], ['Mod+Shift+G', 'all']])
+        expect(keyFor('document.findNextLine')).toEqual([['F4', 'all']])
+        expect(APP_KEYBINDINGS.some((b) => b.key === 'Mod+Shift+H')).toBe(false)
+        expect(APP_KEYBINDINGS.filter((b) => b.group === 'Find').every((b) => typeof b.when === 'function')).toBe(true)
+    })
+
     it('has a chord that opens the card itself', () => {
         expect(APP_KEYBINDINGS.some((b) => b.command === 'help.openShortcuts')).toBe(true)
     })

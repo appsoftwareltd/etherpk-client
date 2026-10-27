@@ -72,8 +72,11 @@ export interface GuardedChange {
 export function frontmatterWouldGrow(before: string, changes: readonly GuardedChange[], after: () => string): boolean {
     const span = frontmatterSpan(before)
     if (!span) return false
-    if (!changes.some((change) => change.from < span.end)) return false
-    const net = changes.reduce((total, change) => total + change.inserted - (change.to - change.from), 0)
+    const inBlock = changes.filter((change) => change.from < span.end)
+    if (inBlock.length === 0) return false
+    // Only a change that starts in the block moves its end: one in the body, made in the same
+    // transaction (a Replace all), leaves the block where it was.
+    const net = inBlock.reduce((total, change) => total + change.inserted - (change.to - change.from), 0)
     const next = frontmatterSpan(after())
     return next !== null && next.end > span.end + net
 }

@@ -39,6 +39,7 @@ import { conceptPicker } from './augmentations/concept-picker'
 import { dateCalendar } from './augmentations/date-calendar'
 import { tableSizePicker } from './augmentations/table-size-picker'
 import { fenceRenderAugmentation } from './augmentations/fence-render'
+import { findHighlight } from './augmentations/find-highlight'
 import { interactiveFenceAugmentation } from './augmentations/interactive-fence'
 import { inlinePanelsAugmentation } from './augmentations/inline-panels'
 import { protectedFenceAugmentation } from './augmentations/protected-fence'
@@ -79,6 +80,8 @@ export interface EditorExtensionServices {
     conceptIsMissing: (concept: string) => boolean
     /** Open a wikilinked concept (a click on the link). */
     openConcept: (concept: string) => void
+    /** Open a wikilinked concept in the Pane to the right (Mod+Alt+Enter, ADR 0155). */
+    openConceptToTheRight?: (concept: string) => void
     /**
      * An editing episode in a wikilink ended having changed concepts (ADR 0065, amended
      * 2026-10-03): each a concept a link named before and names now, outermost first. The
@@ -182,6 +185,8 @@ export function editorFeatures(services: EditorExtensionServices): EditorFeature
         // one at the outer's edges, and an underline can be split freely, where the clamp's
         // absolute prefix, a highlight's padded wash and a code line's scroll container cannot.
         { name: 'spell-check', extension: spellCheckAugmentation() },
+        // Find and Replace's match washes (ADR 0153), split as freely as an underline, so next.
+        { name: 'find-matches', extension: findHighlight() },
         // Inline formatting marks, then the outliner chrome drawn over the same lines.
         { name: 'markdown-format', extension: markdownFormatAugmentation() },
         // A Template's variables, marked as they are written (ADR 0144). A mark inside a code line,
@@ -256,6 +261,7 @@ export function editorFeatures(services: EditorExtensionServices): EditorFeature
             extension: wikilinkAugmentation({
                 isMissing: services.conceptIsMissing,
                 onOpen: services.openConcept,
+                onOpenToTheRight: services.openConceptToTheRight,
                 onLinksEdited: services.wikilinksEdited,
                 onContextMenu: services.wikilinkContextMenu,
                 // Restyle when the index catches up: an editor opened during the initial build

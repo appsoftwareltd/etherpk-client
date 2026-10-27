@@ -5,7 +5,7 @@ import type { RemoteGraphIndex } from './index-worker/client'
 import { setActiveGraphIndex } from './backlinks'
 import type { LayoutController, LayoutModel, SerializedLayout, ViewRef } from '$lib/layout'
 import { setActiveLayoutController } from '$lib/layout'
-import { canonicalConceptName, openConcept, openConceptAtLine } from './open-concept'
+import { canonicalConceptName, openConcept, openConceptAtLine, openConceptToTheRight } from './open-concept'
 import { resetReveal, takeReveal } from './reveal'
 
 function stubIndex(candidates: ConceptCandidate[]): RemoteGraphIndex {
@@ -160,5 +160,64 @@ describe('openConceptAtLine', () => {
         expect(() => openConceptAtLine('Anything', 3)).not.toThrow()
 
         expect(takeReveal('Anything')).toBeNull()
+    })
+})
+
+describe('openConceptToTheRight', () => {
+    it('opens the name the link resolves to beside the source panel, and says which panel it opened', () => {
+        setActiveGraphIndex(
+            stubIndex([
+                { display: 'Garden', key: 'garden', kind: 'page' },
+                { display: 'Yard', key: 'yard', kind: 'alias', canonical: 'Garden' },
+            ]),
+        )
+        const calls: { view: ViewRef; source: string }[] = []
+        const controller = {
+            ...stubController(twoPaneModel('pane-source', 'document:Source'), () => {
+                throw new Error('an ordinary open was not asked for')
+            }),
+            openViewToTheRight: (view: ViewRef, source: string) => {
+                calls.push({ view, source })
+                return { panelId: 'document:Garden' }
+            },
+        } as unknown as LayoutController
+        setActiveLayoutController(controller)
+
+        expect(openConceptToTheRight('Yard', 'document:Source')).toBe('document:Garden')
+        expect(calls).toEqual([{ view: { kind: 'document', target: 'Garden' }, source: 'document:Source' }])
+        // It came forward or moved, which is what the reader sees: it lands where it was.
+        expect(takeReveal('Garden')).toBeNull()
+
+        setActiveLayoutController(null)
+        setActiveGraphIndex(null)
+    })
+
+    it('shows the top of a page already in front in the Pane to the right, as Today does for a day', () => {
+        setActiveGraphIndex(
+            stubIndex([
+                { display: 'Garden', key: 'garden', kind: 'page' },
+                { display: 'Yard', key: 'yard', kind: 'alias', canonical: 'Garden' },
+            ]),
+        )
+        resetReveal()
+        const controller = {
+            ...stubController(twoPaneModel('pane-source', 'document:Source'), () => {
+                throw new Error('an ordinary open was not asked for')
+            }),
+            openViewToTheRight: () => ({ panelId: 'document:Garden', alreadyInFront: true }),
+        } as unknown as LayoutController
+        setActiveLayoutController(controller)
+
+        expect(openConceptToTheRight('Yard', 'document:Source')).toBe('document:Garden')
+        // Addressed to the name the View opens as, not the alias the link was written as.
+        expect(takeReveal('Garden')).toEqual({ target: 'Garden', line: 'top' })
+
+        setActiveLayoutController(null)
+        setActiveGraphIndex(null)
+    })
+
+    it('does nothing where there is no layout (the /dev harnesses)', () => {
+        setActiveLayoutController(null)
+        expect(openConceptToTheRight('Garden', 'document:Source')).toBeNull()
     })
 })

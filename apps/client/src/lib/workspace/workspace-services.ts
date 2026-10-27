@@ -6,6 +6,7 @@
  * narrow accessors delegate to this object so they remain compatible without creating
  * another mutable source of truth.
  */
+import type { ReplaceOutcome, ReplaceRequest } from '$lib/document/find/replace-question'
 import type { PublishEnvironment } from '$lib/document/publish/publish'
 import type { PublishSource } from '$lib/document/publish/types'
 import type { ReadingPositionStore } from '$lib/navigation/reading-positions'
@@ -135,6 +136,15 @@ export interface WikilinkRenameService {
 }
 
 /**
+ * The question a replace from the find box asks before it changes the name in a wikilink (ADR
+ * 0153): the workspace decides what to ask, asks in the rename dialog, has the box write the text,
+ * and runs the renames that were ticked.
+ */
+export interface FindReplaceService {
+    replace(request: ReplaceRequest): Promise<ReplaceOutcome>
+}
+
+/**
  * What a View needs to publish or preview the open graph (ADR 0082): the graph read the way the
  * publisher reads it, and the browser's environment (Mermaid, KaTeX assets, fetch).
  */
@@ -175,6 +185,7 @@ export interface WorkspaceServices {
     sync?: SyncStatusControls
     frontmatter?: FrontmatterService
     wikilinkRename?: WikilinkRenameService
+    findReplace?: FindReplaceService
     /** Which backend this graph stores documents on. */
     backend?: Backend
     /** Publishing over the open graph, for the Theme editor's preview. */

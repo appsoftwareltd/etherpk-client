@@ -90,6 +90,7 @@ export {
     type KeyEventLike,
     ariaKeyShortcut,
     attachKeybindings,
+    boundOnPlatform,
     chordsFor,
     eventMatches,
     formatChord,

@@ -41,6 +41,7 @@ describe('the Command Menu order', () => {
 
         expect(commandMenuItemsInOrder(contributions).map((item) => item.title)).toEqual([
             'Search',
+            'Find and replace',
             'Go to backlinks',
             'Show older entry',
             'Today',

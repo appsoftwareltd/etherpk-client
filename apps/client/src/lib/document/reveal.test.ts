@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest'
 
-import { frontmatterLineOffset, resetReveal, revealLine, subscribeReveal, takeReveal } from './reveal'
+import {
+    frontmatterLineOffset,
+    resetReveal,
+    revealLine,
+    revealTop,
+    type RevealRequest,
+    type RevealTo,
+    subscribeReveal,
+    takeReveal,
+} from './reveal'
 
 /**
  * The "open at this line" seam. The offset is the load-bearing part: the [[Derived Index]]
@@ -55,7 +64,7 @@ describe('revealLine', () => {
 
     it('does not let one failing subscriber stop the others, or the caller', () => {
         resetReveal()
-        const seen: number[] = []
+        const seen: RevealTo[] = []
         const offBad = subscribeReveal(() => {
             throw new Error('this View cannot land')
         })
@@ -65,5 +74,21 @@ describe('revealLine', () => {
         expect(seen).toEqual([3])
         offBad()
         offGood()
+    })
+})
+
+/** Going to a journal day by its date shows its top (ADR 0154). */
+describe('revealTop', () => {
+    it('notifies subscribers and holds the request for a View that mounts later', () => {
+        resetReveal()
+        const seen: RevealRequest[] = []
+        const off = subscribeReveal((r) => seen.push(r))
+        revealTop('2026-03-10')
+
+        expect(seen).toEqual([{ target: '2026-03-10', line: 'top' }])
+        expect(takeReveal('2026-03-04')).toBeNull()
+        expect(takeReveal('2026-03-10')).toEqual({ target: '2026-03-10', line: 'top' })
+        expect(takeReveal('2026-03-10')).toBeNull()
+        off()
     })
 })

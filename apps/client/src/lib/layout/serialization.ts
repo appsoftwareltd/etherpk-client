@@ -45,6 +45,9 @@ const regionSchema = z.object({
     collapsed: z.boolean(),
     // Optional for the same reason as `pinned`: additive, and not worth a version bump.
     activePaneId: z.string().optional(),
+    // A Sidebar's width (ADR 0156). One that is not a positive number reads as none, rather than
+    // discarding the whole Layout over a width.
+    width: z.number().positive().finite().optional().catch(undefined),
 })
 
 const modelSchema = z.object({

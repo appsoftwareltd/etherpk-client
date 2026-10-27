@@ -5,16 +5,17 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import type { RevealTo } from '../reveal'
 import { createHeldReveal, REVEAL_HOLD_MS } from './held-reveal'
 import type { RevealAlign } from './view-position'
 
 /** A stand-in editor that records what the held reveal asked of it. */
 function fakeEditor() {
     const editor = {
-        reveals: [] as [number, RevealAlign][],
+        reveals: [] as [RevealTo, RevealAlign][],
         focuses: 0,
         focusFree: true,
-        reveal: (line: number, align: RevealAlign) => void editor.reveals.push([line, align]),
+        reveal: (line: RevealTo, align: RevealAlign) => void editor.reveals.push([line, align]),
         focus: () => void (editor.focuses += 1),
         focusIsFree: () => editor.focusFree,
     }
@@ -88,6 +89,21 @@ describe('held reveal', () => {
         held.contentChanged({ arriving: true })
         expect(held.restore()).toBe(false)
         expect(editor.reveals).toHaveLength(1)
+    })
+
+    it('holds the top of the document as it holds a line (ADR 0154)', () => {
+        const editor = fakeEditor()
+        const held = createHeldReveal(editor)
+        // A journal day reached by its date: the workspace's activation policy decides the focus.
+        held.hold('top', { align: 'start', focus: false })
+        held.contentChanged({ arriving: true })
+        expect(held.restore()).toBe(true)
+        expect(editor.reveals).toEqual([
+            ['top', 'start'],
+            ['top', 'start'],
+            ['top', 'start'],
+        ])
+        expect(editor.focuses).toBe(0)
     })
 
     it('a new hold replaces the one before and restarts the window', () => {

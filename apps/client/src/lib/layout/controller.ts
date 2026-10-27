@@ -9,6 +9,7 @@
 
 import {
     REGIONS,
+    SIDEBAR_REGIONS,
     activatePanel,
     activePaneOf,
     bringToFront,
@@ -16,11 +17,13 @@ import {
     createEmptyModel,
     locateCanonical,
     locatePanel,
+    moveInstance,
     nextFront,
     remainingFocusTarget,
     removePanel,
     setPinned,
 } from './model'
+import { paneToTheRight } from './pane-neighbour'
 import { LAYOUT_VERSION, defaultLayout } from './serialization'
 import type {
     LayoutController,
@@ -28,6 +31,7 @@ import type {
     LayoutRenderer,
     OpenMode,
     OpenViewOptions,
+    OpenedToTheRight,
     PaneHandle,
     PaneModel,
     Region,
@@ -208,25 +212,38 @@ export function createLayoutController(options: LayoutControllerOptions): Layout
         }
     }
 
-    /** Add an instance to the model under the given mode and tell the renderer. */
+    /**
+     * Add an instance to the model under the given mode and tell the renderer. `background` puts
+     * it in front of its Pane without making it the active View (`ViewPlacement.background`).
+     */
     function placeInstance(
         instance: ViewInstance,
         region: Region,
         mode: OpenMode,
         activate: boolean,
         targetPaneId?: string,
+        background = false,
     ): void {
         const regionModel = model.regions[region]
         const isSplit = mode.startsWith('split-')
         let placement: ViewPlacement
 
         if (isSplit) {
-            const from = activePaneOf(model, region)
+            // Off the Pane named, when it is in this region, else the region's active one.
+            const from = (targetPaneId && regionModel.panes.find((p) => p.id === targetPaneId)) || activePaneOf(model, region)
             const pane: PaneModel = { id: nextPaneId(), views: [instance], activePanelId: instance.panelId, recent: [instance.panelId] }
             const insertAt = from ? regionModel.panes.indexOf(from) + 1 : regionModel.panes.length
             regionModel.panes.splice(insertAt, 0, pane)
             if (activate) regionModel.activePaneId = pane.id
-            placement = { region, paneId: pane.id, mode, fromPaneId: from?.id }
+            const fromPanelId = from ? (from.activePanelId ?? from.views[0]?.panelId) : undefined
+            placement = {
+                region,
+                paneId: pane.id,
+                mode,
+                fromPaneId: from?.id,
+                ...(fromPanelId ? { fromPanelId } : {}),
+                ...(background ? { background } : {}),
+            }
         } else {
             let pane =
                 (targetPaneId && regionModel.panes.find((p) => p.id === targetPaneId)) ||
@@ -241,10 +258,17 @@ export function createLayoutController(options: LayoutControllerOptions): Layout
             // A pane must always have an active tab; only steal it on activate. The renderer is
             // told what was decided here, not what was asked: a background open into a pane
             // that had nothing in front still fronts this one.
-            if (activate || pane.activePanelId === null) bringToFront(pane, instance.panelId)
+            if (activate || background || pane.activePanelId === null) bringToFront(pane, instance.panelId)
             const fronted = pane.activePanelId === instance.panelId
             if (activate) regionModel.activePaneId = pane.id
-            placement = { region, paneId: pane.id, mode, ...(sibling ? { siblingPanelId: sibling } : {}), activate: fronted }
+            placement = {
+                region,
+                paneId: pane.id,
+                mode,
+                ...(sibling ? { siblingPanelId: sibling } : {}),
+                activate: fronted,
+                ...(background ? { background } : {}),
+            }
         }
 
         renderer.addView(instance, placement)
@@ -311,32 +335,158 @@ export function createLayoutController(options: LayoutControllerOptions): Layout
         if (model.activePanelId) renderer.focusView(model.activePanelId)
     }
 
-    return {
-        openView(view, opts = {}) {
-            reconcile()
-            const key = viewKey(view)
-            const activate = opts.activate ?? true
+    /**
+     * The canonical instance of `key` where it is open, or undefined. A phantom - the model lists
+     * the View as open but the renderer has no panel for it (a stale persisted layout) - is
+     * dropped from the model and reads as not open, so the caller opens a fresh panel rather than
+     * focusing nothing.
+     */
+    function openCanonical(key: string): ReturnType<typeof locateCanonical> {
+        const existing = locateCanonical(model, key)
+        if (!existing || (renderer.hasView?.(key) ?? true)) return existing
+        removePanel(model, key)
+        return undefined
+    }
 
-            if (!opts.forceNew) {
-                const existing = locateCanonical(model, key)
-                if (existing) {
-                    // Guard against a phantom: the model lists the View as open but the
-                    // renderer has no panel for it (a stale persisted layout). Drop it
-                    // and fall through to open a fresh panel instead of focusing nothing.
-                    if (renderer.hasView?.(key) ?? true) {
-                        if (activate) focusPanel(key)
-                        return handleFor(existing.instance)
-                    }
-                    removePanel(model, key)
-                }
+    function openView(view: ViewRef, opts: OpenViewOptions = {}): PaneHandle {
+        reconcile()
+        const key = viewKey(view)
+        const activate = opts.activate ?? true
+
+        if (!opts.forceNew) {
+            const existing = openCanonical(key)
+            if (existing) {
+                if (activate) focusPanel(key)
+                return handleFor(existing.instance)
             }
+        }
 
-            const region = resolveRegion(view, opts)
-            const mode = opts.mode ?? 'reveal'
-            const panelId = opts.forceNew ? nextCopyId(key) : key
-            const instance: ViewInstance = { panelId, view }
-            placeInstance(instance, region, mode, activate, opts.paneId)
-            return handleFor(instance)
+        const region = resolveRegion(view, opts)
+        const mode = opts.mode ?? 'reveal'
+        const panelId = opts.forceNew ? nextCopyId(key) : key
+        const instance: ViewInstance = { panelId, view }
+        placeInstance(instance, region, mode, activate, opts.paneId)
+        return handleFor(instance)
+    }
+
+    /** Whether the renderer shows Panes side by side, so one can be to the right of another. */
+    function sideBySide(): boolean {
+        return renderer.paneBounds !== undefined && renderer.moveView !== undefined
+    }
+
+    /** The main-region Pane holding `panelId`, or undefined when it is elsewhere or not open. */
+    function mainPaneOf(panelId: string): PaneModel | undefined {
+        const location = locatePanel(model, panelId)
+        return location?.region === 'main' ? location.pane : undefined
+    }
+
+    /** The main Pane to the right of `from` on screen (pane-neighbour.ts), or undefined. */
+    function mainPaneRightOf(from: PaneModel): PaneModel | undefined {
+        // A Pane's box is the box of the group holding any one of its Views.
+        const boundsOf = (pane: PaneModel) => (pane.views[0] ? (renderer.paneBounds?.(pane.views[0].panelId) ?? null) : null)
+        const source = boundsOf(from)
+        if (!source) return undefined
+        const candidates = model.regions.main.panes
+            .filter((pane) => pane !== from)
+            .flatMap((pane) => {
+                const bounds = boundsOf(pane)
+                return bounds ? [{ item: pane, bounds }] : []
+            })
+        return paneToTheRight(source, candidates)
+    }
+
+    /**
+     * Move an open View into `to`, a main Pane, keeping its instance and so its component: the end
+     * of the strip, in front. The keyboard stays where it is, so it goes with the View only when
+     * the View had it: a link to the page it is in moves the page being written in. `splitFrom`
+     * is the Pane `to` has just been split off, when it is new, for a renderer that must make the
+     * new Pane itself.
+     */
+    function moveInto(panelId: string, to: PaneModel, splitFrom?: PaneModel): void {
+        // Named before the View joins `to`, or leaves `splitFrom`: a View that stays where it is.
+        const sibling = to.views[0]?.panelId
+        const fromPanelId = splitFrom?.views.find((v) => v.panelId !== panelId)?.panelId
+        const keyboard = model.activePanelId === panelId
+        const seat = moveInstance(model, panelId, to)
+        if (seat === null) return
+        const background = keyboard ? {} : { background: true }
+        const placement: ViewPlacement = splitFrom
+            ? { region: 'main', paneId: to.id, mode: 'split-right', fromPaneId: splitFrom.id, ...(fromPanelId ? { fromPanelId } : {}), ...background }
+            : { region: 'main', paneId: to.id, mode: 'tab', ...(sibling ? { siblingPanelId: sibling } : {}), ...background }
+        renderer.moveView?.(panelId, placement, seat)
+        if (keyboard) renderer.focusView(panelId)
+        onChange?.()
+    }
+
+    /** Bring an open View to the front of its Pane, leaving the active View and the keyboard alone. */
+    function frontInItsPane(panelId: string): void {
+        const pane = locatePanel(model, panelId)?.pane
+        if (!pane) return
+        bringToFront(pane, panelId)
+        renderer.frontInPane?.(panelId)
+        onChange?.()
+    }
+
+    /** A handle for what `openViewToTheRight` opened. `Object.assign` keeps its `region` getter live. */
+    function openedToTheRight(handle: PaneHandle, alreadyInFront = false): OpenedToTheRight {
+        return Object.assign(handle, { alreadyInFront })
+    }
+
+    function openViewToTheRight(view: ViewRef, sourcePanelId: string): OpenedToTheRight {
+        reconcile()
+        const from = sideBySide() ? mainPaneOf(sourcePanelId) : undefined
+        if (!from) {
+            // Nothing is beside anything here: an ordinary open from the source's Pane, which is
+            // what following the link does (ADR 0155).
+            const sourcePane = locatePanel(model, sourcePanelId)?.pane
+            return openedToTheRight(openView(view, sourcePane ? { paneId: sourcePane.id } : {}))
+        }
+
+        const key = viewKey(view)
+        const existing = openCanonical(key)
+        const right = mainPaneRightOf(from)
+
+        // Each placement below is in front of its Pane, in the background: the document being read
+        // keeps the caret and the active View, so Backlinks goes on following it.
+        if (right) {
+            if (existing?.pane === right) {
+                const alreadyInFront = right.activePanelId === key
+                if (!alreadyInFront) frontInItsPane(key)
+                return openedToTheRight(handleFor(existing.instance), alreadyInFront)
+            }
+            if (existing) {
+                moveInto(key, right)
+                return openedToTheRight(handleFor(existing.instance))
+            }
+            const instance: ViewInstance = { panelId: key, view }
+            placeInstance(instance, 'main', 'tab', false, right.id, true)
+            return openedToTheRight(handleFor(instance))
+        }
+
+        // None to the right: a new Pane split off the source.
+        if (!existing) {
+            const instance: ViewInstance = { panelId: key, view }
+            placeInstance(instance, 'main', 'split-right', false, from.id, true)
+            return openedToTheRight(handleFor(instance))
+        }
+        // The source's only tab, moved into a Pane of its own beside the one it empties, would
+        // leave the Layout exactly as it is.
+        if (existing.pane === from && from.views.length === 1) return openedToTheRight(handleFor(existing.instance))
+        const regionModel = model.regions.main
+        const pane: PaneModel = { id: nextPaneId(), views: [], activePanelId: null }
+        regionModel.panes.splice(regionModel.panes.indexOf(from) + 1, 0, pane)
+        moveInto(key, pane, from)
+        return openedToTheRight(handleFor(existing.instance))
+    }
+
+    return {
+        openView,
+
+        openViewToTheRight,
+
+        canOpenToTheRight(sourcePanelId) {
+            reconcile()
+            return sideBySide() && mainPaneOf(sourcePanelId) !== undefined
         },
 
         closeView(view) {
@@ -456,6 +606,12 @@ export function createLayoutController(options: LayoutControllerOptions): Layout
 
         serialize() {
             reconcile()
+            // The width each Sidebar shows at, where the renderer has one: the model carries it to
+            // a presenter that has none, and back (ADR 0156).
+            for (const region of SIDEBAR_REGIONS) {
+                const width = renderer.regionWidth?.(region)
+                if (width !== undefined) model.regions[region].width = width
+            }
             const geometry = renderer.serializeGeometry?.()
             const layout: SerializedLayout = { version: LAYOUT_VERSION, model: cloneModel(model) }
             if (geometry !== undefined) layout.renderer = geometry
@@ -473,6 +629,11 @@ export function createLayoutController(options: LayoutControllerOptions): Layout
                 teardown()
                 paneIdFor = new Map()
                 model = cloneModel(target.model)
+                // Before anything is rendered, so a Sidebar is made at its own width (ADR 0156).
+                for (const region of SIDEBAR_REGIONS) {
+                    const width = model.regions[region].width
+                    if (width !== undefined) renderer.setRegionWidth?.(region, width)
+                }
 
                 // Prefer engine geometry (dockview fromJSON) when present; it rebuilds
                 // the exact arrangement and mounts components itself. Otherwise rebuild

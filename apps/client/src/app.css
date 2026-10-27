@@ -120,6 +120,12 @@ html.dark select {
     --gk-surface-2: #e5e7eb;
     /* A ==highlight== wash: marker-pen amber, translucent so selection and links show through. */
     --gk-highlight-bg: rgba(250, 204, 21, 0.5);
+    /* Find and Replace's matches (ADR 0153): orange, so a match never reads as a ==highlight==,
+       and the current one stronger and outlined. Muted text keeps 4.5:1 on both (5.4:1 and
+       4.6:1), default text 8.9:1 and 7.6:1. */
+    --gk-find-match: rgba(234, 88, 12, 0.12);
+    --gk-find-current: rgba(234, 88, 12, 0.25);
+    --gk-find-current-border: #c2410c;
     --gk-surface-3: #111827;
     --gk-surface-4: #1f2937;
     /* The link and accent colour, used site-wide. Deep enough to read as text: 5.7:1 on
@@ -192,6 +198,10 @@ html.dark {
     --gk-surface-2: #27272a;
     /* A ==highlight== wash: amber kept translucent so the text under it stays its own colour. */
     --gk-highlight-bg: rgba(250, 204, 21, 0.3);
+    /* Find's matches in the dark theme: muted text 5.7:1 and 4.6:1, default text 9.8:1 and 8.0:1. */
+    --gk-find-match: rgba(251, 146, 60, 0.12);
+    --gk-find-current: rgba(251, 146, 60, 0.22);
+    --gk-find-current-border: #fb923c;
     --gk-surface-3: #18181b;
     --gk-surface-4: #27272a;
     --gk-accent: #5ab3ff;

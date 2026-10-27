@@ -16,6 +16,12 @@
      * says so in place), running (busy; dismissal refused), and a failed run (each row marked
      * renamed, failed with its reason, or not started; Retry runs the rest, Close keeps what is
      * done). A run that completes closes the dialog.
+     *
+     * Asked by a replace from the find box (`replace`, ADR 0153), nothing has changed yet: the
+     * dialog says how large the replace is, Cancel changes nothing, **Replace outside wikilinks
+     * only** replaces the rest and renames nothing, and the main button replaces, renaming the ticked
+     * names everywhere. With nothing ticked it still replaces, and the links change in this
+     * document only.
      */
     import Dialog from "@appsoftwareltd/etherpk-shared/dialog";
     import type { RenameLinkStrategy } from "$lib/storage/rename";
@@ -26,11 +32,14 @@
     let {
         rows,
         busy = false,
+        replace,
         onconfirm,
         onclose,
     }: {
         rows: LinkRenameRow[];
         busy?: boolean;
+        /** Asked by a replace that has not run yet: its size, why it is asked again, and the other way. */
+        replace?: { replaced: number; notice: string | null; onoutside: () => void };
         /** Run the ticked renames, in the order of the rows, with each row's choice. */
         onconfirm: (choices: LinkRenameChoice[]) => void;
         /** Keep the links as typed - or, after a failed run, keep what was done. */
@@ -65,7 +74,9 @@
     const hint = $derived(
         busy || toRun > 0
             ? null
-            : allRefused
+            : replace && !started
+              ? "Nothing is ticked. The replace changes the links in this document only."
+              : allRefused
               ? "None of these can be renamed. The links stay as you typed them."
               : started
                 ? "Nothing is left to rename. Close keeps what was done."
@@ -86,9 +97,12 @@
         if (failed && !busy) button.focus();
     }
 
+    /** A replace not yet run can go ahead with nothing ticked: it changes this document's links only. */
+    const canConfirm = $derived(!busy && (toRun > 0 || (!!replace && !started)));
+
     function confirm() {
         // Guarded here as well as on the button: Enter in the form reaches this too.
-        if (busy || toRun === 0) return;
+        if (!canConfirm) return;
         onconfirm(rows.map((row, i) => ({ ticked: effective[i], strategy: row.pageless ? "rewrite" : strategies[i] })));
     }
 
@@ -109,12 +123,21 @@
     }
 </script>
 
-<Dialog open={true} title="Rename" size="lg" testId="link-rename-dialog" {busy} busyReason="Renaming…" {onclose} onsubmit={confirm}>
+<Dialog open={true} title={replace ? "Replace and rename" : "Rename"} size="lg" testId="link-rename-dialog" {busy} busyReason={replace && !started ? "Replacing…" : "Renaming…"} {onclose} onsubmit={confirm}>
     {#snippet body()}
         <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
         <div class="space-y-4" onkeydown={onKeydown} role="group" aria-labelledby="{uid}-intro">
+            {#if replace?.notice}
+                <p class="rounded-md bg-(--gk-warning-surface) px-3 py-2 text-sm text-(--gk-text-warning)" role="status" data-testid="link-rename-notice">{replace.notice}</p>
+            {/if}
             <p id="{uid}-intro" class="text-sm text-gray-600 dark:text-gray-400" data-testid="link-rename-intro">
-                {#if several}
+                {#if replace}
+                    {replace.replaced === 1 ? "This replace changes 1 match" : `This replace changes ${replace.replaced} matches`}, and the name in
+                    {several ? `${rows.length} wikilinks` : "a wikilink"}. Nothing has changed yet.
+                    {several
+                        ? "A ticked name is renamed everywhere. An unticked one changes only in this document's links."
+                        : `Rename "${rows[0].before}" to "${rows[0].after}" everywhere, or change it only in this document's links?`}
+                {:else if several}
                     Your edit changed {rows.length} names. A ticked rename is made everywhere, and an unticked one changes only the link you edited.
                 {:else}
                     You changed a link from "{rows[0].before}" to "{rows[0].after}". Rename "{rows[0].before}" everywhere, or keep just this link?
@@ -158,14 +181,23 @@
             disabled={busy}
             data-testid="link-rename-keep"
             class="rounded-lg px-3 py-1.5 text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 disabled:opacity-40"
-        >{started ? "Close" : several ? "Keep links as typed" : "Just this link"}</button>
+        >{started ? "Close" : replace ? "Cancel" : several ? "Keep links as typed" : "Just this link"}</button>
+        {#if replace && !started}
+            <button
+                type="button"
+                onclick={replace.onoutside}
+                disabled={busy}
+                data-testid="link-rename-outside"
+                class="rounded-lg border border-gray-300 dark:border-gray-700 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 disabled:opacity-40"
+            >Replace outside wikilinks only</button>
+        {/if}
         <button
             {@attach focusRetryAfterFailure}
             type="submit"
-            disabled={busy || toRun === 0}
+            disabled={!canConfirm}
             aria-describedby={hint ? hintId : undefined}
             data-testid="link-rename-confirm"
             class="min-w-28 rounded-lg bg-gray-900 dark:bg-gray-100 px-4 py-1.5 text-center text-sm font-medium text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-200 disabled:opacity-40"
-        >{busy ? "Renaming…" : failed ? "Retry" : several ? `Rename ${toRun}` : "Rename"}</button>
+        >{busy ? (replace && !started ? "Replacing…" : "Renaming…") : failed ? "Retry" : replace && !started ? (toRun > 0 ? `Replace and rename ${several ? toRun : ""}`.trim() : "Replace") : several ? `Rename ${toRun}` : "Rename"}</button>
     {/snippet}
 </Dialog>

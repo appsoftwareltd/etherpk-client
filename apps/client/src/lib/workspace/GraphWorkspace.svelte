@@ -92,7 +92,7 @@
         setActiveDocument,
     } from "$lib/document";
     import { todayISO } from "$lib/document/calendar/month-grid-core";
-    import { canonicalConceptName, openConcept, openConceptAtLine, openViewInPaneOf } from "$lib/document/open-concept";
+    import { canonicalConceptName, openConcept, openConceptAtLine, openConceptToTheRight, openViewInPaneOf } from "$lib/document/open-concept";
     import AllDocumentsView from "$lib/document/view/AllDocumentsView.svelte";
     import GraphSidebarView from "$lib/document/view/GraphSidebarView.svelte";
     import RenameDocumentDialog from "$lib/document/view/RenameDocumentDialog.svelte";
@@ -307,7 +307,7 @@
         serverFormattingSource,
     } from "$lib/workspace/formatting-sources";
     import { FormattingScanSession } from "$lib/document/formatting/ui/formatting-session.svelte";
-    import { revealLine } from "$lib/document/reveal";
+    import { revealLine, revealTop } from "$lib/document/reveal";
     import { protectedTextReader } from "$lib/document/protection/protected-text-reader";
     import { registerAssetViewers } from "$lib/document/view/viewers/register";
     import { canCopyImageAsset, canOpenAsset } from "$lib/document/asset-affordances";
@@ -365,7 +365,6 @@
     import { openExtensionPanel } from "$lib/extensions/inline-panel";
     import type { GraphServices } from "$lib/extensions/services";
     import { createExtensionSwitches } from "$lib/extensions/switches";
-    import { openBeside } from "$lib/layout/open-beside";
     import { setExtensionAddresses } from "$lib/navigation/extension-addresses";
     import { getAppliedResolvedTheme, THEME_CHANGE_EVENT } from "@appsoftwareltd/etherpk-shared/theme";
     import { describeFilesystemSaveFailure } from "$lib/storage/fs/save-error-copy";
@@ -530,6 +529,9 @@
     import GraphFolderPathDialog from "$lib/storage/ui/GraphFolderPathDialog.svelte";
     import { isScopedBy, rewriteWikilinkScope } from "$lib/document/wikilink/rename";
     import { asksSomething, createLinkRenameController, type ProposedRename } from "./link-rename-controller";
+    import { createReplaceRenames, type ReplaceOutcome, type ReplaceQuestion, type ReplaceRequest } from "./replace-renames";
+    import { findOrigin, requestFind } from "$lib/document/find/find-events";
+    import { EditorView } from "@codemirror/view";
     import {
         createGraphSync,
         openGraphCache,
@@ -2142,7 +2144,15 @@
     async function nameUsedBeyond(
         name: string,
         here: string,
-        options: { ownName: boolean; backlinks: (name: string) => Promise<readonly { sourceConcept: string }[] | null> },
+        options: {
+            ownName: boolean;
+            backlinks: (name: string) => Promise<readonly { sourceConcept: string }[] | null>;
+            /**
+             * `here`'s text to read in place of the editor's: a replace asks before it writes
+             * (ADR 0153), so the text that counts is the one the replace will leave.
+             */
+            hereText?: string;
+        },
     ): Promise<boolean> {
         if (identityOf(name) || documentExists(name)) return true;
         const entries = store?.listDocuments() ?? [];
@@ -2151,7 +2161,7 @@
         if (entries.some((entry) => entry.aliases.some((alias) => !carried(alias) && isScopedBy(alias, name)))) return true;
         const usesIn = (text: string) =>
             options.ownName ? usesScopeBeyondPage(text, name, here) : rewriteWikilinkScope(text, name, name).count > 0;
-        if (usesIn(editorDocumentFor(here)?.getText() ?? "")) return true;
+        if (usesIn(options.hereText ?? editorDocumentFor(here)?.getText() ?? "")) return true;
         const groups = await options.backlinks(name);
         if (groups === null) return true;
         for (const group of groups) {
@@ -2202,6 +2212,131 @@
     });
 
     /**
+     * A replace from the find box that changes the name in a wikilink asks first (ADR 0153), with
+     * the rows an edited link proposes, worked out against the text the replace will leave.
+     */
+    const replaceRenames = createReplaceRenames({
+        sameDocument: namesSameDocument,
+        usedBeyond: (target, name, textAfter) =>
+            nameUsedBeyond(name, target, { ownName: false, backlinks: documentMutations.backlinksCaughtUp, hereText: textAfter }),
+        conceptMoved: (before, after) => documentMutations.followConceptMove(before, after),
+        ask: (target, renames, question) => askReplaceRenames(target, renames, question),
+        runRenames: () => runReplaceRenames(),
+    });
+
+    /** The replace being asked about, so the dialog can be closed when the box is done with it. */
+    let replaceAsked: ReplaceRequest | null = null;
+    /** The dialog a replace's question opened, by id: its renames run there and nowhere else. */
+    let replaceDialogId = 0;
+    /**
+     * Settles when no replace is being asked about. An edited link's question waits for it, as it
+     * waits for a run (`linkRenameRun`): taking the dialog over would cancel the replace's question
+     * without a word, or after Confirm lose its renames.
+     */
+    let replaceQuestion: Promise<void> = Promise.resolve();
+
+    async function replaceWithRenames(request: ReplaceRequest): Promise<ReplaceOutcome> {
+        let settle = () => {};
+        replaceQuestion = new Promise((resolve) => (settle = resolve));
+        replaceAsked = request;
+        try {
+            return await replaceRenames.replace(request);
+        } finally {
+            // A replace the editor refused after the dialog, or one left with nothing to ask after
+            // Confirm, leaves the dialog open with nothing to run.
+            if (linkRenaming?.replace?.request === request) linkRenaming = null;
+            if (replaceAsked === request) replaceAsked = null;
+            settle();
+        }
+    }
+
+    /** Wait until no rename run and no replace's question is in progress. */
+    async function linkDialogsSettled(): Promise<void> {
+        for (;;) {
+            const run = linkRenameRun;
+            const question = replaceQuestion;
+            await Promise.all([run, question]);
+            if (run === linkRenameRun && question === replaceQuestion) return;
+        }
+    }
+
+    /** Open the rename dialog for a replace and wait for its answer. Shown again, it replaces itself. */
+    async function askReplaceRenames(target: string, renames: readonly ProposedRename[], question: ReplaceQuestion): Promise<"confirm" | "outside" | "cancel"> {
+        await linkRenameRun;
+        const request = replaceAsked;
+        if (!request) return "cancel";
+        return new Promise((answer) => {
+            renaming?.resolve?.(null);
+            renaming = null;
+            if (linkRenaming) linkRenaming.busy = false;
+            dismissLinkRenames();
+            const id = ++linkRenamePrompts;
+            replaceDialogId = id;
+            linkRenaming = {
+                id,
+                target,
+                rows: renames.map((rename) => ({
+                    before: rename.before,
+                    after: rename.after,
+                    plan: null,
+                    pageless: !documentExists(rename.before),
+                    status: "waiting",
+                    error: null,
+                })),
+                busy: false,
+                results: [],
+                // Closed before it is answered: Cancel. The text was never changed.
+                resolve: () => answer("cancel"),
+                replace: { ...question, request, answered: false, answer, choices: null },
+            };
+            renames.forEach((rename, index) => {
+                void planFor(rename.before, rename.after, target).then((plan) => {
+                    if (linkRenaming?.id === id) linkRenaming.rows[index].plan = plan;
+                });
+            });
+        });
+    }
+
+    /**
+     * **Find in document** on a tab's menu (ADR 0153): the tab to the front, then find opened in
+     * its own editor, which a request reaches from that editor as Mod+F's does.
+     */
+    async function findInDocumentTab(concept: string) {
+        controller?.openView({ kind: "document", target: concept });
+        // A frame, so the menu has closed and handed focus back before the box takes it.
+        await tick();
+        await new Promise((resolve) => requestAnimationFrame(resolve));
+        const host = [...document.querySelectorAll<HTMLElement>("[data-find-host]")].find(
+            (element) => element.dataset.docTarget === concept && element.offsetParent !== null,
+        );
+        // The tab's own editor comes first: a Journal Roll's days sit inside its scroller.
+        const editorDom = host?.querySelector<HTMLElement>(".document-view__editor .cm-editor");
+        const view = editorDom ? EditorView.findFromDOM(editorDom) : null;
+        if (view) requestFind(view.dom, "open", view);
+    }
+
+    /** The box chose **Replace outside wikilinks only**: nothing is renamed. */
+    function replaceOutsideLinks() {
+        const current = linkRenaming;
+        if (!current?.replace || current.busy) return;
+        const { answer } = current.replace;
+        linkRenaming = null;
+        answer("outside");
+    }
+
+    /** The text is replaced: run the ticked renames in the open dialog. Resolves when it closes. */
+    function runReplaceRenames(): Promise<void> {
+        const current = linkRenaming;
+        const choices = current?.replace?.choices;
+        if (!current || current.id !== replaceDialogId || !choices) return Promise.resolve();
+        return new Promise((resolve) => {
+            current.resolve = resolve;
+            current.busy = false;
+            void confirmLinkRenames(choices);
+        });
+    }
+
+    /**
      * The renames one link edit proposes, asked together (ADR 0065, amended 2026-10-03). The
      * dialog keeps each row's tick and strategy; this keeps the rows, their plans and how the run
      * went, and runs them.
@@ -2217,6 +2352,19 @@
         results: RenameResult[];
         /** Settles the controller's question once the dialog is done with. */
         resolve: () => void;
+        /**
+         * Asked by a replace from the find box, before any text changed (ADR 0153): the size of
+         * the replace, why the question is asked again, and the box's answer. The first Confirm
+         * answers it, and the renames run once the box has written the text.
+         */
+        replace?: {
+            replaced: number;
+            notice: string | null;
+            request: ReplaceRequest;
+            answered: boolean;
+            answer: (answer: "confirm" | "outside" | "cancel") => void;
+            choices: LinkRenameChoice[] | null;
+        };
     } | null>(null);
     let linkRenamePrompts = 0;
     /** Settles when no run of the dialog is in progress. */
@@ -2229,7 +2377,7 @@
      * replaced: another document's proposal waits for it to finish.
      */
     async function promptLinkRenames(target: string, renames: readonly ProposedRename[]): Promise<void> {
-        await linkRenameRun;
+        await linkDialogsSettled();
         return new Promise((resolve) => {
             // A dialog already open is replaced, and its question answered, as promptRename does.
             renaming?.resolve?.(null);
@@ -2278,6 +2426,16 @@
     async function confirmLinkRenames(choices: LinkRenameChoice[]) {
         const current = linkRenaming;
         if (!current || current.busy) return;
+        // A replace's question: the text is not replaced yet. The box plans again and writes it,
+        // then runs these choices through `runReplaceRenames` (ADR 0153).
+        if (current.replace && !current.replace.answered) {
+            current.replace.answered = true;
+            current.replace.choices = choices;
+            current.busy = true;
+            current.resolve = () => {};
+            current.replace.answer("confirm");
+            return;
+        }
         current.busy = true;
         let settle = () => {};
         linkRenameRun = new Promise((resolve) => (settle = resolve));
@@ -4012,9 +4170,15 @@
         commandRegistry.register("workspace.reset", () => {
             resetDialogOpen = true;
         });
+        // Today is read at the press, never cached: a tab left open overnight reaches the new day.
         commandRegistry.register("document.openTodayJournal", () =>
-            controller?.openView({ kind: "document", target: todayISO() }),
+            openJournalDay(todayISO()),
         );
+        // A day on the Journal Calendar. Its argument is the day, `YYYY-MM-DD`.
+        commandRegistry.register("document.openJournalDay", (day?: unknown) => {
+            if (typeof day === "string" && isJournalConcept(day))
+                openJournalDay(day);
+        });
         commandRegistry.register("document.openAllDocuments", () =>
             controller?.openView({
                 kind: "all-documents",
@@ -4027,6 +4191,22 @@
                 typeof argument === "string" ? argument : "",
             ),
         );
+        // Find and Replace in the document in front (ADR 0153). The request goes to the find box of
+        // the View holding the focus, or the active editor while it is on screen (`findOrigin`);
+        // on a journal tab that may be an older day's.
+        for (const [id, action] of [
+            ["document.find", "open"],
+            ["document.findReplace", "open-replace"],
+            ["document.findNext", "next"],
+            ["document.findPrevious", "previous"],
+            ["document.findNextLine", "next-line"],
+            ["document.findPreviousLine", "previous-line"],
+        ] as const) {
+            commandRegistry.register(id, () => {
+                const origin = findOrigin();
+                if (origin) requestFind(origin, action);
+            });
+        }
         // Tasks is a resident of the right Sidebar, so this never creates it: openView, given
         // an identity that is already open, FOCUSES that tab. It does not expand a collapsed
         // region, though — placeInstance only adds and focuses — so a focused tab in a
@@ -4128,6 +4308,18 @@
                     taskFilter?.show(canonicalConceptName(concept));
                     if (controller) revealResident(controller, RESIDENTS.tasks);
                 },
+                findIn: (concept) => void findInDocumentTab(concept),
+                // Open in pane to the right (ADR 0155). The page opens in the background, so the
+                // document being read keeps the keyboard. A link to the page it sits in moves the
+                // active tab itself, which changes no active View, so the focus policy that follows
+                // an activation is run here too: it acts only on the active View, which is that
+                // page, or the page a phone opened as a click does, and never on one opened beside.
+                openToTheRight: (concept, sourcePanelId) => {
+                    const panelId = openConceptToTheRight(concept, sourcePanelId);
+                    if (panelId) focusActivatedDocument(panelId);
+                },
+                canOpenToTheRight: (sourcePanelId) =>
+                    controller?.canOpenToTheRight(sourcePanelId) ?? false,
                 onError: (text) => notify(text),
                 onCopied: (text) => notify(text),
                 hasFilePath: (concept) =>
@@ -4158,7 +4350,7 @@
             layout: {
                 openView(view, options = {}) {
                     if (options.inPaneOf !== undefined) void openViewInPaneOf(view, options.inPaneOf);
-                    else if (options.beside !== undefined && controller) openBeside(controller, view, options.beside);
+                    else if (options.beside !== undefined && controller) controller.openViewToTheRight(view, options.beside);
                     else controller?.openView(view);
                 },
                 reveal(kind) {
@@ -4168,7 +4360,7 @@
                 openDocument(concept, options = {}) {
                     const target = canonicalConceptName(concept);
                     if (options.beside !== undefined && controller) {
-                        openBeside(controller, { kind: "document", target }, options.beside);
+                        controller.openViewToTheRight({ kind: "document", target }, options.beside);
                         if (options.line !== undefined) revealLine(target, options.line);
                     } else if (options.line !== undefined) {
                         openConceptAtLine(target, options.line, options.inPaneOf);
@@ -4557,6 +4749,9 @@
                 edited: (target, edits) =>
                     void linkRenameController.edited(target, edits),
             },
+            findReplace: {
+                replace: (request) => replaceWithRenames(request),
+            },
             // A View that learns its name late (an asset tab on a synced graph) retitles through
             // this rather than holding the renderer, which a presenter swap replaces. Published
             // here, not via setWorkspaceService: that setter writes to whatever generation is
@@ -4620,6 +4815,21 @@
             if (useMobile) focusEditorIfEmpty(panelId);
             else focusEditor(panelId);
         });
+    }
+
+    /**
+     * Go to a journal day by its date, as Today, Alt+J and the Journal Calendar do (ADR 0154): the
+     * day's tab comes to the front at the top of the day, open or not, instead of at its remembered
+     * [[Reading Position]].
+     *
+     * The focus policy runs here as well as on activation, because a tab already in front is not
+     * activated again on a desktop, and the reader asked for the day.
+     */
+    function openJournalDay(day: string): void {
+        if (!controller) return;
+        const { panelId } = controller.openView({ kind: "document", target: day });
+        revealTop(day);
+        focusActivatedDocument(panelId);
     }
 
     /**
@@ -7052,6 +7262,7 @@
         <LinkRenameDialog
             rows={linkRenaming.rows}
             busy={linkRenaming.busy}
+            replace={linkRenaming.replace ? { replaced: linkRenaming.replace.replaced, notice: linkRenaming.replace.notice, onoutside: replaceOutsideLinks } : undefined}
             onconfirm={(choices) => void confirmLinkRenames(choices)}
             onclose={dismissLinkRenames}
         />

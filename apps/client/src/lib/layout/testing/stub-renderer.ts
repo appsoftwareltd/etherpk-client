@@ -15,8 +15,16 @@ export interface RecordedAdd {
     placement: ViewPlacement
 }
 
+export interface RecordedMove {
+    panelId: string
+    placement: ViewPlacement
+    index: number
+}
+
 export interface StubRenderer extends LayoutRenderer {
     readonly added: RecordedAdd[]
+    /** Every View moved to another Pane, keeping its instance, in order. */
+    readonly moved: RecordedMove[]
     readonly removed: string[]
     /** Every removal with the tab the controller named to bring forward first (ADR 0150), in order. */
     readonly removedWithFront: { panelId: string; front: string | undefined }[]
@@ -24,6 +32,8 @@ export interface StubRenderer extends LayoutRenderer {
     /** Every tab brought to the front of its Pane without the Pane being made active, in order. */
     readonly frontedInPane: string[]
     readonly collapsed: { region: Region; collapsed: boolean }[]
+    /** Every Sidebar width the controller passed on, with how many Views had been added by then. */
+    readonly widths: { region: Region; width: number; addedBefore: number }[]
     /** Every pin change the controller reflected, in order. */
     readonly pinned: { panelId: string; pinned: boolean; index: number }[]
     /** Panel ids currently considered present by the renderer. */
@@ -36,31 +46,40 @@ export interface StubRendererOptions {
     geometry?: unknown
     /** Captures the value passed to `restoreGeometry()`. */
     onRestoreGeometry?: (data: unknown) => void
+    /** The widths `regionWidth()` reports; absent, the stub reports none, as the phone does. */
+    sidebarWidths?: Partial<Record<Region, number>>
 }
 
 export function createStubRenderer(options: StubRendererOptions = {}): StubRenderer {
     const added: RecordedAdd[] = []
+    const moved: RecordedMove[] = []
     const removed: string[] = []
     const removedWithFront: { panelId: string; front: string | undefined }[] = []
     const focused: string[] = []
     const frontedInPane: string[] = []
     const collapsed: { region: Region; collapsed: boolean }[] = []
+    const widths: { region: Region; width: number; addedBefore: number }[] = []
     const pinned: { panelId: string; pinned: boolean; index: number }[] = []
     const present = new Set<string>()
 
     const renderer: StubRenderer = {
         added,
+        moved,
         removed,
         removedWithFront,
         focused,
         frontedInPane,
         collapsed,
+        widths,
         pinned,
         present,
         destroyed: false,
         addView(instance, placement) {
             added.push({ instance, placement })
             present.add(instance.panelId)
+        },
+        moveView(panelId, placement, index) {
+            moved.push({ panelId, placement, index })
         },
         removeView(panelId, front) {
             removed.push(panelId)
@@ -82,6 +101,9 @@ export function createStubRenderer(options: StubRendererOptions = {}): StubRende
         setRegionCollapsed(region, isCollapsed) {
             collapsed.push({ region, collapsed: isCollapsed })
         },
+        setRegionWidth(region, width) {
+            widths.push({ region, width, addedBefore: added.length })
+        },
         destroy() {
             renderer.destroyed = true
         },
@@ -92,6 +114,10 @@ export function createStubRenderer(options: StubRendererOptions = {}): StubRende
     }
     if (options.onRestoreGeometry) {
         renderer.restoreGeometry = options.onRestoreGeometry
+    }
+    const { sidebarWidths } = options
+    if (sidebarWidths) {
+        renderer.regionWidth = (region) => sidebarWidths[region]
     }
 
     return renderer

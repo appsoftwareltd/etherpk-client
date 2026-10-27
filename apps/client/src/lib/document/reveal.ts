@@ -11,35 +11,54 @@
  * the pending request as it mounts; or it may already be open, in which case its live editor
  * hears the request and moves. Announcing to subscribers AND retaining the request covers both
  * without the caller having to know which it is.
+ *
+ * It also carries "show the top": a journal day reached by its date (ADR 0154).
  */
 
 import { frontmatterSpan } from '$lib/storage/fs/frontmatter-span'
 
+/**
+ * Where a reveal lands: a 0-based body line, or `'top'`, the document scrolled to its very top with
+ * the caret on the first line of its body.
+ */
+export type RevealTo = number | 'top'
+
 export interface RevealRequest {
     /** The document's concept, as the ViewRef target spells it. */
     target: string
-    /** 0-based source line. */
-    line: number
+    line: RevealTo
 }
 
 let pending: RevealRequest | null = null
 const listeners = new Set<(request: RevealRequest) => void>()
+
+function announce(request: RevealRequest): void {
+    pending = request
+    for (const listener of [...listeners]) {
+        // Isolated: this is called on the way to opening a document, and one View failing to
+        // move its caret must never stop the navigation that follows.
+        try {
+            listener(request)
+        } catch {
+            /* a View that cannot land is left where it was */
+        }
+    }
+}
 
 /**
  * Ask for `target` to show `line`. The caller opens the View separately — this only says
  * where to land, so a document that is already open is not re-opened just to be scrolled.
  */
 export function revealLine(target: string, line: number): void {
-    pending = { target, line }
-    for (const listener of [...listeners]) {
-        // Isolated: this is called on the way to opening a document, and one View failing to
-        // move its caret must never stop the navigation that follows.
-        try {
-            listener(pending)
-        } catch {
-            /* a View that cannot land is left where it was */
-        }
-    }
+    announce({ target, line })
+}
+
+/**
+ * Ask for `target` to show its top, over its remembered [[Reading Position]]: a journal day
+ * reached by its date (ADR 0154). The caller opens the View separately, as for `revealLine`.
+ */
+export function revealTop(target: string): void {
+    announce({ target, line: 'top' })
 }
 
 /**

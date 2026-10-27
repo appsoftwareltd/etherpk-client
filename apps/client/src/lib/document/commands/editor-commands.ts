@@ -283,6 +283,10 @@ export function registerEditorCommands(
     const inTable = (ctx: { inTable: boolean; bodyWritable: boolean }) => ctx.inTable && ctx.bodyWritable
     const insertable = (ctx: { tableInsertable: boolean; bodyWritable: boolean }) => ctx.tableInsertable && ctx.bodyWritable
     item({ id: 'search.open', title: 'Search', detail: 'Search names and text across this graph', icon: 'search', group: 'Navigate', order: 10, keywords: ['find', 'text', 'full', 'grep'], command: 'search.open' })
+    // Find and Replace in this document (ADR 0153): the way in on a phone, which has no Ctrl+F. Not
+    // gated on `bodyWritable`: find still reads a locked document's frontmatter, and the box says
+    // why it cannot replace.
+    item({ id: 'document.findReplace', title: 'Find and replace', detail: 'Find text in this document, and replace it', icon: 'search', group: 'Navigate', order: 11, keywords: ['find', 'replace', 'search', 'match', 'text'], command: 'document.findReplace' })
     // Opens a confirmation, never resets on its own; not gated on `bodyWritable`, because it
     // touches the Layout and nothing in any document.
     item({ id: 'workspace.reset', title: 'Reset workspace', detail: 'Close every tab and restore the sidebars', icon: 'reset', group: 'Workspace', order: 200, keywords: ['layout', 'panes', 'tabs', 'sidebars', 'default'], command: 'workspace.reset' })

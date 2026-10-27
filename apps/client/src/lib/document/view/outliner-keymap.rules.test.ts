@@ -40,6 +40,7 @@ import { outdentBranch, toggleBullet } from './outliner-keymap'
 import { analysisFor } from './analysis/editor-analysis'
 import { bulletToggleable, taskToggleable } from './task-toggleable'
 import { editorFixture, type FixtureOptions, press } from './testing/editor-state-fixture'
+import { FIND_REPLACE_EVENT, FIND_SELECT_EVENT } from '../find/find-edit'
 import { wikilinkButtonSpec } from './wrap-selection'
 import { insertTemplate } from './template-insert'
 import { renderTemplate } from '../templates/template-variables'
@@ -81,6 +82,34 @@ describe('completion popovers (EtherPK)', () => {
                 .toEqual([editor.head()])
         })
     }
+})
+
+// Find and Replace (ADR 0153) puts the selection on a match and replaces text, and neither is the
+// user typing in a link: a popover either opened would sit over the text while focus is in the find
+// box (Editor Content Rules → Find and Replace).
+describe('find and replace open no popover (VS Code)', () => {
+    const concepts = [{ display: 'Garden', key: 'garden', kind: 'page' as const }]
+    const editor = () => editorFixture('- [[Garden]] notes|', { extensions: [wikilinkCompletion({ concepts: () => concepts })] })
+    const tooltips = (e: ReturnType<typeof editor>) => e.state.facet(showTooltip).filter(Boolean)
+
+    it('a selection the user makes on a link name offers completion, as it does today', () => {
+        const e = editor()
+        e.dispatch(e.state.update({ selection: { anchor: 4, head: 10 }, userEvent: 'select' }))
+        expect(tooltips(e)).toHaveLength(1)
+    })
+
+    it('a match find selects inside a link opens no completion', () => {
+        const e = editor()
+        e.dispatch(e.state.update({ selection: { anchor: 4, head: 10 }, userEvent: FIND_SELECT_EVENT }))
+        expect(tooltips(e)).toEqual([])
+    })
+
+    it('a replace inside a link opens no completion', () => {
+        const e = editor()
+        e.dispatch(e.state.update({ selection: { anchor: 10 } }))
+        e.dispatch(e.state.update({ changes: { from: 4, to: 10, insert: 'Yard' }, selection: { anchor: 8 }, userEvent: FIND_REPLACE_EVENT }))
+        expect(tooltips(e)).toEqual([])
+    })
 })
 
 // Accepting a completion closes the link being completed and no other (Editor Content Rules →
@@ -125,20 +154,33 @@ describe('accepting a completion inside another link (EtherPK)', () => {
     }
 })
 
+/**
+ * Press `key` with the caret as `before` puts it, recording both ways a link opens: `opened` in
+ * place (Alt+Enter), `openedRight` in the Pane to the right (Mod+Alt+Enter). `toTheRight: false`
+ * leaves the second callback out, as a host with no Layout does.
+ */
+function pressOnLink(key: string, before: string, options: { typeFirst?: string; toTheRight?: boolean } = {}) {
+    const opened: string[] = []
+    const openedRight: string[] = []
+    const editor = editorFixture(before, {
+        extensions: [
+            wikilinkAugmentation({
+                onOpen: (concept) => opened.push(concept),
+                ...(options.toTheRight === false ? {} : { onOpenToTheRight: (concept: string) => openedRight.push(concept) }),
+            }),
+        ],
+    })
+    // Typing first takes the analysis down its incremental path, as live editing does.
+    if (options.typeFirst) editor.type(options.typeFirst)
+    const bindings = editor.state.facet(keymap).flat().filter((binding) => binding.key === key)
+    const handled = bindings.some((binding) => binding.run?.(editor as never) ?? false)
+    return { opened, openedRight, handled, after: editor.fixture() }
+}
+
 // Following a link is a read: the key never edits, and outside a link it is not handled, so the
 // keys under it keep their meaning (Editor Content Rules → Following a link).
 describe('Alt+Enter follows the link at the caret (Obsidian)', () => {
-    function follow(before: string, typeFirst?: string) {
-        const opened: string[] = []
-        const editor = editorFixture(before, {
-            extensions: [wikilinkAugmentation({ onOpen: (concept) => opened.push(concept) })],
-        })
-        // Typing first takes the analysis down its incremental path, as live editing does.
-        if (typeFirst) editor.type(typeFirst)
-        const bindings = editor.state.facet(keymap).flat().filter((binding) => binding.key === 'Alt-Enter')
-        const handled = bindings.some((binding) => binding.run?.(editor as never) ?? false)
-        return { opened, handled, after: editor.fixture() }
-    }
+    const follow = (before: string, typeFirst?: string) => pressOnLink('Alt-Enter', before, { typeFirst })
 
     for (const row of [
         { rule: 'inside the link text', before: '- see [[Phys|ics]] now', opens: ['Physics'] },
@@ -155,6 +197,7 @@ describe('Alt+Enter follows the link at the caret (Obsidian)', () => {
         it(row.rule, () => {
             const result = follow(row.before)
             expect(result.opened).toEqual(row.opens)
+            expect(result.openedRight).toEqual([])
             expect(result.handled).toBe(row.opens.length > 0)
             expect(result.after).toBe(row.before)
         })
@@ -164,6 +207,36 @@ describe('Alt+Enter follows the link at the caret (Obsidian)', () => {
         const result = follow('---\nrelated: "[[Phys|ics]]"\n---\n- body', 'x')
         expect(result.opened).toEqual([])
         expect(result.handled).toBe(false)
+    })
+})
+
+// The same link, opened in the Pane to the right (ADR 0155): Obsidian's "Open link under cursor to
+// the right", on its chord. The key finds the link by Alt+Enter's rule and is a read in the same way
+// (Editor Content Rules → Following a link).
+describe('Mod+Alt+Enter opens the link at the caret in the Pane to the right (Obsidian)', () => {
+    const follow = (before: string) => pressOnLink('Mod-Alt-Enter', before)
+
+    for (const row of [
+        { rule: 'inside the link text', before: '- see [[Gar|den]] now', opens: ['Garden'] },
+        { rule: 'just after its closing brackets', before: '- see [[Garden]]| now', opens: ['Garden'] },
+        { rule: 'the innermost of nested links', before: '- [[Beds of [[Ro|ses]]]]', opens: ['Roses'] },
+        { rule: 'nothing outside a link', before: '- se|e [[Garden]] now', opens: [] },
+        { rule: 'nothing for a link inside code', before: '- `[[Gar|den]]`', opens: [] },
+        { rule: 'nothing with a selection', before: '- see [[«Gar»den]] now', opens: [] },
+    ]) {
+        it(row.rule, () => {
+            const result = follow(row.before)
+            expect(result.openedRight).toEqual(row.opens)
+            expect(result.opened).toEqual([])
+            expect(result.handled).toBe(row.opens.length > 0)
+            expect(result.after).toBe(row.before)
+        })
+    }
+
+    it('nothing where the host cannot open beside the editor', () => {
+        const result = pressOnLink('Mod-Alt-Enter', '- see [[Gar|den]] now', { toTheRight: false })
+        expect(result.handled).toBe(false)
+        expect(result.opened).toEqual([])
     })
 })
 

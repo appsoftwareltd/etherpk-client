@@ -1,6 +1,7 @@
 /**
  * A reveal a DocumentView holds: the line a [[Search]] result, a [[Kanban Board]] card or a [[Task
- * Reference]] asked it to show, kept for a short while after it is first placed.
+ * Reference]] asked it to show, or the top of a journal day reached by its date (ADR 0154), kept for
+ * a short while after it is first placed.
  *
  * Held rather than placed and forgotten, because what asked for it is often followed by something
  * that would undo it:
@@ -18,6 +19,7 @@
  * lapses, when the user acts in the editor, and when the editor is torn down (`release`).
  */
 
+import type { RevealTo } from '../reveal'
 import type { RevealAlign } from './view-position'
 
 /** How long a reveal outranks a restore: enough to span mounting, content arriving and the Layout activating the panel. */
@@ -25,8 +27,11 @@ export const REVEAL_HOLD_MS = 3000
 
 /** What the held reveal asks of the editor it belongs to. */
 export interface RevealEditor {
-    /** Put the caret on a body line (0-based, as the index counts) and scroll it where `align` says. */
-    reveal(line: number, align: RevealAlign): void
+    /**
+     * Put the caret on a body line (0-based, as the index counts) and scroll it where `align` says,
+     * or show the top of the document (`'top'`, ADR 0154).
+     */
+    reveal(line: RevealTo, align: RevealAlign): void
     /** Put the focus in the editor. */
     focus(): void
     /** Whether the focus is free to take: on nothing, on the page itself, or already in this editor. */
@@ -38,7 +43,7 @@ export interface HeldReveal {
      * Place `line` now and hold it. `align` is where the line lands (centred unless asked otherwise);
      * `focus: false` leaves the focus where it is, for an editor shown beside the one in use.
      */
-    hold(line: number, options?: { align?: RevealAlign; focus?: boolean }): void
+    hold(line: RevealTo, options?: { align?: RevealAlign; focus?: boolean }): void
     /**
      * The editor's text changed, other than by the user in this editor. `arriving` says whether the
      * content it opened to show was still on its way, so the change is that content.
@@ -51,7 +56,7 @@ export interface HeldReveal {
 }
 
 export function createHeldReveal(editor: RevealEditor): HeldReveal {
-    let held: { line: number; align: RevealAlign; focus: boolean } | undefined
+    let held: { line: RevealTo; align: RevealAlign; focus: boolean } | undefined
     let expiry: ReturnType<typeof setTimeout> | undefined
 
     function place(focus: 'take' | 'if-free'): void {

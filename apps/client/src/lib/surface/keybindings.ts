@@ -15,11 +15,25 @@ export interface Keybinding {
     key: string
     command: string
     arg?: unknown
+    /**
+     * The one platform the chord is bound on: `apple` for a Mac, iPhone or iPad, `other` for the
+     * rest. Absent, it is bound everywhere. Ctrl+H opens replace on Windows and Linux, but on a Mac
+     * it deletes backwards in a text field, so the Mac has its own chord.
+     */
+    platform?: 'apple' | 'other'
+    /**
+     * Whether the chord is the app's just now. While this says no, the key is left to the browser
+     * and nothing is prevented: Mod+F finds in the document in front, and in the browser's own
+     * way anywhere else.
+     */
+    when?: () => boolean
 }
 
 /** The shape of a keyboard event the matcher needs (a real KeyboardEvent satisfies it). */
 export interface KeyEventLike {
     key: string
+    /** The physical key (`KeyF`), which a chord with Mod and Alt matches on. */
+    code?: string
     ctrlKey: boolean
     metaKey: boolean
     altKey: boolean
@@ -62,7 +76,7 @@ export function parseChord(spec: string): Chord {
 
 export function eventMatches(spec: string, event: KeyEventLike): boolean {
     const chord = parseChord(spec)
-    if (event.key.toLowerCase() !== chord.key) return false
+    if (event.key.toLowerCase() !== chord.key && !sameLetterKey(chord, event)) return false
     if (chord.shift !== event.shiftKey) return false
     if (chord.alt !== event.altKey) return false
     if (chord.mod) {
@@ -73,6 +87,20 @@ export function eventMatches(spec: string, event: KeyEventLike): boolean {
         if (!chord.ctrl && event.metaKey) return false
     }
     return true
+}
+
+/**
+ * Whether a Mod and Alt chord's letter is the key pressed, read from its place on the keyboard. On
+ * a Mac, Option changes the character a key types (Cmd+Option+F reports `ƒ`), and with Mod held
+ * nothing is being typed. A bare Alt chord keeps matching by character, so Option still types `∆`.
+ */
+function sameLetterKey(chord: Chord, event: KeyEventLike): boolean {
+    return chord.mod && chord.alt && /^[a-z]$/.test(chord.key) && event.code === `Key${chord.key.toUpperCase()}`
+}
+
+/** Whether `binding` is bound on this platform (`apple` for a Mac, iPhone or iPad). */
+export function boundOnPlatform(binding: Pick<Keybinding, 'platform'>, apple: boolean): boolean {
+    return binding.platform === undefined || binding.platform === (apple ? 'apple' : 'other')
 }
 
 /** Whether two chord specs name the same keys: `Alt+Shift+P` and `shift+alt+p` do. */
@@ -121,9 +149,14 @@ export function createKeybindingTable<B extends Keybinding>(initial: readonly B[
 /** The live table of the app's chords, as `createKeybindingTable` makes it. */
 export type KeybindingTable<B extends Keybinding = Keybinding> = ReturnType<typeof createKeybindingTable<B>>
 
-/** Every chord bound to `command`, in the order the table holds them. */
-export function chordsFor(bindings: readonly Keybinding[], command: string): string[] {
-    return bindings.filter((binding) => binding.command === command).map((binding) => binding.key)
+/**
+ * Every chord bound to `command`, in the order the table holds them: on the platform named
+ * (`apple` true or false), or on every platform when none is.
+ */
+export function chordsFor(bindings: readonly Keybinding[], command: string, apple?: boolean): string[] {
+    return bindings
+        .filter((binding) => binding.command === command && (apple === undefined || boundOnPlatform(binding, apple)))
+        .map((binding) => binding.key)
 }
 
 /**
@@ -134,11 +167,14 @@ export function attachKeybindings(
     registry: CommandRegistry,
     bindings: Keybinding[],
     target: Window = window,
+    apple: boolean = isApplePlatform(),
 ): () => void {
     const onKeydown = (event: KeyboardEvent) => {
         for (const binding of bindings) {
+            if (!boundOnPlatform(binding, apple)) continue
             if (!eventMatches(binding.key, event)) continue
             if (!registry.has(binding.command)) continue
+            if (binding.when && !binding.when()) continue
             event.preventDefault()
             void registry.execute(binding.command, binding.arg)
             return

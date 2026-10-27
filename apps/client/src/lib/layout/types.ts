@@ -18,8 +18,10 @@ export type { ViewRef } from './view-ref'
 
 /**
  * The stable, named drop targets a command can address. Placement is by region,
- * never by spatial relationship, so behaviour is identical however the user has
- * dragged panes around. Floating / popout regions are reserved for later.
+ * not by spatial relationship, so behaviour is identical however the user has
+ * dragged panes around. The one exception asks for it by name: opening a View in
+ * the Pane to the right (`openViewToTheRight`, ADR 0155). Floating / popout
+ * regions are reserved for later.
  */
 export type Region = 'main' | 'left-sidebar' | 'right-sidebar'
 
@@ -47,9 +49,19 @@ export interface OpenViewOptions {
     /**
      * Place into this specific pane when it still exists in the resolved region
      * (Navigation History re-opening a closed Visit target in its original
-     * pane); silently falls back to normal placement otherwise.
+     * pane); silently falls back to normal placement otherwise. Under a split
+     * mode, the pane the new pane splits off, falling back to the region's
+     * active pane the same way.
      */
     paneId?: string
+}
+
+/** A Pane's box on screen, in CSS pixels from the top-left of the viewport. */
+export interface PaneBounds {
+    left: number
+    top: number
+    right: number
+    bottom: number
 }
 
 /**
@@ -69,8 +81,37 @@ export interface PaneHandle {
     close(): void
 }
 
+/** What {@link LayoutController.openViewToTheRight} opened. */
+export interface OpenedToTheRight extends PaneHandle {
+    /**
+     * The View was already the front tab of the Pane to the right, so nothing on screen moved. A
+     * caller with more to show for the request shows it there: a document scrolls to its top.
+     */
+    readonly alreadyInFront: boolean
+}
+
 export interface LayoutController {
     openView(view: ViewRef, opts?: OpenViewOptions): PaneHandle
+    /**
+     * Open a View in the main Pane to the right of the one holding `sourcePanelId` (ADR 0155):
+     * the Pane whose left edge meets that one's right edge, as `pane-neighbour.ts` reads it, and
+     * with none there, a new Pane split off the source to its right. A View already in that Pane
+     * comes to the front where it is. One open anywhere else is MOVED there, keeping its
+     * component, where an ordinary open would bring it to the front where it is: the person asked
+     * for it beside what they are reading. Either way it ends up at the end of the strip (a pinned
+     * one at the end of the pinned block), in front. The active View and the keyboard stay where
+     * they are, so the document being read keeps its caret and Backlinks keeps following it; only
+     * a View that had the keyboard (a link to the page it is in) takes it along.
+     *
+     * Where Panes are not side by side (the phone), or the source is not in a main-region Pane,
+     * this is an ordinary open from the source's Pane, as following a link is.
+     */
+    openViewToTheRight(view: ViewRef, sourcePanelId: string): OpenedToTheRight
+    /**
+     * Whether {@link openViewToTheRight} from `sourcePanelId` would place beside it: the panel
+     * is open in a main-region Pane and the renderer shows Panes side by side.
+     */
+    canOpenToTheRight(sourcePanelId: string): boolean
     closeView(view: ViewRef): void
     /**
      * Close one specific instance by its panel id. `closeView` addresses the canonical instance
@@ -164,6 +205,13 @@ export interface RegionModel {
     /** Sidebar regions only: whether the region is collapsed. */
     collapsed: boolean
     /**
+     * Sidebar regions only: the width in CSS pixels the person last gave the Sidebar on a desktop
+     * (ADR 0156), not a width a narrow window has squeezed it to. Kept in the model, not only in
+     * the renderer's geometry, so it survives a presenter swap: the phone keeps it untouched and
+     * the next desktop shows the Sidebar at it. Absent ⇒ the renderer's default.
+     */
+    width?: number
+    /**
      * The pane last worked in, which is where the region's next reveal/tab open lands - even
      * while focus has wandered to a Sidebar (Favourites, Recents), as it has whenever a
      * document is being opened. Absent ⇒ the first pane, and for a Layout persisted before
@@ -201,6 +249,11 @@ export interface ViewPlacement {
     /** For split-*: the existing pane the new pane splits from, if any. */
     fromPaneId?: string
     /**
+     * For split-*: a View in the pane the new pane splits from. A renderer with groups of its own
+     * (dockview) knows nothing of `fromPaneId`, but it can find the group that holds a panel.
+     */
+    fromPanelId?: string
+    /**
      * For reveal/tab: a View already in the target pane, when it has one. A renderer that keeps
      * its own arrangement (dockview) knows nothing of `paneId`, but it can find the group that
      * holds a panel — so this is how a new tab lands in the split the user is working in rather
@@ -213,6 +266,13 @@ export interface ViewPlacement {
      * re-keying a background tab in place must leave the user's active tab alone.
      */
     activate?: boolean
+    /**
+     * The View goes in front of its Pane, or into a Pane of its own, without becoming the active
+     * View: the renderer leaves the active Pane and the keyboard where they are. Open in pane to
+     * the right places this way, so the document being read keeps the caret and Backlinks keeps
+     * following it (ADR 0155).
+     */
+    background?: boolean
 }
 
 /**
@@ -235,6 +295,20 @@ export interface RenderedPane {
  */
 export interface LayoutRenderer {
     addView(instance: ViewInstance, placement: ViewPlacement): void
+    /**
+     * Move an open View to another Pane, keeping its component mounted, so an editor keeps its
+     * scroll, caret and undo history: into the Pane holding `placement.siblingPanelId` at `index`,
+     * or under a split mode into a new Pane off the one holding `placement.fromPanelId`. The
+     * model has already moved it. Optional, with {@link paneBounds}: a renderer that shows one
+     * Pane at a time has nothing to move a View beside.
+     */
+    moveView?(panelId: string, placement: ViewPlacement, index: number): void
+    /**
+     * Where the Pane holding `panelId` sits on screen, or null when no Pane holds it: how the
+     * controller finds the Pane to the right of another (`pane-neighbour.ts`). Absent ⇒ the
+     * renderer shows one Pane at a time (the phone), so no Pane is beside another.
+     */
+    paneBounds?(panelId: string): PaneBounds | null
     /**
      * Remove a View. `front` is the tab of the same Pane the model brings forward when the removed
      * one was in front (ADR 0150): put in front first, so the renderer never brings forward a tab
@@ -289,6 +363,16 @@ export interface LayoutRenderer {
      */
     hasView?(panelId: string): boolean
     setRegionCollapsed(region: Region, collapsed: boolean): void
+    /**
+     * Sidebar regions: the width to show the Sidebar at (ADR 0156), from the model. The controller
+     * passes it on a restore, before anything is rendered. Absent ⇒ the renderer has no widths.
+     */
+    setRegionWidth?(region: Region, width: number): void
+    /**
+     * Sidebar regions: the width the person last gave the Sidebar, which the controller saves in
+     * the model. Undefined where the renderer has none to report (the phone presenter).
+     */
+    regionWidth?(region: Region): number | undefined
     /** Optional engine geometry, merged into {@link SerializedLayout.renderer}. */
     serializeGeometry?(): unknown
     /** Re-apply engine geometry produced by {@link serializeGeometry}. */
@@ -296,7 +380,8 @@ export interface LayoutRenderer {
     /**
      * Called once after a full restore (model- or geometry-path), when every
      * group and panel exists and the container is laid out. The dockview adapter
-     * uses it to normalise Sidebar widths, which cannot be set reliably mid-build.
+     * uses it to put back an editor area the Layout lacks, and to show each Sidebar as the model
+     * says: collapsed or empty out of sight, open at its own width (ADR 0156).
      */
     afterRestore?(): void
     /** Tear the renderer down (dispose mounted components, the dockview API…). */

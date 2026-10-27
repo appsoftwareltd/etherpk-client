@@ -30,7 +30,7 @@
  */
 
 import { syntaxTree } from '@codemirror/language'
-import { type EditorState, type Extension, type Range, RangeSet, StateEffect } from '@codemirror/state'
+import { type EditorState, type Extension, type Range, RangeSet, StateEffect, type Transaction } from '@codemirror/state'
 import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate, WidgetType } from '@codemirror/view'
 
 import type { ProposalStep } from '$lib/document/frontmatter/proposal'
@@ -38,6 +38,7 @@ import type { ProposalStep } from '$lib/document/frontmatter/proposal'
 import { analysisFor } from '../analysis/editor-analysis'
 import { EXTERNAL } from '../cm-document'
 import { isOwnEditing } from '../own-editing'
+import { isFindReplace } from '../../find/find-edit'
 import { frontmatterProblemsField, showFrontmatterProblems } from './frontmatter-assist'
 import { type EpisodeEnd, FrontmatterEpisode } from './frontmatter-episode'
 import { FRONTMATTER_MARK, FRONTMATTER_NODE } from './frontmatter-parse'
@@ -122,6 +123,15 @@ interface EditingSession {
     editing: boolean
 }
 
+/**
+ * Whether one of the user's own transactions may open a frontmatter editing episode: typing,
+ * deleting, pasting, undoing, as CodeMirror marks them. A replace from the find box never changes
+ * the document's names and asked any rename question before it wrote, so it opens none (ADR 0153 §6).
+ */
+export function opensFrontmatterEpisode(tr: Transaction): boolean {
+    return isOwnEditing(tr) && !isFindReplace(tr)
+}
+
 /** Feeds the episode tracker from editor updates and reports the end to the View. */
 function episodePlugin(options: FrontmatterOptions, session: EditingSession): Extension {
     return ViewPlugin.fromClass(
@@ -135,7 +145,7 @@ function episodePlugin(options: FrontmatterOptions, session: EditingSession): Ex
                     // workspace (EXTERNAL) and another member's edit arriving through the
                     // collaborative binding carry no user event, and neither may open an episode -
                     // a half-typed title arriving over sync must never raise a dialog here.
-                    if (!tr.docChanged || tr.annotation(EXTERNAL) || !isOwnEditing(tr)) continue
+                    if (!tr.docChanged || tr.annotation(EXTERNAL) || !opensFrontmatterEpisode(tr)) continue
                     tr.changes.iterChangedRanges((fromA, toA) => changes.push({ from: fromA, to: toA }))
                 }
                 const ended = this.episode.update({

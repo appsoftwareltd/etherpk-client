@@ -17,7 +17,7 @@ import { getActiveLayoutController, type LayoutController, type ViewRef } from '
 
 import { getActiveGraphIndex } from './backlinks'
 import { conceptKey } from './backlinks/backlink-index'
-import { revealLine } from './reveal'
+import { revealLine, revealTop } from './reveal'
 
 /** True when the index knows of no document for this concept (→ missing styling). */
 export function conceptIsMissing(concept: string): boolean {
@@ -83,6 +83,33 @@ export function openConceptAtLine(concept: string, line: number, sourcePanelId?:
     const target = canonicalConceptName(concept)
     if (!tryOpen(target, sourcePanelId)) return
     revealLine(target, line)
+}
+
+/**
+ * Open a concept in the Pane to the right of the one holding `sourcePanelId` (ADR 0155): a
+ * wikilink's "Open in pane to the right" and Mod+Alt+Enter. The Layout splits a Pane off when
+ * there is none, and moves the concept's tab there when it is open elsewhere; where no Pane can be
+ * beside the source (the phone, a Sidebar), it opens as a click on the link would. Returns the
+ * panel it opened under, or null where there is no layout to open into (the /dev harnesses).
+ *
+ * The page opens in the background: the document being read keeps the keyboard and stays the
+ * active one, so Backlinks keeps following it. A page already in front there shows its top, by
+ * the same request Today makes of a journal day (ADR 0154): the reader asked for the page, and a
+ * request that changed nothing on screen would look ignored. Its selection goes to the start of
+ * its body, as Today's does, but the keyboard stays where it is. Anywhere else it lands where it
+ * was.
+ */
+export function openConceptToTheRight(concept: string, sourcePanelId: string): string | null {
+    let controller: LayoutController
+    try {
+        controller = getActiveLayoutController()
+    } catch {
+        return null
+    }
+    const target = canonicalConceptName(concept)
+    const opened = controller.openViewToTheRight({ kind: 'document', target }, sourcePanelId)
+    if (opened.alreadyInFront) revealTop(target)
+    return opened.panelId
 }
 
 /** Open `target` (already canonical) in the source panel's pane; false when there is no layout. */

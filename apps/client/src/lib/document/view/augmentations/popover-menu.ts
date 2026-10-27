@@ -19,6 +19,7 @@ import { EditorView, keymap, showTooltip, tooltips, type Tooltip, type TooltipVi
 import { setTrustedMarkup, type TrustedMarkup } from '$lib/security/trusted-types'
 
 import { editorScroller } from '../editor-scroller'
+import { isFindReplace, isFindSelect } from '../../find/find-edit'
 
 /** The minimum a caller's menu state must carry: where to anchor, and the highlighted row. */
 export interface PopoverBase {
@@ -103,6 +104,9 @@ export function popoverMenu<S extends PopoverBase>(opts: PopoverMenuOptions<S>):
                 if (e.is(closeMenu)) return null
                 if (e.is(selectIndex) && value) value = { ...value, selected: e.value } as S
             }
+            // Find puts the selection on a match, and replaces, while focus is in its box: neither
+            // is the user typing here, so neither opens a popover, and one already open closes.
+            if (isFindSelect(tr) || isFindReplace(tr)) return null
             if (tr.docChanged || tr.selection || tr.effects.some((e) => e.is(refreshPopovers))) return opts.compute(tr.state)
             return value
         },

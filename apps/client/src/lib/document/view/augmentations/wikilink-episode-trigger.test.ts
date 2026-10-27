@@ -46,6 +46,14 @@ describe('opensWikilinkEpisode', () => {
         expect(opensWikilinkEpisode(wrap('- [[Physics]] and more', 6, 18))).toBe(false)
     })
 
+    // A replace from the find box asked its rename question before it wrote (ADR 0153 §6).
+    it('does not open on a replace from the find box, one match or all', () => {
+        const state = EditorState.create({ doc: '[[Test]]', extensions: [editorAnalysis()] })
+        for (const userEvent of ['input.replace', 'input.replace.all']) {
+            expect(opensWikilinkEpisode(state.update({ changes: { from: 2, to: 6, insert: 'Best' }, userEvent })), userEvent).toBe(false)
+        }
+    })
+
     it('does not open on an edit with no user event (a store write-back, a collaborator)', () => {
         const state = EditorState.create({ doc: '[[Test]]' })
         expect(opensWikilinkEpisode(state.update({ changes: { from: 2, insert: 'x' } }))).toBe(false)

@@ -50,6 +50,7 @@ describe('editor feature stack', () => {
             'frontmatter-boundary',
             'wrap-selection',
             'spell-check',
+            'find-matches',
             'markdown-format',
             'template-variables',
             'bullet-marker',
@@ -120,6 +121,15 @@ describe('editor feature stack', () => {
             expect({ text: state.doc.toString(), selection: state.selection.toJSON(), undo: undoDepth(state) }).toEqual(before)
         }
         expect(editorIsOnScreen(state)).toBe(false)
+    })
+
+    // CodeMirror nests a later extension's mark outside an earlier one's and splits the inner one
+    // at the outer's edges. A match's wash can be split freely, as a spelling underline can, where
+    // a highlight's padded wash and a code line's scroll container cannot.
+    it("draws find's matches inside every mark but spell check's", () => {
+        before('spell-check', 'find-matches')
+        before('find-matches', 'markdown-format')
+        before('find-matches', 'code-scroll')
     })
 
     it('runs the transaction filters before anything that decorates', () => {

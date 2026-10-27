@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
+import { EditorState } from '@codemirror/state'
 
+import { opensFrontmatterEpisode } from './frontmatter'
 import { FrontmatterEpisode } from './frontmatter-episode'
 
 const END = 20 // '---\ntitle: Kanban\n---' → last offset inside the block
@@ -131,5 +133,23 @@ describe('FrontmatterEpisode', () => {
         episode.update(typing(12))
         expect(episode.close()).toBe(true)
         expect(episode.close()).toBe(false)
+    })
+})
+
+describe('opensFrontmatterEpisode', () => {
+    const state = EditorState.create({ doc: '---\nstatus: Garden\n---\n' })
+    const edit = (userEvent?: string) => state.update({ changes: { from: 12, to: 18, insert: 'Yard' }, userEvent })
+
+    it("opens on the user's own editing", () => {
+        expect(opensFrontmatterEpisode(edit('input.type'))).toBe(true)
+        expect(opensFrontmatterEpisode(edit('delete.backward'))).toBe(true)
+    })
+
+    // A replace from the find box never changes the document's names, and asked any rename
+    // question before it wrote (ADR 0153 §6).
+    it('does not open on a replace from the find box, or an edit with no user event', () => {
+        expect(opensFrontmatterEpisode(edit('input.replace'))).toBe(false)
+        expect(opensFrontmatterEpisode(edit('input.replace.all'))).toBe(false)
+        expect(opensFrontmatterEpisode(edit())).toBe(false)
     })
 })
