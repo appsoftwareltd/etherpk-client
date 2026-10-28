@@ -307,6 +307,9 @@
         serverFormattingSource,
     } from "$lib/workspace/formatting-sources";
     import { FormattingScanSession } from "$lib/document/formatting/ui/formatting-session.svelte";
+    import { DuplicateNamesSession } from "$lib/sync/ui/duplicate-names-session.svelte";
+    import DuplicateNamesDialog from "$lib/sync/ui/DuplicateNamesDialog.svelte";
+    import { offersDuplicateReview } from "$lib/sync/ui/duplicate-names-copy";
     import { revealLine, revealTop } from "$lib/document/reveal";
     import { protectedTextReader } from "$lib/document/protection/protected-text-reader";
     import { registerAssetViewers } from "$lib/document/view/viewers/register";
@@ -1217,6 +1220,28 @@
      * this graph is open, across closing and reopening Settings, and go with the graph.
      */
     let formattingScan = $state<FormattingScanSession | null>(null);
+    /**
+     * The [[Duplicate Name]] review (ADR 0157), on a Server-backed graph only: the list the
+     * Maintenance section shows, and whether the dialog at open has been answered.
+     */
+    let duplicateNames = $state<DuplicateNamesSession | null>(null);
+    /**
+     * How many names belonged to more than one document when the registry was first confirmed
+     * this open, which is when the dialog decides. A pair that appears later in the session is
+     * listed in Maintenance, never announced by a dialog over the person's work.
+     */
+    let duplicateNamesAtOpen = $state(0);
+    let duplicateRegistryConfirmed = $state(false);
+    const offerDuplicateReview = $derived(
+        phase === "ready" &&
+            duplicateNames !== null &&
+            offersDuplicateReview({
+                registryConfirmed: duplicateRegistryConfirmed,
+                names: duplicateNamesAtOpen,
+                dismissed: duplicateNames.noticeDismissed,
+                otherDialogOpen: passcodeOffer !== null || pendingRecoveryCode !== null,
+            }),
+    );
     /** Enumerates the graph's assets for the [[Local Mirror]]; server graphs with storage only. */
     let listMirrorAssetIds: (() => Promise<string[]>) | null = null;
     // Storage Footprint fetch (ADR 0033) - real server path only; null elsewhere.
@@ -3927,6 +3952,18 @@
             graphName: () => graphDisplayName || "this graph",
             review: () => openGraphSettings("maintenance"),
         });
+        if (isServerStore) {
+            const serverStore = s as ServerDocumentStore;
+            duplicateNames = new DuplicateNamesSession(serverStore);
+            // Detached: the open does not wait on the relay for this. Offline the registry
+            // cannot be confirmed, and nothing is said (ADR 0157).
+            void serverStore.confirmRegistry().then((confirmed) => {
+                if (!confirmed || !attempt.isCurrent() || !duplicateNames) return;
+                duplicateNames.refresh();
+                duplicateNamesAtOpen = duplicateNames.names.length;
+                duplicateRegistryConfirmed = true;
+            });
+        }
 
         // The graph-scoped Event bus (extension surface, Phase 1). Created here so
         // it is active before the Views mount in restore(); torn down on leave. The
@@ -6921,6 +6958,10 @@
         assetTools = null;
         formattingScan?.dispose();
         formattingScan = null;
+        duplicateNames?.dispose();
+        duplicateNames = null;
+        duplicateNamesAtOpen = 0;
+        duplicateRegistryConfirmed = false;
         fetchGraphStorage = null;
         fsAdapter = undefined;
         fsFolderName = undefined;
@@ -7145,6 +7186,21 @@
         dismissLabel={passcodeOffer.dismissLabel}
         ondone={() => (passcodeOffer = null)}
         onclose={() => (passcodeOffer = null)}
+    />
+{/if}
+
+{#if offerDuplicateReview && duplicateNames}
+    <DuplicateNamesDialog
+        names={duplicateNamesAtOpen}
+        onreview={() => {
+            if (!duplicateNames) return;
+            duplicateNames.noticeDismissed = true;
+            duplicateNames.requestReveal();
+            openGraphSettings("maintenance");
+        }}
+        onclose={() => {
+            if (duplicateNames) duplicateNames.noticeDismissed = true;
+        }}
     />
 {/if}
 
@@ -7399,6 +7455,7 @@
             : null}
         agents={agentsTabProps()}
         publish={publishTabProps()}
+        duplicateNames={duplicateNames}
         formatting={formattingScan && !useMobile
             ? {
                   session: formattingScan,

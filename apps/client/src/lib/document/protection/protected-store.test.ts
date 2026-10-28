@@ -55,6 +55,28 @@ function build(locked = false) {
 beforeEach(() => vi.useFakeTimers())
 afterEach(() => vi.useRealTimers())
 
+describe('a name that moves to another document (ADR 0157)', () => {
+    // A Duplicate Name merged: the document the name opened is deleted, and the name now opens
+    // the one that was kept. A wrapper over the deleted one must not answer for the name.
+    it('wraps the document the name opens now, not the one it opened before', async () => {
+        const texts: Record<string, string> = { a: '- water the beans', b: '- feed the cat' }
+        let docId = 'a'
+        const inner: DocumentStore & { documentIdOf(target: string): string } = {
+            open: (target) => {
+                const id = docId
+                return { id: target, getText: () => texts[id], applyChange: () => {}, subscribe: () => () => {} }
+            },
+            documentIdOf: () => docId,
+        }
+        const store = createProtectedDocumentStore(inner, { encrypt: async (text) => text, decryptEnvelope: async (text) => text })
+
+        expect(store.open('Garden').getText()).toBe('- water the beans')
+        docId = 'b'
+        expect(store.open('Garden').getText()).toBe('- feed the cat')
+        expect(store.open('Garden')).toBe(store.open('Garden'))
+    })
+})
+
 describe('opening', () => {
     it('projects a protected document once the key is held', async () => {
         const { store } = build()

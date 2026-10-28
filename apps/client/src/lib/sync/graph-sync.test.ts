@@ -440,6 +440,69 @@ describe('graph-sync', () => {
         graph.dispose()
     })
 
+    // Two devices' first writes to one new document (a derived journal id, ADR 0157): this
+    // device's append is acked at seq 2 while the catch-up it sent on open is still in flight,
+    // and that answer was composed before the other device's seq 1 was stored. The engine asks
+    // again; dropped as a duplicate of the in-flight request, the document stayed behind for good.
+    it('asks for a catch-up again when the in-flight answer leaves the gap an ack revealed', async () => {
+        const sent: Array<Record<string, unknown>> = []
+        let receive: (data: string) => void = () => {}
+        const socket: TransportSocket = {
+            send: (data) => sent.push(JSON.parse(data) as Record<string, unknown>),
+            close: () => {},
+            onOpen: (callback) => callback(),
+            onMessage: (callback) => {
+                receive = callback
+            },
+            onClose: () => {},
+        }
+        const graph = createGraphSync({
+            graphId: 'g-gap-repeat',
+            rootDocId: ROOT,
+            keyring: createGraphKeyring('g-gap-repeat'),
+            relayUrl: 'ws://relay',
+            token: fixedSyncToken('t'),
+            cache: await openGraphCache(`gap-repeat-${Math.floor(performance.now() * 1000)}`),
+            connect: () => socket,
+            debounceMs: 1,
+        })
+        const answer = async (request: Record<string, unknown>) => {
+            receive(
+                JSON.stringify({
+                    v: SYNC_PROTOCOL_VERSION,
+                    type: 'catchup_batch',
+                    requestId: request.requestId,
+                    docId: request.docId,
+                    generation: 1,
+                    state: 'active',
+                    throughSeq: 0,
+                    hasMore: false,
+                    updates: [],
+                }),
+            )
+            await new Promise((resolve) => setTimeout(resolve, 0))
+        }
+        const catchupsFor = (docId: string) => sent.filter((message) => message.type === 'catchup' && message.docId === docId)
+        await graph.ready()
+        await vi.waitFor(() => expect(catchupsFor(ROOT)).toHaveLength(1))
+        await answer(catchupsFor(ROOT)[0])
+
+        const engine = graph.docSync(DOC_1)
+        await graph.whenReady(DOC_1)
+        await vi.waitFor(() => expect(catchupsFor(DOC_1)).toHaveLength(1))
+        engine.doc.getText('content').insert(0, '- water the beans')
+        await vi.waitFor(() => expect(sent.some((message) => message.type === 'append' && message.docId === DOC_1)).toBe(true))
+        const append = sent.find((message) => message.type === 'append' && message.docId === DOC_1)!
+        receive(JSON.stringify({ v: SYNC_PROTOCOL_VERSION, type: 'ack', outboxId: append.outboxId, generation: 1, state: 'active', seq: 2 }))
+        await new Promise((resolve) => setTimeout(resolve, 10))
+        expect(catchupsFor(DOC_1)).toHaveLength(1)
+
+        await answer(catchupsFor(DOC_1)[0])
+        await vi.waitFor(() => expect(catchupsFor(DOC_1)).toHaveLength(2))
+        expect(catchupsFor(DOC_1)[1]).toMatchObject({ afterSeq: 0 })
+        graph.dispose()
+    })
+
     // The caller owns the release: a walk whose batch failed releases it in its own `finally`, as
     // every walk in server-document-store.ts does. If readyDocs also gave the holds back, the
     // batch would be released twice, and the second release would take the hold of another walk

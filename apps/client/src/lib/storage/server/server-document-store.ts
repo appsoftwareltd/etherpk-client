@@ -40,6 +40,7 @@ import { type TextSplice, countWikilinkTargets, wikilinkScopeSplices } from '$li
 import { documentProtection } from '$lib/document/protection/cipher-fence'
 import { containsCipherFence } from '$lib/document/protection/fence-info'
 import { mergeDocuments } from '../merge'
+import { mergedText } from './duplicate-names'
 import { aliasesAfterRename, planRename, refuseProtectedMerges } from '../rename-plan'
 import {
     type AliasRewrite,
@@ -75,6 +76,37 @@ export interface DocumentIdentity {
     aliases: string[]
 }
 
+/**
+ * What a [[Merge]] of a [[Duplicate Name]] did (ADR 0157):
+ * - `merged`: one document is left, holding every text.
+ * - `gone`: a document was deleted, or renamed, since the person read it. Nothing was written.
+ * - `offline`: nothing was written. A Merge deletes only what the relay has confirmed.
+ * - `unconfirmed`: a document could not be brought current. Nothing was written.
+ * - `protected`: one is a [[Protected Document]], which never merges. Nothing was written.
+ * - `changed`: a text changed since the person read it. Nothing was written.
+ * - `not-acknowledged`: the text was added to the first document, and the relay has not
+ *   confirmed it yet. Nothing was deleted. Merging again adds nothing twice.
+ * - `changed-after-append`: the text was added and confirmed, but another document changed
+ *   while that happened, so it was kept.
+ */
+export type MergeDuplicatesOutcome =
+    | 'merged'
+    | 'gone'
+    | 'offline'
+    | 'unconfirmed'
+    | 'protected'
+    | 'changed'
+    | 'not-acknowledged'
+    | 'changed-after-append'
+
+export interface CreateJournalOptions {
+    /**
+     * The [[Journal Template]] that `body` starts with. It is seeded as one identical CRDT write,
+     * so two devices that start the day with the same template hold one copy of it (ADR 0157).
+     */
+    template?: string
+}
+
 /** A document's full text, and whether it can be trusted as the document's settled content. */
 export interface DocumentText {
     text: string
@@ -105,6 +137,12 @@ export interface ServerDocumentStore {
     listDocuments(): DocumentEntry[]
     /** Every document's identity, keyed by document id ({@link DocumentIdentity}). */
     listIdentities(): DocumentIdentity[]
+    /**
+     * The id of the document a name opens now, or undefined. A plain read: unlike `open` and
+     * `getYText` it creates no engine and writes nothing, so a view can ask it on every registry
+     * change to learn whether its name has moved to another document (ADR 0157).
+     */
+    documentIdOf(target: string): string | undefined
     /**
      * Full materialized text for documents nobody has open, in bounded batches seeded from the
      * [[Local Cache]] and retired again - never through {@link open}, which starts a live editing
@@ -170,7 +208,7 @@ export interface ServerDocumentStore {
      * Create the [[Journal Entry]] for `date` (a `YYYY-MM-DD` day), seeded with `body`.
      * The day is the identity here too - it is the registry entry, not a title (ADR 0056).
      */
-    createJournal(date: string, body?: string): Promise<string>
+    createJournal(date: string, body?: string, options?: CreateJournalOptions): Promise<string>
     /** `body` seeds the new document's content, so a promoting [[Draft]] needs no second write (ADR 0050). */
     createPage(title: string, body?: string): Promise<string>
     /** What a rename would do, before anything is written (ADR 0038 §1) — the dialog's preview. */
@@ -206,6 +244,18 @@ export interface ServerDocumentStore {
      * fixed. `timeoutMs` bounds the wait to bring a document current (default 15 s).
      */
     spliceIfUnchanged(docId: string, expected: string, splices: readonly TextSplice[], options?: { timeoutMs?: number }): Promise<SpliceOutcome>
+    /**
+     * Merge the documents of a [[Duplicate Name]] into the first of `docIds` (ADR 0157). Each must
+     * still answer to one name and hold exactly its text in `expected`, as the person read it. The
+     * others' text is appended to the first ({@link mergedText}) and their aliases join its own.
+     * Only once the relay has acknowledged the addition is each other document deleted, and only
+     * while its text is still what was added. `timeoutMs` bounds each wait (default 15 s).
+     */
+    mergeDuplicates(
+        docIds: readonly string[],
+        expected: ReadonlyMap<string, string>,
+        options?: { timeoutMs?: number },
+    ): Promise<MergeDuplicatesOutcome>
     dispose(): Promise<void>
 }
 
@@ -223,6 +273,12 @@ export function createServerDocumentStore(
     const ENGINE_BATCH = 100
     /** Longest a cold-empty document holds its loading state waiting for first catchup. */
     const COLD_CONTENT_TIMEOUT_MS = 15000
+    /**
+     * Longest a create waits, while connected, for the registry (and a journal's own document) to
+     * catch up before it checks the name again (ADR 0157). Long enough for a reconnect's first
+     * pages, short enough that a slow relay does not hold up a person who is typing.
+     */
+    const CREATE_CONFIRM_MS = 5000
     const breathe = createBreather()
 
     const changeListeners = new Set<StoreChangeListener>()
@@ -232,6 +288,16 @@ export function createServerDocumentStore(
     /** docId to the name it had when first seen renamed from elsewhere, and its latest name. */
     const renamesFromElsewhere = new Map<string, { from: string; to: string }>()
     const resurrectionClaims = new Map<string, RegistryEntry>()
+    /**
+     * Journal entries this device started before its registry had caught up (ADR 0157). A derived
+     * id can already be a registry key that another device set and then deleted while this one was
+     * away. Two concurrent sets of one Y.Map key keep one of them, and when the kept one is the
+     * deleted one, this device's entry goes too: its text would be in the document but no name
+     * would reach it. A claim sets the entry again when that happens, until the registry has
+     * caught up once with this device connected, after which a delete is someone's decision.
+     */
+    const creationClaims = new Map<string, RegistryEntry>()
+    const stopClaimWatches = new Set<() => void>()
     let disposed = false
     /** Whether the encrypted registry has been read to its terminal relay page this session. */
     let registryConfirmed = false
@@ -348,10 +414,21 @@ export function createServerDocumentStore(
     /**
      * Every name a document answers to, to its docId. A page's own name outranks another page's
      * alias of the same name, whatever order the registry lists them in, as the index resolves it.
+     *
+     * A name that more than one document answers to (a [[Duplicate Name]], ADR 0157) keeps the
+     * document it opened before, while that document still answers to it. The registry lists a key
+     * that arrived by sync last, so without this a duplicate arriving would move every open tab
+     * and link of the name onto the other device's document, and two devices would each open the
+     * other's. A name moves only when its document leaves it: deleted, merged or renamed away.
      */
-    function currentDocIds(): Map<string, string> {
+    function currentDocIds(previous?: ReadonlyMap<string, string>): Map<string, string> {
         const out = new Map<string, string>()
-        registry.forEach((entry, docId) => out.set(conceptKey(conceptOf(entry)), docId))
+        registry.forEach((entry, docId) => {
+            const key = conceptKey(conceptOf(entry))
+            const held = out.get(key)
+            if (held !== undefined && previous?.get(key) === held) return
+            out.set(key, docId)
+        })
         registry.forEach((entry, docId) => {
             for (const alias of entry.aliases ?? []) {
                 const key = conceptKey(alias)
@@ -407,7 +484,7 @@ export function createServerDocumentStore(
                 if (!next.has(key) && !renamedAway.has(key)) removedListeners.forEach((l) => l(concept))
             }
             known = next
-            docIdsByConcept = currentDocIds()
+            docIdsByConcept = currentDocIds(docIdsByConcept)
             knownRegistry = nextRegistry
             docsChangedListeners.forEach((l) => l())
             if (!restored) {
@@ -434,6 +511,20 @@ export function createServerDocumentStore(
             }
             for (const [docId, change] of event.changes.keys) {
                 if (change.action !== 'delete') continue
+                const created = creationClaims.get(docId)
+                if (created) {
+                    queueMicrotask(() => {
+                        if (registry.has(docId) || !creationClaims.has(docId)) return
+                        // A delete made here, or one whose document has already been cleared, is
+                        // a delete. A document that still holds this device's text is not.
+                        const engine = graph.docSync(docId)
+                        if (engine.lifecycle() === 'deleting' || engine.doc.getText('content').length === 0) {
+                            creationClaims.delete(docId)
+                            return
+                        }
+                        registry.set(docId, created)
+                    })
+                }
                 const claimed = resurrectionClaims.get(docId)
                 if (!claimed) continue
                 queueMicrotask(() => {
@@ -721,7 +812,7 @@ export function createServerDocumentStore(
                 registryConfirmed = true
             }
             known = currentConcepts()
-            docIdsByConcept = currentDocIds()
+            docIdsByConcept = currentDocIds(docIdsByConcept)
             knownRegistry = currentRegistryIdentities()
         },
         listDocuments(): DocumentEntry[] {
@@ -747,6 +838,9 @@ export function createServerDocumentStore(
             journals.sort((a, b) => b.concept.localeCompare(a.concept)) // date-desc
             pages.sort((a, b) => a.concept.localeCompare(b.concept)) // alpha
             return [...journals, ...pages]
+        },
+        documentIdOf(target: string): string | undefined {
+            return docIdFor(target)
         },
         listIdentities(): DocumentIdentity[] {
             const out: DocumentIdentity[] = []
@@ -1087,19 +1181,93 @@ export function createServerDocumentStore(
                 materialised.release()
             }
         },
+        async mergeDuplicates(docIds, expected, mergeOptions): Promise<MergeDuplicatesOutcome> {
+            const timeoutMs = mergeOptions?.timeoutMs ?? COLD_CONTENT_TIMEOUT_MS
+            const [first, ...others] = docIds
+            if (!first || others.length === 0 || !oneName(docIds)) return 'gone'
+            if (!graph.isConnected()) return 'offline'
+            if (!(await confirmRegistry(timeoutMs))) return 'unconfirmed'
+            // Held live until the deletes are done, as a rename holds its documents.
+            const materialised = await materialise(docIds, timeoutMs)
+            try {
+                if (!oneName(docIds)) return 'gone'
+                if (materialised.unconfirmed.length > 0) return 'unconfirmed'
+                const texts = docIds.map((id) => graph.docSync(id).doc.getText('content').toString())
+                if (texts.some((text) => documentProtection(text).kind === 'document')) return 'protected'
+                if (docIds.some((id, index) => texts[index] !== expected.get(id))) return 'changed'
+
+                // The read above and this write share one synchronous turn. The first document's
+                // text already ending with what would be added is a Merge that was written and not
+                // yet confirmed, or documents that hold the same text: either way it is not added
+                // twice.
+                const firstText = texts[0]
+                const addition = mergedText(['', ...texts.slice(1)])
+                if (addition !== '' && !firstText.endsWith(addition)) {
+                    const merged = mergedText(texts)
+                    const ytext = graph.docSync(first).doc.getText('content')
+                    ytext.doc!.transact(() => ytext.insert(firstText.length, merged.slice(firstText.length)), STORE)
+                }
+                const firstEntry = registry.get(first)!
+                const aliases = others.reduce<string[]>(
+                    (union, id) => mergeDocuments({ body: '', aliases: union }, { body: '', aliases: registry.get(id)?.aliases ?? [] }).aliases,
+                    firstEntry.aliases ?? [],
+                )
+                if (aliases.length !== (firstEntry.aliases ?? []).length) writeAliases(first, firstEntry, aliases)
+
+                if (!(await acknowledged(first, timeoutMs))) return 'not-acknowledged'
+                // Deleted only while each still holds what was added: an edit made elsewhere
+                // meanwhile would otherwise go with it.
+                const changed = others.filter((id, index) => graph.docSync(id).doc.getText('content').toString() !== texts[index + 1])
+                if (changed.length > 0 || !oneName(docIds)) return 'changed-after-append'
+                for (const id of others) {
+                    creationClaims.delete(id)
+                    await graph.deleteDoc(id)
+                    registry.delete(id)
+                }
+                return 'merged'
+            } finally {
+                materialised.release()
+            }
+        },
         // CRDTs merge — there is nothing to reconcile or resolve.
         async reconcile() {},
         async resolveConflict() {},
-        async createJournal(date: string, body = ''): Promise<string> {
+        async createJournal(date: string, body = '', createOptions?: CreateJournalOptions): Promise<string> {
             const day = date.trim()
             if (!isJournalConcept(day)) throw new Error(`"${date}" is not a calendar day.`)
+            await confirmBeforeCreate()
             if (docIdFor(day)) throw new Error(`A document for "${day}" already exists`)
-            const docId = crypto.randomUUID()
-            registry.set(docId, { kind: 'journal', date: day } satisfies RegistryEntry)
-            // Seeded in the same breath as the registry entry, exactly as createPage does, so a
-            // promoting [[Draft]] never writes twice (ADR 0050).
-            if (body !== '') {
-                const ytext = graph.docSync(docId).doc.getText('content')
+            // Derived from the day, so a device that starts the day without having heard of
+            // another's entry writes into the same document (ADR 0157). The id can have a history:
+            // a day deleted and started again reuses it.
+            const docId = await graph.journalDocId(day)
+            const engine = graph.docSync(docId)
+            await graph.whenReady(docId)
+            const connected = graph.isConnected()
+            // Connected, the document's own catch-up says which generation the relay holds, so the
+            // first text goes as a `resurrect` into a deleted one rather than being refused.
+            const caughtUp = connected && (await reachedWithin(graph.caughtUpDoc(docId), CREATE_CONFIRM_MS))
+            if (docIdFor(day)) throw new Error(`A document for "${day}" already exists`)
+            const entry: RegistryEntry = { kind: 'journal', date: day }
+            registry.set(docId, entry)
+            engine.claimCreation()
+            if (!caughtUp) holdCreationClaim(docId, entry)
+            const ytext = engine.doc.getText('content')
+            // Offline, what the engine holds came from this device's cache alone: the copy of a
+            // day that was deleted, since the registry no longer names it. A day started again
+            // starts empty. Text a connected catch-up brought is the relay's, and is kept.
+            if (!connected && ytext.length > 0) ytext.doc!.transact(() => ytext.delete(0, ytext.length), STORE)
+            else if (connected && !caughtUp && ytext.length > 0) {
+                console.warn(`[sync] "${day}" was started before its document caught up; its earlier text is kept`)
+            }
+            const template = createOptions?.template ?? ''
+            if (template !== '' && body.startsWith(template)) {
+                await seedTemplate(docId, template)
+                const rest = body.slice(template.length)
+                if (rest !== '') ytext.doc!.transact(() => ytext.insert(template.length, rest))
+            } else if (body !== '') {
+                // Seeded in the same breath as the registry entry, exactly as createPage does, so
+                // a promoting [[Draft]] never writes twice (ADR 0050).
                 ytext.doc!.transact(() => ytext.insert(0, body))
             }
             return day
@@ -1108,6 +1276,8 @@ export function createServerDocumentStore(
             // Refused, never redirected to createJournal: a page registered under a day mirrors
             // and exports to `pages/`, and a caller that means the day calls createJournal itself.
             if (isJournalConcept(title)) throw new Error(dayIsNotAPageName(title))
+            if (docIdFor(title)) throw new Error(`A page for "${title}" already exists`)
+            await confirmBeforeCreate()
             if (docIdFor(title)) throw new Error(`A page for "${title}" already exists`)
             const docId = crypto.randomUUID()
             registry.set(docId, { kind: 'page', title } satisfies RegistryEntry)
@@ -1230,6 +1400,7 @@ export function createServerDocumentStore(
         async deleteDocument(concept: string): Promise<void> {
             const docId = docIdFor(concept)
             if (!docId) return // already gone; deleting twice is not an error
+            creationClaims.delete(docId)
             // The ordered content lifecycle transition is durable before the encrypted root
             // registry changes. A delayed old-generation append can no longer recreate rows.
             await graph.deleteDoc(docId)
@@ -1244,9 +1415,97 @@ export function createServerDocumentStore(
             unobserveDocUpdates()
             for (const stop of resurrectors.values()) stop()
             resurrectors.clear()
+            for (const stop of stopClaimWatches) stop()
+            stopClaimWatches.clear()
             await graph.flushAll()
             graph.dispose()
         },
+    }
+
+    /**
+     * Confirm before create (ADR 0157): while connected, wait (bounded) for the registry's current
+     * catch-up, so a name another device created moments ago is seen before a second document is
+     * made for it. A reconnect starts a new catch-up cycle a microtask after the socket opens,
+     * which the yield lets begin. Offline nothing can arrive, and the create goes ahead at once.
+     */
+    async function confirmBeforeCreate(): Promise<void> {
+        if (!graph.isConnected()) return
+        await Promise.resolve()
+        await reachedWithin(graph.rootCaughtUp(), CREATE_CONFIRM_MS)
+    }
+
+    /**
+     * Seed a [[Journal Template]] as one Yjs update whose client id is derived from the document,
+     * its generation and the template's text (ADR 0157). Two devices that start the day with the
+     * same template produce the same struct, which the CRDT keeps once. The generation keeps a day
+     * started again after a delete from reusing the struct the deleted generation held. If the
+     * struct is already here and deleted (a device's cached copy of that generation), it adds
+     * nothing, and the template is inserted as an ordinary edit instead.
+     */
+    async function seedTemplate(docId: string, template: string): Promise<void> {
+        const engine = graph.docSync(docId)
+        const digest = new Uint8Array(
+            await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`${docId}\n${engine.generation()}\n${template}`)),
+        )
+        const seed = new Y.Doc()
+        seed.clientID = new DataView(digest.buffer).getUint32(0)
+        seed.getText('content').insert(0, template)
+        Y.applyUpdate(engine.doc, Y.encodeStateAsUpdate(seed), STORE)
+        seed.destroy()
+        const ytext = engine.doc.getText('content')
+        if (!ytext.toString().startsWith(template)) ytext.doc!.transact(() => ytext.insert(0, template), STORE)
+    }
+
+    /** Whether every one of `docIds` is still in the registry under one name. */
+    function oneName(docIds: readonly string[]): boolean {
+        const keys = new Set<string>()
+        for (const id of docIds) {
+            const entry = registry.get(id)
+            if (!entry) return false
+            keys.add(conceptKey(conceptOf(entry)))
+        }
+        return keys.size === 1
+    }
+
+    /**
+     * Send a document's pending edits and wait, bounded, until the relay has acknowledged every
+     * one of them: what a Merge waits for before it deletes anything. False when it has not.
+     */
+    async function acknowledged(docId: string, timeoutMs: number): Promise<boolean> {
+        const engine = graph.docSync(docId)
+        await engine.flush()
+        const deadline = Date.now() + timeoutMs
+        while (engine.unsentOperations() > 0) {
+            if (disposed || Date.now() >= deadline) return false
+            await new Promise((resolve) => setTimeout(resolve, 50))
+        }
+        return true
+    }
+
+    /**
+     * Keep a creation claim until the registry has caught up once with this device connected
+     * (`creationClaims`). Every concurrent set this device's entry could lose to is then here.
+     */
+    function holdCreationClaim(docId: string, entry: RegistryEntry): void {
+        creationClaims.set(docId, entry)
+        let released = false
+        const release = () => {
+            if (released) return
+            released = true
+            stop()
+            stopClaimWatches.delete(stop)
+            void (async () => {
+                // The session starts the root's new catch-up cycle a microtask after the socket opens.
+                await Promise.resolve()
+                await graph.rootCaughtUp()
+                if (creationClaims.get(docId) === entry) creationClaims.delete(docId)
+            })().catch(() => {})
+        }
+        const stop = graph.onActivity((activity) => {
+            if (activity.connection === 'open') release()
+        })
+        stopClaimWatches.add(stop)
+        if (graph.isConnected()) release()
     }
 
     async function confirmRegistry(timeoutMs = 5000): Promise<boolean> {

@@ -526,6 +526,11 @@
     }
     /** Whether the live editor is bound to a `Y.Text` — decided once, at mount. */
     let collabBound = false
+    /**
+     * The id of the document this editor is bound to, when the store can say (a Server Backend).
+     * Watched so the tab follows its name when that document leaves it (`followMovedName`).
+     */
+    let boundDocId: string | undefined
     let unsubscribe: (() => void) | undefined
     let detachEditorListeners: (() => void) | undefined
     let detachBelowText: (() => void) | undefined
@@ -596,7 +601,10 @@
         const store = getActiveDocumentStore() as {
             onDocumentsChanged?: (l: () => void) => () => void
         }
-        const detachStoreWatch = store.onDocumentsChanged?.(onGraphDocumentsChanged)
+        const detachStoreWatch = store.onDocumentsChanged?.(() => {
+            onGraphDocumentsChanged()
+            followMovedName()
+        })
         const detachIndexWatch = getActiveGraphIndex()?.onUpdated(onGraphDocumentsChanged)
         // Protection changing is a REMOUNT, not a repaint. Whether this editor is collab-bound is
         // decided once, at mount, from whether the store hands over a `Y.Text` — and a Protected
@@ -1038,6 +1046,33 @@
      * keeps what the user wrote and offers the swap, because replacing it would destroy work
      * with no undo path across the remount.
      */
+    /** The store's id for the document a name opens: a plain read, where the store has one. */
+    function documentIdOf(target: string): string | undefined {
+        const store = getActiveDocumentStore() as { documentIdOf?: (t: string) => string | undefined }
+        return store.documentIdOf?.(target)
+    }
+
+    /**
+     * The registry changed: if this tab's name now opens another document, the one it was bound
+     * to has left the name (merged into the other and deleted, here or on another device, ADR
+     * 0157), and the tab follows the name. A name never moves while its document still answers to
+     * it (the store keeps it), so a duplicate arriving leaves the tab where it is. Checked in a
+     * microtask: this can fire inside the editor's own update (typing into a deleted document
+     * brings its entry back), where a remount would dispatch mid-update.
+     */
+    function followMovedName(): void {
+        const bound = boundDocId
+        if (!bound) return
+        const current = editor
+        queueMicrotask(() => {
+            if (destroyed || editor !== current || boundDocId !== bound) return
+            const now = documentIdOf(view.target)
+            if (now === undefined || now === bound) return
+            boundDocId = undefined
+            remount()
+        })
+    }
+
     function onGraphDocumentsChanged(): void {
         // The registry moved - a rename arrived, aliases changed - so the frontmatter's mismatch
         // mark is recomputed against it (ADR 0061). Nothing in the text changed to trigger that.
@@ -1184,6 +1219,7 @@
             ytext ?? (activeStore as { getYText?: (t: string) => Y.Text | undefined }).getYText?.(view.target)
         const isCollab = collabYText !== undefined
         collabBound = isCollab
+        boundDocId = ytext ? undefined : documentIdOf(view.target)
         // Presence (remote cursors) — the store's per-doc awareness, when available.
         const awareness = isCollab
             ? (activeStore as { getAwareness?: (t: string) => import('y-protocols/awareness').Awareness | undefined }).getAwareness?.(view.target)

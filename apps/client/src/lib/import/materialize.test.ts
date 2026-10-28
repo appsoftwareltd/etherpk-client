@@ -142,6 +142,16 @@ describe('materializeToServer and the protection record (ADR 0093)', () => {
         dispose()
     })
 
+    it('gives each journal entry the document id derived from its day (ADR 0157)', async () => {
+        const converted = await convertSource([src('journals/2026-03-14.md', '- water the beans'), src('pages/Garden.md', 'x')], 'etherpk')
+        const { graph, dispose } = await graphSync()
+        await materializeToServer(converted, { graph, assetStore: null, name: 'G' }, { format: 'etherpk', reportDate: '2026-09-22' })
+        const journalId = await graph.journalDocId('2026-03-14')
+        expect(graph.registry().get(journalId)).toEqual({ kind: 'journal', date: '2026-03-14' })
+        expect(graph.docSync(journalId).doc.getText('content').toString()).toContain('- water the beans')
+        dispose()
+    })
+
     it('names a vault that would not take the record in the Import Report, and still imports the documents', async () => {
         const converted = await convertSource([src('pages/Router.md', 'x'), src('etherpk/protection.json', JSON.stringify(RECORD))], 'etherpk')
         const { graph, dispose } = await graphSync()

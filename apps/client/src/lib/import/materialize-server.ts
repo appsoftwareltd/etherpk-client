@@ -27,6 +27,7 @@ import { sanitizeGraphSettings } from '$lib/storage/fs/graph-settings'
 import type { GraphSync, RegistryEntry } from '$lib/sync/graph-sync'
 import type { ProtectionRecordStore } from '$lib/document/protection/protection-store'
 import { containsCipherFence } from '$lib/document/protection/fence-info'
+import { isJournalConcept } from '$lib/document/journal-concept'
 
 import { buildReportPage } from './report'
 import { holdProtectionKey, repointSealedReferences } from './sealed-references'
@@ -322,7 +323,10 @@ export async function materializeToServer(
         // so it held the thread for the entire graph.
         await breathe(control)
         onProgress?.({ label: 'Preparing documents', done: ++pushed, total: documents.length })
-        const docId = newDocId()
+        // A journal entry's id is derived from its day (ADR 0157), as the store's create derives
+        // it, so a device that later starts the same day offline writes into this document.
+        const docId =
+            doc.kind === 'journal' && isJournalConcept(doc.concept) ? await deps.graph.journalDocId(doc.concept) : newDocId()
         // Identity goes into the encrypted registry - the title already did, the aliases now do
         // too - and the rest of the block stays with the document (ADR 0061): a synced graph's
         // Frontmatter means the same as a local one's, and publishing will read it there. The

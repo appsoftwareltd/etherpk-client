@@ -73,6 +73,8 @@ export interface ProtectedDocumentStore extends DocumentStore {
  */
 interface StoreCapabilities {
     getYText?: (target: string) => unknown
+    /** The id of the document a name opens now (a Server Backend); a plain read. */
+    documentIdOf?: (target: string) => string | undefined
     getAwareness?: (target: string) => unknown
     retainDocument?: (target: string) => () => void
     whenReady?: (target: string) => Promise<void>
@@ -84,6 +86,36 @@ export function createProtectedDocumentStore(
 ): ProtectedDocumentStore {
     const open = new Map<string, ProtectedEditorDocument>()
     const capabilities = inner as DocumentStore & StoreCapabilities
+    /**
+     * The document each cached wrapper wraps, where the inner store can say. A name moves to
+     * another document when its own leaves it (a Duplicate Name merged, ADR 0157): a wrapper over
+     * the document that left is stale, and must not answer for the name any more.
+     */
+    const wrappedIds = new Map<string, string | undefined>()
+    const documentIdOf = (target: string) => capabilities.documentIdOf?.(target)
+    /** Whether the cached wrapper for `target` still wraps the document the name opens. */
+    const current = (target: string): ProtectedEditorDocument | undefined => {
+        const wrapped = open.get(target)
+        if (!wrapped) return undefined
+        return wrappedIds.get(target) === documentIdOf(target) ? wrapped : undefined
+    }
+    /**
+     * Retire a stale wrapper: out of the cache at once, its pending plaintext written first, as a
+     * released wrapper's is. Its retains stay with the name, and the next `open` wraps the
+     * document the name opens now.
+     */
+    const retireStale = (target: string, wrapped: ProtectedEditorDocument): void => {
+        open.delete(target)
+        wrappedIds.delete(target)
+        const done: Promise<void> = wrapped
+            .commit()
+            .catch(() => {})
+            .finally(() => {
+                wrapped.dispose()
+                closing.delete(done)
+            })
+        closing.add(done)
+    }
     /** Editor retains per target — the wrapper cache follows these (see the module comment). */
     const retains = new Map<string, number>()
     /**
@@ -112,7 +144,7 @@ export function createProtectedDocumentStore(
      * the cache is populated in every real call path and the fallback is for safety alone.
      */
     const isProtected = (target: string): boolean => {
-        const wrapped = open.get(target)
+        const wrapped = current(target)
         if (wrapped) return wrapped.isProtected
         try {
             return documentProtection(inner.open(target).getText()).kind !== 'none'
@@ -126,7 +158,9 @@ export function createProtectedDocumentStore(
             // Always through the inner store, even on a cache hit: on a Server Backend that is what
             // ensures the document's sync engine exists, exactly as the raw store did on every mount.
             const innerDoc = inner.open(target)
-            const existing = open.get(target)
+            const cached = open.get(target)
+            if (cached && cached !== current(target)) retireStale(target, cached)
+            const existing = current(target)
             if (existing) {
                 // Idempotent, and the key may have arrived since this wrapper last looked.
                 void existing.unlock()
@@ -134,6 +168,7 @@ export function createProtectedDocumentStore(
             }
             const wrapped = new ProtectedEditorDocument(innerDoc, deps)
             open.set(target, wrapped)
+            wrappedIds.set(target, documentIdOf(target))
             // Project immediately where the key is already held, so opening an unlocked graph's
             // protected page shows its content rather than a lock card that resolves a tick later.
             void wrapped.unlock()
@@ -167,6 +202,7 @@ export function createProtectedDocumentStore(
                       collabBound.delete(target)
                       const wrapped = open.get(target)
                       open.delete(target)
+                      wrappedIds.delete(target)
                       if (!wrapped) {
                           release()
                           return
@@ -279,6 +315,7 @@ export function createProtectedDocumentStore(
         dispose() {
             for (const doc of open.values()) doc.dispose()
             open.clear()
+            wrappedIds.clear()
         },
     }
 

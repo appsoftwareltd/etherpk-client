@@ -42,6 +42,8 @@
     import type { GraphAssetTools } from "$lib/storage/fs/asset-orphans";
     import OrphanAssetsSection from "$lib/storage/ui/OrphanAssetsSection.svelte";
     import FormattingSection from "$lib/document/formatting/ui/FormattingSection.svelte";
+    import DuplicateNamesSection from "./DuplicateNamesSection.svelte";
+    import type { DuplicateNamesSession } from "./duplicate-names-session.svelte";
     import type { FormattingSectionProps } from "$lib/document/formatting/ui/formatting-section";
     import Modal from "@appsoftwareltd/etherpk-shared/dialog";
     import ProtectionSettingsTab from "$lib/document/protection/ui/ProtectionSettingsTab.svelte";
@@ -93,6 +95,7 @@
         publish = null,
         folderPath = null,
         formatting = null,
+        duplicateNames = null,
         extensions = null,
         extensionDirectory = null,
         installedSync = null,
@@ -149,6 +152,11 @@
          */
         formatting?: FormattingSectionProps | null;
         /**
+         * The [[Duplicate Name]] review (ADR 0157), at the top of the Maintenance tab, on the phone
+         * layout too. Null hides it: a Filesystem graph, or the dialog opened outside an open graph.
+         */
+        duplicateNames?: DuplicateNamesSession | null;
+        /**
          * The Extensions tab (ADR 0121): the open graph's extension host. Null hides it, outside
          * an open graph, as the other tabs about this device are.
          */
@@ -184,7 +192,7 @@
     const showStorage = $derived(
         assetTools !== null || storageInfo !== null || indexPersisted !== null,
     );
-    const showTools = $derived(showStorage || formatting !== null);
+    const showTools = $derived(showStorage || formatting !== null || duplicateNames !== null);
 
     let rebuilding = $state(false);
     let rebuilt = $state(false);
@@ -1161,8 +1169,14 @@
                     Housekeeping for this graph. Nothing here is a setting -
                     each control acts as soon as you press it.
                 </p>
+                {#if duplicateNames}
+                    <!-- First: text that no name reaches matters more than the storage tools. -->
+                    <DuplicateNamesSection session={duplicateNames} />
+                {/if}
                 {#if showStorage}
-                    {@render storageTools()}
+                    <div class={duplicateNames ? "border-t border-gray-100 dark:border-gray-800 pt-4" : ""}>
+                        {@render storageTools()}
+                    </div>
                 {/if}
                 {#if formatting}
                     <div class="border-t border-gray-100 dark:border-gray-800 pt-4">

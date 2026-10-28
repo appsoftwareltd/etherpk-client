@@ -7,7 +7,7 @@
  * The transport is injected (a `connect(url)` factory) so this unit-tests without real sockets.
  */
 import * as Y from 'yjs'
-import { currentEpoch, keyringReader, type KeyringSource } from '$lib/crypto'
+import { currentEpoch, deriveJournalIdSecret, journalDocId, keyringReader, type KeyringSource } from '$lib/crypto'
 import { performanceRecorder } from '$lib/diagnostics/performance'
 import { SYNC_PROTOCOL_LIMITS, type QuotaErrorCode } from '@appsoftwareltd/etherpk-shared'
 import { CACHE_SEED, createDocSync, type DocSync } from './doc-sync'
@@ -188,6 +188,11 @@ export interface GraphSync {
      */
     uploadSnapshot(docId: string): Promise<void>
     registry(): Y.Map<RegistryEntry>
+    /**
+     * The document id of the [[Journal Entry]] for a day (`YYYY-MM-DD`), derived from the graph's
+     * epoch 1 key (ADR 0157), so every device that starts the day writes into one document.
+     */
+    journalDocId(date: string): Promise<string>
     /** Snapshot of the root doc's `meta` map (graph name + shared settings). */
     getMeta(): GraphMeta
     setMetaName(name: string): void
@@ -590,6 +595,14 @@ export function createGraphSync(deps: GraphSyncDeps): GraphSync {
     const foregroundCatchups: CatchupRequest[] = []
     const backgroundCatchups: CatchupRequest[] = []
     let catchupInFlight: CatchupRequest | undefined
+    /**
+     * The request the in-flight one's document asked for again while it was in flight. The relay
+     * may have composed the in-flight answer before whatever prompted the second request: an ack
+     * naming a sequence that another device's concurrent first write took, for one. Dropped as a
+     * duplicate, that document stayed behind for good, so it runs once more if the answer leaves
+     * the document with a gap.
+     */
+    let catchupRepeat: CatchupRequest | undefined
     let resolveFirstOpen: (() => void) | undefined
     const firstOpen = new Promise<void>((resolve) => {
         resolveFirstOpen = resolve
@@ -711,6 +724,7 @@ export function createGraphSync(deps: GraphSyncDeps): GraphSync {
             catchupInFlight.generation === message.generation &&
             catchupInFlight.afterSeq === message.afterSeq
         ) {
+            catchupRepeat = message
             return
         }
         // A foreground open supersedes an unsent background request for the same document.
@@ -729,6 +743,11 @@ export function createGraphSync(deps: GraphSyncDeps): GraphSync {
         if (!requestId || catchupInFlight?.requestId !== requestId) return
         const completedDocId = catchupInFlight.docId
         catchupInFlight = undefined
+        const repeat = catchupRepeat?.docId === completedDocId ? catchupRepeat : undefined
+        catchupRepeat = undefined
+        // Only a document the answer left with a gap needs it: most repeats are the same open
+        // asked for twice, and the answer just applied serves both.
+        if (repeat && engines.get(completedDocId)?.health() === 'sequence-gap') queueCatchup(repeat)
         pumpCatchups()
         retireEngineIfIdle(completedDocId)
     }
@@ -1111,6 +1130,7 @@ export function createGraphSync(deps: GraphSyncDeps): GraphSync {
             ) {
                 if (catchupInFlight?.docId === message.docId) {
                     catchupInFlight = undefined
+                    catchupRepeat = undefined
                 }
                 // The engine discards its operations for the old generation.
                 operationAnswered(message.docId)
@@ -1180,6 +1200,7 @@ export function createGraphSync(deps: GraphSyncDeps): GraphSync {
         operationsInFlight.clear()
         operationsWaiting.clear()
         catchupInFlight = undefined
+        catchupRepeat = undefined
         foregroundCatchups.length = 0
         backgroundCatchups.length = 0
         for (const pending of watermarkRequests.values()) {
@@ -1328,6 +1349,8 @@ export function createGraphSync(deps: GraphSyncDeps): GraphSync {
     }
     connect()
 
+    let journalIdSecret: Promise<Uint8Array> | undefined
+
     return {
         rootDoc: root.doc,
         docSync: (docId) => engine(docId),
@@ -1391,6 +1414,11 @@ export function createGraphSync(deps: GraphSyncDeps): GraphSync {
         compactDoc: (docId) => deps.cache.docCache(docId).compact(),
         uploadSnapshot: (docId) => engine(docId).compact(),
         registry: () => registryMap,
+        journalDocId(date) {
+            // The secret never changes (epoch 1 is never replaced), so it is derived once.
+            journalIdSecret ??= deriveJournalIdSecret(keyring())
+            return journalIdSecret.then((secret) => journalDocId(secret, date))
+        },
         getMeta() {
             const name = metaMap.get('name')
             const settings = metaMap.get('settings')
@@ -1663,6 +1691,7 @@ export function createGraphSync(deps: GraphSyncDeps): GraphSync {
             foregroundCatchups.length = 0
             backgroundCatchups.length = 0
             catchupInFlight = undefined
+            catchupRepeat = undefined
             for (const pending of watermarkRequests.values()) {
                 clearTimeout(pending.timer)
                 pending.reject(new Error('the graph sync session was disposed'))

@@ -38,6 +38,13 @@ starts at 0.9.3.
 - **Extension API:** `layout.openView` and `layout.openDocument` with `beside` open in the pane to
   the right of the given panel's pane, splitting one off when there is none, and move a View that is
   open in another pane there. The View goes in front of that pane without taking the keyboard.
+- **One journal entry for a day started on two devices.** Two devices that start the same day's
+  journal while offline now write into one entry, which holds the text from both. When both
+  started the day with the same Journal Template, the entry holds it once.
+- **Duplicate names.** Settings → Maintenance lists names that open more than one document, which
+  happens when two devices create a page with the same name before they sync. It shows each
+  document and a preview of the merged text, and **Merge** joins them into one document. The graph
+  says so when it opens.
 - Updated dependencies.
 
 ## 0.15.0 - 2026-10-21

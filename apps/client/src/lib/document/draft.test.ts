@@ -262,6 +262,41 @@ describe('promoteDraft', () => {
         expect(store.files.get('Kanban')).toBe('---\ntitle: Kanban\n---\nabcde')
     })
 
+    it('gives a journal create the Journal Template the Draft started with (ADR 0157)', async () => {
+        const store = serverLikeStore()
+        const asked: Array<{ template?: string } | undefined> = []
+        const create = store.createJournal.bind(store)
+        store.createJournal = (date, body, options) => {
+            asked.push(options)
+            return create(date, body)
+        }
+        const draft = createDraftDocument('2026-03-14', () => {})
+        draft.seed('## Morning\n')
+        draft.applyChange({ from: 11, to: 11, insert: '- water the beans' })
+
+        await promoteDraft(store, draft)
+        expect(asked).toEqual([{ template: '## Morning\n' }])
+    })
+
+    it('keeps text another device wrote into the day while the create was in flight', async () => {
+        // A journal entry's document is the day's own (ADR 0157): it can hold another device's
+        // text by the time it opens. Only this Draft's run is replaced with what was typed since.
+        const store = serverLikeStore()
+        store.createJournal = async (date, body = '') => {
+            store.docs.set(date, fakeDoc(`${body}- feed the cat\n`))
+            return date
+        }
+        const draft = createDraftDocument('2026-03-14', () => {})
+        draft.applyChange({ from: 0, to: 0, insert: '- water the beans\n' })
+
+        const promotion = promoteDraft(store, draft)
+        draft.applyChange({ from: 18, to: 18, insert: '- pick the beans\n' })
+        const promoted = await promotion
+
+        expect(store.docs.get('2026-03-14')!.text).toBe('- water the beans\n- pick the beans\n- feed the cat\n')
+        expect(promoted.bodyOffset).toBe(0)
+    })
+
     it('adopts an existing document rather than losing the draft text', async () => {
         // A second tab, or a Player who created the page while this Draft was open.
         const store = serverLikeStore()

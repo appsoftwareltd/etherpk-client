@@ -18,6 +18,12 @@ export const REMOTE = Symbol('etherpk-remote')
 export const CACHE_SEED = Symbol('etherpk-cache-seed')
 /** Structural lifecycle changes which must never be mistaken for a user's edit. */
 export const SUPPRESSED = Symbol('etherpk-suppressed')
+/**
+ * A created document's text written again as this device's own insert, so it can be sent whole
+ * to a generation that never held the structs it was first written with (ADR 0157). Local, so it
+ * is sent, but no undo manager tracks it.
+ */
+export const RECREATED = Symbol('etherpk-recreated')
 
 export interface DocCacheState {
     update: Uint8Array
@@ -61,6 +67,13 @@ export interface NewAppendOperation extends NewOutboxBase {
     epochId: number
     envelope: string
     stateVector: Uint8Array
+    /**
+     * Written by the device that created this document (ADR 0157). A derived journal id can
+     * already have a history on the relay: when the relay says it is at a newer generation, this
+     * text is the new document, sent again whole, not stale work to discard. Durable, so it holds
+     * across a reload between an offline create and the reconnect.
+     */
+    creates?: boolean
 }
 
 export interface NewDeleteOperation extends NewOutboxBase {
@@ -169,6 +182,13 @@ export interface DocSync {
     flush(): Promise<void>
     delete(): Promise<void>
     lifecycle(): 'seeding' | 'active' | 'deleting' | 'deleted' | 'resurrecting'
+    /** The relay generation this engine believes the document is at (ADR 0043). */
+    generation(): number
+    /**
+     * This device has just created the document (ADR 0157). Its text is sent marked as the
+     * creation until the relay acknowledges it, so a `stale_generation` answer keeps it.
+     */
+    claimCreation(): void
     health(): SyncHealth
     staleGeneration(currentGeneration: number): Promise<void>
     /** Relay an awareness tombstone before the graph drops this document subscription. */
@@ -317,6 +337,14 @@ export function createDocSync(deps: DocSyncDeps): DocSync {
     let pendingSnapshot: { generation: number; throughSeq: number; state: Y.Snapshot } | undefined
     /** The newest epoch an update needed that the keyring does not hold (ADR 0127). */
     let missingEpoch: number | undefined
+    /** Set by `claimCreation` until the relay acknowledges this device's first text. */
+    let createdHere = false
+    /**
+     * Set when the relay answered `stale_generation` to text this device created or resurrected:
+     * the next catch-up page tells which generation the relay holds, and that text is then
+     * written again and sent whole into it rather than cleared.
+     */
+    let recreating = false
     /** Outbox operations the relay refused as sealed under an older epoch: sealed again on `keysChanged`. */
     const refusedAsStale = new Set<string>()
     /** A read-back failed: the next idle uploads a fresh snapshot whatever the tail size. */
@@ -351,6 +379,46 @@ export function createDocSync(deps: DocSyncDeps): DocSync {
         firstCatchupPage.resolve()
         catchupActive = false
         catchupCompletion.resolve()
+    }
+
+    /**
+     * The relay holds this document at a generation that the text this device created was not
+     * written in (ADR 0157). Move to that generation, and write the text again as one insert of
+     * this device's own, so it depends on no struct the generation never held (a deterministic
+     * Journal Template's among them). The next send carries the whole state: a `resurrect` into a
+     * deleted generation, an append into one that another device started first.
+     */
+    function recreateInto(nextGeneration: number, state: 'active' | 'deleted'): void {
+        recreating = false
+        documentGeneration = nextGeneration
+        lifecycleState = state
+        lastSeq = 0
+        syncHealth = 'healthy'
+        const content = doc.getText('content')
+        const text = content.toString()
+        if (text === '') return
+        doc.transact(() => {
+            content.delete(0, text.length)
+            content.insert(0, text)
+        }, RECREATED)
+    }
+
+    /**
+     * A catch-up has reached a newer active generation than this device's copy (ADR 0157): the
+     * document was deleted, and started again, while this device was away. The copy holds the
+     * deleted generation's text, so it is cleared, never merged into the new one. The new
+     * generation never held the structs that remain, so the next send carries the whole state.
+     */
+    function discardOlderGeneration(): void {
+        const content = doc.getText('content')
+        seeding = true
+        try {
+            if (content.length > 0) doc.transact(() => content.delete(0, content.length), SUPPRESSED)
+        } finally {
+            seeding = false
+        }
+        lastSyncedStateVector = Y.encodeStateVector(new Y.Doc())
+        lastSyncedSnapshot = Y.snapshot(doc)
     }
 
     function failCatchup(error: unknown): Error {
@@ -495,6 +563,7 @@ export function createDocSync(deps: DocSyncDeps): DocSync {
                 envelope: toBase64Url(await encrypt(plaintext)),
                 stateVector: operationStateVector,
                 createdAt: now(),
+                ...(createdHere ? { creates: true } : {}),
             }
             const state = stateSnapshot()
             await persistTask(() =>
@@ -947,6 +1016,7 @@ export function createDocSync(deps: DocSyncDeps): DocSync {
                             operation.stateVector,
                         )
                         lifecycleState = 'active'
+                        createdHere = false
                         updatesSinceSnapshot += 1
                         bytesSinceSnapshot += fromBase64Url(operation.envelope).byteLength
                         scheduleAutomaticCompaction()
@@ -977,6 +1047,34 @@ export function createDocSync(deps: DocSyncDeps): DocSync {
                     try {
                         const beforeBatch = indexMutationVersion
                         if (message.generation < documentGeneration) break
+                        if (recreating) {
+                            recreateInto(message.generation, message.state)
+                            if (message.state === 'deleted') {
+                                await saveCurrent({ indexContentChanged: true })
+                                futureUpdates.clear()
+                                completeCatchup()
+                                break
+                            }
+                        } else if (
+                            message.state === 'active' &&
+                            message.generation > documentGeneration &&
+                            lifecycleState === 'active'
+                        ) {
+                            discardOlderGeneration()
+                        }
+                        if (
+                            message.state === 'deleted' &&
+                            message.generation === documentGeneration &&
+                            (lifecycleState === 'deleted' || lifecycleState === 'resurrecting')
+                        ) {
+                            // This device already holds the deletion: anything in the document
+                            // now was written after it, and is on its way as a resurrection
+                            // (ADR 0039, ADR 0157). A second deleted answer must not clear it.
+                            lastSeq = 0
+                            futureUpdates.clear()
+                            completeCatchup()
+                            break
+                        }
                         if (message.state === 'deleted') {
                             documentGeneration = message.generation
                             lifecycleState = 'deleted'
@@ -1109,10 +1207,28 @@ export function createDocSync(deps: DocSyncDeps): DocSync {
             await transmit(durableQueue[0])
         },
         lifecycle: () => lifecycleState,
+        generation: () => documentGeneration,
+        claimCreation() {
+            createdHere = true
+        },
         health: () => syncHealth,
         async staleGeneration(currentGeneration) {
             syncHealth = 'generation-stale'
-            for (const operation of durableQueue.splice(0)) await persist.discard(operation.outboxId)
+            const discarded = durableQueue.splice(0)
+            // Text this device created, or resurrected, asserts that the document exists (ADR
+            // 0039, ADR 0157). It was written at a generation the relay has moved past, so it is
+            // kept and sent again whole once the catch-up below says where the relay is.
+            if (createdHere || discarded.some((operation) => operation.kind === 'resurrect' || (operation.kind === 'append' && operation.creates))) {
+                recreating = true
+                createdHere = true
+                lastSyncedStateVector = Y.encodeStateVector(new Y.Doc())
+                lastSyncedSnapshot = undefined
+            } else if (currentGeneration > documentGeneration && lifecycleState === 'active') {
+                // The relay moved past this copy's generation, which happens only through a
+                // delete: what the copy holds is deleted text (ADR 0157).
+                discardOlderGeneration()
+            }
+            for (const operation of discarded) await persist.discard(operation.outboxId)
             queueChanged()
             boundarySnapshots.clear()
             documentGeneration = currentGeneration

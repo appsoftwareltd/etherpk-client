@@ -22,7 +22,12 @@ import type { DocumentStore, EditorDocument, TextChange } from './types'
 /** A store that can bring a document into existence — the Filesystem and Server Backends. */
 export interface DocumentCreatingStore extends DocumentStore {
     createPage(title: string, body?: string): Promise<string>
-    createJournal(date: string, body?: string): Promise<string>
+    /**
+     * `options.template` names the [[Journal Template]] that `body` starts with, which a [[Server
+     * Backend]] seeds as one identical CRDT write so two devices that start the day hold it once
+     * (ADR 0157). A [[Filesystem Backend]] has no use for it.
+     */
+    createJournal(date: string, body?: string, options?: { template?: string }): Promise<string>
 }
 
 export function canCreateDocuments(store: DocumentStore): store is DocumentCreatingStore {
@@ -213,7 +218,7 @@ export async function promoteDraft(
         // opened from (ADR 0056): a day becomes that day's [[Journal Entry]], anything else a
         // [[Page]]. So a date reached from the [[Journal Calendar]], a wikilink and [[Search]]
         // all land in the same place.
-        if (isJournalConcept(draft.concept)) await store.createJournal(draft.concept, seeded)
+        if (isJournalConcept(draft.concept)) await store.createJournal(draft.concept, seeded, { template: draft.seeded() })
         else await store.createPage(draft.concept, seeded)
     } catch {
         // Already exists, or the store refused the name. Either way the concept is reachable
@@ -242,14 +247,26 @@ export async function promoteDraft(
         }
     }
 
-    // `opened` is prefix + seeded, so everything before the seeded text is the prefix.
-    const bodyOffset = Math.max(0, opened.length - seeded.length)
+    // The seeded text is one run in `opened`: after a Filesystem Backend's frontmatter prefix, and
+    // on a Server Backend wherever the day's other text left it. A journal entry's document id is
+    // derived from its day (ADR 0157), so it can already hold, or receive meanwhile, the text
+    // another device wrote into the same day, before or after this Draft's.
+    const at = opened.endsWith(seeded) ? opened.length - seeded.length : opened.indexOf(seeded)
     const current = draft.getText()
-    if (current === seeded) return { concept: draft.concept, text: opened, bodyOffset }
+    if (at < 0) {
+        // Another device wrote inside this Draft's text while the create was in flight, so there
+        // is no run to replace. What was typed since is added at the end: nothing is lost.
+        const typed = current.startsWith(seeded) ? current.slice(seeded.length) : current === seeded ? '' : current
+        if (typed === '') return { concept: draft.concept, text: opened, bodyOffset: 0 }
+        doc.applyChange({ from: opened.length, to: opened.length, insert: typed })
+        return { concept: draft.concept, text: opened + typed, bodyOffset: opened.length }
+    }
+    if (current === seeded) return { concept: draft.concept, text: opened, bodyOffset: at }
 
-    // Typed during the gap. Replace the body range wholesale — exact, and cheap at these sizes.
-    doc.applyChange({ from: bodyOffset, to: opened.length, insert: current })
-    return { concept: draft.concept, text: opened.slice(0, bodyOffset) + current, bodyOffset }
+    // Typed during the gap. Replace the seeded run wholesale — exact, and cheap at these sizes —
+    // and only that run, so text around it that another device wrote stays.
+    doc.applyChange({ from: at, to: at + seeded.length, insert: current })
+    return { concept: draft.concept, text: opened.slice(0, at) + current + opened.slice(at + seeded.length), bodyOffset: at }
 }
 
 /**
