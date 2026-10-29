@@ -1,6 +1,6 @@
 {
     "name": "@appsoftwareltd/etherpk-extension-agent-chat",
-    "version": "0.15.0",
+    "version": "0.16.0",
     "license": "Elastic-2.0",
     "description": "Ask a language model about your notes from inside a document, through your own model connection, and save the turns worth keeping into the document.",
     "private": true,
