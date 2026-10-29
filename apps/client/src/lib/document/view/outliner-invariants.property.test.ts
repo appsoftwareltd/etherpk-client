@@ -532,7 +532,8 @@ describe('outliner invariants under random key sequences', { timeout: 30_000 }, 
                 const lines = editor.text().split('\n')
                 const line = editor.state.doc.lineAt(editor.head())
                 // Inside a fence, or on a bullet or continuation line: the clamp is live. A caret on a fence
-                // line itself is editing the fence, which may dissolve the block on purpose.
+                // line itself is editing the fence, which may dissolve the block on purpose, except at the
+                // line's end, where the paste starts on the next line (the property below).
                 if (clampColumn(lines, line.number - 1) === 0) return
                 if (fencedBlocks(lines).some((b) => line.number - 1 === b.start || line.number - 1 === b.end)) return
                 const fences = fencesBalanced(lines)
@@ -567,6 +568,77 @@ describe('outliner invariants under random key sequences', { timeout: 30_000 }, 
                 const last = editor.state.doc.lineAt(editor.head()).number - 1
                 expect(last, JSON.stringify({ text, after })).toBeLessThanOrEqual(branchRange(after, owner).end)
                 for (let i = owner; i <= last; i++) expect(ownerBulletIndex(after, i), JSON.stringify({ i, text, after })).not.toBeNull()
+            }),
+            fuzz(300),
+        )
+    })
+
+    it('a paste at the end of a delimiter line keeps every fenced block and the frontmatter, and creates no orphan', () => {
+        // Editor Content Rules → Pasting into a block: the paste starts on the line Enter there would
+        // open, so its first line never joins a fence's opener or closer, or a frontmatter `---`.
+        const fragment = fc.array(fc.stringMatching(/^( {2}){0,2}(http:\/\/|- |- \[ \] )?[a-z]{0,5} {0,2}$/), { minLength: 1, maxLength: 4 }).map((l) => l.join('\n'))
+        fc.assert(
+            fc.property(outlineArb, formOneArb, frontmatterArb, fc.nat(), fragment, (outline, formOne, frontmatter, pick, text) => {
+                const doc = render(outline, 'unit', [], [], [], formOne, frontmatter)
+                const lines = doc.split('\n')
+                const body = frontmatterLines(lines)
+                const blocks = fencedBlocks(lines)
+                // The outermost blocks' own fence lines in the body, and the frontmatter's two `---`.
+                const delimiters = new Set<number>()
+                for (const b of blocks) {
+                    if (b.start < body || blocks.some((o) => o !== b && b.start > o.start && b.start < o.end)) continue
+                    delimiters.add(b.start)
+                    delimiters.add(b.end)
+                }
+                if (body > 0) delimiters.add(0).add(body - 1)
+                const list = [...delimiters]
+                if (!list.length) return
+                const index = list[pick % list.length]
+                // One line after a fence's opener is its info string, typed by the user's own hand.
+                if (!text.includes('\n') && blocks.some((b) => b.start === index)) return
+                const pos = lines.slice(0, index + 1).join('\n').length
+                const before = doc.slice(0, pos) + '|' + doc.slice(pos)
+                const editor = editorFixture(before)
+                editor.paste(text)
+                const after = editor.text().split('\n')
+                const info = JSON.stringify({ before, text, after })
+                expect(fencesBalanced(after), info).toBeGreaterThanOrEqual(fencesBalanced(lines))
+                expect(frontmatterLines(after) > 0, info).toBe(body > 0)
+                expect(noOrphans(after), info).toBe(true)
+                expect(indentsOnGrid(after), info).toBe(true)
+                editor.key('Mod-z')
+                expect(editor.fixture(), info).toBe(before)
+            }),
+            fuzz(300),
+        )
+    })
+
+    it('a line copied with nothing selected pastes above the caret’s line, keeping that line, the blocks and the frontmatter', () => {
+        // Editor Content Rules → Pasting into a block: CodeMirror's line-wise paste. The caret's line
+        // keeps its text and the caret its column, however the copied line is shaped where it lands.
+        fc.assert(
+            fc.property(outlineArb, formOneArb, frontmatterArb, fc.double({ min: 0, max: 1, noNaN: true }), fc.nat(), (outline, formOne, frontmatter, caretAt, pick) => {
+                const doc = render(outline, 'unit', [], [], [], formOne, frontmatter)
+                const lines = doc.split('\n')
+                const copied = lines[pick % lines.length]
+                if (fenceLineInfo(copied) || copied.trim() === '---') return // a fence line opens or closes by the user's own hand
+                const pos = Math.round(caretAt * doc.length)
+                const editor = editorFixture(doc.slice(0, pos) + '|' + doc.slice(pos))
+                const before = editor.fixture()
+                const head = editor.head()
+                const line = editor.state.doc.lineAt(head)
+                if (head === line.from) return // CodeMirror's paste at the line's start is any other paste there
+                editor.pasteLine(copied)
+                const after = editor.text().split('\n')
+                const info = JSON.stringify({ before, copied, after: editor.fixture() })
+                const now = editor.state.doc.lineAt(editor.head())
+                expect(now.text, info).toBe(line.text)
+                expect(editor.head() - now.from, info).toBe(head - line.from)
+                expect(fencesBalanced(after), info).toBeGreaterThanOrEqual(fencesBalanced(lines))
+                expect(frontmatterLines(after) > 0, info).toBe(frontmatterLines(lines) > 0)
+                expect(noOrphans(after), info).toBe(true)
+                editor.key('Mod-z')
+                expect(editor.fixture(), info).toBe(before)
             }),
             fuzz(300),
         )

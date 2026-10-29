@@ -7,7 +7,7 @@ import { frontmatterLines } from '$lib/storage/fs/frontmatter-span'
 
 import { type FencedBlockRange, fencedBlocks } from '../../fenced-code'
 import type { OutlineLine } from '../../indent-unit'
-import { isBulletLine, lineIndent } from '../../outliner'
+import { contentColumn, isBulletLine, lineIndent } from '../../outliner'
 
 /**
  * A guide thread's width in CSS pixels, shared by the editor's overlay (outline-guides.ts) and the
@@ -88,12 +88,16 @@ export function guideThreads(
  * has no **child bullet**, or -1 for a non-bullet line. Every bullet where this is `> i` hangs a guide
  * thread down to that last descendant line (which may be a continuation of the last child);
  * {@link guideThreads} adds the one other kind, beside a quote. Single O(n) stack pass: a line no more indented than an open bullet ends that bullet's
- * branch at the **last non-blank line** before it.
+ * branch at the last line before it that the branch reaches.
  *
- * Whitespace-only lines follow ADR 0021's **indent decides** rule: a blank inside a fenced block is
- * transparent (never a boundary), an indented soft line (Shift-Enter) bounds only branches deeper
- * than its own indent — so true multiline editing keeps its thread — and a bare column-0 empty line
- * (a Ctrl-Enter breakout split) ends every open branch, cutting the thread at the split.
+ * Whitespace-only lines follow ADR 0021's **indent decides** rule, as `branchRange` does: a blank
+ * inside a fenced block is transparent (never a boundary); an indented soft line (Shift-Enter) ends
+ * only the branches at or deeper than its own indent and, once it reaches the content column of the
+ * innermost one left open, is a line of them all, so their threads run on beside it even when
+ * nothing follows it yet (a line short of that column is prose to the clamp and the caret, and gets
+ * no thread); a bare column-0 empty line (a
+ * Ctrl-Enter breakout split) ends every open branch, cutting the thread at the split. A soft line
+ * with no thread beside it would read as that split while it is still inside the block.
  */
 export function branchEnds(lines: string[], blocks: FencedBlockRange[] = fencedBlocks(lines)): number[] {
     const ends = new Array<number>(lines.length).fill(-1)
@@ -102,7 +106,7 @@ export function branchEnds(lines: string[], blocks: FencedBlockRange[] = fencedB
     for (const b of blocks) for (let k = b.start; k <= b.end; k++) inFence[k] = true
     const starts = new Set(blocks.map((b) => b.start))
     const open: number[] = [] // indices of bullets whose branch is still open
-    let lastContent = -1 // last non-blank line seen
+    let lastContent = -1 // the last line the open branches reach: a non-blank line, or a soft line inside them
     // [[Frontmatter]] is opaque too, and it is not outline content either: a YAML list's `- `
     // items are metadata, so they open no branch and no thread reaches down to them.
     for (let i = frontmatterLines(lines); i < lines.length; i++) {
@@ -116,10 +120,12 @@ export function branchEnds(lines: string[], blocks: FencedBlockRange[] = fencedB
         if (lines[i].trim() === '') {
             // Indent decides: this blank bounds every open branch at/deeper than its own indent. A bare
             // empty line ('' → indent 0) therefore ends ALL open branches (the breakout split); an
-            // indented soft line leaves its own block's thread intact.
+            // indented soft line at the content column is a line of every branch still open, whose
+            // threads reach down to it.
             const ind = lineIndent(lines[i])
             while (open.length && lineIndent(lines[open[open.length - 1]]) >= ind) ends[open.pop()!] = lastContent
-            continue // not content: it neither extends a thread nor opens one
+            if (open.length && ind >= contentColumn(lines[open[open.length - 1]])) lastContent = i
+            continue // it never opens a thread
         }
         const ind = lineIndent(lines[i])
         while (open.length && lineIndent(lines[open[open.length - 1]]) >= ind) ends[open.pop()!] = lastContent

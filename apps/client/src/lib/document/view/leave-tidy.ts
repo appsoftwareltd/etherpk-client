@@ -39,7 +39,7 @@ import { EditorState, type Extension, MapMode, Transaction, type TransactionSpec
 import { frontmatterLines } from '$lib/storage/fs/frontmatter-span'
 
 import { fencedBlocks } from '../fenced-code'
-import { blockBodyEnd, branchRange, bulletContent, contentColumn, formOneOpeners, isBulletLine, lineIndent, markerLength, opaqueLineFlags, ownerBulletIndex } from '../outliner'
+import { blockBodyEnd, branchRange, bulletContent, contentColumn, formOneOpeners, isBulletLine, lineIndent, markerLength, opaqueLineFlags, ownerBulletIndex, trimLineEnd } from '../outliner'
 import { collaborative, EXTERNAL } from './cm-document'
 import { isOwnEditing } from './own-editing'
 
@@ -58,11 +58,6 @@ export function tidyTargetAt(lines: string[], i: number): TidyTarget {
     return { kind: 'prose', line: i }
 }
 
-/** Trailing spaces and tabs removed. */
-function trimEnd(line: string): string {
-    return line.replace(/[ \t]+$/, '')
-}
-
 /** The block's lines tidied (see the module comment): a replacement for `lines[owner..end]`, or null when nothing changes. */
 export function tidiedBlock(lines: string[], owner: number): { from: number; to: number; lines: string[] } | null {
     const blocks = fencedBlocks(lines)
@@ -75,9 +70,9 @@ export function tidiedBlock(lines: string[], owner: number): { from: number; to:
         if (k === 0) {
             const indent = line.slice(0, lineIndent(line))
             const marker = line.slice(indent.length, indent.length + markerLength(line))
-            return indent + marker + trimEnd(bulletContent(line).replace(/^[ \t]+/, ''))
+            return indent + marker + trimLineEnd(bulletContent(line).replace(/^[ \t]+/, ''))
         }
-        return line.trim() === '' ? line : trimEnd(line)
+        return line.trim() === '' ? line : trimLineEnd(line)
     })
     // Trailing newlines: whitespace-only soft lines at the end of the block go.
     while (out.length > 1 && !isOpaque(out.length - 1) && out[out.length - 1].trim() === '') out.pop()
@@ -123,7 +118,7 @@ export function tidiedAfterChildren(lines: string[], owner: number): { from: num
     const out: { from: number; to: number; lines: string[] }[] = []
     runs.forEach((run, n) => {
         const own = lines.slice(run.from, run.to + 1)
-        const tidied = own.map((line, k) => (opaque[run.from + k] || line.trim() === '' ? line : trimEnd(line)))
+        const tidied = own.map((line, k) => (opaque[run.from + k] || line.trim() === '' ? line : trimLineEnd(line)))
         if (n === runs.length - 1) while (tidied.length && !opaque[run.from + tidied.length - 1] && tidied[tidied.length - 1].trim() === '') tidied.pop()
         if (tidied.length !== own.length || tidied.some((l, k) => l !== own[k])) out.push({ from: run.from, to: run.to, lines: tidied })
     })
@@ -134,7 +129,7 @@ export function tidiedAfterChildren(lines: string[], owner: number): { from: num
 export function tidiedProse(line: string): string | null {
     if (line.trim() === '') return line === '' ? null : ''
     const indent = lineIndent(line)
-    const next = trimEnd(indent < 4 && !line.slice(0, indent).includes('\t') ? line.slice(indent) : line)
+    const next = trimLineEnd(indent < 4 && !line.slice(0, indent).includes('\t') ? line.slice(indent) : line)
     return next === line ? null : next
 }
 

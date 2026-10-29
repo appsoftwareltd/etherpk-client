@@ -8,8 +8,9 @@
  * Geometry is read on the next animation frame after every doc/viewport/size change: a thread's x
  * comes from {@link EditorView.coordsAtPos} on the bullet's `-` (centred under the rendered dot); its
  * y-span uses document-relative block tops, so it scrolls with the content. The branch structure is a
- * single O(n) stack pass mirroring {@link branchRange} (a blank line or a shallower line ends a
- * branch), so a parent with no children draws nothing. Which threads exist, and which end on a quote,
+ * single O(n) stack pass mirroring {@link branchRange} (a shallower line ends a branch, and a blank
+ * line by its indent: a bare one ends every branch, a soft line at the content column stays in them),
+ * so a parent with no children draws nothing. Which threads exist, and which end on a quote,
  * is {@link guideThreads}: a thread whose tree ends in a quote runs on to the bottom of the quote's
  * panel, measured off the panel itself, and a top-level quote bullet that is last in its group gets
  * a thread of its own down the panel.
@@ -168,8 +169,9 @@ function computeThreads(view: EditorView): Measured {
         // phase → uniform, and as close to the dot's (fractional) centre as the grid allows.
         const dpr = window.devicePixelRatio || 1
         const x = Math.round((centreX - GUIDE_WIDTH_PX / 2) * dpr) / dpr - sx
-        // Down to the bottom of the last descendant's text row (Logseq-style — the thread spans the
-        // whole subtree), or, where that line ends a quote, on to the bottom of the quote's panel.
+        // Down to the bottom of the branch's last row (Logseq-style — the thread spans the whole
+        // subtree), a soft line with nothing on it yet included, or, where that line ends a quote, on
+        // to the bottom of the quote's panel.
         // Below the rendered range, or inside a block widget, the block's bottom stands in.
         const lastLine = state.doc.line(thread.last + 1)
         const lastPos = lastLine.to

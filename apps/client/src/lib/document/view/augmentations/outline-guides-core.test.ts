@@ -47,6 +47,21 @@ describe('branchEnds — outline thread structure', () => {
         expect(threaded('- p\n  - c1\n    \n  - c2')).toEqual([0])
     })
 
+    it('a soft line at the end of a branch (Shift-Enter on its last line) is in the branch: the threads reach it', () => {
+        // Stopping at the last non-blank line drew the soft line with no thread beside it, the way a
+        // Ctrl-Enter split is drawn, so a line still inside the block read as a break between blocks.
+        expect(branchEnds('- p\n  - c1\n    \n- q'.split('\n'))).toEqual([2, 1, -1, 3])
+        expect(branchEnds('- p\n  - c1\n    '.split('\n'))).toEqual([2, 1, -1])
+        expect(branchEnds('- a\n  - b\n    - c\n      \n- d'.split('\n'))).toEqual([3, 3, 2, -1, 4])
+        // A soft line shallower than a child ends the child's branch, and stays in its parent's.
+        expect(branchEnds('- a\n  - b\n    - c\n      - g\n      \n- d'.split('\n'))).toEqual([4, 4, 4, 3, -1, 5])
+        // One short of the content column it is prose, as the clamp and the caret read it: no thread.
+        expect(branchEnds('- a\n  - b\n    - c\n      - g\n     \n- d'.split('\n'))).toEqual([3, 3, 3, 3, -1, 5])
+        expect(branchEnds('- p\n  - c1\n   \n- q'.split('\n'))).toEqual([1, 1, -1, 3])
+        // The bare empty line of a Ctrl-Enter split still ends every branch before it.
+        expect(branchEnds('- p\n  - c1\n    \n\n- q'.split('\n'))).toEqual([2, 1, -1, -1, 4])
+    })
+
     it('a blank inside a fenced block never cuts the thread (fence-opaque)', () => {
         const doc = '- p\n  - c1\n  - ```\n\n    ```\n  - c2'
         expect(threaded(doc)).toEqual([0]) // p threads across the fence (incl. its bare internal blank) to c2

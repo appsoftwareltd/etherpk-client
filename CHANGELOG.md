@@ -5,6 +5,29 @@ What changed in each release of the EtherPK Client and the Headless Client
 They are released together, under the version number they share with the Sync Server. This log
 starts at 0.9.3.
 
+## Unreleased
+
+### Client
+
+- **A copied line pastes above the cursor's line.** With nothing selected, **Ctrl+C** (**Cmd+C**
+  on a Mac) or **Ctrl+X** takes the whole line, and **Ctrl+V** now puts it on a line of its own
+  above the line the cursor is on, as in VS Code. In a list it becomes a block above the cursor's
+  block, at the same depth. Before, in a list, the copied text went in at the start of the line,
+  ahead of the bullet.
+- **Text pasted after a code block's closing ` ``` ` starts on a new line,** so the code block stays
+  closed. Text of more than one line pasted after the opening ` ``` ` becomes the first lines of
+  code, and one line there is still the code's language. Text pasted after either `---` line around
+  the frontmatter also starts on a new line.
+- **Pasted text loses the spaces at the end of its lines.** Text copied from a terminal or another
+  editor often has spaces after the end of each line. A paste now removes them, except in code
+  blocks and the frontmatter.
+- **The outline's guide lines run beside a new soft line.** After **Shift+Enter** at the end of a
+  block, the guide lines now continue down beside the new line, as it is still part of the block.
+  Before, the gap looked the same as the break that **Ctrl+Enter** makes between two lists.
+- **Ctrl+Enter keeps its new line when spaces follow the cursor.** The new line under the list
+  stayed only until the cursor moved off it if the line had spaces after the cursor. Now those
+  spaces are removed, and text after the cursor starts the new line at the margin.
+
 ## 0.16.0 - 2026-10-29
 
 ### Client

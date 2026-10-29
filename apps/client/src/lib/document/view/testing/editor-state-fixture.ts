@@ -199,6 +199,24 @@ export class HeadlessEditor {
         this.dispatch(this.state.update(this.state.replaceSelection(text), { userEvent: event }))
     }
 
+    /**
+     * Paste a line copied with nothing selected, the way CodeMirror's `doPaste` dispatches it when the
+     * caret is empty too: the copied line and a line break inserted at the start of the caret's line,
+     * the caret moved on past them.
+     */
+    pasteLine(text: string): void {
+        const head = this.state.selection.main.head
+        const insert = text + this.state.lineBreak
+        this.dispatch(
+            this.state.update({
+                changes: { from: this.state.doc.lineAt(head).from, insert },
+                selection: EditorSelection.cursor(head + insert.length),
+                userEvent: 'input.paste',
+                scrollIntoView: true,
+            }),
+        )
+    }
+
     /** Cut the selection, the way CodeMirror's cut handler dispatches it (the text itself is not kept here). */
     cut(): void {
         this.dispatch(this.state.update(this.state.replaceSelection(''), { userEvent: 'delete.cut' }))

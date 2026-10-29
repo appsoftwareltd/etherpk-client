@@ -37,6 +37,7 @@ import { refreshWikilinks, wikilinkAugmentation } from './augmentations/wikilink
 import { displayNameForRef } from '../../storage/fs/asset-store'
 import { collaborative, isEdit } from './cm-document'
 import { outdentBranch, toggleBullet } from './outliner-keymap'
+import { PLAIN_PASTE_USER_EVENT } from './paste-clamp'
 import { analysisFor } from './analysis/editor-analysis'
 import { bulletToggleable, taskToggleable } from './task-toggleable'
 import { editorFixture, type FixtureOptions, press } from './testing/editor-state-fixture'
@@ -608,6 +609,23 @@ describe('a guide thread reaches the bottom of a quote that ends its tree', () =
     }
 })
 
+describe('a guide thread runs beside a soft line at the end of its branch', () => {
+    const rows: { rule: string; precedent: Rule['precedent']; before: string; threads: string[] }[] = [
+        { rule: 'Shift+Enter at the end of the last child: the parent’s thread reaches the new soft line', precedent: 'Logseq', before: '- p\n  - c1\n    |', threads: ['0→2'] },
+        { rule: 'with another tree below it too', precedent: 'Logseq', before: '- p\n  - c1\n    |\n- q', threads: ['0→2'] },
+        { rule: 'a Ctrl+Enter split, a bare empty line, still cuts it', precedent: 'EtherPK', before: '- p\n  - c1\n|\n- q', threads: ['0→1'] },
+        { rule: 'a whitespace line short of the content column is prose and gets no thread beside it', precedent: 'EtherPK', before: '- p\n  - c1\n   |\n- q', threads: ['0→1'] },
+        { rule: 'after a quote, the threads run on past its panel to the soft line', precedent: 'Logseq', before: '- Test\n  - Test\n    - > Test\n      |', threads: ['0→3', '1→3'] },
+        // That thread is drawn for the panel alone: a childless bullet draws no thread beside its soft lines.
+        { rule: 'a top-level quote bullet’s own thread stays beside its panel', precedent: 'EtherPK', before: '- note\n  > quoted\n  |', threads: ['0→1 panel'] },
+    ]
+    for (const row of rows) {
+        it(`${row.rule} (${row.precedent})`, () => {
+            expect(guides(row.before)).toEqual(row.threads)
+        })
+    }
+})
+
 // ── Editor Content Rules → Outliner Block Groups → Keyboard rules ─────────────────────────────
 
 table('Enter creates, never escapes (ADR 0019)', [
@@ -740,12 +758,26 @@ table('Mod+Enter is the one deliberate exit', [
     { rule: 'a blank continuation with children leaves after them', precedent: 'EtherPK', before: '- a\n  |\n  - c', key: 'Mod-Enter', after: '- a\n  - c\n|' },
     { rule: 'a trailing fence leaves dedented as a unit', precedent: 'EtherPK', before: '- a\n  so|ft\n  ```\n  x\n  ```', key: 'Mod-Enter', after: '- a\n  so\n|ft\n```\nx\n```' },
     { rule: 'from a continuation after the children the text leaves after the tree', precedent: 'EtherPK', before: '- a\n  - b\n  trai|ling', key: 'Mod-Enter', after: '- a\n  - b\n  trai\n|ling' },
+    // The line carried out starts at its first character. Under the tree an indented line is the
+    // tree's own (indent decides, ADR 0021): spaces carried out with it made a whitespace-only soft
+    // line, which tidy on leave took back the moment the caret left, or turned the text into a
+    // continuation of the block above.
+    { rule: 'spaces right of the caret do not ride out: the new line is empty', precedent: 'EtherPK', before: '- a|  \n- c', key: 'Mod-Enter', after: '- a\n|\n- c' },
+    { rule: '…from a continuation too', precedent: 'EtherPK', before: '- a\n  - b\n    so|  \n- c', key: 'Mod-Enter', after: '- a\n  - b\n    so\n|\n- c' },
+    { rule: 'the text right of the caret leaves without the spaces before it', precedent: 'EtherPK', before: '- a|  b\n- c', key: 'Mod-Enter', after: '- a\n|b\n- c' },
+    { rule: '…past the children when the bullet has them', precedent: 'EtherPK', before: '- a|  b\n  - c\n- d', key: 'Mod-Enter', after: '- a\n  - c\n|b\n- d' },
+    { rule: '…from a continuation too', precedent: 'EtherPK', before: '- a\n  so|  ft\n- c', key: 'Mod-Enter', after: '- a\n  so\n|ft\n- c' },
+    { rule: 'at the floor of an over-indented continuation the whole line leaves, at the margin', precedent: 'EtherPK', before: '- a\n  |  soft\n- c', key: 'Mod-Enter', after: '- a\n|soft\n- c' },
+    { rule: 'a blank over-indented continuation leaves as an empty prose line', precedent: 'EtherPK', before: '- a\n  |  \n- c', key: 'Mod-Enter', after: '- a\n|\n- c' },
     // The text carried out is at the margin, where a fence pairs with another fence there and a `---`
     // can close a frontmatter block. The exit is refused where it would change which lines are code
     // or frontmatter, as leaving the list is.
     { rule: 'refused where the fence it carries out would pair with another fence at the margin', precedent: 'EtherPK', before: '- |```py\ntext\n```\ncode\n```', key: 'Mod-Enter', after: '- |```py\ntext\n```\ncode\n```' },
     { rule: 'refused where the rule it carries out would close a frontmatter block', precedent: 'EtherPK', before: '---\ntitle: T\n- |---\nbody', key: 'Mod-Enter', after: '---\ntitle: T\n- |---\nbody' },
     { rule: '…from a continuation too', precedent: 'EtherPK', before: '---\ntitle: T\n- a\n  |---\nbody', key: 'Mod-Enter', after: '---\ntitle: T\n- a\n  |---\nbody' },
+    // Spaces before the carried fence or rule are dropped, so it reaches the margin and is judged there.
+    { rule: 'refused for a fence after spaces right of the caret', precedent: 'EtherPK', before: '- a|  ```\n\n```\ncode\n```', key: 'Mod-Enter', after: '- a|  ```\n\n```\ncode\n```' },
+    { rule: 'refused for a rule after spaces right of the caret', precedent: 'EtherPK', before: '---\ntitle: T\n- a|  ---\nbody', key: 'Mod-Enter', after: '---\ntitle: T\n- a|  ---\nbody' },
 ])
 
 table('Tab and Shift+Tab move whole branches', [
@@ -2375,6 +2407,80 @@ describe('the end of the document', () => {
     })
 })
 
+// A paste at the end of a delimiter line (a fence's opener or closer, or a frontmatter `---`) starts on
+// the line Enter there would open (Editor Content Rules → Pasting into a block). Joined onto the
+// delimiter, the first pasted line was an info string: a closer with one is no longer a closer, and
+// the block ran on into the text below. After a closer or a frontmatter `---` that holds for a single
+// line too, since they take no text; after a fence's opener a single line is typed text, as everywhere
+// else in the paste rules, so a language pasted there is still its info string.
+describe('a paste at the end of a delimiter line starts on the line Enter would open', () => {
+    const rows: { rule: string; precedent: Rule['precedent']; before: string; text: string; plain?: boolean; after: string }[] = [
+        { rule: 'after a bullet’s closer, the lines are blocks from a new sibling', precedent: 'EtherPK', before: '- a\n  ```\n  x\n  ```|\n- c', text: 'one\ntwo', after: '- a\n  ```\n  x\n  ```\n- one\n- two|\n- c' },
+        { rule: '…after a form-1 closer too', precedent: 'EtherPK', before: '- ```\n  x\n  ```|\n- c', text: 'one\ntwo', after: '- ```\n  x\n  ```\n- one\n- two|\n- c' },
+        { rule: '…at the closing bullet’s depth', precedent: 'EtherPK', before: '- a\n  - ```\n    x\n    ```|', text: 'one\ntwo', after: '- a\n  - ```\n    x\n    ```\n  - one\n  - two|' },
+        { rule: 'pasted bullets keep their own nesting', precedent: 'EtherPK', before: '- ```\n  x\n  ```|', text: '- one\n  - two', after: '- ```\n  x\n  ```\n- one\n  - two|' },
+        { rule: 'a Plain Paste keeps its lines in the new block', precedent: 'EtherPK', before: '- ```\n  x\n  ```|', text: 'one\ntwo', plain: true, after: '- ```\n  x\n  ```\n- one\n  two|' },
+        { rule: 'after a prose closer, the lines are prose', precedent: 'EtherPK', before: '```\nx\n```|\nafter', text: 'one\ntwo', after: '```\nx\n```\none\ntwo|\nafter' },
+        { rule: '…a copied tree starting at the top level', precedent: 'EtherPK', before: '```\nx\n```|', text: '    - one\n      - two', after: '```\nx\n```\n- one\n  - two|' },
+        { rule: 'spaces after the closer are dropped with it', precedent: 'EtherPK', before: '```\nx\n``` |', text: 'one\ntwo', after: '```\nx\n```\none\ntwo|' },
+        { rule: 'after an opener, the lines are the first code lines, at the fence column', precedent: 'EtherPK', before: '- ```py|\n  x\n  ```', text: 'one\ntwo', after: '- ```py\n  one\n  two|\n  x\n  ```' },
+        { rule: '…after a form-2 opener too', precedent: 'EtherPK', before: '- a\n  ```py|\n  x\n  ```', text: 'one\ntwo', after: '- a\n  ```py\n  one\n  two|\n  x\n  ```' },
+        { rule: '…and a prose opener, the code keeping its spaces', precedent: 'EtherPK', before: '```|\nx\n```', text: 'one  \n  two', after: '```\none  \n  two|\nx\n```' },
+        { rule: 'a single line after an opener is its info string, as typed', precedent: 'CommonMark', before: '- ```py|\n  x\n  ```', text: 'thon', after: '- ```python|\n  x\n  ```' },
+        { rule: 'a single line after a closer starts on the next line too: a closer cannot take text', precedent: 'EtherPK', before: '- Garden\n  - ```\n    x\n    ```|\n  - Kitchen', text: 'water the beans', after: '- Garden\n  - ```\n    x\n    ```\n  - water the beans|\n  - Kitchen' },
+        { rule: '…a single bullet line too', precedent: 'EtherPK', before: '- ```\n  x\n  ```|', text: '- [ ] weed', after: '- ```\n  x\n  ```\n- [ ] weed|' },
+        { rule: '…after a prose closer', precedent: 'EtherPK', before: '```\nx\n```|\nafter', text: 'beans', after: '```\nx\n```\nbeans|\nafter' },
+        { rule: '…and after the frontmatter’s closer', precedent: 'EtherPK', before: '---\ntitle: T\n---|\n- a', text: 'beans', after: '---\ntitle: T\n---\nbeans|\n- a' },
+        { rule: '…and its opener, which takes no info string', precedent: 'EtherPK', before: '---|\ntitle: T\n---', text: 'tags: x', after: '---\ntags: x|\ntitle: T\n---' },
+        { rule: 'after the frontmatter’s closer, the lines are body text', precedent: 'EtherPK', before: '---\ntitle: T\n---|\n- a', text: 'one\ntwo', after: '---\ntitle: T\n---\none\ntwo|\n- a' },
+        { rule: 'after the frontmatter’s opener, the lines are YAML', precedent: 'EtherPK', before: '---|\ntitle: T\n---', text: 'tags: x\nkind: y', after: '---\ntags: x\nkind: y|\ntitle: T\n---' },
+        { rule: 'a fence line inside another block’s code is code: the paste is clamped there', precedent: 'CommonMark', before: '````\n```|\nx\n````', text: 'one\ntwo', after: '````\n```one\ntwo|\nx\n````' },
+        { rule: 'after the closer of a block with children, the lines are its first children, as Enter at the end of a body makes one', precedent: 'Logseq', before: '- a\n  ```\n  x\n  ```|\n  - kid', text: 'one\ntwo', after: '- a\n  ```\n  x\n  ```\n  - one\n  - two|\n  - kid' },
+        { rule: 'text that starts with a line break takes that break as the Enter', precedent: 'EtherPK', before: '- ```\n  x\n  ```|', text: '\none', after: '- ```\n  x\n  ```\n- one|' },
+        { rule: '…after a prose closer too', precedent: 'EtherPK', before: '```\nx\n```|', text: '\none\ntwo', after: '```\nx\n```\none\ntwo|' },
+        { rule: '…and after an opener', precedent: 'EtherPK', before: '```|\nx\n```', text: '\none', after: '```\none|\nx\n```' },
+    ]
+    for (const row of rows) {
+        it(`${row.rule} (${row.precedent})`, () => {
+            const editor = editorFixture(row.before)
+            editor.paste(row.text, row.plain ? PLAIN_PASTE_USER_EVENT : 'input.paste')
+            expect(editor.fixture()).toBe(row.after)
+        })
+    }
+})
+
+// A line copied with nothing selected pastes as a whole line above the caret's line, the caret staying
+// where it was (VS Code; CodeMirror's line-wise copy and paste). Inserted as typed text at the start
+// of a bullet's line, its marker landed after the copied text (`c- b`). In an outline the copied line
+// is a block above the caret's block, at its depth, as a pasted line is a block; in code it is code.
+describe('a line copied with nothing selected pastes as a whole line above the caret’s line', () => {
+    const rows: { rule: string; precedent: Rule['precedent']; before: string; line: string; after: string }[] = [
+        { rule: 'a copied bullet lands above the caret’s block', precedent: 'VS Code', before: '- a\n- b|', line: '- c', after: '- a\n- c\n- b|' },
+        { rule: '…at the depth of the caret’s block', precedent: 'EtherPK', before: '- a\n  - b|', line: '- c', after: '- a\n  - c\n  - b|' },
+        { rule: '…whatever depth it was copied at', precedent: 'EtherPK', before: '- a\n- b|', line: '    - c', after: '- a\n- c\n- b|' },
+        { rule: 'from a continuation line it lands above the block, never inside it', precedent: 'EtherPK', before: '- a\n  soft|\n- b', line: '- c', after: '- c\n- a\n  soft|\n- b' },
+        { rule: 'a copied task keeps its own checkbox', precedent: 'EtherPK', before: '- [ ] a\n- b|', line: '- [x] c', after: '- [ ] a\n- [x] c\n- b|' },
+        { rule: 'a copied prose line becomes a block, as a pasted line does', precedent: 'EtherPK', before: '- a\n- b|', line: 'prose', after: '- a\n- prose\n- b|' },
+        { rule: 'its trailing spaces are dropped', precedent: 'EtherPK', before: '- a\n- b|', line: '- c  ', after: '- a\n- c\n- b|' },
+        { rule: 'on a form-1 opener it lands above the bullet', precedent: 'EtherPK', before: '- ```py|\n  x\n  ```', line: '- c', after: '- c\n- ```py|\n  x\n  ```' },
+        { rule: 'in code it is a code line, as copied', precedent: 'VS Code', before: '- ```\n  x|\n  ```', line: '  y  ', after: '- ```\n  y  \n  x|\n  ```' },
+        { rule: '…moved right to the fence column if it is short of it', precedent: 'EtherPK', before: '- ```\n  x|\n  ```', line: '- c', after: '- ```\n  - c\n  x|\n  ```' },
+        { rule: 'on the closer it is the last code line', precedent: 'VS Code', before: '- ```\n  x\n  ```|', line: 'y', after: '- ```\n  x\n  y\n  ```|' },
+        { rule: 'in prose, a copied tree starts at the top level', precedent: 'EtherPK', before: 'p\nq|', line: '    - c', after: 'p\n- c\nq|' },
+        { rule: 'in the frontmatter it is YAML, as copied', precedent: 'VS Code', before: '---\ntitle: T|\n---', line: 'tags: x', after: '---\ntags: x\ntitle: T|\n---' },
+        { rule: 'on the frontmatter’s opening line it is the first YAML line, so the frontmatter still opens', precedent: 'EtherPK', before: '---|\ntitle: T\n---\n- a', line: 'tags: x', after: '---|\ntags: x\ntitle: T\n---\n- a' },
+        { rule: 'a tab in a copied code line is the code’s own: the spaces go before it', precedent: 'EtherPK', before: '- ```\n  x|\n  ```', line: '\tz', after: '- ```\n  \tz\n  x|\n  ```' },
+        { rule: 'a copied empty line is an empty block: a bare empty line there would cut the group', precedent: 'EtherPK', before: '- a\n  - b|', line: '', after: '- a\n  - \n  - b|' },
+    ]
+    for (const row of rows) {
+        it(`${row.rule} (${row.precedent})`, () => {
+            const editor = editorFixture(row.before)
+            editor.pasteLine(row.line)
+            expect(editor.fixture()).toBe(row.after)
+        })
+    }
+})
+
 // Text pasted on a line of its own becomes the fence an extension claims it for: the first Hook, a
 // fence registration's `fromPaste` (Editor Content Rules → Pasting into a block). A garden link is
 // claimed as its one line, trimmed, and copied beds as one line each, kept as written. A Plain Paste
@@ -2561,6 +2667,9 @@ describe('inserting a Template', () => {
         { rule: '{{cursor}} on a line of its own in prose leaves an empty line to type on', precedent: 'EtherPK', before: '|', body: '# Notes\n{{cursor}}\n# Later', after: '# Notes\n|\n# Later' },
         { rule: 'Windows line endings are read as line breaks', precedent: 'EtherPK', before: '- Garden\n- |', body: '- a\r\n  - {{cursor}}\r\n- c', after: '- Garden\n- a\n  - |\n- c' },
         { rule: 'a private-use character the Template holds is kept, and the caret still goes to {{cursor}}', precedent: 'EtherPK', before: '- |', body: '- \uE000 icon {{cursor}}', after: '- \uE000 icon |' },
+        { rule: 'after a bullet’s closing fence, the Template starts on the next block, as a paste does', precedent: 'EtherPK', before: '- a\n  ```\n  x\n  ```|\n- c', body: '- Notes:  \n- Tasks', after: '- a\n  ```\n  x\n  ```\n- Notes:  \n- Tasks|\n- c' },
+        { rule: 'after an opening fence, the Template is the first code', precedent: 'EtherPK', before: '- ```py|\n  x\n  ```', body: 'one\ntwo', after: '- ```py\n  one\n  two|\n  x\n  ```' },
+        { rule: 'after a prose closing fence, the Template is prose on the next line', precedent: 'EtherPK', before: '```\nx\n```|', body: 'one\ntwo', after: '```\nx\n```\none\ntwo|' },
         { rule: 'over selected blocks, the Template replaces them', precedent: 'EtherPK', before: '«- Old\n  - child»\n- Next', body: '- Review\n  - beans', after: '- Review\n  - beans|\n- Next' },
     ]
     for (const row of rows) {

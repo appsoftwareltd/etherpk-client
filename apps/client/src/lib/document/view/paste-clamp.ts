@@ -41,6 +41,19 @@
  * top level, and the lines after it are healed from there ({@link healPastedTree}). Inside the
  * [[Frontmatter]] every indent is YAML and is never touched.
  *
+ * **Outside code and the frontmatter, without trailing spaces** ({@link withoutTrailingSpaces}).
+ * Text copied out of a terminal or another editor often pads its lines with spaces, and tidy on
+ * leave trims only the block the caret leaves, so in every other pasted block they stayed.
+ *
+ * **Never onto a delimiter line** ({@link pastedAfterDelimiter}). A paste at the end of a closer or a
+ * frontmatter `---`, or a multi-line one at the end of a fence's opener, starts on the line Enter there
+ * would open: its first line joined onto the delimiter would be an info string, and a closer with one
+ * does not close.
+ *
+ * **A line copied with nothing selected, as a whole line** ({@link pastedAsWholeLines}). CodeMirror
+ * inserts it at the start of the caret's line; it lands above that line, or above the caret's block
+ * in an outline, and the caret stays where it was.
+ *
  * In every structural case the fragment is first put on the [[Indent Unit]] grid by the same
  * normaliser an [[Import]] runs (ADR 0067): a tree copied out of a four-space vault or a
  * tab-indented Logseq page lands at two spaces a level. Paste is the import boundary in miniature.
@@ -49,7 +62,9 @@
 
 import { EditorSelection, EditorState, type Extension, Transaction } from '@codemirror/state'
 
-import { type FencedBlockRange, fencedBlocks } from '../fenced-code'
+import { frontmatterLines } from '$lib/storage/fs/frontmatter-span'
+
+import { type FencedBlockRange, fencedBlocks, fencedBlocksAtLine, fenceLineInfo } from '../fenced-code'
 import { INDENT_UNIT, normaliseIndentUnit, outlineLines } from '../indent-unit'
 import {
     blockBodyEnd,
@@ -61,9 +76,11 @@ import {
     isHeadingLine,
     lineIndent,
     MARKER_WIDTH,
+    markerLength,
     newBulletMarker,
     opaqueLineFlags,
     ownerBulletIndex,
+    trimLineEnd,
     withoutEdgeBlankLines,
 } from '../outliner'
 import { clampColumn } from './caret-clamp'
@@ -74,6 +91,12 @@ import { clampColumn } from './caret-clamp'
  * reads it as a paste, and {@link pasteClamp} keeps its lines in one block.
  */
 export const PLAIN_PASTE_USER_EVENT = 'input.paste.plain'
+
+/**
+ * The user event a Template is placed under (`template-insert.ts`): the paste rules place it, but
+ * its text is the Template's as written, trailing spaces included (`Notes: {{cursor}}`).
+ */
+export const TEMPLATE_PASTE_USER_EVENT = 'input.paste.template'
 
 /** Re-indent a pasted fragment for a target whose clamp is `clamp` columns. */
 export function clampPastedText(text: string, clamp: number): string {
@@ -493,17 +516,153 @@ function pasteTargetAt(state: EditorState, lines: string[], blocks: FencedBlockR
     }
 }
 
+/** A heading's hashes and the space after them, as `isHeadingLine` reads them. */
+const HEADING_MARKER = /^#{1,6}\s/
+
+/**
+ * The fragment without the spaces and tabs at the end of its lines. A marker keeps its space, so
+ * `- ` with nothing after it is still an empty bullet and `# ` an empty heading. Left as they are: a
+ * whitespace-only line, whose indent places it in its block (indent decides, ADR 0021); the code in
+ * the fragment's own fenced blocks; every line from a fence the fragment leaves open, which can pair
+ * with a fence in the document and make code of them; and the last line, which the text after the
+ * caret follows, as typed text is, until tidy on leave trims it.
+ */
+export function withoutTrailingSpaces(text: string): string {
+    const lines = text.split('\n')
+    const code = opaqueLineFlags(lines, fencedBlocks(lines))
+    const open = lines.findIndex((line, k) => !code[k] && fenceLineInfo(line) !== null)
+    return lines
+        .map((line, k) => {
+            if (k === lines.length - 1 || code[k] || (open >= 0 && k >= open) || line.trim() === '') return line
+            const marker = lineIndent(line) + (isBulletLine(line) ? markerLength(line) : (HEADING_MARKER.exec(line.trimStart())?.[0].length ?? 0))
+            return line.slice(0, marker) + trimLineEnd(line.slice(marker))
+        })
+        .join('\n')
+}
+
+/** A paste the filter rewrites: the range it replaces, and the text put in its place. */
+interface Replacement {
+    from: number
+    to: number
+    insert: string
+}
+
+/** A paste into a fresh empty bullet at `indent` with `marker`, nothing after it: a line of blocks of its own. */
+function newBlockTarget(indent: number, marker: string): PasteTarget {
+    return {
+        indent,
+        contentColumn: indent + MARKER_WIDTH,
+        newIndent: indent,
+        marker,
+        nestIndent: indent + INDENT_UNIT,
+        emptyBullet: true,
+        replacesMarker: false,
+        lineMarker: marker,
+        startsLine: false,
+        after: '',
+    }
+}
+
+/**
+ * A paste at the end of a delimiter line: a fenced block's opener or closer, or one of the
+ * [[Frontmatter]]'s `---` lines. It starts on the line Enter there would open, so no pasted line joins
+ * the delimiter, where it would be an info string and a closer would no longer close. A closer and the
+ * frontmatter's opener take no text, so one line starts there too; after a fence's opener one line is
+ * typed text, its info string. After an opener
+ * that is the first code line, at the fence column (or the first YAML line); after a bullet's closer a
+ * new block where Enter at the end of the block's body puts the next one (ADR 0019); after a prose
+ * closer or the frontmatter's, a prose line. The spaces after the delimiter go with it. A fragment
+ * that starts with a line break already starts on the next line (a Template placed after text, or
+ * text dragged from the end of a line), so that break is the one Enter would make. `trim` takes the
+ * trailing spaces off what lands outside code. Null when the paste is not at such a line's end.
+ */
+function pastedAfterDelimiter(state: EditorState, lines: string[], blocks: FencedBlockRange[], from: number, to: number, text: string, plain: boolean, trim: (fragment: string) => string): Replacement | null {
+    const line = state.doc.lineAt(from)
+    const end = line.from + line.text.trimEnd().length
+    if (from < end || to > line.to) return null
+    const index = line.number - 1
+    const yaml = frontmatterLines(lines)
+    // Only an outermost block's own fence line: one inside another block's code is that block's code,
+    // and a fence in the frontmatter is YAML.
+    const holding = index < yaml ? null : fencedBlocksAtLine(blocks, index)
+    const fence = holding && holding.inner === holding.outer && (holding.outer.start === index || holding.outer.end === index) ? holding.outer : undefined
+    if (!fence && !(yaml > 0 && (index === 0 || index === yaml - 1))) return null
+    const body = text.startsWith(state.lineBreak) ? text.slice(state.lineBreak.length) : text
+    const insert = (shaped: string): Replacement => ({ from: end, to: line.to, insert: state.lineBreak + shaped })
+    if (fence ? fence.start === index : index === 0) {
+        // One line after a fence's opener is typed text: an info string there is the language.
+        if (fence && !text.includes(state.lineBreak)) return null
+        const column = fence?.fenceColumn ?? 0
+        return insert(' '.repeat(column) + clampPastedText(body, column))
+    }
+    const owner = fence ? ownerBulletIndex(lines, index, blocks) : null
+    if (owner === null) return insert(healPastedTree(normaliseIndentUnit(trim(body))))
+    // The new block is where Enter at the end of the block's body puts the next one: a sibling, or a
+    // first child before the block's children.
+    const { newIndent, marker } = pasteTargetAt(state, lines, blocks, owner, line.to, line.to, true)
+    const place = plain ? pastedTextAsOneBlock : pastedTextAsBlocks
+    return insert(place(trim(body), newBlockTarget(newIndent, marker)).insert)
+}
+
+/**
+ * A line copied with nothing selected, pasted with nothing selected: CodeMirror inserts the copied
+ * line and a line break at the start of the caret's line, which the filter sees as text typed before
+ * the line's marker. It lands as a whole line above the caret's line (VS Code), the caret staying
+ * where it was:
+ *
+ * - In code, a code line, moved right only as far as the fence column if its leading spaces fall
+ *   short of it (a tab past them is the code's own).
+ * - In the [[Frontmatter]], a YAML line as copied; on the opening `---`, the first YAML line, since
+ *   above it the frontmatter would no longer open.
+ * - In an outline, a block above the caret's block at that block's depth, as a pasted line is a
+ *   block. A copied empty line is an empty block: a bare empty line there would cut its group.
+ * - In prose, a top-level tree, as a paste that starts a prose line is.
+ *
+ * Its trailing spaces go, except in code and YAML.
+ */
+function pastedAsWholeLines(state: EditorState, lines: string[], blocks: FencedBlockRange[], index: number, text: string): Replacement {
+    const at = state.doc.line(index + 1).from
+    const holding = fencedBlocksAtLine(blocks, index)
+    if (holding && index > holding.outer.start) {
+        // A code line, or the closer: the copied line is code there, in the block the line is edited in.
+        const column = (index > holding.inner.start ? holding.inner : holding.outer).fenceColumn
+        const copied = text.split('\n')
+        const spaces = copied.filter((line) => line.trim() !== '').map((line) => /^ */.exec(line)![0].length)
+        const short = Math.max(0, column - (spaces.length ? Math.min(...spaces) : column))
+        return { from: at, to: at, insert: copied.map((line) => (line === '' ? line : ' '.repeat(short) + line)).join('\n') }
+    }
+    const yaml = frontmatterLines(lines)
+    if (index === 0 && yaml > 0) {
+        const below = state.doc.line(2).from
+        return { from: below, to: below, insert: text }
+    }
+    if (index < yaml) return { from: at, to: at, insert: text }
+    const trimmed = withoutTrailingSpaces(text)
+    const owner = isBulletLine(lines[index]) ? index : ownerBulletIndex(lines, index, blocks)
+    if (owner === null) return { from: at, to: at, insert: healPastedTree(normaliseIndentUnit(trimmed)) }
+    const target = newBlockTarget(lineIndent(lines[owner]), newBulletMarker(lines[owner]))
+    const above = state.doc.line(owner + 1).from
+    // The copied text ends with the line break CodeMirror added; the blocks are placed without it.
+    return { from: above, to: above, insert: pastedTextAsBlocks(trimmed.slice(0, -1), target).insert + '\n' }
+}
+
 export function pasteClamp(): Extension {
     return EditorState.transactionFilter.of((tr) => {
         if (!tr.docChanged || !(tr.isUserEvent('input.paste') || tr.isUserEvent('input.drop'))) return tr
-        let single: { from: number; to: number; text: string } | null = null
+        let single: { from: number; to: number; text: string; fromB: number; toB: number } | null = null
         let count = 0
-        tr.changes.iterChanges((fromA, toA, _fromB, _toB, inserted) => {
+        tr.changes.iterChanges((fromA, toA, fromB, toB, inserted) => {
             count += 1
-            single = { from: fromA, to: toA, text: inserted.toString() }
+            single = { from: fromA, to: toA, text: inserted.toString(), fromB, toB }
         })
         if (count !== 1 || !single) return tr
-        const { from, to, text } = single as { from: number; to: number; text: string }
+        const { from, to, text, fromB, toB } = single as { from: number; to: number; text: string; fromB: number; toB: number }
+        // A text drop leaves what it dropped selected (CodeMirror's `dropText`), and a paste leaves the
+        // caret after it. Reshaped, the text put in takes that place: selected, or the caret after it.
+        const dropped = tr.newSelection.main
+        const keepsDropped = !dropped.empty && dropped.from === fromB && dropped.to === toB
+        const selectionAfter = (start: number, insert: string) =>
+            !keepsDropped ? EditorSelection.cursor(start + insert.length) : dropped.anchor < dropped.head ? EditorSelection.range(start, start + insert.length) : EditorSelection.range(start + insert.length, start)
         const doc = tr.startState.doc
         const line = doc.lineAt(from)
         const index = line.number - 1
@@ -513,6 +672,32 @@ export function pasteClamp(): Extension {
         // The reshaped transaction keeps the user event it was given: a Rich Paste's names it (editor-history.ts).
         const userEvent = tr.annotation(Transaction.userEvent) ?? 'input.paste'
         const multiLine = text.includes('\n')
+        const caret = tr.startState.selection
+        // CodeMirror's line-wise paste: an empty caret, and the copied line inserted at the start of its
+        // line rather than at it. Every other paste replaces the selection, so it starts at the caret.
+        const head = caret.main.head
+        const lineWise =
+            tr.isUserEvent('input.paste') &&
+            caret.ranges.length === 1 &&
+            caret.main.empty &&
+            from === to &&
+            from === line.from &&
+            head > line.from &&
+            head <= line.to &&
+            text.endsWith(tr.startState.lineBreak)
+        if (lineWise) {
+            const whole = pastedAsWholeLines(tr.startState, lines, blocks, index, text)
+            // The caret stays on its text: moved on by what went in above it, if anything did.
+            return { changes: whole, selection: EditorSelection.cursor(whole.from <= head ? head + whole.insert.length : head), userEvent, scrollIntoView: true }
+        }
+        // A Template's text is kept as its author wrote it.
+        const trimmed = (fragment: string) => (tr.isUserEvent(TEMPLATE_PASTE_USER_EVENT) ? fragment : withoutTrailingSpaces(fragment))
+        const afterDelimiter = text !== '' ? pastedAfterDelimiter(tr.startState, lines, blocks, from, to, text, tr.isUserEvent(PLAIN_PASTE_USER_EVENT), trimmed) : null
+        if (afterDelimiter) {
+            // The delimiter's line ends at its last character; the pasted text starts on the line after it.
+            const start = afterDelimiter.from + 1 + lineIndent(afterDelimiter.insert.slice(1))
+            return { changes: afterDelimiter, selection: selectionAfter(start, afterDelimiter.insert.slice(start - afterDelimiter.from)), userEvent, scrollIntoView: true }
+        }
         if (!opaque[index]) {
             const owner = isBulletLine(line.text) ? index : ownerBulletIndex(lines, index, blocks)
             if (owner !== null) {
@@ -522,12 +707,12 @@ export function pasteClamp(): Extension {
                 if (!multiLine && !target.replacesMarker && !(target.emptyBullet && isBulletLine(text))) return tr
                 // A Plain Paste keeps its lines in the caret's block; any other paste makes a block of each.
                 const place = tr.isUserEvent(PLAIN_PASTE_USER_EVENT) ? pastedTextAsOneBlock : pastedTextAsBlocks
-                const { insert, replacesLine } = place(text, target)
+                const { insert, replacesLine } = place(trimmed(text), target)
                 const start = replacesLine ? line.from : from
                 if (start === from && insert === text) return tr
                 return {
                     changes: { from: start, to, insert },
-                    selection: EditorSelection.cursor(start + insert.length),
+                    selection: selectionAfter(start, insert),
                     userEvent,
                     scrollIntoView: true,
                 }
@@ -546,16 +731,18 @@ export function pasteClamp(): Extension {
         // an empty line that is column 0), whatever the code line looks like; on a bullet-shaped line
         // outside one (a form-1 opener) the content column; in prose and the frontmatter, 0.
         const clamp = block ? block.fenceColumn : isBulletLine(line.text) ? contentColumn(line.text) : clampColumn(lines, index)
-        let insert = pad + clampPastedText(text, clamp)
+        // Code and YAML keep their trailing spaces; prose loses them, as tidy on leave would take them.
+        const pasted = opaque[index] ? text : trimmed(text)
+        let insert = pad + clampPastedText(pasted, clamp)
         if (clamp === 0 && !opaque[index] && line.text.slice(0, from - line.from).trim() === '') {
             // Starting a prose line (a clean line, or the start of one): the fragment's indentation is
             // where it was copied from, not where it lands. Code and YAML keep theirs.
-            insert = healPastedTree(normaliseIndentUnit(text))
+            insert = healPastedTree(normaliseIndentUnit(pasted))
         }
         if (insert === text) return tr
         return {
             changes: { from, to, insert },
-            selection: EditorSelection.cursor(from + insert.length),
+            selection: selectionAfter(from, insert),
             userEvent,
             scrollIntoView: true,
         }

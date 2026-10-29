@@ -141,6 +141,15 @@ describe('leave-tidy filter', () => {
         expect(editor.fixture()).toBe('- a\n- b|')
     })
 
+    it('keeps the empty line Ctrl+Enter opens between two trees when the caret leaves it, with spaces after the caret', () => {
+        // The spaces once rode out onto the new line, which then read as a blank soft line of the tree
+        // above and was taken back as the caret left it.
+        const editor = editorFixture('- a\n  - b\n    soft|  \n- c')
+        editor.key('Mod-Enter')
+        editor.select(editor.text().length) // click into c
+        expect(editor.fixture()).toBe('- a\n  - b\n    soft\n\n- c|')
+    })
+
     it('trims a prose line on leave, and never a fenced block or the frontmatter', () => {
         const editor = editorFixture('---\nt: x  \n---\ntext  |\n```\ncode  \n```')
         editor.select(editor.text().length - 5) // into the code

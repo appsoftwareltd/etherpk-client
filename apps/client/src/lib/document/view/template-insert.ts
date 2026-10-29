@@ -23,16 +23,13 @@ import { type FencedBlockRange, fencedBlocks } from '../fenced-code'
 import { contentStart, isBulletLine } from '../outliner'
 import type { RenderedTemplate } from '../templates/template-variables'
 import { editorHistory } from './editor-history'
-import { blockPasteTarget, pasteClamp } from './paste-clamp'
+import { blockPasteTarget, pasteClamp, TEMPLATE_PASTE_USER_EVENT } from './paste-clamp'
 
 /**
  * The user event a Template's insert carries: the person's own input (`isOwnEditing`), so it writes
  * a [[Draft]] and every guard judges it, but no paste, since the paste rules have placed it already.
  */
 export const TEMPLATE_USER_EVENT = 'input.template'
-
-/** What the paste rules are run under, to place the Template before it is inserted. */
-const PASTE_USER_EVENT = 'input.paste.template'
 
 /** A line that opens or closes a fenced block, once its indentation and marker are set aside. */
 const FENCE_DELIMITER = /^(`{3,}|~{3,})/
@@ -75,7 +72,7 @@ export function insertTemplate(target: TemplateTarget, rendered: RenderedTemplat
 function pasteRulesFor(state: EditorState, text: string): Transaction {
     const { anchor, head } = state.selection.main
     const probe = EditorState.create({ doc: state.doc, selection: { anchor, head }, extensions: [pasteClamp()] })
-    return probe.update(probe.replaceSelection(textToInsert(probe, text)), { userEvent: PASTE_USER_EVENT })
+    return probe.update(probe.replaceSelection(textToInsert(probe, text)), { userEvent: TEMPLATE_PASTE_USER_EVENT })
 }
 
 /**

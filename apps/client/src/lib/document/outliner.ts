@@ -952,6 +952,14 @@ export function keepsOutline(lines: readonly string[], at: number, removed: numb
 }
 
 /**
+ * The line without the spaces and tabs at its end: the ghost whitespace tidy on leave and paste
+ * remove (Editor Content Rules → *Tidy on leave*, *Pasting into a block*).
+ */
+export function trimLineEnd(line: string): string {
+    return line.replace(/[ \t]+$/, '')
+}
+
+/**
  * The lines without the blank lines at their start and their end: the trailing newline of a
  * line-wise copy, say, or of a block an extension puts in. All blank gives one empty line.
  */

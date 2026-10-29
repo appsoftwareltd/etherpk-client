@@ -4,6 +4,7 @@
  * block* or *The source clamp*.
  */
 
+import { EditorSelection } from '@codemirror/state'
 import { describe, expect, it } from 'vitest'
 
 import { clampPastedText, healPastedBullets, healPastedTree, pasteClamp, PLAIN_PASTE_USER_EVENT } from './paste-clamp'
@@ -125,7 +126,7 @@ describe('paste into a fenced block or prose: the clamp', () => {
 describe('paste into a block: a block per line', () => {
     const rows: { rule: string; precedent: 'Logseq' | 'EtherPK'; before: string; text: string; after: string }[] = [
         // The report of 2026-09-22: prose, a list and a closing paragraph pasted into an empty bullet.
-        { rule: 'prose lines become sibling blocks and the bullets between them nest under the line before', precedent: 'EtherPK', before: '- |', text: 'Test\nMultline \n\n- Block\n- Test\n\nMarkdown', after: '- Test\n- Multline \n  - Block\n  - Test\n- Markdown|' },
+        { rule: 'prose lines become sibling blocks and the bullets between them nest under the line before', precedent: 'EtherPK', before: '- |', text: 'Test\nMultline \n\n- Block\n- Test\n\nMarkdown', after: '- Test\n- Multline\n  - Block\n  - Test\n- Markdown|' },
         { rule: 'the first line joins the caret’s block; the rest are its siblings', precedent: 'Logseq', before: '- a|\n- b', text: 'one\ntwo', after: '- aone\n- two|\n- b' },
         { rule: 'text after the caret follows the last pasted line, as typing would leave it', precedent: 'EtherPK', before: '- a|b', text: 'one\ntwo', after: '- aone\n- two|b' },
         { rule: 'at the start of a bullet’s content the whole content follows the last pasted line', precedent: 'EtherPK', before: '- |abc', text: 'one\ntwo', after: '- one\n- two|abc' },
@@ -185,6 +186,39 @@ describe('paste into a block: a block per line', () => {
         expect(editor.fixture()).toBe('- aone\n  - two\n- three|\n- b')
         editor.key('Mod-z')
         expect(editor.fixture()).toBe('- a|\n- b')
+    })
+})
+
+// Text copied out of a terminal or another editor often pads its lines with spaces. Tidy on leave
+// trims only the block the caret leaves, so in every other pasted block they stayed for good.
+describe('paste drops the spaces at the end of its lines', () => {
+    const rows: { rule: string; precedent: 'Logseq' | 'EtherPK'; before: string; text: string; after: string; event?: typeof PLAIN_PASTE_USER_EVENT }[] = [
+        { rule: 'a block per line, each without its trailing spaces and tabs', precedent: 'EtherPK', before: '- |', text: 'one  \ntwo \t\nthree', after: '- one\n- two\n- three|' },
+        { rule: 'a Plain Paste’s continuation lines too', precedent: 'EtherPK', before: '- |', text: 'one  \ntwo  \nthree', after: '- one\n  two\n  three|', event: PLAIN_PASTE_USER_EVENT },
+        // Not the first pasted block: the caret leaves that one, and tidy on leave trims it anyway.
+        { rule: 'a whitespace-only line keeps its indent, which places it in its block', precedent: 'EtherPK', before: '- |', text: '- w\n- x\n  one  \n  \n  two\n- y', after: '- w\n- x\n  one\n  \n  two\n- y|' },
+        { rule: 'the last line is left as typed text is, followed by the text after the caret', precedent: 'EtherPK', before: '- a|b', text: 'one  \ntwo  ', after: '- aone\n- two  |b' },
+        { rule: 'an empty bullet keeps the space of its marker, and a task its checkbox’s', precedent: 'EtherPK', before: '- |', text: '- x\n- \n- [ ] \n- y', after: '- x\n- \n- [ ] \n- y|' },
+        { rule: 'an empty heading keeps the space after its hashes, still a heading', precedent: 'EtherPK', before: 'Intro\n|', text: '# \ntext  \nmore', after: 'Intro\n# \ntext\nmore|' },
+        { rule: 'code in the fragment keeps them', precedent: 'EtherPK', before: '- |', text: '- x\n  ```\n  code  \n  ```\n- y', after: '- x\n  ```\n  code  \n  ```\n- y|' },
+        // A fence the fragment does not close can pair with one in the document, making code of what follows it.
+        { rule: 'lines after a fence the fragment leaves open keep them', precedent: 'EtherPK', before: '|\nafter\n```', text: '```py\nbeans  \npeas  \nmore', after: '```py\nbeans  \npeas  \nmore|\nafter\n```' },
+        { rule: 'into prose', precedent: 'EtherPK', before: 'Intro\n|', text: 'one  \ntwo', after: 'Intro\none\ntwo|' },
+        { rule: 'not into a fenced block: code keeps them', precedent: 'EtherPK', before: '```\n|\n```', text: 'one  \ntwo', after: '```\none  \ntwo|\n```' },
+        { rule: 'not into the frontmatter', precedent: 'EtherPK', before: '---\n|\n---\nbody', text: 'a: 1  \nb: 2', after: '---\na: 1  \nb: 2|\n---\nbody' },
+    ]
+    for (const row of rows) {
+        it(`${row.rule} (${row.precedent})`, () => {
+            expect(paste(row.before, row.text, row.event)).toBe(row.after)
+        })
+    }
+
+    it('a text drop leaves what it dropped selected, as CodeMirror leaves it (EtherPK)', () => {
+        const editor = editorFixture('Intro te|xt')
+        const at = editor.head()
+        const dropped = 'one  \ntwo  \nthree'
+        editor.dispatch(editor.state.update({ changes: { from: at, insert: dropped }, selection: EditorSelection.range(at, at + dropped.length), userEvent: 'input.drop' }))
+        expect(editor.fixture()).toBe('Intro te«one\ntwo\nthree»xt')
     })
 })
 

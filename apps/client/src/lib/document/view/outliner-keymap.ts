@@ -425,6 +425,11 @@ const softNewline: StateCommand = (view) => {
  * parent by the prose line and, in CommonMark, an indented line after a paragraph is that
  * paragraph's continuation, not a list item, so the exit point is the tree's end and no key ever
  * leaves an orphan. In prose this returns false so the default newline applies.
+ *
+ * The line carried out starts at its first character: whitespace right of the caret is dropped. Under
+ * the tree an indented line is the tree's own (indent decides, ADR 0021), so carried spaces would make
+ * the new line a blank soft line of the tree, which tidy on leave removes once the caret leaves it, or
+ * make the text a continuation of the block above instead of prose.
  */
 const breakoutToProse: StateCommand = (view) => {
     const cont = continuationAt(view)
@@ -438,7 +443,7 @@ const breakoutToProse: StateCommand = (view) => {
         const last = index > bodyEnd ? branchRange(lines, owner).end : bodyEnd
         const col = head - lineFrom
         const keepBefore = line.slice(0, col).trim() !== ''
-        const leaving = [line.slice(col), ...shiftLines(lines.slice(index + 1, last + 1), -floor)]
+        const leaving = [line.slice(col).trimStart(), ...shiftLines(lines.slice(index + 1, last + 1), -floor)]
         const from = keepBefore ? head : state.doc.line(index).to
         const to = state.doc.line(last + 1).to
         const branchEndTo = state.doc.line(branchRange(lines, treeRootIndex(lines, owner)).end + 1).to
@@ -458,12 +463,12 @@ const breakoutToProse: StateCommand = (view) => {
     const { end } = branchRange(lines, treeRootIndex(lines, index))
     const curLineTo = view.state.doc.line(index + 1).to
     const branchEndTo = view.state.doc.line(end + 1).to
-    const tail = view.state.sliceDoc(head, curLineTo) // text right of the caret on this line
+    const tail = view.state.sliceDoc(head, curLineTo).trimStart() // text right of the caret on this line
     const changes = [
-        { from: head, to: curLineTo, insert: '' }, // lift the tail off the current line
+        { from: head, to: curLineTo, insert: '' }, // lift the tail, and any spaces before it, off the current line
         { from: branchEndTo, insert: '\n' + tail }, // …and re-lay it on a fresh col-0 line after the branch
     ]
-    const anchor = branchEndTo - tail.length + 1 // start of the tail on the new line
+    const anchor = branchEndTo - (curLineTo - head) + 1 // start of the tail on the new line
     dispatchKeeping(view, { changes, selection: { anchor }, userEvent: 'input' }) // refused where the tail would pair or close a block
     return true
 }
