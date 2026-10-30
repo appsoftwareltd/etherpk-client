@@ -7,6 +7,7 @@ import {
     PROTECTED_SETTLE_MS,
     ProtectedEditorDocument,
     applyTextChange,
+    lockedEditAllowed,
 } from './protected-document'
 
 /** A fence whose armoured body encodes its own plaintext, so a fake decrypt can be exact. */
@@ -15,8 +16,11 @@ const FRONTMATTER = '---\ntitle: Bank\n---\n'
 /** A Protected Document: frontmatter in the clear, the body one fence. */
 const protectedDoc = (body: string, frontmatter = FRONTMATTER) => frontmatter + fence(body)
 
-/** A minimal in-memory EditorDocument, so the decorator is tested without a store. */
-function fakeDocument(initial: string) {
+/**
+ * A minimal in-memory EditorDocument, so the decorator is tested without a store. `echo` names the
+ * write origins it notifies its own listeners of, as a store that echoes its writes would.
+ */
+function fakeDocument(initial: string, echo: readonly ChangeOrigin[] = []) {
     let text = initial
     const listeners = new Set<(t: string) => void>()
     /** The origin of every write, in order - what a store decides persistence and echo from. */
@@ -27,6 +31,7 @@ function fakeDocument(initial: string) {
         applyChange(change: TextChange, origin: ChangeOrigin = 'editor') {
             origins.push(origin)
             text = applyTextChange(text, change)
+            if (echo.includes(origin)) for (const l of listeners) l(text)
         },
         subscribe(listener) {
             listeners.add(listener)
@@ -39,6 +44,10 @@ function fakeDocument(initial: string) {
         get text() {
             return text
         },
+        /** How many subscriptions the stored document is carrying. */
+        get listenerCount() {
+            return listeners.size
+        },
         external(next: string) {
             text = next
             for (const l of listeners) l(next)
@@ -46,29 +55,53 @@ function fakeDocument(initial: string) {
     }
 }
 
-function build(stored: string, options: { locked?: boolean } = {}) {
-    const inner = fakeDocument(stored)
+function build(stored: string, options: { locked?: boolean; echo?: readonly ChangeOrigin[] } = {}) {
+    const inner = fakeDocument(stored, options.echo)
     let locked = options.locked ?? false
     let clock = 0
     /** Set to hold every `encrypt` open until released — for testing the mid-seal edit race. */
     let gate: { release: () => void; waited: Promise<void> } | null = null
+    /** Decrypts held open until released, by the envelope they were asked for. */
+    const decryptGates = new Map<string, Promise<void>>()
+    /** Run inside every `encrypt`, before it settles — for an edit landing during each seal. */
+    let duringSeal: (() => void) | null = null
+    /** Every plaintext handed to `encrypt`, in order. */
+    const sealed: string[] = []
+    /** Everything reported to `onError`. */
+    const errors: Error[] = []
     const wrapped = new ProtectedEditorDocument(inner.doc, {
         encrypt: async (plaintext) => {
+            sealed.push(plaintext)
             if (locked) throw new Error('locked')
+            duringSeal?.()
             if (gate) await gate.waited
             return `ARMOURED(${plaintext})`
         },
         decryptEnvelope: async (armoured) => {
             if (locked) throw new Error('locked')
+            await decryptGates.get(armoured)
             const match = /^ARMOURED\((.*)\)$/s.exec(armoured)
             if (!match) throw new Error('not ours')
             return match[1]
         },
+        onError: (err) => errors.push(err),
         now: () => clock,
     })
     return {
         inner,
         wrapped,
+        sealed,
+        errors,
+        /** Hold the decrypt of the envelope `armoured` open until the returned function is called. */
+        holdDecryptOf(armoured: string) {
+            let release = (): void => {}
+            decryptGates.set(armoured, new Promise<void>((resolve) => (release = resolve)))
+            return () => release()
+        },
+        /** Run `fn` inside every subsequent `encrypt`, or stop with `null`. */
+        whileSealing(fn: (() => void) | null) {
+            duringSeal = fn
+        },
         lock: () => (locked = true),
         unlockKey: () => (locked = false),
         advance: (ms: number) => (clock += ms),
@@ -189,18 +222,19 @@ describe('editing the projected body', () => {
         expect(inner.text).toContain('ARMOURED(sXecret)')
     })
 
-    it('re-encrypts at the cap even while typing continues', async () => {
+    it('re-encrypts at the cap while typing continues, without waiting for a pause', async () => {
         const { inner, wrapped, advance } = build(stored)
         await wrapped.unlock()
 
-        for (let elapsed = 0; elapsed <= PROTECTED_MAX_WAIT_MS; elapsed += 1_000) {
+        // A keystroke every second, for longer than the cap, and no pause at all.
+        for (let elapsed = 0; elapsed <= PROTECTED_MAX_WAIT_MS + 5_000; elapsed += 1_000) {
             wrapped.applyChange({ from: FRONTMATTER.length + 1, to: FRONTMATTER.length + 1, insert: 'x' })
             advance(1_000)
             await vi.advanceTimersByTimeAsync(1_000)
         }
-        await vi.advanceTimersByTimeAsync(PROTECTED_SETTLE_MS)
 
         expect(inner.text).not.toContain('ARMOURED(secret)')
+        expect(wrapped.isDirty).toBe(true)
     })
 
     // The frontmatter is re-read from the store at commit, never carried from the projection.
@@ -769,5 +803,523 @@ describe('line endings (ADR 0112)', () => {
         const { wrapped } = build(protectedDoc('one\r\ntwo\rthree', crlfFrontmatter))
         await wrapped.unlock()
         expect(wrapped.getText()).toBe('---\ntitle: Bank\n---\none\ntwo\nthree')
+    })
+})
+
+describe('notifying listeners', () => {
+    const stored = protectedDoc('water the beans')
+
+    it('tells no listener of a body edit that names no editor', async () => {
+        const { wrapped } = build(stored)
+        await wrapped.unlock()
+        const seen: string[] = []
+        wrapped.subscribe((t) => seen.push(t))
+
+        wrapped.applyChange({ from: FRONTMATTER.length, to: FRONTMATTER.length, insert: 'Garden ' })
+
+        expect(seen).toEqual([])
+    })
+
+    it('tells no listener of a locked edit that names no editor', () => {
+        const { wrapped } = build(stored, { locked: true })
+        const seen: string[] = []
+        wrapped.subscribe((t) => seen.push(t))
+
+        retitle(wrapped, 'Garden')
+
+        expect(seen).toEqual([])
+    })
+
+    it('leaves a locked external write for the store to announce, even when it names an editor', () => {
+        const { wrapped } = build(stored, { locked: true })
+        const seen: string[] = []
+        const editor = () => {}
+        wrapped.subscribe(editor)
+        wrapped.subscribe((t) => seen.push(t))
+
+        retitle(wrapped, 'Garden', 'external')
+        wrapped.applyChange({ from: 0, to: 0, insert: '' }, 'external', editor)
+
+        expect(seen).toEqual([])
+    })
+
+    it('tells no one when unlocked a second time, and keeps the edited body', async () => {
+        const { wrapped } = build(stored)
+        await wrapped.unlock()
+        replaceBody(wrapped, 'Garden')
+        const seen: string[] = []
+        wrapped.subscribe((t) => seen.push(t))
+
+        await wrapped.unlock()
+
+        expect(seen).toEqual([])
+        expect(wrapped.getText()).toBe(projected('Garden'))
+    })
+
+    it('tells no one when relocking a document that is not projecting', async () => {
+        const { wrapped } = build(stored, { locked: true })
+        const seen: string[] = []
+        wrapped.subscribe((t) => seen.push(t))
+
+        await wrapped.relock()
+
+        expect(seen).toEqual([])
+    })
+})
+
+// A store may notify its own writes back. The projection's writes must not come back as a change
+// from somewhere else: that re-projects, and moves every caret, for nothing.
+describe('a store that echoes its own writes', () => {
+    it('does not hear its frontmatter and sealed body writes back as changes', async () => {
+        const { wrapped } = build(protectedDoc('water the beans'), { echo: ['editor', 'external'] })
+        await wrapped.unlock()
+        const seen: string[] = []
+        wrapped.subscribe((t) => seen.push(t))
+
+        retitle(wrapped, 'Garden')
+        replaceBody(wrapped, 'Kitchen', '---\ntitle: Garden\n---\n')
+        await wrapped.commit()
+        await vi.advanceTimersByTimeAsync(0)
+
+        expect(seen).toEqual([])
+    })
+
+    it('does not hear the fence it wrote when protecting', async () => {
+        const { wrapped } = build(FRONTMATTER + 'water the beans', { echo: ['external'] })
+        const seen: string[] = []
+        wrapped.subscribe((t) => seen.push(t))
+
+        wrapped.protect('ARMOURED(water the beans)', 'water the beans')
+        await vi.advanceTimersByTimeAsync(0)
+
+        expect(seen).toEqual([])
+    })
+})
+
+describe('writing through to the store', () => {
+    const stored = protectedDoc('water the beans')
+
+    it('writes the frontmatter and the sealed body under the editor origin', async () => {
+        const { inner, wrapped } = build(stored)
+        await wrapped.unlock()
+
+        retitle(wrapped, 'Garden')
+        replaceBody(wrapped, 'Kitchen', '---\ntitle: Garden\n---\n')
+        await wrapped.commit()
+
+        expect(inner.origins).toEqual(['editor', 'editor'])
+        expect(inner.text).toBe('---\ntitle: Garden\n---\n' + fence('Kitchen'))
+    })
+
+    it('still follows the stored document after writing a frontmatter edit through', async () => {
+        const { inner, wrapped } = build(stored)
+        await wrapped.unlock()
+        retitle(wrapped, 'Garden')
+
+        inner.external('---\ntitle: Kitchen\n---\n' + fence('water the beans'))
+        await vi.advanceTimersByTimeAsync(0)
+
+        expect(wrapped.getText()).toBe('---\ntitle: Kitchen\n---\nwater the beans')
+    })
+
+    it('still follows the stored document after a commit', async () => {
+        const { inner, wrapped } = build(stored)
+        await wrapped.unlock()
+        replaceBody(wrapped, 'Garden')
+        await wrapped.commit()
+
+        inner.external(protectedDoc('Kitchen'))
+        await vi.advanceTimersByTimeAsync(0)
+
+        expect(wrapped.getText()).toBe(projected('Kitchen'))
+    })
+
+    it('refuses a block growing by even one short line of body', async () => {
+        const body = 'pea\n---\nwater the beans'
+        const { inner, wrapped } = build(protectedDoc(body))
+        await wrapped.unlock()
+
+        // The block grows by four characters to take in `pea` while the change deleted four.
+        wrapped.applyChange({ from: FRONTMATTER.length - 4, to: FRONTMATTER.length, insert: '' })
+
+        expect(wrapped.getText()).toBe(projected(body))
+        expect(inner.text).toBe(protectedDoc(body))
+    })
+
+    it('saves a body changed by a frontmatter edit once it settles, with no forced commit', async () => {
+        const { inner, wrapped, advance } = build(stored)
+        await wrapped.unlock()
+
+        // Deleting the closing delimiter re-splits: the frontmatter's lines become body.
+        wrapped.applyChange({ from: FRONTMATTER.length - 4, to: FRONTMATTER.length, insert: '' })
+        advance(PROTECTED_SETTLE_MS)
+        await vi.advanceTimersByTimeAsync(PROTECTED_SETTLE_MS)
+
+        expect(inner.text).toBe(fence('---\ntitle: Bank\nwater the beans'))
+    })
+
+    it('promotes a block closed by typing its last delimiter at the top of a document that had none', async () => {
+        const { inner, wrapped } = build(protectedDoc('---\ntitle: Garden\nwater the beans', ''))
+        await wrapped.unlock()
+        const at = '---\ntitle: Garden\n'.length
+
+        wrapped.applyChange({ from: at, to: at, insert: '---\n' })
+
+        expect(wrapped.getText()).toBe('---\ntitle: Garden\n---\nwater the beans')
+        await wrapped.commit()
+        expect(inner.text).toBe('---\ntitle: Garden\n---\n' + fence('water the beans'))
+    })
+})
+
+describe('masking, at the edges', () => {
+    const stored = protectedDoc('water the beans')
+
+    it('does not carry a mask made before anything was projected', async () => {
+        const { wrapped, unlockKey } = build(stored, { locked: true })
+        const seen: string[] = []
+        wrapped.subscribe((t) => seen.push(t))
+
+        wrapped.mask()
+        expect(seen).toEqual([])
+        unlockKey()
+        await wrapped.unlock()
+
+        expect(wrapped.isMasked).toBe(false)
+        expect(wrapped.getText()).toBe(projected('water the beans'))
+    })
+
+    it('tells listeners once, however often it is masked or unmasked', async () => {
+        const { wrapped } = build(stored)
+        await wrapped.unlock()
+        const seen: string[] = []
+        wrapped.subscribe((t) => seen.push(t))
+
+        wrapped.unmask()
+        expect(seen).toEqual([])
+        wrapped.mask()
+        wrapped.mask()
+        expect(seen).toEqual([stored])
+        wrapped.unmask()
+        wrapped.unmask()
+        expect(seen).toEqual([stored, projected('water the beans')])
+    })
+
+    it('is neither masked nor dirty once the projection stops underneath it', async () => {
+        const { inner, wrapped } = build(stored)
+        await wrapped.unlock()
+        replaceBody(wrapped, 'Garden')
+        wrapped.mask()
+        const seen: string[] = []
+        wrapped.subscribe((t) => seen.push(t))
+
+        inner.external('# Kitchen')
+        await vi.advanceTimersByTimeAsync(0)
+
+        expect(wrapped.isProjecting).toBe(false)
+        expect(wrapped.isMasked).toBe(false)
+        expect(wrapped.isDirty).toBe(false)
+        const heard = seen.length
+        wrapped.unmask()
+        expect(seen).toHaveLength(heard)
+    })
+
+    it('keeps a block typed at the top across a mask, before it is written', async () => {
+        const { wrapped } = build(protectedDoc('water the beans', ''))
+        await wrapped.unlock()
+        replaceBody(wrapped, '---\ntitle: Garden\n---\nwater the beans', '')
+
+        wrapped.mask()
+        wrapped.unmask()
+
+        expect(wrapped.getText()).toBe('---\ntitle: Garden\n---\nwater the beans')
+    })
+
+    it('adopts the stored frontmatter on unmask once a promoted block has been written', async () => {
+        const { wrapped } = build(protectedDoc('water the beans', ''))
+        await wrapped.unlock()
+        replaceBody(wrapped, '---\ntitle: Garden\n---\nwater the beans', '')
+        await wrapped.commit()
+
+        wrapped.mask()
+        const from = '---\ntitle: '.length
+        wrapped.applyChange({ from, to: from + 'Garden'.length, insert: 'Kitchen' })
+        wrapped.unmask()
+
+        expect(wrapped.getText()).toBe('---\ntitle: Kitchen\n---\nwater the beans')
+    })
+})
+
+describe('the projection’s lifecycle', () => {
+    const stored = protectedDoc('water the beans')
+
+    it('decrypts again when unlocked after a relock', async () => {
+        const { wrapped } = build(stored)
+        await wrapped.unlock()
+        await wrapped.relock()
+
+        await wrapped.unlock()
+
+        expect(wrapped.isProjecting).toBe(true)
+        expect(wrapped.getText()).toBe(projected('water the beans'))
+    })
+
+    it('keeps following the stored document after its last listener leaves while projecting', async () => {
+        const { inner, wrapped } = build(stored)
+        await wrapped.unlock()
+        const unsubscribe = wrapped.subscribe(() => {})
+        unsubscribe()
+
+        inner.external(protectedDoc('Garden'))
+        await vi.advanceTimersByTimeAsync(0)
+
+        expect(wrapped.getText()).toBe(projected('Garden'))
+    })
+
+    it('lets go of the stored document once nothing depends on it', async () => {
+        const relocked = build(stored)
+        await relocked.wrapped.unlock()
+        expect(relocked.inner.listenerCount).toBe(1)
+        await relocked.wrapped.relock()
+        expect(relocked.inner.listenerCount).toBe(0)
+
+        const unprotected = build(stored)
+        await unprotected.wrapped.unlock()
+        unprotected.inner.external('# Garden')
+        await vi.advanceTimersByTimeAsync(0)
+        expect(unprotected.inner.listenerCount).toBe(0)
+    })
+
+    it('ignores an older decrypt that finishes after a newer one', async () => {
+        const { inner, wrapped, holdDecryptOf } = build(protectedDoc('Garden'))
+        await wrapped.unlock()
+        const release = holdDecryptOf('ARMOURED(Kitchen)')
+
+        inner.external(protectedDoc('Kitchen'))
+        inner.external(protectedDoc('water the beans'))
+        await vi.advanceTimersByTimeAsync(0)
+        release()
+        await vi.advanceTimersByTimeAsync(0)
+
+        expect(wrapped.getText()).toBe(projected('water the beans'))
+    })
+
+    it('keeps the projection when an older decrypt fails after a newer one succeeded', async () => {
+        const { inner, wrapped, holdDecryptOf } = build(protectedDoc('Garden'))
+        await wrapped.unlock()
+        const release = holdDecryptOf('NOT-OURS')
+
+        inner.external(FRONTMATTER + `\`\`\`${CIPHER_FENCE_INFO}\nNOT-OURS\n\`\`\``)
+        inner.external(protectedDoc('water the beans'))
+        await vi.advanceTimersByTimeAsync(0)
+        release()
+        await vi.advanceTimersByTimeAsync(0)
+
+        expect(wrapped.isProjecting).toBe(true)
+        expect(wrapped.getText()).toBe(projected('water the beans'))
+    })
+
+    it('keeps forwarding stored changes to a listener after the projection is dropped', async () => {
+        const { inner, wrapped } = build(stored)
+        await wrapped.unlock()
+        const seen: string[] = []
+        wrapped.subscribe((t) => seen.push(t))
+        await wrapped.relock()
+
+        inner.external('# Garden')
+
+        expect(seen.at(-1)).toBe('# Garden')
+    })
+
+    it('reproject rebuilds from the stored text, not from the projection it held', async () => {
+        const { wrapped } = build(stored)
+        await wrapped.unlock()
+        replaceBody(wrapped, 'Garden')
+
+        await wrapped.reproject()
+
+        expect(wrapped.getText()).toBe(projected('water the beans'))
+        expect(wrapped.isDirty).toBe(false)
+    })
+
+    it('reproject tells listeners the new projection, never the fence beneath it', async () => {
+        const { inner, wrapped } = build(FRONTMATTER + 'water the beans')
+        const seen: string[] = []
+        wrapped.subscribe((t) => seen.push(t))
+        inner.doc.applyChange({ from: 0, to: inner.text.length, insert: stored }, 'external')
+
+        await wrapped.reproject()
+
+        expect(seen.at(-1)).toBe(projected('water the beans'))
+        expect(seen.some((t) => t.includes(CIPHER_FENCE_INFO))).toBe(false)
+    })
+
+    it('protect leaves a clean projection, with nothing to re-encrypt', () => {
+        const { wrapped } = build(FRONTMATTER + 'water the beans')
+
+        wrapped.protect('ARMOURED(water the beans)', 'water the beans')
+
+        expect(wrapped.isDirty).toBe(false)
+    })
+})
+
+describe('saving, at the edges', () => {
+    const stored = protectedDoc('water the beans')
+
+    it('is not lost when a rename lands during the same seal as an edit', async () => {
+        const { inner, wrapped, holdEncrypt } = build(stored)
+        await wrapped.unlock()
+        replaceBody(wrapped, 'Garden')
+
+        const release = holdEncrypt()
+        const relocking = wrapped.relock()
+        await Promise.resolve()
+        replaceBody(wrapped, 'Kitchen')
+        inner.external('---\ntitle: Pantry\n---\n' + fence('water the beans'))
+        release()
+        await relocking
+
+        expect(inner.text).toBe('---\ntitle: Pantry\n---\n' + fence('Kitchen'))
+    })
+
+    it('does not seal again a body that a newer stored version replaced mid-save', async () => {
+        const { inner, wrapped, advance, holdEncrypt, sealed } = build(stored)
+        await wrapped.unlock()
+        replaceBody(wrapped, 'Garden')
+        advance(PROTECTED_SETTLE_MS)
+        const release = holdEncrypt()
+        await vi.advanceTimersByTimeAsync(PROTECTED_SETTLE_MS)
+        expect(sealed).toEqual(['Garden'])
+
+        inner.external(protectedDoc('Kitchen'))
+        await vi.advanceTimersByTimeAsync(0)
+        release()
+        advance(PROTECTED_MAX_WAIT_MS)
+        await vi.advanceTimersByTimeAsync(PROTECTED_MAX_WAIT_MS)
+
+        expect(sealed).toEqual(['Garden'])
+        expect(wrapped.getText()).toBe(projected('Kitchen'))
+        expect(inner.text).toBe(protectedDoc('Kitchen'))
+        expect(vi.getTimerCount()).toBe(0)
+    })
+
+    it('keeps one save pending however many edits land', async () => {
+        const { wrapped } = build(stored)
+        await wrapped.unlock()
+
+        replaceBody(wrapped, 'Garden')
+        replaceBody(wrapped, 'Kitchen')
+
+        expect(vi.getTimerCount()).toBe(1)
+    })
+
+    it('leaves no timer behind once the body is saved', async () => {
+        const { inner, wrapped, advance } = build(stored)
+        await wrapped.unlock()
+        replaceBody(wrapped, 'Garden')
+
+        advance(PROTECTED_SETTLE_MS)
+        await vi.advanceTimersByTimeAsync(PROTECTED_SETTLE_MS)
+
+        expect(inner.text).toBe(protectedDoc('Garden'))
+        expect(vi.getTimerCount()).toBe(0)
+    })
+
+    it('clears its save timer on relock', async () => {
+        const { wrapped } = build(stored)
+        await wrapped.unlock()
+        replaceBody(wrapped, 'Garden')
+
+        await wrapped.relock()
+
+        expect(vi.getTimerCount()).toBe(0)
+    })
+
+    it('gives up after five passes that each lose to an edit, and reports it', async () => {
+        const { wrapped, sealed, errors, whileSealing } = build(stored)
+        await wrapped.unlock()
+        replaceBody(wrapped, 'Garden')
+        whileSealing(() => wrapped.applyChange({ from: FRONTMATTER.length, to: FRONTMATTER.length, insert: 'x' }))
+
+        await wrapped.commit()
+
+        expect(sealed).toHaveLength(5)
+        expect(errors).toHaveLength(1)
+        expect(wrapped.isDirty).toBe(true)
+    })
+
+    it('reports a forced commit that cannot seal, keeping the body unsaved', async () => {
+        const { inner, wrapped, lock, errors } = build(stored)
+        await wrapped.unlock()
+        replaceBody(wrapped, 'Garden')
+        lock()
+
+        await wrapped.commit()
+
+        expect(errors.map((e) => e.message)).toEqual(['locked'])
+        expect(wrapped.isDirty).toBe(true)
+        expect(inner.text).toBe(stored)
+    })
+
+    it('reports an autosave that cannot seal', async () => {
+        const { wrapped, advance, lock, errors } = build(stored)
+        await wrapped.unlock()
+        replaceBody(wrapped, 'Garden')
+        lock()
+
+        advance(PROTECTED_SETTLE_MS)
+        await vi.advanceTimersByTimeAsync(PROTECTED_SETTLE_MS)
+
+        expect(errors.map((e) => e.message)).toEqual(['locked'])
+    })
+})
+
+// The guard behind the editor's own: what an editor-origin change may do to the stored fence while
+// nothing is projected. Offsets are measured on a Protected Document whose fence follows the
+// frontmatter and ends the document.
+describe('which edits reach a locked Protected Document', () => {
+    const stored = protectedDoc('water the beans')
+    const fenceFrom = FRONTMATTER.length
+    const fenceTo = stored.length
+
+    it('allows any edit to a document that is not protected', () => {
+        expect(lockedEditAllowed('# Kitchen', { from: 0, to: 0, insert: 'Garden ' })).toBe(true)
+    })
+
+    it('refuses deleting only the start or only the end of the fence', () => {
+        expect(lockedEditAllowed(stored, { from: fenceFrom, to: fenceFrom + 3, insert: '' })).toBe(false)
+        expect(lockedEditAllowed(stored, { from: fenceTo - 3, to: fenceTo, insert: '' })).toBe(false)
+    })
+
+    it('refuses deleting part of the fence interior, even when the fence survives it', () => {
+        const inside = stored.indexOf('ARMOURED')
+        expect(lockedEditAllowed(stored, { from: inside, to: inside + 3, insert: '' })).toBe(false)
+    })
+
+    it('allows a line inserted just above or just below the fence', () => {
+        expect(lockedEditAllowed(stored, { from: fenceFrom, to: fenceFrom, insert: '\n' })).toBe(true)
+        expect(lockedEditAllowed(stored, { from: fenceTo, to: fenceTo, insert: '\n' })).toBe(true)
+    })
+
+    it('allows deleting a blank line below the fence', () => {
+        expect(lockedEditAllowed(stored + '\n', { from: fenceTo, to: fenceTo + 1, insert: '' })).toBe(true)
+    })
+
+    it('allows typing inside the frontmatter, and replacing it whole', () => {
+        const at = '---\ntitle: '.length
+        expect(lockedEditAllowed(stored, { from: at, to: at, insert: 'Garden ' })).toBe(true)
+        expect(lockedEditAllowed(stored, { from: 0, to: fenceFrom, insert: '---\ntitle: Garden\n---\n' })).toBe(true)
+    })
+})
+
+describe('an indented fence', () => {
+    // The body is clamped to the fence's column line by line, as the fence scanner does it: a
+    // line indented further keeps the extra, and blank lines around the envelope are dropped.
+    it('unarmours each line clamped to the fence column', async () => {
+        const stored = [`  \`\`\`${CIPHER_FENCE_INFO}`, '  ARMOURED(Garden', '   Kitchen', '  )', '', '  ```'].join('\n')
+        const { wrapped } = build(stored)
+
+        await wrapped.unlock()
+
+        expect(wrapped.getText()).toBe('Garden\n Kitchen\n')
     })
 })

@@ -1633,3 +1633,166 @@ describe('snapshot read-back verification and retention (ADR 0025, amended 2026-
         consumer.sync.destroy()
     })
 })
+
+describe('answers from the relay that change no content', () => {
+    /** An envelope carrying `text` as a fresh peer's first edit, sealed under `keyring`. */
+    async function envelopeOf(keyring: ReturnType<typeof createGraphKeyring>, text: string): Promise<string> {
+        const producer = harness(keyring)
+        await producer.sync.ready()
+        producer.sync.doc.getText('content').insert(0, text)
+        await vi.waitFor(() => expect(producer.sent.some((message) => message.type === 'append')).toBe(true))
+        producer.sync.destroy()
+        const append = producer.sent.find((message) => message.type === 'append')
+        if (append?.type !== 'append') throw new Error('expected append')
+        return append.envelope
+    }
+
+    /** A synced document whose one local edit, `text`, is in flight and not yet acknowledged. */
+    async function withOneEditInFlight(text = 'local') {
+        const h = harness()
+        await h.sync.ready()
+        h.sync.doc.getText('content').insert(0, text)
+        await h.sync.flush()
+        const append = h.sent.find((message) => message.type === 'append')
+        if (append?.type !== 'append') throw new Error('expected append')
+        return { ...h, append }
+    }
+
+    it('ignores an ack for an operation other than the one in flight', async () => {
+        const { sync, sent } = await withOneEditInFlight()
+        const before = sent.length
+
+        await sync.receive({ type: 'ack', outboxId: 'not-ours', generation: 1, state: 'active', seq: 1 })
+
+        expect(sent.slice(before).some((message) => message.type === 'ack_confirm')).toBe(false)
+        expect(sync.unsentOperations()).toBe(1)
+        sync.destroy()
+    })
+
+    it('confirms nothing when the acknowledgement could not be stored', async () => {
+        const cache = memoryCache()
+        cache.commitAcknowledgement = vi.fn(async () => false)
+        const { sync, sent } = harness(undefined, cache)
+        await sync.ready()
+        sync.doc.getText('content').insert(0, 'local')
+        await sync.flush()
+        const append = sent.find((message) => message.type === 'append')
+        if (append?.type !== 'append') throw new Error('expected append')
+
+        await sync.receive({ type: 'ack', outboxId: append.outboxId, generation: 1, state: 'active', seq: 1 })
+
+        expect(sent.some((message) => message.type === 'ack_confirm')).toBe(false)
+        expect(sync.unsentOperations()).toBe(1)
+        sync.destroy()
+    })
+
+    it('keeps its watermark and health for an ack behind a sequence it already holds', async () => {
+        const keyring = createGraphKeyring('g1')
+        const { sync, sent, append } = await (async () => {
+            const h = harness(keyring)
+            await h.sync.ready()
+            h.sync.doc.getText('content').insert(0, 'local')
+            await h.sync.flush()
+            const found = h.sent.find((message) => message.type === 'append')
+            if (found?.type !== 'append') throw new Error('expected append')
+            return { ...h, append: found }
+        })()
+        // A peer's update reached this device first at seq 1 and 2; the relay then answers the
+        // local append with the seq it was stored at before them.
+        const peer = await envelopeOf(keyring, 'peer')
+        await sync.receive({ type: 'update', docId: 'd1', generation: 1, seq: 1, epochId: 1, envelope: peer })
+        await sync.receive({ type: 'update', docId: 'd1', generation: 1, seq: 2, epochId: 1, envelope: peer })
+
+        await sync.receive({ type: 'ack', outboxId: append.outboxId, generation: 1, state: 'active', seq: 1 })
+
+        expect(sync.health()).toBe('healthy')
+        sync.resync()
+        expect(sent.findLast((message) => message.type === 'catchup')).toMatchObject({ afterSeq: 2 })
+        sync.destroy()
+    })
+
+    it('ignores a catch-up page from an older generation', async () => {
+        const keyring = createGraphKeyring('g1')
+        const { sync } = harness(keyring)
+        await sync.ready()
+        await sync.staleGeneration(3)
+        const before = sync.generation()
+
+        await sync.receive({
+            type: 'catchup_batch', docId: 'd1', generation: 1, state: 'active', throughSeq: 1, hasMore: false,
+            updates: [{ seq: 1, epochId: 1, envelope: await envelopeOf(keyring, 'old generation') }],
+        })
+
+        expect(sync.doc.getText('content').toString()).not.toContain('old generation')
+        expect(sync.generation()).toBe(before)
+        sync.destroy()
+    })
+
+    it('empties the document and its outbox when catch-up says the generation was deleted, and stays deleted', async () => {
+        const cache = memoryCache()
+        const purge = vi.spyOn(cache, 'purge')
+        const { sync, sent } = harness(undefined, cache)
+        await sync.ready()
+        sync.doc.getText('content').insert(0, 'about to go')
+        await sync.flush()
+
+        await sync.receive({ type: 'catchup_batch', docId: 'd1', generation: 1, state: 'deleted', throughSeq: 0, hasMore: false, updates: [] })
+        await sync.caughtUp()
+
+        expect(sync.doc.getText('content').toString()).toBe('')
+        expect(sync.lifecycle()).toBe('deleted')
+        expect(sync.unsentOperations()).toBe(0)
+        expect(purge).toHaveBeenCalled()
+        // The emptied document is the shared baseline: a reconnect sends nothing back.
+        sent.splice(0)
+        sync.resync()
+        await new Promise((resolve) => setTimeout(resolve, 20))
+        expect(sent.some((message) => message.type === 'append' || message.type === 'resurrect')).toBe(false)
+        sync.destroy()
+    })
+
+    it('keeps what was written after a deletion this device already holds, when catch-up repeats it', async () => {
+        const { sync, sent } = harness()
+        await sync.ready()
+        await sync.delete()
+        const deletion = sent.find((message) => message.type === 'delete')
+        if (deletion?.type !== 'delete') throw new Error('expected delete')
+        await sync.receive({ type: 'ack', outboxId: deletion.outboxId, generation: 2, state: 'deleted', seq: 0 })
+        sync.doc.getText('content').insert(0, 'written after')
+
+        await sync.receive({ type: 'catchup_batch', docId: 'd1', generation: 2, state: 'deleted', throughSeq: 0, hasMore: false, updates: [] })
+
+        expect(sync.doc.getText('content').toString()).toBe('written after')
+        sync.destroy()
+    })
+
+    it('replaces an older generation’s content with the newer generation the relay holds', async () => {
+        const keyring = createGraphKeyring('g1')
+        const { sync } = harness(keyring)
+        await sync.ready()
+        await sync.receive({ type: 'catchup_batch', docId: 'd1', generation: 1, state: 'active', throughSeq: 1, hasMore: false, updates: [{ seq: 1, epochId: 1, envelope: await envelopeOf(keyring, 'first life') }] })
+        expect(sync.doc.getText('content').toString()).toBe('first life')
+
+        await sync.receive({ type: 'catchup_batch', docId: 'd1', generation: 2, state: 'active', throughSeq: 1, hasMore: false, updates: [{ seq: 1, epochId: 1, envelope: await envelopeOf(keyring, 'second life') }] })
+
+        expect(sync.doc.getText('content').toString()).toBe('second life')
+        expect(sync.generation()).toBe(2)
+        sync.destroy()
+    })
+
+    it('tells the cache whether a relay answer changed what the search index reads', async () => {
+        const keyring = createGraphKeyring('g1')
+        const cache = memoryCache()
+        const save = vi.spyOn(cache, 'save')
+        const { sync } = harness(keyring, cache)
+        await sync.ready()
+        const envelope = await envelopeOf(keyring, 'indexed words')
+
+        await sync.receive({ type: 'update', docId: 'd1', generation: 1, seq: 1, epochId: 1, envelope })
+        expect(save.mock.calls.at(-1)?.[1]).toMatchObject({ indexContentChanged: true })
+
+        await sync.receive({ type: 'catchup_batch', docId: 'd1', generation: 1, state: 'active', throughSeq: 1, hasMore: false, updates: [] })
+        expect(save.mock.calls.at(-1)?.[1]).toMatchObject({ indexContentChanged: false })
+        sync.destroy()
+    })
+})

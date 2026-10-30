@@ -2859,3 +2859,250 @@ describe('graph-sync follows a new Graph Key epoch (ADR 0127)', () => {
         s.cache.dispose()
     })
 })
+
+// The root document's per-member lists (ADR 0159), driven on one client and read back from the
+// Yjs types themselves: which items a change keeps is what lets a concurrent change on another
+// device survive the merge.
+describe('graph-sync member lists, item by item', () => {
+    type Graph = Awaited<ReturnType<typeof client>>
+
+    /** The favourites `change` deletes from one member's array, sorted. */
+    function deletedBy(graph: Graph, change: () => void, memberKey = 'm1'): string[] {
+        const array = graph.docSync(ROOT).doc.getArray<string>(`favourites:${memberKey}`)
+        const deleted: string[] = []
+        const listener = (event: Y.YArrayEvent<string>) => {
+            for (const item of event.changes.deleted) deleted.push(...(item.content.getContent() as string[]))
+        }
+        array.observe(listener)
+        change()
+        array.unobserve(listener)
+        return deleted.sort()
+    }
+
+    it('a named move deletes only the entry it names, whatever its case and spacing', async () => {
+        const a = await client(createLoopbackRelay())
+        const favourites = a.favourites('m1')
+        favourites.replace(['Garden', 'Kitchen', 'Pantry'])
+
+        // Without the name the smallest change would move Garden here, and Kitchen below.
+        expect(deletedBy(a, () => favourites.replace(['Kitchen', 'Garden', 'Pantry'], { moved: ' kitchen ' }))).toEqual(['Kitchen'])
+        expect(favourites.list()).toEqual(['Kitchen', 'Garden', 'Pantry'])
+        expect(deletedBy(a, () => favourites.replace(['Kitchen', 'Pantry', 'Garden'], { moved: 'Pantry' }))).toEqual(['Pantry'])
+        expect(favourites.list()).toEqual(['Kitchen', 'Pantry', 'Garden'])
+        a.dispose()
+    })
+
+    it('a named move that did not move writes nothing', async () => {
+        const a = await client(createLoopbackRelay())
+        const favourites = a.favourites('m1')
+        favourites.replace(['Garden', 'Kitchen', 'Pantry'])
+
+        expect(deletedBy(a, () => favourites.replace(['Garden', 'Kitchen', 'Pantry'], { moved: 'Kitchen' }))).toEqual([])
+        a.dispose()
+    })
+
+    it('falls back to the smallest change when the named entry is not the only difference', async () => {
+        const a = await client(createLoopbackRelay())
+        const favourites = a.favourites('m1')
+        favourites.replace(['Garden', 'Kitchen', 'Pantry'])
+
+        // Moved and another removed.
+        favourites.replace(['Kitchen', 'Garden'], { moved: 'Kitchen' })
+        expect(a.docSync(ROOT).doc.getArray('favourites:m1').toArray()).toEqual(['Kitchen', 'Garden'])
+        // Moved and another replaced: the same length, so only the entries tell them apart.
+        favourites.replace(['Garden', 'Kitchen', 'Pantry'])
+        favourites.replace(['Kitchen', 'Garden', 'Cellar'], { moved: 'Kitchen' })
+        expect(a.docSync(ROOT).doc.getArray('favourites:m1').toArray()).toEqual(['Kitchen', 'Garden', 'Cellar'])
+        favourites.replace(['Garden', 'Kitchen', 'Cellar'])
+        // Named, but new to the list: an add, not a move.
+        favourites.replace(['Garden', 'Kitchen', 'Cellar', 'Pantry'], { moved: 'Pantry' })
+        expect(a.docSync(ROOT).doc.getArray('favourites:m1').toArray()).toEqual(['Garden', 'Kitchen', 'Cellar', 'Pantry'])
+        a.dispose()
+    })
+
+    it('without a name, keeps the longest run of entries in order, preferring those that stay in place', async () => {
+        const a = await client(createLoopbackRelay())
+        const favourites = a.favourites('m1')
+        const from = (list: string[]) => favourites.replace(list)
+
+        from(['Garden', 'Kitchen', 'Pantry'])
+        expect(deletedBy(a, () => favourites.replace(['Pantry', 'Kitchen', 'Garden']))).toEqual(['Garden', 'Pantry'])
+        from(['Garden', 'Kitchen', 'Pantry', 'Cellar'])
+        expect(deletedBy(a, () => favourites.replace(['Cellar', 'Garden', 'Kitchen', 'Pantry']))).toEqual(['Cellar'])
+        from(['Garden', 'Kitchen', 'Pantry', 'Cellar'])
+        expect(deletedBy(a, () => favourites.replace(['Kitchen', 'Pantry', 'Cellar', 'Garden']))).toEqual(['Garden'])
+        from(['Garden', 'Kitchen', 'Pantry'])
+        expect(deletedBy(a, () => favourites.replace(['Garden', 'Pantry']))).toEqual(['Kitchen'])
+        expect(deletedBy(a, () => favourites.replace(['Garden', 'Pantry', 'Cellar']))).toEqual([])
+        expect(favourites.list()).toEqual(['Garden', 'Pantry', 'Cellar'])
+        a.dispose()
+    })
+
+    it('seeding and following the shared list add only what the list lacks, case-insensitively', async () => {
+        const a = await client(createLoopbackRelay())
+        const favourites = a.favourites('m1')
+        favourites.replace(['garden'])
+
+        favourites.seedOnce(['Garden', 'Kitchen'])
+        expect(a.docSync(ROOT).doc.getArray('favourites:m1').toArray()).toEqual(['garden', 'Kitchen'])
+
+        // The shared list changed in its second entry only: that one is new.
+        expect(favourites.followShared(['Garden', 'Pantry'])).toBe(true)
+        expect(a.docSync(ROOT).doc.getArray('favourites:m1').toArray()).toEqual(['garden', 'Kitchen', 'Pantry'])
+        a.dispose()
+    })
+
+    it('a bookmark put without an optional field deletes that field from the stored bookmark', async () => {
+        const a = await client(createLoopbackRelay())
+        const bookmarks = a.bookmarks('m1')
+        const garden = { id: 'bm-1', concept: 'Garden', line: 2, text: 'water the beans', createdAt: 1 }
+        bookmarks.apply({ put: [{ ...garden, before: 'dig the bed', after: 'pick the peas', label: 'beans' }], remove: [] })
+
+        bookmarks.apply({ put: [garden], remove: [] })
+
+        const stored = a.docSync(ROOT).doc.getMap<Y.Map<unknown>>('bookmarks:m1').get('bm-1')!
+        expect([...stored.keys()].sort()).toEqual(['concept', 'createdAt', 'id', 'line', 'text'])
+        a.dispose()
+    })
+
+    it('clearDepartedMembers leaves alone a type whose name is not a member list', async () => {
+        const a = await client(createLoopbackRelay())
+        const root = a.docSync(ROOT).doc
+        for (const name of ['favourites:', ':m2', 'notes:m2', 'favourites:m2']) root.getArray<string>(name).push(['Garden'])
+
+        expect(a.clearDepartedMembers(['m1'])).toEqual(['favourites:m2'])
+        for (const name of ['favourites:', ':m2', 'notes:m2']) expect(root.getArray(name).toArray()).toEqual(['Garden'])
+        a.dispose()
+    })
+
+    it('renameConceptInMemberLists matches names trimmed and in any case, skips blanks, and keeps the first move of a name', async () => {
+        const a = await client(createLoopbackRelay())
+        a.favourites('m1').replace(['Garden', 'Kitchen'])
+        a.docSync(ROOT).doc.getArray<unknown>('favourites:m1').push([42])
+
+        const changed = a.renameConceptInMemberLists([
+            { from: '', to: 'Cellar' },
+            { from: 'Kitchen', to: ' ' },
+            { from: ' GARDEN ', to: ' Allotment ' },
+            { from: 'garden', to: 'Yard' },
+        ])
+
+        expect(changed).toEqual(['favourites:m1'])
+        expect(a.favourites('m1').list()).toEqual(['Allotment', 'Kitchen'])
+        a.dispose()
+    })
+
+    it('renameConceptInMemberLists reports nothing where the name is already the new one', async () => {
+        const a = await client(createLoopbackRelay())
+        a.setMetaSettings({ favourites: ['Garden'] })
+        a.favourites('m1').seedOnce(['Garden'])
+        a.bookmarks('m1').apply({ put: [{ id: 'bm-1', concept: 'Garden', line: 0, text: 'water the beans', createdAt: 1 }], remove: [] })
+        // A bookmark stored as a plain value by an older Client.
+        a.docSync(ROOT).doc.getMap<unknown>('bookmarks:m2').set('bm-2', { id: 'bm-2', concept: 'Garden', line: 0, text: 'pick the peas', createdAt: 2 })
+
+        expect(a.renameConceptInMemberLists([{ from: 'garden', to: 'Garden' }])).toEqual([])
+        expect(a.renameConceptInMemberLists([{ from: 'Cellar', to: 'Pantry' }])).toEqual([])
+        a.dispose()
+    })
+
+    it('renameConceptInMemberLists moves a bookmark stored as a plain value from an older Client', async () => {
+        const a = await client(createLoopbackRelay())
+        const map = a.docSync(ROOT).doc.getMap<unknown>('bookmarks:m1')
+        map.set('bm-1', { id: 'bm-1', concept: 'Garden', line: 0, text: 'water the beans', createdAt: 1 })
+        map.set('bm-2', { id: 'bm-2', concept: 'Allotment', line: 0, text: 'pick the peas', createdAt: 2 })
+        map.set('bm-3', 'junk')
+
+        expect(a.renameConceptInMemberLists([{ from: 'Garden', to: 'Allotment' }])).toEqual(['bookmarks:m1'])
+        expect(a.bookmarks('m1').list().map((bookmark) => bookmark.concept)).toEqual(['Allotment', 'Allotment'])
+        expect(map.get('bm-1')).toBeInstanceOf(Y.Map)
+        a.dispose()
+    })
+
+    it('renameConceptInMemberLists copes with no settings and flags without a record of the shared list', async () => {
+        const a = await client(createLoopbackRelay())
+        a.favourites('m1').replace(['Garden'])
+        a.docSync(ROOT).doc.getMap('memberFlags:m1').set('favouritesSeeded', true)
+
+        expect(a.renameConceptInMemberLists([{ from: 'Garden', to: 'Allotment' }])).toEqual(['favourites:m1'])
+        a.dispose()
+    })
+
+    it('bookmarkedConcepts lists each page once, trimmed in its first spelling, and skips what is not a page', async () => {
+        const a = await client(createLoopbackRelay())
+        a.bookmarks('m1').apply({
+            put: [
+                { id: 'bm-1', concept: ' Garden ', line: 0, text: 'water the beans', createdAt: 1 },
+                { id: 'bm-2', concept: 'Kitchen', line: 0, text: 'buy flour', createdAt: 2 },
+            ],
+            remove: [],
+        })
+        a.bookmarks('m2').apply({ put: [{ id: 'bm-3', concept: 'GARDEN', line: 1, text: 'pick the peas', createdAt: 3 }], remove: [] })
+        const legacy = a.docSync(ROOT).doc.getMap<unknown>('bookmarks:m3')
+        legacy.set('bm-4', { id: 'bm-4', concept: 42 })
+        legacy.set('bm-5', { id: 'bm-5', concept: '  ' })
+
+        expect(a.bookmarkedConcepts()).toEqual(['Garden', 'Kitchen'])
+        a.dispose()
+    })
+
+    it('removeBookmarksOn matches names trimmed and in any case, and ignores blank names and odd values', async () => {
+        const a = await client(createLoopbackRelay())
+        a.bookmarks('m1').apply({
+            put: [
+                { id: 'bm-1', concept: 'Garden', line: 0, text: 'water the beans', createdAt: 1 },
+                { id: 'bm-2', concept: 'Kitchen', line: 0, text: 'buy flour', createdAt: 2 },
+            ],
+            remove: [],
+        })
+        const legacy = a.docSync(ROOT).doc.getMap<unknown>('bookmarks:m1')
+        legacy.set('bm-3', { id: 'bm-3', concept: 42 })
+        legacy.set('bm-4', { id: 'bm-4', concept: '' })
+
+        expect(a.removeBookmarksOn(['', ' '])).toEqual([])
+        expect(a.removeBookmarksOn([' GARDEN '])).toEqual(['bookmarks:m1'])
+        expect([...legacy.keys()].sort()).toEqual(['bm-2', 'bm-3', 'bm-4'])
+        a.dispose()
+    })
+
+    it('stops calling a listener once it unsubscribes', async () => {
+        const a = await client(createLoopbackRelay())
+        const heard: string[] = []
+        const stops = [
+            a.favourites('m1').observe(() => heard.push('favourites')),
+            a.spellingDictionary().observe(() => heard.push('dictionary')),
+            a.bookmarks('m1').observe(() => heard.push('bookmarks')),
+            a.themes().observe(() => heard.push('themes')),
+        ]
+        for (const stop of stops) stop()
+
+        a.favourites('m1').seedOnce([])
+        a.spellingDictionary().add('beans')
+        a.bookmarks('m1').apply({ put: [{ id: 'bm-1', concept: 'Garden', line: 0, text: 'water the beans', createdAt: 1 }], remove: [] })
+        a.themes().put({ id: 'garden', name: 'Garden', files: {} })
+
+        expect(heard).toEqual([])
+        a.dispose()
+    })
+
+    it('themes: lists by id, writes only theme files, and removes one file', async () => {
+        const a = await client(createLoopbackRelay())
+        const themes = a.themes()
+        themes.put({ id: 'kitchen', name: 'Kitchen', files: { 'theme.json': '{}' }, updatedAt: '2026-01-02T03:04:05.000Z' })
+        themes.put({ id: 'garden', name: 'Garden', files: { 'theme.json': '{}', '../escape.css': 'x', 'assets/site.css': 'body {}' } })
+        themes.putFile('garden', '/root.css', 'x')
+
+        expect(themes.list().map((theme) => theme.id)).toEqual(['garden', 'kitchen'])
+        expect(Object.keys(themes.get('garden')!.files).sort()).toEqual(['assets/site.css', 'theme.json'])
+
+        themes.removeFile('garden', 'assets/site.css')
+        themes.removeFile('cellar', 'theme.json')
+        expect(Object.keys(themes.get('garden')!.files)).toEqual(['theme.json'])
+        expect(themes.get('cellar')).toBeNull()
+        expect(themes.get('kitchen')!.updatedAt).toBe('2026-01-02T03:04:05.000Z')
+
+        // A put is the whole theme: a file it no longer names goes.
+        themes.put({ id: 'garden', name: 'Garden', files: { 'assets/site.css': 'body {}' } })
+        expect(Object.keys(themes.get('garden')!.files)).toEqual(['assets/site.css'])
+        a.dispose()
+    })
+})

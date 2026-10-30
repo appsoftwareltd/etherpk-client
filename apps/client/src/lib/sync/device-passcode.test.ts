@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { sha256, toBase64Url, utf8, type ProtectionKdfParams } from '$lib/crypto'
 import {
     DEVICE_PASSCODE_RECORD_KEY,
@@ -282,4 +282,170 @@ describe('the Device Passcode (ADR 0129)', () => {
         expect(reloaded.reveal('secret:a', storage.getItem('secret:a'))).toBe('alpha')
         expect(toBase64Url(utf8('alpha'))).not.toBe(storage.getItem('secret:a'))
     }, 30_000)
+})
+
+describe('the Device Passcode’s guards and the messages between tabs (ADR 0129)', () => {
+    it('reads a record outside the key-stretching bounds as unreadable, without stretching anything', async () => {
+        const storage = memoryStorage()
+        await tab(storage, bus()).set('1234')
+        const record = JSON.parse(storage.getItem(DEVICE_PASSCODE_RECORD_KEY)!)
+        // A record that would make the stretch take gigabytes: tampered with, or not ours.
+        storage.setItem(DEVICE_PASSCODE_RECORD_KEY, JSON.stringify({ ...record, kdf: { ...record.kdf, m: 2 ** 30 } }))
+        let stretched = 0
+        const reloaded = createDevicePasscode({
+            storage: () => storage,
+            channel: bus(),
+            stretch: async (passcode, kdf) => { stretched += 1; return quickStretch(passcode, kdf) },
+        })
+
+        await expect(reloaded.unlock('1234')).rejects.toBeInstanceOf(WrongDevicePasscodeError)
+        expect(stretched).toBe(0)
+        expect(reloaded.state()).toBe('locked')
+    })
+
+    it.each([
+        ['not JSON', 'not json'],
+        ['another version', JSON.stringify({ v: 2, kdf: {}, check: 'x' })],
+        ['no key-stretching settings', JSON.stringify({ v: 1, check: 'x' })],
+        ['no check value', JSON.stringify({ v: 1, kdf: {} })],
+    ])('treats a record that is %s as no passcode', (_label, raw) => {
+        const storage = memoryStorage()
+        storage.setItem(DEVICE_PASSCODE_RECORD_KEY, raw)
+
+        expect(tab(storage, bus()).state()).toBe('off')
+    })
+
+    it('refuses to set a second passcode, or to change one that is not there', async () => {
+        const storage = memoryStorage()
+        const device = tab(storage, bus())
+
+        await expect(device.change('1234', '5678')).rejects.toThrow('This device has no passcode to change')
+        await device.set('1234')
+        await expect(device.set('5678')).rejects.toThrow('This device already has a passcode')
+        await device.unlock('1234')
+    })
+
+    it('unlocks the other locked tabs when one tab unlocks, and they read the secrets', async () => {
+        const storage = memoryStorage()
+        storage.setItem('secret:a', 'alpha')
+        await tab(storage, bus()).set('1234')
+        const channels = bus()
+        const [first, second] = [tab(storage, channels), tab(storage, channels)]
+        const heard: string[] = []
+        second.onChange((state) => heard.push(state))
+
+        await first.unlock('1234')
+        await vi.waitFor(() => expect(second.state()).toBe('unlocked'))
+
+        expect(second.reveal('secret:a', storage.getItem('secret:a'))).toBe('alpha')
+        expect(heard).toContain('unlocked')
+    })
+
+    it('ignores another tab’s unlock when its key does not open this device’s record', async () => {
+        const storage = memoryStorage()
+        await tab(storage, bus()).set('1234')
+        const channels = bus()
+        const impostor = createDevicePasscode({ storage: () => memoryStorage(), channel: channels, stretch: quickStretch })
+        const victim = tab(storage, channels)
+        victim.onChange(() => {})
+
+        await impostor.set('9999')
+        await settle()
+
+        expect(victim.state()).toBe('locked')
+    })
+
+    it('stops telling a listener of changes once it unsubscribes', async () => {
+        const storage = memoryStorage()
+        const device = tab(storage, bus())
+        const heard: string[] = []
+        const stop = device.onChange((state) => heard.push(state))
+
+        await device.set('1234')
+        stop()
+        device.lock()
+
+        expect(heard).toEqual(['unlocked'])
+    })
+
+    it('stores a secret written while locked as it is, when the passcode is turned off', async () => {
+        const storage = memoryStorage()
+        await tab(storage, bus()).set('1234')
+        const reloaded = tab(storage, bus())
+        await reloaded.store('secret:new', 'gamma', (stored) => storage.setItem('secret:new', stored))
+
+        await reloaded.turnOff('1234')
+
+        expect(storage.getItem('secret:new')).toBe('gamma')
+        expect(reloaded.state()).toBe('off')
+    })
+
+    it('keeps a secret written while locked over the older copy in storage when it unlocks', async () => {
+        const storage = memoryStorage()
+        storage.setItem('secret:a', 'old')
+        await tab(storage, bus()).set('1234')
+        const reloaded = tab(storage, bus())
+        await reloaded.store('secret:a', 'new', (stored) => storage.setItem('secret:a', stored))
+
+        await reloaded.unlock('1234')
+
+        expect(reloaded.reveal('secret:a', storage.getItem('secret:a'))).toBe('new')
+        // And it is the new value that was stored, sealed.
+        const fresh = tab(storage, bus())
+        await fresh.unlock('1234')
+        expect(fresh.reveal('secret:a', storage.getItem('secret:a'))).toBe('new')
+    })
+
+    it('re-seals on a change what a crash left plain, and leaves out what no key opens', async () => {
+        const storage = memoryStorage()
+        storage.setItem('secret:a', 'alpha')
+        const device = tab(storage, bus())
+        await device.set('1234')
+        storage.setItem('secret:plain', 'left by a crash')
+        storage.setItem('secret:lost', 'pc1:AAAA')
+
+        await device.change('1234', '5678')
+
+        const reloaded = tab(storage, bus())
+        await reloaded.unlock('5678')
+        expect(storage.getItem('secret:plain')).toMatch(/^pc1:/)
+        expect(reloaded.reveal('secret:plain', storage.getItem('secret:plain'))).toBe('left by a crash')
+        expect(reloaded.reveal('secret:a', storage.getItem('secret:a'))).toBe('alpha')
+        expect(storage.getItem('secret:lost')).toBe('pc1:AAAA')
+    })
+
+    it('leaves what no key opens, and what a crash left plain, as they are when the passcode goes', async () => {
+        const storage = memoryStorage()
+        const device = tab(storage, bus())
+        await device.set('1234')
+        storage.setItem('secret:lost', 'pc1:AAAA')
+        storage.setItem('secret:plain', 'left by a crash')
+
+        await device.turnOff('1234')
+
+        expect(storage.getItem('secret:lost')).toBe('pc1:AAAA')
+        expect(storage.getItem('secret:plain')).toBe('left by a crash')
+    })
+
+    it('removes only the sealed secrets when the passcode is forgotten', async () => {
+        const storage = memoryStorage()
+        storage.setItem('secret:a', 'alpha')
+        const device = tab(storage, bus())
+        await device.set('1234')
+        storage.setItem('secret:plain', 'left by a crash')
+
+        device.forgotten()
+
+        expect(storage.getItem('secret:a')).toBeNull()
+        expect(storage.getItem('secret:plain')).toBe('left by a crash')
+    })
+
+    it('answers at once that a tab with no passcode, or already unlocked, is open', async () => {
+        const storage = memoryStorage()
+        const device = tab(storage, bus())
+        await expect(device.unlockFromOtherTabs()).resolves.toBe(true)
+
+        await device.set('1234')
+        await expect(device.unlockFromOtherTabs()).resolves.toBe(true)
+    })
 })

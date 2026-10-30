@@ -514,10 +514,17 @@ export class ProtectedEditorDocument implements EditorDocument {
         this.#saveTimer = undefined
     }
 
-    /** Come back once the body may have settled; the pass itself decides whether it has. */
+    /**
+     * Come back once the body may have settled, or at the cap, whichever is sooner; the pass
+     * itself decides whether it has. Each edit moves the settle time on but never the cap, so
+     * continuous typing still reaches the store.
+     */
     #schedule(): void {
         if (this.#saveTimer !== undefined) clearTimeout(this.#saveTimer)
-        this.#saveTimer = setTimeout(() => void this.#save(), PROTECTED_SETTLE_MS)
+        const now = this.#now()
+        const settleAt = (this.#lastDirtyAt ?? now) + PROTECTED_SETTLE_MS
+        const capAt = this.#firstDirtyAt === undefined ? settleAt : this.#firstDirtyAt + PROTECTED_MAX_WAIT_MS
+        this.#saveTimer = setTimeout(() => void this.#save(), Math.max(0, Math.min(settleAt, capAt) - now))
     }
 
     async #save(): Promise<void> {

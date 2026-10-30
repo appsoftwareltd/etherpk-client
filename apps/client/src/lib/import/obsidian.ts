@@ -125,19 +125,92 @@ export async function convertObsidian(files: SourceFile[], control?: ImportContr
     }
 
     // ---- Identity: journals by date, pages flattened with scoped-collision handling.
-    const notes: ObsidianNote[] = []
-    interface PendingPage {
-        stem: string
-        dir: string
-        segments: string[]
-        body: string
-        frontmatter: Record<string, unknown>
-        keptBlock?: string
-        aliases: string[]
-        pathKey: string
-    }
-    const pendingPages: PendingPage[] = []
+    const { notes, pendingPages } = await readNotes(mdFiles, dailyNotes, report, control)
 
+    // Pages flatten: a colliding name takes its nearest distinguishing folders as a scope chain.
+    const taken: TakenNames = {
+        concepts: new Set(notes.map((n) => n.concept.toLowerCase())),
+        fileNames: new Set(notes.map((n) => n.fileName.toLowerCase())),
+    }
+    for (const { page, concept, fileName } of placeFolderPages(pendingPages, taken, report)) {
+        notes.push({
+            kind: 'page',
+            concept,
+            fileName,
+            pathKey: page.pathKey,
+            stemKey: page.stem.toLowerCase(),
+            dir: page.dir,
+            body: page.body,
+            frontmatter: page.frontmatter,
+            keptBlock: page.keptBlock,
+            aliases: page.aliases,
+        })
+    }
+
+    // ---- Link resolution.
+    const links = noteLinks(notes, assetPlan, report)
+    const { resolveNote } = links
+
+    // ---- Templates. Every page in the core Templates plugin's folder is a Template (ADR 0144), and
+    // so is the note the Daily notes plugin starts each day from, which Obsidian fills in the same way.
+    const { templateNotes, dailyTemplate } = templatePages(notes, templatesConfig, dailyNotes, resolveNote)
+    // Obsidian's `{{date}}` and `{{time}}` used these formats. EtherPK's always use its own, and a
+    // Template that links a day as `[[{{date}}]]` needs the ISO form to reach the journal, so the
+    // variables are left alone and the difference is reported.
+    reportTemplateFormats(templatesConfig, report)
+
+    // ---- Body conversion.
+    const convertBody = (note: ObsidianNote, body: string) => convertNoteBody(note, body, links, assetPlan, report)
+
+    // A `for` loop rather than `.map`, so the pass can yield: it reported per document but
+    // never released the thread, so the toast froze until the last tick.
+    let converted = 0
+    const documents: ConvertedDocument[] = []
+    for (const note of notes) {
+        await breathe(control)
+        onProgress?.({ label: 'Converting documents', done: ++converted, total: notes.length })
+        documents.push(convertNote(note, convertBody, templateNotes, report))
+    }
+
+    for (const asset of assetPlan.assets.filter((a) => a.unreferenced)) {
+        report.push({
+            category: 'unreferenced',
+            detail: `Asset "${asset.fileName}" is referenced by no document (imported anyway)`,
+        })
+    }
+
+    // The daily notes template becomes the Journal Template (ADR 0145), carried in Graph Settings
+    // as an EtherPK source's settings are. A template that is not a Template here cannot be one.
+    const settings = journalTemplateSettings(dailyNotes, dailyTemplate, templateNotes, report)
+
+    return { documents, assets: assetPlan.assets, ...(settings ? { settings } : {}), report }
+}
+
+/** The Import Report's line for the Moment tokens a Template's formats use that EtherPK does not fill in. */
+interface PendingPage {
+    stem: string
+    dir: string
+    segments: string[]
+    body: string
+    frontmatter: Record<string, unknown>
+    keptBlock?: string
+    aliases: string[]
+    pathKey: string
+}
+
+/**
+ * Read every note. A note named for a day, in the daily notes folder when there is one, is that
+ * day's journal; the rest wait to be placed as pages.
+ */
+async function readNotes(
+    mdFiles: SourceFile[],
+    dailyNotes: DailyNotesConfig | null,
+    report: ReportEntry[],
+    control: ImportControl | undefined,
+): Promise<{ notes: ObsidianNote[]; pendingPages: PendingPage[] }> {
+    const onProgress = control?.onProgress
+    const notes: ObsidianNote[] = []
+    const pendingPages: PendingPage[] = []
     let read = 0
     for (const file of mdFiles) {
         // The long, I/O-bound opening stretch: it awaited but reported nothing.
@@ -179,28 +252,11 @@ export async function convertObsidian(files: SourceFile[], control?: ImportContr
         }
         pendingPages.push({ stem, dir, segments: dir === '' ? [] : dir.split('/'), body: fm.body, frontmatter: fm.data, keptBlock, aliases, pathKey })
     }
+    return { notes, pendingPages }
+}
 
-    // Pages flatten: a colliding name takes its nearest distinguishing folders as a scope chain.
-    const taken: TakenNames = {
-        concepts: new Set(notes.map((n) => n.concept.toLowerCase())),
-        fileNames: new Set(notes.map((n) => n.fileName.toLowerCase())),
-    }
-    for (const { page, concept, fileName } of placeFolderPages(pendingPages, taken, report)) {
-        notes.push({
-            kind: 'page',
-            concept,
-            fileName,
-            pathKey: page.pathKey,
-            stemKey: page.stem.toLowerCase(),
-            dir: page.dir,
-            body: page.body,
-            frontmatter: page.frontmatter,
-            keptBlock: page.keptBlock,
-            aliases: page.aliases,
-        })
-    }
-
-    // ---- Link resolution.
+/** How a note's links find their targets: notes by path or name, assets by name or path. */
+function noteLinks(notes: ObsidianNote[], assetPlan: AssetPlan, report: ReportEntry[]) {
     const byPath = new Map(notes.map((n) => [n.pathKey, n]))
     const byStemKey = new Map<string, ObsidianNote[]>()
     for (const note of notes) {
@@ -250,9 +306,222 @@ export async function convertObsidian(files: SourceFile[], control?: ImportContr
         })
         return `${label} ([[${concept}]])`
     }
+    return { resolveNote, resolveAssetByName, resolveAssetByPath, linkWithLabel }
+}
 
-    // ---- Templates. Every page in the core Templates plugin's folder is a Template (ADR 0144), and
-    // so is the note the Daily notes plugin starts each day from, which Obsidian fills in the same way.
+type NoteLinks = ReturnType<typeof noteLinks>
+type AssetPlan = Awaited<ReturnType<typeof planAssets>>
+
+/**
+ * Obsidian's `{{date}}` and `{{time}}` used the formats the Templates settings name. EtherPK's always use
+ * its own, so a format that differs is reported with the variable that keeps it.
+ */
+function reportTemplateFormats(templatesConfig: TemplatesConfig | null, report: ReportEntry[]): void {
+    if (templatesConfig?.dateFormat && templatesConfig.dateFormat !== DEFAULT_DATE_FORMAT) {
+        report.push({
+            category: 'degradation',
+            detail: `.obsidian/templates.json sets the date format to "${templatesConfig.dateFormat}". In EtherPK, \`{{date}}\` always gives YYYY-MM-DD. To keep the old form, write \`{{date:${templatesConfig.dateFormat}}}\` in a Template.`,
+        })
+    }
+    if (templatesConfig?.timeFormat && templatesConfig.timeFormat !== DEFAULT_TIME_FORMAT) {
+        report.push({
+            category: 'degradation',
+            detail: `.obsidian/templates.json sets the time format to "${templatesConfig.timeFormat}". In EtherPK, \`{{time}}\` always gives HH:mm. To keep the old form, write \`{{time:${templatesConfig.timeFormat}}}\` in a Template.`,
+        })
+    }
+}
+
+/** Embeds: assets become asset markdown; note embeds degrade to links. */
+function convertEmbeds(text: string, note: ObsidianNote, links: NoteLinks, assetPlan: AssetPlan, report: ReportEntry[]): string {
+    return text.replace(/!\[\[([^[\]|]+)(?:\|([^[\]]*))?\]\]/g, (all, target: string, pipe?: string) => {
+        const asset = links.resolveAssetByName(target)
+        if (asset) {
+            assetPlan.markReferenced(asset)
+            if (asset.isImage) {
+                // A numeric pipe is an Obsidian display size (EtherPK has the
+                // same alt-text hint); any other pipe text is a caption/alt.
+                const alt =
+                    pipe && /^\d+(x\d+)?$/.test(pipe)
+                        ? `${asset.stem}|${pipe}`
+                        : pipe || asset.stem
+                return `![${alt}](${asset.ref})`
+            }
+            return `[${pipe || asset.stem}](${asset.ref})`
+        }
+        const target2 = target.split('#')[0]
+        const resolved = links.resolveNote(target2, note.concept)
+        const concept = resolved ? resolved.concept : target2
+        report.push({
+            category: 'degradation',
+            concept: note.concept,
+            detail: `Embed \`![[${target}]]\` degraded to the link [[${concept}]]`,
+        })
+        return `[[${concept}]]`
+    })
+}
+
+/** Wiki links: fragments strip, pipes are alias-aware, targets re-point. */
+function convertWikilinks(text: string, note: ObsidianNote, links: NoteLinks, assetPlan: AssetPlan, report: ReportEntry[]): string {
+    return text.replace(
+        /\[\[([^[\]|#]+)(#[^[\]|]*)?(?:\|([^[\]]*))?\]\]/g,
+        (all, target: string, fragment?: string, label?: string) => {
+            const asset = links.resolveAssetByName(target)
+            if (asset && /\.[A-Za-z0-9]+$/.test(target)) {
+                assetPlan.markReferenced(asset)
+                return `[${label ?? asset.stem}](${asset.ref})`
+            }
+            const resolved = links.resolveNote(target, note.concept)
+            const concept = resolved ? resolved.concept : target.trim()
+            if (fragment) {
+                report.push({
+                    category: 'degradation',
+                    concept: note.concept,
+                    detail: `Link \`[[${target}${fragment}]]\` lost its fragment (heading/block links are not supported)`,
+                })
+            }
+            if (label !== undefined) return links.linkWithLabel(label, resolved, target, note.concept)
+            return `[[${concept}]]`
+        },
+    )
+}
+
+/** Markdown links/images to local files: notes become wikilinks, assets re-point. */
+function convertMarkdownLinks(text: string, note: ObsidianNote, links: NoteLinks, assetPlan: AssetPlan): string {
+    const markdownLinks = new RegExp(MARKDOWN_LINK, 'g')
+    return text.replace(markdownLinks, (...args) => {
+        const all = args[0] as string
+        const { bang, label, target: ref } = args.at(-1) as Record<string, string>
+        if (/^[a-z][a-z0-9+.-]*:/i.test(ref)) return all // absolute URL / mailto etc.
+        const asset = links.resolveAssetByPath(ref, note.dir)
+        if (asset) {
+            assetPlan.markReferenced(asset)
+            return `${bang}[${label}](${asset.ref})`
+        }
+        if (/\.md$/i.test(ref)) {
+            const resolved = links.resolveNote(normaliseRef(ref, note.dir), note.concept) ?? links.resolveNote(ref, note.concept)
+            if (resolved) return links.linkWithLabel(label, resolved, resolved.concept, note.concept)
+        }
+        return all
+    })
+}
+
+/** A note's body in EtherPK's form: callouts, tasks, embeds and links, outside code. */
+function convertNoteBody(note: ObsidianNote, body: string, links: NoteLinks, assetPlan: AssetPlan, report: ReportEntry[]): string {
+    const inFence = createFenceTracker()
+    const out: string[] = []
+    for (const raw of body.split('\n')) {
+        if (inFence(raw)) {
+            out.push(raw)
+            continue
+        }
+        // A callout header becomes a quote with a bold heading; its body lines already are one.
+        const callout = calloutHeading(raw)
+        if (callout) {
+            report.push({
+                category: 'degradation',
+                concept: note.concept,
+                detail: `Callout \`[!${callout.type}]\` became a quote with a bold heading`,
+            })
+        }
+        const line = convertObsidianTaskLine(callout ? callout.line : raw, note.concept, report)
+        out.push(outsideInlineCode(line, (segment) => {
+            // Trailing block-id anchor: presentation-only, strip.
+            const text = segment.replace(/\s\^[A-Za-z0-9-]+$/, '')
+            return convertMarkdownLinks(
+                convertWikilinks(convertEmbeds(text, note, links, assetPlan, report), note, links, assetPlan, report),
+                note,
+                links,
+                assetPlan,
+            )
+        }))
+    }
+    return out.join('\n')
+}
+
+/**
+ * One note as an EtherPK document: comments removed and listed, what EtherPK cannot show reported,
+ * its body converted, and its frontmatter rebuilt with its name as the title. A Template whose
+ * frontmatter cannot be read stops being one.
+ */
+function convertNote(
+    note: ObsidianNote,
+    convertBody: (note: ObsidianNote, body: string) => string,
+    templateNotes: Set<ObsidianNote>,
+    report: ReportEntry[],
+): ConvertedDocument {
+    // Comments are hidden in Obsidian and would show, and publish, here: removed, and each
+    // listed with its text so nothing in them is lost.
+    const comments = obsidianComments(note.body)
+    for (const comment of comments) {
+        report.push({
+            category: 'drop',
+            concept: note.concept,
+            detail: `Comment removed: "${comment.text.replace(/\s+/g, ' ').trim()}"`,
+        })
+    }
+    const uncommented = withoutComments(note.body, comments)
+    const { footnotes, tags } = unsupportedConstructs(uncommented)
+    if (footnotes) {
+        report.push({ category: 'unsupported', concept: note.concept, detail: 'Footnotes kept as written: EtherPK does not render them' })
+    }
+    if (tags.length > 0) {
+        report.push({
+            category: 'unsupported',
+            concept: note.concept,
+            detail: `Tags kept as plain text (${tags.join(', ')}): EtherPK has no tags`,
+        })
+    }
+    const body = convertBody(note, uncommented)
+    const template = templateNotes.has(note)
+    if (note.keptBlock !== undefined) {
+        // Nothing is rebuilt from a block nothing could read, so no `title:` either: the page's
+        // name is its file name, which is already written from the concept.
+        report.push({ category: 'unsupported', concept: note.concept, detail: UNREADABLE_FRONTMATTER_DETAIL })
+        if (template) {
+            templateNotes.delete(note)
+            report.push({
+                category: 'unsupported',
+                concept: note.concept,
+                detail: 'This page is a template in Obsidian, but its frontmatter is not valid YAML, so it was not made a Template. Correct the frontmatter and add `template: true` to make it one.',
+            })
+        }
+        return { kind: note.kind, concept: note.concept, fileName: note.fileName, text: `${note.keptBlock}${body}` }
+    }
+    if (template) {
+        // Obsidian fills a template's formats in wherever they are, code included, as EtherPK does.
+        const unfilled = new Set<string>()
+        for (const match of body.matchAll(FORMAT_VARIABLE)) {
+            if (!match[1]) for (const token of unsupportedMomentTokens(match[2])) unfilled.add(token)
+        }
+        if (unfilled.size > 0) {
+            report.push({ category: 'unsupported', concept: note.concept, detail: momentTokensDetail([...unfilled]) })
+        }
+    }
+    const { title, ...rest } = withAliasesList(note.frontmatter, note.aliases)
+    if (typeof title === 'string' && title.trim() !== '' && title !== note.concept) {
+        report.push({
+            category: 'degradation',
+            concept: note.concept,
+            detail: `Frontmatter title "${title}" replaced by the concept "${note.concept}" (links reference the file name)`,
+        })
+    }
+    const frontmatter =
+        note.kind === 'page' ? { title: note.concept, ...rest, ...(template ? { template: true } : {}) } : { ...rest }
+    return {
+        kind: note.kind,
+        concept: note.concept,
+        fileName: note.fileName,
+        text: `${buildFrontmatter(frontmatter)}${body}`,
+    }
+}
+
+/** The notes that become Templates: every page in the Templates folder, and the daily notes template. */
+function templatePages(
+    notes: ObsidianNote[],
+    templatesConfig: TemplatesConfig | null,
+    dailyNotes: DailyNotesConfig | null,
+    resolveNote: NoteLinks['resolveNote'],
+): { templateNotes: Set<ObsidianNote>; dailyTemplate: ObsidianNote | null } {
     const templateNotes = new Set<ObsidianNote>()
     const templateFolder = templatesConfig?.folder?.toLowerCase() ?? null
     if (templateFolder !== null) {
@@ -270,205 +539,16 @@ export async function convertObsidian(files: SourceFile[], control?: ImportContr
             templateNotes.add(found)
         }
     }
-    // Obsidian's `{{date}}` and `{{time}}` used these formats. EtherPK's always use its own, and a
-    // Template that links a day as `[[{{date}}]]` needs the ISO form to reach the journal, so the
-    // variables are left alone and the difference is reported.
-    if (templatesConfig?.dateFormat && templatesConfig.dateFormat !== DEFAULT_DATE_FORMAT) {
-        report.push({
-            category: 'degradation',
-            detail: `.obsidian/templates.json sets the date format to "${templatesConfig.dateFormat}". In EtherPK, \`{{date}}\` always gives YYYY-MM-DD. To keep the old form, write \`{{date:${templatesConfig.dateFormat}}}\` in a Template.`,
-        })
-    }
-    if (templatesConfig?.timeFormat && templatesConfig.timeFormat !== DEFAULT_TIME_FORMAT) {
-        report.push({
-            category: 'degradation',
-            detail: `.obsidian/templates.json sets the time format to "${templatesConfig.timeFormat}". In EtherPK, \`{{time}}\` always gives HH:mm. To keep the old form, write \`{{time:${templatesConfig.timeFormat}}}\` in a Template.`,
-        })
-    }
+    return { templateNotes, dailyTemplate }
+}
 
-    // ---- Body conversion.
-    const convertBody = (note: ObsidianNote, body: string): string => {
-        const inFence = createFenceTracker()
-        const out: string[] = []
-        for (const raw of body.split('\n')) {
-            if (inFence(raw)) {
-                out.push(raw)
-                continue
-            }
-            // A callout header becomes a quote with a bold heading; its body lines already are one.
-            const callout = calloutHeading(raw)
-            if (callout) {
-                report.push({
-                    category: 'degradation',
-                    concept: note.concept,
-                    detail: `Callout \`[!${callout.type}]\` became a quote with a bold heading`,
-                })
-            }
-            let line = convertObsidianTaskLine(callout ? callout.line : raw, note.concept, report)
-            line = outsideInlineCode(line, (segment) => {
-                let text = segment
-
-                // Trailing block-id anchor: presentation-only, strip.
-                text = text.replace(/\s\^[A-Za-z0-9-]+$/, '')
-
-                // Embeds: assets become asset markdown; note embeds degrade to links.
-                text = text.replace(/!\[\[([^[\]|]+)(?:\|([^[\]]*))?\]\]/g, (all, target: string, pipe?: string) => {
-                    const asset = resolveAssetByName(target)
-                    if (asset) {
-                        assetPlan.markReferenced(asset)
-                        if (asset.isImage) {
-                            // A numeric pipe is an Obsidian display size (EtherPK has the
-                            // same alt-text hint); any other pipe text is a caption/alt.
-                            const alt =
-                                pipe && /^\d+(x\d+)?$/.test(pipe)
-                                    ? `${asset.stem}|${pipe}`
-                                    : pipe || asset.stem
-                            return `![${alt}](${asset.ref})`
-                        }
-                        return `[${pipe || asset.stem}](${asset.ref})`
-                    }
-                    const target2 = target.split('#')[0]
-                    const resolved = resolveNote(target2, note.concept)
-                    const concept = resolved ? resolved.concept : target2
-                    report.push({
-                        category: 'degradation',
-                        concept: note.concept,
-                        detail: `Embed \`![[${target}]]\` degraded to the link [[${concept}]]`,
-                    })
-                    return `[[${concept}]]`
-                })
-
-                // Wiki links: fragments strip, pipes are alias-aware, targets re-point.
-                text = text.replace(
-                    /\[\[([^[\]|#]+)(#[^[\]|]*)?(?:\|([^[\]]*))?\]\]/g,
-                    (all, target: string, fragment?: string, label?: string) => {
-                        const asset = resolveAssetByName(target)
-                        if (asset && /\.[A-Za-z0-9]+$/.test(target)) {
-                            assetPlan.markReferenced(asset)
-                            return `[${label ?? asset.stem}](${asset.ref})`
-                        }
-                        const resolved = resolveNote(target, note.concept)
-                        const concept = resolved ? resolved.concept : target.trim()
-                        if (fragment) {
-                            report.push({
-                                category: 'degradation',
-                                concept: note.concept,
-                                detail: `Link \`[[${target}${fragment}]]\` lost its fragment (heading/block links are not supported)`,
-                            })
-                        }
-                        if (label !== undefined) return linkWithLabel(label, resolved, target, note.concept)
-                        return `[[${concept}]]`
-                    },
-                )
-
-                // Markdown links/images to local files: notes become wikilinks, assets re-point.
-                const links = new RegExp(MARKDOWN_LINK, 'g')
-                text = text.replace(links, (...args) => {
-                    const all = args[0] as string
-                    const { bang, label, target: ref } = args.at(-1) as Record<string, string>
-                    if (/^[a-z][a-z0-9+.-]*:/i.test(ref)) return all // absolute URL / mailto etc.
-                    const asset = resolveAssetByPath(ref, note.dir)
-                    if (asset) {
-                        assetPlan.markReferenced(asset)
-                        return `${bang}[${label}](${asset.ref})`
-                    }
-                    if (/\.md$/i.test(ref)) {
-                        const resolved = resolveNote(normaliseRef(ref, note.dir), note.concept) ?? resolveNote(ref, note.concept)
-                        if (resolved) return linkWithLabel(label, resolved, resolved.concept, note.concept)
-                    }
-                    return all
-                })
-
-                return text
-            })
-            out.push(line)
-        }
-        return out.join('\n')
-    }
-
-    // A `for` loop rather than `.map`, so the pass can yield: it reported per document but
-    // never released the thread, so the toast froze until the last tick.
-    let converted = 0
-    const documents: ConvertedDocument[] = []
-    for (const note of notes) {
-        await breathe(control)
-        onProgress?.({ label: 'Converting documents', done: ++converted, total: notes.length })
-        // Comments are hidden in Obsidian and would show, and publish, here: removed, and each
-        // listed with its text so nothing in them is lost.
-        const comments = obsidianComments(note.body)
-        for (const comment of comments) {
-            report.push({
-                category: 'drop',
-                concept: note.concept,
-                detail: `Comment removed: "${comment.text.replace(/\s+/g, ' ').trim()}"`,
-            })
-        }
-        const uncommented = withoutComments(note.body, comments)
-        const { footnotes, tags } = unsupportedConstructs(uncommented)
-        if (footnotes) {
-            report.push({ category: 'unsupported', concept: note.concept, detail: 'Footnotes kept as written: EtherPK does not render them' })
-        }
-        if (tags.length > 0) {
-            report.push({
-                category: 'unsupported',
-                concept: note.concept,
-                detail: `Tags kept as plain text (${tags.join(', ')}): EtherPK has no tags`,
-            })
-        }
-        const body = convertBody(note, uncommented)
-        const template = templateNotes.has(note)
-        if (note.keptBlock !== undefined) {
-            // Nothing is rebuilt from a block nothing could read, so no `title:` either: the page's
-            // name is its file name, which is already written from the concept.
-            report.push({ category: 'unsupported', concept: note.concept, detail: UNREADABLE_FRONTMATTER_DETAIL })
-            if (template) {
-                templateNotes.delete(note)
-                report.push({
-                    category: 'unsupported',
-                    concept: note.concept,
-                    detail: 'This page is a template in Obsidian, but its frontmatter is not valid YAML, so it was not made a Template. Correct the frontmatter and add `template: true` to make it one.',
-                })
-            }
-            documents.push({ kind: note.kind, concept: note.concept, fileName: note.fileName, text: `${note.keptBlock}${body}` })
-            continue
-        }
-        if (template) {
-            // Obsidian fills a template's formats in wherever they are, code included, as EtherPK does.
-            const unfilled = new Set<string>()
-            for (const match of body.matchAll(FORMAT_VARIABLE)) {
-                if (!match[1]) for (const token of unsupportedMomentTokens(match[2])) unfilled.add(token)
-            }
-            if (unfilled.size > 0) {
-                report.push({ category: 'unsupported', concept: note.concept, detail: momentTokensDetail([...unfilled]) })
-            }
-        }
-        const { title, ...rest } = withAliasesList(note.frontmatter, note.aliases)
-        if (typeof title === 'string' && title.trim() !== '' && title !== note.concept) {
-            report.push({
-                category: 'degradation',
-                concept: note.concept,
-                detail: `Frontmatter title "${title}" replaced by the concept "${note.concept}" (links reference the file name)`,
-            })
-        }
-        const frontmatter =
-            note.kind === 'page' ? { title: note.concept, ...rest, ...(template ? { template: true } : {}) } : { ...rest }
-        documents.push({
-            kind: note.kind,
-            concept: note.concept,
-            fileName: note.fileName,
-            text: `${buildFrontmatter(frontmatter)}${body}`,
-        })
-    }
-
-    for (const asset of assetPlan.assets.filter((a) => a.unreferenced)) {
-        report.push({
-            category: 'unreferenced',
-            detail: `Asset "${asset.fileName}" is referenced by no document (imported anyway)`,
-        })
-    }
-
-    // The daily notes template becomes the Journal Template (ADR 0145), carried in Graph Settings
-    // as an EtherPK source's settings are. A template that is not a Template here cannot be one.
+/** The Graph Settings that name the Journal Template, when the daily notes template became a Template. */
+function journalTemplateSettings(
+    dailyNotes: DailyNotesConfig | null,
+    dailyTemplate: ObsidianNote | null,
+    templateNotes: ReadonlySet<ObsidianNote>,
+    report: ReportEntry[],
+): Record<string, unknown> | undefined {
     let settings: Record<string, unknown> | undefined
     if (dailyNotes?.template) {
         if (dailyTemplate && templateNotes.has(dailyTemplate)) {
@@ -480,11 +560,9 @@ export async function convertObsidian(files: SourceFile[], control?: ImportContr
             })
         }
     }
-
-    return { documents, assets: assetPlan.assets, ...(settings ? { settings } : {}), report }
+    return settings
 }
 
-/** The Import Report's line for the Moment tokens a Template's formats use that EtherPK does not fill in. */
 function momentTokensDetail(tokens: string[]): string {
     const quoted = tokens.map((token) => `\`${token}\``)
     const list = quoted.length === 1 ? quoted[0] : `${quoted.slice(0, -1).join(', ')} and ${quoted.at(-1)}`

@@ -428,6 +428,10 @@ export function createDocSync(deps: DocSyncDeps): DocSync {
         }
         lastSyncedStateVector = Y.encodeStateVector(new Y.Doc())
         lastSyncedSnapshot = Y.snapshot(doc)
+        // Sequences start again with each generation: the old watermark, and any update held for
+        // a gap in the old one, would make the new generation's first updates read as already applied.
+        lastSeq = 0
+        futureUpdates.clear()
     }
 
     function failCatchup(error: unknown): Error {
@@ -884,6 +888,198 @@ export function createDocSync(deps: DocSyncDeps): DocSync {
     }
 
     /**
+     * The relay stored the operation at the head of the outbox. Commits the acknowledgement, moves
+     * the watermark only across a contiguous sequence, and sends the next operation or diff.
+     */
+    async function onAck(message: Extract<RelayServerMessage, { type: 'ack' }>): Promise<void> {
+        const operation = durableQueue[0]
+        if (!operation || operation.outboxId !== message.outboxId) return
+        let committed: boolean
+        if (operation.kind === 'delete') {
+            committed = await persistTask(() =>
+                persist.commitDeleteAcknowledgement(message.outboxId, message.generation),
+            )
+        } else {
+            // An ack proves that this local operation occupies `message.seq`; it
+            // does not prove that this tab has applied every earlier relay update.
+            // Only move the catch-up watermark when the ack is the next contiguous
+            // sequence. Otherwise catch up from the last sequence actually known.
+            const acknowledgedSeq =
+                message.seq === lastSeq + 1 ? message.seq : lastSeq
+            const acknowledgedStateVector = mergeStateVectors(
+                lastSyncedStateVector,
+                operation.stateVector,
+            )
+            committed = await persistTask(() =>
+                persist.commitAcknowledgement(
+                    message.outboxId,
+                    message.generation,
+                    acknowledgedSeq,
+                    Y.encodeStateAsUpdate(doc),
+                    acknowledgedStateVector,
+                ),
+            )
+        }
+        if (!committed) return
+        documentGeneration = message.generation
+        // The relay now holds everything this operation's diff represented,
+        // including its delete set. A replayed outbox operation has no captured
+        // boundary; leaving the last snapshot unchanged is conservative and
+        // costs at most one redundant, idempotent append.
+        const boundary = boundarySnapshots.get(message.outboxId)
+        boundarySnapshots.delete(message.outboxId)
+        if (boundary && operation.kind !== 'delete') lastSyncedSnapshot = boundary
+        if (operation.kind === 'delete') {
+            lastSeq = 0
+            lastSyncedStateVector = Y.encodeStateVector(new Y.Doc())
+            lifecycleState = 'deleted'
+        } else {
+            if (message.seq === lastSeq + 1) {
+                lastSeq = message.seq
+            } else if (message.seq > lastSeq + 1) {
+                syncHealth = 'sequence-gap'
+                requestCatchup(lastSeq)
+            }
+            lastSyncedStateVector = mergeStateVectors(
+                lastSyncedStateVector,
+                operation.stateVector,
+            )
+            lifecycleState = 'active'
+            createdHere = false
+            updatesSinceSnapshot += 1
+            bytesSinceSnapshot += fromBase64Url(operation.envelope).byteLength
+            scheduleAutomaticCompaction()
+        }
+        durableQueue.shift()
+        queueChanged()
+        send({ type: 'ack_confirm', outboxId: message.outboxId })
+        if (durableQueue[0]) await transmit(durableQueue[0])
+        else if (operation.kind !== 'delete') await requestDrain()
+    }
+
+    /** A peer's update, relayed live. */
+    async function onRelayUpdate(message: Extract<RelayServerMessage, { type: 'update' }>): Promise<void> {
+        const beforeUpdate = indexMutationVersion
+        if (
+            await applyEnvelope(
+                message.envelope,
+                message.seq,
+                message.generation,
+            )
+        ) {
+            await saveCurrent({
+                indexContentChanged: indexMutationVersion !== beforeUpdate,
+            })
+        }
+    }
+
+    /**
+     * The relay declared `generation` deleted: empty the document and the outbox, and take the
+     * emptied document as the shared baseline.
+     */
+    async function adoptRelayDeletion(generation: number): Promise<void> {
+        documentGeneration = generation
+        lifecycleState = 'deleted'
+        lastSeq = 0
+        seeding = true
+        try {
+            const content = doc.getText('content')
+            if (content.length > 0) {
+                doc.transact(() => content.delete(0, content.length), SUPPRESSED)
+            }
+        } finally {
+            seeding = false
+        }
+        await persist.purge()
+        durableQueue = []
+        queueChanged()
+        boundarySnapshots.clear()
+        recoveredDirtyTokens.clear()
+        activeDirtyToken = undefined
+        // Without this, the delete-set left by the content clear reads as unsent local work and
+        // a reconnect drain would resurrect the document.
+        lastSyncedSnapshot = Y.snapshot(doc)
+        futureUpdates.clear()
+        completeCatchup()
+    }
+
+    /** Apply an active generation's page: its snapshot, when it has one, then the updates after it. */
+    async function applyActivePage(message: Extract<RelayServerMessage, { type: 'catchup_batch' }>): Promise<void> {
+        documentGeneration = message.generation
+        lifecycleState = 'active'
+        if (message.snapshot) {
+            // A snapshot establishes its own contiguous watermark, and it covers everything
+            // before it: an update held for a gap the snapshot has closed is stale, and the tail
+            // counters start again.
+            lastSeq = message.snapshot.throughSeq - 1
+            for (const seq of [...futureUpdates.keys()]) {
+                if (seq <= message.snapshot.throughSeq) futureUpdates.delete(seq)
+            }
+            await applyEnvelope(message.snapshot.envelope, message.snapshot.throughSeq)
+            updatesSinceSnapshot = 0
+            bytesSinceSnapshot = 0
+        }
+        for (const update of message.updates) {
+            await applyEnvelope(update.envelope, update.seq)
+        }
+    }
+
+    /**
+     * One page of a catch-up: the relay's answer for this document's generation, deleted or
+     * active, with an optional snapshot and the updates after it.
+     */
+    async function onCatchupBatch(message: Extract<RelayServerMessage, { type: 'catchup_batch' }>): Promise<void> {
+        try {
+            const beforeBatch = indexMutationVersion
+            if (message.generation < documentGeneration) return
+            if (recreating) {
+                recreateInto(message.generation, message.state)
+                if (message.state === 'deleted') {
+                    await saveCurrent({ indexContentChanged: true })
+                    futureUpdates.clear()
+                    completeCatchup()
+                    return
+                }
+            } else if (
+                message.state === 'active' &&
+                message.generation > documentGeneration &&
+                lifecycleState === 'active'
+            ) {
+                discardOlderGeneration()
+            }
+            if (
+                message.state === 'deleted' &&
+                message.generation === documentGeneration &&
+                (lifecycleState === 'deleted' || lifecycleState === 'resurrecting')
+            ) {
+                // This device already holds the deletion: anything in the document
+                // now was written after it, and is on its way as a resurrection
+                // (ADR 0039, ADR 0157). A second deleted answer must not clear it.
+                lastSeq = 0
+                futureUpdates.clear()
+                completeCatchup()
+                return
+            }
+            if (message.state === 'deleted') {
+                await adoptRelayDeletion(message.generation)
+                return
+            }
+            await applyActivePage(message)
+            await saveCurrent({
+                indexContentChanged: indexMutationVersion !== beforeBatch,
+            })
+            if (message.hasMore) {
+                firstCatchupPage.resolve()
+                requestCatchup(lastSeq)
+            } else {
+                completeCatchup()
+            }
+        } catch (error) {
+            throw failCatchup(error)
+        }
+    }
+
+    /**
      * The relay stored the snapshot. Read it straight back: the blind server cannot check a
      * snapshot, so the client that produced it proves the stored bytes decode to the state
      * it captured, and only then may the server prune behind it (ADR 0025, amended
@@ -989,178 +1185,15 @@ export function createDocSync(deps: DocSyncDeps): DocSync {
         },
         async receive(message) {
             switch (message.type) {
-                case 'ack': {
-                    const operation = durableQueue[0]
-                    if (!operation || operation.outboxId !== message.outboxId) return
-                    let committed: boolean
-                    if (operation.kind === 'delete') {
-                        committed = await persistTask(() =>
-                            persist.commitDeleteAcknowledgement(message.outboxId, message.generation),
-                        )
-                    } else {
-                        // An ack proves that this local operation occupies `message.seq`; it
-                        // does not prove that this tab has applied every earlier relay update.
-                        // Only move the catch-up watermark when the ack is the next contiguous
-                        // sequence. Otherwise catch up from the last sequence actually known.
-                        const acknowledgedSeq =
-                            message.seq === lastSeq + 1 ? message.seq : lastSeq
-                        const acknowledgedStateVector = mergeStateVectors(
-                            lastSyncedStateVector,
-                            operation.stateVector,
-                        )
-                        committed = await persistTask(() =>
-                            persist.commitAcknowledgement(
-                                message.outboxId,
-                                message.generation,
-                                acknowledgedSeq,
-                                Y.encodeStateAsUpdate(doc),
-                                acknowledgedStateVector,
-                            ),
-                        )
-                    }
-                    if (!committed) return
-                    documentGeneration = message.generation
-                    // The relay now holds everything this operation's diff represented,
-                    // including its delete set. A replayed outbox operation has no captured
-                    // boundary; leaving the last snapshot unchanged is conservative and
-                    // costs at most one redundant, idempotent append.
-                    const boundary = boundarySnapshots.get(message.outboxId)
-                    boundarySnapshots.delete(message.outboxId)
-                    if (boundary && operation.kind !== 'delete') lastSyncedSnapshot = boundary
-                    if (operation.kind === 'delete') {
-                        lastSeq = 0
-                        lastSyncedStateVector = Y.encodeStateVector(new Y.Doc())
-                        lifecycleState = 'deleted'
-                    } else {
-                        if (message.seq === lastSeq + 1) {
-                            lastSeq = message.seq
-                        } else if (message.seq > lastSeq + 1) {
-                            syncHealth = 'sequence-gap'
-                            requestCatchup(lastSeq)
-                        }
-                        lastSyncedStateVector = mergeStateVectors(
-                            lastSyncedStateVector,
-                            operation.stateVector,
-                        )
-                        lifecycleState = 'active'
-                        createdHere = false
-                        updatesSinceSnapshot += 1
-                        bytesSinceSnapshot += fromBase64Url(operation.envelope).byteLength
-                        scheduleAutomaticCompaction()
-                    }
-                    durableQueue.shift()
-                    queueChanged()
-                    send({ type: 'ack_confirm', outboxId: message.outboxId })
-                    if (durableQueue[0]) await transmit(durableQueue[0])
-                    else if (operation.kind !== 'delete') await requestDrain()
+                case 'ack':
+                    await onAck(message)
                     break
-                }
-                case 'update': {
-                    const beforeUpdate = indexMutationVersion
-                    if (
-                        await applyEnvelope(
-                            message.envelope,
-                            message.seq,
-                            message.generation,
-                        )
-                    ) {
-                        await saveCurrent({
-                            indexContentChanged: indexMutationVersion !== beforeUpdate,
-                        })
-                    }
+                case 'update':
+                    await onRelayUpdate(message)
                     break
-                }
-                case 'catchup_batch': {
-                    try {
-                        const beforeBatch = indexMutationVersion
-                        if (message.generation < documentGeneration) break
-                        if (recreating) {
-                            recreateInto(message.generation, message.state)
-                            if (message.state === 'deleted') {
-                                await saveCurrent({ indexContentChanged: true })
-                                futureUpdates.clear()
-                                completeCatchup()
-                                break
-                            }
-                        } else if (
-                            message.state === 'active' &&
-                            message.generation > documentGeneration &&
-                            lifecycleState === 'active'
-                        ) {
-                            discardOlderGeneration()
-                        }
-                        if (
-                            message.state === 'deleted' &&
-                            message.generation === documentGeneration &&
-                            (lifecycleState === 'deleted' || lifecycleState === 'resurrecting')
-                        ) {
-                            // This device already holds the deletion: anything in the document
-                            // now was written after it, and is on its way as a resurrection
-                            // (ADR 0039, ADR 0157). A second deleted answer must not clear it.
-                            lastSeq = 0
-                            futureUpdates.clear()
-                            completeCatchup()
-                            break
-                        }
-                        if (message.state === 'deleted') {
-                            documentGeneration = message.generation
-                            lifecycleState = 'deleted'
-                            lastSeq = 0
-                            seeding = true
-                            try {
-                                const content = doc.getText('content')
-                                if (content.length > 0) {
-                                    doc.transact(() => content.delete(0, content.length), SUPPRESSED)
-                                }
-                            } finally {
-                                seeding = false
-                            }
-                            await persist.purge()
-                            durableQueue = []
-                            queueChanged()
-                            boundarySnapshots.clear()
-                            recoveredDirtyTokens.clear()
-                            activeDirtyToken = undefined
-                            // The relay declared this generation deleted; the emptied document
-                            // is the shared baseline. Without this, the delete-set left by the
-                            // content clear reads as unsent local work and a reconnect drain
-                            // would resurrect the document.
-                            lastSyncedSnapshot = Y.snapshot(doc)
-                            futureUpdates.clear()
-                            completeCatchup()
-                            break
-                        }
-                        documentGeneration = message.generation
-                        lifecycleState = 'active'
-                        if (message.snapshot) {
-                            // A snapshot establishes its own contiguous watermark, and it
-                            // covers everything before it: an update held for a gap the
-                            // snapshot has closed is stale, and the tail counters start again.
-                            lastSeq = message.snapshot.throughSeq - 1
-                            for (const seq of [...futureUpdates.keys()]) {
-                                if (seq <= message.snapshot.throughSeq) futureUpdates.delete(seq)
-                            }
-                            await applyEnvelope(message.snapshot.envelope, message.snapshot.throughSeq)
-                            updatesSinceSnapshot = 0
-                            bytesSinceSnapshot = 0
-                        }
-                        for (const update of message.updates) {
-                            await applyEnvelope(update.envelope, update.seq)
-                        }
-                        await saveCurrent({
-                            indexContentChanged: indexMutationVersion !== beforeBatch,
-                        })
-                        if (message.hasMore) {
-                            firstCatchupPage.resolve()
-                            requestCatchup(lastSeq)
-                        } else {
-                            completeCatchup()
-                        }
-                    } catch (error) {
-                        throw failCatchup(error)
-                    }
+                case 'catchup_batch':
+                    await onCatchupBatch(message)
                     break
-                }
                 case 'snapshot_ack':
                     onSnapshotAck(message)
                     break

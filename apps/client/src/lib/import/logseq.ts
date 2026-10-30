@@ -341,15 +341,85 @@ export async function convertLogseq(files: SourceFile[], control?: ImportControl
     )
 
     // First pass: identity. Journals first so a date-named page defers to the journal.
-    const docs: LogseqDoc[] = []
-    const takenConcepts = new Set<string>()
-    const takenFileNames = new Set<string>()
+    const { docs, claim } = documentClaimer(report)
 
     const mdFiles = content.filter((f) => isMarkdownPath(f.path))
     const journalFiles = mdFiles.filter((f) => f.path.startsWith('journals/'))
     const pageFiles = mdFiles.filter((f) => !f.path.startsWith('journals/'))
 
-    const claim = (doc: LogseqDoc) => {
+    // Reading every markdown file is the long, I/O-bound opening stretch. It awaits (so it
+    // never blocked), but it reported nothing at all, which on a big graph is a silent minute.
+    let read = 0
+    const reportRead = () => onProgress?.({ label: 'Reading files', done: ++read, total: mdFiles.length })
+
+    for (const file of journalFiles) {
+        reportRead()
+        control?.signal?.throwIfAborted()
+        claim(await readJournal(file, config, report))
+    }
+
+    for (const file of pageFiles) {
+        reportRead()
+        control?.signal?.throwIfAborted()
+        claim(await readPage(file, report))
+    }
+
+    // Templates. A `template::` block moves to a page of its own, `[[Templates]] Name`, and leaves
+    // the page it sat on (ADR 0144). This runs once every file has its name, so a template whose
+    // name is taken is the one suffixed. Logseq finds a template by the name its property gives,
+    // so that name is kept here for `:default-templates`, and the first template with a name wins.
+    const templatesByName = liftTemplateBlocks(docs, claim, report)
+
+    // Block-ref index: uuid → the owning bullet's cleaned first-line text + final concept.
+    // Walks every line of every document with no I/O, so nothing yielded here before.
+    const blockRefs = await indexBlockRefs(docs, control)
+
+    // Second pass: convert bodies and assemble file texts.
+    const documents: ConvertedDocument[] = []
+    const reportedNamespaces = new Set<string>()
+    const reportedImageSizes = new Set<string>()
+    let converted = 0
+    for (const doc of docs) {
+        // The loop that DID report but never yielded: without this the toast froze on the
+        // first tick and jumped straight to the last.
+        await breathe(control)
+        onProgress?.({ label: 'Converting documents', done: ++converted, total: docs.length })
+        const ctx: InlineContext = {
+            concept: doc.concept,
+            config,
+            blockRefs,
+            assetPlan,
+            report,
+            reportedNamespaces,
+            reportedImageSizes,
+            sourceDir: doc.sourcePath.includes('/') ? doc.sourcePath.slice(0, doc.sourcePath.lastIndexOf('/')) : '',
+        }
+        documents.push(convertDoc(doc, ctx, report))
+    }
+
+    for (const asset of assetPlan.assets.filter((a) => a.unreferenced)) {
+        report.push({
+            category: 'unreferenced',
+            detail: `Asset "${asset.fileName}" is referenced by no document (imported anyway)`,
+        })
+    }
+
+    // `:default-templates {:journals "Name"}` becomes the graph's Journal Template (ADR 0145), named
+    // by the page the template became. Graph Settings travel in `settings`, as an EtherPK source's do.
+    const settings = journalTemplateSettings(config, templatesByName, report)
+
+    return { documents, assets: assetPlan.assets, ...(settings ? { settings } : {}), report }
+}
+
+/**
+ * The documents in the order they were claimed, and `claim`, which gives each one a concept and a
+ * file name no earlier document has, reporting any it had to change.
+ */
+function documentClaimer(report: ReportEntry[]): { docs: LogseqDoc[]; claim: (doc: LogseqDoc) => void } {
+    const docs: LogseqDoc[] = []
+    const takenConcepts = new Set<string>()
+    const takenFileNames = new Set<string>()
+    const claim = (doc: LogseqDoc): void => {
         const concept = dedupeConcept(doc.concept, (key) => takenConcepts.has(key))
         if (concept !== doc.concept) {
             report.push({
@@ -376,65 +446,60 @@ export async function convertLogseq(files: SourceFile[], control?: ImportControl
         takenFileNames.add(doc.fileName.toLowerCase())
         docs.push(doc)
     }
+    return { docs, claim }
+}
 
-    // Reading every markdown file is the long, I/O-bound opening stretch. It awaits (so it
-    // never blocked), but it reported nothing at all, which on a big graph is a silent minute.
-    let read = 0
-    const reportRead = () => onProgress?.({ label: 'Reading files', done: ++read, total: mdFiles.length })
-
-    for (const file of journalFiles) {
-        reportRead()
-        control?.signal?.throwIfAborted()
-        const stem = baseName(file.path).replace(/\.md$/i, '')
-        const lines = (await readText(file)).split('\n')
-        const { props, body } = extractPageProps(lines)
-        let iso: string | null = null
-        for (const format of [config.journalFileFormat, ...FALLBACK_STEM_FORMATS]) {
-            iso = logseqDateToIso(stem, format)
-            if (iso) break
-        }
-        if (!iso) {
-            report.push({
-                category: 'rename',
-                concept: stem,
-                detail: `Journal file "${stem}.md" does not match the journal date format - imported as a page`,
-            })
-            claim({ kind: 'page', concept: stem, fileName: `${portableFileStem(stem)}.md`, lines: body, props, sourcePath: file.path })
-            continue
-        }
-        if (`${iso}.md` !== baseName(file.path)) {
-            report.push({
-                category: 'rename',
-                concept: iso,
-                detail: `Journal "${stem}.md" renamed to "${iso}.md"`,
-            })
-        }
-        claim({ kind: 'journal', concept: iso, fileName: `${iso}.md`, lines: body, props, sourcePath: file.path })
+/** A file of the journals folder: that day's journal, or a page when its name is no date the config reads. */
+async function readJournal(file: SourceFile, config: LogseqConfig, report: ReportEntry[]): Promise<LogseqDoc> {
+    const stem = baseName(file.path).replace(/\.md$/i, '')
+    const lines = (await readText(file)).split('\n')
+    const { props, body } = extractPageProps(lines)
+    let iso: string | null = null
+    for (const format of [config.journalFileFormat, ...FALLBACK_STEM_FORMATS]) {
+        iso = logseqDateToIso(stem, format)
+        if (iso) break
     }
-
-    for (const file of pageFiles) {
-        reportRead()
-        control?.signal?.throwIfAborted()
-        const stem = baseName(file.path).replace(/\.md$/i, '')
-        const lines = (await readText(file)).split('\n')
-        const { props, body } = extractPageProps(lines)
-        const fromTitle = props.title ? pageConcept(props.title) : null
-        const fromStem = pageConcept(stem)
-        const { concept, namespace } = fromTitle ?? fromStem
-        if (namespace) {
-            report.push({
-                category: 'rename',
-                concept,
-                detail: `Namespace page "${fromTitle ? props.title : tryDecode(stem)}" became the scoped concept "${concept}"`,
-            })
-        }
-        claim({ kind: 'page', concept, fileName: `${portableFileStem(concept)}.md`, lines: body, props, sourcePath: file.path })
+    if (!iso) {
+        report.push({
+            category: 'rename',
+            concept: stem,
+            detail: `Journal file "${stem}.md" does not match the journal date format - imported as a page`,
+        })
+        return { kind: 'page', concept: stem, fileName: `${portableFileStem(stem)}.md`, lines: body, props, sourcePath: file.path }
     }
+    if (`${iso}.md` !== baseName(file.path)) {
+        report.push({
+            category: 'rename',
+            concept: iso,
+            detail: `Journal "${stem}.md" renamed to "${iso}.md"`,
+        })
+    }
+    return { kind: 'journal', concept: iso, fileName: `${iso}.md`, lines: body, props, sourcePath: file.path }
+}
 
-    // Templates. A `template::` block moves to a page of its own, `[[Templates]] Name`, and leaves
-    // the page it sat on (ADR 0144). This runs once every file has its name, so a template whose
-    // name is taken is the one suffixed. Logseq finds a template by the name its property gives,
-    // so that name is kept here for `:default-templates`, and the first template with a name wins.
+/** A page file, named by its `title::` or its file name. A namespace becomes a scoped concept. */
+async function readPage(file: SourceFile, report: ReportEntry[]): Promise<LogseqDoc> {
+    const stem = baseName(file.path).replace(/\.md$/i, '')
+    const lines = (await readText(file)).split('\n')
+    const { props, body } = extractPageProps(lines)
+    const fromTitle = props.title ? pageConcept(props.title) : null
+    const fromStem = pageConcept(stem)
+    const { concept, namespace } = fromTitle ?? fromStem
+    if (namespace) {
+        report.push({
+            category: 'rename',
+            concept,
+            detail: `Namespace page "${fromTitle ? props.title : tryDecode(stem)}" became the scoped concept "${concept}"`,
+        })
+    }
+    return { kind: 'page', concept, fileName: `${portableFileStem(concept)}.md`, lines: body, props, sourcePath: file.path }
+}
+
+/**
+ * Move each `template::` block to a page of its own and claim it. Returns each template's Logseq
+ * name, lower-cased, with the concept it became: the first template with a name wins.
+ */
+function liftTemplateBlocks(docs: LogseqDoc[], claim: (doc: LogseqDoc) => void, report: ReportEntry[]): Map<string, string> {
     const templatesByName = new Map<string, string>()
     const nameTemplate = (logseqName: string, concept: string) => {
         const key = logseqName.trim().toLowerCase()
@@ -466,9 +531,12 @@ export async function convertLogseq(files: SourceFile[], control?: ImportControl
             })
         }
     }
+    return templatesByName
+}
 
-    // Block-ref index: uuid → the owning bullet's cleaned first-line text + final concept.
-    // Walks every line of every document with no I/O, so nothing yielded here before.
+/** Block-ref index: each block id, with its bullet's first-line text and the concept it is on. */
+async function indexBlockRefs(docs: readonly LogseqDoc[], control: ImportControl | undefined): Promise<Map<string, BlockRef>> {
+    const onProgress = control?.onProgress
     const blockRefs = new Map<string, BlockRef>()
     let indexed = 0
     for (const doc of docs) {
@@ -488,87 +556,64 @@ export async function convertLogseq(files: SourceFile[], control?: ImportControl
             }
         }
     }
+    return blockRefs
+}
 
-    // Second pass: convert bodies and assemble file texts.
-    const documents: ConvertedDocument[] = []
-    const reportedNamespaces = new Set<string>()
-    const reportedImageSizes = new Set<string>()
-    let converted = 0
-    for (const doc of docs) {
-        // The loop that DID report but never yielded: without this the toast froze on the
-        // first tick and jumped straight to the last.
-        await breathe(control)
-        onProgress?.({ label: 'Converting documents', done: ++converted, total: docs.length })
-        const ctx: InlineContext = {
-            concept: doc.concept,
-            config,
-            blockRefs,
-            assetPlan,
-            report,
-            reportedNamespaces,
-            reportedImageSizes,
-            sourceDir: doc.sourcePath.includes('/') ? doc.sourcePath.slice(0, doc.sourcePath.lastIndexOf('/')) : '',
+/** One document in EtherPK's form: its body converted, a Template's variables filled in, and its frontmatter rebuilt. */
+function convertDoc(doc: LogseqDoc, ctx: InlineContext, report: ReportEntry[]): ConvertedDocument {
+    const template = isTemplatePage(doc)
+    let body = convertBody(doc.lines, ctx).join('\n')
+    if (template) {
+        // Only a Template's variables are filled in when it is copied, so only here do they mean anything.
+        const variables = convertDynamicVariables(body)
+        body = variables.text
+        if (variables.kept.length > 0) {
+            report.push({ category: 'unsupported', concept: doc.concept, detail: keptVariablesDetail(variables.kept) })
         }
-        const template = isTemplatePage(doc)
-        let body = convertBody(doc.lines, ctx).join('\n')
-        if (template) {
-            // Only a Template's variables are filled in when it is copied, so only here do they mean anything.
-            const variables = convertDynamicVariables(body)
-            body = variables.text
-            if (variables.kept.length > 0) {
-                report.push({ category: 'unsupported', concept: doc.concept, detail: keptVariablesDetail(variables.kept) })
-            }
-        }
-
-        // A Template copies only its body, so the property saying whether the block went with
-        // its children has nothing left to say.
-        const dropped = ['title', 'alias', 'aliases', ...(template ? ['template-including-parent'] : [])]
-        const custom: Record<string, unknown> = Object.fromEntries(Object.entries(doc.props).filter(([key]) => !dropped.includes(key)))
-        if (template) {
-            // `template: true` marks a Template (ADR 0144). Logseq's value is the name it went by,
-            // and a Template is named by its page, so a different name is reported.
-            custom.template = true
-            const logseqName = doc.props.template?.trim()
-            if (logseqName && logseqName.toLowerCase() !== doc.concept.toLowerCase()) {
-                report.push({
-                    category: 'rename',
-                    concept: doc.concept,
-                    detail: `Logseq named this template "${logseqName}". A Template takes the name of its page, so it is now the Template "${doc.concept}".`,
-                })
-            }
-        }
-        const aliasList = splitPropList(doc.props.aliases ?? doc.props.alias ?? '')
-        let frontmatter: Record<string, unknown> = {}
-        if (doc.kind === 'page') {
-            frontmatter = { title: doc.concept, ...(aliasList.length ? { aliases: aliasList } : {}), ...custom }
-        } else {
-            if (doc.props.title !== undefined) {
-                report.push({
-                    category: 'drop',
-                    concept: doc.concept,
-                    detail: `A journal's title:: property was dropped (a journal's identity is its date)`,
-                })
-            }
-            frontmatter = { ...(aliasList.length ? { aliases: aliasList } : {}), ...custom }
-        }
-
-        documents.push({
-            kind: doc.kind,
-            concept: doc.concept,
-            fileName: doc.fileName,
-            text: `${buildFrontmatter(frontmatter)}${body}`,
-        })
     }
 
-    for (const asset of assetPlan.assets.filter((a) => a.unreferenced)) {
-        report.push({
-            category: 'unreferenced',
-            detail: `Asset "${asset.fileName}" is referenced by no document (imported anyway)`,
-        })
+    // A Template copies only its body, so the property saying whether the block went with
+    // its children has nothing left to say.
+    const dropped = ['title', 'alias', 'aliases', ...(template ? ['template-including-parent'] : [])]
+    const custom: Record<string, unknown> = Object.fromEntries(Object.entries(doc.props).filter(([key]) => !dropped.includes(key)))
+    if (template) {
+        // `template: true` marks a Template (ADR 0144). Logseq's value is the name it went by,
+        // and a Template is named by its page, so a different name is reported.
+        custom.template = true
+        const logseqName = doc.props.template?.trim()
+        if (logseqName && logseqName.toLowerCase() !== doc.concept.toLowerCase()) {
+            report.push({
+                category: 'rename',
+                concept: doc.concept,
+                detail: `Logseq named this template "${logseqName}". A Template takes the name of its page, so it is now the Template "${doc.concept}".`,
+            })
+        }
+    }
+    const aliasList = splitPropList(doc.props.aliases ?? doc.props.alias ?? '')
+    let frontmatter: Record<string, unknown> = {}
+    if (doc.kind === 'page') {
+        frontmatter = { title: doc.concept, ...(aliasList.length ? { aliases: aliasList } : {}), ...custom }
+    } else {
+        if (doc.props.title !== undefined) {
+            report.push({
+                category: 'drop',
+                concept: doc.concept,
+                detail: `A journal's title:: property was dropped (a journal's identity is its date)`,
+            })
+        }
+        frontmatter = { ...(aliasList.length ? { aliases: aliasList } : {}), ...custom }
     }
 
-    // `:default-templates {:journals "Name"}` becomes the graph's Journal Template (ADR 0145), named
-    // by the page the template became. Graph Settings travel in `settings`, as an EtherPK source's do.
+    return {
+        kind: doc.kind,
+        concept: doc.concept,
+        fileName: doc.fileName,
+        text: `${buildFrontmatter(frontmatter)}${body}`,
+    }
+}
+
+/** The Graph Settings that name the Journal Template, from `:default-templates {:journals "Name"}`. */
+function journalTemplateSettings(config: LogseqConfig, templatesByName: ReadonlyMap<string, string>, report: ReportEntry[]): Record<string, unknown> | undefined {
     let settings: Record<string, unknown> | undefined
     if (config.journalTemplate) {
         const journalTemplate = templatesByName.get(config.journalTemplate.toLowerCase())
@@ -581,8 +626,7 @@ export async function convertLogseq(files: SourceFile[], control?: ImportControl
             })
         }
     }
-
-    return { documents, assets: assetPlan.assets, ...(settings ? { settings } : {}), report }
+    return settings
 }
 
 /** A page that becomes a Template: one made from a `template::` block, or whose page properties name it a template. */

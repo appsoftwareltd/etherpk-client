@@ -82,6 +82,8 @@ starts at 0.9.3.
   What you typed then went into the page behind Search.
 - **A click on a revealed image's markdown puts the cursor under the pointer.** When the text of
   the line was scrolled out of the pane, a click lower in the line put the cursor at its start.
+- **A protected page you keep typing in is saved at least once a minute.** It was saved only
+  after you stopped typing for 20 seconds.
 
 ### Headless Client
 
