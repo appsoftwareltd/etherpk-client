@@ -88,3 +88,9 @@ reports/
 # map host rather than committed.
 
 .postcodes/
+
+# Stryker's working folder and its Vitest setup files, beside each package it mutates. An
+# interrupted run leaves the setup files behind.
+
+.stryker-tmp/
+stryker-setup-*.js
