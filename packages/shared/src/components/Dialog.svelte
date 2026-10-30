@@ -105,16 +105,12 @@
         if (e.key === "Escape" && dismissible) close();
     }
 
-    // A `click` fires on the common ancestor of mousedown and mouseup - so dragging a text
-    // selection from an input and releasing over the backdrop looks like a backdrop click.
-    // Only close when the press STARTED on the backdrop, not merely ended there.
-    let pressStartedOnBackdrop = false;
-    function onBackdropPointerDown(e: PointerEvent) {
-        pressStartedOnBackdrop = !(e.target as HTMLElement).closest('[role="dialog"]');
-    }
+    // A `click` fires on the common ancestor of mousedown and mouseup. The backdrop is a
+    // sibling of the panel with no children, so a click lands on it only when the press both
+    // started and ended there: dragging a text selection out of a field and releasing over
+    // the backdrop does not close the dialog.
     function onBackdropClick() {
-        if (dismissible && pressStartedOnBackdrop) close();
-        pressStartedOnBackdrop = false;
+        if (dismissible) close();
     }
 </script>
 
@@ -126,24 +122,32 @@
         with `tabindex="-1"`, which announced a close button that no keyboard user could ever
         reach. Escape and the header button are the real dismissals, so this contributes
         nothing to the accessibility tree.
+
+        Backdrop and panel are two layers rather than one, so that an app's toasts can sit
+        between them: above the backdrop, where they stay readable and clickable while a
+        dialog is open (an export started from Settings reports in a toast with Settings still
+        up), and under the panel, so a toast never covers the dialog's own fields or buttons.
+        The layers are `--z-backdrop` and `--z-dialog`, with `--z-toast` between them
+        (`../ui/layers.css`). A single fixed wrapper would be one stacking context, which
+        nothing outside it can slot into.
     -->
-    <!-- svelte-ignore a11y_no_static_element_interactions, a11y_click_events_have_key_events -->
+    <div class="fixed inset-0 z-(--z-backdrop) bg-gray-950/25 dark:bg-black/50" aria-hidden="true" data-dialog-backdrop onclick={onBackdropClick}></div>
+
     <!--
         `--dialog-top` is the panel's distance from the top of the viewport, and the panel's
         max height is the viewport less that offset and the 1rem bottom margin - the two must
         agree, or a top-anchored panel overflows a short window and its footer goes out of reach
         (the bug the max-height comment below records). Centred panels keep 1rem all round.
+
+        The layer covers the viewport only to place the panel, so it lets the pointer through
+        to the backdrop and anything above it; the panel takes the pointer back.
     -->
     <div
-        class="fixed inset-0 z-50 flex justify-center px-4 pb-4 {placement === 'top' ? 'items-start pt-[var(--dialog-top)]' : 'items-center pt-4'}"
+        class="pointer-events-none fixed inset-0 z-(--z-dialog) flex justify-center px-4 pb-4 {placement === 'top' ? 'items-start pt-[var(--dialog-top)]' : 'items-center pt-4'}"
         style:--dialog-top={placement === "top" ? "max(1rem, 8vh)" : "1rem"}
-        onpointerdown={onBackdropPointerDown}
-        onclick={onBackdropClick}
     >
-        <div class="absolute inset-0 bg-gray-950/25 dark:bg-black/50" aria-hidden="true"></div>
-
         <div
-            class="relative z-10 flex max-h-[calc(100dvh-var(--dialog-top)-1rem)] w-full flex-col rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-[var(--gk-surface-0)] shadow-xl {size === 'xl' ? 'max-w-4xl' : size === 'lg' ? 'max-w-2xl' : 'max-w-md'}"
+            class="pointer-events-auto relative flex max-h-[calc(100dvh-var(--dialog-top)-1rem)] w-full flex-col rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-[var(--gk-surface-0)] shadow-xl {size === 'xl' ? 'max-w-4xl' : size === 'lg' ? 'max-w-2xl' : 'max-w-md'}"
             role="dialog"
             aria-modal="true"
             aria-labelledby={titleId}
@@ -151,7 +155,6 @@
             tabindex="-1"
             data-testid={testId}
             {@attach dialogFocus}
-            onclick={(e) => e.stopPropagation()}
         >
             <!--
                 The panel is capped at the viewport and everything under the header scrolls as

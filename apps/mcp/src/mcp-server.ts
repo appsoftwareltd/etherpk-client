@@ -279,7 +279,7 @@ export function createMcpServer(source: HeadlessGraph | Promise<HeadlessGraph> |
         'set_task',
         {
             title: 'Set a task',
-            description: 'Change one task, named by a task reference or by document and 0-based line (as tasks and read_document count lines): its status (open, doing, waiting, done, cancelled - exclusive), priority (1, 2, 3 or null), due and scheduled days (YYYY-MM-DD or null). By line, pass expect with the task\'s text from tasks - if the line no longer holds that task the change is refused with error "task_moved" and nothing is edited. A reference finds the task wherever it is now.',
+            description: 'Change one task, named by a task reference or by document and 0-based line (as tasks and read_document count lines): its status (open, doing, waiting, done, cancelled - exclusive), priority (1, 2, 3 or null), due and scheduled days (YYYY-MM-DD or null). By line, pass expect with the task\'s text from tasks - if the line no longer holds that task the change is refused with error "task_moved" and nothing is edited. A reference finds the task wherever it is now. As in the app, status done also ticks every task nested under it, and open, doing or waiting on a ticked task unticks them (a cancelled one stays ticked); nested in the result lists each line changed.',
             inputSchema: {
                 reference: z.string().min(1).optional().describe('A task reference, in place of concept, line and expect.'),
                 concept: concept.optional(),

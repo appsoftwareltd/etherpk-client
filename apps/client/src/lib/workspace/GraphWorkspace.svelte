@@ -523,6 +523,7 @@
     import { headlessClientPackage, type AgentsTabProps } from "$lib/sync/ui/agents-tab";
     import { RELEASE_VERSION } from "$lib/release";
     import ConfirmDialog from "@appsoftwareltd/etherpk-shared/confirm-dialog";
+    import Dialog from "@appsoftwareltd/etherpk-shared/dialog";
     import WorkspaceOpenState from "./WorkspaceOpenState.svelte";
     import WorkspaceToolbar from "./WorkspaceToolbar.svelte";
     import KeyboardShortcutsDialog from "./KeyboardShortcutsDialog.svelte";
@@ -2779,6 +2780,10 @@
     let detachReconcile: (() => void) | undefined;
     let stopWatch: (() => void) | undefined;
     let conflict = $state<DocumentConflict | null>(null);
+    /** The conflict's choice is being written or read, so a second press cannot run it again. */
+    let resolvingConflict = $state(false);
+    /** Why the last choice did not go through; the conflict stays open to choose again. */
+    let conflictError = $state<string | null>(null);
     let navEngine: HistoryEngine | undefined;
     let readingPositions: ReadingPositionStore | undefined;
     let taskFilter: TaskFilterStore | undefined;
@@ -3872,7 +3877,10 @@
             const adapter = createWebFsDirectoryAdapter(root);
             const s = createFilesystemDocumentStore(adapter, {
                 autosaveMs: dev ? autosaveMs : undefined,
-                onConflict: (c) => (conflict = c),
+                onConflict: (c) => {
+                    conflict = c;
+                    conflictError = null;
+                },
                 onResurrected: noteResurrection,
                 // A failed write lands in the same notice a failed server save uses, with a
                 // Retry that flushes the documents that failed.
@@ -7162,9 +7170,19 @@
     }
 
     async function resolve(choice: "keep-mine" | "take-disk") {
-        if (!store || !conflict) return;
-        await store.resolveConflict(conflict.target, choice);
-        conflict = null;
+        if (!store || !conflict || resolvingConflict) return;
+        resolvingConflict = true;
+        conflictError = null;
+        try {
+            await store.resolveConflict(conflict.target, choice);
+            conflict = null;
+        } catch (error) {
+            // Keep the prompt: the buffer and the file still disagree until a choice goes through.
+            const what = choice === "keep-mine" ? "save your version to the file" : "read the version from disk";
+            conflictError = `Could not ${what}: ${error instanceof Error ? error.message : String(error)}. Try again.`;
+        } finally {
+            resolvingConflict = false;
+        }
     }
 
     async function disposeWorkspaceResources() {
@@ -7878,30 +7896,42 @@
     {/if}
 </div>
 
+<!--
+    Only a choice settles which version is kept, so the prompt cannot be dismissed: no close button,
+    no Escape, no backdrop click (`closeOnBackdrop={false}`).
+-->
 {#if conflict}
-    <div class="conflict-backdrop" data-testid="graph-conflict">
-        <div class="conflict">
-            <h2>External change</h2>
-            <p>
-                "{conflict.target}" changed on disk while you have unsaved
-                edits. Keep your version, or take the version from disk?
+    <Dialog
+        open={true}
+        title="External change"
+        testId="graph-conflict"
+        closeOnBackdrop={false}
+        busy={resolvingConflict}
+        busyReason="Saving your choice…"
+    >
+        {#snippet body()}
+            <p class="text-sm text-gray-600 dark:text-gray-400">
+                "{conflict?.target}" changed on disk while you have unsaved edits. Keep your version, or take the version from disk?
             </p>
-            <div class="actions">
-                <button
-                    data-testid="conflict-keep-mine"
-                    onclick={() => resolve("keep-mine")}
-                >
-                    Keep mine
-                </button>
-                <button
-                    data-testid="conflict-take-disk"
-                    onclick={() => resolve("take-disk")}
-                >
-                    Take disk
-                </button>
-            </div>
-        </div>
-    </div>
+            {#if conflictError}
+                <p class="text-sm text-red-600 dark:text-red-400" role="alert" data-testid="conflict-error">{conflictError}</p>
+            {/if}
+        {/snippet}
+        {#snippet footer()}
+            <button
+                type="button"
+                data-testid="conflict-keep-mine"
+                class="rounded-lg border border-gray-300 dark:border-gray-700 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5"
+                onclick={() => resolve("keep-mine")}>Keep mine</button
+            >
+            <button
+                type="button"
+                data-testid="conflict-take-disk"
+                class="rounded-lg border border-gray-300 dark:border-gray-700 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5"
+                onclick={() => resolve("take-disk")}>Take disk</button
+            >
+        {/snippet}
+    </Dialog>
 {/if}
 
 <style>
@@ -7940,39 +7970,5 @@
         overflow: clip;
         flex: 1;
         min-height: 0;
-    }
-    .conflict button {
-        border: 1px solid var(--gk-border-soft);
-        border-radius: 6px;
-        padding: 0.35rem 0.75rem;
-        background: var(--gk-surface-1);
-        color: inherit;
-        cursor: pointer;
-        font: inherit;
-    }
-    .conflict-backdrop {
-        position: fixed;
-        inset: 0;
-        display: grid;
-        place-content: center;
-        background: rgba(0, 0, 0, 0.4);
-        z-index: 50;
-    }
-    .conflict {
-        max-width: 28rem;
-        padding: 1rem 1.25rem;
-        border-radius: 8px;
-        background: var(--gk-surface-0, #fff);
-        color: var(--gk-text-default);
-    }
-    .conflict h2 {
-        margin: 0 0 0.5rem;
-        font-size: 1rem;
-    }
-    .conflict .actions {
-        display: flex;
-        gap: 0.5rem;
-        justify-content: flex-end;
-        margin-top: 1rem;
     }
 </style>

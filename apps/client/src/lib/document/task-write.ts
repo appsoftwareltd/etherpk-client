@@ -12,14 +12,17 @@
  * A status is exclusive and means what the index's derivation means (`STATUS_SQL`): Open is an
  * unticked task with no state tag, Doing `#D`, Waiting `#W`, Done a ticked one, Cancelled a
  * ticked one with `#C`. No completion date is written; the checkbox writes none either.
+ *
+ * A write that makes a task Done, or unticks it, ticks or unticks the tasks nested under it in the
+ * same document (`task-cascade.ts`), and reports each line it changed so an undo can put it back.
  */
 import type { TaskStatus } from './index-db'
 import { bulletLabel } from './index-derive'
-import { fencedBlocks } from './fenced-code'
+import { fencedBlocks, linesInFencedBlocks } from './fenced-code'
 import { frontmatterLineOffset } from './reveal'
+import { lineWriteChanges, type LineWrite, nestedTaskWrites } from './task-cascade'
 import { parseTaskLine, parseTaskTags, serialiseTags, type TaskPriority, type TaskTags } from './task-tags'
 import type { DocumentStore, EditorDocument } from './types'
-import { minimalReplacement } from './view/minimal-replacement'
 
 /** What to change about a task. Anything left out stays as it is. */
 export interface TaskChanges {
@@ -40,12 +43,29 @@ export interface IndexedTask {
     text: string
 }
 
+/** One line a write changed: body-relative, and the whole line either side of the write. */
+export interface WrittenLine {
+    line: number
+    before: string
+    after: string
+}
+
+/**
+ * What a write did to a task's document, which is all an undo needs: the task's own line and the
+ * nested tasks' lines it brought with it.
+ */
+export interface TaskWrite extends WrittenLine {
+    nested: WrittenLine[]
+}
+
 export type TaskWriteOutcome =
     /**
      * `line` is where the task is now (body-relative), `text` its label after the write, and
      * `before` and `after` the whole line either side of it, which is what an undo puts back.
+     * `nested` are the nested tasks' lines the write changed with it (`task-cascade.ts`), and
+     * `skipped` how many an undo left because they had changed since (0 for any other write).
      */
-    | { ok: true; line: number; text: string; changed: boolean; before: string; after: string }
+    | ({ ok: true; text: string; changed: boolean; skipped: number } & TaskWrite)
     /**
      * `stale`: no task line, or more than one, has the task's text. `missing`: the document is
      * gone (renamed or deleted since the index read it). Nothing was written either way.
@@ -124,9 +144,7 @@ function taskText(label: string): string {
 
 /** The indexes of the lines inside fenced code, whose task-shaped lines are not tasks. */
 function linesInFences(lines: readonly string[]): Set<number> {
-    const inFence = new Set<number>()
-    for (const block of fencedBlocks(lines)) for (let i = block.start; i <= block.end; i++) inFence.add(i)
-    return inFence
+    return linesInFencedBlocks(fencedBlocks(lines))
 }
 
 /**
@@ -212,32 +230,62 @@ export async function findIndexedTask(store: DocumentStore, task: IndexedTask): 
 export async function writeTaskChanges(store: DocumentStore, task: IndexedTask, changes: TaskChanges): Promise<TaskWriteOutcome> {
     const found = await findIndexedTask(store, task)
     if ('reason' in found) return { ok: false, reason: found.reason }
-    const current = found.lines[found.index]
-    const next = taskLineWith(current, changes)
+    const next = taskLineWith(found.lines[found.index], changes)
     if (next === null) return { ok: false, reason: 'stale' }
-    return replaceLine(found, current, next)
+    return writeFoundTask(found, next)
 }
 
 /**
- * Put back the line a move replaced: `next`, where the task's line reads exactly `expected`,
- * the line the move wrote. The task is found as any write finds it, by its indexed line or its
- * text, and nothing is written when its line reads anything else, because an undo that
- * overwrote an edit made since the move would lose that edit.
+ * Undo `write`: put back each line it changed, the task's own and its nested tasks', in the task's
+ * document `concept`. The outcome is itself a write, so a redo is the undo of the undo's outcome.
+ *
+ * The task's line is the anchor. It is found as any write finds it, by its indexed line or its
+ * text, and nothing is written when it reads anything but what the write left, because an undo
+ * that overwrote an edit made since would lose that edit. Each nested line is looked for where the
+ * task's move puts it (lines added above the task move them all alike) and put back only while it
+ * still reads what the write left; any other is left as it is and counted in `skipped`.
  */
-export async function restoreTaskLine(store: DocumentStore, task: IndexedTask, expected: string, next: string): Promise<TaskWriteOutcome> {
-    const found = await findIndexedTask(store, task)
+export async function undoTaskWrite(store: DocumentStore, concept: string, write: TaskWrite): Promise<TaskWriteOutcome> {
+    const found = await findIndexedTask(store, { concept, line: write.line, text: bulletLabel(write.after) })
     if ('reason' in found) return { ok: false, reason: found.reason }
-    const current = found.lines[found.index]
-    if (current !== expected) return { ok: false, reason: 'stale' }
-    return replaceLine(found, current, next)
+    if (found.lines[found.index] !== write.after) return { ok: false, reason: 'stale' }
+    const shift = found.index - found.bodyStart - write.line
+    const nested: LineWrite[] = []
+    let skipped = 0
+    for (const line of write.nested) {
+        const index = found.bodyStart + line.line + shift
+        if (found.lines[index] === line.after) nested.push({ index, before: line.after, after: line.before })
+        else skipped++
+    }
+    return { ...applyWrites(found, write.before, nested), skipped }
 }
 
-/** Write `next` over the found task's line, `current`, as the smallest single edit. */
-function replaceLine(found: FoundTask, current: string, next: string): TaskWriteOutcome {
-    const line = found.index - found.bodyStart
-    const text = bulletLabel(next)
-    const edit = minimalReplacement(current, next)
-    if (edit === null) return { ok: true, line, text, changed: false, before: current, after: next }
-    found.document.applyChange({ from: found.offset + edit.from, to: found.offset + edit.to, insert: edit.insert }, 'external')
-    return { ok: true, line, text, changed: true, before: current, after: next }
+/**
+ * Write `next` over the found task's line, with the nested tasks' lines that brings with it, each
+ * as the smallest single edit. The Tasks View's tick writes through here too.
+ */
+export function writeFoundTask(found: FoundTask, next: string): TaskWriteOutcome {
+    return { ...applyWrites(found, next, nestedTaskWrites(found.lines, found.index, next)), skipped: 0 }
+}
+
+/**
+ * Make the task's line `next` and make `nested` (indexes into `found.lines`), as edits that are
+ * `external`, since this is not the editor typing: an open editor must be told. Each is the
+ * minimal replacement within its line, not the whole line, so on a synced graph it merges with
+ * anyone typing elsewhere in the same line. They are applied last line first, so each lands above
+ * every edit already made and the offsets read from `found` stay true.
+ */
+function applyWrites(found: FoundTask, next: string, nested: LineWrite[]): Omit<Extract<TaskWriteOutcome, { ok: true }>, 'skipped'> {
+    const current = found.lines[found.index]
+    const own: LineWrite = { index: found.index, before: current, after: next }
+    for (const change of lineWriteChanges(found.lines, [own, ...nested])) found.document.applyChange(change, 'external')
+    return {
+        ok: true,
+        line: found.index - found.bodyStart,
+        text: bulletLabel(next),
+        changed: next !== current || nested.length > 0,
+        before: current,
+        after: next,
+        nested: nested.map(({ index, before, after }) => ({ line: index - found.bodyStart, before, after })),
+    }
 }

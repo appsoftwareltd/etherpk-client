@@ -52,6 +52,7 @@ import { buildFenceCompletion, type FencedBlockRange, fencedBlocks, fencedBlocks
 import { INDENT, INDENT_UNIT } from '../indent-unit'
 import { deletionBreaksFence } from './fence-guard'
 import { minimalReplacement } from './minimal-replacement'
+import { lineWriteChanges, nestedTaskWrites } from '../task-cascade'
 import { toggleBold, toggleHighlight, toggleItalic } from './wrap-selection'
 import { isBlockSelection, rangeBlockOwner, selectedBranches, shrinkBlockSelectionDown, shrinkBlockSelectionUp, snappedBlockSelection } from './block-select'
 import { analysisFor } from './analysis/editor-analysis'
@@ -1262,6 +1263,9 @@ export const toggleTask: StateCommand = (view) => {
  * Cycle the task state of bullet line `index` (plain → `[ ]` → `[x]` → plain), the selection kept
  * on its text through the smallest change. Refused on a form-1 opener: the task marker would push its
  * fence off the content column, where its closer no longer pairs with it.
+ *
+ * The step to `[x]` ticks every task nested under the line in the same transaction
+ * (`task-cascade.ts`); the other two steps make or remove a task and bring nothing with them.
  */
 function cycleTaskAt(view: Target, index: number): boolean {
     // The editor analysis's pairing, as the Command Bar's gate reads it: a fence just typed on its own
@@ -1269,9 +1273,11 @@ function cycleTaskAt(view: Target, index: number): boolean {
     const analysis = analysisFor(view.state)
     if (formOneOpeners(analysis.lines, analysis.fencedBlocks).has(index)) return false
     const line = view.state.doc.line(index + 1)
-    const change = minimalReplacement(line.text, cycleTask(line.text))
+    const next = cycleTask(line.text)
+    const change = minimalReplacement(line.text, next)
     if (!change) return true
-    const set = view.state.changes({ from: line.from + change.from, to: line.from + change.to, insert: change.insert })
+    const nested = lineWriteChanges(analysis.lines, nestedTaskWrites(analysis.lines, index, next, analysis.fencedBlocks))
+    const set = view.state.changes([{ from: line.from + change.from, to: line.from + change.to, insert: change.insert }, ...nested])
     dispatch(view, { changes: set, selection: view.state.selection.map(set, 1) })
     return true
 }

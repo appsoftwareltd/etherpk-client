@@ -22,7 +22,7 @@
     import { openConceptAtLine } from "$lib/document/open-concept";
     import { createSettleScheduler } from "$lib/document/settle-scheduler";
     import { bulletLabel } from "$lib/document/index-derive";
-    import { findIndexedTask, isTaskLine, restoreTaskLine, type TaskChanges, type TaskWriteOutcome, writeTaskChanges } from "$lib/document/task-write";
+    import { findIndexedTask, isTaskLine, type TaskChanges, type TaskWrite, type TaskWriteOutcome, undoTaskWrite, writeTaskChanges } from "$lib/document/task-write";
     import type { DocumentStore } from "$lib/document/types";
     import { TASK_COPY_REFERENCE } from "$lib/document/commands/task-reference-commands";
     import DocumentView from "$lib/document/view/DocumentView.svelte";
@@ -93,6 +93,14 @@
     let notice = $state<string | null>(null);
     /** The last move, said once for screen readers; the board already shows it. */
     let announcement = $state("");
+    /**
+     * What the last move brought with it: the nested tasks a move into Done ticked, or a move out of
+     * a ticked lane unticked (`task-cascade.ts`). Their cards move too once the index catches up, so
+     * the board says so, and offers to undo the whole move to a pointer that has no Mod+Z. `entry`
+     * is the move to undo; null once the line only reports what an undo did.
+     */
+    // Raw, so `entry` stays the history entry itself, not a proxy of it: an undo finds it by identity.
+    let cascade = $state.raw<{ text: string; entry: HistoryEntry | null } | null>(null);
     /** The card the keyboard is on, the one card in the tab order. */
     let activeKey = $state<string | null>(null);
     let lanesEl = $state<HTMLElement>();
@@ -509,6 +517,7 @@
     /** Move a card to another lane or section, writing its new status or priority into its line. */
     async function moveCard(card: BoardCard, from: BoardCell, to: BoardCell): Promise<void> {
         if (from.status === to.status && from.priority === to.priority) return;
+        cascade = null;
         const changes: TaskChanges = {};
         if (to.status !== from.status) changes.status = to.status;
         if (to.priority !== from.priority) changes.priority = to.priority;
@@ -523,9 +532,21 @@
                     : `"${card.label}" changed after the board showed it, so it was not moved. The board has been read again.`,
         );
         if (outcome?.changed) {
-            undoStack = [...undoStack, { document: card.document, label: card.label, line: outcome.line, before: outcome.before, after: outcome.after, from, to }];
+            const entry: HistoryEntry = { document: card.document, label: card.label, from, to, write: writtenPart(outcome) };
+            undoStack = [...undoStack, entry];
             redoStack = [];
+            const count = outcome.nested.length;
+            if (count > 0) {
+                const verb = to.status === "done" ? "Ticked" : "Unticked";
+                cascade = { text: `${verb} ${count === 1 ? "1 task" : `${count} tasks`} nested under "${card.label}".`, entry };
+                announcement = `${announcement}. ${cascade.text}`;
+            }
         }
+    }
+
+    /** The lines a write changed, which is all an undo of it needs. */
+    function writtenPart(outcome: WrittenTask): TaskWrite {
+        return { line: outcome.line, before: outcome.before, after: outcome.after, nested: outcome.nested };
     }
 
     /**
@@ -535,24 +556,26 @@
     interface HistoryEntry {
         document: string;
         label: string;
-        /** Where the task's line was after the write, body-relative. */
-        line: number;
-        /** The whole line before and after the move. */
-        before: string;
-        after: string;
+        /** The cells the move went from and to: an undo goes back to `from`, a redo to `to`. */
         from: BoardCell;
         to: BoardCell;
+        /**
+         * The write that undoing this entry puts back: on the undo stack the move itself, on the redo
+         * stack the undo's own write. Its line is where the task's line was after it, body-relative,
+         * and its nested lines are the nested tasks the move brought with it.
+         */
+        write: TaskWrite;
     }
     let undoStack: HistoryEntry[] = [];
     let redoStack: HistoryEntry[] = [];
 
     /** The card the board shows for a history entry's task, or one made from the entry. */
-    function cardForEntry(entry: HistoryEntry, line: string): BoardCard {
+    function cardForEntry(entry: HistoryEntry): BoardCard {
         const wanted: BoardCard = {
-            key: cardKey(entry.document, entry.line),
+            key: cardKey(entry.document, entry.write.line),
             document: entry.document,
-            line: entry.line,
-            text: bulletLabel(line),
+            line: entry.write.line,
+            text: bulletLabel(entry.write.after),
             label: entry.label,
             due: null,
             dueState: null,
@@ -567,27 +590,58 @@
         return wanted;
     }
 
-    /**
-     * Undo the board's last move: the earlier line goes back, but only while the task's line still
-     * reads what the move wrote, so an edit made since is never overwritten.
-     */
+    /** Undo the board's last move. */
     async function undo(): Promise<void> {
         const entry = undoStack.at(-1);
+        if (entry) await undoEntry(entry);
+    }
+
+    /**
+     * Undo the move the cascade line names, which need not be the last, and say what it did: a
+     * refusal is said by the board's notice, as for any undo.
+     */
+    async function undoCascade(): Promise<void> {
+        const entry = cascade?.entry;
         if (!entry) return;
-        undoStack = undoStack.slice(0, -1);
-        const card = cardForEntry(entry, entry.after);
+        const outcome = await undoEntry(entry);
+        if (!outcome.ok) return;
+        const { skipped } = outcome;
+        cascade = {
+            entry: null,
+            text:
+                skipped === 0
+                    ? `Undone: "${entry.label}" and the tasks nested under it are as they were.`
+                    : skipped === 1
+                      ? "Undone, except 1 nested task that changed since. It was left as it is."
+                      : `Undone, except ${skipped} nested tasks that changed since. They were left as they are.`,
+        };
+    }
+
+    /**
+     * Undo one move, the last or the one the cascade line names: the earlier lines go back, but only
+     * while the task's line still reads what the move wrote, so an edit made since is never
+     * overwritten (`undoTaskWrite`). Nested lines changed since are left, and counted.
+     */
+    async function undoEntry(entry: HistoryEntry): Promise<TaskWriteOutcome> {
+        if (!undoStack.includes(entry)) return { ok: false, reason: "stale" };
+        undoStack = undoStack.filter((e) => e !== entry);
+        // The line offers this move's undo, which is now under way: take it down, so it cannot run twice.
+        if (cascade?.entry === entry) cascade = null;
+        const card = cardForEntry(entry);
+        let result: TaskWriteOutcome = { ok: false, reason: "stale" };
         const outcome = await showWhileWriting(
             card,
             entry.from,
-            (store) => restoreTaskLine(store, { concept: entry.document, line: entry.line, text: bulletLabel(entry.after) }, entry.after, entry.before),
+            async (store) => (result = await undoTaskWrite(store, entry.document, entry.write)),
             `Undid the move of "${entry.label}", back to ${describeCell(entry.from)}`,
             (reason) =>
                 reason === "missing"
                     ? `"${entry.document}" was renamed or deleted, so the move of "${entry.label}" was not undone.`
                     : `"${entry.label}" has changed since it was moved, so the move was not undone.`,
         );
-        if (outcome) redoStack = [...redoStack, { ...entry, line: outcome.line }];
+        if (outcome) redoStack = [...redoStack, { ...entry, write: writtenPart(outcome) }];
         if (activeKey === card.key) followMovedCard(card.key, outcome ? entry.from : entry.to);
+        return result;
     }
 
     /** Redo the move the last undo took back, on the same condition. */
@@ -595,18 +649,18 @@
         const entry = redoStack.at(-1);
         if (!entry) return;
         redoStack = redoStack.slice(0, -1);
-        const card = cardForEntry(entry, entry.before);
+        const card = cardForEntry(entry);
         const outcome = await showWhileWriting(
             card,
             entry.to,
-            (store) => restoreTaskLine(store, { concept: entry.document, line: entry.line, text: bulletLabel(entry.before) }, entry.before, entry.after),
+            (store) => undoTaskWrite(store, entry.document, entry.write),
             `Moved "${entry.label}" to ${describeCell(entry.to)} again`,
             (reason) =>
                 reason === "missing"
                     ? `"${entry.document}" was renamed or deleted, so the move of "${entry.label}" was not redone.`
                     : `"${entry.label}" has changed since the move was undone, so it was not redone.`,
         );
-        if (outcome) undoStack = [...undoStack, { ...entry, line: outcome.line }];
+        if (outcome) undoStack = [...undoStack, { ...entry, write: writtenPart(outcome) }];
         if (activeKey === card.key) followMovedCard(card.key, outcome ? entry.to : entry.from);
     }
 
@@ -947,6 +1001,33 @@
                     data-testid="kanban-retry"
                 >
                     Retry
+                </button>
+            </div>
+        {/if}
+        {#if cascade}
+            <div
+                role="status"
+                class="mx-3 mt-3 flex items-center gap-3 rounded-lg bg-(--gk-info-surface) px-3 py-2 text-sm text-(--gk-text-default)"
+                data-testid="kanban-cascade"
+            >
+                <span class="min-w-0 flex-1">{cascade.text}</span>
+                {#if cascade.entry}
+                    <button
+                        type="button"
+                        onclick={() => void undoCascade()}
+                        class="shrink-0 rounded-md border border-(--gk-control-border) px-2 py-1 font-medium hover:bg-(--gk-surface-0)"
+                        data-testid="kanban-cascade-undo"
+                    >
+                        Undo
+                    </button>
+                {/if}
+                <button
+                    type="button"
+                    onclick={() => (cascade = null)}
+                    class="shrink-0 rounded-md border border-(--gk-control-border) px-2 py-1 font-medium hover:bg-(--gk-surface-0)"
+                    data-testid="kanban-cascade-dismiss"
+                >
+                    Dismiss
                 </button>
             </div>
         {/if}

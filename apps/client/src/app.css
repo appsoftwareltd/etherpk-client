@@ -1,4 +1,6 @@
 @import "tailwindcss";
+/* The stacking order of the layers drawn over a page: dialogs, toasts, menus. */
+@import "@appsoftwareltd/etherpk-shared/layers.css";
 /* EtherPK's control classes (`gk-button`, `gk-input`, `gk-select`, ADR 0151), which the Client's
    own pages and every extension draw with. The Client also gives the same sheet to each extension
    shadow root (lib/extensions/styles.ts). */

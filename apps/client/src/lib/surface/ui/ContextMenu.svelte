@@ -109,9 +109,12 @@
         A full-viewport backdrop rather than a document-level listener: it captures the
         dismissing click (including the right-click that would otherwise open the browser's
         own menu underneath) without racing the click that opened this one.
+
+        `--z-menu` is above a dialog's panel and the toasts (`etherpk-shared/layers.css`): a
+        menu is opened on purpose and goes on the next click, so nothing covers it.
     -->
     <div
-        class="fixed inset-0 z-50"
+        class="fixed inset-0 z-(--z-menu)"
         role="presentation"
         onpointerdown={closeContextMenu}
         oncontextmenu={(e) => {
@@ -132,7 +135,7 @@
         oncontextmenu={(e) => e.preventDefault()}
         style:left="{pos.x}px"
         style:top="{pos.y}px"
-        class="gk-menu fixed z-50 focus:outline-none"
+        class="gk-menu fixed z-(--z-menu) focus:outline-none"
     >
         <!-- EtherPK's menu classes (controls.css, ADR 0151), which an extension's menus use too. The
              row the keyboard is on is lit as the pointer lights one. -->

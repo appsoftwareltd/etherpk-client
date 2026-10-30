@@ -1,0 +1,23 @@
+/*
+ * The stacking order of the layers drawn over a page, in one place (layers.test.ts keeps it).
+ * Use them as Tailwind's `z-(--z-dialog)` or as `z-index: var(--z-dialog)`.
+ *
+ * The gaps matter more than the numbers. Toasts sit between a dialog's backdrop and its panel:
+ * above the backdrop, so they stay readable and clickable while a dialog is open, and under the
+ * panel, so a toast never covers the dialog's own buttons. Full windows sit under every dialog,
+ * so a dialog opened from inside one (an extension's prompt) is drawn over it, not behind it.
+ */
+:root {
+    /* A full window: an extension's window, or a fence's widget filling the app (Client). */
+    --z-window: 45;
+    /* A dialog's backdrop (Dialog.svelte). */
+    --z-backdrop: 50;
+    /* The Activity Toast rail, from `lg` up (Client). */
+    --z-toast: 51;
+    /* A dialog's panel (Dialog.svelte). */
+    --z-dialog: 52;
+    /* The Context Menu: opened on purpose and gone on the next click, so nothing covers it. */
+    --z-menu: 53;
+    /* Search, with its own backdrop, over everything else. */
+    --z-search: 60;
+}

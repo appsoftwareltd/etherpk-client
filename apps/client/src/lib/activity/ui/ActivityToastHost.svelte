@@ -103,12 +103,29 @@
     The rail is mounted unconditionally so the live region exists BEFORE the first card is
     inserted into it. A region that appears together with its content is not reliably
     announced, which made the first Activity the one most likely to go unheard.
+
+    Stacking, from `lg` up: `--z-toast` is the slot the shared Dialog leaves between its backdrop
+    and its panel (`@appsoftwareltd/etherpk-shared/layers.css`). A toast stays readable and clickable while a dialog is open,
+    an export started from Settings reports here with Settings still up, and where a toast and
+    a panel overlap the panel wins, so a running Activity, which cannot be dismissed, never
+    covers the dialog's own buttons. Below `lg` the rail stays at z-40, under the backdrop:
+    it is top-anchored there, across the area a phone's dialog panel and navigation drawer
+    fill.
+
+    `onmousedown` keeps focus where it is when a card's button is pressed with a pointer.
+    Otherwise the press moves focus out of an open dialog onto a button that then goes away,
+    leaving focus on <body> and Tab running through the page behind the dialog. The keyboard
+    path is unchanged: Enter and Space still activate a focused button.
 -->
+<!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
     data-testid="activity-toasts"
     aria-live="polite"
     aria-relevant="additions text"
-    class="pointer-events-none fixed inset-x-0 top-16 z-40 flex flex-col items-center gap-2 px-4 lg:inset-x-auto lg:top-auto lg:right-4 lg:bottom-4 lg:items-end lg:px-0"
+    onmousedown={(e) => {
+        if ((e.target as Element).closest("button")) e.preventDefault();
+    }}
+    class="pointer-events-none fixed inset-x-0 top-16 z-40 lg:z-(--z-toast) flex flex-col items-center gap-2 px-4 lg:inset-x-auto lg:top-auto lg:right-4 lg:bottom-4 lg:items-end lg:px-0"
 >
     {#if activities.length > 0}
         {#each activities as activity (activity.id)}

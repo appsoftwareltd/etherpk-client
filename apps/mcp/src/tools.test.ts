@@ -834,6 +834,22 @@ describe('set_task', () => {
         await seed(g, 'Bank', PROTECTED)
         await rejectsWith(setTask(g, { concept: 'Bank', line: 0, changes: { status: 'done' } }), 'protected_document')
     })
+
+    it('ticks the tasks nested under a task moved to done, and unticks them when it is reopened', async () => {
+        const g = await withTasks('g-set-task-nested')
+        expect(await setTask(g, { concept: 'Plan', line: 1, changes: { status: 'done' } })).toMatchObject({
+            status: 'done',
+            nested: [{ line: 2, text: '#W #D-2026-07-01 wait for review', done: true }],
+        })
+        expect((await readDocument(g, 'Plan')).text.split('\n').slice(1, 3)).toEqual(['- [x] #P2 write the plan', '  - [x] #W #D-2026-07-01 wait for review'])
+
+        expect(await setTask(g, { concept: 'Plan', line: 1, changes: { status: 'open' } })).toMatchObject({ nested: [{ line: 2, done: false }] })
+        expect((await readDocument(g, 'Plan')).text.split('\n')[2]).toBe('  - [ ] #W #D-2026-07-01 wait for review')
+
+        // Cancelling says nothing about whether the nested tasks are done.
+        expect(await setTask(g, { concept: 'Plan', line: 1, changes: { status: 'cancelled' } })).toMatchObject({ nested: [] })
+        expect((await readDocument(g, 'Plan')).text.split('\n')[2]).toBe('  - [ ] #W #D-2026-07-01 wait for review')
+    })
 })
 
 // A Task Reference (ADR 0114): a task handed to an agent by position and words, found again after

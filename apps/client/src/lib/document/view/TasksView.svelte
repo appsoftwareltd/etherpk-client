@@ -45,6 +45,8 @@
     import { defaultTaskFilter, type TaskFilterState } from "../task-filter-store";
     import { parseTaskTags } from "../task-tags";
     import { toggleIndexedTask } from "../task-toggle";
+    import { showCascadeNotice } from "../task-cascade-notice";
+    import { undoTaskWrite } from "../task-write";
     import { matchScore } from "./augmentations/wikilink-complete-core";
     import { wikilinkSegmentsInSource } from "../wikilink";
 
@@ -454,6 +456,21 @@
             return;
         }
         staleNotice = null;
+        hold(hit, done);
+        // A tick that brought nested tasks with it changed lines that may be off screen and outside
+        // any editor's undo, so the notice offers to put the whole write back.
+        const write = result.write;
+        if (write) {
+            showCascadeNotice(crumbText(hit.text), write, async () => {
+                const outcome = await undoTaskWrite(documents, hit.concept, write);
+                if (outcome.ok) hold(hit, !done);
+                return outcome;
+            });
+        }
+    }
+
+    /** Show `hit` as `done` until the index catches up with the write. */
+    function hold(hit: TaskHit, done: boolean): void {
         const next = new Map(held);
         // Back to the state the row itself records: nothing to hold on to any more.
         if (done === hit.done) next.delete(hitKey(hit));

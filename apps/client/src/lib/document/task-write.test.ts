@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import type { TaskStatus } from './index-db'
 import { createInMemoryDocumentStore } from './in-memory-store'
-import { isTaskLine, locateTask, restoreTaskLine, taskLineWith, writeTaskChanges } from './task-write'
+import { isTaskLine, locateTask, taskLineWith, undoTaskWrite, writeTaskChanges } from './task-write'
 import type { DocumentStore } from './types'
 import { DocumentNotFoundError } from './types'
 
@@ -145,6 +145,8 @@ describe('writeTaskChanges', () => {
             // The whole line either side of the write, which is what an undo puts back.
             before: '- [ ] #P2 Send the quote',
             after: '- [ ] #P2 #D Send the quote',
+            nested: [],
+            skipped: 0,
         })
         expect(store.open('Acme').getText()).toBe('# Acme\n- [ ] #P2 #D Send the quote\n- [ ] Other')
         // One edit, covering only what changed: the new tag and its space, after `- [ ] #P2 `.
@@ -181,6 +183,8 @@ describe('writeTaskChanges', () => {
             changed: false,
             before: '- [x] Send the quote',
             after: '- [x] Send the quote',
+            nested: [],
+            skipped: 0,
         })
     })
 
@@ -194,24 +198,19 @@ describe('writeTaskChanges', () => {
     })
 })
 
-describe('restoreTaskLine: putting back the line a move replaced', () => {
-    const task = (line: number, text: string) => ({ concept: 'Acme', line, text })
+describe('undoTaskWrite: putting back the line a move replaced', () => {
+    const write = (line: number, after: string, before: string) => ({ line, before, after, nested: [] })
 
     it('puts back the exact earlier line, tag order and all, while the line still reads what the move wrote', async () => {
         const store = createInMemoryDocumentStore({ Acme: '# Acme\n- [ ] #P2 #W #D-2026-10-01 Send the quote' })
-        const outcome = await restoreTaskLine(
-            store,
-            task(1, '#P2 #W #D-2026-10-01 Send the quote'),
-            '- [ ] #P2 #W #D-2026-10-01 Send the quote',
-            '- [ ] #D-2026-10-01 #P2 Send the quote',
-        )
+        const outcome = await undoTaskWrite(store, 'Acme', write(1, '- [ ] #P2 #W #D-2026-10-01 Send the quote', '- [ ] #D-2026-10-01 #P2 Send the quote'))
         expect(outcome).toMatchObject({ ok: true, line: 1, text: '#D-2026-10-01 #P2 Send the quote', changed: true })
         expect(store.open('Acme').getText()).toBe('# Acme\n- [ ] #D-2026-10-01 #P2 Send the quote')
     })
 
     it('follows the task when lines have been added above it', async () => {
         const store = createInMemoryDocumentStore({ Acme: 'Typed above\n- [ ] #D Send the quote' })
-        const outcome = await restoreTaskLine(store, task(0, '#D Send the quote'), '- [ ] #D Send the quote', '- [ ] Send the quote')
+        const outcome = await undoTaskWrite(store, 'Acme', write(0, '- [ ] #D Send the quote', '- [ ] Send the quote'))
         expect(outcome).toMatchObject({ ok: true, line: 1 })
         expect(store.open('Acme').getText()).toBe('Typed above\n- [ ] Send the quote')
     })
@@ -219,8 +218,65 @@ describe('restoreTaskLine: putting back the line a move replaced', () => {
     it('writes nothing when the line has changed since the move', async () => {
         const text = '- [ ] #D #P1 Send the quote'
         const store = createInMemoryDocumentStore({ Acme: text })
-        const outcome = await restoreTaskLine(store, task(0, '#D Send the quote'), '- [ ] #D Send the quote', '- [ ] Send the quote')
+        const outcome = await undoTaskWrite(store, 'Acme', write(0, '- [ ] #D Send the quote', '- [ ] Send the quote'))
         expect(outcome).toEqual({ ok: false, reason: 'stale' })
         expect(store.open('Acme').getText()).toBe(text)
+    })
+})
+
+describe('a write that ticks or unticks a task brings the tasks nested under it', () => {
+    const task = (line: number, text: string) => ({ concept: 'Garden', line, text })
+    const garden = '---\ntitle: Garden\n---\n- [ ] #W Garden\n  - Beds\n    - [ ] water the beans\n  - [x] #C plant the leeks\n- [ ] Kitchen'
+
+    it('a move to Done ticks every nested task, and reports each by its body line', async () => {
+        const store = createInMemoryDocumentStore({ Garden: garden })
+        const outcome = await writeTaskChanges(store, task(0, '#W Garden'), { status: 'done' })
+        expect(store.open('Garden').getText()).toBe('---\ntitle: Garden\n---\n- [x] Garden\n  - Beds\n    - [x] water the beans\n  - [x] #C plant the leeks\n- [ ] Kitchen')
+        expect(outcome).toMatchObject({ ok: true, nested: [{ line: 2, before: '    - [ ] water the beans', after: '    - [x] water the beans' }] })
+    })
+
+    it('a move to Cancelled brings nothing with it', async () => {
+        const store = createInMemoryDocumentStore({ Garden: garden })
+        const outcome = await writeTaskChanges(store, task(0, '#W Garden'), { status: 'cancelled' })
+        expect(outcome).toMatchObject({ ok: true, nested: [] })
+        expect(store.open('Garden').getText()).toContain('    - [ ] water the beans')
+    })
+
+    it('a move out of Done unticks the nested tasks, a Cancelled one left ticked', async () => {
+        const store = createInMemoryDocumentStore({ Garden: '- [x] Garden\n  - [x] water the beans\n  - [x] #C plant the leeks' })
+        await writeTaskChanges(store, task(0, 'Garden'), { status: 'waiting' })
+        expect(store.open('Garden').getText()).toBe('- [ ] #W Garden\n  - [ ] water the beans\n  - [x] #C plant the leeks')
+    })
+
+    it('an undo puts the task and its nested tasks back, and a redo writes them again', async () => {
+        const store = createInMemoryDocumentStore({ Garden: garden })
+        const moved = await writeTaskChanges(store, task(0, '#W Garden'), { status: 'done' })
+        if (!moved.ok) throw new Error('the move was refused')
+        const undone = await undoTaskWrite(store, 'Garden', moved)
+        expect(undone).toMatchObject({ ok: true, skipped: 0 })
+        expect(store.open('Garden').getText()).toBe(garden)
+        if (!undone.ok) throw new Error('the undo was refused')
+        await undoTaskWrite(store, 'Garden', undone)
+        expect(store.open('Garden').getText()).toContain('- [x] Garden\n  - Beds\n    - [x] water the beans')
+    })
+
+    it('an undo follows the tasks when lines were added above them', async () => {
+        const store = createInMemoryDocumentStore({ Garden: '- [ ] Garden\n  - [ ] weed' })
+        const moved = await writeTaskChanges(store, task(0, 'Garden'), { status: 'done' })
+        if (!moved.ok) throw new Error('the move was refused')
+        store.open('Garden').applyChange({ from: 0, to: 0, insert: 'Typed above\n' })
+        expect(await undoTaskWrite(store, 'Garden', moved)).toMatchObject({ ok: true, line: 1, skipped: 0 })
+        expect(store.open('Garden').getText()).toBe('Typed above\n- [ ] Garden\n  - [ ] weed')
+    })
+
+    it('an undo leaves a nested task that changed since, and counts it', async () => {
+        const store = createInMemoryDocumentStore({ Garden: '- [ ] Garden\n  - [ ] weed\n  - [ ] dig' })
+        const moved = await writeTaskChanges(store, task(0, 'Garden'), { status: 'done' })
+        if (!moved.ok) throw new Error('the move was refused')
+        const text = store.open('Garden').getText()
+        const at = text.indexOf('weed')
+        store.open('Garden').applyChange({ from: at, to: at + 4, insert: 'weed the beds' })
+        expect(await undoTaskWrite(store, 'Garden', moved)).toMatchObject({ ok: true, skipped: 1, nested: [{ line: 2 }] })
+        expect(store.open('Garden').getText()).toBe('- [ ] Garden\n  - [x] weed the beds\n  - [ ] dig')
     })
 })

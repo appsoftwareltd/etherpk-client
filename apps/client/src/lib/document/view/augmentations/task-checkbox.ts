@@ -10,12 +10,16 @@
  * keyboard chord that has to be able to create and remove the checkbox. A click on a
  * checkbox, though, is a click on a checkbox: making it vanish would be nobody's
  * expectation. The two are deliberately different operations, not an inconsistency.
+ *
+ * A tick or untick brings the tasks nested under it along (`task-cascade.ts`), in the same
+ * transaction, so one undo puts the whole subtree back.
  */
 
-import { type Extension, type Range } from '@codemirror/state'
+import { type EditorState, type Extension, type Range, type TransactionSpec } from '@codemirror/state'
 import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate } from '@codemirror/view'
 
 import { lineIndent, markerLength } from '../../outliner'
+import { lineWriteChanges, nestedTaskWrites } from '../../task-cascade'
 import { toggleTaskLine } from '../../task-tags'
 import { isInCode } from '../../wikilink/code-ranges'
 import { analysisFor } from '../analysis/editor-analysis'
@@ -82,6 +86,31 @@ function buildCheckboxes(view: EditorView): DecorationSet {
     return Decoration.set(decos, true)
 }
 
+/**
+ * What a click at document position `pos` does: tick or untick the task whose checkbox it hit, and
+ * every task nested under it with it, or null when `pos` is not on a task's checkbox. A
+ * checkbox in code or the frontmatter is sample text or YAML, not a task, and is not drawn either.
+ */
+export function checkboxClick(state: EditorState, pos: number): TransactionSpec | null {
+    const line = state.doc.lineAt(pos)
+    const range = checkboxRange(line.text, line.from)
+    if (!range || pos < range.from || pos > range.to) return null
+    const analysis = analysisFor(state)
+    if (line.from <= analysis.frontmatterEnd || isInCode(analysis.codeRanges, range.from, range.to)) return null
+
+    const next = toggleTaskLine(line.text, line.text[range.from - line.from + 1] === ' ')
+    if (next === null) return null
+    const nested = nestedTaskWrites(analysis.lines, line.number - 1, next, analysis.fencedBlocks)
+    return {
+        changes: [{ from: line.from, to: line.to, insert: next }, ...lineWriteChanges(analysis.lines, nested)],
+        // Land at the content column, where the caret clamp would push it anyway — going there
+        // directly avoids a visible hop. Setting a selection at all is what stops the click
+        // starting one inside the (hidden) checkbox.
+        selection: { anchor: line.from + lineIndent(next) + markerLength(next) },
+        userEvent: 'input',
+    }
+}
+
 export function taskCheckboxAugmentation(): Extension {
     return [
         ViewPlugin.fromClass(
@@ -105,21 +134,9 @@ export function taskCheckboxAugmentation(): Extension {
                 // mark can be split across elements by other decorations sharing the span.
                 const pos = view.posAtCoords({ x: event.clientX, y: event.clientY })
                 if (pos === null) return false
-                const line = view.state.doc.lineAt(pos)
-                const range = checkboxRange(line.text, line.from)
-                if (!range || pos < range.from || pos > range.to) return false
-                if (isInCode(analysisFor(view.state).codeRanges, range.from, range.to)) return false
-
-                const next = toggleTaskLine(line.text, line.text[range.from - line.from + 1] === ' ')
-                if (next === null) return false
-                view.dispatch({
-                    changes: { from: line.from, to: line.to, insert: next },
-                    // Land at the content column, where the caret clamp would push it anyway —
-                    // going there directly avoids a visible hop. Setting a selection at all is
-                    // what stops the click starting one inside the (hidden) checkbox.
-                    selection: { anchor: line.from + lineIndent(next) + markerLength(next) },
-                    userEvent: 'input',
-                })
+                const spec = checkboxClick(view.state, pos)
+                if (!spec) return false
+                view.dispatch(spec)
                 event.preventDefault()
                 return true
             },

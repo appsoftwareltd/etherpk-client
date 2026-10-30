@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import { createInMemoryDocumentStore } from './in-memory-store'
 import { toggleIndexedTask } from './task-toggle'
+import { undoTaskWrite } from './task-write'
 import type { DocumentStore, EditorDocument, TextChange } from './types'
 
 /** A store over one in-memory document, applying range replacements for real. */
@@ -25,7 +26,7 @@ describe('toggling an indexed task', () => {
         const { store, text } = storeOf('# Notes\n  - [ ] #P1 Fix   the   redirect\n- other')
         const result = await toggleIndexedTask(store, task(1, '#P1 Fix   the   redirect'), true)
 
-        expect(result).toEqual({ ok: true, done: true })
+        expect(result).toMatchObject({ ok: true, done: true })
         expect(text()).toBe('# Notes\n  - [x] #P1 Fix   the   redirect\n- other')
     })
 
@@ -40,7 +41,7 @@ describe('toggling an indexed task', () => {
         // just not this one. The text comparison catches it, and the finder follows the task.
         const { store, text } = storeOf('inserted\n- [ ] a different task\n- [ ] the real one')
 
-        expect(await toggleIndexedTask(store, task(1, 'the real one'), true)).toEqual({ ok: true, done: true })
+        expect(await toggleIndexedTask(store, task(1, 'the real one'), true)).toMatchObject({ ok: true, done: true })
         expect(text()).toBe('inserted\n- [ ] a different task\n- [x] the real one')
     })
 
@@ -83,6 +84,7 @@ describe('toggling an indexed task', () => {
         expect(await toggleIndexedTask(store, task(0, 'already done'), true)).toEqual({
             ok: true,
             done: true,
+            write: null,
         })
         expect(text()).toBe('- [x] already done')
     })
@@ -115,7 +117,7 @@ describe('toggleIndexedTask on a page with frontmatter', () => {
 
         const result = await toggleIndexedTask(store, { concept: 'Kanban', line: 0, text: '#P1 Water the beans' }, true)
 
-        expect(result).toEqual({ ok: true, done: true })
+        expect(result).toMatchObject({ ok: true, done: true })
         expect(store.open('Kanban').getText()).toBe('---\ntitle: Kanban\n---\n- [x] #P1 Water the beans\n- [ ] second')
     })
 
@@ -124,7 +126,26 @@ describe('toggleIndexedTask on a page with frontmatter', () => {
 
         const result = await toggleIndexedTask(store, { concept: 'Kanban', line: 1, text: '#P1 Water the beans' }, true)
 
-        expect(result).toEqual({ ok: true, done: true })
+        expect(result).toMatchObject({ ok: true, done: true })
         expect(store.open('Kanban').getText()).toBe('---\ntitle: Kanban\n---\n- [x] #P1 Water the beans\n- [ ] second')
+    })
+})
+
+describe('a tick from the Tasks View brings the tasks nested under it', () => {
+    it('ticks them, and hands back the write so an undo can put every line back', async () => {
+        const text = '- [ ] Garden\n  - Beds\n    - [ ] water the beans\n  - [x] weed'
+        const store = createInMemoryDocumentStore({ Garden: text })
+        const result = await toggleIndexedTask(store, { concept: 'Garden', line: 0, text: 'Garden' }, true)
+        expect(store.open('Garden').getText()).toBe('- [x] Garden\n  - Beds\n    - [x] water the beans\n  - [x] weed')
+        if (!result.ok || !result.write) throw new Error('the tick wrote nothing')
+        expect(result.write.nested).toHaveLength(1)
+        await undoTaskWrite(store, 'Garden', result.write)
+        expect(store.open('Garden').getText()).toBe(text)
+    })
+
+    it('hands back no write when the task was already as asked', async () => {
+        const store = createInMemoryDocumentStore({ Garden: '- [x] Garden\n  - [ ] weed' })
+        expect(await toggleIndexedTask(store, { concept: 'Garden', line: 0, text: 'Garden' }, true)).toEqual({ ok: true, done: true, write: null })
+        expect(store.open('Garden').getText()).toBe('- [x] Garden\n  - [ ] weed')
     })
 })

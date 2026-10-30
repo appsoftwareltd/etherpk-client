@@ -91,6 +91,22 @@ starts at 0.9.3.
   closing fence.
 - **The table removal rows of the Command Menu show their icons.** Remove rows above, Remove rows
   below, Remove columns right and Remove columns left drew a dot.
+- **Notifications stay in front while a dialog is open.** On a wide screen, a notification in the
+  bottom-right corner is no longer dimmed behind an open dialog such as Settings. You can read it,
+  dismiss it and use its buttons without closing the dialog. Where a notification and a dialog
+  overlap, the dialog stays on top, so its buttons are never covered.
+- **An extension's question shows over its full window.** When an extension asks a question while
+  its window, or a fence opened over the window, is showing, the question now opens in front of the
+  window. Before, it opened behind it, out of sight. Notifications also show over a full window now.
+- **The External change prompt works like every other dialog.** When a file changes on disk under
+  unsaved edits, the prompt now takes the keyboard. Escape does not close it, because you must choose
+  a version. When your choice cannot be saved, the prompt stays open and says why.
+- **Ticking a task ticks the tasks nested under it.** Tick a task and every task under it is
+  ticked too, at any depth. Untick it and they are unticked, but a cancelled task (`#C`) stays
+  ticked. This applies to a click on the checkbox, to **Ctrl+Shift+Enter** when it makes a task
+  done, to a tick in the Tasks view and to a Kanban move into or out of Done. In the editor, one
+  **Ctrl+Z** undoes all of it. In the Tasks view and on a Kanban board, a notice says how many
+  nested tasks changed and has **Undo**.
 - Updated dependencies.
 
 ### Headless Client
@@ -98,6 +114,9 @@ starts at 0.9.3.
 - Updated dependencies.
 - **Renaming a page moves everyone's favourites and bookmarks to the new name** on a synced graph,
   as renaming it in the Client does.
+- **`set_task` changes the tasks nested under a task, as the Client does.** Status `done` ticks
+  every task nested under the task, and `open`, `doing` or `waiting` on a ticked task unticks them,
+  except a cancelled one. The result lists each changed line in `nested`.
 
 ## 0.16.0 - 2026-10-29
 

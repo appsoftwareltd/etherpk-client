@@ -42,6 +42,8 @@ import { outdentBranch, toggleBullet } from './outliner-keymap'
 import { PLAIN_PASTE_USER_EVENT } from './paste-clamp'
 import { analysisFor } from './analysis/editor-analysis'
 import { bulletToggleable, taskToggleable } from './task-toggleable'
+import { checkboxClick } from './augmentations/task-checkbox'
+import { lineIndent } from '../outliner'
 import { editorFixture, type FixtureOptions, press } from './testing/editor-state-fixture'
 import { FIND_REPLACE_EVENT, FIND_SELECT_EVENT } from '../find/find-edit'
 import { wikilinkButtonSpec } from './wrap-selection'
@@ -1121,6 +1123,9 @@ table('Enter over a block selection leaves one empty block in its place', [
 table('Mod+Shift+Enter over a block selection cycles every block in it', [
     { rule: 'each block cycles from its own state', precedent: 'Logseq', before: '«- a\n- [ ] b\n- [x] c»', key: 'Mod-Shift-Enter', after: '«- [ ] a\n- [x] b\n- c»' },
     { rule: 'a selected block’s children cycle too', precedent: 'EtherPK', before: '«- a\n  - b»\n- c', key: 'Mod-Shift-Enter', after: '«- [ ] a\n  - [ ] b»\n- c' },
+    // A block selection already acts on every block nested under the ones it takes, so a tick there
+    // brings nothing more with it: each block still cycles from its own state.
+    { rule: '…each from its own state, a ticked parent ticking nothing under it', precedent: 'EtherPK', before: '«- [ ] a\n  - [x] b»\n- c', key: 'Mod-Shift-Enter', after: '«- [x] a\n  - b»\n- c' },
     { rule: 'an empty bullet is left as it is', precedent: 'Logseq', before: '«- a\n- \n- b»', key: 'Mod-Shift-Enter', after: '«- [ ] a\n- \n- [ ] b»' },
     { rule: 'a bullet whose code opens on its line is left as it is, and its code too', precedent: 'EtherPK', before: '«- a\n- ```md\n  - x\n  ```»', key: 'Mod-Shift-Enter', after: '«- [ ] a\n- ```md\n  - x\n  ```»' },
     { rule: 'continuation lines and prose are left as they are', precedent: 'EtherPK', before: '«- a\n  soft\n\nprose»', key: 'Mod-Shift-Enter', after: '«- [ ] a\n  soft\n\nprose»' },
@@ -1130,6 +1135,17 @@ table('Mod+Shift+Enter cycles the task state', [
     { rule: 'plain bullet becomes an open task', precedent: 'EtherPK', before: '- a|', key: 'Mod-Shift-Enter', after: '- [ ] a|' },
     { rule: 'open task becomes done', precedent: 'EtherPK', before: '- [ ] a|', key: 'Mod-Shift-Enter', after: '- [x] a|' },
     { rule: 'done task becomes a plain bullet', precedent: 'EtherPK', before: '- [x] a|', key: 'Mod-Shift-Enter', after: '- a|' },
+    // Ticking a task ticks every task nested under it, at any depth and through plain bullets, which
+    // stay plain (Editor Content Rules → Tasks nested under a task). The other two steps make and
+    // remove a task, which is neither a tick nor an untick, so they bring nothing with them.
+    { rule: 'an open task made done ticks every task nested under it', precedent: 'EtherPK', before: '- [ ] a|\n  - [ ] b\n    - c\n      - [ ] d\n- [ ] e', key: 'Mod-Shift-Enter', after: '- [x] a|\n  - [x] b\n    - c\n      - [x] d\n- [ ] e' },
+    { rule: '…and nothing above it: a nested task ticked leaves its parent open', precedent: 'EtherPK', before: '- [ ] a\n  - [ ] b|\n  - [ ] c', key: 'Mod-Shift-Enter', after: '- [ ] a\n  - [x] b|\n  - [ ] c' },
+    { rule: 'a done task made a plain bullet leaves its nested tasks as they are', precedent: 'EtherPK', before: '- [x] a|\n  - [x] b', key: 'Mod-Shift-Enter', after: '- a|\n  - [x] b' },
+    { rule: 'a plain bullet made a task leaves its nested tasks as they are', precedent: 'EtherPK', before: '- a|\n  - [x] b', key: 'Mod-Shift-Enter', after: '- [ ] a|\n  - [x] b' },
+    { rule: 'a task-shaped line in a code block under the task is code, and stays as it is', precedent: 'EtherPK', before: '- [ ] a|\n  ```md\n  - [ ] x\n  ```\n  - [ ] b', key: 'Mod-Shift-Enter', after: '- [x] a|\n  ```md\n  - [ ] x\n  ```\n  - [x] b' },
+    // Fences are read as the derived index reads them: an opener with no closer is no block, so the
+    // task under it is a task the Tasks View lists, and it is ticked with its parent.
+    { rule: 'a task under a fence with no closer is still a task, and is ticked', precedent: 'EtherPK', before: '- [ ] a|\n  ```\n  - [ ] b', key: 'Mod-Shift-Enter', after: '- [x] a|\n  ```\n  - [x] b' },
     // A prose line enters the list as Tab makes it: at column 0, its spaces dropped (kept, they
     // would make an indented task under nothing, or one off the grid), and the bullets below are
     // healed one level under it at most.
@@ -1150,6 +1166,37 @@ table('Mod+Shift+Enter cycles the task state', [
     { rule: 'the heal below a new task goes on past an indented soft line, which moves with its bullet', precedent: 'EtherPK', before: '  te|xt\n    - c\n      \n    - d', key: 'Mod-Shift-Enter', after: '- [ ] te|xt\n  - c\n    \n  - d' },
     { rule: '…and a code block after it stays the new task’s', precedent: 'EtherPK', before: 'Sho|pping\n      - eggs\n  \n  ```py\n  if x:\n      y\n  ```', key: 'Mod-Shift-Enter', after: '- [ ] Sho|pping\n  - eggs\n  \n  ```py\n  if x:\n      y\n  ```' },
 ])
+
+// A click on a task's checkbox ticks or unticks it, never cycling it to a plain bullet
+// (augmentations/task-checkbox.ts), and brings the tasks nested under it along as the task toggle
+// does (Editor Content Rules → Tasks nested under a task).
+describe('a click on a task’s checkbox (EtherPK)', () => {
+    function click(before: string, line: number): string {
+        const editor = editorFixture(before)
+        const spec = checkboxClick(editor.state, editor.state.doc.line(line).from + lineIndent(editor.state.doc.line(line).text) + 3)
+        if (spec) editor.dispatch(editor.state.update(spec))
+        return editor.fixture()
+    }
+
+    it('ticks the task and every task nested under it, through a plain bullet', () => {
+        expect(click('- [ ] a\n  - b\n    - [ ] c\n- [ ] d|', 1)).toBe('- [x] |a\n  - b\n    - [x] c\n- [ ] d')
+    })
+
+    it('unticks them, leaving a Cancelled one ticked', () => {
+        expect(click('- [x] a\n  - [x] #C b\n  - [x] c|', 1)).toBe('- [ ] |a\n  - [x] #C b\n  - [ ] c')
+    })
+
+    it('ticks a nested task alone, its parent left open', () => {
+        expect(click('- [ ] a\n  - [ ] b|', 2)).toBe('- [ ] a\n  - [x] |b')
+    })
+
+    it('is one undo step', () => {
+        const editor = editorFixture('- [ ] a|\n  - [ ] b')
+        editor.dispatch(editor.state.update(checkboxClick(editor.state, 3)!))
+        editor.key('Mod-z')
+        expect(editor.fixture()).toBe('- [ ] a|\n  - [ ] b')
+    })
+})
 
 // While a fence just typed on its own line is held pending, the editor shows the blocks below as they
 // were, and the task toggle reads them so too: the Command Bar's gate and the key agree.

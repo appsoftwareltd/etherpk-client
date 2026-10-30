@@ -97,6 +97,7 @@
             "types": "./src/auth/verification-resend.ts",
             "default": "./src/auth/verification-resend.ts"
         },
+        "./layers.css": "./src/ui/layers.css",
         "./dialog": {
             "svelte": "./src/components/Dialog.svelte",
             "types": "./src/components/Dialog.svelte",

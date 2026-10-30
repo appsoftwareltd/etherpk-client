@@ -15,17 +15,20 @@
  * wrong edit — it must not be "simplified" away.
  *
  * A tick flips the checkbox and nothing else. Unlike a move to a lane, it leaves any state tag
- * where it is: the checkbox decides a ticked task's status whatever `#W` or `#D` says.
+ * where it is: the checkbox decides a ticked task's status whatever `#W` or `#D` says. It brings
+ * the tasks nested under it along, as every tick does (`task-cascade.ts`), and hands back what it
+ * wrote so the Tasks View can offer to undo it.
  */
 
-import { findIndexedTask, type IndexedTask } from './task-write'
-import { parseTaskLine } from './task-tags'
+import { findIndexedTask, type IndexedTask, type TaskWrite, writeFoundTask } from './task-write'
+import { parseTaskLine, toggleTaskLine } from './task-tags'
 import type { DocumentStore } from './types'
 
 export type { IndexedTask }
 
 export type TaskToggleOutcome =
-    | { ok: true; done: boolean }
+    /** `write` is what the tick changed, for `undoTaskWrite`; null when the task was already as asked. */
+    | { ok: true; done: boolean; write: TaskWrite | null }
     /**
      * `stale`: no task line, or more than one, has the task's text. `missing`: its document is
      * gone. Nothing was written either way.
@@ -33,26 +36,26 @@ export type TaskToggleOutcome =
     | { ok: false; reason: 'stale' | 'missing' }
 
 /**
- * Flip one indexed task's checkbox in its document.
+ * Flip one indexed task's checkbox in its document, and the nested tasks' with it.
  *
- * The edit is a ONE-CHARACTER range replacement over the checkbox itself, never a rewrite of
- * the line: everything else — indentation, marker spacing, the tag run, the text — is left
- * untouched byte for byte, so this cannot reformat what someone wrote, and it is the smallest
- * possible operation to hand a CRDT.
+ * Each edit is a ONE-CHARACTER range replacement over a checkbox itself, never a rewrite of the
+ * line: everything else (indentation, marker spacing, the tag run, the text) is left untouched
+ * byte for byte, so this cannot reformat what someone wrote, and it is the smallest possible
+ * operation to hand a CRDT.
  */
 export async function toggleIndexedTask(store: DocumentStore, task: IndexedTask, done: boolean): Promise<TaskToggleOutcome> {
     const found = await findIndexedTask(store, task)
     if ('reason' in found) return { ok: false, reason: found.reason }
     const line = found.lines[found.index]
-    const marker = /^(\s*-\s+\[)([ xX])(\])/.exec(line)
-    if (!marker) return { ok: false, reason: 'stale' }
+    const next = toggleTaskLine(line, done)
+    if (next === null) return { ok: false, reason: 'stale' }
 
     // Already in the requested state: report success without writing, so a double click or a
     // second tab having got there first is not an error the user has to think about.
-    if (parseTaskLine(line)?.done === done) return { ok: true, done }
+    if (parseTaskLine(line)?.done === done) return { ok: true, done, write: null }
 
-    const at = found.offset + marker[1].length
-    // 'external': this is not the editor typing, so an open editor must be told.
-    found.document.applyChange({ from: at, to: at + 1, insert: done ? 'x' : ' ' }, 'external')
-    return { ok: true, done }
+    const outcome = writeFoundTask(found, next)
+    if (!outcome.ok) return outcome
+    const { line: at, before, after, nested } = outcome
+    return { ok: true, done, write: { line: at, before, after, nested } }
 }

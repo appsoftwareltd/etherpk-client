@@ -72,8 +72,8 @@ import { isTemplate, templateBody } from '$lib/document/templates/template-page'
 import { renderTemplate, templateContextFor } from '$lib/document/templates/template-variables'
 import { type ConceptFacts, createGraphModel, type GraphFilter, shortestPath, visibleGraph } from '@appsoftwareltd/etherpk-extension-graph-view/model'
 import { bridges, findClusters, hubs, isolatedDocuments, pagelessByDocuments, type RankedConcept } from '@appsoftwareltd/etherpk-extension-graph-view/model'
+import { lineWriteChanges, nestedTaskWrites } from '$lib/document/task-cascade'
 import { taskLineWith } from '$lib/document/task-write'
-import { minimalReplacement } from '$lib/document/view/minimal-replacement'
 
 import type { HeadlessDocument } from './headless-documents'
 import type { HeadlessGraph } from './headless-graph'
@@ -1168,7 +1168,9 @@ export async function readDocuments(graph: HeadlessGraph, args: { concepts: stri
  * The line is rewritten by the writer a Kanban Board move uses (`task-write.ts`), so a status
  * here means exactly what a lane means: exclusive, `waiting` and `doing` unchecked states, `done`
  * and `cancelled` checked ones, `open` none of them, and no completion date written. `expect` is
- * the stale-line guard, made explicit for a caller working from a list.
+ * the stale-line guard, made explicit for a caller working from a list. A move to done ticks the
+ * tasks nested under the task, and a move from done or cancelled to an unticked status unticks
+ * them (a cancelled one stays ticked), as a tick in the app does; `nested` lists each one changed.
  */
 export async function setTask(graph: HeadlessGraph, args: SetTaskArgs) {
     if (args.reference !== undefined) {
@@ -1200,12 +1202,16 @@ export async function setTask(graph: HeadlessGraph, args: SetTaskArgs) {
     }
     // A task line, since `parsed` is not null; a task already as asked comes back unchanged.
     const next = taskLineWith(current!, changes) ?? current!
-    const edit = minimalReplacement(current!, next)
-    if (edit) {
-        // The smallest edit over the line, so on a synced graph it merges with anyone typing
-        // elsewhere in the same line rather than replacing it whole.
-        const from = lines.slice(0, line).reduce((n, l) => n + l.length + 1, 0)
-        graph.store.open(identity.concept).applyChange({ from: from + edit.from, to: from + edit.to, insert: edit.insert }, 'external')
+    // A status that makes the task Done, or unticks it, ticks or unticks the tasks nested under it
+    // too, as a tick in the app does (task-cascade.ts).
+    const nested = nestedTaskWrites(lines, line, next)
+    const edits = lineWriteChanges(lines, [{ index: line, before: current!, after: next }, ...nested])
+    if (edits.length > 0) {
+        // The smallest edit within each line, so on a synced graph it merges with anyone typing
+        // elsewhere in the same line rather than replacing it whole. Last line first, so each
+        // edit's offsets are still true when it lands.
+        const document = graph.store.open(identity.concept)
+        for (const edit of edits) document.applyChange(edit, 'external')
         await settle(graph)
     }
     const after = parseTaskLine(next)!
@@ -1219,6 +1225,7 @@ export async function setTask(graph: HeadlessGraph, args: SetTaskArgs) {
         due: after.due,
         scheduled: after.scheduled,
         changed: next !== current,
+        nested: nested.map((write) => ({ line: write.index, text: bulletLabel(write.after), done: parseTaskLine(write.after)!.done })),
         reference: await referenceFor(graph, identity.concept, line, bulletLabel(next)),
     }
 }

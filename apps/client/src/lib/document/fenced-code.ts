@@ -119,6 +119,13 @@ export interface FencedBlockTree {
 /** {@link fencedBlockTree} by scan: a scan never changes, so neither does its tree. */
 const treeByBlocks = new WeakMap<readonly FencedBlockRange[], FencedBlockTree>()
 
+/** The line indexes inside `blocks`, fences included: lines whose task-shaped text is code, not a task. */
+export function linesInFencedBlocks(blocks: readonly FencedBlockRange[]): Set<number> {
+    const inFence = new Set<number>()
+    for (const block of blocks) for (let i = block.start; i <= block.end; i++) inFence.add(i)
+    return inFence
+}
+
 /**
  * The blocks of one scan as a tree. A code sample can hold a fenced block of its own, written deeper (a
  * markdown sample of a list item with code in it): the scan pairs the inner fences inside the outer
