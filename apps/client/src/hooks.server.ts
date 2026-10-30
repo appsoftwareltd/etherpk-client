@@ -31,6 +31,7 @@ import {
     resolveTheme,
 } from '@appsoftwareltd/etherpk-shared/theme'
 import { buildStampComment, decorateHtmlWithBuildStamp } from '@appsoftwareltd/etherpk-shared/build-stamp'
+import { refusedRequestPath } from '@appsoftwareltd/etherpk-shared/server/request-path'
 
 // Which build is serving this page: the first line of every page source, so `view-source:`
 // answers it against `git log` without a shell on the box (see build-stamp.ts).
@@ -74,6 +75,10 @@ export const handleError = createHandleError({ logger, hostname: appHostname })
 
 /** One JSON request line per request that reaches the server (static assets never do). */
 export const handle: Handle = async ({ event, resolve }) => {
+    // A path that starts with `//` reads as another host once a page writes it back into a link
+    // or a form action. No route answers one.
+    const refused = refusedRequestPath(event.url)
+    if (refused) return refused
     const start = performance.now()
     const response = await respond(event, resolve)
     await logRequest({ logger, hostname: appHostname }, event, response, { durationMs: performance.now() - start })

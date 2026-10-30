@@ -963,3 +963,120 @@ describe('readTexts against edits this tab was not subscribed to', () => {
         await tab.close()
     })
 })
+
+describe('ServerDocumentStore contracts', () => {
+    it('lists journals newest first, then pages by name, each in its folder', async () => {
+        const s = await store(createLoopbackRelay())
+        await s.createJournal('2026-06-01')
+        await s.createJournal('2026-06-03')
+        await s.createPage('Kitchen')
+        await s.createPage('Garden')
+
+        expect(s.listDocuments().map((entry) => `${entry.subdir}/${entry.concept}`)).toEqual([
+            'journals/2026-06-03',
+            'journals/2026-06-01',
+            'pages/Garden',
+            'pages/Kitchen',
+        ])
+        await s.dispose()
+    })
+
+    it('registers a journal under its day without surrounding space', async () => {
+        const s = await store(createLoopbackRelay())
+        await s.createJournal(' 2026-06-01 ')
+        expect(s.listDocuments().map((entry) => entry.concept)).toEqual(['2026-06-01'])
+        await s.dispose()
+    })
+
+    it('replaces exactly the range a change names', async () => {
+        const s = await store(createLoopbackRelay())
+        await s.createPage('Garden', 'abcdef')
+        const doc = s.open('Garden')
+        const before = doc.getText()
+        const at = before.indexOf('abcdef')
+
+        doc.applyChange({ from: at + 2, to: at + 4, insert: 'X' })
+
+        expect(doc.getText()).toBe(`${before.slice(0, at)}abXef${before.slice(at + 6)}`)
+        await s.dispose()
+    })
+
+    it('keeps an external write out of the editor’s undo history, but not an editor’s write', async () => {
+        const s = await store(createLoopbackRelay())
+        await s.createPage('Garden', 'water the beans')
+        const ytext = s.getYText('Garden')!
+        const undo = new Y.UndoManager(ytext)
+        const doc = s.open('Garden')
+
+        doc.applyChange({ from: 0, to: 0, insert: '- ' }, 'external')
+        expect(undo.undoStack).toHaveLength(0)
+        doc.applyChange({ from: 0, to: 0, insert: '- ' })
+        expect(undo.undoStack).toHaveLength(1)
+        undo.destroy()
+        await s.dispose()
+    })
+
+    it('reads no snapshot for a name it does not hold, and lists properties only when the block has some', async () => {
+        const s = await store(createLoopbackRelay())
+        await s.createPage('Garden', 'water the beans')
+        await s.createPage('Kitchen', '---\nstatus: draft\n---\nbake the bread')
+
+        await expect(s.snapshotDocument('Nowhere')).resolves.toBeNull()
+        expect(await s.snapshotDocument('Garden')).not.toHaveProperty('properties')
+        expect((await s.snapshotDocument('Kitchen'))?.properties).toEqual([expect.objectContaining({ key: 'status' })])
+        await s.dispose()
+    })
+
+    it('counts each document that links to a page once, unless the caller already knows the figure', async () => {
+        const s = await store(createLoopbackRelay())
+        await s.createPage('Garden', 'water the beans')
+        await s.createPage('Kitchen', '- see [[Garden]] and [[Garden]] again')
+        await s.createPage('Shed', '- the [[Garden]] tools')
+        await s.createPage('Barn', '- nothing here')
+
+        expect((await s.planRename('Garden', 'Plot')).referencingDocuments).toBe(2)
+        expect((await s.planRename('Garden', 'Plot', 7)).referencingDocuments).toBe(7)
+        await s.dispose()
+    })
+
+    it('treats deleting a name it does not hold, and merging fewer than two documents, as nothing to do', async () => {
+        const s = await store(createLoopbackRelay())
+        await s.createPage('Garden', 'water the beans')
+        await expect(s.deleteDocument('Nowhere')).resolves.toBeUndefined()
+        const id = s.documentIdOf('Garden')!
+        await expect(s.mergeDuplicates([id], new Map())).resolves.toBe('gone')
+        expect(s.listDocuments().map((entry) => entry.concept)).toEqual(['Garden'])
+        await s.dispose()
+    })
+
+    it('refuses aliases for a name it does not hold', async () => {
+        const s = await store(createLoopbackRelay())
+        await expect(s.setAliases('Nowhere', ['Plot'])).rejects.toBeInstanceOf(DocumentNotFoundError)
+        await s.dispose()
+    })
+
+    it('stops telling a listener once it unsubscribes', async () => {
+        const relay = createLoopbackRelay()
+        const s = await store(relay)
+        await s.createPage('Garden', 'water the beans')
+        await s.createPage('Kitchen', 'bake the bread')
+        const changed = vi.fn()
+        const removed = vi.fn()
+        const renamed = vi.fn()
+        const content = vi.fn()
+        const off = [s.onDocumentsChanged(changed), s.onDocumentRemoved(removed), s.onDocumentRenamed(renamed), s.onChange(content)]
+        for (const stop of off) stop()
+
+        await s.createPage('Shed')
+        s.open('Garden').applyChange({ from: 0, to: 0, insert: '- ' })
+        await s.renamePage('Garden', 'Plot', { strategy: 'rewrite' })
+        await s.deleteDocument('Kitchen')
+        await new Promise((resolve) => setTimeout(resolve, 30))
+
+        expect(changed).not.toHaveBeenCalled()
+        expect(removed).not.toHaveBeenCalled()
+        expect(renamed).not.toHaveBeenCalled()
+        expect(content).not.toHaveBeenCalled()
+        await s.dispose()
+    })
+})

@@ -130,6 +130,16 @@ describe('index-db', () => {
         expect(backlinksFor(db, 'Programme').map((group) => group.sourceConcept).sort()).toEqual(['2026-06-24', '2026-06-25'])
     })
 
+    it("changes a document's hash when only its properties or includes change", () => {
+        const page = { concept: 'Garden', kind: 'page' as const, aliases: [] as string[], text: '- water the beans' }
+        const hashOf = (doc: IndexDoc) => indexDocHash(doc)
+        expect(hashOf({ ...page, properties: [{ key: 'status', value: 'done' }] })).not.toBe(hashOf({ ...page, properties: [{ key: 'status', value: 'open' }] }))
+        expect(hashOf({ ...page, properties: [{ key: 'status', value: 'done' }] })).not.toBe(hashOf({ ...page, properties: [{ key: 'state', value: 'done' }] }))
+        const include = { publication: 'docs', slot: 'footer', concept: 'Kitchen' }
+        expect(hashOf({ ...page, includes: [include] })).not.toBe(hashOf({ ...page, includes: [{ ...include, concept: 'Shed' }] }))
+        expect(hashOf({ ...page, includes: [include] })).not.toBe(hashOf({ ...page, includes: [{ ...include, slot: 'head' }] }))
+    })
+
     it("changes a document's hash when only its aliases change, so an incremental ingest takes it", () => {
         const kanban = { concept: 'Kanban', kind: 'page' as const, aliases: [] as string[], text: '- k' }
         expect(indexDocHash({ ...kanban, aliases: ['Board'] })).not.toBe(indexDocHash(kanban))
@@ -190,6 +200,22 @@ describe('index-db', () => {
                 ['Project', true],
             ])
         }
+    })
+
+    it('lists journals newest first, then pages by name whatever their case', () => {
+        ingest(db, [
+            { concept: 'Garden', kind: 'page', aliases: [], text: '' },
+            { concept: 'shed', kind: 'page', aliases: [], text: '- see [[Garden]]' },
+            { concept: 'Barn', kind: 'page', aliases: [], text: '- see [[Garden]]' },
+            { concept: 'Kitchen', kind: 'page', aliases: [], text: '- see [[Garden]]' },
+            { concept: '2026-06-01', kind: 'journal', aliases: [], text: '- water [[Garden]]' },
+            { concept: '2026-06-03', kind: 'journal', aliases: [], text: '- water [[Garden]]' },
+        ])
+        expect(backlinksFor(db, 'Garden').map((g) => g.sourceConcept)).toEqual(['2026-06-03', '2026-06-01', 'Barn', 'Kitchen', 'shed'])
+    })
+
+    it('says which other names a document answers to', () => {
+        expect(indexedDocumentFacts(db, 'project').aliases).toEqual(['proj'])
     })
 
     it('marks no group for a name that has no page', () => {
@@ -469,6 +495,16 @@ describe('index-db', () => {
             expect(referencedInBody(groups.get('ByAlias')!, 'Kanban')).toBe(false)
             // Asked without a name, any body link counts, whichever name it says.
             expect(referencedInBody(groups.get('ByTitle')!)).toBe(true)
+        })
+
+        it('lists the title reference first, and counts a body link beside it as linking in the body', () => {
+            ingest(db, [
+                { concept: 'Garden', kind: 'page', aliases: [], text: '' },
+                { concept: '[[Garden]] Notes', kind: 'page', aliases: [], text: 'intro\n\n- water the [[Garden]] beans' },
+            ])
+            const group = backlinksFor(db, 'Garden').find((g) => g.sourceConcept === '[[Garden]] Notes')!
+            expect(group.refs.map((ref) => ref.kind)).toEqual(['title', 'block'])
+            expect(referencedInBody(group)).toBe(true)
         })
 
         it('tells a group that links in its body from one that only names the scope', () => {

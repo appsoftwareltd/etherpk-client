@@ -7,10 +7,12 @@ import {
     createGraphSync,
     OPERATION_WINDOW,
     type GraphSyncDeps,
+    type SyncAccessLoss,
     type TransportCloseEvent,
     type TransportSocket,
 } from './graph-sync'
 import { createLoopbackRelay } from './loopback-relay'
+import { STABLE_CONNECTION_MS } from './reconnect-backoff'
 import { fixedSyncToken } from './sync-token'
 import { openGraphCache, type GraphCache } from './local-cache'
 import { SyncProtocolMismatchError } from './messages'
@@ -3104,5 +3106,875 @@ describe('graph-sync member lists, item by item', () => {
         themes.put({ id: 'garden', name: 'Garden', files: { 'assets/site.css': 'body {}' } })
         expect(Object.keys(themes.get('garden')!.files)).toEqual(['assets/site.css'])
         a.dispose()
+    })
+})
+
+describe('graph-sync session contracts', () => {
+    const DOC_A = '018f47a0-7b5d-7cc5-b5c1-f0fbcde20001'
+    const DOC_B = '018f47a0-7b5d-7cc5-b5c1-f0fbcde20002'
+    const DOC_C = '018f47a0-7b5d-7cc5-b5c1-f0fbcde20003'
+    const DOC_D = '018f47a0-7b5d-7cc5-b5c1-f0fbcde20004'
+
+    interface RelaySide {
+        sent: Array<Record<string, unknown>>
+        closed: boolean
+        open(): void
+        close(code?: number): void
+        message(data: Record<string, unknown>): void
+    }
+
+    /**
+     * A session on scripted sockets; the test plays the relay. Catch-ups are answered at once as
+     * empty and terminal unless `holdCatchups` is set. Reconnects wait no time unless the test
+     * gives a delay function.
+     */
+    async function scriptedSession(extra: Partial<GraphSyncDeps> = {}, options: { holdCatchups?: boolean; awaitSocket?: boolean } = {}) {
+        const sockets: RelaySide[] = []
+        const errors: Error[] = []
+        const losses: SyncAccessLoss[] = []
+        const connect = (): TransportSocket => {
+            let onOpen = () => {}
+            let onClose: (event?: TransportCloseEvent) => void = () => {}
+            let onMessage: (data: string) => void = () => {}
+            const side: RelaySide = {
+                sent: [],
+                closed: false,
+                open: () => onOpen(),
+                close: (code = 1006) => onClose({ code, reason: '' }),
+                message: (data) => onMessage(JSON.stringify({ v: SYNC_PROTOCOL_VERSION, ...data })),
+            }
+            sockets.push(side)
+            return {
+                send(data) {
+                    const message = JSON.parse(data) as Record<string, unknown>
+                    side.sent.push(message)
+                    if (message.type === 'catchup' && !options.holdCatchups) {
+                        queueMicrotask(() =>
+                            side.message({
+                                type: 'catchup_batch',
+                                requestId: message.requestId,
+                                docId: message.docId,
+                                generation: message.generation,
+                                state: 'active',
+                                updates: [],
+                                throughSeq: message.afterSeq,
+                                hasMore: false,
+                            }),
+                        )
+                    }
+                },
+                close: () => {
+                    side.closed = true
+                },
+                onOpen: (callback) => {
+                    onOpen = callback
+                },
+                onMessage: (callback) => {
+                    onMessage = callback
+                },
+                onClose: (callback) => {
+                    onClose = callback
+                },
+            }
+        }
+        const graphId = `g-contract-${Math.floor(performance.now() * 1000)}`
+        const cache = await openGraphCache(graphId)
+        const gs = createGraphSync({
+            graphId,
+            rootDocId: ROOT,
+            keyring: createGraphKeyring(graphId),
+            relayUrl: 'ws://relay/sync',
+            token: fixedSyncToken('t'),
+            cache,
+            connect,
+            debounceMs: 1,
+            retryDelayMs: () => 0,
+            onError: (error) => errors.push(error),
+            onAccessLost: (loss) => losses.push(loss),
+            ...extra,
+        })
+        if (options.awaitSocket !== false) await vi.waitFor(() => expect(sockets).toHaveLength(1))
+        const sentOfType = (type: string, socket = sockets.at(-1)!) => socket.sent.filter((message) => message.type === type)
+        return { gs, cache, sockets, errors, losses, graphId, sentOfType }
+    }
+
+    const settle = (ms = 30) => new Promise((resolve) => setTimeout(resolve, ms))
+    const refusal = (docId: string, outboxId: string) => ({
+        type: 'error',
+        code: 'quota_denied',
+        message: 'write allowance reached',
+        quotaCode: 'entitlement_inactive',
+        retryable: true,
+        docId,
+        outboxId,
+    })
+    const ackOf = (outboxId: string, seq = 1) => ({ type: 'ack', outboxId, generation: 1, state: 'active', seq })
+
+    /** Retain `docId`, type into it and wait for its append on the open socket. */
+    async function editAndSend(s: Awaited<ReturnType<typeof scriptedSession>>, docId: string, text: string) {
+        s.gs.retainDoc(docId)
+        const before = s.sentOfType('append').filter((message) => message.docId === docId).length
+        s.gs.docSync(docId).doc.getText('content').insert(0, text)
+        await s.gs.flushAll()
+        await vi.waitFor(() => expect(s.sentOfType('append').filter((message) => message.docId === docId)).toHaveLength(before + 1))
+        return s.sentOfType('append').filter((message) => message.docId === docId).at(-1) as { outboxId: string }
+    }
+
+    describe('write refusals', () => {
+        it('retries a refused write on a backoff that grows each round, and stops once it is accepted', async () => {
+            const rounds: number[] = []
+            const s = await scriptedSession({ refusalRetryDelayMs: (round) => (rounds.push(round), 0) })
+            s.sockets[0].open()
+            const append = await editAndSend(s, DOC_A, 'Garden')
+
+            s.sockets[0].message(refusal(DOC_A, append.outboxId))
+            await vi.waitFor(() => expect(s.sentOfType('append')).toHaveLength(2))
+            s.sockets[0].message(refusal(DOC_A, append.outboxId))
+            await vi.waitFor(() => expect(s.sentOfType('append')).toHaveLength(3))
+            s.sockets[0].message(ackOf(append.outboxId))
+
+            await vi.waitFor(() => expect(s.gs.activity().refusal).toBeNull())
+            expect(rounds).toEqual([1, 2])
+            s.gs.dispose()
+        })
+
+        it('gathers refusals that arrive together into one retry round', async () => {
+            const rounds: number[] = []
+            const s = await scriptedSession({ refusalRetryDelayMs: (round) => (rounds.push(round), 0) })
+            s.sockets[0].open()
+            const first = await editAndSend(s, DOC_A, 'Garden')
+            const second = await editAndSend(s, DOC_B, 'Kitchen')
+
+            s.sockets[0].message(refusal(DOC_A, first.outboxId))
+            s.sockets[0].message(refusal(DOC_B, second.outboxId))
+            await settle()
+
+            expect(rounds).toEqual([1])
+            s.gs.dispose()
+        })
+
+        it('clears the refusal once no refused document has anything left to send', async () => {
+            const s = await scriptedSession({ refusalRetryDelayMs: () => 20 })
+            s.sockets[0].open()
+            const append = await editAndSend(s, DOC_A, 'Garden')
+            s.sockets[0].message(refusal(DOC_A, append.outboxId))
+            expect(s.gs.activity().refusal).not.toBeNull()
+
+            // A newer generation discards the refused write.
+            s.sockets[0].message({ type: 'error', code: 'stale_generation', message: 'stale', docId: DOC_A, currentGeneration: 3 })
+            await vi.waitFor(() => expect(s.gs.docSync(DOC_A).unsentOperations()).toBe(0))
+
+            await vi.waitFor(() => expect(s.gs.activity().refusal).toBeNull())
+            s.gs.dispose()
+        })
+
+        it('clears the refusal when the only refused write is discarded, though another document’s write is still in flight', async () => {
+            const s = await scriptedSession({ refusalRetryDelayMs: () => 20 })
+            s.sockets[0].open()
+            const refused = await editAndSend(s, DOC_A, 'Garden')
+            await editAndSend(s, DOC_B, 'Kitchen')
+            s.sockets[0].message(refusal(DOC_A, refused.outboxId))
+
+            // A newer generation discards the refused write. The other document was never refused.
+            s.sockets[0].message({ type: 'error', code: 'stale_generation', message: 'stale', docId: DOC_A, currentGeneration: 3 })
+            await vi.waitFor(() => expect(s.gs.docSync(DOC_A).unsentOperations()).toBe(0))
+
+            await vi.waitFor(() => expect(s.gs.activity().refusal).toBeNull())
+            expect(s.gs.docSync(DOC_B).unsentOperations()).toBe(1)
+            s.gs.dispose()
+        })
+
+        it('does not resend writes in flight when asked to retry with nothing refused', async () => {
+            const s = await scriptedSession()
+            s.sockets[0].open()
+            await editAndSend(s, DOC_A, 'Garden')
+
+            s.gs.retryRefused()
+            await settle()
+
+            expect(s.sentOfType('append')).toHaveLength(1)
+            s.gs.dispose()
+        })
+
+        it('waits out the stall when only some unsent documents were refused before the wait', async () => {
+            const s = await scriptedSession({ refusalRetryDelayMs: () => 60_000 })
+            s.sockets[0].open()
+            const refused = await editAndSend(s, DOC_A, 'Garden')
+            await editAndSend(s, DOC_B, 'Kitchen')
+            s.sockets[0].message(refusal(DOC_A, refused.outboxId))
+
+            const started = Date.now()
+            const result = await s.gs.awaitAcked({ stallMs: 300 })
+
+            expect(Date.now() - started).toBeGreaterThanOrEqual(250)
+            expect(result).toMatchObject({ settled: false, outstanding: 2, refused: { quotaCode: 'entitlement_inactive' } })
+            s.gs.dispose()
+        })
+
+        it('stops waiting at once when every unsent document was refused before the wait', async () => {
+            const s = await scriptedSession({ refusalRetryDelayMs: () => 60_000 })
+            s.sockets[0].open()
+            const refused = await editAndSend(s, DOC_A, 'Garden')
+            s.sockets[0].message(refusal(DOC_A, refused.outboxId))
+
+            const started = Date.now()
+            const result = await s.gs.awaitAcked({ stallMs: 5_000 })
+
+            expect(Date.now() - started).toBeLessThan(2_000)
+            expect(result).toMatchObject({ settled: false, outstanding: 1, refused: { quotaCode: 'entitlement_inactive' } })
+            s.gs.dispose()
+        })
+    })
+
+    describe('waiting for acknowledgements', () => {
+        it('stops waiting at once for a refusal that arrives during the wait, even with other documents unrefused', async () => {
+            const s = await scriptedSession({ refusalRetryDelayMs: () => 60_000 })
+            s.sockets[0].open()
+            const refused = await editAndSend(s, DOC_A, 'Garden')
+            await editAndSend(s, DOC_B, 'Kitchen')
+
+            const started = Date.now()
+            const waiting = s.gs.awaitAcked({ stallMs: 5_000 })
+            await settle()
+            s.sockets[0].message(refusal(DOC_A, refused.outboxId))
+            const result = await waiting
+
+            expect(Date.now() - started).toBeLessThan(2_000)
+            expect(result).toMatchObject({ settled: false, outstanding: 2, refused: { quotaCode: 'entitlement_inactive' } })
+            s.gs.dispose()
+        })
+
+        it('gives up only once nothing has been acknowledged for the stall time', async () => {
+            const s = await scriptedSession()
+            s.sockets[0].open()
+            await editAndSend(s, DOC_A, 'Garden')
+
+            const started = Date.now()
+            const result = await s.gs.awaitAcked({ stallMs: 300 })
+
+            expect(Date.now() - started).toBeGreaterThanOrEqual(250)
+            expect(result).toEqual({ settled: false, outstanding: 1 })
+            s.gs.dispose()
+        })
+
+        it('reports progress as acknowledgements arrive, and none when nothing is pending', async () => {
+            const s = await scriptedSession()
+            s.sockets[0].open()
+            const idle: number[] = []
+            await expect(s.gs.awaitAcked({ onProgress: (n) => idle.push(n) })).resolves.toEqual({ settled: true, outstanding: 0 })
+            expect(idle).toEqual([])
+
+            const first = await editAndSend(s, DOC_A, 'Garden')
+            const second = await editAndSend(s, DOC_B, 'Kitchen')
+            const progress: number[] = []
+            const waiting = s.gs.awaitAcked({ onProgress: (n) => progress.push(n), stallMs: 5_000 })
+            await vi.waitFor(() => expect(progress).toEqual([2]))
+            s.sockets[0].message(ackOf(first.outboxId))
+            await vi.waitFor(() => expect(progress).toEqual([2, 1]))
+            s.sockets[0].message(ackOf(second.outboxId))
+
+            await expect(waiting).resolves.toEqual({ settled: true, outstanding: 0 })
+            expect(progress).toEqual([2, 1, 0])
+            s.gs.dispose()
+        })
+
+        it('counts each document flushed', async () => {
+            const s = await scriptedSession()
+            s.gs.docSync(DOC_A).doc.getText('content').insert(0, 'Garden')
+            s.gs.docSync(DOC_B).doc.getText('content').insert(0, 'Kitchen')
+            const progress: Array<[number, number]> = []
+
+            await s.gs.flushAll({ onProgress: (done, total) => progress.push([done, total]) })
+
+            expect(progress.at(-1)).toEqual([progress.length, progress.length])
+            expect(progress.map(([done]) => done)).toEqual(progress.map((_, i) => i + 1))
+            s.gs.dispose()
+        })
+    })
+
+    describe('following a new Graph Key epoch', () => {
+        async function epochSession(options: { collected?: () => ReturnType<typeof createGraphKeyring> | null; refresh?: () => Promise<void>; keyRetryDelayMs?: (round: number) => number } = {}) {
+            const holder: { keyring?: ReturnType<typeof createGraphKeyring> } = {}
+            const refreshKeyring = vi.fn(async () => {
+                await options.refresh?.()
+                const next = options.collected?.()
+                if (next) holder.keyring = next
+            })
+            const s = await scriptedSession({
+                keyring: () => holder.keyring!,
+                refreshKeyring,
+                keyRetryDelayMs: options.keyRetryDelayMs ?? (() => 60_000),
+            })
+            return { ...s, refreshKeyring, holder }
+        }
+        // The keyring is read lazily, so it is set before the socket opens.
+        const start = async (options: Parameters<typeof epochSession>[0] = {}) => {
+            const s = await epochSession(options)
+            s.holder.keyring ??= createGraphKeyring(s.graphId)
+            s.sockets[0].open()
+            await s.gs.connected()
+            return s
+        }
+        const withEpoch = (keyring: ReturnType<typeof createGraphKeyring>, epochId: number) => ({
+            graphId: keyring.graphId,
+            epochs: [...keyring.epochs, { epochId, key: new Uint8Array(32).fill(epochId) }],
+        })
+
+        it('collects nothing for an announcement of the epoch it already holds', async () => {
+            const s = await start()
+            s.sockets[0].message({ type: 'epoch_changed', epoch: 1 })
+            await settle()
+            expect(s.refreshKeyring).not.toHaveBeenCalled()
+            s.gs.dispose()
+        })
+
+        it('asks again on an announcement, but at most every interval for a refused write', async () => {
+            const s = await start()
+            s.sockets[0].message({ type: 'epoch_changed', epoch: 2 })
+            await vi.waitFor(() => expect(s.gs.activity().waitingForKey).toBe(2))
+            expect(s.refreshKeyring).toHaveBeenCalledTimes(1)
+
+            s.sockets[0].message({ type: 'error', code: 'stale_epoch', message: 'stale', docId: DOC_A, currentEpoch: 2 })
+            await settle()
+            expect(s.refreshKeyring).toHaveBeenCalledTimes(1)
+
+            s.sockets[0].message({ type: 'epoch_changed', epoch: 2 })
+            await vi.waitFor(() => expect(s.refreshKeyring).toHaveBeenCalledTimes(2))
+            s.gs.dispose()
+        })
+
+        it('stops waiting without collecting when the key arrived some other way', async () => {
+            const s = await start()
+            s.sockets[0].message({ type: 'epoch_changed', epoch: 2 })
+            await vi.waitFor(() => expect(s.gs.activity().waitingForKey).toBe(2))
+
+            s.holder.keyring = withEpoch(s.holder.keyring!, 2)
+            s.sockets[0].message({ type: 'epoch_changed', epoch: 2 })
+
+            await vi.waitFor(() => expect(s.gs.activity().waitingForKey).toBeNull())
+            expect(s.refreshKeyring).toHaveBeenCalledTimes(1)
+            s.gs.dispose()
+        })
+
+        it('collects again for a refused write once the interval has passed', async () => {
+            const s = await start()
+            s.sockets[0].message({ type: 'epoch_changed', epoch: 2 })
+            await vi.waitFor(() => expect(s.gs.activity().waitingForKey).toBe(2))
+            const later = Date.now() + 15_000
+            const clock = vi.spyOn(Date, 'now').mockReturnValue(later)
+            try {
+                s.sockets[0].message({ type: 'error', code: 'stale_epoch', message: 'stale', docId: DOC_A, currentEpoch: 2 })
+                await vi.waitFor(() => expect(s.refreshKeyring).toHaveBeenCalledTimes(2))
+            } finally {
+                clock.mockRestore()
+            }
+            s.gs.dispose()
+        })
+
+        it('takes a stale write without a named epoch to mean the next one', async () => {
+            const s = await start()
+            s.sockets[0].message({ type: 'error', code: 'stale_epoch', message: 'stale', docId: DOC_A })
+            await vi.waitFor(() => expect(s.gs.activity().waitingForKey).toBe(2))
+            s.gs.dispose()
+        })
+
+        it('collects once for announcements that arrive while a collection is in flight', async () => {
+            let release!: () => void
+            const gate = new Promise<void>((resolve) => {
+                release = resolve
+            })
+            const s = await start({ refresh: () => gate })
+            s.sockets[0].message({ type: 'epoch_changed', epoch: 2 })
+            s.sockets[0].message({ type: 'epoch_changed', epoch: 3 })
+            await settle()
+            expect(s.refreshKeyring).toHaveBeenCalledTimes(1)
+            release()
+            await vi.waitFor(() => expect(s.gs.activity().waitingForKey).toBe(3))
+            s.gs.dispose()
+        })
+
+        it('waits longer each round while the key is missing, and starts again once it arrives', async () => {
+            const rounds: number[] = []
+            let collected: ReturnType<typeof createGraphKeyring> | null = null
+            const s = await start({ collected: () => collected, keyRetryDelayMs: (round) => (rounds.push(round), 5) })
+
+            s.sockets[0].message({ type: 'epoch_changed', epoch: 2 })
+            await vi.waitFor(() => expect(rounds.length).toBeGreaterThanOrEqual(3))
+            collected = withEpoch(s.holder.keyring!, 2)
+            await vi.waitFor(() => expect(s.gs.activity().waitingForKey).toBeNull())
+            const calls = s.refreshKeyring.mock.calls.length
+            await settle()
+            expect(s.refreshKeyring).toHaveBeenCalledTimes(calls)
+            expect(rounds).toEqual(rounds.map((_, i) => i + 1))
+
+            rounds.length = 0
+            collected = null
+            s.sockets[0].message({ type: 'epoch_changed', epoch: 3 })
+            await vi.waitFor(() => expect(rounds.length).toBeGreaterThanOrEqual(1))
+            expect(rounds[0]).toBe(1)
+            s.gs.dispose()
+        })
+    })
+
+    describe('activity', () => {
+        it('tells a listener once about changes that land together, and nothing after dispose or unsubscribe', async () => {
+            const s = await scriptedSession({ refusalRetryDelayMs: () => 60_000 })
+            const heard: unknown[] = []
+            s.gs.onActivity((activity) => heard.push(activity))
+            s.sockets[0].open()
+            const first = await editAndSend(s, DOC_A, 'Garden')
+            await settle(80)
+            heard.length = 0
+
+            s.sockets[0].message(refusal(DOC_A, first.outboxId))
+            s.sockets[0].message(ackOf(first.outboxId))
+            await settle(80)
+            expect(heard).toHaveLength(1)
+
+            const late: unknown[] = []
+            const unsubscribe = s.gs.onActivity((activity) => late.push(activity))
+            unsubscribe()
+            s.sockets[0].close()
+            await settle(80)
+            expect(late).toEqual([])
+
+            const second = await scriptedSession({ refusalRetryDelayMs: () => 60_000 })
+            const afterDispose: unknown[] = []
+            second.gs.onActivity((activity) => afterDispose.push(activity))
+            second.sockets[0].open()
+            second.gs.dispose()
+            await settle(80)
+            expect(afterDispose).toEqual([])
+            s.gs.dispose()
+        })
+    })
+
+    describe('activity counts', () => {
+        it('says how many documents hold unsent writes, and when a refusal clears', async () => {
+            const s = await scriptedSession({ refusalRetryDelayMs: () => 60_000 })
+            const heard: Array<{ unsentDocuments: number; refusal: unknown }> = []
+            s.gs.onActivity((activity) => heard.push(activity))
+            s.sockets[0].open()
+            const append = await editAndSend(s, DOC_A, 'Garden')
+            await vi.waitFor(() => expect(heard.at(-1)?.unsentDocuments).toBe(1))
+
+            s.sockets[0].message(refusal(DOC_A, append.outboxId))
+            await vi.waitFor(() => expect(heard.at(-1)?.refusal).not.toBeNull())
+            s.sockets[0].message(ackOf(append.outboxId))
+
+            await vi.waitFor(() => expect(heard.at(-1)).toMatchObject({ unsentDocuments: 0, refusal: null }))
+            s.gs.dispose()
+        })
+    })
+
+    describe('index reads', () => {
+        it('reads nothing for a document neither cached nor live', async () => {
+            const s = await scriptedSession()
+            const changes = await s.gs.pendingIndexChanges()
+            await expect(changes.readDocument(DOC_D)).resolves.toBeNull()
+            s.gs.dispose()
+        })
+    })
+
+    describe('connections', () => {
+        it('ignores a socket it has already replaced', async () => {
+            const s = await scriptedSession()
+            s.sockets[0].open()
+            s.sockets[0].close()
+            await vi.waitFor(() => expect(s.sockets).toHaveLength(2))
+
+            s.sockets[0].open()
+            expect(s.gs.isConnected()).toBe(false)
+            s.sockets[1].open()
+            s.sockets[0].close()
+            await settle()
+
+            expect(s.sockets).toHaveLength(2)
+            expect(s.gs.isConnected()).toBe(true)
+            s.gs.dispose()
+        })
+
+        it('backs off further for a connection that dropped soon after opening, and starts again after one that stayed up', async () => {
+            const attempts: number[] = []
+            const s = await scriptedSession({ retryDelayMs: (attempt) => (attempts.push(attempt), 0) })
+            s.sockets[0].open()
+            s.sockets[0].close()
+            await vi.waitFor(() => expect(s.sockets).toHaveLength(2))
+            s.sockets[1].open()
+            s.sockets[1].close()
+            await vi.waitFor(() => expect(s.sockets).toHaveLength(3))
+            expect(attempts).toEqual([1, 2])
+
+            const now = Date.now()
+            const clock = vi.spyOn(Date, 'now').mockReturnValue(now)
+            try {
+                s.sockets[2].open()
+                clock.mockReturnValue(now + STABLE_CONNECTION_MS)
+                s.sockets[2].close()
+            } finally {
+                clock.mockRestore()
+            }
+            await vi.waitFor(() => expect(s.sockets).toHaveLength(4))
+            expect(attempts).toEqual([1, 2, 1])
+            s.gs.dispose()
+        })
+
+        it('forces a new token only after the relay refused one, and backs off on a second refusal', async () => {
+            const asked: unknown[] = []
+            const attempts: number[] = []
+            const s = await scriptedSession({
+                token: async (options) => (asked.push(options), 't'),
+                retryDelayMs: (attempt) => (attempts.push(attempt), 0),
+            })
+            s.sockets[0].open()
+            s.sockets[0].close(4401)
+            await vi.waitFor(() => expect(s.sockets).toHaveLength(2))
+            expect(attempts).toEqual([])
+            s.sockets[1].close(4401)
+            await vi.waitFor(() => expect(s.sockets).toHaveLength(3))
+            expect(attempts).toEqual([1])
+            s.sockets[2].close(1006)
+            await vi.waitFor(() => expect(s.sockets).toHaveLength(4))
+
+            expect(asked).toEqual([undefined, { force: true }, { force: true }, undefined])
+            s.gs.dispose()
+        })
+
+        it('subscribes to every document when asked to', async () => {
+            const s = await scriptedSession({ subscribeAll: true })
+            s.sockets[0].open()
+            expect(s.sentOfType('subscribe')).toContainEqual({ v: SYNC_PROTOCOL_VERSION, type: 'subscribe', all: true })
+            s.gs.dispose()
+
+            const plain = await scriptedSession()
+            plain.sockets[0].open()
+            expect(plain.sentOfType('subscribe').some((message) => message.all === true)).toBe(false)
+            plain.gs.dispose()
+        })
+
+        it('advertises presence again for each retained document on a new socket, never for the root', async () => {
+            const s = await scriptedSession({ presence: { name: 'Calm Owl', color: '#336699' } })
+            s.gs.retainDoc(DOC_A)
+            s.sockets[0].open()
+            s.sockets[0].close()
+            await vi.waitFor(() => expect(s.sockets).toHaveLength(2))
+
+            s.sockets[1].open()
+
+            await vi.waitFor(() => expect(s.sentOfType('presence').map((message) => message.docId)).toEqual([DOC_A]))
+            s.gs.dispose()
+        })
+
+        it('catches up again on reconnect only the documents promoted into synchronisation', async () => {
+            const s = await scriptedSession()
+            await s.gs.seedDocsFromCache([DOC_B])
+            s.gs.retainDoc(DOC_A)
+            s.sockets[0].open()
+            s.sockets[0].close()
+            await vi.waitFor(() => expect(s.sockets).toHaveLength(2))
+
+            s.sockets[1].open()
+
+            await vi.waitFor(() => expect(s.sentOfType('catchup').some((message) => message.docId === DOC_A)).toBe(true))
+            await settle()
+            expect(s.sentOfType('catchup').some((message) => message.docId === DOC_B)).toBe(false)
+            s.gs.dispose()
+        })
+
+        it('retries a token that failed for any reason but a refusal, and stops retrying once disposed', async () => {
+            const attempts: number[] = []
+            let fail!: (error: unknown) => void
+            const s = await scriptedSession(
+                {
+                    token: () => new Promise<string>((_, reject) => { fail = reject }),
+                    retryDelayMs: (attempt) => (attempts.push(attempt), 60_000),
+                },
+                { awaitSocket: false },
+            )
+            await vi.waitFor(() => expect(fail).toBeDefined())
+            fail(Object.assign(new Error('server down'), { status: 500 }))
+            await vi.waitFor(() => expect(attempts).toEqual([1]))
+            expect(s.losses).toEqual([])
+
+            s.gs.reconnectNow()
+            await vi.waitFor(() => expect(attempts).toEqual([1]))
+            const pending = fail
+            await vi.waitFor(() => expect(fail).not.toBe(pending))
+            s.gs.dispose()
+            fail(new Error('offline'))
+            await settle()
+            expect(attempts).toEqual([1])
+        })
+
+        it('makes no socket once disposed while the token was on its way', async () => {
+            let release!: (token: string) => void
+            const s = await scriptedSession(
+                { token: () => new Promise<string>((resolve) => { release = resolve }) },
+                { awaitSocket: false },
+            )
+            await vi.waitFor(() => expect(release).toBeDefined())
+            s.gs.dispose()
+            release('t')
+            await settle()
+            expect(s.sockets).toHaveLength(0)
+        })
+
+        it('replays a stored operation of a document nobody opened once ready', async () => {
+            const first = await scriptedSession()
+            first.sockets[0].open()
+            await editAndSend(first, DOC_C, 'Garden')
+            first.gs.dispose()
+
+            const s = await scriptedSession({ cache: first.cache })
+            await s.gs.ready()
+            s.sockets[0].open()
+
+            await vi.waitFor(() => expect(s.sentOfType('append').map((message) => message.docId)).toEqual([DOC_C]))
+            s.gs.dispose()
+        })
+    })
+
+    describe('messages from the relay', () => {
+        it('ignores a message it cannot read, and an ack for an operation it never sent', async () => {
+            const s = await scriptedSession()
+            s.sockets[0].open()
+            const engines = s.gs.diagnostics().activeEngines
+
+            expect(() => s.sockets[0].message({ type: 'no-such-message' })).not.toThrow()
+            s.sockets[0].message(ackOf('018f47a0-7b5d-7cc5-b5c1-f0fbcde2eeee'))
+            await settle()
+
+            expect(s.gs.diagnostics().activeEngines).toBe(engines)
+            expect(s.errors).toEqual([])
+            s.gs.dispose()
+        })
+
+        it('acts on no other error that names a document', async () => {
+            const refreshKeyring = vi.fn(async () => {})
+            const s = await scriptedSession({ refreshKeyring })
+            s.sockets[0].open()
+            await editAndSend(s, DOC_A, 'Garden')
+
+            s.sockets[0].message({ type: 'error', code: 'outbox_conflict', message: 'conflict', docId: DOC_A, currentGeneration: 3 })
+            s.sockets[0].message({ type: 'error', code: 'stale_generation', message: 'stale', docId: DOC_A })
+            await settle()
+
+            expect(s.gs.docSync(DOC_A).generation()).toBe(1)
+            expect(s.gs.docSync(DOC_A).unsentOperations()).toBe(1)
+            expect(refreshKeyring).not.toHaveBeenCalled()
+            s.gs.dispose()
+        })
+
+        it('keeps another document’s catch-up in flight when a stale generation names a different one', async () => {
+            const s = await scriptedSession({}, { holdCatchups: true })
+            s.sockets[0].open()
+            await vi.waitFor(() => expect(s.sentOfType('catchup')).toHaveLength(1))
+            s.gs.docSync(DOC_A)
+
+            s.sockets[0].message({ type: 'error', code: 'stale_generation', message: 'stale', docId: DOC_A, currentGeneration: 2 })
+            await settle()
+
+            expect(s.sentOfType('catchup')).toHaveLength(1)
+            s.gs.dispose()
+        })
+
+        it('acknowledges a resurrection through the same route as any write', async () => {
+            const s = await scriptedSession()
+            s.sockets[0].open()
+            const append = await editAndSend(s, DOC_A, 'Garden')
+            s.sockets[0].message(ackOf(append.outboxId))
+            await s.gs.deleteDoc(DOC_A)
+            const deletion = s.sentOfType('delete')[0] as { outboxId: string }
+            s.sockets[0].message({ type: 'ack', outboxId: deletion.outboxId, generation: 2, state: 'deleted', seq: 0 })
+            await vi.waitFor(() => expect(s.gs.docSync(DOC_A).lifecycle()).toBe('deleted'))
+
+            s.gs.docSync(DOC_A).doc.getText('content').insert(0, 'Kitchen')
+            await s.gs.flushAll()
+            await vi.waitFor(() => expect(s.sentOfType('resurrect')).toHaveLength(1))
+            const resurrection = s.sentOfType('resurrect')[0] as { outboxId: string }
+            s.sockets[0].message({ type: 'ack', outboxId: resurrection.outboxId, generation: 2, state: 'active', seq: 1 })
+
+            await vi.waitFor(() => expect(s.gs.docSync(DOC_A).lifecycle()).toBe('active'))
+            expect(s.gs.docSync(DOC_A).unsentOperations()).toBe(0)
+            s.gs.dispose()
+        })
+
+        it('holds a snapshot made while closed and sends it on the next socket', async () => {
+            const s = await scriptedSession()
+            s.sockets[0].open()
+            const append = await editAndSend(s, DOC_A, 'Garden')
+            s.sockets[0].message(ackOf(append.outboxId))
+            await vi.waitFor(() => expect(s.gs.docSync(DOC_A).unsentOperations()).toBe(0))
+            s.gs.dispose()
+
+            const second = await scriptedSession({ cache: s.cache, retryDelayMs: () => 60_000 })
+            second.gs.retainDoc(DOC_A)
+            await second.gs.whenReady(DOC_A)
+            second.sockets[0].open()
+            second.sockets[0].close()
+            await second.gs.uploadSnapshot(DOC_A)
+            second.gs.reconnectNow()
+            await vi.waitFor(() => expect(second.sockets).toHaveLength(2))
+
+            second.sockets[1].open()
+
+            expect(second.sentOfType('snapshot_put')).toEqual([expect.objectContaining({ docId: DOC_A, throughSeq: 1 })])
+            second.gs.dispose()
+        })
+    })
+
+    describe('catch-up queue', () => {
+        it('drops a waiting background catch-up when a foreground open asks for the same document', async () => {
+            const s = await scriptedSession({}, { holdCatchups: true })
+            s.sockets[0].open()
+            // The root's catch-up is in flight and holds the queue.
+            await vi.waitFor(() => expect(s.sentOfType('catchup')).toHaveLength(1))
+            await s.gs.readyDocs([DOC_A])
+            s.gs.retainDoc(DOC_A)
+            await settle()
+            const root = s.sentOfType('catchup')[0]
+
+            s.sockets[0].message({ type: 'catchup_batch', requestId: root.requestId, docId: ROOT, generation: 1, state: 'active', updates: [], throughSeq: 0, hasMore: false })
+            await vi.waitFor(() => expect(s.sentOfType('catchup')).toHaveLength(2))
+            const forDocA = s.sentOfType('catchup')[1]
+            expect(forDocA).toMatchObject({ docId: DOC_A, priority: 'foreground' })
+            s.sockets[0].message({ type: 'catchup_batch', requestId: forDocA.requestId, docId: DOC_A, generation: 1, state: 'active', updates: [], throughSeq: 0, hasMore: false })
+            await settle()
+
+            expect(s.sentOfType('catchup').filter((message) => message.docId === DOC_A)).toHaveLength(1)
+            s.gs.dispose()
+        })
+    })
+
+    describe('watermarks', () => {
+        async function answered(s: Awaited<ReturnType<typeof scriptedSession>>, documents: Array<{ docId: string; generation: number; state: string; lastSeq: number }>) {
+            await vi.waitFor(() => expect(s.sentOfType('watermarks')).toHaveLength(1))
+            s.sockets[0].message({ type: 'watermarks', requestId: s.sentOfType('watermarks')[0].requestId, documents })
+        }
+
+        it('catches up a document without a cache row unless the relay holds it new and empty', async () => {
+            const s = await scriptedSession()
+            s.sockets[0].open()
+            const checking = s.gs.docsNeedingCatchup([DOC_A, DOC_B, DOC_C, DOC_D])
+            await answered(s, [
+                { docId: DOC_A, generation: 2, state: 'active', lastSeq: 0 },
+                { docId: DOC_B, generation: 1, state: 'deleted', lastSeq: 0 },
+                { docId: DOC_C, generation: 1, state: 'active', lastSeq: 3 },
+                { docId: DOC_D, generation: 1, state: 'active', lastSeq: 0 },
+            ])
+            await expect(checking).resolves.toEqual([DOC_A, DOC_B, DOC_C])
+            s.gs.dispose()
+        })
+
+        it('catches up a cached document whose generation, lifecycle or sequence the relay holds differently', async () => {
+            const s = await scriptedSession()
+            const row = { update: Y.encodeStateAsUpdate(new Y.Doc()), lastSeq: 2, lastSyncedStateVector: Y.encodeStateVector(new Y.Doc()), generation: 1, lifecycle: 'active' as const }
+            for (const docId of [DOC_A, DOC_B, DOC_C, DOC_D]) await s.cache.docCache(docId).save(row)
+            s.sockets[0].open()
+            const checking = s.gs.docsNeedingCatchup([DOC_A, DOC_B, DOC_C, DOC_D])
+            await answered(s, [
+                { docId: DOC_A, generation: 2, state: 'active', lastSeq: 2 },
+                { docId: DOC_B, generation: 1, state: 'deleted', lastSeq: 2 },
+                { docId: DOC_C, generation: 1, state: 'active', lastSeq: 3 },
+                { docId: DOC_D, generation: 1, state: 'active', lastSeq: 2 },
+            ])
+            await expect(checking).resolves.toEqual([DOC_A, DOC_B, DOC_C])
+            s.gs.dispose()
+        })
+
+        it('ignores a watermark answer to a request it did not make', async () => {
+            const s = await scriptedSession()
+            s.sockets[0].open()
+            const checking = s.gs.docsNeedingCatchup([DOC_A])
+            await vi.waitFor(() => expect(s.sentOfType('watermarks')).toHaveLength(1))
+            s.sockets[0].message({ type: 'watermarks', requestId: '018f47a0-7b5d-7cc5-b5c1-f0fbcde2ffff', documents: [] })
+            await answered(s, [{ docId: DOC_A, generation: 2, state: 'active', lastSeq: 0 }])
+            await expect(checking).resolves.toEqual([DOC_A])
+            expect(s.errors).toEqual([])
+            s.gs.dispose()
+        })
+    })
+
+    describe('retaining and releasing', () => {
+        it('unsubscribes once the last retention is released, and only once per release', async () => {
+            const s = await scriptedSession()
+            s.sockets[0].open()
+            const first = s.gs.retainDoc(DOC_A)
+            const second = s.gs.retainDoc(DOC_A)
+            first()
+            first()
+            await settle()
+            expect(s.sentOfType('unsubscribe')).toEqual([])
+
+            second()
+            await vi.waitFor(() => expect(s.sentOfType('unsubscribe')).toEqual([{ v: SYNC_PROTOCOL_VERSION, type: 'unsubscribe', docIds: [DOC_A] }]))
+            s.gs.dispose()
+        })
+
+        it('never releases the root document', async () => {
+            const s = await scriptedSession()
+            s.sockets[0].open()
+            const release = s.gs.retainDoc(ROOT)
+            release()
+            await settle()
+            expect(s.sentOfType('unsubscribe')).toEqual([])
+            s.gs.dispose()
+        })
+
+        it('retires a released document’s engine, and keeps a retained one through a batch walk', async () => {
+            const s = await scriptedSession()
+            s.sockets[0].open()
+            const kept = s.gs.retainDoc(DOC_B)
+            const keptEngine = s.gs.docSync(DOC_B)
+            await s.gs.readyDocs([DOC_B])
+            s.gs.retireDocs([DOC_B])
+
+            const release = s.gs.retainDoc(DOC_A)
+            const released = s.gs.docSync(DOC_A)
+            await vi.waitFor(() => expect(s.sentOfType('catchup').some((message) => message.docId === DOC_A)).toBe(true))
+            release()
+            await vi.waitFor(() => expect(released.doc.isDestroyed).toBe(true))
+
+            expect(s.gs.docSync(DOC_A)).not.toBe(released)
+            expect(s.gs.docSync(DOC_B)).toBe(keptEngine)
+            expect(keptEngine.doc.isDestroyed).toBe(false)
+            kept()
+            s.gs.dispose()
+        })
+
+        it('stays subscribed when re-retained while the presence tombstone was on its way', async () => {
+            const s = await scriptedSession({ presence: { name: 'Calm Owl', color: '#336699' } })
+            s.sockets[0].open()
+            const release = s.gs.retainDoc(DOC_A)
+            release()
+            s.gs.retainDoc(DOC_A)
+            await settle()
+            expect(s.sentOfType('unsubscribe')).toEqual([])
+            s.gs.dispose()
+        })
+    })
+
+    describe('the root document', () => {
+        it('reads a blank name or missing settings as absent', async () => {
+            const s = await scriptedSession()
+            s.gs.setMetaName('')
+            s.gs.setMetaSettings(null as unknown as Record<string, unknown>)
+            expect(s.gs.getMeta()).toEqual({})
+            s.gs.setMetaName(7 as unknown as string)
+            s.gs.setMetaSettings('dark' as unknown as Record<string, unknown>)
+            expect(s.gs.getMeta()).toEqual({})
+            s.gs.setMetaName('Garden')
+            s.gs.setMetaSettings({ theme: 'dark' })
+            expect(s.gs.getMeta()).toEqual({ name: 'Garden', settings: { theme: 'dark' } })
+            s.gs.dispose()
+        })
+
+        it('tells the owner when the registry changes', async () => {
+            const changes = vi.fn()
+            const s = await scriptedSession({ onRegistryChange: changes })
+            s.gs.registry().set(DOC_A, { kind: 'page', title: 'Garden' })
+            expect(changes).toHaveBeenCalled()
+            s.gs.dispose()
+        })
     })
 })

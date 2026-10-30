@@ -73,6 +73,10 @@
             "types": "./src/logging/better-auth-logger.ts",
             "default": "./src/logging/better-auth-logger.ts"
         },
+        "./server/request-path": {
+            "types": "./src/server/request-path.ts",
+            "default": "./src/server/request-path.ts"
+        },
         "./server/client-address": {
             "types": "./src/server/client-address.ts",
             "default": "./src/server/client-address.ts"
@@ -230,9 +234,9 @@
     },
     "devDependencies": {
         "typescript": "^6.0.2",
-        "vitest": "^4.1.11",
+        "vitest": "^4.1.12",
         "@types/qrcode": "^1.5.6",
         "@types/node": "^25.6.0",
-        "@vitest/coverage-v8": "^4.1.11"
+        "@vitest/coverage-v8": "^4.1.12"
     }
 }

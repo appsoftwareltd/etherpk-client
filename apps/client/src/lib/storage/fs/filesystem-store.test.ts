@@ -1519,3 +1519,111 @@ describe('FilesystemDocumentStore — a name taken again after its open document
         expect(old.getText()).toBe('---\ntitle: Physics\n---\n- original unsaved')
     })
 })
+
+describe('FilesystemDocumentStore — names, aliases and the index feed', () => {
+    it('trims a new page’s or journal’s name, and refuses a page with no name', async () => {
+        const fs = createMemoryDirectoryAdapter({ now: clock() })
+        const store = createFilesystemDocumentStore(fs)
+        await store.scan()
+        expect(await store.createPage('  Garden  ')).toBe('Garden')
+        expect(await fs.exists('pages', 'Garden.md')).toBe(true)
+        expect(await store.createJournal(' 2026-06-01 ')).toBe('2026-06-01')
+        expect(await fs.exists('journals', '2026-06-01.md')).toBe(true)
+        await expect(store.createPage('   ')).rejects.toThrow('A page needs a non-empty title.')
+    })
+
+    it('gives a journal with no block one for its aliases, and adds none for an empty list', async () => {
+        const fs = createMemoryDirectoryAdapter({ now: clock(), seed: { journals: { '2026-06-01.md': '- water the beans' } } })
+        const store = createFilesystemDocumentStore(fs)
+        await store.scan()
+
+        await store.setAliases('2026-06-01', [])
+        expect((await fs.read('journals', '2026-06-01.md')).text).toBe('- water the beans')
+
+        await store.setAliases('2026-06-01', ['Sowing day'])
+        expect((await fs.read('journals', '2026-06-01.md')).text).toBe('---\naliases:\n  - Sowing day\n---\n- water the beans')
+    })
+
+    it('gives an open journal with no block one for its aliases, and adds none for an empty list', async () => {
+        const fs = createMemoryDirectoryAdapter({ now: clock(), seed: { journals: { '2026-06-01.md': '- water the beans' } } })
+        const store = createFilesystemDocumentStore(fs)
+        await store.scan()
+        const doc = store.open('2026-06-01')
+        await store.whenReady('2026-06-01')
+
+        await store.setAliases('2026-06-01', [])
+        expect(doc.getText()).toBe('- water the beans')
+        await store.setAliases('2026-06-01', ['Sowing day'])
+        expect(doc.getText()).toBe('---\naliases:\n  - Sowing day\n---\n- water the beans')
+        await store.dispose()
+    })
+
+    it('tells the listing’s listeners when aliases change, and not when they stay the same', async () => {
+        const fs = createMemoryDirectoryAdapter({ now: clock(), seed: { pages: { 'Garden.md': '---\ntitle: Garden\n---\nbody' } } })
+        const store = createFilesystemDocumentStore(fs)
+        await store.scan()
+        let listings = 0
+        store.onDocumentsChanged(() => listings++)
+
+        await store.setAliases('Garden', ['Allotment'])
+        expect(listings).toBe(1)
+        expect(store.listDocuments()[0].aliases).toEqual(['Allotment'])
+        await store.setAliases('Garden', ['Allotment'])
+        expect(listings).toBe(1)
+    })
+
+    it('refuses aliases for a document it does not have', async () => {
+        const store = createFilesystemDocumentStore(createMemoryDirectoryAdapter({ now: clock() }))
+        await store.scan()
+        await expect(store.setAliases('Nowhere', ['Garden'])).rejects.toBeInstanceOf(DocumentNotFoundError)
+    })
+
+    it('feeds the index in batches of 100 documents, with no empty batch', async () => {
+        for (const count of [100, 101]) {
+            const pages = Object.fromEntries(Array.from({ length: count }, (_, i) => [`Garden ${i}.md`, '- water the beans']))
+            const store = createFilesystemDocumentStore(createMemoryDirectoryAdapter({ now: clock(), seed: { pages } }))
+            await store.scan()
+            const { total, batches } = await store.streamForIndex()
+            const sizes: number[] = []
+            for await (const batch of batches) sizes.push(batch.length)
+            expect(total).toBe(count)
+            expect(sizes).toEqual(count === 100 ? [100] : [100, 1])
+        }
+    })
+
+    it('carries a page’s properties to the index only when it has some, and includes only for a page', async () => {
+        const fs = createMemoryDirectoryAdapter({
+            now: clock(),
+            seed: {
+                pages: {
+                    'Garden.md': '---\ntitle: Garden\nstatus: done\n---\n- water the beans',
+                    'Kitchen.md': '---\ntitle: Kitchen\n---\n- wash up',
+                },
+                journals: { '2026-06-01.md': '---\npublication:\n  id: docs\n  includes:\n    footer: Site Footer\n---\n- sow' },
+            },
+        })
+        const store = createFilesystemDocumentStore(fs)
+        await store.scan()
+        expect((await store.snapshotDocument('Garden'))?.properties).toEqual(expect.arrayContaining([{ key: 'status', value: 'done' }]))
+        expect(await store.snapshotDocument('Kitchen')).not.toHaveProperty('properties')
+        expect(await store.snapshotDocument('2026-06-01')).not.toHaveProperty('includes')
+    })
+
+    it('a listener that unsubscribed hears nothing more', async () => {
+        const fs = createMemoryDirectoryAdapter({ now: clock() })
+        const store = createFilesystemDocumentStore(fs)
+        await store.scan()
+        const heard: string[] = []
+        const stops = [
+            store.onChange(() => heard.push('change')),
+            store.onDocumentsChanged(() => heard.push('listing')),
+            store.onDocumentRemoved(() => heard.push('removed')),
+            store.onDocumentRenamed(() => heard.push('renamed')),
+        ]
+        for (const stop of stops) stop()
+        await store.createPage('Garden')
+        await store.renamePage('Garden', 'Kitchen', { strategy: 'alias' })
+        await store.deleteDocument('Kitchen')
+        expect(heard).toEqual([])
+    })
+})

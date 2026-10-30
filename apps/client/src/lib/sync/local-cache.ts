@@ -231,15 +231,37 @@ export async function openGraphCache(graphId: string): Promise<GraphCache> {
             a.byteLength === b.byteLength && a.every((value, index) => value === b[index])
         if (equalBytes(left, right)) return true
         try {
-            // mergeUpdates canonicalises struct and delete-set ordering without materialising
-            // a Y.Doc. This distinguishes a real CRDT change from a save which only advanced
-            // sequence or confirmed-state metadata.
-            return equalBytes(Y.mergeUpdates([left]), Y.mergeUpdates([right]))
+            // Two layouts of the same state, such as a whole-document encoding and the merge of
+            // two tabs' copies, differ in bytes. Their state vectors and delete sets do not, and
+            // reading those needs no Y.Doc. This tells a real CRDT change from a save that only
+            // advanced sequence or confirmed-state metadata.
+            return yjsStateKey(left) === yjsStateKey(right)
         } catch {
             // Damaged legacy rows are rebuildable. Treat uncertainty as changed so the index
             // is conservatively repaired alongside the fresh valid cache write.
             return false
         }
+    }
+
+    /**
+     * The state a Yjs update holds, whatever its byte layout: the inserted structs, which its
+     * state vector names, and the deleted ranges, each client's merged and in order.
+     */
+    function yjsStateKey(update: Uint8Array): string {
+        const vector = [...Y.decodeStateVector(Y.encodeStateVectorFromUpdate(update))].sort(([a], [b]) => a - b)
+        const deletes = [...Y.decodeUpdate(update).ds.clients]
+            .sort(([a], [b]) => a - b)
+            .map(([client, items]) => {
+                const ranges: Array<[number, number]> = []
+                for (const { clock, len } of [...items].sort((a, b) => a.clock - b.clock)) {
+                    const last = ranges.at(-1)
+                    if (last && last[1] >= clock) last[1] = Math.max(last[1], clock + len)
+                    else ranges.push([clock, clock + len])
+                }
+                return [client, ranges] as const
+            })
+            .filter(([, ranges]) => ranges.length > 0)
+        return JSON.stringify([vector, deletes])
     }
 
     function stableJson(value: unknown): string {
@@ -260,10 +282,15 @@ export async function openGraphCache(graphId: string): Promise<GraphCache> {
      * cheap structural path and conservatively journal any real Yjs change.
      */
     function sameIndexedState(
-        left: Uint8Array,
-        right: Uint8Array,
+        before: Pick<DocCacheState, 'update' | 'generation'>,
+        after: Pick<DocCacheState, 'update' | 'generation'>,
         indexRole: 'document' | 'root',
     ): boolean {
+        // A generation is a history of its own, so a Yjs client and clock in one names nothing
+        // in another: equal state keys across generations prove nothing.
+        if ((before.generation ?? 1) !== (after.generation ?? 1)) return false
+        const left = before.update
+        const right = after.update
         if (sameYjsState(left, right)) return true
         if (indexRole === 'document') return false
 
@@ -336,7 +363,7 @@ export async function openGraphCache(graphId: string): Promise<GraphCache> {
                         (indexRole === 'document' &&
                             options?.indexContentChanged !== undefined
                             ? options.indexContentChanged
-                            : !sameIndexedState(existing.update, merged.update, indexRole)) ||
+                            : !sameIndexedState(existing, merged, indexRole)) ||
                         (existing.lifecycle ?? 'active') !== (merged.lifecycle ?? 'active')
                     if (indexChanged) markIndexDirty(transaction, docId)
                     await transactionDone(transaction)
@@ -373,7 +400,7 @@ export async function openGraphCache(graphId: string): Promise<GraphCache> {
                     const indexChanged =
                         operation.kind === 'delete' ||
                         !existing ||
-                        !sameIndexedState(existing.update, merged.update, indexRole) ||
+                        !sameIndexedState(existing, merged, indexRole) ||
                         (existing.lifecycle ?? 'active') !== (merged.lifecycle ?? 'active')
                     if (indexChanged) markIndexDirty(transaction, docId)
                     await transactionDone(transaction)

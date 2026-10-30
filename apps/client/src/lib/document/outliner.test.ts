@@ -45,6 +45,7 @@ import {
     shiftLines,
     taskDone,
     treeRootIndex,
+    withoutEdgeBlankLines,
 } from './outliner'
 
 const L = (s: string) => s.split('\n')
@@ -637,5 +638,86 @@ describe('firstChildSpot (ADR 0019)', () => {
 
     it('reads a heading deeper than the bullet as no child of it', () => {
         expect(firstChildSpot(L('- Kitchen\n    ## Sowing\n- Shed'), 0)).toEqual({ after: 0, indent: 2 })
+    })
+})
+
+describe('markers with more than one space, and prose that only looks like one', () => {
+    it('reads a task whose dash is followed by more than one space', () => {
+        expect(taskDone('-  [x] water the beans')).toBe(true)
+        expect(markerLength('-  [ ] water the beans')).toBe(7)
+        expect(bulletContent('-  [ ] water the beans')).toBe('water the beans')
+    })
+
+    it('measures a task marker with no space before its content', () => {
+        expect(markerLength('- [ ]beans')).toBe(5)
+        expect(markerLength('- [x]beans')).toBe(5)
+    })
+
+    it('finds no marker or task in prose that has a dash and brackets part way along', () => {
+        expect(taskDone('Garden - [x] beans')).toBeUndefined()
+        expect(markerLength('Garden - [ ] beans')).toBe(0)
+        expect(markerLength('Garden - beans')).toBe(0)
+        expect(newBulletMarker('Garden - [ ] beans')).toBe('- ')
+    })
+
+    it('cycles a task whose dash is followed by more than one space, or none before its content', () => {
+        expect(cycleTask('-  water the beans')).toBe('- [ ] water the beans')
+        expect(cycleTask('-  [ ] water the beans')).toBe('-  [x] water the beans')
+        expect(cycleTask('-  [x] water the beans')).toBe('-  water the beans')
+        expect(cycleTask('- [x]beans')).toBe('- beans')
+    })
+})
+
+describe('computeMove places the caret where its text went', () => {
+    /** The moved text with `|` at the caret, for a caret at `caretCol` of line `caretLine`. */
+    function moveWithCaret(src: string, bulletIndex: number, caretLine: number, caretCol: number, dir: 'up' | 'down'): string | null {
+        const edit = computeMove(L(src), bulletIndex, caretLine, caretCol, dir)
+        if (!edit) return null
+        return edit.text.slice(0, edit.caretOffset) + '|' + edit.text.slice(edit.caretOffset)
+    }
+
+    it('keeps the caret in its word when a promote takes the indent away', () => {
+        expect(moveWithCaret('- Garden\n  - water', 1, 1, 6, 'up')).toBe('- wa|ter\n- Garden')
+    })
+
+    it('keeps the caret in its word when a jump adds indent', () => {
+        // Shed sits deeper than its sibling Barn, so Barn jumping above it takes Shed's indent.
+        expect(moveWithCaret('- Garden\n    - Shed\n  - Barn', 2, 2, 5, 'up')).toBe('    - B|arn\n    - Shed')
+    })
+
+    it('keeps the caret on a continuation line of the moved branch', () => {
+        expect(moveWithCaret('- Garden\n  - water\n    the beans\n  - Shed', 1, 2, 7, 'down')).toBe('  - Shed\n  - water\n    the| beans')
+    })
+
+    it('keeps a caret in the indent at the start of the line when a promote removes more than it', () => {
+        expect(moveWithCaret('- Garden\n  - water', 1, 1, 1, 'up')).toBe('|- water\n- Garden')
+    })
+})
+
+describe('indentBlock and the edges of a block', () => {
+    it('reads a line of spaces as blank, taking the indentation of the next line with text', () => {
+        expect(indentBlock(['- a', '   ', '- b'], '  ')).toEqual(['  - a', '  ', '  - b'])
+        expect(indentBlock(['- a', '', '    - b'], '  ')).toEqual(['  - a', '      ', '      - b'])
+    })
+
+    it('leaves a blank line with no text after it bare', () => {
+        expect(indentBlock(['- a', '  ', ''], '  ')).toEqual(['  - a', '', ''])
+    })
+
+    it('drops blank and whitespace-only lines from both ends, and makes an all-blank block one empty line', () => {
+        expect(withoutEdgeBlankLines(['  ', '', '- water the beans', '', '\t'])).toEqual(['- water the beans'])
+        expect(withoutEdgeBlankLines([' ', '\t'])).toEqual([''])
+        expect(withoutEdgeBlankLines(['- a', '', '- b'])).toEqual(['- a', '', '- b'])
+    })
+
+    it('shifting by nothing returns a copy, not the caller’s array', () => {
+        const lines = ['- a']
+        const out = shiftLines(lines, 0)
+        expect(out).toEqual(lines)
+        expect(out).not.toBe(lines)
+    })
+
+    it('putting in only blank lines always keeps the outline', () => {
+        expect(keepsOutline(L('- Garden\n  - Kitchen'), 1, 0, ['', '  '])).toBe(true)
     })
 })

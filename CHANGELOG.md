@@ -84,9 +84,18 @@ starts at 0.9.3.
   the line was scrolled out of the pane, a click lower in the line put the cursor at its start.
 - **A protected page you keep typing in is saved at least once a minute.** It was saved only
   after you stopped typing for 20 seconds.
+- **The notice that the write allowance was reached goes once no refused change is waiting.** When
+  a refused change was dropped because the page had been deleted and started again elsewhere, the
+  notice stayed while another page's change was still being sent.
+- **Code block on a line of only spaces leaves no spaces behind.** The spaces used to stay after the
+  closing fence.
+- **The table removal rows of the Command Menu show their icons.** Remove rows above, Remove rows
+  below, Remove columns right and Remove columns left drew a dot.
+- Updated dependencies.
 
 ### Headless Client
 
+- Updated dependencies.
 - **Renaming a page moves everyone's favourites and bookmarks to the new name** on a synced graph,
   as renaming it in the Client does.
 
@@ -643,6 +652,13 @@ starts at 0.9.3.
   map zooms the map.
 - **Published sites.** Every bundled theme gives a site EtherPK's favicon, the blog and docs themes
   have a wider text column, and a published image stays inside its column.
+- **The notice that the write allowance was reached goes once no refused change is waiting.** When
+  a refused change was dropped because the page had been deleted and started again elsewhere, the
+  notice stayed while another page's change was still being sent.
+- **Code block on a line of only spaces leaves no spaces behind.** The spaces used to stay after the
+  closing fence.
+- **The table removal rows of the Command Menu show their icons.** Remove rows above, Remove rows
+  below, Remove columns right and Remove columns left drew a dot.
 - Updated dependencies.
 
 ### Headless Client

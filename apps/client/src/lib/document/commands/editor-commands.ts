@@ -309,10 +309,10 @@ export function registerEditorCommands(
     item({ id: 'table.format', title: 'Table: Format', detail: 'Normalise column widths', icon: 'table-format', group: 'Table', order: 120, when: inTable, command: 'table.format' })
     item({ id: 'table.removeRow', title: 'Table: Remove row', detail: 'Remove the current row', icon: 'table-remove-row', group: 'Table', order: 120, when: inTable, command: 'table.removeRow' })
     item({ id: 'table.removeColumn', title: 'Table: Remove column', detail: 'Remove the current column', icon: 'table-remove-column', group: 'Table', order: 120, when: inTable, command: 'table.removeColumn' })
-    item({ id: 'table.removeRowsAbove', title: 'Table: Remove rows above', detail: 'Remove rows above', icon: 'table-remove', group: 'Table', order: 120, when: inTable, command: 'table.removeRowsAbove' })
-    item({ id: 'table.removeRowsBelow', title: 'Table: Remove rows below', detail: 'Remove rows below', icon: 'table-remove', group: 'Table', order: 120, when: inTable, command: 'table.removeRowsBelow' })
-    item({ id: 'table.removeColumnsRight', title: 'Table: Remove columns right', detail: 'Remove columns to the right', icon: 'table-remove', group: 'Table', order: 120, when: inTable, command: 'table.removeColumnsRight' })
-    item({ id: 'table.removeColumnsLeft', title: 'Table: Remove columns left', detail: 'Remove columns to the left', icon: 'table-remove', group: 'Table', order: 120, when: inTable, command: 'table.removeColumnsLeft' })
+    item({ id: 'table.removeRowsAbove', title: 'Table: Remove rows above', detail: 'Remove rows above', icon: 'table-remove-row', group: 'Table', order: 120, when: inTable, command: 'table.removeRowsAbove' })
+    item({ id: 'table.removeRowsBelow', title: 'Table: Remove rows below', detail: 'Remove rows below', icon: 'table-remove-row', group: 'Table', order: 120, when: inTable, command: 'table.removeRowsBelow' })
+    item({ id: 'table.removeColumnsRight', title: 'Table: Remove columns right', detail: 'Remove columns to the right', icon: 'table-remove-column', group: 'Table', order: 120, when: inTable, command: 'table.removeColumnsRight' })
+    item({ id: 'table.removeColumnsLeft', title: 'Table: Remove columns left', detail: 'Remove columns to the left', icon: 'table-remove-column', group: 'Table', order: 120, when: inTable, command: 'table.removeColumnsLeft' })
 
     return () => offs.forEach((off) => off())
 }
@@ -365,10 +365,12 @@ function insertCodeBlock(view: EditorView): void {
     }
     const onEmptyLine = line.text.trim() === ''
     const text = onEmptyLine ? `${indent}${block}` : `\n${indent}${block}`
-    const at = onEmptyLine ? line.from : head
+    // An empty line is replaced whole, so its own spaces do not trail the closing fence.
+    const from = onEmptyLine ? line.from : head
+    const to = onEmptyLine ? line.to : head
     const lead = onEmptyLine ? 0 : 1 // the leading '\n' when not on an empty line
-    const anchor = at + lead + `${indent}${fence}${lang}\n${indent}`.length
-    view.dispatch({ changes: { from: at, insert: text }, selection: { anchor }, userEvent: 'input.complete' })
+    const anchor = from + lead + `${indent}${fence}${lang}\n${indent}`.length
+    view.dispatch({ changes: { from, to, insert: text }, selection: { anchor }, userEvent: 'input.complete' })
 }
 
 /**

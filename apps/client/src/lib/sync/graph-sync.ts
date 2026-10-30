@@ -1248,7 +1248,10 @@ export function createGraphSync(deps: GraphSyncDeps): GraphSync {
     function resendRefused(): void {
         // Closed, the reconnect re-sends every document's head operation itself.
         if (disposed || lost || !open) return
-        const docIds = refusedDocs.size > 0 ? [...refusedDocs] : [...unsentDocs]
+        // A server that names the refused documents has refused only those; one too old to name
+        // them may have refused anything unsent.
+        const named = refusedDocs.size > 0
+        const docIds = named ? [...refusedDocs] : [...unsentDocs]
         for (const docId of docIds) {
             const e = engines.get(docId)
             // Nothing left to send (a newer generation discarded it): nothing is refused there.
@@ -1258,7 +1261,9 @@ export function createGraphSync(deps: GraphSyncDeps): GraphSync {
             }
             e.retryUnsent()
         }
-        if (refusedDocs.size === 0 && unsentDocs.size === 0) clearRefusal()
+        // Once no named document is left refused, nothing is: the writes still in flight were
+        // never refused, as when the server accepts a refused write (`writeAccepted`).
+        if (named ? refusedDocs.size === 0 : unsentDocs.size === 0) clearRefusal()
     }
 
     /** Whether every document with unsent operations is one the server refused. */

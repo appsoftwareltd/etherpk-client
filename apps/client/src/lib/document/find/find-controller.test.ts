@@ -490,3 +490,118 @@ describe('the rename question for a single replace', () => {
         expect(find.snapshot.status).toBe(MATCH_CHANGED_MESSAGE)
     })
 })
+
+describe('the box’s own controls', () => {
+    it('names its editor only while open, and tells subscribers of each change until they leave', () => {
+        const t = target('Garden|')
+        const find = controller()
+        let heard = 0
+        const stop = find.subscribe(() => heard++)
+        expect(find.target).toBeNull()
+        find.open(t, { replace: false })
+        expect(find.target).toBe(t)
+        expect(heard).toBeGreaterThan(0)
+        stop()
+        const before = heard
+        find.setSearch('Garden')
+        expect(heard).toBe(before)
+        find.close({ focusEditor: false })
+        expect(find.target).toBeNull()
+    })
+
+    it('asks the box to take focus again only while it is open', () => {
+        const find = controller()
+        const closed = find.snapshot.focusRequest
+        find.focusBox()
+        expect(find.snapshot.focusRequest).toBe(closed)
+        find.open(target('Garden|'), { replace: false })
+        const open = find.snapshot.focusRequest
+        find.focusBox()
+        expect(find.snapshot.focusRequest).toBe(open + 1)
+    })
+
+    it('closes without taking focus when its own editor goes, and not for another', () => {
+        const t = target('Garden|')
+        const other = target('Kitchen|')
+        const find = controller()
+        find.open(t, { replace: false })
+        find.targetGone(other)
+        expect(find.snapshot.open).toBe(true)
+        find.targetGone(t)
+        expect(find.snapshot.open).toBe(false)
+        expect(t.focused).toBe(0)
+    })
+
+    it('shows and hides the replace row and the Match List, remembering the list for the layout', () => {
+        const session = createFindSession(null)
+        const find = controller({ session })
+        find.open(target('Garden|'), { replace: false })
+        find.showReplace(true)
+        expect(find.snapshot.replaceShown).toBe(true)
+        find.showReplace(false)
+        expect(find.snapshot.replaceShown).toBe(false)
+        find.setListShown(true)
+        expect(find.snapshot.listShown).toBe(true)
+        expect(session.listShown('desktop')).toBe(true)
+        find.setListShown(false)
+        expect(session.listShown('desktop')).toBe(false)
+    })
+
+    it('steps back through the session’s earlier queries', () => {
+        const session = createFindSession(null)
+        session.remember('beans')
+        session.remember('peas')
+        const t = target('beans peas|')
+        const find = controller({ session })
+        find.open(t, { replace: false })
+        find.setSearch('')
+        find.stepHistory(-1)
+        expect(find.snapshot.search).toBe('peas')
+        expect(find.snapshot.matches).toHaveLength(1)
+        find.stepHistory(-1)
+        expect(find.snapshot.search).toBe('beans')
+    })
+
+    it('goes to a Match List row by its index, and ignores one out of range', () => {
+        const t = target('|Garden Garden Garden')
+        const find = controller()
+        find.open(t, { replace: false })
+        find.setSearch('Garden')
+        find.goTo(2)
+        expect(find.snapshot.current).toBe(2)
+        expect(t.state.selection.main.from).toBe(14)
+        find.goTo(3)
+        find.goTo(-1)
+        expect(find.snapshot.current).toBe(2)
+        find.goTo(0)
+        expect(t.state.selection.main.from).toBe(0)
+    })
+
+    it('goes back from the caret to the last match before it, wrapping to the last', () => {
+        const t = target('|Garden Garden Garden')
+        const find = controller()
+        find.open(t, { replace: false })
+        find.setSearch('Garden')
+        t.editor.select(10)
+        find.previous()
+        expect(find.snapshot.current).toBe(1)
+        t.editor.select(0)
+        find.previous()
+        expect(find.snapshot.current).toBe(2)
+        // From exactly the start of a match, that match is not before the caret.
+        t.editor.select(7)
+        find.previous()
+        expect(find.snapshot.current).toBe(0)
+    })
+
+    it('says there is nothing to replace when every match is one a replace leaves', async () => {
+        const t = target('---\ntitle: Garden|\n---\n- water the beans')
+        const find = controller()
+        find.open(t, { replace: true })
+        find.setSearch('Garden')
+        find.setReplace('Yard')
+        await find.replaceAll()
+        expect(find.snapshot.status).toBe("Nothing to replace. These matches are the page's names or the frontmatter's delimiters, which a replace leaves as they are.")
+        expect(t.editor.text()).toBe('---\ntitle: Garden\n---\n- water the beans')
+    })
+})

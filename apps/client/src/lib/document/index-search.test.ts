@@ -150,6 +150,11 @@ describe('searchText', () => {
         expect(second.hasMore).toBe(false)
     })
 
+    it('reports no more when the page holds exactly the last documents, or starts past them', () => {
+        expect(searchText(db, 'orphan', 0, 3).hasMore).toBe(false)
+        expect(searchText(db, 'orphan', 3, 2)).toEqual({ groups: [], hasMore: false })
+    })
+
     it('returns nothing for a query with no searchable words', () => {
         expect(searchText(db, '!!!', 0, 10)).toEqual({ groups: [], hasMore: false })
     })

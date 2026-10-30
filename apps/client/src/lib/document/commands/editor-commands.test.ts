@@ -1,20 +1,28 @@
-import type { TransactionSpec } from '@codemirror/state'
+import { foldedRanges } from '@codemirror/language'
+import type { Extension, Transaction, TransactionSpec } from '@codemirror/state'
 import type { EditorView } from '@codemirror/view'
 import { describe, expect, it } from 'vitest'
 
 import { setActiveEditorView } from '../active-editor'
+import { setActiveGraphSettings } from '../active-graph-settings'
+import { DEFAULT_FONT_SIZE, getEditorFontSize, setEditorFontSize } from '../editor-font'
+import { closeAssetPicker, getAssetPickerState } from '../view/asset-picker'
+import { openDateCalendar } from '../view/augmentations/date-calendar'
+import { rankCommandMenu } from '../view/augmentations/slash-complete-core'
 import { setActiveProtectionStatus } from '../protection/active-protection'
 import { isProtectedDocumentFacet } from '../view/augmentations/protected-fence'
 import { tableSizePicker, tableSizePickerState } from '../view/augmentations/table-size-picker'
 import { type HeadlessEditor, editorFixture } from '../view/testing/editor-state-fixture'
 
 import {
+    commandMenuItemsInOrder,
     createCommandRegistry,
     createContributionRegistry,
     listCommandBarItems,
     listCommandMenuItems,
 } from '../../surface'
 import { getNotices, resetNotices } from '$lib/activity/notices'
+import { clientIconNames } from '../../surface/icons'
 
 import { isSpellCheckEnabled, setSpellCheckEnabled } from '../spell-check-preference'
 import { registerEditorCommands, slashInsertText } from './editor-commands'
@@ -458,5 +466,409 @@ describe('registerEditorCommands — spell check', () => {
             resetNotices()
             teardown()
         }
+    })
+})
+
+/**
+ * A headless editor as the active view, recording every transaction it dispatches. `lineBlockAt`
+ * is the one layout read `toggleFold` makes; without line wrapping a block is its line.
+ */
+function activateRecording(ed: HeadlessEditor): { transactions: Transaction[]; deactivate: () => void } {
+    const transactions: Transaction[] = []
+    const view = {
+        get state() {
+            return ed.state
+        },
+        dispatch: (...specs: TransactionSpec[]) => {
+            const tr = ed.state.update(...specs)
+            transactions.push(tr)
+            ed.dispatch(tr)
+        },
+        lineBlockAt: (pos: number) => ed.state.doc.lineAt(pos),
+    } as unknown as EditorView
+    setActiveEditorView(view)
+    return { transactions, deactivate: () => setActiveEditorView(null) }
+}
+
+/** Run one Command over a fixture with `|` at the caret; returns the editor and what it dispatched. */
+async function runCommand(fixture: string, id: string, arg?: unknown, extensions: Extension[] = []) {
+    const commands = createCommandRegistry()
+    const teardown = registerEditorCommands(commands, createContributionRegistry())
+    const ed = editorFixture(fixture, { extensions })
+    const { transactions, deactivate } = activateRecording(ed)
+    try {
+        await commands.execute(id, arg)
+        return { ed, transactions }
+    } finally {
+        deactivate()
+        teardown()
+    }
+}
+
+describe('registerEditorCommands — the block, format and history Commands', () => {
+    it('indent and outdent move a bullet a level in and out', async () => {
+        expect((await runCommand('- Garden\n- water the beans|', 'editor.indent')).ed.fixture()).toBe('- Garden\n  - water the beans|')
+        expect((await runCommand('- Garden\n  - water the beans|', 'editor.outdent')).ed.fixture()).toBe('- Garden\n- water the beans|')
+    })
+
+    it('move up and move down swap a bullet with its neighbour', async () => {
+        expect((await runCommand('- Garden\n- Kitchen|', 'editor.moveUp')).ed.text()).toBe('- Kitchen\n- Garden')
+        expect((await runCommand('- Garden|\n- Kitchen', 'editor.moveDown')).ed.text()).toBe('- Kitchen\n- Garden')
+    })
+
+    it('the task toggle makes a bullet a task', async () => {
+        expect((await runCommand('- water the beans|', 'editor.toggleTask')).ed.text()).toBe('- [ ] water the beans')
+    })
+
+    it('the fold toggle folds a bullet’s children, and needs no writable body', async () => {
+        const { ed } = await runCommand('- Garden|\n  - water the beans', 'editor.toggleFold')
+        expect(foldedRanges(ed.state).size).toBe(1)
+        expect(ed.text()).toBe('- Garden\n  - water the beans')
+    })
+
+    it('bold, italic and highlight open an empty pair at the caret', async () => {
+        expect((await runCommand('- Garden |', 'editor.bold')).ed.fixture()).toBe('- Garden **|**')
+        expect((await runCommand('- Garden |', 'editor.italic')).ed.fixture()).toBe('- Garden *|*')
+        expect((await runCommand('- Garden |', 'editor.highlight')).ed.fixture()).toBe('- Garden ==|==')
+    })
+
+    it('undo takes back the last edit and redo puts it back', async () => {
+        const commands = createCommandRegistry()
+        const teardown = registerEditorCommands(commands, createContributionRegistry())
+        const ed = editorFixture('- Garden|')
+        const { deactivate } = activateRecording(ed)
+        try {
+            ed.type('s')
+            expect(ed.text()).toBe('- Gardens')
+            await commands.execute('editor.undo')
+            expect(ed.text()).toBe('- Garden')
+            await commands.execute('editor.redo')
+            expect(ed.text()).toBe('- Gardens')
+        } finally {
+            deactivate()
+            teardown()
+        }
+    })
+
+    it('zoom in and zoom out step the editor font size by one pixel each way', async () => {
+        const commands = createCommandRegistry()
+        const teardown = registerEditorCommands(commands, createContributionRegistry())
+        try {
+            setEditorFontSize(DEFAULT_FONT_SIZE)
+            await commands.execute('editor.zoomIn')
+            expect(getEditorFontSize()).toBe(DEFAULT_FONT_SIZE + 1)
+            await commands.execute('editor.zoomOut')
+            await commands.execute('editor.zoomOut')
+            expect(getEditorFontSize()).toBe(DEFAULT_FONT_SIZE - 1)
+        } finally {
+            setEditorFontSize(DEFAULT_FONT_SIZE)
+            teardown()
+        }
+    })
+
+    it('with no editor focused, the editor Commands do nothing and do not throw', async () => {
+        const commands = createCommandRegistry()
+        const teardown = registerEditorCommands(commands, createContributionRegistry())
+        setActiveEditorView(null)
+        try {
+            for (const id of ['editor.indent', 'editor.toggleFold', 'editor.openCommandMenu', 'date.today', 'table.addRow', 'table.insert']) {
+                await expect(commands.execute(id), id).resolves.toBeUndefined()
+            }
+        } finally {
+            teardown()
+        }
+    })
+})
+
+describe('registerEditorCommands — the slash button', () => {
+    it('types a bare slash at the start of a line', async () => {
+        expect((await runCommand('- Garden\n|', 'editor.openCommandMenu')).ed.fixture()).toBe('- Garden\n/|')
+        expect((await runCommand('|', 'editor.openCommandMenu')).ed.fixture()).toBe('/|')
+    })
+
+    it('types a space before the slash right after a word', async () => {
+        expect((await runCommand('- Garden|', 'editor.openCommandMenu')).ed.fixture()).toBe('- Garden /|')
+    })
+
+    it('types a bare slash after a space', async () => {
+        expect((await runCommand('- Garden |', 'editor.openCommandMenu')).ed.fixture()).toBe('- Garden /|')
+    })
+
+    it('reads the character before the caret, not after it', async () => {
+        expect((await runCommand('- Garden |shed', 'editor.openCommandMenu')).ed.fixture()).toBe('- Garden /|shed')
+    })
+})
+
+describe('registerEditorCommands — dates and assets', () => {
+    it('Today inserts today’s date as a wikilink with the caret after it', async () => {
+        const { ed } = await runCommand('- Garden |', 'date.today')
+        expect(ed.fixture()).toMatch(/^- Garden \[\[\d{4}-\d{2}-\d{2}\]\]\|$/)
+    })
+
+    it('Date Picker opens the calendar at the caret and writes nothing', async () => {
+        const { ed, transactions } = await runCommand('- Garden |shed', 'date.pick')
+        const effects = transactions.flatMap((tr) => tr.effects).filter((e) => e.is(openDateCalendar))
+        expect(effects.map((e) => e.value)).toEqual([{ pos: 9 }])
+        expect(ed.text()).toBe('- Garden shed')
+    })
+
+    it('Upload asset opens the asset dialog pinned to the caret', async () => {
+        try {
+            const { ed } = await runCommand('- Garden |shed', 'asset.upload')
+            expect(getAssetPickerState()).toMatchObject({ open: true, pos: 9 })
+            expect(ed.text()).toBe('- Garden shed')
+        } finally {
+            closeAssetPicker()
+        }
+    })
+})
+
+describe('registerEditorCommands — code block', () => {
+    async function codeBlock(fixture: string, defaultCodeLanguage?: string): Promise<string> {
+        setActiveGraphSettings(defaultCodeLanguage ? { defaultCodeLanguage } : {})
+        try {
+            return (await runCommand(fixture, 'editor.insertCodeBlock')).ed.fixture()
+        } finally {
+            setActiveGraphSettings({})
+        }
+    }
+
+    it('makes an empty bullet’s content the opening fence, the body at the content column', async () => {
+        expect(await codeBlock('- |')).toBe('- ```\n  |\n  ```')
+    })
+
+    it('treats a bullet with only spaces after its marker as empty', async () => {
+        expect(await codeBlock('-   |')).toBe('-   ```\n  |\n  ```')
+    })
+
+    it('opens the block on a new line below a bullet with content, at the content column', async () => {
+        expect(await codeBlock('- Garden|')).toBe('- Garden\n  ```\n  |\n  ```')
+    })
+
+    it('fills an empty prose line with the block', async () => {
+        expect(await codeBlock('Garden\n|')).toBe('Garden\n```\n|\n```')
+    })
+
+    it('replaces a prose line of only spaces with the block at that indent, leaving no spaces behind', async () => {
+        expect(await codeBlock('Garden\n  |')).toBe('Garden\n  ```\n  |\n  ```')
+        expect(await codeBlock('Garden\n |  ')).toBe('Garden\n   ```\n   |\n   ```')
+    })
+
+    it('writes the graph’s default language after the opening fence', async () => {
+        expect(await codeBlock('- |', 'python')).toBe('- ```python\n  |\n  ```')
+        expect(await codeBlock('Garden|', 'python')).toBe('Garden\n```python\n|\n```')
+    })
+})
+
+describe('registerEditorCommands — table edits and the caret', () => {
+    async function table(fixture: string, id: string): Promise<string> {
+        const commands = createCommandRegistry()
+        const teardown = registerEditorCommands(commands, createContributionRegistry())
+        const ed = editorFixture(fixture, { caret: '^' })
+        const deactivate = activate(ed)
+        try {
+            await commands.execute(id)
+            return ed.fixture()
+        } finally {
+            deactivate()
+            teardown()
+        }
+    }
+
+    const rows = (...lines: string[]) => lines.join('\n')
+
+    it('outside a table the table edits leave the document alone', async () => {
+        expect(await table('- Garden^', 'table.addRow')).toBe('- Garden^')
+    })
+
+    it('an edit the table refuses leaves the table as it was', async () => {
+        // Remove row on the header: there is no body row to remove.
+        expect(await table('| a^ | b |\n| - | - |\n| 1 | 2 |', 'table.removeRow')).toBe('| a^ | b |\n| - | - |\n| 1 | 2 |')
+    })
+
+    it('add column puts the new column after the caret’s own', async () => {
+        expect(await table('| a | b |\n| - | - |\n| 1 | 2^ |', 'table.addColumn')).toBe(
+            rows('| a   | b   |     |', '| --- | --- | --- |', '| 1   | ^2   |     |'),
+        )
+    })
+
+    it('add row on the header appends the row at the bottom, the caret staying on the header', async () => {
+        expect(await table('| a^ | b |\n| - | - |\n| 1 | 2 |\n| 3 | 4 |', 'table.addRow')).toBe(
+            rows('| ^a   | b   |', '| --- | --- |', '| 1   | 2   |', '| 3   | 4   |', '|     |     |'),
+        )
+    })
+
+    it('add row on the separator returns the caret to the header', async () => {
+        expect(await table('| a | b |\n| - | -^ |\n| 1 | 2 |', 'table.addRow')).toBe(
+            rows('| a   | ^b   |', '| --- | --- |', '| 1   | 2   |', '|     |     |'),
+        )
+    })
+
+    it('add row on a body row inserts the new row directly below it', async () => {
+        expect(await table('| a | b |\n| - | - |\n| 1^ | 2 |\n| 3 | 4 |', 'table.addRow')).toBe(
+            rows('| a   | b   |', '| --- | --- |', '| ^1   | 2   |', '|     |     |', '| 3   | 4   |'),
+        )
+        expect(await table('| a | b |\n| - | - |\n| 1 | 2 |\n| 3^ | 4 |\n| 5 | 6 |', 'table.addRow')).toBe(
+            rows('| a   | b   |', '| --- | --- |', '| 1   | 2   |', '| ^3   | 4   |', '|     |     |', '| 5   | 6   |'),
+        )
+    })
+
+    it('remove rows above puts the caret on what is now the first row', async () => {
+        expect(await table('| a | b |\n| - | - |\n| 1 | 2 |\n| 3^ | 4 |\n| 5 | 6 |', 'table.removeRowsAbove')).toBe(
+            rows('| a   | b   |', '| --- | --- |', '| ^3   | 4   |', '| 5   | 6   |'),
+        )
+    })
+
+    it('remove rows above on the header keeps every row and the caret on the header', async () => {
+        expect(await table('| a | b^ |\n| - | - |\n| 1 | 2 |', 'table.removeRowsAbove')).toBe(
+            rows('| a   | ^b   |', '| --- | --- |', '| 1   | 2   |'),
+        )
+    })
+
+    it('remove rows below keeps the caret’s row and everything above it', async () => {
+        expect(await table('| a | b |\n| - | - |\n| 1 | 2 |\n| 3^ | 4 |\n| 5 | 6 |', 'table.removeRowsBelow')).toBe(
+            rows('| a   | b   |', '| --- | --- |', '| 1   | 2   |', '| ^3   | 4   |'),
+        )
+    })
+
+    it('remove columns right keeps the caret’s column and everything left of it', async () => {
+        expect(await table('| a | b | c |\n| - | - | - |\n| 1 | 2^ | 3 |', 'table.removeColumnsRight')).toBe(
+            rows('| a   | b   |', '| --- | --- |', '| 1   | ^2   |'),
+        )
+    })
+})
+
+describe('registerEditorCommands — command arguments', () => {
+    it('a null argument toggles spell check, as a bare call does', async () => {
+        const commands = createCommandRegistry()
+        const teardown = registerEditorCommands(commands, createContributionRegistry())
+        try {
+            setSpellCheckEnabled(true)
+            await commands.execute('editor.toggleSpellCheck', null)
+            expect(isSpellCheckEnabled()).toBe(false)
+            // Not a boolean: a toggle too, never a truthy "on".
+            await commands.execute('editor.toggleSpellCheck', { enabled: 'yes' })
+            expect(isSpellCheckEnabled()).toBe(true)
+            await commands.execute('editor.toggleSpellCheck', { enabled: 'yes' })
+            expect(isSpellCheckEnabled()).toBe(false)
+        } finally {
+            setSpellCheckEnabled(true)
+            resetNotices()
+            teardown()
+        }
+    })
+
+    it('the turn-on row keeps spell check on when it is on already', async () => {
+        const commands = createCommandRegistry()
+        const contributions = createContributionRegistry()
+        const teardown = registerEditorCommands(commands, contributions)
+        try {
+            setSpellCheckEnabled(false)
+            const turnOn = listCommandMenuItems(contributions, { inTable: false, tableInsertable: true, bodyWritable: true }).find(
+                (i) => i.id === 'editor.spellCheckOn',
+            )!
+            setSpellCheckEnabled(true)
+            await commands.execute(turnOn.command, turnOn.args)
+            expect(isSpellCheckEnabled()).toBe(true)
+        } finally {
+            setSpellCheckEnabled(true)
+            resetNotices()
+            teardown()
+        }
+    })
+
+    it('table insert opens the size picker for a null or partial size', async () => {
+        for (const arg of [null, { cols: 2 }, { rows: 2 }, { cols: '2', rows: 2 }]) {
+            const { ed } = await runCommand('- |', 'table.insert', arg, [tableSizePicker()])
+            expect(tableSizePickerState(ed.state), JSON.stringify(arg)).toEqual({ pos: 2, size: { cols: 3, rows: 2 } })
+            expect(ed.text()).toBe('- ')
+        }
+    })
+})
+
+describe('registerEditorCommands — what the Command Bar and Command Menu offer', () => {
+    /** Commands registered elsewhere that this module's rows run. */
+    const external = ['search.open', 'document.findReplace', 'workspace.reset']
+
+    it('every button and row names an icon the Client draws and a Command that exists', () => {
+        const commands = createCommandRegistry()
+        const contributions = createContributionRegistry()
+        const teardown = registerEditorCommands(commands, contributions)
+        const icons = new Set(clientIconNames())
+        const bar = listCommandBarItems(contributions)
+        const menu = commandMenuItemsInOrder(contributions)
+        for (const entry of [...bar, ...menu]) {
+            expect(icons.has(entry.icon ?? ''), `${entry.id} icon`).toBe(true)
+            expect(commands.has(entry.command) || external.includes(entry.command), `${entry.id} command`).toBe(true)
+        }
+        teardown()
+    })
+
+    it('every button has a label, and every row a detail and a group', () => {
+        const contributions = createContributionRegistry()
+        const teardown = registerEditorCommands(createCommandRegistry(), contributions)
+        for (const button of listCommandBarItems(contributions)) expect(button.label, button.id).not.toBe('')
+        for (const row of commandMenuItemsInOrder(contributions)) {
+            expect(row.detail, row.id).toBeTruthy()
+            expect(row.group, row.id).toBeTruthy()
+        }
+        teardown()
+    })
+
+    it('the block buttons grey off the outline, and indent only where a line cannot convert', () => {
+        const contributions = createContributionRegistry()
+        const teardown = registerEditorCommands(createCommandRegistry(), contributions)
+        const bar = new Map(listCommandBarItems(contributions).map((b) => [b.id, b]))
+        for (const id of ['editor.outdent', 'editor.moveUp', 'editor.moveDown', 'editor.toggleFold']) {
+            expect(bar.get(id)?.outlinerOnly, id).toBe(true)
+        }
+        expect(bar.get('editor.indent')).toMatchObject({ convertibleOnly: true })
+        expect(bar.get('editor.indent')?.outlinerOnly).toBeUndefined()
+        teardown()
+    })
+
+    it('in a table the Command Menu offers every table edit, and outside one none of them', () => {
+        const contributions = createContributionRegistry()
+        const teardown = registerEditorCommands(createCommandRegistry(), contributions)
+        const tableRows = (inTable: boolean) =>
+            listCommandMenuItems(contributions, { inTable, tableInsertable: !inTable, bodyWritable: true })
+                .map((i) => i.id)
+                .filter((id) => id.startsWith('table.') && id !== 'table.insert')
+        expect(tableRows(true)).toEqual([
+            'table.addColumn',
+            'table.addRow',
+            'table.format',
+            'table.removeRow',
+            'table.removeColumn',
+            'table.removeRowsAbove',
+            'table.removeRowsBelow',
+            'table.removeColumnsRight',
+            'table.removeColumnsLeft',
+        ])
+        expect(tableRows(false)).toEqual([])
+        teardown()
+    })
+
+    it('a row is found by the other words a person might type for it', () => {
+        const contributions = createContributionRegistry()
+        const teardown = registerEditorCommands(createCommandRegistry(), contributions)
+        const all = listCommandMenuItems(contributions, { inTable: false, tableInsertable: true, bodyWritable: true })
+        const found = (query: string) => rankCommandMenu(all, query).map((i) => i.id)
+        const synonyms: [string, string][] = [
+            ['grep', 'search.open'],
+            ['match', 'document.findReplace'],
+            ['panes', 'workspace.reset'],
+            ['dictionary', 'editor.spellCheckOff'],
+            ['photo', 'asset.upload'],
+            ['now', 'date.today'],
+            ['calendar', 'date.pick'],
+            ['strong', 'editor.bold'],
+            ['emphasis', 'editor.italic'],
+            ['marker', 'editor.highlight'],
+            ['snippet', 'editor.insertCodeBlock'],
+            ['grid', 'table.insert'],
+        ]
+        for (const [query, id] of synonyms) expect(found(query), query).toContain(id)
+        teardown()
     })
 })

@@ -34,6 +34,35 @@ describe('convertObsidian', () => {
         expect(graph.report.some((r) => r.category === 'unresolved' && r.detail.includes('ambiguous'))).toBe(true)
     })
 
+    it('resolves a link by the end of its path, and reports an ambiguous name once', async () => {
+        const graph = await convertObsidian([
+            src('garden/beds/Notes.md', 'bed notes'),
+            src('kitchen/Notes.md', 'kitchen notes'),
+            src('linker.md', 'see [[beds/Notes]], [[Notes]] and [[Notes]] again'),
+        ])
+        expect(doc(graph, 'linker').text).toContain('see [[[[beds]] Notes]], [[[[beds]] Notes]] and [[[[beds]] Notes]] again')
+        expect(graph.report.filter((r) => r.category === 'unresolved' && r.detail.includes('ambiguous'))).toHaveLength(1)
+    })
+
+    it('reports no ambiguity for a name only one note has', async () => {
+        const graph = await convertObsidian([src('garden/Notes.md', 'notes'), src('linker.md', 'see [[Notes]]')])
+        expect(graph.report.filter((r) => r.category === 'unresolved')).toEqual([])
+    })
+
+    it('reads only text alias values, and drops an empty alias property', async () => {
+        const graph = await convertObsidian([
+            src('Garden.md', '---\nalias: [Allotment, 7]\n---\nx'),
+            src('Kitchen.md', '---\nalias: []\ntags: [n]\n---\nx'),
+        ])
+        expect(aliasesOf(parseFrontmatter(doc(graph, 'Garden').text))).toEqual(['Allotment'])
+        expect(doc(graph, 'Kitchen').text).toBe('---\ntitle: Kitchen\ntags:\n  - n\n---\nx')
+    })
+
+    it('reports no title change when the title was the page’s name or blank', async () => {
+        const graph = await convertObsidian([src('Garden.md', '---\ntitle: Garden\n---\nx'), src('Kitchen.md', '---\ntitle: " "\n---\nx')])
+        expect(graph.report.filter((r) => r.detail.includes('title'))).toEqual([])
+    })
+
     it('rewrites piped links alias-aware with a visible prose fallback', async () => {
         const graph = await convertObsidian([
             src('Quantum Mechanics.md', '---\naliases:\n  - QM\n---\ncontent'),
@@ -112,6 +141,17 @@ describe('convertObsidian', () => {
         expect(text).toContain('[doc](../assets/doc.')
         expect(text).toContain(`![alt](../assets/${shot?.fileName})`)
         expect(shot?.unreferenced).toBe(false)
+    })
+
+    it('reads a size hint only from a pipe that is all width, or width and height, and any other pipe as the alt text', async () => {
+        const graph = await convertObsidian([
+            src('attachments/Shot.png', new Uint8Array([1])),
+            src('user.md', '![[Shot.png|300x200]]\n![[Shot.png|300px]]\n![[Shot.png|a 300]]'),
+        ])
+        const shot = graph.assets.find((a) => a.fileName.startsWith('shot.'))!
+        expect(doc(graph, 'user').text).toContain(
+            [`![shot|300x200](../assets/${shot.fileName})`, `![300px](../assets/${shot.fileName})`, `![a 300](../assets/${shot.fileName})`].join('\n'),
+        )
     })
 
     it('converts Tasks-plugin lines inside a vault', async () => {

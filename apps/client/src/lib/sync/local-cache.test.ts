@@ -1134,6 +1134,44 @@ describe('journalling index changes', () => {
         cache.dispose()
     })
 
+    it('does not journal a save whose bytes differ but whose Yjs state is the same', async () => {
+        const cache = await openGraphCache('g1')
+        const content = new Y.Doc()
+        const steps: Uint8Array[] = []
+        content.on('update', (update: Uint8Array) => steps.push(update))
+        const text = content.getText('content')
+        text.insert(0, 'water the beans')
+        text.insert(0, '- ')
+        text.delete(2, 6)
+        const peer = new Y.Doc()
+        peer.getText('content').insert(0, 'Kitchen ')
+        Y.applyUpdate(content, Y.encodeStateAsUpdate(peer))
+        // The same state twice: as one encoding of the whole document, then as the merged edits.
+        // The cache stores the two merged, which is a third layout of the same bytes' meaning.
+        const doc = await settled(cache, 'garden', { ...emptyState(), update: Y.encodeStateAsUpdate(content) })
+
+        await doc.save({ ...emptyState(), update: Y.mergeUpdates(steps) })
+
+        expect(await cache.pendingIndexChanges()).toEqual([])
+        content.destroy()
+        peer.destroy()
+        cache.dispose()
+    })
+
+    it('journals a change that only deletes text', async () => {
+        const cache = await openGraphCache('g1')
+        const content = new Y.Doc()
+        content.getText('content').insert(0, 'Garden beds')
+        const doc = await settled(cache, 'garden', { ...emptyState(), update: Y.encodeStateAsUpdate(content) })
+
+        content.getText('content').delete(6, 5)
+        await doc.save({ ...emptyState(), update: Y.encodeStateAsUpdate(content) })
+
+        expect(await cache.pendingIndexChanges()).toEqual([{ docId: 'garden', token: expect.any(String) }])
+        content.destroy()
+        cache.dispose()
+    })
+
     it('journals a new generation whose content differs by characters alone', async () => {
         const cache = await openGraphCache('g1')
         const doc = await settled(cache, 'garden', textState('Garden'))

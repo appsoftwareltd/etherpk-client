@@ -17,6 +17,7 @@ import {
     type MirrorText,
     OFFLINE_MESSAGE,
     assetFileFates,
+    classifyMirrorFailure,
     createLocalMirror,
     isMirrorMetadataFileName,
 } from './local-mirror'
@@ -1361,5 +1362,471 @@ describe('local mirror', () => {
         expect(status).toMatchObject({ folder: 'my-notes', documents: 1, assets: 1, lastSyncAt: 1234, running: true })
         expect(seen.length).toBeGreaterThan(0)
         mirror.dispose()
+    })
+})
+
+describe('local mirror — names, failures and the pass lifecycle', () => {
+    it('counts every metadata file it writes as its own, and nothing else', () => {
+        for (const name of ['settings.json', 'graph.json', 'dictionary.txt', 'protection.json', 'theme-garden.jsonc']) {
+            expect(isMirrorMetadataFileName(name), name).toBe(true)
+        }
+        for (const name of ['notes.md', 'garden.json', 'theme-garden.json']) expect(isMirrorMetadataFileName(name), name).toBe(false)
+    })
+
+    it('says a folder the browser may not write to has lost its permission, and an unknown failure in plain words', () => {
+        expect(classifyMirrorFailure(new DOMException('blocked', 'SecurityError')).kind).toBe('permission')
+        expect(classifyMirrorFailure(new DOMException('gone', 'NotFoundError')).kind).toBe('folder')
+        expect(classifyMirrorFailure(new Error('disk full'))).toEqual({ kind: 'error', message: 'disk full' })
+        expect(classifyMirrorFailure(new Error(''))).toEqual({ kind: 'error', message: 'Writing to the folder failed.' })
+        expect(classifyMirrorFailure(null)).toEqual({ kind: 'error', message: 'Writing to the folder failed.' })
+    })
+
+    it('calls any failure offline while the browser is offline, and none while it is online or unknown', () => {
+        try {
+            vi.stubGlobal('navigator', { onLine: false })
+            expect(classifyMirrorFailure(new Error('fetch failed'))).toEqual({ kind: 'offline', message: OFFLINE_MESSAGE })
+            vi.stubGlobal('navigator', { onLine: true })
+            expect(classifyMirrorFailure(new Error('fetch failed')).kind).toBe('error')
+            vi.stubGlobal('navigator', undefined)
+            expect(classifyMirrorFailure(new Error('fetch failed')).kind).toBe('error')
+        } finally {
+            vi.unstubAllGlobals()
+        }
+    })
+
+    it('reads an unchanged folder once per session, not on every full pass', async () => {
+        const base = tickingAdapter()
+        const reads: string[] = []
+        const adapter: DirectoryAdapter = {
+            ...base,
+            async read(subdir, name) {
+                reads.push(`${subdir}/${name}`)
+                return base.read(subdir, name)
+            },
+        }
+        const mirror = createLocalMirror(source([{ docId: 'p1', kind: 'page', concept: 'Garden', text: 'water the beans\n' }]), adapter)
+        await mirror.sync()
+        await mirror.sync()
+        const second = createLocalMirror(source([{ docId: 'p1', kind: 'page', concept: 'Garden', text: 'water the beans\n' }]), adapter)
+        reads.length = 0
+        await second.sync()
+        // A new session reads the file once to learn what it holds.
+        expect(reads.filter((path) => path.startsWith('pages/'))).toEqual(['pages/Garden.md'])
+        reads.length = 0
+        await second.sync()
+        expect(reads.filter((path) => path.startsWith('pages/'))).toEqual([])
+        mirror.dispose()
+        second.dispose()
+    })
+
+    it('counts only markdown files while scanning the folder', async () => {
+        const adapter = tickingAdapter()
+        await adapter.ensureSkeleton()
+        await adapter.write('pages', 'Kitchen.md', '---\ntitle: Kitchen\n---\n')
+        await adapter.write('pages', 'notes.txt', 'not a page')
+        const mirror = createLocalMirror(source([{ docId: 'p1', kind: 'page', concept: 'Kitchen', text: '' }]), adapter)
+        const scanning: number[] = []
+        mirror.onStatus((status) => {
+            if (status.pass?.progress.phase === 'scanning') scanning.push(status.pass.progress.total)
+        })
+        await mirror.sync()
+        // The pass opens at 0 of 0, before the folder has been listed.
+        expect(Math.max(...scanning)).toBe(1)
+        mirror.dispose()
+    })
+
+    it('rewrites a file whose aliases changed even when its text did not', async () => {
+        const adapter = tickingAdapter()
+        const docs: FakeDocument[] = [{ docId: 'p1', kind: 'page', concept: 'Garden', text: 'water the beans\n' }]
+        const feed = source(docs)
+        const mirror = createLocalMirror(feed, adapter)
+        await mirror.sync()
+        docs[0].aliases = ['Allotment']
+        await mirror.sync()
+        expect(await textOf(adapter, 'pages', 'Garden.md')).toBe('---\ntitle: Garden\naliases:\n  - Allotment\n---\nwater the beans\n')
+        mirror.dispose()
+    })
+
+    it('announces a long pass every 25 documents and at its last, not per document', async () => {
+        const adapter = tickingAdapter()
+        const docs: FakeDocument[] = Array.from({ length: 60 }, (_, i) => ({ docId: `p${i}`, kind: 'page', concept: `Garden ${i}`, text: 'water the beans\n' }))
+        const mirror = createLocalMirror(source(docs), adapter)
+        const writing: number[] = []
+        mirror.onStatus((status) => {
+            if (status.pass?.progress.phase === 'writing') writing.push(status.pass.progress.done)
+        })
+        await mirror.sync()
+        expect(writing).toEqual([0, 25, 50, 60])
+        mirror.dispose()
+    })
+
+    it('fetches no more assets at once than its concurrency allows', async () => {
+        const ids = Array.from({ length: 5 }, (_, i) => `${i}1111111-1111-4111-8111-111111111111`)
+        let inFlight = 0
+        let most = 0
+        const adapter = tickingAdapter()
+        const mirror = createLocalMirror(
+            source([{ docId: 'p1', kind: 'page', concept: 'Garden', text: 'no links\n' }], {
+                listGraphAssets: async () => ids,
+                assetIdOf: (name: string) => assetIdFromRef(`../assets/${name}`),
+                fetchAsset: async (assetId: string) => {
+                    inFlight++
+                    most = Math.max(most, inFlight)
+                    await new Promise((resolve) => setTimeout(resolve, 5))
+                    inFlight--
+                    return { bytes: new Uint8Array([1]), fileName: `photo.${assetId}.png` }
+                },
+            }),
+            adapter,
+            { assetConcurrency: 2 },
+        )
+        await mirror.sync()
+        expect(most).toBe(2)
+        expect(await namesIn(adapter, 'assets')).toHaveLength(5)
+        mirror.dispose()
+    })
+
+    describe('assets that will not come down', () => {
+        const ID = '21111111-1111-4111-8111-111111111111'
+        const NAME = `diagram.${ID}.png`
+
+        function graphWith(fetchAsset: MirrorSource['fetchAsset']) {
+            return source([{ docId: 'p1', kind: 'page', concept: 'Garden', text: `![d](../assets/${NAME})\n` }], {
+                listGraphAssets: async () => [ID],
+                assetIdOf: (name: string) => assetIdFromRef(`../assets/${name}`),
+                fetchAsset,
+            })
+        }
+
+        it('reports an asset whose download failed and carries on', async () => {
+            const mirror = createLocalMirror(
+                graphWith(async () => {
+                    throw new Error('the download timed out')
+                }),
+                tickingAdapter(),
+            )
+            await mirror.sync()
+            expect(mirror.status().missingAssets).toEqual([NAME])
+            expect(mirror.status().paused).toBeUndefined()
+            expect(mirror.status().lastSyncAt).toBeDefined()
+            mirror.dispose()
+        })
+
+        it('pauses when the folder refuses an asset, rather than reporting it missing', async () => {
+            const adapter: DirectoryAdapter = {
+                ...tickingAdapter(),
+                async writeBinary() {
+                    throw new DOMException('denied', 'NotAllowedError')
+                },
+            }
+            const mirror = createLocalMirror(graphWith(async () => ({ bytes: new Uint8Array([1]), fileName: NAME })), adapter)
+            await mirror.sync()
+            expect(mirror.status().paused?.kind).toBe('permission')
+            mirror.dispose()
+        })
+
+        it('writes an asset it already holds under the wanted name no second time', async () => {
+            const base = tickingAdapter()
+            const written: string[] = []
+            const adapter: DirectoryAdapter = {
+                ...base,
+                async writeBinary(subdir, name, bytes) {
+                    written.push(name)
+                    return base.writeBinary(subdir, name, bytes)
+                },
+            }
+            const mirror = createLocalMirror(graphWith(async () => ({ bytes: new Uint8Array([1]), fileName: NAME })), adapter)
+            await mirror.sync()
+            expect(written).toEqual([NAME])
+            await mirror.sync()
+            expect(written).toEqual([NAME])
+            mirror.dispose()
+        })
+    })
+
+    describe('lifecycle', () => {
+        /** An adapter that counts passes: every pass starts by making sure the folders exist. */
+        function countingAdapter() {
+            const base = tickingAdapter()
+            const counts = { passes: 0 }
+            const adapter: DirectoryAdapter = {
+                ...base,
+                async ensureSkeleton() {
+                    counts.passes++
+                    return base.ensureSkeleton()
+                },
+            }
+            return { adapter, counts }
+        }
+
+        const idle = (mirror: { status(): MirrorStatus }) => vi.waitFor(() => expect(mirror.status().syncing).toBe(false))
+
+        it('start says it is running at once, mirrors the folder, and follows changes after that', async () => {
+            const adapter = tickingAdapter()
+            const docs: FakeDocument[] = [{ docId: 'p1', kind: 'page', concept: 'Garden', text: 'first\n' }]
+            const feed = source(docs)
+            const mirror = createLocalMirror(feed, adapter, { debounceMs: 0 })
+            const heard: MirrorStatus[] = []
+            mirror.onStatus((status) => heard.push(status))
+            mirror.start()
+            expect(heard[0]?.running).toBe(true)
+            await vi.waitFor(async () => expect(await textOf(adapter, 'pages', 'Garden.md')).toContain('first'))
+            await idle(mirror)
+
+            docs[0].text = 'second\n'
+            feed.fire('Garden')
+            await vi.waitFor(async () => expect(await textOf(adapter, 'pages', 'Garden.md')).toContain('second'))
+            mirror.dispose()
+        })
+
+        it('starting a running mirror again starts no second pass', async () => {
+            const { adapter, counts } = countingAdapter()
+            const mirror = createLocalMirror(source([{ docId: 'p1', kind: 'page', concept: 'Garden', text: 'x\n' }]), adapter, { debounceMs: 0 })
+            mirror.start()
+            await idle(mirror)
+            mirror.start()
+            await new Promise((resolve) => setTimeout(resolve, 20))
+            expect(counts.passes).toBe(1)
+            mirror.dispose()
+        })
+
+        it('stop stops following changes and says so', async () => {
+            const { adapter, counts } = countingAdapter()
+            const feed = source([{ docId: 'p1', kind: 'page', concept: 'Garden', text: 'x\n' }])
+            const mirror = createLocalMirror(feed, adapter, { debounceMs: 0 })
+            mirror.start()
+            await idle(mirror)
+            const heard: MirrorStatus[] = []
+            mirror.onStatus((status) => heard.push(status))
+            mirror.stop()
+            expect(heard.map((s) => s.running)).toEqual([false])
+            feed.fire('Garden')
+            feed.fire()
+            await new Promise((resolve) => setTimeout(resolve, 20))
+            expect(counts.passes).toBe(1)
+            mirror.dispose()
+        })
+
+        it('a change waiting on the debounce runs no pass once stopped or disposed', async () => {
+            for (const end of ['stop', 'dispose'] as const) {
+                const { adapter, counts } = countingAdapter()
+                const feed = source([{ docId: 'p1', kind: 'page', concept: 'Garden', text: 'x\n' }])
+                const mirror = createLocalMirror(feed, adapter, { debounceMs: 10 })
+                mirror.start()
+                await idle(mirror)
+                feed.fire('Garden')
+                mirror[end]()
+                await new Promise((resolve) => setTimeout(resolve, 40))
+                expect(counts.passes, end).toBe(1)
+                mirror.dispose()
+            }
+        })
+
+        it('Mirror now does nothing once disposed', async () => {
+            const { adapter, counts } = countingAdapter()
+            const mirror = createLocalMirror(source([{ docId: 'p1', kind: 'page', concept: 'Garden', text: 'x\n' }]), adapter)
+            mirror.dispose()
+            await mirror.sync()
+            expect(counts.passes).toBe(0)
+            expect(mirror.status().running).toBe(false)
+        })
+
+        it('a disposed mirror tells no listener how its last pass ended', async () => {
+            const adapter = tickingAdapter()
+            let release: () => void = () => {}
+            const gate = new Promise<void>((resolve) => (release = resolve))
+            const feed = source([{ docId: 'p1', kind: 'page', concept: 'Garden', text: 'x\n' }])
+            const readTexts = feed.readTexts
+            feed.readTexts = async (docIds, onProgress) => {
+                await gate
+                return readTexts(docIds, onProgress)
+            }
+            const mirror = createLocalMirror(feed, adapter)
+            const pass = mirror.sync()
+            const heard: MirrorStatus[] = []
+            mirror.onStatus((status) => heard.push(status))
+            mirror.dispose()
+            release()
+            await pass
+            expect(heard).toEqual([])
+        })
+
+        it('a status listener that unsubscribed hears nothing more', async () => {
+            const mirror = createLocalMirror(source([{ docId: 'p1', kind: 'page', concept: 'Garden', text: 'x\n' }]), tickingAdapter())
+            const heard: MirrorStatus[] = []
+            const stop = mirror.onStatus((status) => heard.push(status))
+            stop()
+            await mirror.sync()
+            expect(heard).toEqual([])
+            mirror.dispose()
+        })
+
+        it('retries a failed pass on its backoff, then pauses once the retries run out', async () => {
+            let writes = 0
+            const base = tickingAdapter()
+            const adapter: DirectoryAdapter = {
+                ...base,
+                async write() {
+                    writes++
+                    throw new Error('disk full')
+                },
+            }
+            const mirror = createLocalMirror(source([{ docId: 'p1', kind: 'page', concept: 'Garden', text: 'x\n' }]), adapter, {
+                retryDelaysMs: [0, 0],
+            })
+            mirror.start()
+            await vi.waitFor(() => expect(mirror.status().paused?.kind).toBe('error'))
+            expect(writes).toBe(3)
+            expect(mirror.status().running).toBe(false)
+            expect(mirror.status().retrying).toBeUndefined()
+            mirror.dispose()
+        })
+
+        it('a pass that succeeds after a failure clears the retrying state', async () => {
+            let failures = 1
+            const base = tickingAdapter()
+            const adapter: DirectoryAdapter = {
+                ...base,
+                async write(subdir, name, text) {
+                    if (failures-- > 0) throw new Error('disk full')
+                    return base.write(subdir, name, text)
+                },
+            }
+            const mirror = createLocalMirror(source([{ docId: 'p1', kind: 'page', concept: 'Garden', text: 'x\n' }]), adapter, {
+                retryDelaysMs: [0],
+            })
+            const retrying: boolean[] = []
+            mirror.onStatus((status) => retrying.push(status.retrying !== undefined))
+            mirror.start()
+            await vi.waitFor(() => expect(mirror.status().lastSyncAt).toBeDefined())
+            await idle(mirror)
+            expect(retrying).toContain(true)
+            expect(mirror.status().retrying).toBeUndefined()
+            expect(mirror.status().paused).toBeUndefined()
+            mirror.dispose()
+        })
+
+        it('resume clears a pause and mirrors the folder again', async () => {
+            let denied = true
+            const base = tickingAdapter()
+            const adapter: DirectoryAdapter = {
+                ...base,
+                async write(subdir, name, text) {
+                    if (denied) throw new DOMException('denied', 'NotAllowedError')
+                    return base.write(subdir, name, text)
+                },
+            }
+            const mirror = createLocalMirror(source([{ docId: 'p1', kind: 'page', concept: 'Garden', text: 'x\n' }]), adapter)
+            await mirror.sync()
+            expect(mirror.status().paused?.kind).toBe('permission')
+            denied = false
+            mirror.resume()
+            expect(mirror.status()).toMatchObject({ running: true, paused: undefined })
+            await vi.waitFor(async () => expect(await textOf(base, 'pages', 'Garden.md')).toContain('x'))
+            mirror.dispose()
+        })
+
+        it('resume after a stop follows changes again and sweeps the folder', async () => {
+            const adapter = tickingAdapter()
+            const docs: FakeDocument[] = [
+                { docId: 'p1', kind: 'page', concept: 'Garden', text: 'first\n' },
+                { docId: 'p2', kind: 'page', concept: 'Shed', text: 'tools\n' },
+            ]
+            const feed = source(docs)
+            const mirror = createLocalMirror(feed, adapter, { debounceMs: 0 })
+            mirror.start()
+            await idle(mirror)
+            mirror.stop()
+            // While stopped, Shed leaves the graph.
+            docs.pop()
+            mirror.resume()
+            await vi.waitFor(async () => expect(await namesIn(adapter, 'pages')).toEqual(['Garden.md']))
+            await idle(mirror)
+            docs[0].text = 'second\n'
+            feed.fire('Garden')
+            await vi.waitFor(async () => expect(await textOf(adapter, 'pages', 'Garden.md')).toContain('second'))
+            mirror.dispose()
+        })
+
+        it('stopping a stopped mirror is harmless', () => {
+            const mirror = createLocalMirror(source([]), tickingAdapter())
+            mirror.stop()
+            expect(() => mirror.stop()).not.toThrow()
+            mirror.dispose()
+        })
+
+        it('a change made while a pass is writing is mirrored once that pass ends', async () => {
+            const adapter = tickingAdapter()
+            let release: () => void = () => {}
+            const gate = new Promise<void>((resolve) => (release = resolve))
+            const docs: FakeDocument[] = [{ docId: 'p1', kind: 'page', concept: 'Garden', text: 'first\n' }]
+            const feed = source(docs)
+            const readTexts = feed.readTexts
+            let reads = 0
+            feed.readTexts = async (docIds, onProgress) => {
+                if (reads++ === 0) await gate
+                return readTexts(docIds, onProgress)
+            }
+            const mirror = createLocalMirror(feed, adapter, { debounceMs: 0 })
+            mirror.start()
+            await vi.waitFor(() => expect(reads).toBe(1))
+            docs[0].text = 'second\n'
+            feed.fire('Garden')
+            release()
+            await vi.waitFor(async () => expect(await textOf(adapter, 'pages', 'Garden.md')).toContain('second'))
+            mirror.dispose()
+        })
+
+        it('a pass for one document’s edit lists no folder', async () => {
+            const base = tickingAdapter()
+            let lists = 0
+            const adapter: DirectoryAdapter = {
+                ...base,
+                async list(subdir) {
+                    lists++
+                    return base.list(subdir)
+                },
+            }
+            const docs: FakeDocument[] = [{ docId: 'p1', kind: 'page', concept: 'Garden', text: 'first\n' }]
+            const feed = source(docs)
+            const mirror = createLocalMirror(feed, adapter, { debounceMs: 0 })
+            mirror.start()
+            await idle(mirror)
+            lists = 0
+            docs[0].text = 'second\n'
+            feed.fire('Garden')
+            await vi.waitFor(async () => expect(await textOf(base, 'pages', 'Garden.md')).toContain('second'))
+            await idle(mirror)
+            expect(lists).toBe(0)
+            mirror.dispose()
+        })
+
+        it('asks about edits elsewhere on a timer only while mirroring continuously', async () => {
+            const asked: number[] = []
+            const feed = source([{ docId: 'p1', kind: 'page', concept: 'Garden', text: 'x\n' }], {
+                async docsBehind() {
+                    asked.push(asked.length)
+                    return []
+                },
+            })
+            // One Mirror now: no timer is left behind.
+            const once = createLocalMirror(feed, tickingAdapter(), { catchUpIntervalMs: 5 })
+            await once.sync()
+            await new Promise((resolve) => setTimeout(resolve, 40))
+            expect(asked).toHaveLength(1)
+            once.dispose()
+
+            // Continuous: asked again on the interval, until stopped.
+            asked.length = 0
+            const continuous = createLocalMirror(feed, tickingAdapter(), { catchUpIntervalMs: 5 })
+            continuous.start()
+            await vi.waitFor(() => expect(asked.length).toBeGreaterThanOrEqual(3))
+            continuous.stop()
+            await idle(continuous)
+            const after = asked.length
+            await new Promise((resolve) => setTimeout(resolve, 40))
+            expect(asked).toHaveLength(after)
+            continuous.dispose()
+        })
     })
 })

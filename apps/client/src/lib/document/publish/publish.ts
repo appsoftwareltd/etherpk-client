@@ -1017,7 +1017,7 @@ function backlinkViews(page: RenderedPage, resolver: PublicationResolver, render
         out.push({
             title: titleText(group.sourceConcept),
             titleHtml: resolver.titleHtml(group.sourceConcept),
-            url: target.href === `${page.slug}.html` ? target.href : target.href,
+            url: target.href,
             kind: group.sourceKind,
             refs: group.refs.map((r) => ({ contextHtml: renderer.renderInline(r.lineText.trim().replace(/^-\s+(\[[ xX]\]\s*)?/, '')) })),
         })

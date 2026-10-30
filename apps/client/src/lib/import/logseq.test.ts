@@ -185,6 +185,60 @@ describe('convertLogseq', () => {
         expect(graph.report.some((r) => r.category === 'unreferenced')).toBe(true)
     })
 
+    it('folds a date only into the task directly above it, not across a blank line or into a plain bullet', async () => {
+        const graph = await convertLogseq([
+            src(
+                'pages/garden.md',
+                [
+                    '- TODO water the beans',
+                    '',
+                    '  DEADLINE: <2026-03-20 Fri>',
+                    '- pick the peas',
+                    '  SCHEDULED: <2026-04-01 Wed>',
+                    '- DONE sow the seeds',
+                    '  :LOGBOOK:',
+                    '  :END:',
+                ].join('\n'),
+            ),
+        ])
+        const text = doc(graph, 'garden').text
+        expect(text).toContain('- [ ] water the beans\n')
+        expect(text).toContain('DEADLINE: <2026-03-20 Fri>')
+        expect(text).toContain('- pick the peas\n  SCHEDULED: <2026-04-01 Wed>')
+        // A drawer with no DONE state gives the task no completion date.
+        expect(text).toContain('- [x] sow the seeds')
+        expect(text).not.toContain('#C-')
+    })
+
+    it('converts a tag at the start of a line, and leaves a # inside a word alone', async () => {
+        const graph = await convertLogseq([src('pages/tags.md', '#garden first\n- #[[green beans]] and see#kitchen')])
+        const text = doc(graph, 'tags').text
+        expect(text).toContain('[[garden]] first')
+        expect(text).toContain('- [[green beans]] and see#kitchen')
+    })
+
+    it('reports a namespace link once per target, and leaves a web address with slashes alone', async () => {
+        const graph = await convertLogseq([
+            src('pages/links.md', '- [[garden/beds]] and [[garden/beds]] again\n- [[https://example.com/garden]]'),
+        ])
+        expect(doc(graph, 'links').text).toContain('[[https://example.com/garden]]')
+        const namespaced = graph.report.filter((r) => r.concept === 'links' && r.detail.includes('garden/beds'))
+        expect(namespaced).toHaveLength(1)
+    })
+
+    it('stores pages whose file names would match under numbered names, and says so', async () => {
+        const graph = await convertLogseq([src('pages/Garden?.md', '- a'), src('pages/Garden_.md', '- b'), src('pages/Garden*.md', '- c')])
+        expect(graph.documents.map((d) => [d.concept, d.fileName])).toEqual([
+            ['Garden?', 'Garden_.md'],
+            ['Garden_', 'Garden_ (2).md'],
+            ['Garden*', 'Garden_ (3).md'],
+        ])
+        expect(graph.report.filter((r) => r.category === 'collision').map((r) => r.detail)).toEqual([
+            'File name "Garden_.md" already taken - stored as "Garden_ (2).md" (frontmatter title keeps the concept)',
+            'File name "Garden_.md" already taken - stored as "Garden_ (3).md" (frontmatter title keeps the concept)',
+        ])
+    })
+
     it('disambiguates colliding concepts', async () => {
         const graph = await convertLogseq([
             src('journals/2026_07_16.md', '- the journal'),

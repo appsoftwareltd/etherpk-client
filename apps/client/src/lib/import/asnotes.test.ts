@@ -74,6 +74,53 @@ describe('convertAsNotes', () => {
             expect(doc(graph, 'Other').text).toContain('see [[[[home]] Notes]]')
         })
 
+        it('re-points a link to the nearest folder by steps, not to the first file found, ignoring case', async () => {
+            const graph = await convertAsNotes(
+                workspace(
+                    src('kitchen/Notes.md', 'kitchen notes'),
+                    src('garden/shed/Notes.md', 'shed notes'),
+                    src('Garden/Shed/tools/Linker.md', 'see [[Notes]]'),
+                    src('Kitchen/Pantry/Linker Two.md', 'see [[Notes]]'),
+                    src('Root Linker.md', 'see [[Notes]]'),
+                ),
+            )
+            // Up one folder from Garden/Shed/tools, against up three and down one.
+            expect(doc(graph, 'Linker').text).toContain('see [[[[shed]] Notes]]')
+            // Up one from Kitchen/Pantry to the kitchen folder, in another case.
+            expect(doc(graph, 'Linker Two').text).toContain('see [[[[kitchen]] Notes]]')
+            // From the root: down one against down two.
+            expect(doc(graph, 'Root Linker').text).toContain('see [[[[kitchen]] Notes]]')
+        })
+
+        it('takes the first file found when two folders are as near', async () => {
+            const graph = await convertAsNotes(
+                workspace(src('kitchen/Notes.md', 'kitchen notes'), src('garden/Notes.md', 'garden notes'), src('shed/Linker.md', 'see [[Notes]]')),
+            )
+            expect(doc(graph, 'Linker').text).toContain('see [[[[kitchen]] Notes]]')
+        })
+
+        it('resolves a markdown link up a folder, from the workspace root, and through a ./ segment', async () => {
+            const graph = await convertAsNotes(
+                workspace(
+                    src('notes/Garden.md', 'beans'),
+                    src('notes/deep/user.md', '[Garden](../Garden.md) [Garden](/notes/Garden.md) [Garden](.././Garden.md)'),
+                ),
+            )
+            expect(doc(graph, 'user').text).toContain('[[Garden]] [[Garden]] [[Garden]]')
+        })
+
+        it('leaves a web link, a mail link and a link to a heading as they are', async () => {
+            const graph = await convertAsNotes(
+                workspace(src('Garden.md', 'beans'), src('user.md', '[site](https://example.com/Garden.md) [mail](mailto:garden@example.com) [top](#Garden)')),
+            )
+            expect(doc(graph, 'user').text).toContain('[site](https://example.com/Garden.md) [mail](mailto:garden@example.com) [top](#Garden)')
+        })
+
+        it('imports no file whose name only contains .md', async () => {
+            const graph = await convertAsNotes(workspace(src('Garden.md.orig', 'old copy'), src('Kitchen.md', 'pans')))
+            expect(graph.documents.map((d) => d.concept)).toEqual(['Kitchen'])
+        })
+
         it('rewrites a link whose characters AS Notes turns into underscores', async () => {
             const graph = await convertAsNotes(
                 workspace(
@@ -126,6 +173,26 @@ describe('convertAsNotes', () => {
             expect(details(graph, 'degradation')).toContain(
                 'Frontmatter title "A Nicer Title" replaced by the page\'s name "Page" (AS Notes links name the file, and the title was only used when publishing)',
             )
+        })
+
+        it('reports no title change when the title was the page’s name or blank', async () => {
+            const graph = await convertAsNotes(workspace(src('Page.md', '---\ntitle: Page\n---\nbody'), src('Blank.md', '---\ntitle: "  "\n---\nbody')))
+            expect(details(graph, 'degradation')).toEqual([])
+        })
+
+        it('reports progress over every document it converts', async () => {
+            const seen: { label: string; done: number; total: number }[] = []
+            await convertAsNotes(workspace(src('Garden.md', 'a'), src('Kitchen.md', 'b'), src('Shed.md', 'c')), {
+                onProgress: (progress) => seen.push(progress as { label: string; done: number; total: number }),
+            })
+            const converting = seen.filter((p) => p.label === 'Converting documents')
+            expect(converting.map((p) => [p.done, p.total])).toEqual([
+                [1, 3],
+                [2, 3],
+                [3, 3],
+            ])
+            const reading = seen.filter((p) => p.label === 'Reading files')
+            expect(reading.at(-1)).toMatchObject({ done: 3, total: 3 })
         })
 
         it('writes a single alias as the list EtherPK reads', async () => {
@@ -412,6 +479,61 @@ describe('convertAsNotes', () => {
                     'Assignees and labels kept as text under each task: EtherPK tasks have neither',
                     'Dropped: card creation and update times, the card order within each lane, the board\'s list of users',
                 ]),
+            )
+        })
+
+        /** The report lines about one board's page. */
+        const boardReport = (graph: ConvertedGraph, concept: string) => graph.report.filter((r) => r.concept === concept).map((r) => r.detail)
+
+        it('reports only the conversion itself for a board with nothing to drop', async () => {
+            const graph = await convertAsNotes(
+                workspace(src('kanban/garden/board.yaml', 'name: "  "\nusers: []\n'), src('kanban/garden/todo/card_beans_aaaaaa.md', card('title: Water the beans'))),
+            )
+            // A blank name leaves the board named after its folder.
+            expect(doc(graph, '[[garden]] Kanban').text).toBe('---\ntitle: "[[garden]] Kanban"\n---\n- [ ] Water the beans\n')
+            expect(boardReport(graph, '[[garden]] Kanban')).toEqual(['AS Notes kanban board "garden" became this page, one task per card'])
+        })
+
+        it('reports each kind of card metadata it drops, even when a card has only one of them', async () => {
+            const graph = await convertAsNotes(
+                workspace(
+                    src('kanban/garden/board.yaml', 'name: " Garden "\nlabels:\n  - outdoor\n'),
+                    src('kanban/garden/todo/card_beans_aaaaaa.md', card('title: Water the beans\nupdated: "2026-09-02T10:00:00.000Z"\nlabels:\n  - green')),
+                    src('kanban/garden/todo/card_peas_bbbbbb.md', card('title: Pick the peas\nsortOrder: 0\nlabels: []')),
+                ),
+            )
+            expect(doc(graph, '[[Garden]] Kanban').text).toContain('- [ ] Pick the peas\n- [ ] Water the beans\n  Labels: green.')
+            expect(boardReport(graph, '[[Garden]] Kanban')).toEqual([
+                'AS Notes kanban board "Garden" became this page, one task per card',
+                'Assignees and labels kept as text under each task: EtherPK tasks have neither',
+                "Dropped: card creation and update times, the card order within each lane, the board's list of labels",
+            ])
+        })
+
+        it('orders the lanes as the board lists them, then the others by name, the archive last, and keeps priorities 1 to 3', async () => {
+            const graph = await convertAsNotes(
+                workspace(
+                    src('kanban/garden/board.yaml', 'lanes:\n  - done\n  - 7\n  - todo\n'),
+                    src('kanban/garden/archive/card_a_aaaaaa.md', card('title: Old beans')),
+                    src('kanban/garden/waiting/card_b_bbbbbb.md', card('title: Wait for rain\npriority: P3')),
+                    src('kanban/garden/doing/card_c_cccccc.md', card('title: Dig the bed\npriority: p2x')),
+                    src('kanban/garden/todo/card_d_dddddd.md', card('title: Sow the peas\ndueDate: soon')),
+                    src('kanban/garden/done/card_e_eeeeee.md', card('title: Buy seeds')),
+                ),
+            )
+            expect(doc(graph, '[[garden]] Kanban').text).toBe(
+                [
+                    '---',
+                    'title: "[[garden]] Kanban"',
+                    '---',
+                    '- [x] Buy seeds',
+                    '- [ ] Sow the peas',
+                    '  Due: soon.',
+                    '- [ ] #D Dig the bed',
+                    '- [ ] #P3 #W Wait for rain',
+                    '- [x] Old beans',
+                    '',
+                ].join('\n'),
             )
         })
 

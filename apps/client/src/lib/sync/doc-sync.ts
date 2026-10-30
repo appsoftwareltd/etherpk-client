@@ -1224,7 +1224,12 @@ export function createDocSync(deps: DocSyncDeps): DocSync {
             if (lifecycleState === 'deleted' || lifecycleState === 'deleting') return
             await persistenceTail
             lifecycleState = 'deleting'
-            if (debounceTimer) clearTimeout(debounceTimer)
+            // Cleared and forgotten, as flush does: a timer id left behind reads as an edit still
+            // waiting, which keeps the engine from ever reading as idle.
+            if (debounceTimer) {
+                clearTimeout(debounceTimer)
+                debounceTimer = undefined
+            }
             const content = doc.getText('content')
             seeding = true
             try {
