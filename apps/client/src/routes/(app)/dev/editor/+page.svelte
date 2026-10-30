@@ -191,17 +191,21 @@
         // (stale height map vs DOM hit-test) without reaching into the view from a test.
         w.__posAtCoords = (x: number, y: number) => getActiveEditorView()?.posAtCoords({ x, y }) ?? null
         // Per-line drift between CM's HEIGHT MAP (lineBlockAt — what click mapping consults) and
-        // the real DOM (coordsAtPos) — pinpoints which block above a line mis-measures.
+        // the real DOM — pinpoints which block above a line mis-measures. The DOM side is the
+        // line's own box, which is what the height map models: a character's rectangle
+        // (coordsAtPos) sits inside it by an amount that differs between browsers, and between a
+        // line of text and a blank one.
         w.__lineDrift = () => {
             const view = getActiveEditorView()
             if (!view) return null
             const out: Array<{ n: number; hmTop: number; realTop: number; drift: number }> = []
             for (let n = 1; n <= view.state.doc.lines; n++) {
                 const pos = view.state.doc.line(n).from
-                const coords = view.coordsAtPos(pos)
-                if (!coords) continue
+                const { node } = view.domAtPos(pos)
+                const line = (node instanceof Element ? node : node.parentElement)?.closest(".cm-line")
+                if (!line) continue
                 const block = view.lineBlockAt(pos)
-                const realTop = coords.top - view.documentTop
+                const realTop = line.getBoundingClientRect().top - view.documentTop
                 out.push({ n, hmTop: Math.round(block.top), realTop: Math.round(realTop), drift: Math.round(block.top - realTop) })
             }
             return out

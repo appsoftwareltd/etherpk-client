@@ -662,7 +662,7 @@ describe('set_aliases', () => {
 
 describe('assets', () => {
     // A 1×1 PNG and a small text file, written to a temporary directory the tools read from.
-    const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64')
+    const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64')
     async function files(): Promise<{ dir: string; png: string; txt: string }> {
         const dir = await mkdtemp(join(tmpdir(), 'etherpk-mcp-assets-'))
         const png = join(dir, 'Diagram One.png')

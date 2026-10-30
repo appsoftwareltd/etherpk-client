@@ -116,13 +116,22 @@
     $effect(() => context?.events.on("theme:changed", ({ dark }) => (colours = readMapColours(dark))));
 
     let host = $state.raw<MapHost | null>(null);
+    /** The picture could not be drawn: the browser gave the renderer no WebGL. The lists still name every concept. */
+    let drawFailed = $state(false);
     function attachMap(element: HTMLElement) {
-        const created = createMapHost(element, {
-            colours: untrack(() => colours),
-            dense: mode === "local",
-            onOpen: open,
-            onHover: (key) => (hovered = key),
-        });
+        let created: MapHost;
+        try {
+            created = createMapHost(element, {
+                colours: untrack(() => colours),
+                dense: mode === "local",
+                onOpen: open,
+                onHover: (key) => (hovered = key),
+            });
+        } catch {
+            // No WebGL (an old browser, or one with graphics switched off): the lists name what the picture would show.
+            drawFailed = true;
+            return;
+        }
         host = created;
         // Only in a development Client (`context.dev`): what the canvas draws, for the Playwright specs.
         const hooks = context?.dev ? ((window as unknown as { __etherpkGraphView?: Record<string, MapHost> }).__etherpkGraphView ??= {}) : null;
@@ -507,9 +516,18 @@
                 </div>
             {/if}
 
+            {#if status === "ready" && drawFailed}
+                <div class="absolute inset-0 flex items-center justify-center p-6" data-testid="graph-view-no-webgl">
+                    <p class="m-0 max-w-xs text-center text-sm text-(--gk-text-muted)">
+                        This browser can't draw the Graph View. {mode === "local" ? "The list below names" : "The lists beside it name"} what it would show.
+                    </p>
+                </div>
+            {/if}
+
             <!-- Zoom: the buttons a mouse needs, and what the keys do for a keyboard. EtherPK's
-                 icon buttons on a card of their own, so the picture never shows through them. -->
-            <div class="absolute right-2 bottom-2 flex flex-col rounded-lg border border-(--gk-control-border) bg-(--gk-surface-0)">
+                 icon buttons on a card of their own, so the picture never shows through them.
+                 Not offered when there is no picture to zoom. -->
+            <div class={["absolute right-2 bottom-2 flex flex-col rounded-lg border border-(--gk-control-border) bg-(--gk-surface-0)", drawFailed && "hidden"]}>
                 <button type="button" class="gk-icon-button" onclick={() => host?.zoom(1)} aria-label="Zoom in" data-testid="graph-view-zoom-in">
                     {@render icon("zoom-in")}
                 </button>

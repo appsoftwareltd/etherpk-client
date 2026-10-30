@@ -56,9 +56,10 @@ export function applyEditorPosition(view: EditorView, position: ViewPosition): v
     const STABLE_FRAMES = 5
     let attempts = 120 // ~2s at 60fps — dockview restore settles well within this
     let stable = 0
+    const person = watchPerson(view)
     const assertScroll = () => {
-        if (!view.dom.isConnected) return // unmounted mid-restore
-        if (applyEpoch.get(view) !== epoch) return // superseded by a newer apply
+        if (!view.dom.isConnected || person.acted()) return person.release() // unmounted mid-restore, or in use
+        if (applyEpoch.get(view) !== epoch) return person.release() // superseded by a newer apply
         if (Math.abs(view.scrollDOM.scrollTop - position.scrollTop) > 1) {
             view.scrollDOM.scrollTop = position.scrollTop
             stable = 0
@@ -66,8 +67,34 @@ export function applyEditorPosition(view: EditorView, position: ViewPosition): v
             stable += 1
         }
         if (stable < STABLE_FRAMES && --attempts > 0) requestAnimationFrame(assertScroll)
+        else person.release()
     }
     requestAnimationFrame(assertScroll)
+}
+
+/** What a person does to an editor that ends a restore or a reveal: the editor follows them from then on. */
+const PERSON_ACTS = ['keydown', 'pointerdown', 'wheel', 'touchstart', 'paste', 'beforeinput'] as const
+
+/**
+ * Whether the person has acted on `view` since this call. The scroll restore and the reveal below
+ * re-assert a position over the frames a new editor takes to lay out, which is right for an
+ * editor nobody is using yet. Once the person types, pastes, clicks, touches or scrolls, the
+ * editor follows them: asserting the old position after that scrolled a caret they had just
+ * moved off the screen. Read by event, not by state, because a Filesystem document fills its
+ * buffer after the mount, which is no one acting on it. `release` stops listening.
+ */
+function watchPerson(view: EditorView): { acted: () => boolean; release: () => void } {
+    let acted = false
+    const act = () => {
+        acted = true
+    }
+    for (const type of PERSON_ACTS) view.dom.addEventListener(type, act, { capture: true, passive: true })
+    return {
+        acted: () => acted,
+        release: () => {
+            for (const type of PERSON_ACTS) view.dom.removeEventListener(type, act, { capture: true })
+        },
+    }
 }
 
 /**
@@ -118,9 +145,10 @@ export function revealEditorPosition(view: EditorView, head: number, align: Reve
     const STABLE_FRAMES = 3
     let attempts = 60 // ~1s at 60fps
     let stable = 0
+    const person = watchPerson(view)
     const assertVisible = () => {
-        if (!view.dom.isConnected) return // unmounted mid-reveal
-        if (applyEpoch.get(view) !== epoch) return // superseded by a newer apply
+        if (!view.dom.isConnected || person.acted()) return person.release() // unmounted mid-reveal, or in use
+        if (applyEpoch.get(view) !== epoch) return person.release() // superseded by a newer apply
         const caret = view.coordsAtPos(target)
         const box = view.scrollDOM.getBoundingClientRect()
         // `coordsAtPos` is null when the position is outside the rendered range, which itself
@@ -132,6 +160,7 @@ export function revealEditorPosition(view: EditorView, head: number, align: Reve
             scroll()
         }
         if (stable < STABLE_FRAMES && --attempts > 0) requestAnimationFrame(assertVisible)
+        else person.release()
     }
     requestAnimationFrame(assertVisible)
 

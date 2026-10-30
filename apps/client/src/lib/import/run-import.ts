@@ -171,7 +171,7 @@ export async function runServerImport(
         }
         // A refreshing source, not one token: a large graph takes far longer to upload than
         // a token lives, and every asset upload past that mark used to 401 (see sync-token.ts).
-        const token = createSyncTokenSource(() => deps.api.mintSyncToken(graph.id))
+        const token = createSyncTokenSource((signal) => deps.api.mintSyncToken(graph.id, signal))
         const cache = await openGraphCache(graph.id)
         const sync = createGraphSync({
             graphId: graph.id,
@@ -227,7 +227,7 @@ export async function runServerImport(
             retryAssets: materialized.skippedAssets.length === 0
                 ? undefined
                 : async () => {
-                    const retryToken = createSyncTokenSource(() => deps.api.mintSyncToken(graph.id))
+                    const retryToken = createSyncTokenSource((signal) => deps.api.mintSyncToken(graph.id, signal))
                     const retryCache = await openGraphCache(graph.id)
                     const retrySync = createGraphSync({
                         graphId: graph.id,

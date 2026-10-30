@@ -30,7 +30,7 @@ export function createHeadlessAccount(config: Pick<ServerCredentials, 'syncServe
         api,
         serverBaseUrl: config.syncServer,
         relayUrl: relayUrlFrom(config.syncServer),
-        tokenFor: (graphId) => createSyncTokenSource(() => api.mintSyncToken(graphId)),
+        tokenFor: (graphId) => createSyncTokenSource((signal) => api.mintSyncToken(graphId, signal)),
     }
 }
 

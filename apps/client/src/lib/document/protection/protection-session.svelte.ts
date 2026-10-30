@@ -250,12 +250,24 @@ export class ProtectionSession {
         this.#detach = []
     }
 
-    /** Adopt the service's state, tell the host, and re-arm the single deadline timer. */
+    /**
+     * Adopt the service's state, tell the host when it changed, and re-arm the single deadline
+     * timer.
+     *
+     * The host hears only of a change. Activity (every keystroke, pointer press and wheel turn)
+     * comes through here to move the idle deadline, and the host's answer to a change redraws
+     * every editor: told on each keystroke, it redrew the editor the key was typed into before
+     * the editor had read the typed character from the page, and the character was lost.
+     */
     #sync(): void {
+        const changed =
+            this.status !== this.#service.status ||
+            this.isConfigured !== this.#service.isConfigured ||
+            this.fingerprint !== this.#service.fingerprint
         this.status = this.#service.status
         this.isConfigured = this.#service.isConfigured
         this.fingerprint = this.#service.fingerprint
-        this.#onChange?.()
+        if (changed) this.#onChange?.()
         this.#arm()
     }
 

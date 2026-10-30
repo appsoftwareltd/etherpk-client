@@ -130,6 +130,15 @@ describe('sync-api', () => {
         expect(JSON.parse(String(init?.body))).toEqual({ graphId: 'graph-1', email: 'invitee@example.com' })
     })
 
+    it('mintSyncToken passes the caller\'s abort signal to the request', async () => {
+        const fetchMock = vi.fn<typeof fetch>(async () => jsonResponse(200, { token: 'minted' }))
+        const api = createSyncApi({ baseUrl: 'https://s', token: 't', fetch: fetchMock })
+        const controller = new AbortController()
+
+        await expect(api.mintSyncToken('g1', controller.signal)).resolves.toBe('minted')
+        expect(fetchMock.mock.calls[0][1]?.signal).toBe(controller.signal)
+    })
+
     it('maps a 404 vault to null and other errors to SyncApiError', async () => {
         const notFound = createSyncApi({ baseUrl: 'https://s', token: 't', fetch: async () => jsonResponse(404, { error: { message: 'No vault' } }) })
         expect(await notFound.getVault()).toBeNull()

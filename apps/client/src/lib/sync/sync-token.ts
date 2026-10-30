@@ -37,6 +37,24 @@ const MIN_MARGIN_MS = 60_000
 const OPAQUE_TOKEN_LIFETIME_MS = 5 * 60_000
 
 /**
+ * How long one mint may take before the source gives up on it. A request can wait for a very
+ * long time without an answer or an error: a network that drops packets silently, a phone that
+ * moves to another network partway through, or a request started with no network that the
+ * browser never fails. A pending mint is shared with every later caller, so without a limit one
+ * stuck request would keep the relay from reconnecting until the page is reloaded. A healthy
+ * server answers in well under a second, so the limit allows for a slow network as well.
+ */
+export const SYNC_TOKEN_DEADLINE_MS = 15_000
+
+/** The mint did not answer within {@link SYNC_TOKEN_DEADLINE_MS}. A caller retries it as it would a network failure. */
+export class SyncTokenDeadlineError extends Error {
+    constructor() {
+        super(`The Sync Server did not answer a sync token request within ${SYNC_TOKEN_DEADLINE_MS / 1000} seconds`)
+        this.name = 'SyncTokenDeadlineError'
+    }
+}
+
+/**
  * Read `exp` out of a sync token WITHOUT verifying it. The server is the only verifier;
  * the client reads the claim solely to know when to ask for a replacement, so a forged or
  * malformed token costs nothing here - it simply refreshes on a conservative default.
@@ -62,12 +80,14 @@ export function fixedSyncToken(token: string): SyncTokenSource {
 }
 
 /**
- * A refreshing source over `mint` (normally `api.mintSyncToken(graphId)`). Concurrent
+ * A refreshing source over `mint` (normally `api.mintSyncToken(graphId, signal)`). Concurrent
  * callers share one in-flight mint: the asset uploader runs six uploads at once, and six
- * simultaneous expiries must cost one round trip, not six.
+ * simultaneous expiries must cost one round trip, not six. A mint that has not answered by
+ * {@link SYNC_TOKEN_DEADLINE_MS} is aborted through `signal` and rejects, so the next call
+ * starts a new one.
  */
 export function createSyncTokenSource(
-    mint: () => Promise<string>,
+    mint: (signal: AbortSignal) => Promise<string>,
     opts?: { now?: () => number },
 ): SyncTokenSource {
     const now = opts?.now ?? (() => Date.now())
@@ -80,7 +100,7 @@ export function createSyncTokenSource(
         // A forced call joins a mint already running: six uploads rejected at once must cost
         // one new token, not six.
         if (!inFlight) {
-            inFlight = mint()
+            inFlight = withDeadline(mint)
                 .then((token) => {
                     const issuedAt = now()
                     const expiresAt = syncTokenExpiry(token) ?? issuedAt + OPAQUE_TOKEN_LIFETIME_MS
@@ -95,4 +115,17 @@ export function createSyncTokenSource(
         }
         return inFlight
     }
+}
+
+/** Run `mint`, aborting it and rejecting with {@link SyncTokenDeadlineError} once the deadline passes. */
+function withDeadline(mint: (signal: AbortSignal) => Promise<string>): Promise<string> {
+    const controller = new AbortController()
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const deadline = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => {
+            controller.abort()
+            reject(new SyncTokenDeadlineError())
+        }, SYNC_TOKEN_DEADLINE_MS)
+    })
+    return Promise.race([mint(controller.signal), deadline]).finally(() => clearTimeout(timer))
 }

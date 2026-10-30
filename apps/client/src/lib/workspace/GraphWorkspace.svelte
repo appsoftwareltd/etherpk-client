@@ -925,7 +925,9 @@
         }
         syncIndicatorSettle ??= createIndicatorSettle((indicator) => (syncIndicator = indicator));
         syncIndicatorSettle.update(
-            describeSyncActivity(syncActivity, browserOnline, refusalCopy?.reason, describeKeyWait(keyWaitOutcome)),
+            // The flag is read now rather than kept from the last online event: a page started with
+            // no network can miss the event when the network returns, and would say Offline for good.
+            describeSyncActivity(syncActivity, navigator.onLine, refusalCopy?.reason, describeKeyWait(keyWaitOutcome)),
         );
     }
 
@@ -1237,12 +1239,12 @@
     /** The account API behind a registry graph, to word a write refusal; null under the dev gate. */
     let serverApi: SyncApi | null = null;
     /**
-     * The synced graph's sync state for the Sidebar's sync status: the session's activity, the
-     * browser's online flag, and why the server refuses writes, worded for this person.
+     * The synced graph's sync state for the Sidebar's sync status: the session's activity and why
+     * the server refuses writes, worded for this person. The browser's online flag is read when
+     * the status is worked out (refreshSyncIndicator).
      * `syncActivity` is null for a folder graph, which shows no status.
      */
     let syncActivity = $state.raw<SyncActivity | null>(null);
-    let browserOnline = $state(true);
     let refusalCopy = $state.raw<WriteRefusalCopy | null>(null);
     /** The person closed the refusal card; the sync status still says it, and a new refusal re-posts it. */
     let refusalNoticeDismissed = $state(false);
@@ -5068,6 +5070,8 @@
      * steal focus straight back, and the mobile presenter has not yet mounted the View (it
      * renders on the effect flush), so its adapter is not registered until after this returns.
      * Re-checked inside that frame, so a fast second activation wins rather than both firing.
+     * Not taken from a dialog that opened in that frame (Search on Alt+F straight after a click):
+     * the person is typing into it, and the caret would put their keys in the document behind.
      */
     function focusActivatedDocument(panelId: string): void {
         if (suppressNav) return;
@@ -5075,6 +5079,7 @@
             const active = controller?.activeView();
             if (active?.panelId !== panelId || active.view.kind !== "document")
                 return;
+            if (document.activeElement?.closest('[aria-modal="true"], dialog[open]')) return;
             if (useMobile) focusEditorIfEmpty(panelId);
             else focusEditor(panelId);
         });
@@ -7356,11 +7361,9 @@
         // restarted in another tab usually shows. The relay reconnects at the same two moments
         // rather than when its backoff, up to 30 seconds by then, runs out: a phone that slept may
         // have missed the network coming back.
-        browserOnline = navigator.onLine;
         const followOnline = () => {
-            browserOnline = navigator.onLine;
             refreshSyncIndicator();
-            if (browserOnline) {
+            if (navigator.onLine) {
                 serverGraph?.reconnectNow();
                 serverGraph?.retryRefused();
                 void sendQueuedUploads();

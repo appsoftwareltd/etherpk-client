@@ -1,5 +1,5 @@
-import { describe, expect, it, vi } from 'vitest'
-import { createSyncTokenSource, fixedSyncToken, syncTokenExpiry } from './sync-token'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { createSyncTokenSource, fixedSyncToken, SYNC_TOKEN_DEADLINE_MS, SyncTokenDeadlineError, syncTokenExpiry } from './sync-token'
 
 /** The server's token shape: base64url(JSON claims) + '.' + HMAC (opaque to the client). */
 function token(exp: number, mac = 'sig'): string {
@@ -76,6 +76,52 @@ describe('createSyncTokenSource', () => {
         await expect(source()).rejects.toThrow('offline')
         await expect(source()).resolves.toContain('.')
         expect(mint).toHaveBeenCalledTimes(2)
+    })
+
+    describe('a mint that never answers', () => {
+        beforeEach(() => vi.useFakeTimers())
+        afterEach(() => vi.useRealTimers())
+
+        it('gives up at the deadline and aborts the request', async () => {
+            let signal: AbortSignal | undefined
+            const mint = vi.fn((s: AbortSignal) => {
+                signal = s
+                return new Promise<string>(() => {})
+            })
+            const source = createSyncTokenSource(mint)
+
+            const asked = expect(source()).rejects.toThrow(SyncTokenDeadlineError)
+            await vi.advanceTimersByTimeAsync(SYNC_TOKEN_DEADLINE_MS)
+            await asked
+            expect(signal?.aborted).toBe(true)
+        })
+
+        it('does not hand the stuck mint to the next caller', async () => {
+            // A request that a dead network never answers was shared with every later caller, so
+            // a relay that started offline never reconnected.
+            const mint = vi
+                .fn<(signal: AbortSignal) => Promise<string>>()
+                .mockReturnValueOnce(new Promise<string>(() => {}))
+                .mockResolvedValueOnce(token(Date.now() + FIFTEEN_MINUTES))
+            const source = createSyncTokenSource(mint)
+
+            const stuck = expect(source()).rejects.toThrow(SyncTokenDeadlineError)
+            await vi.advanceTimersByTimeAsync(SYNC_TOKEN_DEADLINE_MS)
+            await stuck
+            await expect(source()).resolves.toContain('.')
+            expect(mint).toHaveBeenCalledTimes(2)
+        })
+
+        it('waits the whole deadline for a slow answer', async () => {
+            const mint = vi.fn(
+                () => new Promise<string>((resolve) => setTimeout(() => resolve(token(Date.now() + FIFTEEN_MINUTES)), SYNC_TOKEN_DEADLINE_MS - 1)),
+            )
+            const source = createSyncTokenSource(mint)
+
+            const asked = source()
+            await vi.advanceTimersByTimeAsync(SYNC_TOKEN_DEADLINE_MS)
+            await expect(asked).resolves.toContain('.')
+        })
     })
 
     it('refreshes a token whose expiry it cannot read, rather than holding it forever', async () => {

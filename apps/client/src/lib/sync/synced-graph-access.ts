@@ -45,7 +45,7 @@ export function resolveSyncedGraphConnection(graphId: string, serverOrigin: stri
         origin: connection.origin,
         serverBaseUrl: connection.serverBaseUrl,
         relayUrl: relayUrlFrom(connection.serverBaseUrl),
-        token: createSyncTokenSource(() => api.mintSyncToken(graphId)),
+        token: createSyncTokenSource((signal) => api.mintSyncToken(graphId, signal)),
     }
 }
 

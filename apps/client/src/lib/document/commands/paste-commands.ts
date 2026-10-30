@@ -86,5 +86,10 @@ export async function pasteInto(view: EditorView): Promise<void> {
         })
         return
     }
-    view.contentDOM.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }))
+    const event = new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true })
+    // Firefox ignores the `clipboardData` given to the constructor, and the event then carries
+    // none. An own property on the event shadows the prototype's getter, so every listener reads
+    // the data in each browser.
+    if (event.clipboardData !== data) Object.defineProperty(event, 'clipboardData', { value: data })
+    view.contentDOM.dispatchEvent(event)
 }

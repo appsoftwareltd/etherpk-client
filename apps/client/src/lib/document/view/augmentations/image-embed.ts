@@ -37,7 +37,7 @@
  * asks again (`asset-load-retry.ts`); any other failure shows the broken state.
  */
 
-import { type EditorState, type Extension, type Range, StateEffect, StateField } from '@codemirror/state'
+import { type EditorState, type Extension, findClusterBreak, type Range, StateEffect, StateField } from '@codemirror/state'
 import { Decoration, type DecorationSet, EditorView, WidgetType } from '@codemirror/view'
 
 import { AssetUnavailableError, type ResolvedAsset, assetNameFromRef } from '$lib/storage/fs/asset-store'
@@ -91,9 +91,12 @@ const OVERLAY_INSET = 6
  * The document position under a screen point, via the browser's own hit-testing (real DOM
  * layout): the caller aims it at the markdown's text row inside a revealed image line, whose
  * reserved height leaves empty space below the text, so a click anywhere in that space lands by
- * its X. Clamped to `[from, to]`; falls back to `from` when the point hits nothing usable.
+ * its X. The text row can be out of sight while the click is not: scrolled above the pane, or
+ * under the app's own chrome. The hit test then lands outside `lineEl`, and the column is found
+ * by X among the line's own characters instead ({@link domAtX}). Clamped to `[from, to]`; falls
+ * back to `from` when neither finds a place.
  */
-function posFromPoint(view: EditorView, x: number, y: number, from: number, to: number): number {
+function posFromPoint(view: EditorView, lineEl: Element, x: number, y: number, from: number, to: number): number {
     const doc = document as Document & {
         caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null
         caretRangeFromPoint?: (x: number, y: number) => globalThis.Range | null
@@ -111,13 +114,48 @@ function posFromPoint(view: EditorView, x: number, y: number, from: number, to: 
             offset = range.startOffset
         }
     }
-    if (!node) return from
+    if (!node || !lineEl.contains(node)) {
+        const located = domAtX(lineEl, x)
+        if (!located) return from
+        node = located.node
+        offset = located.offset
+    }
     try {
         const pos = view.posAtDOM(node, offset)
         return Math.max(from, Math.min(pos, to))
     } catch {
         return from
     }
+}
+
+/**
+ * The place between characters of `lineEl`'s first row nearest to the screen X `x`, measured from
+ * the characters' own boxes, so it needs no hit test. Null when the line has no text.
+ */
+function domAtX(lineEl: Element, x: number): { node: Text; offset: number } | null {
+    const walker = document.createTreeWalker(lineEl, NodeFilter.SHOW_TEXT)
+    const range = document.createRange()
+    let firstRowBottom: number | null = null
+    let best: { node: Text; offset: number; distance: number } | null = null
+    for (let text = walker.nextNode() as Text | null; text; text = walker.nextNode() as Text | null) {
+        // By grapheme, as CodeMirror's own scan steps, so the caret never lands inside an emoji or
+        // between a letter and its combining mark.
+        for (let i = 0, next: number; i < text.length; i = next) {
+            next = findClusterBreak(text.data, i)
+            range.setStart(text, i)
+            range.setEnd(text, next)
+            const box = range.getBoundingClientRect()
+            if (box.width === 0 && box.height === 0) continue
+            firstRowBottom ??= box.bottom
+            // A line that wraps: the caller aims at the first row, so later rows are not candidates.
+            if (box.top >= firstRowBottom) return best && { node: best.node, offset: best.offset }
+            // Before this character when `x` is in its left half, after it when in its right half.
+            const offset = x < (box.left + box.right) / 2 ? i : next
+            const distance = Math.min(Math.abs(x - box.left), Math.abs(x - box.right))
+            if (!best || distance < best.distance) best = { node: text, offset, distance }
+        }
+    }
+    return best && { node: best.node, offset: best.offset }
 }
 
 /**
@@ -786,7 +824,8 @@ export function imageEmbedAugmentation(options: ImageEmbedOptions): Extension {
             if (isImage) {
                 // Place the caret via the browser's hit-test at the markdown's text row, not CodeMirror's
                 // coord model over the click's own Y, which may lie in the reserved space below the text.
-                // Clicking anywhere on the revealed markdown lands the caret under the pointer.
+                // Clicking anywhere on the revealed markdown lands the caret under the pointer. When the
+                // row is out of sight, `posFromPoint` measures the row's characters against the X instead.
                 //
                 // KNOWN LIMITATION — no mouse drag-select / double-click word-select on an image's
                 // markdown line. Preventing the default mousedown is what lets us override CM's wrong
@@ -802,7 +841,7 @@ export function imageEmbedAugmentation(options: ImageEmbedOptions): Extension {
                 // in that gap should still place the caret in the markdown by its X, not fall to line-end.
                 const rowCoords = view.coordsAtPos(line.from)
                 const hitY = rowCoords ? (rowCoords.top + rowCoords.bottom) / 2 : event.clientY
-                const pos = posFromPoint(view, event.clientX, hitY, line.from, line.to)
+                const pos = posFromPoint(view, lineEl, event.clientX, hitY, line.from, line.to)
                 view.dispatch({ selection: { anchor: pos }, effects })
                 view.focus()
                 return true

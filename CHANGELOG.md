@@ -60,6 +60,28 @@ starts at 0.9.3.
   Before, they could move under the block above the cut, out of the outline. A blank line inside a
   block no longer stops EtherPK from tidying the blocks below a cut, so a block's blank lines move
   with it.
+- **A synced graph reconnects after a request that gets no answer.** When a request for the
+  relay's sign-in got no answer and no error, the graph did not sync again until the page was
+  reloaded. Now the request stops after 15 seconds and the graph tries again. This could occur
+  when EtherPK started with no network.
+- **The sync status no longer says Offline while the graph syncs.** In a tab that started with no
+  network, the status could stay at Offline after the network came back.
+- **Typing works in a new page while a protected graph is unlocked, in Firefox.** The first
+  character typed into a new page was lost, so the page was not created.
+- **The Command Bar keeps the keyboard open in Firefox.** A tap on a Command Bar button took the
+  focus from the editor, which closed the on-screen keyboard on a phone.
+- **Graph View says when the browser cannot draw it.** In a browser without WebGL, Graph View
+  showed "Reading the graph…" and never finished. It now says that this browser cannot draw the
+  picture, and its lists still name every concept.
+- **The page no longer jumps back to the top when you type straight after opening it.** For about
+  a second after a page opened or was created, EtherPK kept scrolling back to where it had put the
+  cursor. Text typed or pasted in that second could scroll out of sight. Now it stops as soon as
+  you type, click, scroll or paste.
+- **Search keeps the keyboard when you open it straight after opening a page.** A moment after a
+  page came to the front, EtherPK put the cursor in it, even when Search had opened in that moment.
+  What you typed then went into the page behind Search.
+- **A click on a revealed image's markdown puts the cursor under the pointer.** When the text of
+  the line was scrolled out of the pane, a click lower in the line put the cursor at its start.
 
 ### Headless Client
 

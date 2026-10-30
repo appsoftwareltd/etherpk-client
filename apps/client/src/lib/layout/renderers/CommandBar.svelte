@@ -13,7 +13,8 @@
      * **Contextual Group** (the table group) is present only while the caret is on what its
      * Command acts on - it appears beside the slash button inside a table and is absent otherwise.
      *
-     * Buttons never steal focus from the editor (tabindex=-1 + preventDefault on pointerdown),
+     * Buttons never steal focus from the editor (tabindex=-1 + preventDefault on pointerdown, and
+     * on mousedown, which is where Firefox moves the focus),
      * so the soft keyboard stays up and the active editor keeps its selection. Riding above the
      * keyboard is handled by {@link MobilePresenter} shrinking the surface to the visual viewport.
      */
@@ -101,6 +102,7 @@
         title={item.label}
         aria-label={item.label}
         onpointerdown={(e) => e.preventDefault()}
+        onmousedown={(e) => e.preventDefault()}
         onclick={() => run(item)}
     >
         <!-- Icon markup from the in-repo icon table, never user or document content. -->

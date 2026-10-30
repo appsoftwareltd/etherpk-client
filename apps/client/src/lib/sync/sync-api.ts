@@ -268,10 +268,12 @@ export function createSyncApi(deps: SyncApiDeps) {
                 body: JSON.stringify({ envelope }),
             })
         },
-        mintSyncToken: (graphId: string) =>
+        /** A short-lived token for the graph's relay. `signal` lets the token source give up on a request that is not answered. */
+        mintSyncToken: (graphId: string, signal?: AbortSignal) =>
             call<{ token: string }>('/api/v1/sync/token', {
                 method: 'POST',
                 body: JSON.stringify({ graphId }),
+                signal,
             }).then((r) => r.token),
         /**
          * The account's vault, its version, and the account id a write of it is signed over. While
