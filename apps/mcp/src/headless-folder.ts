@@ -215,6 +215,12 @@ export async function openHeadlessFolder(deps: HeadlessFolderDeps): Promise<Head
                 }
                 return result
             },
+            // A folder has no Members. Its one person's Favourites and Bookmarks are files the app
+            // owns (`etherpk/settings.json`, `etherpk/bookmarks.json`), which this process never
+            // writes: a Client with the folder open writes each one whole from its own copy, so a
+            // write from here could be lost to its next one. They keep the old name after a rename
+            // made here.
+            renameInMemberLists() {},
             // The files are the truth and a read is a disk read, so every body is confirmed.
             async readBodies() {
                 const bodies = new Map<string, string>()

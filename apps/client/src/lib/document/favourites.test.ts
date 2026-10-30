@@ -9,6 +9,7 @@ import {
     removeFavourite,
     renameFavourite,
     resetFavourites,
+    restoreFavourite,
     setFavourites,
     subscribeFavourites,
     toggleFavourite,
@@ -129,7 +130,9 @@ describe('moveFavourite', () => {
         await moveFavourite('Alpha', 0)
 
         expect(getFavourites()).toEqual(['Alpha', 'Gamma', 'Beta'])
-        expect(persist).toHaveBeenCalledWith(['Alpha', 'Gamma', 'Beta'])
+        // The move is named, so a backend that merges entries can move this one entry alone
+        // rather than guess which entry moved from the two orders (ADR 0159).
+        expect(persist).toHaveBeenCalledWith(['Alpha', 'Gamma', 'Beta'], { moved: 'Alpha' })
     })
 
     it('moves downwards as well as up, by concept identity', async () => {
@@ -166,5 +169,57 @@ describe('moveFavourite', () => {
 
         await expect(moveFavourite('Beta', 0)).rejects.toThrow('offline')
         expect(getFavourites()).toEqual(['Gamma', 'Beta'])
+    })
+})
+
+describe('removeFavourite', () => {
+    it('answers the entry as the list held it and where it stood, so an Undo can put it back exactly', async () => {
+        setFavourites(['Gamma', 'Beta', 'Alpha'], async () => {})
+        expect(await removeFavourite('beta')).toEqual({ concept: 'Beta', index: 1 })
+        expect(getFavourites()).toEqual(['Gamma', 'Alpha'])
+    })
+
+    it('answers null, and writes nothing, for a concept that is not a favourite', async () => {
+        const persist = vi.fn().mockResolvedValue(undefined)
+        setFavourites(['Gamma'], persist)
+        expect(await removeFavourite('Nowhere')).toBeNull()
+        expect(persist).not.toHaveBeenCalled()
+    })
+})
+
+describe('restoreFavourite', () => {
+    it('puts a removed favourite back where it stood, in one write', async () => {
+        const persist = vi.fn().mockResolvedValue(undefined)
+        setFavourites(['Gamma', 'Alpha'], persist)
+
+        await restoreFavourite('Beta', 1)
+
+        expect(getFavourites()).toEqual(['Gamma', 'Beta', 'Alpha'])
+        expect(persist).toHaveBeenCalledTimes(1)
+        expect(persist).toHaveBeenCalledWith(['Gamma', 'Beta', 'Alpha'])
+    })
+
+    it('clamps to the list when it shrank meanwhile, a peer\'s removal say', async () => {
+        setFavourites(['Gamma'], async () => {})
+        await restoreFavourite('Beta', 4)
+        expect(getFavourites()).toEqual(['Gamma', 'Beta'])
+        await restoreFavourite('Alpha', -2)
+        expect(getFavourites()).toEqual(['Alpha', 'Gamma', 'Beta'])
+    })
+
+    it('leaves a concept that is a favourite again exactly where it now is, and writes nothing', async () => {
+        const persist = vi.fn().mockResolvedValue(undefined)
+        setFavourites(['Gamma', 'Beta'], persist)
+        await restoreFavourite('beta', 0)
+        expect(getFavourites()).toEqual(['Gamma', 'Beta'])
+        expect(persist).not.toHaveBeenCalled()
+    })
+
+    it('rolls back and rethrows when the backend refuses the write', async () => {
+        setFavourites(['Gamma'], async () => {
+            throw new Error('offline')
+        })
+        await expect(restoreFavourite('Beta', 0)).rejects.toThrow('offline')
+        expect(getFavourites()).toEqual(['Gamma'])
     })
 })

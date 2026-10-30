@@ -35,7 +35,40 @@ export type ContextMenuTarget =
     | TabContextMenuTarget
     | WikilinkContextMenuTarget
     | MisspellingContextMenuTarget
+    | LineContextMenuTarget
+    | BookmarkContextMenuTarget
+    | BookmarkGroupContextMenuTarget
     | ExtensionContextMenuTarget
+
+/**
+ * A line of a document in an editor: what a right-click on text raises when nothing claims it
+ * first, and what the wikilink and misspelling menus carry as `line` so their rows can act on the
+ * line too ([[Bookmark]], ADR 0159).
+ */
+export interface EditorLine {
+    /** The document's concept. */
+    concept: string
+    /** The editor's panel, so a row acts in the editor that raised the menu. */
+    panelId?: string
+    /** 1-based. */
+    line: number
+}
+
+export interface LineContextMenuTarget extends EditorLine {
+    kind: 'line'
+}
+
+/** A [[Bookmark]]'s row in the Sidebar. */
+export interface BookmarkContextMenuTarget {
+    kind: 'bookmark'
+    id: string
+}
+
+/** The Sidebar's group of [[Bookmark]]s in one document. */
+export interface BookmarkGroupContextMenuTarget {
+    kind: 'bookmark-group'
+    concept: string
+}
 
 /**
  * A thing an extension raised the menu on, of a kind it names under its own id, such as a card on
@@ -51,8 +84,10 @@ export interface ExtensionContextMenuTarget {
 
 /**
  * A [[Wikilink]] someone right-clicked or long-pressed in an editor (ADR 0065). Deliberately
- * not a document target: a link names a [[Concept]] that may have no page, and the document
- * rows (favourite, delete) act on a document. Rename… is what applies, page or pageless.
+ * not a document target: a link names a [[Concept]] that may have no page, and the rows that act
+ * on a document's own file (Publish…, Delete…) need one. What applies page or pageless are the
+ * rows that act on the concept: Rename…, and the favourite pair (ADR 0158), which favourite the
+ * page an alias names rather than the alias.
  */
 export interface WikilinkContextMenuTarget {
     kind: 'wikilink'
@@ -60,6 +95,8 @@ export interface WikilinkContextMenuTarget {
     concept: string
     /** The editor's panel, so a row can act in the right Pane. */
     panelId?: string
+    /** The line the link is on, for the rows that act on a line. */
+    line?: EditorLine
 }
 
 /**
@@ -75,6 +112,8 @@ export interface MisspellingContextMenuTarget {
     to: number
     /** Up to five corrections, best first. */
     suggestions: string[]
+    /** The line the word is on, for the rows that act on a line. */
+    line?: EditorLine
 }
 
 /** A [[Document]], reached from its tab, a [[Favourite]], [[Recents]], or an All Documents row. */
@@ -146,6 +185,30 @@ export type EditableAssetTarget = AssetContextMenuTarget & { line: number; occur
  */
 export function isDocumentTarget(target: ContextMenuTarget): target is DocumentContextMenuTarget {
     return target.kind === 'document-tab' || target.kind === 'favourite' || target.kind === 'recent' || target.kind === 'document-row'
+}
+
+/** The editor line a target stands on: a line target itself, or the line under a link or word. */
+export function editorLineOf(target: ContextMenuTarget): EditorLine | null {
+    if (isLineTarget(target)) {
+        const { concept, panelId, line } = target
+        return { concept, panelId, line }
+    }
+    if (isWikilinkTarget(target) || isMisspellingTarget(target)) return target.line ?? null
+    return null
+}
+
+export function isLineTarget(target: ContextMenuTarget): target is LineContextMenuTarget {
+    return target.kind === 'line'
+}
+
+/** Narrowing for a row that acts on a [[Bookmark]]'s Sidebar row. */
+export function isBookmarkTarget(target: ContextMenuTarget): target is BookmarkContextMenuTarget {
+    return target.kind === 'bookmark'
+}
+
+/** Narrowing for a row that acts on the Sidebar's group of one document's [[Bookmark]]s. */
+export function isBookmarkGroupTarget(target: ContextMenuTarget): target is BookmarkGroupContextMenuTarget {
+    return target.kind === 'bookmark-group'
 }
 
 /** Narrowing for a row that acts on a misspelt word. */

@@ -913,6 +913,79 @@ describe('outliner invariants under random key sequences', { timeout: 30_000 }, 
             fuzz(300),
         )
     })
+
+    it('a delete stays in its group: every line after a bare blank line below it is left as it was', () => {
+        // Editor Content Rules → every structural operation is confined to the caret's group. A bare blank
+        // line ends every branch, so nothing after one below the deleted lines was under them, and
+        // Backspace, Delete and a cut over any range above it leave everything after it as it was. The
+        // lines there are written as another tool writes them: paragraphs, lists and blank lines at any
+        // indent, deeper than the outline above.
+        const tailArb = fc.array(fc.record({ indent: fc.integer({ min: 0, max: 12 }), kind: fc.constantFrom('bullet', 'prose', 'blank'), text: word }), { minLength: 1, maxLength: 6 })
+        const deleteArb = fc.record({
+            from: fc.double({ min: 0, max: 1, noNaN: true }),
+            to: fc.double({ min: 0, max: 1, noNaN: true }),
+            /** Made as a drag makes it, which the block snap widens to whole branches, or set as it is. */
+            snapped: fc.boolean(),
+            key: fc.constantFrom('Backspace', 'Delete', 'cut'),
+        })
+        fc.assert(
+            fc.property(outlineArb, tailArb, deleteArb, (outline, tail, { from, to, snapped, key }) => {
+                const above = render(outline)
+                const after = tail.map(({ indent, kind, text }) => (kind === 'blank' ? ' '.repeat(Math.max(1, indent)) : ' '.repeat(indent) + (kind === 'bullet' ? `- ${text}` : text)))
+                const a = Math.round(Math.min(from, to) * above.length)
+                const b = Math.round(Math.max(from, to) * above.length)
+                if (a === b) return
+                const doc = `${above}\n\n${after.join('\n')}`
+                const editor = snapped ? editorFixture(`|${doc}`) : editorFixture(`${doc.slice(0, a)}«${doc.slice(a, b)}»${doc.slice(b)}`)
+                if (snapped) editor.select(a, b)
+                if (key === 'cut') editor.cut()
+                else editor.key(key)
+                expect(editor.text().split('\n').slice(-after.length - 1)).toEqual(['', ...after])
+            }),
+            fuzz(400),
+        )
+    })
+
+    it('a delete over blocks with blank soft lines in them leaves no orphan', () => {
+        // A blank soft line sits at its block's content column (Agent Chat's saved answers write one between
+        // a block's paragraphs). It is inside its block, so the heal goes on past it and it moves with its
+        // bullet: the survivors after it are healed with the rest. The range is set as it is, character by
+        // character, from a point on one line to a point on a later one, so the heal has survivors to place.
+        const pointArb = fc.record({ line: fc.double({ min: 0, max: 1, noNaN: true }), column: fc.double({ min: 0, max: 1, noNaN: true }) })
+        const deleteArb = fc.record({ from: pointArb, to: pointArb, key: fc.constantFrom('Backspace', 'Delete', 'cut') })
+        fc.assert(
+            fc.property(outlineArb, deleteArb, (outline, { from, to, key }) => {
+                const rendered = render(outline).split('\n')
+                const blocks = fencedBlocks(rendered)
+                // A blank soft line before each of a block's text lines after its first, at that line's indent.
+                const lines = rendered.flatMap((line, i) =>
+                    i > 0 && !isBulletLine(line) && line.trim() !== '' && !blocks.some((b) => i >= b.start && i <= b.end) ? [' '.repeat(lineIndent(line)), line] : [line],
+                )
+                const offset = ({ line, column }: { line: number; column: number }) => {
+                    const n = Math.min(lines.length - 1, Math.floor(line * lines.length))
+                    return lines.slice(0, n).reduce((sum, l) => sum + l.length + 1, 0) + Math.round(column * lines[n].length)
+                }
+                const [a, b] = [offset(from), offset(to)].sort((x, y) => x - y)
+                const doc = lines.join('\n')
+                if (!doc.slice(a, b).includes('\n')) return // within one line
+                // A range that takes a fence line's text, or joins a line onto one, dissolves its block on
+                // purpose (Editor Content Rules → Fenced blocks), and the code it leaves is outline text with
+                // its own indents: not this property's case. A block taken whole is.
+                const lineStart = (n: number) => lines.slice(0, n).reduce((sum, l) => sum + l.length + 1, 0)
+                const touches = (n: number) => a <= lineStart(n) + lines[n].length && b >= lineStart(n)
+                const dissolves = fencedBlocks(lines).some((block) => {
+                    const whole = a <= lineStart(block.start) && b >= lineStart(block.end) + lines[block.end].length
+                    return !whole && (touches(block.start) || touches(block.end))
+                })
+                if (dissolves) return
+                const editor = editorFixture(`${doc.slice(0, a)}«${doc.slice(a, b)}»${doc.slice(b)}`)
+                if (key === 'cut') editor.cut()
+                else editor.key(key)
+                expect(noOrphans(editor.text().split('\n'))).toBe(true)
+            }),
+            fuzz(400),
+        )
+    })
 })
 
 // ── Map widgets ──────────────────────────────────────────────────────────────────────────────

@@ -16,8 +16,19 @@
  * sync a silent deletion to every device and Member (ADR 0036 §4).
  */
 
-/** Persists the whole list. Rejects are surfaced to the caller; the in-memory list is rolled back. */
-export type FavouritesPersist = (next: readonly string[]) => Promise<void>
+/**
+ * What a write knows beyond the next list. `moved` names the one favourite a move put elsewhere,
+ * so a backend that merges entry by entry moves that entry alone (ADR 0159).
+ */
+export interface FavouritesChange {
+    moved?: string
+}
+
+/**
+ * Persists the whole list. Rejects are surfaced to the caller; the in-memory list is rolled back.
+ * `change` is given only by a move.
+ */
+export type FavouritesPersist = (next: readonly string[], change?: FavouritesChange) => Promise<void>
 
 let list: string[] = []
 let persist: FavouritesPersist | null = null
@@ -63,12 +74,12 @@ export function isFavourite(concept: string): boolean {
 }
 
 /** Write through, rolling the in-memory list back if the backend refuses. */
-async function commit(next: string[]): Promise<void> {
+async function commit(next: string[], change?: FavouritesChange): Promise<void> {
     const previous = list
     list = next
     emit()
     try {
-        await persist?.(next)
+        await (change ? persist?.(next, change) : persist?.(next))
     } catch (err) {
         list = previous
         emit()
@@ -92,10 +103,37 @@ export async function addFavourite(concept: string): Promise<void> {
     await commit([...list, trimmed])
 }
 
-export async function removeFavourite(concept: string): Promise<void> {
+/** A favourite just removed: its name as the list held it, and where it stood. */
+export interface RemovedFavourite {
+    concept: string
+    index: number
+}
+
+/**
+ * Unfavourite a concept. Answers the entry as the list held it and the index it stood at, read
+ * from the same list the write removes it from, so an Undo can put it back exactly
+ * ({@link restoreFavourite}); `null` when it was not a favourite and nothing was written.
+ */
+export async function removeFavourite(concept: string): Promise<RemovedFavourite | null> {
     const key = concept.trim().toLowerCase()
-    if (!list.some((c) => c.toLowerCase() === key)) return
+    const index = list.findIndex((c) => c.toLowerCase() === key)
+    if (index === -1) return null
+    const removed = { concept: list[index], index }
     await commit(list.filter((c) => c.toLowerCase() !== key))
+    return removed
+}
+
+/**
+ * Put a removed favourite back at `index`: the Undo on a removal's notice. One write, not an
+ * add followed by a move, so a peer sees one change and the list is never briefly in the wrong
+ * order. Clamped to the list, because a peer's edit may have shortened it meanwhile. A concept
+ * that is a favourite again (re-added before the Undo) stays where it now is.
+ */
+export async function restoreFavourite(concept: string, index: number): Promise<void> {
+    const trimmed = concept.trim()
+    if (trimmed === '' || isFavourite(trimmed)) return
+    const at = Math.max(0, Math.min(Number.isInteger(index) ? index : list.length, list.length))
+    await commit([...list.slice(0, at), trimmed, ...list.slice(at)])
 }
 
 export async function toggleFavourite(concept: string): Promise<void> {
@@ -133,7 +171,7 @@ export async function moveFavourite(concept: string, toIndex: number): Promise<v
     const next = [...list]
     const [moved] = next.splice(from, 1)
     next.splice(to, 0, moved)
-    await commit(next)
+    await commit(next, { moved })
 }
 
 /** Graph close / test seam. */

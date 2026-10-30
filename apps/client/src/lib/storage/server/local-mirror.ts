@@ -31,6 +31,8 @@
  */
 import type { QuickNote } from '$lib/document/quick-notes'
 import { QUICK_NOTES_FILE, quickNotesFileText } from '$lib/storage/fs/quick-notes-file'
+import type { Bookmark } from '$lib/document/bookmarks/bookmarks'
+import { BOOKMARKS_FILE, bookmarksFileText } from '$lib/storage/fs/bookmarks-file'
 import { DICTIONARY_FILE } from '$lib/storage/fs/dictionary-file'
 import { dictionaryFileText } from '$lib/document/spelling/graph-dictionary'
 import { graphThemeFileText, themeFileName, themeIdOfFileName } from '$lib/storage/fs/theme-files'
@@ -66,6 +68,12 @@ export interface MirrorMetadata {
     name?: string
     settings?: Record<string, unknown>
     quickNotes?: QuickNote[]
+    /**
+     * The copier's own [[Bookmark]]s (ADR 0159), written as `etherpk/bookmarks.json`, the file a
+     * Filesystem Backend keeps them in. Only the copier's: a bookmark belongs to the person who
+     * made it, and the folder is that person's copy. `undefined` leaves the file alone.
+     */
+    bookmarks?: Bookmark[]
     /** The [[Graph Dictionary]] (ADR 0095), written as `etherpk/dictionary.txt`. */
     spellingDictionary?: string[]
     themes?: GraphTheme[]
@@ -344,6 +352,7 @@ export function isMirrorMetadataFileName(name: string): boolean {
         name === 'settings.json' ||
         name === 'graph.json' ||
         name === QUICK_NOTES_FILE ||
+        name === BOOKMARKS_FILE ||
         name === DICTIONARY_FILE ||
         name === PROTECTION_FILE ||
         themeIdOfFileName(name) !== null
@@ -908,12 +917,21 @@ export function createLocalMirror(
     async function writeGraphMetadata(): Promise<void> {
         const meta = source.metadata?.()
         if (!meta) return
-        const settings = meta.settings && Object.keys(meta.settings).length > 0 ? meta.settings : undefined
-        await writeIfChanged('settings.json', settings)
+        // The settings carry the copier's own favourites (ADR 0159), so the file follows them even
+        // when they leave nothing in it: a folder mirrored before per-person lists holds the shared
+        // favourites, other Members' among them, and an emptied list must replace those. No
+        // settings, no file: a folder that never had one does not grow an empty one. Settings that
+        // are not known right now (undefined) leave the file alone.
+        if (meta.settings && (Object.keys(meta.settings).length > 0 || (await hasMetadataFile('settings.json')))) {
+            await writeTextIfChanged('settings.json', `${JSON.stringify(meta.settings, null, 2)}\n`)
+        }
         await writeIfChanged('graph.json', meta.name ? { name: meta.name } : undefined)
         // Quick Notes are content that has not reached a journal yet (ADR 0078); the folder
         // is only a complete copy of the graph if it holds them too.
         if (meta.quickNotes) await writeTextIfChanged(QUICK_NOTES_FILE, quickNotesFileText(meta.quickNotes))
+        // The copier's Bookmarks (ADR 0159), so the folder opened as a Filesystem graph, or
+        // imported, keeps the lines they marked.
+        if (meta.bookmarks) await writeTextIfChanged(BOOKMARKS_FILE, bookmarksFileText(meta.bookmarks))
         // The Graph Dictionary (ADR 0095). No words, no file: a graph that never added one does
         // not grow an empty file; one that had words and removed them all has it emptied.
         if (meta.spellingDictionary) {

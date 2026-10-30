@@ -109,7 +109,9 @@ export function deleteHeal(): Extension {
         let healed: string[]
         let healedCaretLine = caretLine
         if (cut && removedLines >= 2) {
-            ;({ lines: healed, caretLine: healedCaretLine } = healAfterRangeDelete(applyLeaveListCuts(lines, cuts, shift), caretLine))
+            // A cut from one line's start to a later line's start leaves no artifact: the line after it, as it was.
+            const wholeLines = fromA === before.lineAt(fromA).from && toA === before.lineAt(toA).from
+            ;({ lines: healed, caretLine: healedCaretLine } = healAfterRangeDelete(applyLeaveListCuts(lines, cuts, shift), caretLine, wholeLines))
         } else if (removedLines === 1 && isBulletLine(startLines[firstA]) && !isBulletLine(lines[caretLine])) {
             if (lines[caretLine].trim() === '') {
                 ;({ lines: healed, caretLine: healedCaretLine } = healAfterRangeDelete(lines, caretLine))

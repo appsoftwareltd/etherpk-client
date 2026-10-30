@@ -52,6 +52,32 @@ describe('convertEtherpk', () => {
         expect(bad.report.map((r) => r.detail)).toContainEqual(expect.stringContaining('quick-notes.json is malformed'))
     })
 
+    it('carries Bookmarks from etherpk/bookmarks.json, sanitised, and reports a malformed file', async () => {
+        const garden = { id: 'a', concept: 'Garden', line: 2, text: 'water the beans', createdAt: 1 }
+        const graph = await convertEtherpk([
+            src('journals/2026-07-16.md', '- today'),
+            src('etherpk/bookmarks.json', JSON.stringify([garden, { id: 'b', concept: 'Kitchen' }])),
+        ])
+        expect(graph.bookmarks).toEqual([garden])
+        expect(graph.report).toHaveLength(0)
+
+        const bad = await convertEtherpk([src('journals/2026-07-16.md', '- today'), src('etherpk/bookmarks.json', '{oops')])
+        expect(bad.bookmarks).toBeUndefined()
+        expect(bad.report.map((r) => r.detail)).toContainEqual('etherpk/bookmarks.json is malformed, so Bookmarks were not carried over')
+
+        const none = await convertEtherpk([src('journals/2026-07-16.md', '- today')])
+        expect(none.bookmarks).toBeUndefined()
+    })
+
+    it('reports a bookmarks.json that is JSON but not a list, as the folder graph refuses it, rather than reading it as no bookmarks', async () => {
+        const notAList = await convertEtherpk([
+            src('journals/2026-07-16.md', '- today'),
+            src('etherpk/bookmarks.json', JSON.stringify({ id: 'a', concept: 'Garden', line: 2, text: 'water the beans', createdAt: 1 })),
+        ])
+        expect(notAList.bookmarks).toBeUndefined()
+        expect(notAList.report.map((r) => r.detail)).toEqual(['etherpk/bookmarks.json is malformed, so Bookmarks were not carried over'])
+    })
+
     it('carries the Graph Dictionary from etherpk/dictionary.txt, skipping lines that are not one word', async () => {
         const graph = await convertEtherpk([
             src('journals/2026-07-16.md', '- today'),

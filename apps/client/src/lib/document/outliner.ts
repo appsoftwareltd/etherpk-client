@@ -444,15 +444,21 @@ export function isMergeableSource(lines: string[], k: number, blocks: FencedBloc
  * Re-indent lines `[start, end]` so no line sits more than one nesting level below its nearest shallower
  * ancestor — removing the orphan **level-jumps** a delete can leave (ADR 0021). A jumped line (and, via the
  * running stack, its descendants) is pulled left to exactly one level under its parent; well-formed lines
- * are untouched. Headings reset the ancestry; fenced-code interiors are left verbatim. `base` is the
- * deepest indent a line with no ancestor in the range may keep: 0, unless the range starts at a line
- * whose own ancestors sit above it, as a prose line just made a block does.
+ * are untouched. Headings and bare empty lines reset the ancestry; fenced-code interiors are left
+ * verbatim. `base` is the deepest indent a line with no ancestor in the range may keep: 0, unless the
+ * range starts at a line whose own ancestors sit above it, as a prose line just made a block does.
+ * `transparent` is a line read as if it were not there, so it is nobody's parent and closes no branch
+ * ({@link healAroundMasked}).
  */
-export function healOrphanIndent(lines: string[], start: number, end: number, blocks: FencedBlockRange[] = fencedBlocks(lines), base = 0): string[] {
+export function healOrphanIndent(lines: string[], start: number, end: number, blocks: FencedBlockRange[] = fencedBlocks(lines), base = 0, transparent = -1): string[] {
     const out = lines.slice()
     const inFence = opaqueLineFlags(lines, blocks)
     const starts = fenceStartMap(blocks)
     const stack: { raw: number; corr: number; bullet: boolean }[] = [] // ancestry: raw (source) indent + corrected indent
+    /** Close the branches a line at indent `ind` is not deeper than, as the outline walk does. */
+    const popTo = (ind: number) => {
+        while (stack.length && stack[stack.length - 1].raw >= ind) stack.pop()
+    }
     // A fenced block moves with the line it hangs under, as a unit, so its fences stay paired: the
     // whole block by the owner's correction (a form-2 fence under a bullet), or by the opener's own
     // correction when the opener is the bullet line (form-1).
@@ -460,23 +466,43 @@ export function healOrphanIndent(lines: string[], start: number, end: number, bl
         if (delta === 0) return
         for (let k = first; k <= b.end && k <= end; k++) out[k] = ' '.repeat(Math.max(0, lineIndent(out[k]) + delta)) + out[k].trimStart()
     }
-    let lastDelta = 0 // the correction applied to the most recent node line
     for (let i = start; i <= end && i < out.length; i++) {
+        if (i === transparent) continue
         const line = out[i]
         const block = starts.get(i)
         if (block && !isBulletLine(line)) {
-            // A form-2 block: content, not a node. It follows its owner.
-            shiftBlock(block, i, lastDelta)
+            // A form-2 block: content, not a node. Its opener closes the branches it is not deeper than,
+            // and the block moves with what is left above it: a bullet whose content column it reaches,
+            // or a prose line. Under a bullet short of it, or under nothing, it is code nobody owns and
+            // stays where it is.
+            const ind = lineIndent(line)
+            popTo(ind)
+            const owner = stack.length ? stack[stack.length - 1] : null
+            shiftBlock(block, i, owner && (!owner.bullet || ind >= owner.raw + MARKER_WIDTH) ? owner.corr - owner.raw : 0)
             i = block.end
             continue
         }
-        if (line.trim() === '' || (inFence[i] && !block)) continue
+        if (inFence[i] && !block) continue // code or YAML; a form-1 opener is its bullet's line
+        if (line.trim() === '') {
+            // Indent decides (ADR 0021). A bare blank line ends every branch, so nothing after it hangs
+            // under anything before it. An indented one closes the branches it is not deeper than, and
+            // moves as the nearest bullet still open does, as the outline walk moves it.
+            const ind = lineIndent(line)
+            if (ind === 0) {
+                stack.length = 0
+                continue
+            }
+            popTo(ind)
+            const owner = stack.findLast((node) => node.bullet)
+            if (owner && owner.corr !== owner.raw) out[i] = ' '.repeat(Math.max(0, ind + owner.corr - owner.raw))
+            continue
+        }
         if (isHeadingLine(line)) {
             stack.length = 0
             continue
         }
         const ind = lineIndent(line)
-        while (stack.length && stack[stack.length - 1].raw >= ind) stack.pop()
+        popTo(ind)
         const parent = stack.length ? stack[stack.length - 1] : null
         // A non-bullet line at or past the nearest bullet's content column is that bullet's continuation,
         // as the outline walk reads it: it moves with its bullet and is no parent a deeper line may hang
@@ -489,11 +515,10 @@ export function healOrphanIndent(lines: string[], start: number, end: number, bl
         const allowed = parent === null ? base : parent.corr + INDENT_UNIT // deepest valid indent for a child here
         const corr = Math.min(ind, allowed)
         if (corr !== ind) out[i] = ' '.repeat(corr) + line.slice(ind)
-        lastDelta = corr - ind
         stack.push({ raw: ind, corr, bullet: isBulletLine(line) })
         if (block) {
             // A form-1 block: the bullet line is the node; its fence lines follow it.
-            shiftBlock(block, i + 1, lastDelta)
+            shiftBlock(block, i + 1, corr - ind)
             i = block.end
         }
     }
@@ -505,12 +530,26 @@ export function healOrphanIndent(lines: string[], start: number, end: number, bl
  * at the join is removed, and every block in the caret's group that the deletion left more than one
  * level below its nearest surviving ancestor is pulled up to one level under it ({@link healOrphanIndent}),
  * its subtree and any fenced block moving with it. `caretLine` is the 0-based line the deletion
- * point sits on. Shared by the keymap's Backspace/Delete and the cut handler, so both leave the same
- * shape behind.
+ * point sits on. Shared by the keymap's Backspace/Delete, the cut handler and an asset's removal, so
+ * they leave the same shape behind.
+ *
+ * `wholeLines` says the deletion took whole lines, from the start of one line to the start of a later
+ * one. The line at `caretLine` is then the line that followed them, as it was, and never an artifact,
+ * even when it is blank.
+ *
+ * The heal stays in the deletion's group. When the line that followed the deleted text is a bare blank
+ * line or a heading, it ended the deleted blocks' branches, so nothing after it was under a deleted
+ * block, and only the group above it is healed. A selection snapped to whole blocks stops where a bare
+ * blank line ends its last branch, so this is the common case, and text from other tools can have a
+ * paragraph and a list after that line, deeper than the blocks above it. A heading at the join that the
+ * deletion started in is different: the blocks after it were under the deleted ones, so they are healed
+ * as a group of their own.
  */
-export function healAfterRangeDelete(lines: string[], caretLine: number): { lines: string[]; caretLine: number } {
+export function healAfterRangeDelete(lines: string[], caretLine: number, wholeLines = false): { lines: string[]; caretLine: number } {
     let out = lines.slice()
     let at = Math.min(caretLine, out.length - 1)
+    /** Whether the line at `at` followed the deleted text, as it was. */
+    let followed = wholeLines
     // A blank line against the [[Frontmatter]] is not an artifact. Inside the block it is YAML,
     // which the outline never edits; as the whole of the body it is where the caret belongs.
     // Removing either puts the caret at the start of the closing delimiter, where the next
@@ -518,25 +557,31 @@ export function healAfterRangeDelete(lines: string[], caretLine: number): { line
     // followed by Backspace, Delete or a cut is what leaves one.
     const body = frontmatterLines(out)
     const againstFrontmatter = at < body || (at === body && at === out.length - 1)
-    if (!againstFrontmatter && out[at]?.trim() === '' && out.length > 1) {
+    if (!wholeLines && !againstFrontmatter && out[at]?.trim() === '' && out.length > 1) {
         out.splice(at, 1)
-        if (at >= out.length) at = out.length - 1
+        followed = at < out.length
+        if (!followed) at = out.length - 1
     }
     const blocks = fencedBlocks(out)
-    const { start, end } = healSpan(out, at, blocks)
-    out = healOrphanIndent(out, start, end, blocks)
+    const opaque = opaqueLineFlags(out, blocks)
+    const anchor = followed && endsHealSpan(out, at, opaque) ? at - 1 : at
+    if (anchor >= 0 && (anchor === at || !endsHealSpan(out, anchor, opaque))) {
+        const { start, end } = healSpan(out, anchor, blocks)
+        out = healOrphanIndent(out, start, end, blocks)
+    }
     return { lines: out, caretLine: at }
 }
 
 /**
- * {@link healOrphanIndent} over `[start, end]` with line `masked` read as blank, so it is nobody's parent,
- * then put back as it was. A prose line is a node the walk lets a deeper line nest under (`Shopping:` over
- * `  - eggs`), so only the line a deletion just made prose is masked, never the prose around it.
+ * {@link healOrphanIndent} over `[start, end]` with line `masked` read as if it were not there, so it is
+ * nobody's parent, then put back as it was. A prose line is a node the walk lets a deeper line nest under
+ * (`Shopping:` over `  - eggs`), so only the line a deletion just made prose is masked, never the prose
+ * around it. It is blanked too, so the frontmatter scan reads the lines as it always has.
  */
 export function healAroundMasked(lines: string[], masked: number, start: number, end: number, blocks: FencedBlockRange[] = fencedBlocks(lines)): string[] {
     const input = lines.slice()
     input[masked] = ''
-    const out = healOrphanIndent(input, start, end, blocks)
+    const out = healOrphanIndent(input, start, end, blocks, 0, masked)
     out[masked] = lines[masked]
     return out
 }
@@ -590,17 +635,28 @@ export function applyLeaveListCuts(after: string[], cuts: readonly LineCut[], sh
     return pairs(cut) === pairs(after) && frontmatterLines(cut) === frontmatterLines(after) ? cut : after
 }
 
-/** The span a delete heal covers around line `at`: the run of lines bounded by a blank line or a
- *  heading outside any fence (a fence's own blank or `# comment` line is opaque). Prose lines stay
- *  inside it, unlike {@link groupBounds}: bullets after a prose line are measured across it. */
+/** The span a delete heal covers around line `at`: the run of lines bounded by a bare blank line or a
+ *  heading ({@link endsHealSpan}). Prose lines stay inside it, unlike {@link groupBounds}: bullets
+ *  after a prose line are measured across it. */
 export function healSpan(lines: string[], at: number, blocks: FencedBlockRange[] = fencedBlocks(lines)): { start: number; end: number } {
-    const inFence = opaqueLineFlags(lines, blocks)
-    const bounds = (j: number) => !inFence[j] && (lines[j].trim() === '' || isHeadingLine(lines[j]))
+    const opaque = opaqueLineFlags(lines, blocks)
     let start = at
     let end = at
-    while (start > 0 && !bounds(start - 1)) start--
-    while (end < lines.length - 1 && !bounds(end + 1)) end++
+    while (start > 0 && !endsHealSpan(lines, start - 1, opaque)) start--
+    while (end < lines.length - 1 && !endsHealSpan(lines, end + 1, opaque)) end++
     return { start, end }
+}
+
+/**
+ * Whether line `j` bounds the span a heal covers: a bare empty line or a heading, outside any fence
+ * and the [[Frontmatter]] (a fence's own blank or `# comment` line is code). Indent decides (ADR 0021):
+ * an indented whitespace-only line is inside the block it sits in, as the outline walk reads it, so the
+ * heal goes on past it.
+ */
+function endsHealSpan(lines: readonly string[], j: number, opaque: readonly boolean[]): boolean {
+    if (opaque[j]) return false
+    const line = lines[j]
+    return (line.trim() === '' && lineIndent(line) === 0) || isHeadingLine(line)
 }
 
 /**

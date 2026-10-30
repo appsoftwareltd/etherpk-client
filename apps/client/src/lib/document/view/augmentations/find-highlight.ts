@@ -122,6 +122,18 @@ export function findDecorations(state: EditorState): DecorationSet {
 }
 
 /**
+ * Effects that open every fold hiding `from`..`to`, and no other: a fold is view state the user
+ * chose. Shared by find's match and a [[Bookmark]]'s line.
+ */
+export function unfoldHiding(state: EditorState, from: number, to: number): StateEffect<unknown>[] {
+    const effects: StateEffect<unknown>[] = []
+    foldedRanges(state).between(from, to, (foldFrom, foldTo) => {
+        effects.push(unfoldEffect.of({ from: foldFrom, to: foldTo }))
+    })
+    return effects
+}
+
+/**
  * Put the selection on a match, and with `index` make it the current one: marked as find's
  * (`select.find`), so no popover opens on it, with every fold that hides it opened and the match
  * scrolled into view. Other folds stay shut, since a fold is view state the user chose. A caret the
@@ -129,10 +141,7 @@ export function findDecorations(state: EditorState): DecorationSet {
  * leaves (leave-tidy.ts): the user did not walk away from it.
  */
 export function selectMatch(state: EditorState, range: FindRange, index?: number): TransactionSpec {
-    const effects: StateEffect<unknown>[] = []
-    foldedRanges(state).between(range.from, range.to, (from, to) => {
-        effects.push(unfoldEffect.of({ from, to }))
-    })
+    const effects: StateEffect<unknown>[] = unfoldHiding(state, range.from, range.to)
     effects.push(EditorView.scrollIntoView(range.from, { y: 'nearest', yMargin: 64 }))
     if (index !== undefined) effects.push(setCurrentMatch.of(index))
     return {

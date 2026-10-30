@@ -75,11 +75,13 @@ export function removeAssetReference(target: AssetReferenceTarget): StateCommand
 
         // Heal the outline exactly as a multi-line cut does (ADR 0021): a bullet holding nothing
         // but an image can have children, and taking its line away would otherwise leave them
-        // floating a level below an ancestor that is gone.
+        // floating a level below an ancestor that is gone. Whole lines went, so the line now at the
+        // join is one that was there before, never an artifact of it: a blank line after the image
+        // stays, and so does the group it ends.
         const after = removed.state
         const text = after.doc.toString()
         const caretLine = after.doc.lineAt(Math.min(from, after.doc.length)).number - 1
-        const healed = healAfterRangeDelete(text.split('\n'), caretLine).lines.join('\n')
+        const healed = healAfterRangeDelete(text.split('\n'), caretLine, true).lines.join('\n')
         const change = minimalReplacement(text, healed)
         if (!change) {
             dispatch(removed)

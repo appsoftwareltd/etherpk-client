@@ -153,6 +153,15 @@ export interface DocSyncDeps {
      * receives the protect, not only the one that did it.
      */
     collectRowWhen?: (doc: Y.Doc) => boolean
+    /**
+     * A count that goes up each time text that must not stay at rest was removed from the
+     * document: on the root document, a [[Bookmark]] removed from any member's list (ADR 0159),
+     * which `collectRowWhen`, a test of the whole document, cannot see. It is read as each persist
+     * takes its snapshot, and once that persist has landed the row is collected if the count it
+     * read is higher than the count last collected for. The collection therefore runs over a row
+     * that already holds the removal, whether it was made here or arrived from the relay.
+     */
+    collectRowRequests?: () => number
     /** Foreground views overtake background hydration at the graph scheduler. */
     catchupPriority?: () => 'foreground' | 'background'
     /**
@@ -474,27 +483,44 @@ export function createDocSync(deps: DocSyncDeps): DocSync {
         })
     }
 
+    /** `DocSyncDeps.collectRowRequests` as it stands now, 0 when it is not given. */
+    function rowCollectRequests(): number {
+        return deps.collectRowRequests?.() ?? 0
+    }
+
     function saveCurrent(options?: DocCacheSaveOptions): Promise<void> {
         const state = stateSnapshot()
-        return persistTask(() => persist.save(state, options)).then(collectRowIfWanted)
+        // Read with the snapshot, never after the save: a removal made while an earlier save is
+        // in flight belongs to the next save, and collecting after the earlier one would run over
+        // a row that does not hold it yet.
+        const requests = rowCollectRequests()
+        return persistTask(() => persist.save(state, options)).then(() => collectRowIfWanted(requests))
     }
 
     /**
      * Collect the cache row after a persist that made the document read as wanted - chained
      * on the persistence tail, so it runs over the row that already holds the persisted state.
      * Once per stretch: a document that stops reading as wanted and later reads so again is
-     * collected again.
+     * collected again. Also after a persist whose snapshot holds a removal that asked for it
+     * (`requests`, read when that snapshot was taken), once per request.
      */
     let rowCollected = false
-    function collectRowIfWanted(): Promise<void> {
-        if (!deps.collectRowWhen) return Promise.resolve()
-        if (!deps.collectRowWhen(doc)) {
-            rowCollected = false
-            return Promise.resolve()
+    /** The `collectRowRequests` count the row was last collected for. */
+    let rowRequestsCollected = 0
+    function collectRowIfWanted(requests: number): Promise<void> {
+        let wanted = false
+        if (requests > rowRequestsCollected) {
+            rowRequestsCollected = requests
+            wanted = true
         }
-        if (rowCollected) return Promise.resolve()
-        rowCollected = true
-        return persistTask(() => persist.compact())
+        if (deps.collectRowWhen) {
+            if (!deps.collectRowWhen(doc)) rowCollected = false
+            else if (!rowCollected) {
+                rowCollected = true
+                wanted = true
+            }
+        }
+        return wanted ? persistTask(() => persist.compact()) : Promise.resolve()
     }
 
     async function transmit(operation: DurableOutboxOperation): Promise<void> {
@@ -566,10 +592,11 @@ export function createDocSync(deps: DocSyncDeps): DocSync {
                 ...(createdHere ? { creates: true } : {}),
             }
             const state = stateSnapshot()
+            const requests = rowCollectRequests()
             await persistTask(() =>
                 persist.enqueue(operation, state, { settledDirtyTokens }),
             )
-            await collectRowIfWanted()
+            await collectRowIfWanted(requests)
         } catch (error) {
             // The cache still carries these tokens. Retain them in memory too so a retry in
             // this session can settle the same durable boundaries without another edit.

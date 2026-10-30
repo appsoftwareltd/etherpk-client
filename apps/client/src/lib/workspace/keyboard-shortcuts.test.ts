@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import { eventMatches, parseChord } from '$lib/surface'
 
-import { APP_KEYBINDINGS, EDITOR_SHORTCUTS } from './keyboard-shortcuts'
+import { APP_KEYBINDINGS, EDITOR_SHORTCUTS, focusLeavesChordFree } from './keyboard-shortcuts'
 
 // The list is both the binding and the card, so its shape is worth pinning: a chord that
 // dispatches to two commands would fire the first and silently hide the second, and a row with
@@ -95,5 +95,18 @@ describe('EDITOR_SHORTCUTS', () => {
             expect(group.shortcuts.length, group.title).toBeGreaterThan(0)
             for (const s of group.shortcuts) expect(s.label.length, `${group.title}: ${s.key}`).toBeGreaterThan(0)
         }
+    })
+})
+
+describe('the bookmark chord', () => {
+    it('acts on the caret line from an editor or nowhere, never from a text field of the app\'s', () => {
+        const editorText = { tagName: 'DIV', isContentEditable: true, closest: (selector: string) => (selector === '.cm-editor' ? {} : null) }
+        expect(focusLeavesChordFree(null)).toBe(true)
+        expect(focusLeavesChordFree({ tagName: 'BODY' })).toBe(true)
+        expect(focusLeavesChordFree(editorText)).toBe(true)
+        expect(focusLeavesChordFree({ tagName: 'INPUT' })).toBe(false)
+        expect(focusLeavesChordFree({ tagName: 'TEXTAREA' })).toBe(false)
+        expect(focusLeavesChordFree({ tagName: 'DIV', isContentEditable: true, closest: () => null })).toBe(false)
+        expect(APP_KEYBINDINGS.find((b) => b.key === 'Ctrl+Alt+K')?.when).toBeDefined()
     })
 })

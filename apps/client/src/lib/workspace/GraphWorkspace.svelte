@@ -92,7 +92,7 @@
         setActiveDocument,
     } from "$lib/document";
     import { todayISO } from "$lib/document/calendar/month-grid-core";
-    import { canonicalConceptName, openConcept, openConceptAtLine, openConceptToTheRight, openViewInPaneOf } from "$lib/document/open-concept";
+    import { canonicalConceptName, openConcept, openConceptAtDocumentLine, openConceptAtLine, openConceptToTheRight, openViewInPaneOf } from "$lib/document/open-concept";
     import AllDocumentsView from "$lib/document/view/AllDocumentsView.svelte";
     import GraphSidebarView from "$lib/document/view/GraphSidebarView.svelte";
     import RenameDocumentDialog from "$lib/document/view/RenameDocumentDialog.svelte";
@@ -323,6 +323,25 @@
         setFavourites,
         renameFavourite,
     } from "$lib/document/favourites";
+    import {
+        getBookmarks,
+        removeBookmarks,
+        renameBookmarkConcept,
+        setBookmarks,
+        subscribeBookmarks,
+        type BookmarksSession,
+    } from "$lib/document/bookmarks/bookmarks";
+    import { BOOKMARK_NOTICE_ID, reason as sentenceOf } from "$lib/document/bookmarks/remove-with-undo";
+    import { BOOKMARK_STATUS_NOTICE_ID, resetBookmarkStatus } from "$lib/document/bookmarks/status";
+    import { registerBookmarkCommands } from "$lib/document/commands/bookmark-commands";
+    import { registerPasteCommands } from "$lib/document/commands/paste-commands";
+    import { bookmarksFileBinding } from "$lib/storage/fs/bookmarks-file";
+    import {
+        createProtectedBookmarkSweeper,
+        fencedPages,
+        folderDocumentTexts,
+        PROTECTED_BOOKMARKS_NOTICE_ID,
+    } from "$lib/workspace/protected-bookmarks";
     import { createRecents, type RecentsStore } from "$lib/navigation/recents";
     import {
         mergeCount,
@@ -607,6 +626,16 @@
         type SyncStatusAction,
     } from "$lib/sync/sync-indicator";
     import { describeWriteRefusal, type WriteRefusalCopy } from "$lib/sync/write-refusal";
+    import {
+        BOOKMARKS_NEED_MEMBER_KEY,
+        clearDepartedMemberLists,
+        createPersonalLists,
+        ownerRoleFromListing,
+        refusingBookmarksPersist,
+        type PersonalLists,
+    } from "$lib/sync/member-lists";
+    import { settingsKeepingSharedFavourites } from "$lib/sync/personal-favourites";
+    import type { GraphMember } from "$lib/sync/sync-api";
     import { syncPlanNotice, type SyncPlanNotice } from "@appsoftwareltd/etherpk-shared";
     import {
         createGraphKeyring,
@@ -1033,6 +1062,8 @@
     });
     const INDEX_NOTICE = "index-not-persisted";
     const STORAGE_RECOVERY_NOTICE = "workspace-storage-recovered";
+    /** The notice naming a folder graph's `etherpk/bookmarks.json` that could not be read (ADR 0159). */
+    const bookmarksFileNoticeId = (id: string) => `bookmarks-file:${id}`;
     $effect(() => {
         if (phase !== "ready" || !saveFailure) {
             dismissNotice(SAVE_FAILURE_NOTICE);
@@ -1180,6 +1211,16 @@
     /** The synced graph's Local Cache and root document, for the unsent-changes count and download. */
     let serverCache: GraphCache | undefined;
     let serverRootDocId: string | undefined;
+    /**
+     * The person's own Favourites, Quick Notes and Bookmarks on the open synced graph (ADR 0159),
+     * built once per open. It also holds whether the Sync Server said this person owns the graph.
+     */
+    let personalLists: PersonalLists | undefined;
+    /**
+     * This open's own [[Bookmark]] list (ADR 0159), closed through this handle when the graph
+     * closes: a close never ends the list of a graph opened after it.
+     */
+    let bookmarkList: BookmarksSession | undefined;
     /**
      * The origin of the Sync Server this graph lives on, from its registry record (ADR 0111): the
      * connection it syncs over, whose vault holds its key, and whose sign-out ends its sync. Null
@@ -1403,6 +1444,8 @@
     let detachDocumentCommands: (() => void) | undefined;
     let detachTaskReferenceCommands: (() => void) | undefined;
     let detachQuickNotesCommands: (() => void) | undefined;
+    let detachBookmarkCommands: (() => void) | undefined;
+    let detachPasteCommands: (() => void) | undefined;
     let detachSpellingCommands: (() => void) | undefined;
     let detachBacklinksCommands: (() => void) | undefined;
     let detachJournalCommands: (() => void) | undefined;
@@ -1432,6 +1475,27 @@
         layout: () => controller,
         recents: () => recents,
         renameFavourite,
+        renameBookmarks: renameBookmarkConcept,
+        // The name has moved when a list's write is refused (a folder graph's file that cannot be
+        // written): the rest of the rename goes ahead, and this says which list kept the old name.
+        // Worded for a page renamed and for a concept moved by its link alike.
+        listUpdateFailed: (list, error) => {
+            showNotice({
+                id: `rename-${list}`,
+                tone: "error",
+                text: `Your ${list} were not updated to the new name. ${sentenceOf(error)}`.trim(),
+            });
+        },
+        // On a synced graph a rename made here also moves the concept in every Member's own
+        // lists (ADR 0159), and leaves the debounce at once, as other background root-doc writes do.
+        // The change is already in the root doc, and a save that fails is reported by the sync
+        // engine, so a refused flush is only logged.
+        renameInMemberLists: (moves) => {
+            if (!isServerStore || !serverGraph) return;
+            if (serverGraph.renameConceptInMemberLists(moves).length > 0) {
+                serverGraph.flushAll().catch((error: unknown) => console.warn("[rename] could not send the renamed lists", error));
+            }
+        },
         // A kind registered as being about a concept (a board, a Map View) follows a rename.
         followsConcept: (kind) => registry.get(kind)?.conceptTarget === true,
         // Extensions hear each concept a rename moved before their Views follow it (ADR 0121).
@@ -1442,6 +1506,47 @@
             followJournalTemplateRename(from, to);
         },
     });
+
+    /**
+     * A protected page keeps no bookmarks (ADR 0159), wherever it was protected: here, in another
+     * tab or on another device. Swept when the index changes (it flags pages that hold a cipher
+     * fence), when protection changes, and when the bookmarks change. A flagged page is read and
+     * judged by the editor's own rule before anything goes, and what it read as is forgotten when
+     * the store says the page changed. On a synced graph every Member's bookmarks on it go. The
+     * decision is in protected-bookmarks.ts.
+     */
+    const protectedBookmarks = createProtectedBookmarkSweeper({
+        fencedPages: () => fencedPages(graphIndex?.allConcepts() ?? []),
+        readTexts: storedTextsForBookmarkSweep,
+        bookmarks: getBookmarks,
+        remove: removeBookmarks,
+        everyMember: () => {
+            const sg = isServerStore ? serverGraph : undefined;
+            if (!sg) return null;
+            return {
+                concepts: () => sg.bookmarkedConcepts(),
+                removeOn: (conceptKeys) => {
+                    // Out of the append debounce at once, as other background root-doc writes are.
+                    if (sg.removeBookmarksOn(conceptKeys).length === 0) return;
+                    sg.flushAll().catch((error: unknown) => console.warn("[bookmarks] could not send the removal", error));
+                },
+            };
+        },
+        notify: (text) => showNotice({ id: PROTECTED_BOOKMARKS_NOTICE_ID, tone: "info", text }),
+        onError: (error) => console.warn("[bookmarks] could not remove the bookmarks of a protected page", error),
+    });
+
+    /**
+     * Stored text for the protected-page sweep, read without opening anything. On a synced graph
+     * it is the relay-checked batch read. On a folder graph it is an open document's buffer, which
+     * holds a protect before the autosave writes it, else its file. Unread (null) keeps the bookmarks.
+     */
+    function storedTextsForBookmarkSweep(pages: readonly string[]): Promise<ReadonlyMap<string, string | null>> {
+        const current = store;
+        if (current && isServerStore) return serverStoredTexts(current as ServerDocumentStore)(pages);
+        if (current) return folderDocumentTexts(current as FilesystemDocumentStore)(pages);
+        return Promise.resolve(new Map(pages.map((page) => [page, null])));
+    }
 
     // ── Protection (ADR 0057-0059) ──────────────────────────────────────────────────────────
     // The workspace owns the dialogs and the store writes; the commands only decide when to
@@ -1480,6 +1585,7 @@
         // Graph-wide, for the surfaces that cannot watch the generation: the sidebar's lock
         // control, and a collab-bound editor that has to remount to show a projection.
         bus?.emit("protection:changed", {});
+        protectedBookmarks.schedule();
         const view = getActiveEditorView();
         if (view) view.dispatch({ effects: protectionTick.of() });
         // A lock transition is not a selection or doc change, so the Command Bar's mirror of
@@ -3225,6 +3331,21 @@
          * has no account API to publish through.
          */
         publishName?: (name: string) => void;
+        /**
+         * The person's key for their own lists in the root doc (ADR 0159): the Member's Sync
+         * Principal id, from the graph record's `serverScope.principalId`, the one source of it.
+         * Absent when the record has none.
+         */
+        memberKey?: string;
+        /**
+         * Whether this person owns the graph, as the Sync Server says (ADR 0159): true, false, or
+         * null while it cannot be read (offline). Asked once per open and in the background, so it
+         * never holds the open up. A change of role while the graph is open shows on the next
+         * open. Absent when there is no server to ask.
+         */
+        ownerRole?: Promise<boolean | null>;
+        /** The graph's roster, owner-only on the Sync Server. Absent under the dev gate. */
+        listMembers?: () => Promise<GraphMember[]>;
     }
 
     /** Dev/e2e gate: relay/token/graph-key are injected in the URL (no real auth). */
@@ -3240,6 +3361,12 @@
             },
             root: gate.root,
             httpBaseUrl: gate.http || undefined,
+            // The gate has no account, so one fixed member key stands in for one: a graph opened
+            // through it keeps its Favourites, Quick Notes and Bookmarks in per-person lists in the
+            // root doc (ADR 0159), as an account's synced graph does.
+            memberKey: "dev-gate",
+            // The gate's one person stands in for the Owner, so e2e sees the shared Quick Notes.
+            ownerRole: Promise.resolve(true),
         };
     }
 
@@ -3251,9 +3378,10 @@
      */
     async function paramsFromRegistry(
         record: { rootDocId: string },
-        serverOrigin: string,
+        scope: { serverOrigin: string; principalId?: string },
         attempt: GraphOpenAttempt,
     ): Promise<ResolvedServerParams> {
+        const { serverOrigin } = scope;
         graphServerOrigin = serverOrigin;
         const connection = resolveSyncedGraphConnection(graphId, serverOrigin);
         if (!connection)
@@ -3337,6 +3465,13 @@
             refreshKeyring,
             root: record.rootDocId,
             httpBaseUrl: connection.serverBaseUrl,
+            // The same key share-landing and run-import use, so a note or an import lands in the
+            // list this workspace shows.
+            memberKey: scope.principalId || undefined,
+            // The graph's listing carries this person's role. Read once per open, in the
+            // background: an offline open must not wait on it. A failure reads as "not known".
+            ownerRole: ownerRoleFromListing(api.listGraphs(), openedGraphId),
+            listMembers: () => api.graphMembers(openedGraphId),
             publishName: createGraphNamePublisher({
                 api,
                 keyring: () => keyring,
@@ -3412,6 +3547,50 @@
     }
 
     /**
+     * The Favourites the person sees on a synced graph (ADR 0159): which list that is, the
+     * first-open copy of the shared list and following it afterwards are all in
+     * `sync/personal-favourites.ts`. Here they are connected to the Sidebar's list.
+     */
+    function wirePersonalFavourites(
+        sg: GraphSync,
+        lists: PersonalLists,
+        attempt: GraphOpenAttempt,
+    ): void {
+        const favourites = lists.favourites;
+        setFavourites(favourites.list(), favourites.persist);
+        attempt.own(favourites.observe(() => adoptFavourites(favourites.list())));
+        // Disposing the session also ends the catch-up wait, which must not count as caught up.
+        attempt.own(favourites.follow(() => attempt.isCurrent() && serverGraph === sg));
+    }
+
+    /**
+     * The Owner's Client deletes the lists of Members who left the graph (ADR 0159 decision 5),
+     * in the background once the graph is open: never on the open path, and only once the Sync
+     * Server has confirmed the role and listed the members (member-lists.ts says when it skips).
+     * The dev gate has no roster to read, so it never runs there.
+     */
+    function clearDepartedMembersInBackground(
+        sg: GraphSync,
+        params: ResolvedServerParams,
+        attempt: GraphOpenAttempt,
+    ): void {
+        const { ownerRole, listMembers } = params;
+        const ownKey = personalLists?.memberKey;
+        if (!ownerRole || !listMembers || !ownKey) return;
+        const stillOpen = () => attempt.isCurrent() && serverGraph === sg;
+        void ownerRole
+            .then(async (owner) => {
+                if (owner !== true || !stillOpen()) return;
+                const cleared = await clearDepartedMemberLists({ graph: sg, listMembers, ownKey, stillOpen });
+                if (cleared?.length) console.debug("[sync] removed the lists of members who left", cleared);
+            })
+            .catch((error: unknown) => {
+                // Tried again on the next open; nothing waits on it.
+                console.warn("[sync] could not remove the lists of members who left", error);
+            });
+    }
+
+    /**
      * Graph Name + shared Graph Settings live in the root doc's `meta` map (ADR 0031).
      * The local registry record is only a CACHE of the synced name — it lets the keyless
      * /graphs picker label the graph — refreshed here on open and on every remote change.
@@ -3431,9 +3610,6 @@
                 updateWorkspaceServices(workspaceGeneration, { settings });
             }
             setGraphAccent(graphId, settings.toolbarColor);
-            // Favourites are shared graph content (ADR 0036), so a peer's change arrives
-            // here like any other meta change and simply replaces the list.
-            adoptFavourites(settings.favourites ?? []);
             if (meta.name) graphDisplayName = meta.name;
             if (record) {
                 // The record caches the name and the toolbar colour for surfaces that list
@@ -3449,20 +3625,7 @@
             }
         };
         apply();
-        // Writing back merges into the CURRENT meta settings rather than the snapshot, so a
-        // favourite added here cannot clobber a setting a peer changed meanwhile.
-        setFavourites(
-            sanitizeGraphSettings(sg.getMeta().settings ?? {}).favourites ?? [],
-            async (next) => {
-                const current = sanitizeGraphSettings(
-                    sg.getMeta().settings ?? {},
-                );
-                sg.setMetaSettings({
-                    ...current,
-                    favourites: [...next],
-                } as Record<string, unknown>);
-            },
-        );
+        wirePersonalFavourites(sg, personalLists!, attempt);
         // Quick Notes were wired at cache-ready in openGraph, ahead of scan(), so a waiting
         // share could land before the relay wait; see there.
         // Themes: the root doc's own Y.Map of themes (ADR 0082), one file per entry, adopted
@@ -3540,6 +3703,8 @@
             onAccessLost: (loss) => void accessEnded(loss),
         });
         watchSyncActivity(serverGraph);
+        // One per open: the Quick Notes, Favourites, Bookmarks and the Local Mirror all read it.
+        personalLists = createPersonalLists(serverGraph, params.memberKey);
         return createServerDocumentStore(serverGraph, {
             onResurrected: noteResurrection,
         });
@@ -3552,6 +3717,7 @@
         // Nothing from a graph opened before this one in the same workspace carries over.
         graphServerOrigin = null;
         connectionAtOpen = null;
+        personalLists = undefined;
         if (dev && server) return paramsFromGate(server);
         const record = await attempt.wait(
             createIdbGraphRegistry().getGraph(graphId),
@@ -3561,7 +3727,7 @@
             // shows none without one, so the origin is always there.
             return paramsFromRegistry(
                 record.handle as { rootDocId: string },
-                record.serverScope!.serverOrigin,
+                record.serverScope!,
                 attempt,
             );
         }
@@ -3637,6 +3803,8 @@
             detachSearchRefresh();
             const detachRefresh = next.onUpdated(() => {
                 searchController?.refresh();
+                // The index may have learned that a document is protected.
+                protectedBookmarks.schedule();
                 // The globe on an included document's tab reads the index's candidate flag,
                 // which this update may have changed; a publication page's Save is one such.
                 repaintTabPadlocks();
@@ -3732,6 +3900,19 @@
                     await writeQuickNotes(adapter, fsQuickNotes);
                 },
             });
+            // [[Bookmark]]s: etherpk/bookmarks.json (ADR 0159). A folder belongs to one browser, so
+            // its list is the person's list, written whole from the list each change produces. A
+            // file that is there but cannot be read opens with no bookmarks and refuses every
+            // write, so nothing replaces it while the person can still fix it. The notice says so.
+            const bookmarksFile = await attempt.wait(bookmarksFileBinding(adapter));
+            bookmarkList = setBookmarks(bookmarksFile.bookmarks, bookmarksFile.persist);
+            if (bookmarksFile.problem) {
+                showNotice({
+                    id: bookmarksFileNoticeId(graphId),
+                    tone: "error",
+                    text: bookmarksFile.problem,
+                });
+            }
             // The Graph Dictionary: etherpk/dictionary.txt, beside quick-notes.json (ADR 0095),
             // rewritten whole on every change. Unlike quick-notes.json an agent may add to it
             // (the folder's AGENTS.md says so), so each write merges what is on disk first
@@ -3841,7 +4022,16 @@
             // add or remove arrives as an array change and is adopted whole; the View sorts.
             const sg = serverGraph!;
             await attempt.wait(sg.ready());
-            const quickNotesApi = sg.quickNotes();
+            // They are the person's own (ADR 0159). The Owner's also include the shared array's,
+            // which has no author: those appear once the Sync Server confirms the role. Until then
+            // (offline, say) they are not shown, but they are not lost: they stay in the array and
+            // appear on an open that can read the role. The role arriving tells the Quick Notes'
+            // listeners, this one and the Local Mirror's, so both show the shared notes then.
+            // Without a member key they are the shared array, as before per-person lists: the
+            // graph registry hides a synced graph with no account scope, so only a graph opened
+            // another way reaches that, and a quick note there must still be kept somewhere.
+            const lists = personalLists!;
+            const quickNotesApi = lists.quickNotes;
             setQuickNotes(quickNotesApi.list(), {
                 add: async (note) => quickNotesApi.add(note),
                 remove: async (ids) => quickNotesApi.remove(ids),
@@ -3849,6 +4039,26 @@
             attempt.own(
                 quickNotesApi.observe(() => adoptQuickNotes(quickNotesApi.list())),
             );
+            void useServer.ownerRole?.then((owner) => {
+                if (owner !== true || !attempt.isCurrent() || serverGraph !== sg) return;
+                lists.setOwner(true);
+            });
+            // [[Bookmark]]s: the person's own `bookmarks:<member>` map in the root doc (ADR 0159),
+            // merged field by field. Another of their devices' change is adopted as it arrives.
+            // Without a member key there is no list of theirs to write to, and a bookmark kept
+            // only in this tab's memory would be gone on the next open, so every write is refused
+            // with the reason instead.
+            const bookmarksApi = lists.bookmarks;
+            if (bookmarksApi) {
+                const ownList = setBookmarks(bookmarksApi.list(), async (change) => bookmarksApi.apply(change));
+                bookmarkList = ownList;
+                // Through this graph's list only: the observer outlives the close by the wait for
+                // the last bookmark writes, and a change it hears then must not replace the list of
+                // the graph opened next.
+                attempt.own(bookmarksApi.observe(() => ownList.adopt(bookmarksApi.list())));
+            } else {
+                bookmarkList = setBookmarks([], refusingBookmarksPersist(BOOKMARKS_NEED_MEMBER_KEY));
+            }
             // The Graph Dictionary: the root doc's own Y.Map (ADR 0095), a peer's word adopted
             // as it arrives.
             const dictionaryApi = sg.spellingDictionary();
@@ -3933,6 +4143,7 @@
                 };
             }
             await wireGraphMeta(attempt);
+            clearDepartedMembersInBackground(sg, useServer, attempt);
             // A mirror this device set up earlier picks itself up here. Detached on purpose: the
             // first pass reads the folder, and the workspace must not wait on a disk for it.
             void resumeMirror().catch((error: Error) => {
@@ -3944,6 +4155,9 @@
         }
         const s = store!;
         currentGraphIndex ??= startGraphIndex(s);
+        // A page whose stored text changed may now read differently to the protected-page sweep:
+        // it forgets what it read for that page (for every page when the graph's names moved).
+        attempt.own(s.onChange((change) => protectedBookmarks.forget(change?.concept)));
         const storeReadyAt = performance.now();
         formattingScan = new FormattingScanSession({
             source: isServerStore
@@ -4357,6 +4571,8 @@
                 },
                 canOpenToTheRight: (sourcePanelId) =>
                     controller?.canOpenToTheRight(sourcePanelId) ?? false,
+                // A link through an alias favourites the page it opens (ADR 0158).
+                canonicalName: (concept) => canonicalConceptName(concept),
                 onError: (text) => notify(text),
                 onCopied: (text) => notify(text),
                 hasFilePath: (concept) =>
@@ -4471,6 +4687,16 @@
                     ),
             },
         );
+        // [[Bookmark]]s (ADR 0159): Ctrl+Alt+K, the line Context Menu, the Sidebar rows.
+        // Paste on the line menu, which replaces the browser's on a right-click in text.
+        detachPasteCommands = registerPasteCommands(commandRegistry, contributions);
+        detachBookmarkCommands = registerBookmarkCommands(commandRegistry, contributions, {
+            openDocumentAtLine: (concept, line) => openConceptAtDocumentLine(concept, line),
+            revealSidebar: () => {
+                if (controller) revealResident(controller, RESIDENTS.graph);
+            },
+            onError: (text) => notify(text),
+        });
         // The [[Asset Reference]] Commands and their Context Menu rows (ADR 0054), plus
         // the viewers that decide what "open in a new tab" is offered for (ADR 0055).
         detachAssetViewers = registerAssetViewers(contributions);
@@ -6204,11 +6430,15 @@
             if (!sg) return;
             const name = result.name.trim();
             if (name && name !== sg.getMeta().name) sg.setMetaName(name);
-            sg.setMetaSettings(result.settings as Record<string, unknown>);
+            // The dialog's fields, with the shared favourites exactly as the root doc holds them now:
+            // its copy of them is from when it opened, and writing it back would bring a removed
+            // favourite back for every Member who follows the shared list (ADR 0159).
+            sg.setMetaSettings(settingsKeepingSharedFavourites(result.settings, sg.getMeta().settings));
             // onMetaChange's apply() refreshes the registry cache, display name, and active settings.
             // A deliberate save must not sit in the append debounce window — the user may navigate
-            // away immediately, and the write would be lost with the socket.
-            void sg.flushAll();
+            // away immediately, and the write would be lost with the socket. The sync engine
+            // reports a failed save itself, so the rejection here is only logged.
+            sg.flushAll().catch((error: unknown) => console.warn("[settings] could not send the graph settings", error));
             return;
         }
         const adapter = fsAdapter;
@@ -6498,24 +6728,32 @@
             store: s,
             assets: assetStore,
             listAssetIds: listMirrorAssetIds,
-            metadata: () => ({
-                name: serverGraph?.getMeta().name,
-                settings: sanitizeGraphSettings(
-                    serverGraph?.getMeta().settings ?? {},
-                ) as Record<string, unknown>,
-                quickNotes: serverGraph?.quickNotes().list() ?? [],
-                spellingDictionary: serverGraph?.spellingDictionary().list() ?? [],
-                themes: serverGraph?.themes().list() ?? [],
-                protection: protectionRecord,
-            }),
+            metadata: () => {
+                // The exporting person's own lists (ADR 0159): their favourites in the shared
+                // settings, their Quick Notes (with the shared ones for the Owner) and their
+                // bookmarks, never another Member's.
+                const own = personalLists?.mirrored();
+                return {
+                    name: serverGraph?.getMeta().name,
+                    // Not known without the lists: the mirror then leaves settings.json alone,
+                    // where an empty object would empty it.
+                    settings: own ? (own.settings as Record<string, unknown>) : undefined,
+                    quickNotes: own?.quickNotes ?? [],
+                    bookmarks: own?.bookmarks,
+                    spellingDictionary: serverGraph?.spellingDictionary().list() ?? [],
+                    themes: serverGraph?.themes().list() ?? [],
+                    protection: protectionRecord,
+                };
+            },
             // Quick Notes, the Graph Dictionary, themes and the protection record travel with the
             // folder too (ADR 0078, ADR 0095, ADR 0082, ADR 0093), so a change to any of them takes
             // the same full pass a settings change does.
             onMetadataChange: (listener) => {
                 const offMeta =
                     serverGraph?.onMetaChange(listener) ?? (() => {});
-                const offNotes =
-                    serverGraph?.quickNotes().observe(listener) ?? (() => {});
+                // The person's lists, and the Owner role arriving, which adds the shared Quick
+                // Notes to quick-notes.json.
+                const offPersonal = personalLists?.observeMirrored(listener) ?? (() => {});
                 const offDictionary =
                     serverGraph?.spellingDictionary().observe(listener) ?? (() => {});
                 const offThemes =
@@ -6523,7 +6761,7 @@
                 protectionRecordListeners.add(listener);
                 return () => {
                     offMeta();
-                    offNotes();
+                    offPersonal();
                     offDictionary();
                     offThemes();
                     protectionRecordListeners.delete(listener);
@@ -6966,11 +7204,30 @@
         fsAdapter = undefined;
         fsFolderName = undefined;
         folderPathPrompt = null;
-        // Nothing said about this graph may outlive it on the Graphs page or in the next one.
-        for (const id of [STATUS_NOTICE, SAVE_FAILURE_NOTICE, INDEX_NOTICE, STORAGE_RECOVERY_NOTICE]) dismissNotice(id);
+        // Nothing said about this graph may outlive it on the Graphs page or in the next one. The
+        // bookmark notices go too: a removal's Undo offered over another graph would restore this
+        // graph's bookmarks there (the restore refuses after the close as well).
+        for (const id of [
+            STATUS_NOTICE,
+            SAVE_FAILURE_NOTICE,
+            INDEX_NOTICE,
+            STORAGE_RECOVERY_NOTICE,
+            BOOKMARK_NOTICE_ID,
+            BOOKMARK_STATUS_NOTICE_ID,
+            PROTECTED_BOOKMARKS_NOTICE_ID,
+            bookmarksFileNoticeId(graphId),
+        ])
+            dismissNotice(id);
         clearGraphAccent(graphId);
         resetFavourites();
         resetQuickNotes();
+        // The editors were destroyed above (renderer.destroy), and each wrote back where its
+        // bookmarks are as it went. Those writes are bound to this graph's list. The wait for them
+        // is at the end of this function, so the graph's storage, which is disposed after it,
+        // is still open when they run.
+        const bookmarkWrites = bookmarkList?.close() ?? Promise.resolve();
+        bookmarkList = undefined;
+        resetBookmarkStatus();
         setGraphDictionary([], null);
         resetGraphThemes();
         recents = null;
@@ -6989,6 +7246,10 @@
         detachTaskReferenceCommands = undefined;
         detachQuickNotesCommands?.();
         detachQuickNotesCommands = undefined;
+        detachBookmarkCommands?.();
+        detachBookmarkCommands = undefined;
+        detachPasteCommands?.();
+        detachPasteCommands = undefined;
         detachSpellingCommands?.();
         detachSpellingCommands = undefined;
         detachBacklinksCommands?.();
@@ -7021,6 +7282,11 @@
         detachAssetViewers = undefined;
         // A dialog still waiting on an answer would leave its Command pending forever.
         deletingAsset?.decide("cancel");
+        // Last, and awaited: the session disposes the store, the root document and the cache only
+        // after this resolves (graph-session.ts runs session teardown before the open's resources),
+        // so the bookmark writes made before the close land in this graph. The wait is bounded by
+        // CLOSE_WAIT_MS. A write still queued then is refused and reported, never lost quietly.
+        await bookmarkWrites;
     }
 
     onMount(() => {
@@ -7043,6 +7309,9 @@
         }
         window.addEventListener("pagehide", flushPersistence);
         session.own(disposeWorkspaceResources);
+        // A bookmark that arrives from another device for a page protected here goes too.
+        session.own(subscribeBookmarks(() => protectedBookmarks.schedule()));
+        session.own(() => protectedBookmarks.dispose());
         // The size each picture of this graph was last drawn at, kept across sessions so the
         // editor holds a picture's space before it has decoded (image-footprints.ts).
         const footprints = browserImageFootprints(graphId);

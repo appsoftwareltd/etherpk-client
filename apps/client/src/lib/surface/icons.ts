@@ -110,6 +110,8 @@ export const ICON_PATHS: Record<string, string> = {
      * put. Filled head so it still reads as a pin at 12px, where an outline collapses to a blob.
      */
     pin: '<path d="M6 2.5h4.5l-.8 3.2 2.3 2.3-.9.9H4.4l-.9-.9 2.3-2.3z" fill="currentColor" stroke="none"/><path d="M8 9v4.5"/>',
+    /** A ribbon with a notched foot: a [[Bookmark]], which marks a line. */
+    bookmark: '<path d="M4.5 2.5h7v11L8 10.6l-3.5 2.9z"/>',
 
     // Navigate
     /** A magnifying glass: search. */

@@ -29,6 +29,7 @@ import { frontmatterCompletion } from './augmentations/frontmatter-complete'
 import { frontmatterKeys } from './frontmatter-keys'
 import { frontmatterBoundaryGuard } from './frontmatter-boundary'
 import { assetPasteAugmentation } from './augmentations/asset-paste'
+import { type BookmarkOptions, bookmarksAugmentation } from './augmentations/bookmarks'
 import { pasteToFenceAugmentation } from './augmentations/paste-to-fence'
 import { plainPasteAugmentation } from './augmentations/plain-paste'
 import { richPasteAugmentation } from './augmentations/rich-paste'
@@ -120,6 +121,11 @@ export interface EditorExtensionServices {
     placeholder?: PlaceholderSource
     /** Which document the editor shows and the panel it sits in (editor-document.ts). Absent outside a workspace. */
     document?: EditorDocumentInfo
+    /**
+     * [[Bookmark]]s (bookmarks.ts): the line Context Menu and whether the editor shows a Draft.
+     * Needs `document` too. Absent, the editor draws and tracks no bookmarks.
+     */
+    bookmarks?: BookmarkOptions
     /**
      * Whether the View holding the editor is on screen as the editor is made (editor-on-screen.ts),
      * which it then keeps up to date with `setEditorOnScreen`. Absent, the editor is on screen.
@@ -309,6 +315,12 @@ export function editorFeatures(services: EditorExtensionServices): EditorFeature
         // Read by the interactive fences, so a widget behind another tab lets go of what it holds.
         { name: 'on-screen', extension: editorOnScreen.init(() => services.onScreen?.() ?? true) },
         { name: 'line-anchor', extension: lineAnchor() },
+        // After `wikilink`, `asset-link` and `spell-check`: their right-click menus claim the event on
+        // their own targets, and the line menu takes the rest of the line.
+        {
+            name: 'bookmarks',
+            extension: services.bookmarks && services.document ? bookmarksAugmentation(services.bookmarks) : [],
+        },
         // A shown caret stays shown when the editor shrinks: a phone's soft keyboard opening. It
         // decorates nothing and filters nothing, so its place in the list is free.
         { name: 'keep-caret-visible', extension: keepCaretVisible() },

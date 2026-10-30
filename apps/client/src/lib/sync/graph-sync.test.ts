@@ -745,6 +745,539 @@ describe('graph-sync', () => {
         b.dispose()
     })
 
+    it('bookmarks: one member’s map, changed by id, replicates puts and removes and stays out of other members’ lists', async () => {
+        // ADR 0159: a Bookmark belongs to the person who made it. Each member's bookmarks are their
+        // own top-level `bookmarks:<memberKey>` map in the root doc, keyed by bookmark id.
+        const keyring = createGraphKeyring('g1')
+        const relay = createLoopbackRelay()
+        const a = await client(relay, keyring)
+        const b = await client(relay, keyring)
+        const garden = { id: 'bm-1', concept: 'Garden', line: 2, text: 'water the beans', createdAt: 100 }
+        const kitchen = { id: 'bm-2', concept: 'Kitchen', line: 0, text: 'buy flour', after: 'bake bread', createdAt: 200 }
+        const ids = (c: typeof a, member = 'm1') => c.bookmarks(member).list().map((x) => x.id).sort()
+
+        a.bookmarks('m1').apply({ put: [garden, kitchen], remove: [] })
+        await vi.waitFor(() => expect(ids(b)).toEqual(['bm-1', 'bm-2']), { timeout: 2000 })
+        expect(b.bookmarks('m1').list().find((x) => x.id === 'bm-2')).toEqual(kitchen)
+        expect(b.bookmarks('m2').list()).toEqual([])
+        expect(() => b.bookmarks('')).toThrow(/member key/)
+
+        // A put of a held id replaces it, a remove deletes it, both in one change.
+        const seen: string[][] = []
+        const stop = b.bookmarks('m1').observe(() => seen.push(ids(b)))
+        a.bookmarks('m1').apply({ put: [{ ...garden, label: 'Beans' }], remove: ['bm-2', 'never-existed'] })
+        await vi.waitFor(() => expect(ids(b)).toEqual(['bm-1']), { timeout: 2000 })
+        expect(b.bookmarks('m1').list()[0].label).toBe('Beans')
+        expect(seen).toEqual([['bm-1']])
+        stop()
+
+        // An entry that is not a well-formed bookmark is not trusted.
+        a.docSync(ROOT).doc.getMap('bookmarks:m1').set('junk', { id: 'junk' })
+        expect(ids(a)).toEqual(['bm-1'])
+
+        // The relay never saw a line in plaintext (E2EE).
+        for (const envelope of relay.allEnvelopes()) {
+            expect(new TextDecoder().decode(fromBase64Url(envelope))).not.toContain('water the beans')
+        }
+
+        a.dispose()
+        b.dispose()
+    })
+
+    it('bookmarks: two devices of one member that bookmark while apart both keep their bookmarks', async () => {
+        // ADR 0159: why the map is top-level and not a nested Y.Map under a shared `bookmarks` map.
+        // Two devices that each created the nested map while apart would each hold a different map
+        // under the one key, and the merge would keep one of them. A top-level named type is the same
+        // type on every device, so the entries merge. Separate relays stand in for "apart"; the
+        // root documents then exchange their whole state.
+        const keyring = createGraphKeyring('g1')
+        const a = await client(createLoopbackRelay(), keyring)
+        const b = await client(createLoopbackRelay(), keyring)
+        a.bookmarks('m1').apply({ put: [{ id: 'from-a', concept: 'Garden', line: 1, text: 'water the beans', createdAt: 100 }], remove: [] })
+        b.bookmarks('m1').apply({ put: [{ id: 'from-b', concept: 'Kitchen', line: 3, text: 'buy flour', createdAt: 200 }], remove: [] })
+
+        const rootA = a.docSync(ROOT).doc
+        const rootB = b.docSync(ROOT).doc
+        const fromA = Y.encodeStateAsUpdate(rootA)
+        Y.applyUpdate(rootA, Y.encodeStateAsUpdate(rootB))
+        Y.applyUpdate(rootB, fromA)
+
+        for (const c of [a, b]) expect(c.bookmarks('m1').list().map((x) => x.id)).toEqual(['from-a', 'from-b'])
+
+        a.dispose()
+        b.dispose()
+    })
+
+    it('bookmarks: a bookmark one device deleted stays deleted when another device moved its anchor meanwhile', async () => {
+        // Each bookmark is a map of its fields. A field set inside a deleted bookmark is dropped
+        // with it, where a whole-value write of the bookmark would put it back.
+        const keyring = createGraphKeyring('g1')
+        const a = await client(createLoopbackRelay(), keyring)
+        const b = await client(createLoopbackRelay(), keyring)
+        const garden = { id: 'bm-1', concept: 'Garden', line: 2, text: 'water the beans', before: 'Garden', createdAt: 100 }
+        a.bookmarks('m1').apply({ put: [garden], remove: [] })
+        exchangeRoots(a, b)
+
+        a.bookmarks('m1').apply({ put: [], remove: ['bm-1'] })
+        b.bookmarks('m1').apply({ put: [{ ...garden, line: 4, before: 'weed the rows' }], remove: [] })
+        exchangeRoots(a, b)
+
+        for (const c of [a, b]) expect(c.bookmarks('m1').list()).toEqual([])
+        a.dispose()
+        b.dispose()
+    })
+
+    it('bookmarks: a label set on one device and an anchor moved on another are both kept', async () => {
+        const keyring = createGraphKeyring('g1')
+        const a = await client(createLoopbackRelay(), keyring)
+        const b = await client(createLoopbackRelay(), keyring)
+        const garden = { id: 'bm-1', concept: 'Garden', line: 2, text: 'water the beans', after: 'pick the peas', createdAt: 100 }
+        a.bookmarks('m1').apply({ put: [garden], remove: [] })
+        exchangeRoots(a, b)
+
+        a.bookmarks('m1').apply({ put: [{ ...garden, label: 'Beans' }], remove: [] })
+        // The anchor moved, and the line after it is gone: an optional field absent from the put
+        // is deleted.
+        const { after: _after, ...withoutAfter } = garden
+        b.bookmarks('m1').apply({ put: [{ ...withoutAfter, line: 5, before: 'weed the rows' }], remove: [] })
+        exchangeRoots(a, b)
+
+        const expected = { id: 'bm-1', concept: 'Garden', line: 5, text: 'water the beans', before: 'weed the rows', label: 'Beans', createdAt: 100 }
+        for (const c of [a, b]) expect(c.bookmarks('m1').list()).toEqual([expected])
+        a.dispose()
+        b.dispose()
+    })
+
+    /** Exchange the whole root state between two sessions that were apart (separate relays). */
+    function exchangeRoots(a: { docSync(id: string): { doc: Y.Doc } }, b: { docSync(id: string): { doc: Y.Doc } }) {
+        const rootA = a.docSync(ROOT).doc
+        const rootB = b.docSync(ROOT).doc
+        const fromA = Y.encodeStateAsUpdate(rootA)
+        Y.applyUpdate(rootA, Y.encodeStateAsUpdate(rootB))
+        Y.applyUpdate(rootB, fromA)
+    }
+
+    it('favourites: one member’s list, replaced with the smallest change, replicates and stays out of other members’ lists', async () => {
+        // ADR 0159: a member's favourites are their own top-level `favourites:<memberKey>` array.
+        const keyring = createGraphKeyring('g1')
+        const relay = createLoopbackRelay()
+        const a = await client(relay, keyring)
+        const b = await client(relay, keyring)
+
+        a.favourites('m1').replace(['Garden', 'Kitchen', 'Pantry'])
+        await vi.waitFor(() => expect(b.favourites('m1').list()).toEqual(['Garden', 'Kitchen', 'Pantry']), { timeout: 2000 })
+        expect(b.favourites('m2').list()).toEqual([])
+        expect(() => b.favourites('')).toThrow(/member key/)
+
+        // A move and a remove: the order follows, and peers see one change.
+        const seen: string[][] = []
+        const stop = b.favourites('m1').observe(() => seen.push(b.favourites('m1').list()))
+        a.favourites('m1').replace(['Pantry', 'Garden'])
+        await vi.waitFor(() => expect(b.favourites('m1').list()).toEqual(['Pantry', 'Garden']), { timeout: 2000 })
+        expect(seen).toEqual([['Pantry', 'Garden']])
+        stop()
+
+        // The array holds exactly the list: no leftovers from a clear-and-refill or a stale move.
+        expect(a.docSync(ROOT).doc.getArray('favourites:m1').toArray()).toEqual(['Pantry', 'Garden'])
+
+        a.dispose()
+        b.dispose()
+    })
+
+    it('favourites: list dedupes case-insensitively keeping the first spelling, drops junk and keeps the newest 200', async () => {
+        const a = await client(createLoopbackRelay())
+        const raw = a.docSync(ROOT).doc.getArray<unknown>('favourites:m1')
+        raw.push(['Garden', ' garden ', 42, '', 'Kitchen'])
+        expect(a.favourites('m1').list()).toEqual(['Garden', 'Kitchen'])
+
+        const many = Array.from({ length: 205 }, (_, i) => `Page ${i}`)
+        a.favourites('m1').replace(many)
+        expect(a.favourites('m1').list()).toEqual(many.slice(-200))
+        a.dispose()
+    })
+
+    it('favourites: two devices of one member that change the list while apart keep both changes', async () => {
+        // Why `replace` writes the smallest change rather than clearing and refilling: an add on
+        // one device and an add or a remove on the other both survive the merge.
+        const keyring = createGraphKeyring('g1')
+        const a = await client(createLoopbackRelay(), keyring)
+        const b = await client(createLoopbackRelay(), keyring)
+        a.favourites('m1').replace(['Garden', 'Kitchen'])
+        exchangeRoots(a, b)
+
+        a.favourites('m1').replace(['Garden', 'Kitchen', 'Pantry'])
+        b.favourites('m1').replace(['Kitchen', 'Cellar'])
+        exchangeRoots(a, b)
+
+        for (const c of [a, b]) expect([...c.favourites('m1').list()].sort()).toEqual(['Cellar', 'Kitchen', 'Pantry'])
+        expect(a.favourites('m1').list()).toEqual(b.favourites('m1').list())
+
+        a.dispose()
+        b.dispose()
+    })
+
+    it('favourites: a move named by its hint deletes and re-inserts only the moved entry, so a removal on another device stays', async () => {
+        // Kitchen moved up one and Garden moved down one give the same next list. Without the
+        // hint the smallest change could delete and re-insert Garden, which brings back a Garden
+        // another device removed meanwhile.
+        const keyring = createGraphKeyring('g1')
+        const a = await client(createLoopbackRelay(), keyring)
+        const b = await client(createLoopbackRelay(), keyring)
+        a.favourites('m1').replace(['Garden', 'Kitchen', 'Pantry'])
+        exchangeRoots(a, b)
+
+        a.favourites('m1').replace(['Kitchen', 'Pantry'])
+        b.favourites('m1').replace(['Kitchen', 'Garden', 'Pantry'], { moved: 'Kitchen' })
+        exchangeRoots(a, b)
+
+        for (const c of [a, b]) expect(c.favourites('m1').list()).toEqual(['Kitchen', 'Pantry'])
+        a.dispose()
+        b.dispose()
+    })
+
+    it('favourites: without a hint, an entry at the same place in both lists is the one kept', async () => {
+        // Reversing three entries keeps one of them in place. Kept, it is not deleted and
+        // re-inserted, so a removal of it on another device is not undone.
+        const keyring = createGraphKeyring('g1')
+        const a = await client(createLoopbackRelay(), keyring)
+        const b = await client(createLoopbackRelay(), keyring)
+        a.favourites('m1').replace(['Garden', 'Kitchen', 'Pantry'])
+        exchangeRoots(a, b)
+
+        a.favourites('m1').replace(['Garden', 'Pantry'])
+        b.favourites('m1').replace(['Pantry', 'Kitchen', 'Garden'])
+        exchangeRoots(a, b)
+
+        for (const c of [a, b]) expect(c.favourites('m1').list()).toEqual(['Pantry', 'Garden'])
+        a.dispose()
+        b.dispose()
+    })
+
+    it('favourites: seedOnce copies the shared list into the member’s own once, and never refills a list they emptied', async () => {
+        // ADR 0159 decision 4: the first open after the upgrade copies the shared Graph Settings
+        // favourites in. A flag in `memberFlags:<memberKey>` records it, so an emptied list stays empty.
+        const keyring = createGraphKeyring('g1')
+        const relay = createLoopbackRelay()
+        const a = await client(relay, keyring)
+        const b = await client(relay, keyring)
+
+        expect(a.favourites('m1').seedOnce(['Garden', 'Kitchen'])).toBe(true)
+        expect(a.favourites('m1').list()).toEqual(['Garden', 'Kitchen'])
+        expect(a.favourites('m2').list()).toEqual([])
+
+        a.favourites('m1').replace([])
+        expect(a.favourites('m1').seedOnce(['Garden', 'Kitchen'])).toBe(false)
+        expect(a.favourites('m1').list()).toEqual([])
+
+        // Another device of the same member that has caught up does not seed again.
+        await vi.waitFor(() => expect(b.docSync(ROOT).doc.getMap('memberFlags:m1').get('favouritesSeeded')).toBe(true), { timeout: 2000 })
+        expect(b.favourites('m1').seedOnce(['Garden', 'Kitchen'])).toBe(false)
+        expect(b.favourites('m1').list()).toEqual([])
+
+        // A favourite added before the seed ran keeps its place, and the shared ones join after it.
+        expect(a.favourites('m2').replace(['Pantry'])).toBeUndefined()
+        expect(a.favourites('m2').seedOnce(['Garden', 'pantry'])).toBe(true)
+        expect(a.favourites('m2').list()).toEqual(['Pantry', 'Garden'])
+
+        a.dispose()
+        b.dispose()
+    })
+
+    it('favourites: followShared adds what an older Client favourited after the seed, once, and leaves removals alone', async () => {
+        // ADR 0159: the seed records the shared list it saw. A later entry in the shared list
+        // (an older Client still writes there) joins the person's own list once. An entry the
+        // person removed is not added again, and an entry an older Client removed stays.
+        const a = await client(createLoopbackRelay())
+        const own = a.favourites('m1')
+        expect(own.seeded()).toBe(false)
+        expect(own.followShared(['Garden'])).toBe(false)
+        expect(own.list()).toEqual([])
+
+        own.seedOnce(['Garden', 'Kitchen'])
+        expect(own.seeded()).toBe(true)
+        expect(a.docSync(ROOT).doc.getMap('memberFlags:m1').get('sharedFavouritesSeen')).toEqual(['Garden', 'Kitchen'])
+        own.replace(['Garden'])
+
+        // An older Client added Pantry and removed Garden from the shared list.
+        expect(own.followShared(['Kitchen', 'Pantry'])).toBe(true)
+        expect(own.list()).toEqual(['Garden', 'Pantry'])
+        // Seen once: the person may now remove it, and it does not come back.
+        own.replace(['Garden'])
+        expect(own.followShared(['Kitchen', 'Pantry'])).toBe(false)
+        expect(own.list()).toEqual(['Garden'])
+        // A favourite the person already holds is not added twice.
+        own.replace(['Garden', 'Cellar'])
+        expect(own.followShared(['Kitchen', 'Pantry', 'cellar'])).toBe(true)
+        expect(own.list()).toEqual(['Garden', 'Cellar'])
+        a.dispose()
+    })
+
+    it('favourites: a list seeded by a Client that kept no snapshot takes the shared list as seen, and adds nothing', async () => {
+        const a = await client(createLoopbackRelay())
+        a.docSync(ROOT).doc.getMap('memberFlags:m1').set('favouritesSeeded', true)
+        const own = a.favourites('m1')
+        expect(own.followShared(['Garden'])).toBe(true)
+        expect(own.list()).toEqual([])
+        expect(own.followShared(['Garden', 'Kitchen'])).toBe(true)
+        expect(own.list()).toEqual(['Kitchen'])
+        a.dispose()
+    })
+
+    it('favourites: a replace that seeds writes the list and marks it seeded in one transaction', async () => {
+        // ADR 0159: before the seed the person sees their list joined with the shared one. A
+        // write then stores that joined list, and the seed must not run again over it.
+        const a = await client(createLoopbackRelay())
+        const own = a.favourites('m1')
+        const updates: number[] = []
+        a.docSync(ROOT).doc.on('afterTransaction', () => updates.push(1))
+        own.replace(['Garden', 'Kitchen', 'Pantry'], { seedFrom: ['Kitchen', 'Pantry'] })
+        expect(updates).toHaveLength(1)
+        expect(own.seeded()).toBe(true)
+        expect(a.docSync(ROOT).doc.getMap('memberFlags:m1').get('sharedFavouritesSeen')).toEqual(['Kitchen', 'Pantry'])
+        expect(own.seedOnce(['Kitchen', 'Pantry'])).toBe(false)
+        // Once seeded, a later seedFrom changes nothing about the flags.
+        own.replace(['Garden'], { seedFrom: ['Cellar'] })
+        expect(a.docSync(ROOT).doc.getMap('memberFlags:m1').get('sharedFavouritesSeen')).toEqual(['Kitchen', 'Pantry'])
+        a.dispose()
+    })
+
+    it('favourites: observe hears the seed flag change too, since it changes which list the person sees', async () => {
+        const a = await client(createLoopbackRelay())
+        let heard = 0
+        const stop = a.favourites('m1').observe(() => heard++)
+        a.docSync(ROOT).doc.getMap('memberFlags:m1').set('favouritesSeeded', true)
+        expect(heard).toBe(1)
+        stop()
+        a.dispose()
+    })
+
+    it('favourites: two devices that seed while apart end with one copy of each favourite', async () => {
+        const keyring = createGraphKeyring('g1')
+        const a = await client(createLoopbackRelay(), keyring)
+        const b = await client(createLoopbackRelay(), keyring)
+        a.favourites('m1').seedOnce(['Garden', 'Kitchen'])
+        b.favourites('m1').seedOnce(['Garden', 'Kitchen'])
+        exchangeRoots(a, b)
+        for (const c of [a, b]) expect(c.favourites('m1').list()).toEqual(['Garden', 'Kitchen'])
+        a.dispose()
+        b.dispose()
+    })
+
+    it('quickNotesOf: one member’s own array, apart from the legacy shared one and from other members', async () => {
+        // ADR 0159: a member's Quick Notes are their own top-level `quickNotes:<memberKey>` array.
+        const keyring = createGraphKeyring('g1')
+        const relay = createLoopbackRelay()
+        const a = await client(relay, keyring)
+        const b = await client(relay, keyring)
+        const ids = (notes: { id: string }[]) => notes.map((n) => n.id).sort()
+
+        a.quickNotesOf('m1').add({ id: 'own-1', text: 'water the beans', createdAt: 100 })
+        a.quickNotesOf('m1').add({ id: 'own-2', text: 'buy flour', createdAt: 200 })
+        a.quickNotes().add({ id: 'legacy-1', text: 'sweep the porch', createdAt: 50 })
+        await vi.waitFor(() => expect(ids(b.quickNotesOf('m1').list())).toEqual(['own-1', 'own-2']), { timeout: 2000 })
+        expect(ids(b.quickNotes().list())).toEqual(['legacy-1'])
+        expect(b.quickNotesOf('m2').list()).toEqual([])
+        expect(() => b.quickNotesOf('')).toThrow(/member key/)
+
+        const seen: string[][] = []
+        const stop = b.quickNotesOf('m1').observe(() => seen.push(ids(b.quickNotesOf('m1').list())))
+        a.quickNotesOf('m1').remove(['own-1', 'legacy-1'])
+        await vi.waitFor(() => expect(ids(b.quickNotesOf('m1').list())).toEqual(['own-2']), { timeout: 2000 })
+        expect(seen).toEqual([['own-2']])
+        // A remove through one member's list never reaches the shared array.
+        expect(ids(b.quickNotes().list())).toEqual(['legacy-1'])
+        stop()
+
+        a.dispose()
+        b.dispose()
+    })
+
+    it('clearDepartedMembers: empties the lists of every member key not in the active list and reports them', async () => {
+        // ADR 0159 decision 5: the Owner's Client deletes a departed Member's lists.
+        const keyring = createGraphKeyring('g1')
+        const relay = createLoopbackRelay()
+        const a = await client(relay, keyring)
+        const b = await client(relay, keyring)
+        for (const member of ['stays', 'left']) {
+            a.favourites(member).seedOnce(['Garden'])
+            a.quickNotesOf(member).add({ id: `n-${member}`, text: 'water the beans', createdAt: 100 })
+            a.bookmarks(member).apply({ put: [{ id: `b-${member}`, concept: 'Garden', line: 0, text: 'water the beans', createdAt: 100 }], remove: [] })
+        }
+        a.quickNotes().add({ id: 'legacy-1', text: 'sweep the porch', createdAt: 50 })
+
+        // Device b has only received the types, never asked for them by name: the clear must
+        // still find them in the root document.
+        await vi.waitFor(() => expect(b.docSync(ROOT).doc.share.has('bookmarks:left')).toBe(true), { timeout: 2000 })
+        await vi.waitFor(() => expect(b.docSync(ROOT).doc.share.has('memberFlags:left')).toBe(true), { timeout: 2000 })
+        const cleared = b.clearDepartedMembers(['stays'])
+        expect([...cleared].sort()).toEqual(['bookmarks:left', 'favourites:left', 'memberFlags:left', 'quickNotes:left'])
+
+        await vi.waitFor(() => expect(a.favourites('left').list()).toEqual([]), { timeout: 2000 })
+        expect(a.quickNotesOf('left').list()).toEqual([])
+        expect(a.bookmarks('left').list()).toEqual([])
+        expect(a.docSync(ROOT).doc.getMap('memberFlags:left').size).toBe(0)
+        // The active member's lists and the shared, authorless array are untouched.
+        expect(a.favourites('stays').list()).toEqual(['Garden'])
+        expect(a.quickNotesOf('stays').list().map((n) => n.id)).toEqual(['n-stays'])
+        expect(a.bookmarks('stays').list().map((x) => x.id)).toEqual(['b-stays'])
+        expect(a.quickNotes().list().map((n) => n.id)).toEqual(['legacy-1'])
+
+        // Nothing left to clear: a second pass reports nothing. An empty active list is refused,
+        // since every graph has at least its Owner and an empty roster means it was not read.
+        expect(b.clearDepartedMembers(['stays'])).toEqual([])
+        expect(b.clearDepartedMembers([])).toEqual([])
+        expect(a.favourites('stays').list()).toEqual(['Garden'])
+
+        a.dispose()
+        b.dispose()
+    })
+
+    it('renameConceptInMemberLists: every member’s favourites and bookmarks follow a rename, once, and nothing else changes', async () => {
+        // ADR 0159: a rename on one Client reaches the lists of Members whose devices never saw
+        // the old name (a device that joins later reads only the new one).
+        const keyring = createGraphKeyring('g1')
+        const relay = createLoopbackRelay()
+        const a = await client(relay, keyring)
+        const b = await client(relay, keyring)
+        a.favourites('m1').replace(['Garden', 'Kitchen'])
+        a.favourites('m2').replace(['[[Garden]] Notes', 'garden', 'Pantry'])
+        a.bookmarks('m2').apply({
+            put: [
+                { id: 'b1', concept: 'Garden', line: 0, text: 'water the beans', label: 'Beans', createdAt: 1 },
+                { id: 'b2', concept: 'Kitchen', line: 1, text: 'buy flour', createdAt: 2 },
+            ],
+            remove: [],
+        })
+        // A member who never asked for their types on device b: the rename still finds them.
+        await vi.waitFor(() => expect(b.docSync(ROOT).doc.share.has('bookmarks:m2')).toBe(true), { timeout: 2000 })
+
+        const moves = [
+            { from: '[[Garden]] Notes', to: '[[Allotment]] Notes' },
+            { from: 'Garden', to: 'Allotment' },
+        ]
+        expect([...b.renameConceptInMemberLists(moves)].sort()).toEqual(['bookmarks:m2', 'favourites:m1', 'favourites:m2'])
+
+        await vi.waitFor(() => expect(a.favourites('m2').list()).toEqual(['[[Allotment]] Notes', 'Allotment', 'Pantry']), { timeout: 2000 })
+        expect(a.favourites('m1').list()).toEqual(['Allotment', 'Kitchen'])
+        expect(a.bookmarks('m2').list()).toEqual([
+            { id: 'b1', concept: 'Allotment', line: 0, text: 'water the beans', label: 'Beans', createdAt: 1 },
+            { id: 'b2', concept: 'Kitchen', line: 1, text: 'buy flour', createdAt: 2 },
+        ])
+        // Each entry moves once: Allotment is not moved again by a later move from its new name.
+        expect(b.renameConceptInMemberLists([{ from: 'Garden', to: 'Allotment' }])).toEqual([])
+        expect(b.renameConceptInMemberLists([])).toEqual([])
+
+        a.dispose()
+        b.dispose()
+    })
+
+    it('renameConceptInMemberLists: the shared favourites and every member’s record of them follow too, so a later seed copies the new name and followShared adds nothing', async () => {
+        // ADR 0159: the shared Graph Settings favourites are no longer written by a person's own
+        // changes, but a Member who seeds later copies them, and followShared compares them with
+        // what each member last saw. Left alone, a rename would leave the dead name for the first,
+        // and read as a new favourite for the second.
+        const a = await client(createLoopbackRelay())
+        a.setMetaSettings({ favourites: ['Garden', 'Kitchen'], toolbarColor: '#336699' })
+        a.favourites('m1').seedOnce(['Garden', 'Kitchen'])
+        // The person has removed Garden from their own list.
+        a.favourites('m1').replace(['Kitchen'])
+
+        expect([...a.renameConceptInMemberLists([{ from: 'Garden', to: 'Allotment' }])].sort()).toEqual(['memberFlags:m1', 'meta'])
+        expect(a.getMeta().settings).toEqual({ favourites: ['Allotment', 'Kitchen'], toolbarColor: '#336699' })
+        expect(a.docSync(ROOT).doc.getMap('memberFlags:m1').get('sharedFavouritesSeen')).toEqual(['Allotment', 'Kitchen'])
+        // Not news to m1, so the favourite they removed does not come back under its new name.
+        expect(a.favourites('m1').followShared(['Allotment', 'Kitchen'])).toBe(false)
+        expect(a.favourites('m1').list()).toEqual(['Kitchen'])
+        // A member who seeds now copies the name the page has.
+        a.favourites('m2').seedOnce(a.getMeta().settings!.favourites as string[])
+        expect(a.favourites('m2').list()).toEqual(['Allotment', 'Kitchen'])
+        a.dispose()
+    })
+
+    it('removeBookmarksOn: every member’s bookmarks on the named pages go, and bookmarkedConcepts lists every member’s pages', async () => {
+        // ADR 0159: a page that became a Protected Document keeps no bookmark of anyone's, since
+        // each holds a line of its text in the clear.
+        const keyring = createGraphKeyring('g1')
+        const relay = createLoopbackRelay()
+        const a = await client(relay, keyring)
+        const b = await client(relay, keyring)
+        a.bookmarks('m1').apply({
+            put: [
+                { id: 'b1', concept: 'Garden', line: 0, text: 'water the beans', createdAt: 1 },
+                { id: 'b2', concept: 'Kitchen', line: 0, text: 'buy flour', createdAt: 2 },
+            ],
+            remove: [],
+        })
+        a.bookmarks('m2').apply({ put: [{ id: 'b3', concept: ' garden ', line: 1, text: 'pick the peas', createdAt: 3 }], remove: [] })
+        // Device b has only received the types, never asked for them by name.
+        await vi.waitFor(() => expect(b.docSync(ROOT).doc.share.has('bookmarks:m2')).toBe(true), { timeout: 2000 })
+        await vi.waitFor(() => expect(b.docSync(ROOT).doc.share.has('bookmarks:m1')).toBe(true), { timeout: 2000 })
+
+        expect(b.bookmarkedConcepts().map((c) => c.trim().toLowerCase()).sort()).toEqual(['garden', 'kitchen'])
+        expect([...b.removeBookmarksOn(['Garden'])].sort()).toEqual(['bookmarks:m1', 'bookmarks:m2'])
+        await vi.waitFor(() => expect(a.bookmarks('m2').list()).toEqual([]), { timeout: 2000 })
+        expect(a.bookmarks('m1').list().map((x) => x.id)).toEqual(['b2'])
+        // Nothing left on that page, and nothing named: nothing changes.
+        expect(b.removeBookmarksOn(['garden'])).toEqual([])
+        expect(b.removeBookmarksOn([])).toEqual([])
+
+        a.dispose()
+        b.dispose()
+    })
+
+    it('collects the root document’s cache row after a bookmark is removed, here or on another device, so its line text does not stay at rest', async () => {
+        // The row is merged from every saved state, which never drops deleted content, so a removed
+        // bookmark's text would otherwise stay in the unencrypted row on every device.
+        const keyring = createGraphKeyring('g1')
+        const relay = createLoopbackRelay()
+        const cacheA = await openGraphCache(`g-root-residue-a-${Math.floor(performance.now() * 1000)}`)
+        const cacheB = await openGraphCache(`g-root-residue-b-${Math.floor(performance.now() * 1000)}`)
+        const open = async (cache: GraphCache) => {
+            const gs = createGraphSync({
+                graphId: 'g1',
+                rootDocId: ROOT,
+                keyring,
+                relayUrl: 'ws://loopback/sync',
+                token: fixedSyncToken('t'),
+                cache,
+                connect: relay.connect,
+                debounceMs: 5,
+            })
+            await gs.ready()
+            return gs
+        }
+        const a = await open(cacheA)
+        const b = await open(cacheB)
+        const line = 'lift the onions before the frost'
+        const rowHolds = async (cache: GraphCache) => {
+            const row = await cache.docCache(ROOT, 'root').load()
+            return row !== null && new TextDecoder().decode(row.update).includes(line)
+        }
+
+        a.bookmarks('m1').apply({ put: [{ id: 'b1', concept: 'Garden', line: 0, text: line, createdAt: 1 }], remove: [] })
+        await vi.waitFor(async () => expect(await rowHolds(cacheA)).toBe(true), { timeout: 3000 })
+        await vi.waitFor(async () => expect(await rowHolds(cacheB)).toBe(true), { timeout: 3000 })
+
+        a.bookmarks('m1').apply({ put: [], remove: ['b1'] })
+        // Here, where it was removed, and on the device the removal reached through the relay.
+        await vi.waitFor(async () => expect(await rowHolds(cacheA)).toBe(false), { timeout: 3000 })
+        await vi.waitFor(async () => expect(await rowHolds(cacheB)).toBe(false), { timeout: 3000 })
+        // Collected, not emptied: the rest of the root document is still there, and a later save,
+        // here or there, does not bring the removed line back into the row.
+        a.bookmarks('m1').apply({ put: [{ id: 'b2', concept: 'Kitchen', line: 0, text: 'buy flour', createdAt: 2 }], remove: [] })
+        await vi.waitFor(() => expect(b.bookmarks('m1').list().map((x) => x.id)).toEqual(['b2']), { timeout: 3000 })
+        const rowHoldsFlour = async (cache: GraphCache) => {
+            const row = await cache.docCache(ROOT, 'root').load()
+            return row !== null && new TextDecoder().decode(row.update).includes('buy flour')
+        }
+        await vi.waitFor(async () => expect(await rowHoldsFlour(cacheB)).toBe(true), { timeout: 3000 })
+        expect(await rowHolds(cacheA)).toBe(false)
+        expect(await rowHolds(cacheB)).toBe(false)
+
+        a.dispose()
+        b.dispose()
+    })
+
     it('hands the graph name to publishName once caught up and on every change, never repeating one', async () => {
         // The Sync Server's name envelope (ADR 0031, amended 2026-09-17) is fed from
         // here: whoever creates the session decides where the name goes; the session decides

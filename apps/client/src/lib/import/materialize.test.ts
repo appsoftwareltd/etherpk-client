@@ -44,6 +44,7 @@ describe('materializeToFilesystem', () => {
                 src('etherpk/settings.json', '{"defaultCodeLanguage": "ts", "junk": true}'),
                 src('etherpk/quick-notes.json', '[{"id":"n1","text":"Ring the dentist","createdAt":100}]'),
                 src('etherpk/dictionary.txt', 'Kubernetes\n'),
+                src('etherpk/bookmarks.json', '[{"id":"b1","concept":"Foo","line":0,"text":"see","createdAt":100}]'),
             ],
             'etherpk',
             { onProgress },
@@ -83,6 +84,10 @@ describe('materializeToFilesystem', () => {
         expect(await notesOf()).toEqual([{ id: 'n1', text: 'Ring the dentist', createdAt: 100 }])
         await materializeToFilesystem(graph, adapter, { format: 'etherpk', reportDate: '2026-07-17' })
         expect(await notesOf()).toHaveLength(1)
+        // Bookmarks too, unioned by id (ADR 0159): the second import above added none.
+        expect(JSON.parse((await adapter.read('etherpk', 'bookmarks.json')).text)).toEqual([
+            { id: 'b1', concept: 'Foo', line: 0, text: 'see', createdAt: 100 },
+        ])
         // The Graph Dictionary too, as a union (ADR 0095): a word already held is not doubled.
         expect((await adapter.read('etherpk', 'dictionary.txt')).text).toBe('Kubernetes\n')
         const report = (await adapter.read('pages', 'Import Report 2026-07-16.md')).text
@@ -103,6 +108,86 @@ describe('materializeToFilesystem and the protection record (ADR 0093)', () => {
         const adapter = createMemoryDirectoryAdapter({ now: () => 0 })
         await materializeToFilesystem(graph, adapter, { format: 'etherpk', reportDate: '2026-09-22' })
         expect(await filesystemProtectionStore(adapter).read()).toEqual({ kind: 'missing' })
+    })
+})
+
+describe('materializeToServer and the person’s Bookmarks (ADR 0159)', () => {
+    async function graphSync() {
+        const relay = createLoopbackRelay()
+        const cache = await openGraphCache(`import-bookmarks-${Math.floor(performance.now() * 1000)}`)
+        const graph = createGraphSync({
+            graphId: 'g-bookmarks',
+            rootDocId: '018f47a0-7b5d-7cc5-b5c1-f0fbcde23004',
+            keyring: createGraphKeyring('g-bookmarks'),
+            relayUrl: 'ws://loopback/sync',
+            token: fixedSyncToken('t'),
+            cache,
+            connect: relay.connect,
+            debounceMs: 5,
+        })
+        await graph.ready()
+        return { graph, dispose: () => (graph.dispose(), cache.dispose()) }
+    }
+
+    const garden = { id: 'b1', concept: 'Garden', line: 0, text: 'water the beans', createdAt: 100 }
+    const files = () => [src('pages/Garden.md', '- water the beans'), src('etherpk/bookmarks.json', JSON.stringify([garden]))]
+
+    it('adds them to the importing member’s own list, unioned by id', async () => {
+        const converted = await convertSource(files(), 'etherpk')
+        const { graph, dispose } = await graphSync()
+        const held = { ...garden, label: 'Beans' }
+        graph.bookmarks('member-1').apply({ put: [held], remove: [] })
+        await materializeToServer(
+            { ...converted, bookmarks: [...converted.bookmarks!, { ...garden, id: 'b2', line: 1, createdAt: 200 }] },
+            { graph, assetStore: null, name: 'G', memberKey: 'member-1' },
+            { format: 'etherpk', reportDate: '2026-10-29' },
+        )
+        // The held copy is kept, the new one added, and no other member's list gains any.
+        expect(graph.bookmarks('member-1').list()).toEqual([held, { ...garden, id: 'b2', line: 1, createdAt: 200 }])
+        expect(graph.bookmarks('member-2').list()).toEqual([])
+        dispose()
+    })
+
+    it('leaves them out when it does not know whose they are', async () => {
+        const converted = await convertSource(files(), 'etherpk')
+        const { graph, dispose } = await graphSync()
+        await materializeToServer(converted, { graph, assetStore: null, name: 'G' }, { format: 'etherpk', reportDate: '2026-10-29' })
+        expect(graph.registry().size).toBe(2) // the page and the report: the import itself went ahead
+        expect([...graph.docSync('018f47a0-7b5d-7cc5-b5c1-f0fbcde23004').doc.share.keys()].filter((k) => k.startsWith('bookmarks:'))).toEqual([])
+        dispose()
+    })
+
+    const listsSource = () => [
+        src('pages/Garden.md', '- water the beans'),
+        src('etherpk/settings.json', '{"defaultCodeLanguage": "ts", "favourites": ["Garden", "Kitchen"]}'),
+        src('etherpk/quick-notes.json', '[{"id":"n1","text":"buy flour","createdAt":100}]'),
+    ]
+
+    it('puts the source’s Favourites and Quick Notes into the importing member’s own lists, not the shared ones', async () => {
+        // An Export carries the exporting person's lists (ADR 0159), so they become the lists of
+        // the person who imports it. Left in the shared settings, every Member's first open would
+        // copy them into their own list.
+        const converted = await convertSource(listsSource(), 'etherpk')
+        const { graph, dispose } = await graphSync()
+        graph.favourites('member-1').replace(['Kitchen', 'Pantry'])
+        await materializeToServer(converted, { graph, assetStore: null, name: 'G', memberKey: 'member-1' }, { format: 'etherpk', reportDate: '2026-10-29' })
+
+        // The person's list keeps what it held, in its order, and gains what it did not.
+        expect(graph.favourites('member-1').list()).toEqual(['Kitchen', 'Pantry', 'Garden'])
+        expect(graph.quickNotesOf('member-1').list()).toEqual([{ id: 'n1', text: 'buy flour', createdAt: 100 }])
+        expect(graph.getMeta().settings).toEqual({ defaultCodeLanguage: 'ts' })
+        expect(graph.quickNotes().list()).toEqual([])
+        expect(graph.favourites('member-2').list()).toEqual([])
+        dispose()
+    })
+
+    it('keeps them in the shared lists when it does not know whose they are, as before per-person lists', async () => {
+        const converted = await convertSource(listsSource(), 'etherpk')
+        const { graph, dispose } = await graphSync()
+        await materializeToServer(converted, { graph, assetStore: null, name: 'G' }, { format: 'etherpk', reportDate: '2026-10-29' })
+        expect(graph.getMeta().settings).toEqual({ defaultCodeLanguage: 'ts', favourites: ['Garden', 'Kitchen'] })
+        expect(graph.quickNotes().list()).toEqual([{ id: 'n1', text: 'buy flour', createdAt: 100 }])
+        dispose()
     })
 })
 

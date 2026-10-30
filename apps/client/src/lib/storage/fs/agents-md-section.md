@@ -27,7 +27,8 @@ pages/      Quantum Mechanics.md              a page, named by its concept
             [[Physics]] Quantum Mechanics.md  a scoped concept keeps its inner brackets
 assets/     diagram.a1b2c3d4.png              embedded images and files
 etherpk/    settings.json, quick-notes.json,  app-managed graph settings, quick notes,
-            dictionary.txt, protection.json,  the graph dictionary, key material
+            bookmarks.json, dictionary.txt,   bookmarks, the graph dictionary,
+            protection.json,                  key material
             theme-<id>.jsonc                  and website themes
 AGENTS.md                                     this file
 ```
@@ -38,7 +39,8 @@ AGENTS.md                                     this file
   so an empty one holds a `.gitkeep` file when the graph is in a git repository. Leave it there.
 - `etherpk/` is app-internal. `settings.json` holds graph settings (default image size, code
   language, favourites). `quick-notes.json` holds quick notes the user has not yet moved into a
-  journal - EtherPK rewrites it whole, so do not edit it. `dictionary.txt` is the graph dictionary:
+  journal - EtherPK rewrites it whole, so do not edit it. `bookmarks.json` holds the user's
+  bookmarks, the lines they marked to come back to. EtherPK writes it, so do not edit it. `dictionary.txt` is the graph dictionary:
   words spell check accepts in this graph, one per line, sorted. You may add a word to it (one
   per line, keeping the order) - EtherPK merges the file before it next writes it. `theme-<id>.jsonc` holds a website theme
   the user copied into the graph (templates, stylesheet and script as JSON strings, under a

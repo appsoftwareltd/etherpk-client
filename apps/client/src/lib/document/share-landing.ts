@@ -46,6 +46,12 @@ export interface DirectShareRoute {
     rootDocId: string
     keyring: GraphKeyring
     connection: SyncedGraphConnection
+    /**
+     * The account the graph's record belongs to on its Sync Server: whose own Quick Notes the
+     * share joins (ADR 0159). Absent on a record without an account scope, whose share then goes
+     * to the shared array (see QuickNoteSessionDeps.memberKey).
+     */
+    memberKey?: string
 }
 
 export type ShareRoute = DirectShareRoute | ShareHandoff
@@ -92,7 +98,8 @@ export async function routeShare(graph: GraphRecord, deps: Pick<ShareLandingDeps
         if (typeof rootDocId !== 'string' || rootDocId === '') throw new Error('The graph record names no root document.')
         const keyring = await deps.keyring(connection, graph.id)
         if (!keyring) return { kind: 'handoff', reason: 'locked' }
-        return { kind: 'direct', graphId: graph.id, rootDocId, keyring, connection }
+        const memberKey = graph.serverScope?.principalId
+        return { kind: 'direct', graphId: graph.id, rootDocId, keyring, connection, ...(memberKey ? { memberKey } : {}) }
     } catch (err) {
         return failure(err)
     }
@@ -125,6 +132,7 @@ export async function landShareDirectly(
                 relayUrl: connection.relayUrl,
                 token: connection.token,
                 signal: hooks.signal,
+                memberKey: route.memberKey,
             },
             note,
             {

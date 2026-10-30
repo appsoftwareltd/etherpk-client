@@ -91,6 +91,7 @@ describe('editor feature stack', () => {
             'editor-document',
             'on-screen',
             'line-anchor',
+            'bookmarks',
             'keep-caret-visible',
             'view-hooks',
         ])
@@ -190,6 +191,10 @@ describe('editor feature stack', () => {
         // Both answer Shift+F10 and the Menu key at the caret; spell check excludes link text, so
         // they meet only at a caret between a misspelt word and a link, where the word wins.
         before('spell-check', 'wikilink')
+    })
+
+    it('opens the line menu only where no link, asset or misspelling menu claimed the right-click', () => {
+        for (const claimant of ['wikilink', 'asset-link', 'spell-check']) before(claimant, 'bookmarks')
     })
 
     it('gives every open popover Enter and Tab before the YAML typing keys', () => {

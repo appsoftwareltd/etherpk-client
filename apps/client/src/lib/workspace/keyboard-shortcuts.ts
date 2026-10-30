@@ -19,6 +19,26 @@ import type { Keybinding } from '$lib/surface'
 
 import { findKeysAvailable } from '$lib/document/find/find-events'
 
+/** The parts of the focused element {@link focusLeavesChordFree} reads. */
+interface FocusedElement {
+    tagName?: string
+    isContentEditable?: boolean
+    closest?(selector: string): unknown
+}
+
+/**
+ * Whether the focus leaves a chord free to act on the editor's caret line: on no text field of the
+ * app's own (a bookmark's label box, the search field), where the keys belong to what is typed. An
+ * editor's text is editable too, and is where the chord is meant for.
+ */
+export function focusLeavesChordFree(active: FocusedElement | null): boolean {
+    if (!active) return true
+    if (['INPUT', 'TEXTAREA', 'SELECT'].includes(active.tagName ?? '')) return false
+    return !(active.isContentEditable && !active.closest?.('.cm-editor'))
+}
+
+const notInTextField = () => focusLeavesChordFree(typeof document === 'undefined' ? null : document.activeElement)
+
 export interface AppKeybinding extends Keybinding {
     /** What the chord does, as the dialog says it. */
     label: string
@@ -73,6 +93,9 @@ export const APP_KEYBINDINGS: AppKeybinding[] = [
     { key: 'Alt+L', command: 'layout.toggleSidebar', label: 'Show or hide the left sidebar', group: 'Sidebars' },
     { key: 'Alt+R', command: 'layout.toggleBacklinks', label: 'Show or hide the right sidebar', group: 'Sidebars' },
     // ── Editor ────────────────────────────────────────────────────────────────────────────
+    // A [[Bookmark]] on the caret's line (ADR 0159), as the VS Code Bookmarks extension binds it.
+    // Ctrl, not Cmd, on a Mac too: Cmd+Option+K opens Firefox's Web Console there.
+    { key: 'Ctrl+Alt+K', command: 'bookmarks.toggle', label: 'Bookmark the line, or remove its bookmark', group: 'Editor', when: notInTextField },
     // Spell Check is a device preference, so the chord works with no editor focused. Alt+S was
     // the left sidebar's toggle until 2026-09-18 (Alt+L now); reused for spell check on 2026-09-23.
     { key: 'Alt+S', command: 'editor.toggleSpellCheck', label: 'Turn spell check on or off (this device)', group: 'Editor' },
@@ -141,7 +164,7 @@ export const EDITOR_SHORTCUTS: ShortcutGroup[] = [
             { key: '[[', label: 'Link to a document' },
             { key: 'Alt+Enter', label: 'On a link: open the page it names' },
             { key: 'Mod+Alt+Enter', label: 'On a link: open the page in the pane to the right' },
-            { key: 'Shift+F10', label: 'On a link: its menu (Open in pane to the right, Show Backlinks, Rename…)' },
+            { key: 'Shift+F10', label: "On a link: its menu (Open in pane to the right, Show Backlinks, Rename…). Elsewhere: the line's menu (Bookmark line, Paste)" },
             { key: '#', label: 'Add a task tag (on a task line)' },
             { key: '* _ ~ = [ ( `', label: 'Over selected text: wrap it (press again to add a layer, e.g. ** or [[)' },
             { key: 'Mod+B', label: 'Bold the selection, or unbold it' },

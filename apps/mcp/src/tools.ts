@@ -919,6 +919,11 @@ export async function rename(graph: HeadlessGraph, args: RenameArgs) {
         if (error instanceof RenameUnconfirmedError) throw new ToolError('unconfirmed_documents', error.message)
         throw error
     }
+    // Every Member's Favourites and Bookmarks follow each concept the rename moved, as the Client's
+    // rename moves them (ADR 0159): the scoped concepts first and the renamed one last, so an entry
+    // moves once even when the new name is one the old name scopes. Settled with the rename below.
+    const moves = [...plan.cascade.map((step) => ({ from: step.from, to: step.into })), { from: subject, to: result.concept }]
+    graph.store.renameInMemberLists(moves.filter((move) => move.from !== move.to))
     await settle(graph)
     return {
         concept: result.concept,

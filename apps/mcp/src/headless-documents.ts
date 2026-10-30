@@ -74,6 +74,14 @@ export interface HeadlessDocuments {
      */
     renamePage(from: string, to: string, options: RenameOptions): Promise<RenameResult>
     /**
+     * After a rename, move the concepts it moved in every Member's own lists (ADR 0159): their
+     * Favourites and Bookmarks, the shared favourites and each Member's record of them, as the
+     * Client's rename does. The renaming client updates them all, since a Member whose devices
+     * never saw the old name cannot follow it. Durable after the next `settle`. A folder has no
+     * Members and keeps its lists in files only the app writes: nothing happens there.
+     */
+    renameInMemberLists(moves: readonly { from: string; to: string }[]): void
+    /**
      * The body of every document this device can vouch for right now, by concept - a protected
      * document left out, and on a synced graph a document whose text could not be confirmed
      * (it is named in `unconfirmed`). What a whole-graph read wants: the asset references, not

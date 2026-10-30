@@ -22,7 +22,7 @@
     import { viewKey, type ViewRef, type ViewVisibility } from '$lib/layout'
     import { NOTICE_AUTO_DISMISS_MS } from '$lib/notice-dismissal'
     import { registerPositionAdapter, tryGetActiveReadingPositions } from '$lib/navigation'
-    import { openContextMenu, tryGetActiveCommandRegistry, tryGetActiveEventBus } from '$lib/surface'
+    import { type EditorLine, openContextMenu, tryGetActiveCommandRegistry, tryGetActiveEventBus } from '$lib/surface'
     import { DOCUMENT_OPEN_TO_THE_RIGHT } from '../commands/document-commands'
     import { iconSvg } from '$lib/surface/icons'
 
@@ -378,6 +378,14 @@
     let focusWhenSeeded = false
     let editor: DocumentEditor | undefined
     let doc: EditorDocument | undefined
+
+    /** The editor line under a point, for a menu raised on something within the line. */
+    function editorLineAt(x: number, y: number): EditorLine | undefined {
+        const cm = editor?.view
+        const pos = cm?.posAtCoords({ x, y })
+        if (!cm || pos === null || pos === undefined) return undefined
+        return { concept: view.target, panelId, line: cm.state.doc.lineAt(pos).number }
+    }
 
     /**
      * The graph's lock control, for the pane's own Lock button. Raw and re-read on every lock
@@ -794,13 +802,18 @@
      * The line is converted here because only the editor knows where a line starts, and it is
      * clamped because the document may have changed since the index recorded it.
      */
-    function revealLine(line: number, align: RevealAlign = 'center'): void {
+    function revealLine(line: number | { documentLine: number }, align: RevealAlign = 'center'): void {
         const cm = editor?.view
         if (!cm) return
         // The line's START; `caretClamp` (a transaction filter, so programmatic moves go
         // through it too) then nudges it right to the content column, past a bullet marker.
         // Scrolled into view rather than to a remembered offset — see revealEditorPosition.
-        const from = cm.state.doc.line(documentLine(cm, line)).from
+        // A line counted from the file's start (a Bookmark's) needs no frontmatter offset.
+        const number =
+            typeof line === 'number'
+                ? documentLine(cm, line)
+                : Math.min(Math.max(line.documentLine + 1, 1), cm.state.doc.lines)
+        const from = cm.state.doc.line(number).from
         // On a map's lines the caret goes beside the map and the line still comes into view, so
         // Show in document finds the map drawn with its place chosen, never the map's text.
         revealEditorPosition(cm, caretBesideFence(cm.state, from), align, from)
@@ -1305,8 +1318,10 @@
                 // question. A right-click or long-press on one raises its Context Menu.
                 wikilinksEdited: (edits) =>
                     currentWorkspaceServices()?.wikilinkRename?.edited(view.target, edits),
+                // The link's menu carries the line it is on, so its rows include the line's
+                // [[Bookmark]] rows (ADR 0159).
                 wikilinkContextMenu: (concept, x, y) =>
-                    openContextMenu({ kind: 'wikilink', concept, panelId }, x, y),
+                    openContextMenu({ kind: 'wikilink', concept, panelId, line: editorLineAt(x, y) }, x, y),
                 onFocus(cmView) {
                     // Focusing this editor makes its document and view the active ones.
                     setActiveDocument(view.target)
@@ -1350,6 +1365,17 @@
                 },
                 // Which document this editor shows, and where, for a Command holding only the view.
                 document: { concept: view.target, panelId },
+                bookmarks: {
+                    lineMenu: (line, x, y) =>
+                        openContextMenu({ kind: 'line', concept: view.target, panelId, line }, x, y),
+                    draft: draft !== undefined,
+                    // A bookmark's line is held as a Search result's is, so the tab's activation or
+                    // the text arriving does not put back the line the open first asked for.
+                    reveal: (to) =>
+                        to === 'top'
+                            ? heldReveal.hold('top', { align: 'start' })
+                            : heldReveal.hold({ documentLine: to.line - 1 }),
+                },
                 // A tab restored behind another starts out of sight, so a map in it never draws.
                 onScreen: () => visibility?.onScreen ?? true,
             })],

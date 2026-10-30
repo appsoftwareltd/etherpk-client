@@ -122,6 +122,15 @@ export interface ServerMaterializeDeps {
      * Import Report says the files they embed will not display.
      */
     protectionKey?: Uint8Array | null
+    /**
+     * The importing person's member key: whose own lists the source's [[Bookmark]]s,
+     * [[Favourite]]s and [[Quick Note]]s join (ADR 0159). Absent when the caller does not know it.
+     * The bookmarks are then left out, since a bookmark belongs to one person and there is no list
+     * to put them in that would not be someone else's or no one's. Favourites and Quick Notes
+     * then go to the shared lists, as before per-person lists, which the first open copies or
+     * shows to the Owner.
+     */
+    memberKey?: string
     newDocId?: () => string
 }
 
@@ -346,13 +355,31 @@ export async function materializeToServer(
 
     deps.graph.setMetaName(deps.name)
     if (converted.settings) {
-        deps.graph.setMetaSettings(sanitizeGraphSettings(converted.settings) as Record<string, unknown>)
+        const settings = sanitizeGraphSettings(converted.settings)
+        if (deps.memberKey && settings.favourites) {
+            // The source's favourites are the exporting person's (ADR 0159), so they join the
+            // importing person's own list, after what it holds, and stay out of the shared
+            // settings: left there, every Member's first open would copy them into their own list.
+            const favourites = deps.graph.favourites(deps.memberKey)
+            favourites.replace([...favourites.list(), ...settings.favourites])
+            delete settings.favourites
+        }
+        deps.graph.setMetaSettings(settings as Record<string, unknown>)
     }
     if (converted.quickNotes?.length) {
-        // By id, so a note the graph already holds is not added twice (ADR 0078).
-        const notes = deps.graph.quickNotes()
+        // By id, so a note the graph already holds is not added twice (ADR 0078). Into the
+        // importing person's own notes when they are known (ADR 0159), else the shared array.
+        const notes = deps.memberKey ? deps.graph.quickNotesOf(deps.memberKey) : deps.graph.quickNotes()
         const held = new Set(notes.list().map((n) => n.id))
         for (const note of converted.quickNotes) if (!held.has(note.id)) notes.add(note)
+    }
+    if (converted.bookmarks?.length && deps.memberKey) {
+        // By id into the importing person's own list (ADR 0159): a bookmark that list already
+        // holds keeps its own anchor and label, so importing the same export twice adds nothing.
+        // Without a member key they are skipped (see ServerMaterializeDeps.memberKey).
+        const bookmarks = deps.graph.bookmarks(deps.memberKey)
+        const held = new Set(bookmarks.list().map((b) => b.id))
+        bookmarks.apply({ put: converted.bookmarks.filter((b) => !held.has(b.id)), remove: [] })
     }
     if (converted.spellingDictionary?.length) {
         // A set: a word the graph already holds is simply set again (ADR 0095).

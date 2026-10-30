@@ -38,6 +38,7 @@
     import JournalCalendar from "./JournalCalendar.svelte";
     import { FAVOURITE_MOVE } from "$lib/document/commands/document-commands";
     import { subscribeFavourites } from "$lib/document/favourites";
+    import BookmarksSection from "./BookmarksSection.svelte";
     import { getActiveLayoutController, type ViewRef } from "$lib/layout";
     import { prefersMobileLayout } from "$lib/layout/breakpoint";
     import { getActiveRecents } from "$lib/navigation/active-recents";
@@ -819,6 +820,9 @@
             </ul>
         {/if}
     </section>
+
+    <!-- ── Bookmarks ──────────────────────────────────────────────────────────── -->
+    <BookmarksSection />
 
     <!-- ── Recents ────────────────────────────────────────────────────────────── -->
     <section>

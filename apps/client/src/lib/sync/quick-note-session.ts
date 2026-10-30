@@ -2,7 +2,7 @@
  * One [[Quick Note]] written to a synced graph over a short-lived engine session, from outside
  * an open workspace: the [[Share Target]]'s direct write (ADR 0087, amended 2026-09-21). The
  * shape of `rename-graph.ts`'s meta session with an append instead of a meta write, and with
- * weaker demands: an append to the `quickNotes` Y.Array needs neither the relay's history nor
+ * weaker demands: an append to the person's Quick Notes Y.Array needs neither the relay's history nor
  * the root doc's catch-up, because a CRDT insert merges with whatever the relay holds.
  *
  * Three claims, each made only once the engine's contract supports it:
@@ -42,6 +42,12 @@ export interface QuickNoteSessionDeps {
     debounceMs?: number
     /** Ends the wait for the relay early (after the note is saved); the session then disposes. */
     signal?: AbortSignal
+    /**
+     * The sharing person's member key: the note joins their own `quickNotes:<memberKey>` array
+     * (ADR 0159). Absent when the graph's record names no account, and then the note goes to the
+     * shared `quickNotes` array, which the graph's Owner sees, rather than to nobody's list.
+     */
+    memberKey?: string
 }
 
 export interface QuickNoteDelivery {
@@ -73,7 +79,8 @@ export async function addQuickNoteOverSession(
     try {
         // The root doc hydrated from the cache is all an append needs; no catch-up.
         await graph.ready()
-        graph.quickNotes().add(note)
+        const notes = deps.memberKey ? graph.quickNotesOf(deps.memberKey) : graph.quickNotes()
+        notes.add(note)
         // Past the append debounce and into the durable outbox. If the socket is not open yet
         // the bytes go nowhere for now, and the engine retransmits the outbox head on open.
         await graph.flushAll()

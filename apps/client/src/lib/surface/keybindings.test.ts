@@ -87,6 +87,14 @@ describe('eventMatches', () => {
         expect(eventMatches('Mod+Alt+F', ev({ key: '∂', code: 'KeyD', metaKey: true, altKey: true }))).toBe(false)
         expect(eventMatches('Alt+J', ev({ key: '∆', code: 'KeyJ', altKey: true }))).toBe(false)
     })
+
+    // Ctrl+Option+K on a Mac reports "˚". AltGr on a Windows layout reports Ctrl and Alt too, and
+    // there it types a character (AltGr+K is "ķ" on a Latvian layout), so AltGr keeps typing.
+    it('matches a Ctrl and Alt chord by the key pressed, unless AltGr is typing a character', () => {
+        expect(eventMatches('Ctrl+Alt+K', ev({ key: '˚', code: 'KeyK', ctrlKey: true, altKey: true }))).toBe(true)
+        expect(eventMatches('Ctrl+Alt+K', ev({ key: 'k', code: 'KeyK', ctrlKey: true, altKey: true }))).toBe(true)
+        expect(eventMatches('Ctrl+Alt+K', ev({ key: 'ķ', code: 'KeyK', ctrlKey: true, altKey: true, altGraph: true }))).toBe(false)
+    })
 })
 
 describe('attachKeybindings', () => {

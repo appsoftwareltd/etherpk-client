@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+    revealDocumentLine,
     frontmatterLineOffset,
     resetReveal,
     revealLine,
@@ -90,5 +91,12 @@ describe('revealTop', () => {
         expect(takeReveal('2026-03-10')).toEqual({ target: '2026-03-10', line: 'top' })
         expect(takeReveal('2026-03-10')).toBeNull()
         off()
+    })
+})
+
+describe('a reveal counted from the start of the file', () => {
+    it('carries the line as a document line, for a Bookmark', () => {
+        revealDocumentLine('Garden', 4)
+        expect(takeReveal('Garden')).toEqual({ target: 'Garden', line: { documentLine: 4 } })
     })
 })

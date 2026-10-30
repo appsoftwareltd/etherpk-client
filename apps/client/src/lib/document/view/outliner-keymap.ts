@@ -30,6 +30,7 @@ import {
     formOneOpeners,
     healAfterRangeDelete,
     healOrphanIndent,
+    healSpan,
     opaqueLineFlags,
     isBulletLine,
     isHeadingLine,
@@ -1121,7 +1122,9 @@ const rangeDeleteHeal: StateCommand = (view) => {
     const first = state.doc.lineAt(from).number - 1
     lines = applyLeaveListCuts(lines, cutsAfterBulletIntoProse(text.split('\n'), first, toLine.number - 1, sel.to - toLine.from), first - (toLine.number - 1))
     // Drop the blank artifact at the join and heal orphans across the caret's group (shared with cut).
-    ;({ lines, caretLine } = healAfterRangeDelete(lines, caretLine))
+    // A range from one line's start to a later line's start leaves no artifact: the line after it, as it was.
+    const wholeLines = from === state.doc.lineAt(from).from && sel.to === toLine.from
+    ;({ lines, caretLine } = healAfterRangeDelete(lines, caretLine, wholeLines))
 
     // Caret lands at the end of the deleted block's previous sibling (same indent) or parent (shallower)
     // — skipping the sibling's own descendants — or at the group start if the first block line was deleted.
@@ -1220,9 +1223,8 @@ function enterList(view: Target, marker: string): void {
     const merged = lines.slice()
     merged[index] = next
     const blocks = fencedBlocks(merged)
-    const inFence = opaqueLineFlags(merged, blocks)
-    let groupEnd = index
-    while (groupEnd < merged.length - 1 && (inFence[groupEnd + 1] || (merged[groupEnd + 1].trim() !== '' && !isHeadingLine(merged[groupEnd + 1])))) groupEnd++
+    // To a bare blank line or a heading, as a range delete heals: an indented soft line is inside its block.
+    const groupEnd = healSpan(merged, index, blocks).end
     // The heal starts at the new block, whose own ancestors sit above the range: it may keep its indent.
     const healed = healOrphanIndent(merged, index, groupEnd, blocks, indent)
     const changes: ChangeSpec[] = [{ from: lineFrom, to: lineFrom + line.length, insert: next }]

@@ -17,7 +17,7 @@ import { getActiveLayoutController, type LayoutController, type ViewRef } from '
 
 import { getActiveGraphIndex } from './backlinks'
 import { conceptKey } from './backlinks/backlink-index'
-import { revealLine, revealTop } from './reveal'
+import { revealDocumentLine, revealLine, revealTop } from './reveal'
 
 /** True when the index knows of no document for this concept (→ missing styling). */
 export function conceptIsMissing(concept: string): boolean {
@@ -83,6 +83,17 @@ export function openConceptAtLine(concept: string, line: number, sourcePanelId?:
     const target = canonicalConceptName(concept)
     if (!tryOpen(target, sourcePanelId)) return
     revealLine(target, line)
+}
+
+/**
+ * Open a concept with its editor showing the 0-based `line` counted from the very start of the
+ * file, frontmatter included: a [[Bookmark]]'s line. Held over the Reading Position the activation
+ * would restore, as `openConceptAtLine` is.
+ */
+export function openConceptAtDocumentLine(concept: string, line: number, sourcePanelId?: string): void {
+    const target = canonicalConceptName(concept)
+    if (!tryOpen(target, sourcePanelId)) return
+    revealDocumentLine(target, line)
 }
 
 /**

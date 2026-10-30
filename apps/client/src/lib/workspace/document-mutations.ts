@@ -128,12 +128,30 @@ interface DocumentMutationRecents {
     rename(from: string, to: string): void
 }
 
+/** The person's lists that follow a rename through their own writes. */
+export type RenamedList = 'favourites' | 'bookmarks'
+
 export interface DocumentMutationDependencies {
     store(): DocumentMutationStore | undefined
     index(): DocumentMutationIndex | undefined
     layout(): DocumentMutationLayout | undefined
     recents(): DocumentMutationRecents | null
     renameFavourite(from: string, to: string): Promise<void>
+    /** A [[Bookmark]] follows its document through a rename, as a favourite does (ADR 0159). */
+    renameBookmarks?(from: string, to: string): Promise<void>
+    /**
+     * One of the person's lists could not follow a rename: its write was refused (a folder graph's
+     * file could not be written, say). Told once per list per rename. Everything else the rename
+     * does still happens, since the document itself has already moved. Absent, it is logged.
+     */
+    listUpdateFailed?(list: RenamedList, error: unknown): void
+    /**
+     * A rename made on this Client: rewrite the moved concepts in every Member's own lists on a
+     * synced graph (ADR 0159), in the order given. Not called when following a rename made
+     * elsewhere: the Client that made it did this, and each of the person's devices follows the
+     * rename for its own list.
+     */
+    renameInMemberLists?(moves: readonly { from: string; to: string }[]): void
     /**
      * Whether an open View of `kind` is about a concept and follows it through a rename: a kind
      * registered with `conceptTarget`, a Kanban Board or a Map View.
@@ -258,6 +276,31 @@ export function createDocumentMutationController(dependencies: DocumentMutationD
     }
 
     /**
+     * Move the person's Favourites and Bookmarks along `moves`, in order. A write that is refused is
+     * reported once per list (`listUpdateFailed`), and every other move is still made, in both
+     * lists: by now the document has been renamed, and a list that could not follow must not leave
+     * the rest of the rename (open tabs, recents, other Members' lists, extensions) undone.
+     */
+    async function moveLists(moves: readonly { from: string; to: string }[]): Promise<void> {
+        const failed = new Map<RenamedList, unknown>()
+        const write = async (list: RenamedList, run: () => Promise<void> | undefined) => {
+            try {
+                await run()
+            } catch (error) {
+                if (!failed.has(list)) failed.set(list, error)
+            }
+        }
+        for (const { from, to } of moves) {
+            await write('favourites', () => dependencies.renameFavourite(from, to))
+            await write('bookmarks', () => dependencies.renameBookmarks?.(from, to))
+        }
+        for (const [list, error] of failed) {
+            if (dependencies.listUpdateFailed) dependencies.listUpdateFailed(list, error)
+            else console.warn(`[rename] the ${list} did not follow the rename`, error)
+        }
+    }
+
+    /**
      * Report each concept in `moves` that moved, once each, then `from` itself as the last
      * (`conceptRenamed`). `moves` may name a concept twice, in any case, or name `from`.
      */
@@ -333,18 +376,29 @@ export function createDocumentMutationController(dependencies: DocumentMutationD
             // 2026-09-20). Without an index the store reads every document instead.
             const referencing = strategy === 'rewrite' ? await referencingDocuments(concept) : undefined
             const result = await store.renamePage(concept, next, { strategy, referencing })
-            await dependencies.renameFavourite(concept, result.concept)
+            const keyChanged = conceptKey(result.concept) !== conceptKey(concept)
+            const renamedTo = new Map<string, string>([[concept, result.concept]])
+            if (keyChanged) {
+                for (const step of cascadeFor(froms, concept, result.concept)) renamedTo.set(step.from, step.to)
+                // A cascaded document that landed on another document's alias lives on under THAT
+                // document's title; the plan knows (`into`), and can be trusted when it is the one
+                // the result came from rather than a stale preview.
+                if (plan && conceptKey(plan.direct.into) === conceptKey(result.concept)) {
+                    for (const step of steps) if (step.into !== step.to) renamedTo.set(step.from, step.into)
+                }
+            }
+            // Favourites and bookmarks follow every document the rename moved, the scoped ones
+            // first and the renamed one last, the order `reportMoves` uses: applied in turn, each
+            // entry moves once even when the new name is one the old name scopes.
+            const listMoves = [...renamedTo]
+                .filter(([from, to]) => from !== concept && from !== to)
+                .map(([from, to]) => ({ from, to }))
+            listMoves.push({ from: concept, to: result.concept })
+            await moveLists(listMoves)
+            dependencies.renameInMemberLists?.(listMoves)
             dependencies.recents()?.rename(concept, result.concept)
 
-            if (conceptKey(result.concept) === conceptKey(concept)) return result
-            const renamedTo = new Map<string, string>([[concept, result.concept]])
-            for (const step of cascadeFor(froms, concept, result.concept)) renamedTo.set(step.from, step.to)
-            // A cascaded document that landed on another document's alias lives on under THAT
-            // document's title; the plan knows (`into`), and can be trusted when it is the one
-            // the result came from rather than a stale preview.
-            if (plan && conceptKey(plan.direct.into) === conceptKey(result.concept)) {
-                for (const step of steps) if (step.into !== step.to) renamedTo.set(step.from, step.into)
-            }
+            if (!keyChanged) return result
             for (const entry of state) {
                 const to = renamedTo.get(entry.from)
                 if (!to || to === entry.from) continue
@@ -395,7 +449,8 @@ export function createDocumentMutationController(dependencies: DocumentMutationD
             reportMoves([...moves.map((step) => [step.from, step.to] as const), ...conceptViews.map((view) => [view.target, moved(view.target)] as const)], before, after)
             if (layout) moveConceptViews(layout, conceptViews, moved)
             dependencies.recents()?.rename(before, after)
-            return dependencies.renameFavourite(before, after)
+            dependencies.renameInMemberLists?.([{ from: before, to: after }])
+            return moveLists([{ from: before, to: after }])
         },
 
         /**
@@ -420,7 +475,7 @@ export function createDocumentMutationController(dependencies: DocumentMutationD
             if (from !== to) dependencies.conceptRenamed?.(from, to)
             if (layout) moveConceptViews(layout, conceptViews, (target) => (conceptKey(target) === conceptKey(from) ? to : undefined))
             dependencies.recents()?.rename(from, to)
-            await dependencies.renameFavourite(from, to)
+            await moveLists([{ from, to }])
         },
     }
 }

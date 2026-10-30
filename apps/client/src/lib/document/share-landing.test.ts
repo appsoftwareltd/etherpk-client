@@ -20,6 +20,8 @@ const connection = {
 const synced: GraphRecord = { id: 'g1', name: 'Synced', backend: 'server', createdAt: 1, handle: { rootDocId: 'root-1' } }
 const folder: GraphRecord = { id: 'f1', name: 'Folder', backend: 'filesystem', createdAt: 1, handle: {} }
 const direct: DirectShareRoute = { kind: 'direct', graphId: 'g1', rootDocId: 'root-1', keyring, connection }
+/** A synced record that names the account it belongs to, as every record from the Graphs page does. */
+const scoped: GraphRecord = { ...synced, serverScope: { serverOrigin: 'https://sync.example.com', principalId: 'member-1' } }
 
 function deps(overrides: Partial<ShareLandingDeps> = {}): ShareLandingDeps & { sessions: QuickNoteSessionDeps[]; keyringReads: number } {
     const sessions: QuickNoteSessionDeps[] = []
@@ -59,6 +61,10 @@ describe('routeShare: how a share to this graph would land, worked out before Ad
         expect(await routeShare(synced, deps())).toEqual(direct)
     })
 
+    it('names the person the record belongs to, whose own Quick Notes the share joins (ADR 0159)', async () => {
+        expect(await routeShare(scoped, deps())).toEqual({ ...direct, memberKey: 'member-1' })
+    })
+
     it('hands over naming the failure when the keys cannot be read', async () => {
         const failing = deps({
             keyring: async () => {
@@ -94,6 +100,14 @@ describe('landShareDirectly: the direct write over a resolved route', () => {
         expect(typeof d.sessions[0].token).toBe('function')
         // The keys were read when the route was worked out, not again at Add.
         expect(d.keyringReads).toBe(0)
+    })
+
+    it('hands the session the person’s member key, and none when the route has none, so the note joins the shared array', async () => {
+        const d = deps()
+        await landShareDirectly({ ...direct, memberKey: 'member-1' }, note, d)
+        await landShareDirectly(direct, note, d)
+        expect(d.sessions[0].memberKey).toBe('member-1')
+        expect(d.sessions[1].memberKey).toBeUndefined()
     })
 
     it("hands the caller's abort signal to the session, so Open graph can end the sync wait", async () => {

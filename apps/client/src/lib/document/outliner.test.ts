@@ -25,7 +25,9 @@ import {
     indentBlock,
     keepsOutline,
     groupBounds,
+    healAfterRangeDelete,
     healOrphanIndent,
+    healSpan,
     isBulletLine,
     isHeadingLine,
     isMergeableSource,
@@ -473,6 +475,43 @@ describe('treeRootIndex', () => {
         expect(treeRootIndex(lines, 3)).toBe(0)
         expect(treeRootIndex(lines, 4)).toBe(4)
         expect(treeRootIndex(lines, 6)).toBe(6) // a group whose first bullet is indented is its own root
+    })
+})
+
+describe('the heals read whitespace-only lines as the outline walk does (indent decides, ADR 0021)', () => {
+    it('healSpan ends at a bare blank line or a heading, not at an indented soft line or a fence’s own blank line', () => {
+        const lines = L('- a\n  - b\n    \n    soft\n\n- c\n## H\n- d')
+        expect(healSpan(lines, 1)).toEqual({ start: 0, end: 3 })
+        expect(healSpan(lines, 5)).toEqual({ start: 5, end: 5 })
+        expect(healSpan(L('- a\n  ```\n\n  ```\n  - b'), 0)).toEqual({ start: 0, end: 4 })
+    })
+    it('healOrphanIndent ends every branch at a bare blank line, as at a heading', () => {
+        expect(healOrphanIndent(L('- a\n\n    - b'), 0, 2)).toEqual(L('- a\n\n- b'))
+    })
+    it('healOrphanIndent moves an indented soft line with its bullet, and reads it as closing the branches it is not deeper than', () => {
+        expect(healOrphanIndent(L('- a\n      - b\n        \n        soft\n      - c'), 0, 4)).toEqual(L('- a\n  - b\n    \n    soft\n  - c'))
+        // Short of b's text, the soft line is a's: the bullet after it is a's child too, on the grid.
+        expect(healOrphanIndent(L('- a\n  - b\n  \n    - c'), 0, 3)).toEqual(L('- a\n  - b\n  \n  - c'))
+    })
+    it('healAfterRangeDelete heals only the group above a bare blank line or a heading at the deletion point', () => {
+        expect(healAfterRangeDelete(L('- a\n\n\n  p\n    - b'), 1)).toEqual({ lines: L('- a\n\n  p\n    - b'), caretLine: 1 })
+        expect(healAfterRangeDelete(L('\n\n  p\n    - b'), 0)).toEqual({ lines: L('\n  p\n    - b'), caretLine: 0 })
+        expect(healAfterRangeDelete(L('- a\n    - x\n\n## H\n    - b'), 2)).toEqual({ lines: L('- a\n  - x\n## H\n    - b'), caretLine: 2 })
+    })
+    it('healAfterRangeDelete heals after a heading the deletion started in, its blocks a group of their own', () => {
+        expect(healAfterRangeDelete(L('# Garden\n  - check the soil'), 0)).toEqual({ lines: L('# Garden\n- check the soil'), caretLine: 0 })
+    })
+    it('healAfterRangeDelete keeps the line after whole lines deleted, a blank one included', () => {
+        expect(healAfterRangeDelete(L('- a\n\n  note\n    - b'), 1, true)).toEqual({ lines: L('- a\n\n  note\n    - b'), caretLine: 1 })
+        expect(healAfterRangeDelete(L('- a\n      - b'), 1, true)).toEqual({ lines: L('- a\n  - b'), caretLine: 1 })
+    })
+    it('healOrphanIndent moves a form-2 block with the bullet whose content column it reaches, not the last bullet healed', () => {
+        expect(healOrphanIndent(L('- a\n      - b\n  ```\n  x\n  ```'), 0, 4)).toEqual(L('- a\n  - b\n  ```\n  x\n  ```'))
+        expect(healOrphanIndent(L('- a\n      - b\n  \n  ```\n    x\n  ```'), 0, 5)).toEqual(L('- a\n  - b\n  \n  ```\n    x\n  ```'))
+    })
+    it('healOrphanIndent moves a blank line as its nearest open bullet moves, wherever its column', () => {
+        // Short of b's text, the blank line still closes c and is b's: x after it stays b's soft line.
+        expect(healOrphanIndent(L('- a\n      - b\n          - c\n       \n          x'), 0, 4)).toEqual(L('- a\n  - b\n    - c\n   \n      x'))
     })
 })
 

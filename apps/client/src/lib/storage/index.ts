@@ -59,6 +59,7 @@ export {
     writeGraphSettings,
 } from './fs/graph-settings'
 export { QUICK_NOTES_FILE, quickNotesFileText, readQuickNotes, writeQuickNotes } from './fs/quick-notes-file'
+export { BOOKMARKS_FILE, bookmarksFileText, readBookmarks, writeBookmarks } from './fs/bookmarks-file'
 
 // The Asset store (binary uploads under assets/).
 export {

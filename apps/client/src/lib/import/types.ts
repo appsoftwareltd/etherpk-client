@@ -8,6 +8,7 @@
  */
 
 import type { QuickNote } from '$lib/document/quick-notes'
+import type { Bookmark } from '$lib/document/bookmarks/bookmarks'
 import type { GraphTheme } from '$lib/document/publish/theme/graph-theme'
 import type { ProtectionRecord } from '$lib/crypto'
 
@@ -102,6 +103,11 @@ export interface ConvertedGraph {
     settings?: Record<string, unknown>
     /** [[Quick Note]]s carried from an EtherPK source's `etherpk/quick-notes.json`, when present (ADR 0078). */
     quickNotes?: QuickNote[]
+    /**
+     * [[Bookmark]]s carried from an EtherPK source's `etherpk/bookmarks.json`, when present
+     * (ADR 0159): the bookmarks of the person whose folder or [[Local Mirror]] it was.
+     */
+    bookmarks?: Bookmark[]
     /** The [[Graph Dictionary]] carried from an EtherPK source's `etherpk/dictionary.txt`, when present (ADR 0095). */
     spellingDictionary?: string[]
     /** [[Theme]]s carried from an EtherPK source's `etherpk/theme-<id>.jsonc` files, when present (ADR 0082). */

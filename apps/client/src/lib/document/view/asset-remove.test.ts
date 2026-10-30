@@ -39,6 +39,12 @@ describe('removeAssetReference', () => {
         expect(remove(doc, IMG, 1)).toBe('- child\n  - grandchild')
     })
 
+    it('keeps a blank line after the image, and the group it ends', () => {
+        // The line after the image is one that was there, not an artifact of a join: taking it would join
+        // the two groups and pull the second under the first.
+        expect(remove(`¦- one\n- ![chart](${IMG})\n\n  note\n    - three`, IMG, 2)).toBe('- one\n\n  note\n    - three')
+    })
+
     it('removes a last-line image without leaving a trailing blank line', () => {
         expect(remove(`¦Before\n![chart](${IMG})`, IMG, 2)).toBe('Before')
     })

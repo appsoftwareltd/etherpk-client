@@ -2,11 +2,12 @@ import { afterEach, describe, expect, it } from 'vitest'
 
 import { createGraphKeyring } from '$lib/crypto'
 import { createLoopbackRelay } from '$lib/sync/loopback-relay'
+import { openGraphCache } from '$lib/sync/local-cache'
 import { fixedSyncToken } from '$lib/sync/sync-token'
-import type { TransportSocket } from '$lib/sync/graph-sync'
+import { createGraphSync, type TransportSocket } from '$lib/sync/graph-sync'
 
 import { openHeadlessGraph, type HeadlessGraph } from './headless-graph'
-import { editDocument, listDocuments, search } from './tools'
+import { createPage, editDocument, listDocuments, rename, search } from './tools'
 
 /**
  * A running [[Headless Client]] follows the graph it serves: what another device writes -
@@ -104,4 +105,46 @@ describe('a write the Sync Server refuses', () => {
         // Refused is an answer: the tool does not sit out the ten-second stall first.
         expect(Date.now() - started).toBeLessThan(5_000)
     }, 20_000)
+})
+
+describe('a rename by the Headless Client', () => {
+    it('moves every Member’s own favourites and bookmarks, and the shared favourites, as the Client’s rename does (ADR 0159)', async () => {
+        const relay = createLoopbackRelay()
+        const keyring = createGraphKeyring('g-rename-lists')
+        const graphId = `g-rename-lists-${Math.floor(performance.now() * 1000)}`
+        // A person's Client over the same graph, with a Local Cache of its own: it holds the
+        // members' lists before the agent starts, and reads them back after the rename.
+        const browser = createGraphSync({
+            graphId,
+            rootDocId: ROOT,
+            keyring,
+            relayUrl: 'ws://loopback/sync',
+            token: fixedSyncToken('t'),
+            cache: await openGraphCache(`${graphId}/browser`),
+            connect: relay.connect,
+            debounceMs: 5,
+        })
+        try {
+            await browser.ready()
+            browser.setMetaSettings({ favourites: ['Garden'] })
+            browser.favourites('m1').seedOnce(['Garden'])
+            browser.favourites('m1').replace(['Garden', 'Kitchen'])
+            browser.bookmarks('m2').apply({ put: [{ id: 'b1', concept: 'Garden', line: 0, text: 'water the beans', createdAt: 1 }], remove: [] })
+            await browser.flushAll()
+            expect((await browser.awaitAcked()).settled).toBe(true)
+
+            const agent = await openHeadlessGraph({ graphId, rootDocId: ROOT, keyring, relayUrl: 'ws://loopback/sync', token: fixedSyncToken('t'), presenceName: 'Agent', connect: relay.connect, localCacheName: `${graphId}/agent` })
+            open.push(agent)
+            await createPage(agent, { title: 'Garden', text: '- water the beans' })
+            await rename(agent, { from: 'Garden', to: 'Allotment' })
+
+            await until('the members’ lists follow the rename', () => browser.favourites('m1').list().join() === 'Allotment,Kitchen')
+            expect(browser.bookmarks('m2').list().map((b) => b.concept)).toEqual(['Allotment'])
+            expect(browser.getMeta().settings?.favourites).toEqual(['Allotment'])
+            // Each member's record of the shared list moves with it, so the new name is no news.
+            expect(browser.favourites('m1').followShared(['Allotment'])).toBe(false)
+        } finally {
+            browser.dispose()
+        }
+    }, 30_000)
 })

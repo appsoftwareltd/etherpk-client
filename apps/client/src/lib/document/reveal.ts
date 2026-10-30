@@ -18,10 +18,11 @@
 import { frontmatterSpan } from '$lib/storage/fs/frontmatter-span'
 
 /**
- * Where a reveal lands: a 0-based body line, or `'top'`, the document scrolled to its very top with
- * the caret on the first line of its body.
+ * Where a reveal lands: a 0-based body line, `'top'` (the document scrolled to its very top with the
+ * caret on the first line of its body), or a 0-based line counted from the very start of the file,
+ * frontmatter included, as a [[Bookmark]] counts it.
  */
-export type RevealTo = number | 'top'
+export type RevealTo = number | 'top' | { documentLine: number }
 
 export interface RevealRequest {
     /** The document's concept, as the ViewRef target spells it. */
@@ -51,6 +52,14 @@ function announce(request: RevealRequest): void {
  */
 export function revealLine(target: string, line: number): void {
     announce({ target, line })
+}
+
+/**
+ * Ask for `target` to show the 0-based `line` counted from the start of the file, frontmatter
+ * included: a [[Bookmark]]'s line. The caller opens the View separately, as for `revealLine`.
+ */
+export function revealDocumentLine(target: string, line: number): void {
+    announce({ target, line: { documentLine: line } })
 }
 
 /**

@@ -22,14 +22,19 @@ function neverOpens(): TransportSocket {
 }
 
 /** What a second device sees of the graph: its quick notes after catching up with the relay. */
-async function notesOnAnotherDevice(relay: ReturnType<typeof createLoopbackRelay>, graphId: string, keyring: ReturnType<typeof createGraphKeyring>) {
+async function notesOnAnotherDevice(
+    relay: ReturnType<typeof createLoopbackRelay>,
+    graphId: string,
+    keyring: ReturnType<typeof createGraphKeyring>,
+    memberKey?: string,
+) {
     const cache = await openGraphCache(`${graphId}-other`)
     const other = createGraphSync({ graphId, rootDocId: ROOT, keyring, relayUrl: 'ws://loopback/sync', token: fixedSyncToken('t'), cache, connect: relay.connect, debounceMs: 5 })
     try {
         await other.ready()
         await other.connected()
         await other.rootCaughtUp()
-        return other.quickNotes().list()
+        return memberKey ? other.quickNotesOf(memberKey).list() : other.quickNotes().list()
     } finally {
         other.dispose()
         cache.dispose()
@@ -55,6 +60,21 @@ describe('addQuickNoteOverSession', () => {
         expect(await notesOnAnotherDevice(relay, graphId, keyring)).toEqual([note])
         // The relay only ever saw ciphertext.
         expect(relay.allEnvelopes().some((e) => e.includes('dentist'))).toBe(false)
+    })
+
+    it('writes into the sharing person’s own Quick Notes when the session names them, never the shared array (ADR 0159)', async () => {
+        const relay = createLoopbackRelay()
+        const graphId = freshGraph()
+        const keyring = createGraphKeyring(graphId)
+
+        const result = await addQuickNoteOverSession(
+            { graphId, rootDocId: ROOT, keyring, relayUrl: 'ws://loopback/sync', token: fixedSyncToken('t'), connect: relay.connect, debounceMs: 5, memberKey: 'm1' },
+            note,
+        )
+
+        expect(result).toEqual({ synced: true })
+        expect(await notesOnAnotherDevice(relay, graphId, keyring, 'm1')).toEqual([note])
+        expect(await notesOnAnotherDevice(relay, graphId, keyring)).toEqual([])
     })
 
     it('reports saved-but-not-synced when the relay never opens, within the connect timeout, and the note replays on the next session', async () => {

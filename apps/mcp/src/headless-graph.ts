@@ -440,6 +440,11 @@ export async function openHeadlessGraph(deps: HeadlessGraphDeps): Promise<Headle
             deleteDocument: (concept) => store.deleteDocument(concept),
             planRename: (from, to, referencingDocuments) => store.planRename(from, to, referencingDocuments),
             renamePage: (from, to, options) => store.renamePage(from, to, options),
+            // Every Member's lists are top-level types in the root doc, so the session moves them
+            // itself. The tool's settle makes the change durable with the rename.
+            renameInMemberLists: (moves) => {
+                sync.renameConceptInMemberLists(moves)
+            },
             // Cache-seeded batches checked against the relay's watermarks, never `open()`: the
             // Local Mirror's read, which is what a pass over every document costs here.
             async readBodies() {

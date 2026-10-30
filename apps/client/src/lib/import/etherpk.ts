@@ -6,6 +6,7 @@
  */
 
 import { type QuickNote, sanitizeQuickNotes } from '$lib/document/quick-notes'
+import { type Bookmark, sanitizeBookmarks } from '$lib/document/bookmarks/bookmarks'
 import { parseDictionaryFile } from '$lib/document/spelling/graph-dictionary'
 import type { GraphTheme } from '$lib/document/publish/theme/graph-theme'
 import { parseGraphThemeFile, themeIdOfFileName } from '$lib/storage/fs/theme-files'
@@ -223,6 +224,29 @@ export async function convertEtherpk(files: SourceFile[], control?: ImportContro
         }
     }
 
+    // Bookmarks travel with the folder too (ADR 0159): the lines the person who made the export
+    // marked. Read and reported as quick notes are. A file that parses but is not a list is
+    // reported too, never read as no bookmarks: a folder graph refuses the same file
+    // (`readBookmarks`), and an import that said nothing would lose them without a word.
+    let bookmarks: Bookmark[] | undefined
+    const bookmarksFile = findFile(content, 'etherpk/bookmarks.json')
+    if (bookmarksFile) {
+        let parsed: unknown
+        try {
+            parsed = JSON.parse(await readText(bookmarksFile))
+        } catch {
+            parsed = undefined
+        }
+        if (Array.isArray(parsed)) {
+            bookmarks = sanitizeBookmarks(parsed)
+        } else {
+            report.push({
+                category: 'unsupported',
+                detail: 'etherpk/bookmarks.json is malformed, so Bookmarks were not carried over',
+            })
+        }
+    }
+
     // The Graph Dictionary is graph content too (ADR 0095): the words its members added. A line
     // that is not one word is skipped by the parser rather than failing the import.
     const dictionaryFile = findFile(content, 'etherpk/dictionary.txt')
@@ -245,6 +269,7 @@ export async function convertEtherpk(files: SourceFile[], control?: ImportContro
         assets: assetPlan.assets,
         settings,
         ...(quickNotes ? { quickNotes } : {}),
+        ...(bookmarks ? { bookmarks } : {}),
         ...(spellingDictionary.length > 0 ? { spellingDictionary } : {}),
         ...(themes.length > 0 ? { themes } : {}),
         ...(protection ? { protection } : {}),

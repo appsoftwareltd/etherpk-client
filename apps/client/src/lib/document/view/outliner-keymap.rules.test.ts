@@ -36,6 +36,8 @@ import { wikilinkCompletion } from './augmentations/wikilink-complete'
 import { refreshWikilinks, wikilinkAugmentation } from './augmentations/wikilink'
 import { displayNameForRef } from '../../storage/fs/asset-store'
 import { collaborative, isEdit } from './cm-document'
+import { bookmarkMarks, bookmarkedLines, syncBookmarkMarks } from './augmentations/bookmark-marks'
+import { captureAnchor } from '../bookmarks/anchor'
 import { outdentBranch, toggleBullet } from './outliner-keymap'
 import { PLAIN_PASTE_USER_EVENT } from './paste-clamp'
 import { analysisFor } from './analysis/editor-analysis'
@@ -401,6 +403,7 @@ table('prose is deliberately boring', [
     { rule: 'Tab on a line one space in under a list makes a block at column 0: it is prose', precedent: 'EtherPK', before: '- a\n te|xt', key: 'Tab', after: '- a\n- te|xt' },
     { rule: 'Tab on a line after a blank line in a list makes a block at column 0: it is in no block', precedent: 'EtherPK', before: '- a\n  - b\n\n    te|xt', key: 'Tab', after: '- a\n  - b\n\n- te|xt' },
     { rule: 'Tab heals the bullets below a prose line it joins to the list: one level under the new block at most', precedent: 'EtherPK', before: '- a\n  - b\n te|xt\n    - c', key: 'Tab', after: '- a\n  - b\n- te|xt\n  - c' },
+    { rule: '…past a blank soft line, a code block after it staying the new block’s', precedent: 'EtherPK', before: 'Sho|pping\n      - eggs\n  \n  ```py\n  if x:\n      y\n  ```', key: 'Tab', after: '- Sho|pping\n  - eggs\n  \n  ```py\n  if x:\n      y\n  ```' },
     { rule: '…and under a continuation it makes a child, measured from there', precedent: 'EtherPK', before: '- a\n  te|xt\n      - c', key: 'Tab', after: '- a\n  - te|xt\n    - c' },
     { rule: 'Tab on a line nested under a soft line makes it a child of the bullet the outline gives it', precedent: 'EtherPK', before: '- a\n  cont\n    dee|per', key: 'Tab', after: '- a\n  cont\n  - dee|per' },
     { rule: 'Alt+Up is the ordinary line move', precedent: 'VS Code', before: 'one\ntwo|', key: 'Alt-ArrowUp', after: 'two|\none' },
@@ -970,6 +973,19 @@ table('Backspace and Delete merge Logseq-style', [
     { rule: 'deleting whole blocks lands the caret at the end of the previous sibling', precedent: 'EtherPK', before: '- a\n«- b\n- c»', key: 'Backspace', after: '- a|' },
     { rule: 'deleting from the first block line lands the caret at the new first block’s content start', precedent: 'EtherPK', before: '«- a\n- b\n»- c', key: 'Delete', after: '- |c' },
     { rule: 'deleting a middle block re-indents a level-jumped survivor', precedent: 'EtherPK', before: '- a\n«  - b\n»    - c', key: 'Backspace', after: '- a|\n  - c' },
+    // The heal stays in the deletion's group (ADR 0021). A bare blank line ends every branch, so nothing
+    // after one was under the deleted blocks: it is left as it was, as is everything after a heading. An
+    // indented soft line is inside its block, so the heal goes on past it, and it moves with its bullet.
+    { rule: 'deleting blocks that end at a bare blank line leaves the group after it as it was', precedent: 'EtherPK', before: '- a\n«- b\n  - c»\n\n  p\n    - d', key: 'Backspace', after: '- a|\n\n  p\n    - d' },
+    { rule: '…with Delete too', precedent: 'EtherPK', before: '- a\n«- b\n  - c»\n\n  p\n    - d', key: 'Delete', after: '- a|\n\n  p\n    - d' },
+    { rule: '…and at the top of the document, with no group left above', precedent: 'EtherPK', before: '«- a\n  - b»\n\n  p\n    - d', key: 'Backspace', after: '|\n  p\n    - d' },
+    { rule: '…and the group after a heading is left as it was too', precedent: 'EtherPK', before: '- a\n«- b\n  - c»\n## H\n  - d', key: 'Backspace', after: '- a|\n## H\n  - d' },
+    { rule: 'an indented soft line among the survivors does not stop the heal, and moves with its bullet', precedent: 'EtherPK', before: 'p«x\n- a\n  - b»\n    - c\n      \n      q\n    - d', key: 'Backspace', after: 'p|\n  - c\n    \n    q\n  - d' },
+    { rule: '…and a code block after it stays with the bullet whose block it is in', precedent: 'EtherPK', before: '- a\n«  - p\n    - q\n»      - b\n  \n  ```\n  x\n  ```', key: 'Backspace', after: '- a|\n  - b\n  \n  ```\n  x\n  ```' },
+    // A deletion that starts in a heading leaves that heading at the join, and the blocks after it were
+    // under the deleted ones: they are healed as a group of their own, under the heading.
+    { rule: 'deleting from the end of a heading into blocks heals the survivors after the heading', precedent: 'EtherPK', before: '# Garden«\n- water the beans\n  every morning»\n  - check the soil', key: 'Backspace', after: '# Garden|\n- check the soil' },
+    { rule: '…and from inside a heading', precedent: 'EtherPK', before: '- kitchen\n## Gar«den\n- water the beans\n  - check the soil»\n    - add compost', key: 'Delete', after: '- kitchen|\n## Gar\n- add compost' },
     { rule: 'a within-line selection that takes the top bullet’s marker removes the block and promotes its subtree', precedent: 'EtherPK', before: '«- a»\n  - b\n    - c', key: 'Backspace', after: '- |b\n  - c' },
     { rule: 'a within-line selection that takes a middle bullet’s marker re-flows its children under the block above', precedent: 'EtherPK', before: '- x\n«- a»\n  - b', key: 'Delete', after: '- x\n  - |b' },
     // A selection from prose over a bullet's marker takes the bullet with it: its text joins the prose
@@ -1064,6 +1080,27 @@ describe('cutting blocks heals the survivors (ADR 0021)', () => {
     it('leaves a single-line cut alone', () => {
         expect(cut('- a\n  - «b»\n    - c')).toBe('- a\n  - |\n    - c')
     })
+    it('stops at a bare blank line: the group after it is left as it was', () => {
+        expect(cut('- a\n«- b\n  - c»\n\n  p\n    - d')).toBe('- a\n|\n  p\n    - d')
+        expect(cut('- a\n«- b\n  - c»\n## H\n  - d')).toBe('- a\n|## H\n  - d')
+    })
+    it('leaves a paragraph after a bare blank line, and the list under it, where they were', () => {
+        // A block selection runs to the end of its last branch, which a bare blank line ends. Text written
+        // by another tool can have a paragraph and a list after that line, deeper than the blocks cut:
+        // they were never under them, so they keep their places.
+        const after = '\n        four\n          - five\n      *six*\n      - seven\n    - after'
+        expect(cut(`- top\n  - head\n    - kept\n    «- one\n      - two\n        - three»\n${after}`)).toBe(`- top\n  - head\n    - kept\n|${after}`)
+    })
+    it('heals past an indented soft line, which moves with its bullet', () => {
+        expect(cut('p«x\n- a\n  - b»\n    - c\n      \n      q\n    - d')).toBe('p|\n  - c\n    \n    q\n  - d')
+    })
+    it('heals the survivors after a heading the cut started in', () => {
+        expect(cut('# Garden«\n- water the beans\n  - check the soil»\n    - add compost')).toBe('# Garden|\n- add compost')
+    })
+    it('keeps a blank line that followed whole lines cut from line start to line start', () => {
+        // No line is joined, so the blank line is the one that was there, not an artifact of the join.
+        expect(cut('- a\n«- b\n- c\n»\n  - x')).toBe('- a\n|\n  - x')
+    })
 })
 
 table('Enter over a block selection leaves one empty block in its place', [
@@ -1110,6 +1147,8 @@ table('Mod+Shift+Enter cycles the task state', [
     { rule: 'a bullet-shaped line inside a fence is code: refused', precedent: 'EtherPK', before: '- ```md\n  - |x\n  ```', key: 'Mod-Shift-Enter', after: '- ```md\n  - |x\n  ```' },
     { rule: 'a YAML list entry in the frontmatter is metadata: refused', precedent: 'EtherPK', before: '---\ntags:\n  - fo|o\n---', key: 'Mod-Shift-Enter', after: '---\ntags:\n  - fo|o\n---' },
     { rule: 'a prose line that split a group re-joins it as a task and the blocks below are healed', precedent: 'EtherPK', before: '- a\n  - b\n|\n    - c', key: 'Mod-Shift-Enter', after: '- a\n  - b\n- [ ] |\n  - c' },
+    { rule: 'the heal below a new task goes on past an indented soft line, which moves with its bullet', precedent: 'EtherPK', before: '  te|xt\n    - c\n      \n    - d', key: 'Mod-Shift-Enter', after: '- [ ] te|xt\n  - c\n    \n  - d' },
+    { rule: '…and a code block after it stays the new task’s', precedent: 'EtherPK', before: 'Sho|pping\n      - eggs\n  \n  ```py\n  if x:\n      y\n  ```', key: 'Mod-Shift-Enter', after: '- [ ] Sho|pping\n  - eggs\n  \n  ```py\n  if x:\n      y\n  ```' },
 ])
 
 // While a fence just typed on its own line is held pending, the editor shows the blocks below as they
@@ -1192,6 +1231,7 @@ bulletButtonTable('the Command Bar bullet toggle', [
     { rule: 'an empty indented line under a bullet becomes an empty child', precedent: 'EtherPK', before: '- a\n    |', key: 'bullet', after: '- a\n  - |' },
     { rule: 'the bullets below a new bullet are healed one level under it', precedent: 'EtherPK', before: '  te|xt\n    - c', key: 'bullet', after: '- te|xt\n  - c' },
     { rule: 'a prose line that split a group re-joins it and the blocks below are healed', precedent: 'EtherPK', before: '- a\n  - b\n|\n    - c', key: 'bullet', after: '- a\n  - b\n- |\n  - c' },
+    { rule: 'the heal below a new bullet goes on past an indented soft line, which moves with its bullet', precedent: 'EtherPK', before: '  te|xt\n    - c\n      \n    - d', key: 'bullet', after: '- te|xt\n  - c\n    \n  - d' },
     { rule: 'a top-level bullet becomes prose, the caret on its character', precedent: 'Obsidian', before: '- te|xt', key: 'bullet', after: 'te|xt' },
     { rule: 'an empty top-level bullet becomes an empty line', precedent: 'Obsidian', before: '- |', key: 'bullet', after: '|' },
     { rule: 'a top-level task becomes prose, its checkbox going with the marker', precedent: 'EtherPK', before: '- [ ] te|xt', key: 'bullet', after: 'te|xt' },
@@ -2698,4 +2738,43 @@ describe('inserting a Template', () => {
         editor.key('Mod-z')
         expect(editor.fixture()).toBe('- Garden\n- |')
     })
+})
+
+describe('a bookmark follows its line (ADR 0160)', () => {
+    /** The marked line's text after `key`, from a fixture whose 1-based line 2 is bookmarked. */
+    function markedAfter(fixture: string, key: string): string[] {
+        const editor = editorFixture(fixture, { extensions: [bookmarkMarks()] })
+        const lines = editor.text().split('\n')
+        const bookmark = { id: 'b', concept: 'Garden', createdAt: 1, ...captureAnchor(lines, 1)! }
+        editor.dispatch(editor.state.update({ effects: syncBookmarkMarks.of([bookmark]) }))
+        editor.key(key)
+        return bookmarkedLines(editor.state).map(({ line }) => editor.state.doc.line(line).text)
+    }
+    const rows: Array<Omit<Rule, 'after'> & { marked: string[] }> = [
+        { rule: 'Enter above it moves it down with its line', precedent: 'VS Code', before: '- water the beans|\n- dig the bed', key: 'Enter', marked: ['- dig the bed'] },
+        { rule: 'Enter at the start of its words takes it down with them', precedent: 'VS Code', before: '- water the beans\n- |dig the bed', key: 'Enter', marked: ['- dig the bed'] },
+        { rule: 'Tab on it keeps it on its line', precedent: 'VS Code', before: '- water the beans\n- dig the bed|', key: 'Tab', marked: ['  - dig the bed'] },
+        { rule: 'Alt+Up carries it with its block', precedent: 'VS Code', before: '- water the beans\n- dig the bed|', key: 'Alt-ArrowUp', marked: ['- dig the bed'] },
+        { rule: 'Alt+Down on the prose line above carries it with its own line', precedent: 'VS Code', before: 'water the beans|\ndig the bed\nfeed the hens', key: 'Alt-ArrowDown', marked: ['dig the bed'] },
+        { rule: 'Backspace joining its line upward carries it to the joined line', precedent: 'EtherPK', before: 'water the beans\n|dig the bed', key: 'Backspace', marked: ['water the beansdig the bed'] },
+        { rule: 'deleting the whole line, line break included, removes it', precedent: 'EtherPK', before: '- water the beans\n«- dig the bed\n»- feed the hens', key: 'Backspace', marked: [] },
+        { rule: 'typing over its words keeps it', precedent: 'VS Code', before: '- water the beans\n- «dig the bed»', key: 'Backspace', marked: ['- '] },
+    ]
+    for (const row of rows) {
+        it(`${row.key}: ${row.rule} (${row.precedent})`, () => {
+            expect(markedAfter(row.before, row.key)).toEqual(row.marked)
+        })
+    }
+    // Two keys: the line's words cleared, then the empty line itself joined away, up or down.
+    for (const key of ['Backspace', 'Delete']) {
+        it(`Backspace then ${key}: a line whose words were cleared goes when it is joined away (EtherPK)`, () => {
+            expect(markedAfter('water the beans\n«dig the bed»\nfeed the hens', 'Backspace')).toEqual([''])
+            const editor = editorFixture('water the beans\n«dig the bed»\nfeed the hens', { extensions: [bookmarkMarks()] })
+            const bookmark = { id: 'b', concept: 'Garden', createdAt: 1, ...captureAnchor(editor.text().split('\n'), 1)! }
+            editor.dispatch(editor.state.update({ effects: syncBookmarkMarks.of([bookmark]) }))
+            editor.key('Backspace')
+            editor.key(key)
+            expect(bookmarkedLines(editor.state)).toEqual([])
+        })
+    }
 })

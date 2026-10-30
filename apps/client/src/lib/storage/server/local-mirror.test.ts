@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { parseGraphThemeFile } from '$lib/storage/fs/theme-files'
 import type { ProtectionRecord } from '$lib/crypto'
 
+import type { Bookmark } from '$lib/document/bookmarks/bookmarks'
 import type { GraphTheme } from '$lib/document/publish/theme/graph-theme'
 import type { DirectoryAdapter } from '$lib/storage/fs/directory-adapter'
 import { createMemoryDirectoryAdapter } from '$lib/storage/fs/memory-adapter'
@@ -17,6 +18,7 @@ import {
     OFFLINE_MESSAGE,
     assetFileFates,
     createLocalMirror,
+    isMirrorMetadataFileName,
 } from './local-mirror'
 
 interface FakeDocument {
@@ -639,6 +641,37 @@ describe('local mirror', () => {
         mirror.dispose()
     })
 
+    it('rewrites settings.json when the person’s favourites empty, so it never keeps the shared list another Member’s favourites were in', async () => {
+        // A folder mirrored before per-person lists (ADR 0159) holds the shared favourites. The
+        // settings the source gives now carry the person's own list, left out when it is empty.
+        const adapter = tickingAdapter()
+        await adapter.write('etherpk', 'settings.json', `${JSON.stringify({ favourites: ['Garden', 'Cellar'] }, null, 2)}\n`)
+        let settings: Record<string, unknown> | undefined = undefined
+        const mirror = createLocalMirror(
+            source([{ docId: 'p1', kind: 'page', concept: 'Doc', text: 'body' }], {
+                metadata: () => ({ name: 'My Graph', settings }),
+            }),
+            adapter,
+        )
+        // Not known (no lists read yet): the file is left as it is.
+        await mirror.sync()
+        expect(JSON.parse((await adapter.read('etherpk', 'settings.json')).text)).toEqual({ favourites: ['Garden', 'Cellar'] })
+        settings = {}
+        await mirror.sync()
+        expect(JSON.parse((await adapter.read('etherpk', 'settings.json')).text)).toEqual({})
+        mirror.dispose()
+
+        // A folder with no settings.json does not grow an empty one.
+        const fresh = tickingAdapter()
+        const second = createLocalMirror(
+            source([{ docId: 'p1', kind: 'page', concept: 'Doc', text: 'body' }], { metadata: () => ({ name: 'My Graph', settings: {} }) }),
+            fresh,
+        )
+        await second.sync()
+        expect((await fresh.list('etherpk')).map((e) => e.name)).not.toContain('settings.json')
+        second.dispose()
+    })
+
     it('carries Quick Notes as etherpk/quick-notes.json, and rewrites it only when they change', async () => {
         const adapter = tickingAdapter()
         let notes = [{ id: 'a', text: 'Ring the dentist', createdAt: 100 }]
@@ -657,6 +690,36 @@ describe('local mirror', () => {
         await mirror.sync()
         expect(JSON.parse((await adapter.read('etherpk', 'quick-notes.json')).text)).toEqual([])
         mirror.dispose()
+    })
+
+    it('carries the person’s Bookmarks as etherpk/bookmarks.json, and rewrites it only when they change', async () => {
+        const adapter = tickingAdapter()
+        let bookmarks: Bookmark[] | undefined = undefined
+        const mirror = createLocalMirror(
+            source([{ docId: 'p1', kind: 'page', concept: 'Doc', text: 'body' }], {
+                metadata: () => ({ name: 'My Graph', ...(bookmarks ? { bookmarks } : {}) }),
+            }),
+            adapter,
+        )
+        // Not known (no member, or not read yet): no file is written.
+        await mirror.sync()
+        expect((await adapter.list('etherpk')).map((e) => e.name)).not.toContain('bookmarks.json')
+        bookmarks = [{ id: 'a', concept: 'Garden', line: 2, text: 'water the beans', createdAt: 100 }]
+        await mirror.sync()
+        expect(JSON.parse((await adapter.read('etherpk', 'bookmarks.json')).text)).toEqual(bookmarks)
+        const written = (await adapter.read('etherpk', 'bookmarks.json')).lastModified
+        await mirror.sync()
+        expect((await adapter.read('etherpk', 'bookmarks.json')).lastModified).toBe(written)
+        bookmarks = []
+        await mirror.sync()
+        expect(JSON.parse((await adapter.read('etherpk', 'bookmarks.json')).text)).toEqual([])
+        mirror.dispose()
+    })
+
+    it('counts etherpk/bookmarks.json among the files the mirror itself writes', () => {
+        expect(isMirrorMetadataFileName('bookmarks.json')).toBe(true)
+        expect(isMirrorMetadataFileName('quick-notes.json')).toBe(true)
+        expect(isMirrorMetadataFileName('notes.json')).toBe(false)
     })
 
     it('carries the Graph Dictionary as etherpk/dictionary.txt, and writes no file for a graph without words', async () => {

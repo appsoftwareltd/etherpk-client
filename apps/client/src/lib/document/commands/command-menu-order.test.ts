@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import { commandMenuItemsInOrder, createCommandRegistry, createContributionRegistry } from '../../surface'
 import { registerBacklinksCommands } from './backlinks-commands'
+import { registerBookmarkCommands } from './bookmark-commands'
 import { registerEditorCommands } from './editor-commands'
 import { registerJournalCommands } from './journal-commands'
 import { registerFrontmatterCommands } from './frontmatter-commands'
@@ -38,6 +39,7 @@ describe('the Command Menu order', () => {
         registerBacklinksCommands(commands, contributions, unused)
         registerJournalCommands(commands, contributions)
         registerTemplateCommands(commands, contributions, unused)
+        registerBookmarkCommands(commands, contributions, unused)
 
         expect(commandMenuItemsInOrder(contributions).map((item) => item.title)).toEqual([
             'Search',
@@ -68,6 +70,7 @@ describe('the Command Menu order', () => {
             'Table: Remove columns left',
             'Copy file path',
             'Copy task reference',
+            'Toggle bookmark',
             "Move quick notes to today's journal",
             'Add frontmatter',
             'Backlinks below documents: hide',

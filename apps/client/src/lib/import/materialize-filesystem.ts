@@ -14,6 +14,8 @@ import { sanitizeGraphSettings, writeGraphSettings } from '$lib/storage/fs/graph
 import { readQuickNotes, writeQuickNotes } from '$lib/storage/fs/quick-notes-file'
 import { readGraphThemes, writeGraphTheme } from '$lib/storage/fs/theme-files'
 import { unionQuickNotes } from '$lib/document/quick-notes'
+import { unionBookmarks } from '$lib/document/bookmarks/bookmarks'
+import { readBookmarks, writeBookmarks } from '$lib/storage/fs/bookmarks-file'
 import { unionDictionary } from '$lib/document/spelling/graph-dictionary'
 import { readDictionary, writeDictionary } from '$lib/storage/fs/dictionary-file'
 import { filesystemProtectionStore } from '$lib/document/protection/protection-store'
@@ -63,6 +65,11 @@ export async function materializeToFilesystem(
     // Unioned by id, so importing the same export twice adds nothing (ADR 0078).
     if (graph.quickNotes?.length) {
         await writeQuickNotes(adapter, unionQuickNotes(await readQuickNotes(adapter), graph.quickNotes))
+    }
+    // Unioned by id as quick notes are (ADR 0159). A folder graph belongs to one browser, so the
+    // bookmarks become that person's.
+    if (graph.bookmarks?.length) {
+        await writeBookmarks(adapter, unionBookmarks(await readBookmarks(adapter), graph.bookmarks))
     }
     // A union, so importing the same export twice adds nothing (ADR 0095).
     if (graph.spellingDictionary?.length) {

@@ -12,6 +12,7 @@
  * target rather than on whatever is focused.
  */
 
+import { type NoticeAction, showNotice } from '$lib/activity/notices'
 import {
     type ContextMenuTarget,
     type CommandRegistry,
@@ -21,13 +22,18 @@ import {
     registerContextMenuItem,
 } from '$lib/surface'
 
-import { addFavourite, isFavourite, moveFavourite, removeFavourite } from '../favourites'
+import { addFavourite, isFavourite, moveFavourite, removeFavourite, restoreFavourite } from '../favourites'
 import { isJournalConcept } from '../journal-concept'
 import { copyFailureMessage, writeClipboardText } from './clipboard-text'
 
 export const FAVOURITE_ADD = 'favourites.add'
 export const FAVOURITE_REMOVE = 'favourites.remove'
 export const FAVOURITE_MOVE = 'favourites.move'
+/**
+ * The notice an add or a remove posts, whichever surface it came from. Its own id, so a favourite
+ * notice replaces the last one rather than piling up, and leaves the workspace's status line alone.
+ */
+export const FAVOURITES_NOTICE = 'favourites'
 export const DOCUMENT_RENAME = 'document.rename'
 export const DOCUMENT_DELETE = 'document.delete'
 export const DOCUMENT_COPY_FILE_PATH = 'document.copyFilePath'
@@ -61,10 +67,16 @@ export const DOCUMENT_OPEN_TO_THE_RIGHT = 'document.openToTheRight'
 function conceptOf(arg: unknown): string {
     const target = arg as ContextMenuTarget | undefined
     if (!target) return ''
-    // A document target, or a wikilink's concept (ADR 0065): Rename… acts on either.
+    // A document target, or a wikilink's concept (ADR 0065): Rename… and the favourite pair
+    // (ADR 0158) act on either.
     return (isDocumentTarget(target) || isWikilinkTarget(target)) && typeof target.concept === 'string'
         ? target.concept
         : ''
+}
+
+/** A document, or a [[Wikilink]] naming one: what the favourite pair applies to (ADR 0158). */
+function isFavouriteTarget(target: ContextMenuTarget): boolean {
+    return isDocumentTarget(target) || isWikilinkTarget(target)
 }
 
 /** `favourites.move`'s argument: where a favourite should sit in the list, 0-based. */
@@ -110,6 +122,12 @@ export interface DocumentCommandDeps {
      * Pane and Panes show side by side, which a phone's do not. Absent ⇒ never.
      */
     canOpenToTheRight?: (sourcePanelId: string) => boolean
+    /**
+     * The name a [[Concept]] is known by: an [[Alias]]'s page, a pageless concept's display name.
+     * The favourite rows act on this, so a link written through an alias favourites the page it
+     * opens. Absent ⇒ every concept names itself (a harness with no index).
+     */
+    canonicalName?: (concept: string) => string
     /** Surfaces a failure to the user (the workspace's status line). */
     onError?: (message: string) => void
     /**
@@ -154,9 +172,49 @@ export function registerDocumentCommands(
         }
     }
 
+    /**
+     * The concept a favourite row acts on: the target's, by the name the graph knows it by. A tab
+     * already carries that name; a link carries what its author typed, which may be an alias.
+     */
+    const favouriteConceptOf = (target: unknown): string => {
+        const concept = conceptOf(target)
+        return concept === '' ? '' : (deps.canonicalName?.(concept) ?? concept)
+    }
+
+    const announce = (text: string, actions?: NoticeAction[]) =>
+        showNotice({ id: FAVOURITES_NOTICE, tone: 'info', text, actions })
+
+    // Every add and remove says so in a notice, whichever surface it came from (a tab, a link,
+    // a Sidebar row): from a link or on a phone the Favourites list is usually out of sight, and
+    // one behaviour everywhere reads better than a notice that comes and goes with the surface.
+    const add = async (concept: string) => {
+        if (concept === '' || isFavourite(concept)) return
+        await addFavourite(concept)
+        announce(`Added "${concept}" to favourites`)
+    }
+
+    // A remove offers Undo, which puts the favourite back where it stood: the list is ordered by
+    // hand, and adding it again would land it at the bottom. A refused Undo leaves the card as it
+    // was, so its Undo can be tried again.
+    const remove = async (concept: string) => {
+        if (concept === '') return
+        const removed = await removeFavourite(concept)
+        if (!removed) return
+        const undo = async () => {
+            try {
+                await restoreFavourite(removed.concept, removed.index)
+            } catch (err) {
+                deps.onError?.((err as Error).message)
+                return
+            }
+            announce(`"${removed.concept}" is back in favourites`)
+        }
+        announce(`Removed "${removed.concept}" from favourites`, [{ id: 'favourite-undo', label: 'Undo', primary: true, run: undo }])
+    }
+
     disposers.push(
-        commands.register(FAVOURITE_ADD, (arg) => guard(addFavourite(conceptOf(arg)))),
-        commands.register(FAVOURITE_REMOVE, (arg) => guard(removeFavourite(conceptOf(arg)))),
+        commands.register(FAVOURITE_ADD, (arg) => guard(add(favouriteConceptOf(arg)))),
+        commands.register(FAVOURITE_REMOVE, (arg) => guard(remove(favouriteConceptOf(arg)))),
         // Not a Context Menu row: this is how the Sidebar's drag handle and its arrow keys write
         // the order, so a refused write reaches the user the same way a refused add does.
         commands.register(FAVOURITE_MOVE, (arg) => {
@@ -271,15 +329,18 @@ export function registerDocumentCommands(
             id: FAVOURITE_ADD,
             label: 'Add to favourites',
             command: FAVOURITE_ADD,
+            // After the rows that show something, before Rename…, on a link as on a tab. On every
+            // link (ADR 0158): one to a concept with no page yet as well, whose favourite opens it
+            // as a Draft tab's does, and a journal day's.
             order: 10,
-            when: (target) => isDocumentTarget(target) && !isFavourite(target.concept),
+            when: (target) => isFavouriteTarget(target) && !isFavourite(favouriteConceptOf(target)),
         }),
         registerContextMenuItem(contributions, {
             id: FAVOURITE_REMOVE,
             label: 'Remove from favourites',
             command: FAVOURITE_REMOVE,
             order: 10,
-            when: (target) => isDocumentTarget(target) && isFavourite(target.concept),
+            when: (target) => isFavouriteTarget(target) && isFavourite(favouriteConceptOf(target)),
         }),
         registerContextMenuItem(contributions, {
             id: DOCUMENT_RENAME,

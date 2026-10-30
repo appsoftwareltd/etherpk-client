@@ -54,17 +54,20 @@ describe('workspace document mutations', () => {
         const layout = layoutWith(['Kanban'], 'Kanban')
         const recents = { forget: vi.fn(), rename: vi.fn() }
         const renameFavourite = vi.fn().mockResolvedValue(undefined)
+        const renameBookmarks = vi.fn().mockResolvedValue(undefined)
         const controller = createDocumentMutationController({
             store: () => undefined,
             index: () => undefined,
             layout: () => layout,
             recents: () => recents,
             renameFavourite,
+            renameBookmarks,
         })
 
         await controller.followRename('Kanban', 'Kanban 2')
 
         expect(renameFavourite).toHaveBeenCalledWith('Kanban', 'Kanban 2')
+        expect(renameBookmarks).toHaveBeenCalledWith('Kanban', 'Kanban 2')
         expect(recents.rename).toHaveBeenCalledWith('Kanban', 'Kanban 2')
         expect(layout.closeView).toHaveBeenCalledWith({ kind: 'document', target: 'Kanban' })
         expect(layout.openView).toHaveBeenCalledWith({ kind: 'document', target: 'Kanban 2' }, { activate: true })
@@ -289,6 +292,154 @@ describe('workspace document mutations', () => {
         await controller.rename('Old', bare, 'New', 'rewrite')
         expect(layout.closeView).toHaveBeenCalledWith({ kind: 'document', target: '[[Old]] Idea' })
         expect(layout.openView).toHaveBeenCalledWith({ kind: 'document', target: '[[New]] Idea' }, { activate: false })
+    })
+
+    it('carries favourites and bookmarks through every document the rename moved, scoped ones first, and every member’s lists with them', async () => {
+        // A favourite or bookmark on a scoped page follows the cascade, as the page's tab does.
+        // The scoped moves come first and the renamed concept last, the order extensions hear.
+        const store = {
+            planRename: vi.fn().mockResolvedValue(plan),
+            renamePage: vi.fn().mockResolvedValue({ ...result, merged: 0 }),
+            deleteDocument: vi.fn(),
+        }
+        const order: string[] = []
+        const renameFavourite = vi.fn(async (from: string, to: string) => void order.push(`favourite ${from} -> ${to}`))
+        const renameBookmarks = vi.fn(async (from: string, to: string) => void order.push(`bookmarks ${from} -> ${to}`))
+        const renameInMemberLists = vi.fn()
+        const controller = createDocumentMutationController({
+            store: () => store,
+            index: () => undefined,
+            layout: () => layoutWith([], null),
+            recents: () => null,
+            renameFavourite,
+            renameBookmarks,
+            renameInMemberLists,
+        })
+
+        await controller.rename('Old', plan, 'New', 'alias')
+
+        expect(order).toEqual([
+            'favourite [[Old]] Child -> [[New]] Child',
+            'bookmarks [[Old]] Child -> [[New]] Child',
+            'favourite Old -> New',
+            'bookmarks Old -> New',
+        ])
+        expect(renameInMemberLists).toHaveBeenCalledWith([
+            { from: '[[Old]] Child', to: '[[New]] Child' },
+            { from: 'Old', to: 'New' },
+        ])
+    })
+
+    it('finishes a rename whose favourites or bookmarks could not be written, and reports the list that did not follow', async () => {
+        // The document has been renamed by the time the lists move: a bookmarks.json that cannot
+        // be written must not leave the open tabs, recents, other members' lists and extensions on
+        // the old name.
+        const store = {
+            planRename: vi.fn().mockResolvedValue(plan),
+            renamePage: vi.fn().mockResolvedValue({ ...result, merged: 0 }),
+            deleteDocument: vi.fn(),
+        }
+        const layout = layoutWith(['Old'], 'Old')
+        const recents = { forget: vi.fn(), rename: vi.fn() }
+        const refused = new Error('The disk is full.')
+        const renameFavourite = vi.fn().mockResolvedValue(undefined)
+        const renameBookmarks = vi.fn().mockRejectedValue(refused)
+        const renameInMemberLists = vi.fn()
+        const conceptRenamed = vi.fn()
+        const listUpdateFailed = vi.fn()
+        const controller = createDocumentMutationController({
+            store: () => store,
+            index: () => undefined,
+            layout: () => layout,
+            recents: () => recents,
+            renameFavourite,
+            renameBookmarks,
+            renameInMemberLists,
+            conceptRenamed,
+            listUpdateFailed,
+        })
+
+        await expect(controller.rename('Old', plan, 'New', 'alias')).resolves.toEqual({ ...result, merged: 0 })
+
+        // Every move was still tried in both lists, and the failure said once.
+        expect(renameFavourite.mock.calls).toEqual([
+            ['[[Old]] Child', '[[New]] Child'],
+            ['Old', 'New'],
+        ])
+        expect(renameBookmarks).toHaveBeenCalledTimes(2)
+        expect(listUpdateFailed).toHaveBeenCalledTimes(1)
+        expect(listUpdateFailed).toHaveBeenCalledWith('bookmarks', refused)
+        // The rest of the rename happened.
+        expect(renameInMemberLists).toHaveBeenCalledWith([
+            { from: '[[Old]] Child', to: '[[New]] Child' },
+            { from: 'Old', to: 'New' },
+        ])
+        expect(recents.rename).toHaveBeenCalledWith('Old', 'New')
+        expect(layout.openView).toHaveBeenCalledWith({ kind: 'document', target: 'New' }, { activate: true })
+        expect(conceptRenamed).toHaveBeenCalledWith('Old', 'New')
+    })
+
+    it('follows a rename made elsewhere, and a concept moved by its link, when a list write fails, reporting it', async () => {
+        const refused = new Error('The disk is full.')
+        const renameFavourite = vi.fn().mockRejectedValue(refused)
+        const renameBookmarks = vi.fn().mockResolvedValue(undefined)
+        const listUpdateFailed = vi.fn()
+        const recents = { forget: vi.fn(), rename: vi.fn() }
+        const controller = createDocumentMutationController({
+            store: () => undefined,
+            index: () => undefined,
+            layout: () => layoutWith([], null),
+            recents: () => recents,
+            renameFavourite,
+            renameBookmarks,
+            listUpdateFailed,
+        })
+
+        await expect(controller.followRename('Kanban', 'Kanban 2')).resolves.toBeUndefined()
+        expect(renameBookmarks).toHaveBeenCalledWith('Kanban', 'Kanban 2')
+        expect(recents.rename).toHaveBeenCalledWith('Kanban', 'Kanban 2')
+        expect(listUpdateFailed).toHaveBeenCalledWith('favourites', refused)
+
+        await expect(controller.followConceptMove('Kitchen', 'Pantry')).resolves.toBeUndefined()
+        expect(renameBookmarks).toHaveBeenLastCalledWith('Kitchen', 'Pantry')
+        expect(listUpdateFailed).toHaveBeenCalledTimes(2)
+    })
+
+    it('carries the lists through a case-only rename, and every member’s lists through a concept moved by its link', async () => {
+        const renameInMemberLists = vi.fn()
+        const renameFavourite = vi.fn().mockResolvedValue(undefined)
+        const controller = createDocumentMutationController({
+            store: () => ({
+                planRename: vi.fn().mockResolvedValue(null),
+                renamePage: vi.fn().mockResolvedValue({ ...result, concept: 'OLD', cascaded: 0 }),
+                deleteDocument: vi.fn(),
+            }),
+            index: () => undefined,
+            layout: () => undefined,
+            recents: () => null,
+            renameFavourite,
+            renameInMemberLists,
+        })
+        await controller.rename('Old', null, 'OLD', 'alias')
+        expect(renameFavourite).toHaveBeenCalledWith('Old', 'OLD')
+        expect(renameInMemberLists).toHaveBeenCalledWith([{ from: 'Old', to: 'OLD' }])
+
+        await controller.followConceptMove('Kitchen', 'Pantry')
+        expect(renameInMemberLists).toHaveBeenLastCalledWith([{ from: 'Kitchen', to: 'Pantry' }])
+    })
+
+    it('leaves other members’ lists alone when following a rename made elsewhere: the renaming Client updated them', async () => {
+        const renameInMemberLists = vi.fn()
+        const controller = createDocumentMutationController({
+            store: () => undefined,
+            index: () => undefined,
+            layout: () => undefined,
+            recents: () => null,
+            renameFavourite: vi.fn().mockResolvedValue(undefined),
+            renameInMemberLists,
+        })
+        await controller.followRename('Kanban', 'Kanban 2')
+        expect(renameInMemberLists).not.toHaveBeenCalled()
     })
 
     it('follows a concept moved by its only link: the Draft over it, and over anything scoped by it', async () => {

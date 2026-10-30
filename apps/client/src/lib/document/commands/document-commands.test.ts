@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import { getNotices, resetNotices } from '$lib/activity/notices'
 import { createCommandRegistry, createContributionRegistry, listContextMenuItems } from '$lib/surface'
 import type { ContextMenuTarget } from '$lib/surface'
 
@@ -9,7 +10,10 @@ import {
     DOCUMENT_COPY_FILE_PATH,
     DOCUMENT_COPY_NAME,
     DOCUMENT_OPEN_TO_THE_RIGHT,
+    FAVOURITE_ADD,
     FAVOURITE_MOVE,
+    FAVOURITE_REMOVE,
+    FAVOURITES_NOTICE,
     registerDocumentCommands,
     TASKS_SHOW,
 } from './document-commands'
@@ -181,7 +185,7 @@ describe('Show Tasks', () => {
         const { commands, labels } = setup({ showBacklinks: vi.fn(), showTasks })
 
         // The extensions' rows (6 to 8) sit between the two; none is registered here.
-        expect(labels({ kind: 'wikilink', concept: 'Physics' })).toEqual(['Show Backlinks', 'Show Tasks', 'Rename…'])
+        expect(labels({ kind: 'wikilink', concept: 'Physics' })).toEqual(['Show Backlinks', 'Show Tasks', 'Add to favourites', 'Rename…'])
         expect(labels(tab('Alpha')).slice(0, 2)).toEqual(['Show Backlinks', 'Show Tasks'])
 
         await commands.execute(TASKS_SHOW, tab('Alpha'))
@@ -222,7 +226,7 @@ describe('Open in pane to the right (ADR 0155)', () => {
         const openToTheRight = vi.fn()
         const { commands, labels } = setup({ showBacklinks: vi.fn(), showTasks: vi.fn(), openToTheRight, canOpenToTheRight: () => true })
 
-        expect(labels(link('Garden', 'document:Notes'))).toEqual([OPEN_RIGHT, 'Show Backlinks', 'Show Tasks', 'Rename…'])
+        expect(labels(link('Garden', 'document:Notes'))).toEqual([OPEN_RIGHT, 'Show Backlinks', 'Show Tasks', 'Add to favourites', 'Rename…'])
 
         await commands.execute(DOCUMENT_OPEN_TO_THE_RIGHT, link('Garden', 'document:Notes'))
         expect(openToTheRight).toHaveBeenCalledWith('Garden', 'document:Notes')
@@ -298,5 +302,135 @@ describe('favourites.move', () => {
         await commands.execute(FAVOURITE_MOVE, undefined)
 
         expect(getFavourites()).toEqual(['Gamma', 'Beta'])
+    })
+})
+
+describe('Add to favourites and Remove from favourites', () => {
+    const ADD = 'Add to favourites'
+    const REMOVE = 'Remove from favourites'
+    const link = (concept: string): ContextMenuTarget => ({ kind: 'wikilink', concept, panelId: 'document:Notes' })
+    /** `Veg Patch` is an alias of `Garden`; everything else names itself. */
+    const canonicalName = (concept: string) => (concept.toLowerCase() === 'veg patch' ? 'Garden' : concept)
+
+    afterEach(() => {
+        resetFavourites()
+        resetNotices()
+    })
+
+    const favouritesNotice = () => getNotices().find((n) => n.id === FAVOURITES_NOTICE)
+
+    it('sits in the same place on a wikilink as on a document tab: after Show Tasks, before Rename…', () => {
+        setFavourites([], async () => {})
+        const { labels } = setup({ showBacklinks: vi.fn(), showTasks: vi.fn() })
+
+        expect(labels(link('Garden'))).toEqual(['Show Backlinks', 'Show Tasks', ADD, 'Rename…'])
+        const onTab = labels(tab('Garden'))
+        expect(onTab.indexOf(ADD)).toBe(onTab.indexOf('Show Tasks') + 1)
+        expect(onTab.indexOf('Rename…')).toBe(onTab.indexOf(ADD) + 1)
+    })
+
+    it('is offered on a link whether or not its concept has a page, and on a journal day', () => {
+        // A favourite opens its concept page or no page, as a Draft tab's favourite does.
+        setFavourites([], async () => {})
+        const { labels } = setup()
+        expect(labels(link('Not Written Yet'))).toContain(ADD)
+        expect(labels(link('2026-10-29'))).toContain(ADD)
+    })
+
+    it('offers Remove on a link whose concept is a favourite, and exactly one of the pair', () => {
+        setFavourites(['Garden'], async () => {})
+        const { labels } = setup()
+        expect(labels(link('garden'))).toContain(REMOVE)
+        expect(labels(link('garden'))).not.toContain(ADD)
+    })
+
+    it('adds and removes the concept a link names', async () => {
+        setFavourites(['Kitchen'], async () => {})
+        const { commands } = setup()
+
+        await commands.execute(FAVOURITE_ADD, link('Garden'))
+        expect(getFavourites()).toEqual(['Kitchen', 'Garden'])
+        await commands.execute(FAVOURITE_REMOVE, link('Garden'))
+        expect(getFavourites()).toEqual(['Kitchen'])
+    })
+
+    it('acts on the page an alias names: Remove when the page is a favourite, and the page name stored', async () => {
+        setFavourites(['Garden'], async () => {})
+        const { commands, labels } = setup({ canonicalName })
+        expect(labels(link('Veg Patch'))).toContain(REMOVE)
+
+        await commands.execute(FAVOURITE_REMOVE, link('Veg Patch'))
+        expect(getFavourites()).toEqual([])
+        expect(labels(link('Veg Patch'))).toContain(ADD)
+
+        await commands.execute(FAVOURITE_ADD, link('Veg Patch'))
+        expect(getFavourites()).toEqual(['Garden'])
+    })
+
+    it('says what it added, by the stored name, with nothing to undo', async () => {
+        setFavourites([], async () => {})
+        const { commands } = setup({ canonicalName })
+
+        await commands.execute(FAVOURITE_ADD, link('Veg Patch'))
+
+        expect(favouritesNotice()).toMatchObject({ tone: 'info', dismissal: 'auto', text: 'Added "Garden" to favourites' })
+        expect(favouritesNotice()?.actions ?? []).toEqual([])
+    })
+
+    it('says what it removed, from any surface, and its Undo puts the favourite back where it stood', async () => {
+        setFavourites(['Kitchen', 'Garden', 'Hallway'], async () => {})
+        const { commands } = setup()
+
+        // A Sidebar row's Remove: the row vanishes in place, but the notice carries the way back.
+        await commands.execute(FAVOURITE_REMOVE, { kind: 'favourite', concept: 'Garden' })
+        const notice = favouritesNotice()
+        expect(notice).toMatchObject({ tone: 'info', dismissal: 'auto', text: 'Removed "Garden" from favourites' })
+        expect(notice?.actions?.map((a) => a.label)).toEqual(['Undo'])
+
+        await notice?.actions?.[0].run()
+
+        expect(getFavourites()).toEqual(['Kitchen', 'Garden', 'Hallway'])
+        // The card now says what the Undo did, and offers nothing more to run.
+        expect(favouritesNotice()).toMatchObject({ text: '"Garden" is back in favourites' })
+        expect(favouritesNotice()?.actions ?? []).toEqual([])
+    })
+
+    it('tells a refused write through onError and claims no success', async () => {
+        setFavourites(['Garden'], async () => {
+            throw new Error('offline')
+        })
+        const onError = vi.fn()
+        const { commands } = setup({ onError })
+
+        await commands.execute(FAVOURITE_REMOVE, link('Garden'))
+        await commands.execute(FAVOURITE_ADD, link('Kitchen'))
+
+        expect(onError).toHaveBeenCalledWith('offline')
+        expect(onError).toHaveBeenCalledTimes(2)
+        expect(favouritesNotice()).toBeUndefined()
+    })
+
+    it('tells a refused Undo through onError, and leaves its card to try again', async () => {
+        let refuse = false
+        setFavourites(['Garden'], async () => {
+            if (refuse) throw new Error('offline')
+        })
+        const onError = vi.fn()
+        const { commands } = setup({ onError })
+        await commands.execute(FAVOURITE_REMOVE, link('Garden'))
+
+        refuse = true
+        await favouritesNotice()?.actions?.[0].run()
+
+        expect(getFavourites()).toEqual([])
+        expect(onError).toHaveBeenCalledWith('offline')
+        expect(favouritesNotice()?.actions?.map((a) => a.label)).toEqual(['Undo'])
+    })
+
+    it('says nothing when there was nothing to remove: a peer got there first', async () => {
+        setFavourites([], async () => {})
+        const { commands } = setup()
+        await commands.execute(FAVOURITE_REMOVE, link('Garden'))
+        expect(favouritesNotice()).toBeUndefined()
     })
 })

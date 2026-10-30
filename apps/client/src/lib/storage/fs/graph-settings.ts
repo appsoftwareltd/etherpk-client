@@ -40,8 +40,10 @@ export interface GraphSettings {
      * The graph's [[Favourite]]s, in the order the Sidebar shows them: whatever the user
      * dragged them into, with a newly favourited concept appended at the end.
      *
-     * Shared graph content, not per-device state (ADR 0036): they travel in an [[Export]]
-     * and every [[Member]] sees the same list, order included.
+     * Graph content, not per-device state (ADR 0036): they travel in an [[Export]]. On a
+     * folder graph this is the person's list (the folder belongs to one browser). On a synced
+     * graph each [[Member]] has their own list in the root doc instead (ADR 0159), and this
+     * field is the old shared list, read once to seed each person's own and never written again.
      */
     favourites?: string[]
     /**
@@ -94,6 +96,32 @@ export function normalizeHexColor(raw: string): string | null {
 }
 
 /**
+ * A clean [[Favourite]]s list from whatever was stored: strings only, trimmed, deduped
+ * case-insensitively, capped. Shared by Graph Settings and each member's own list on a synced
+ * graph (ADR 0159), so both read a stored list the same way. Not an array reads as empty.
+ */
+export function sanitizeFavourites(raw: unknown): string[] {
+    if (!Array.isArray(raw)) return []
+    // Deduped case-insensitively, matching Concept identity (CONTEXT.md: `[[Physics]]`
+    // and `[[physics]]` are one concept), keeping the FIRST spelling seen: the entry
+    // already on the list keeps its place and its casing, as re-favouriting it does.
+    const seen = new Set<string>()
+    const clean: string[] = []
+    for (const entry of raw) {
+        if (typeof entry !== 'string') continue
+        const trimmed = entry.trim()
+        if (trimmed === '') continue
+        const key = trimmed.toLowerCase()
+        if (seen.has(key)) continue
+        seen.add(key)
+        clean.push(trimmed)
+    }
+    // Over the cap the OLDEST go. New favourites are appended, so cutting the tail would
+    // silently swallow the one just added the next time the list is read.
+    return clean.slice(-MAX_FAVOURITES)
+}
+
+/**
  * Keep only the fields we recognise, with the right types — tolerant of a hand-edited or
  * stale file, and of a synced `meta.settings` object written by another (newer) client.
  */
@@ -109,26 +137,8 @@ export function sanitizeGraphSettings(raw: unknown): GraphSettings {
     if (typeof count === 'number' && Number.isInteger(count) && count >= MIN_RECENT_COUNT && count <= MAX_RECENT_COUNT) {
         out.recentDocumentCount = count
     }
-    const favourites = rec.favourites
-    if (Array.isArray(favourites)) {
-        // Deduped case-insensitively, matching Concept identity (CONTEXT.md: `[[Physics]]`
-        // and `[[physics]]` are one concept), keeping the FIRST spelling seen: the entry
-        // already on the list keeps its place and its casing, as re-favouriting it does.
-        const seen = new Set<string>()
-        const clean: string[] = []
-        for (const entry of favourites) {
-            if (typeof entry !== 'string') continue
-            const trimmed = entry.trim()
-            if (trimmed === '') continue
-            const key = trimmed.toLowerCase()
-            if (seen.has(key)) continue
-            seen.add(key)
-            clean.push(trimmed)
-        }
-        // Over the cap the OLDEST go. New favourites are appended, so cutting the tail would
-        // silently swallow the one just added the next time the file is read.
-        if (clean.length > 0) out.favourites = clean.slice(-MAX_FAVOURITES)
-    }
+    const favourites = sanitizeFavourites(rec.favourites)
+    if (favourites.length > 0) out.favourites = favourites
     const toolbarColor = rec.toolbarColor
     if (typeof toolbarColor === 'string') {
         const hex = normalizeHexColor(toolbarColor)

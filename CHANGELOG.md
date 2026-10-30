@@ -9,6 +9,34 @@ starts at 0.9.3.
 
 ### Client
 
+- **Bookmarks.** Mark a line to come back to it: right-click the line and choose **Bookmark
+  line**, press **Ctrl+Alt+K** (**Control+Option+K** on a Mac), or click the faint bookmark to the
+  left of the line. A bookmark shows to the left of its line and in a new **Bookmarks** section of
+  the graph sidebar, below Favourites, in groups by document. Click a bookmark to open its document
+  at the line. A bookmark stays on its line when the text around it changes, follows its document
+  when you rename it, and goes with the line when you delete the line, until you undo. You can give
+  a bookmark a label, and **Remove all** has **Undo**. Bookmarks are yours: on a synced graph
+  EtherPK does not show them to the other members. On a local graph they are kept in
+  `etherpk/bookmarks.json`. When that file cannot be read, a notice names it and EtherPK does not
+  write to it. A protected page keeps no bookmarks, also when it was protected on another device.
+  A click in the left padding beside a line now adds or removes its bookmark, and no longer puts
+  the cursor at the start of the line.
+- **Favourites and quick notes are yours on a synced graph.** Each member of a shared graph has
+  their own favourites and quick notes, and EtherPK does not show them to the other members. The
+  first time you open the graph, its favourites are copied to your list, and favourites that
+  members on an older version add later join your list too. Quick notes added before this change
+  no longer show to the member who added them. They show to the graph's owner, and moving one puts
+  it in the owner's journal. When you rename a page, the favourites and bookmarks of every member
+  follow the new name. When a member leaves or is removed, their favourites, quick notes and
+  bookmarks are deleted the next time the owner opens the graph.
+- **Right-click on a line of text opens EtherPK's menu,** with the bookmark rows and **Paste**.
+  **Shift+F10** or the **Menu** key opens it at the cursor. Right-click inside a selection, on a
+  picture, or with **Shift** held, for the browser's own menu.
+- **Add a link's page to your favourites from the link.** Right-click a link in the editor
+  (long-press on a phone, or **Shift+F10** with the cursor in it) and choose **Add to favourites**
+  or **Remove from favourites**. A link written with an alias favourites the page the alias names.
+  Each add and remove shows a message, and the message after a removal has **Undo**, which puts the
+  favourite back where it was in the list.
 - **A copied line pastes above the cursor's line.** With nothing selected, **Ctrl+C** (**Cmd+C**
   on a Mac) or **Ctrl+X** takes the whole line, and **Ctrl+V** now puts it on a line of its own
   above the line the cursor is on, as in VS Code. In a list it becomes a block above the cursor's
@@ -27,6 +55,16 @@ starts at 0.9.3.
 - **Ctrl+Enter keeps its new line when spaces follow the cursor.** The new line under the list
   stayed only until the cursor moved off it if the line had spaces after the cursor. Now those
   spaces are removed, and text after the cursor starts the new line at the margin.
+- **Cutting or deleting blocks leaves the text after a blank line as it was.** When the blocks you
+  cut or delete end at an empty line, the paragraphs and lists after that line keep their indents.
+  Before, they could move under the block above the cut, out of the outline. A blank line inside a
+  block no longer stops EtherPK from tidying the blocks below a cut, so a block's blank lines move
+  with it.
+
+### Headless Client
+
+- **Renaming a page moves everyone's favourites and bookmarks to the new name** on a synced graph,
+  as renaming it in the Client does.
 
 ## 0.16.0 - 2026-10-29
 

@@ -38,6 +38,11 @@ export interface KeyEventLike {
     metaKey: boolean
     altKey: boolean
     shiftKey: boolean
+    /**
+     * Whether AltGr is held (`getModifierState('AltGraph')`). A Windows layout reports AltGr as Ctrl
+     * and Alt, and AltGr types a character, so a Ctrl and Alt chord does not take it.
+     */
+    altGraph?: boolean
 }
 
 interface Chord {
@@ -90,12 +95,22 @@ export function eventMatches(spec: string, event: KeyEventLike): boolean {
 }
 
 /**
- * Whether a Mod and Alt chord's letter is the key pressed, read from its place on the keyboard. On
- * a Mac, Option changes the character a key types (Cmd+Option+F reports `ƒ`), and with Mod held
- * nothing is being typed. A bare Alt chord keeps matching by character, so Option still types `∆`.
+ * Whether a Mod and Alt, or Ctrl and Alt, chord's letter is the key pressed, read from its place on
+ * the keyboard. On a Mac, Option changes the character a key types (Cmd+Option+F reports `ƒ`,
+ * Ctrl+Option+K `˚`), and with Mod or Ctrl held nothing is being typed. AltGr, which a Windows
+ * layout reports as Ctrl and Alt, is typing, so it keeps its character. A bare Alt chord keeps
+ * matching by character, so Option still types `∆`.
  */
 function sameLetterKey(chord: Chord, event: KeyEventLike): boolean {
-    return chord.mod && chord.alt && /^[a-z]$/.test(chord.key) && event.code === `Key${chord.key.toUpperCase()}`
+    if (!chord.alt || !(chord.mod || chord.ctrl) || altGraphHeld(event)) return false
+    return /^[a-z]$/.test(chord.key) && event.code === `Key${chord.key.toUpperCase()}`
+}
+
+/** AltGr from the event: the field a test sets, or a real KeyboardEvent's modifier state. */
+function altGraphHeld(event: KeyEventLike): boolean {
+    if (event.altGraph !== undefined) return event.altGraph
+    const state = (event as Partial<Pick<KeyboardEvent, 'getModifierState'>>).getModifierState
+    return typeof state === 'function' && state.call(event, 'AltGraph')
 }
 
 /** Whether `binding` is bound on this platform (`apple` for a Mac, iPhone or iPad). */

@@ -202,7 +202,7 @@ export async function runServerImport(
                     : null
             materialized = await materializeToServer(
                 converted,
-                { graph: sync, assetStore, name: deps.name, protection, protectionKey: deps.protectionKey },
+                { graph: sync, assetStore, name: deps.name, protection, protectionKey: deps.protectionKey, memberKey: deps.serverScope.principalId },
                 options,
             )
         } finally {

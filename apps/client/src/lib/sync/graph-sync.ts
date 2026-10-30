@@ -23,7 +23,9 @@ import type { SyncTokenSource } from './sync-token'
 import { keyRetryDelayMs, reconnectDelayMs, refusalRetryDelayMs, STABLE_CONNECTION_MS } from './reconnect-backoff'
 import { type QuickNote, sanitizeQuickNotes } from '$lib/document/quick-notes'
 import { sanitizeDictionaryWords } from '$lib/document/spelling/graph-dictionary'
+import { type Bookmark, type BookmarksChange, sanitizeBookmarks } from '$lib/document/bookmarks/bookmarks'
 import { type GraphTheme, isThemeFilePath, sanitizeGraphTheme } from '$lib/document/publish/theme/graph-theme'
+import { sanitizeFavourites } from '$lib/storage/fs/graph-settings'
 
 /** Why a socket closed: the WebSocket close code and reason, when the transport knows them. */
 export interface TransportCloseEvent {
@@ -174,6 +176,32 @@ export interface GraphMeta {
     settings?: Record<string, unknown>
 }
 
+/** What a caller knows about a change to a member's [[Favourite]]s beyond the next list. */
+export interface FavouritesReplaceChange {
+    /**
+     * The one favourite a move put somewhere else. Only that entry is deleted and re-inserted,
+     * so a concurrent removal of any other entry on another device stays removed.
+     */
+    moved?: string
+    /**
+     * The shared Graph Settings favourites the person's list was shown joined with, when it is
+     * not seeded yet (ADR 0159). The write then marks the list seeded, with this as the shared
+     * list it saw, in the same transaction, so the seed never runs again over a list the person
+     * has already changed. Ignored once the list is seeded.
+     */
+    seedFrom?: readonly string[]
+}
+
+/** A list of [[Quick Note]]s held in one root-doc Y.Array (ADR 0078, ADR 0159). */
+export interface QuickNotesList {
+    /** Every well-formed note, in array order (the View sorts by `createdAt`). */
+    list(): QuickNote[]
+    add(note: QuickNote): void
+    remove(ids: readonly string[]): void
+    /** Fires on any change to the array (local or remote). Returns an unsubscribe. */
+    observe(listener: () => void): () => void
+}
+
 export interface GraphSync {
     readonly rootDoc: Y.Doc
     docSync(docId: string): DocSync
@@ -205,14 +233,88 @@ export interface GraphSync {
      * concurrent inserts from two devices where a whole-object setting would keep one and
      * drop the other. Encrypted like the rest of the root doc.
      */
-    quickNotes(): {
-        /** Every well-formed note, in array order (the View sorts by `createdAt`). */
-        list(): QuickNote[]
-        add(note: QuickNote): void
-        remove(ids: readonly string[]): void
-        /** Fires on any change to the array (local or remote). Returns an unsubscribe. */
+    quickNotes(): QuickNotesList
+    /**
+     * One member's [[Quick Note]]s: the root doc's top-level `quickNotes:<memberKey>` Y.Array
+     * (ADR 0159), the same shape as {@link quickNotes}. The shared `quickNotes` array above has no
+     * author, so it stays as the legacy list the workspace shows to the Owner only.
+     */
+    quickNotesOf(memberKey: string): QuickNotesList
+    /**
+     * One member's [[Favourite]]s: the root doc's top-level `favourites:<memberKey>` Y.Array of
+     * concept names, in Sidebar order (ADR 0159). Top-level for the reason bookmarks are.
+     */
+    favourites(memberKey: string): {
+        /** The list deduped case-insensitively (first spelling kept) and capped, as Graph Settings reads it. */
+        list(): string[]
+        /**
+         * Make the array hold `next`, writing only the difference in one transaction: entries no
+         * longer present are deleted and new ones inserted at their positions, a move being a
+         * delete and an insert. Never a clear-and-refill, which would drop a concurrent add from
+         * another device of the same person. With `change.moved`, and when that move is the whole
+         * difference, only the moved entry is deleted and re-inserted.
+         */
+        replace(next: readonly string[], change?: FavouritesReplaceChange): void
+        /**
+         * The first-open copy (ADR 0159 decision 4): unless this member's `memberFlags:<memberKey>`
+         * map says it already ran, append every `shared` favourite the list does not hold and
+         * record that it ran, in one transaction. True when it ran. Recorded even when nothing
+         * was copied, so a list the person empties later is never refilled. Records `shared` as
+         * the shared list it saw, for {@link followShared}.
+         */
+        seedOnce(shared: readonly string[]): boolean
+        /** True once the first-open copy ran, on this device or on another of the person's. */
+        seeded(): boolean
+        /**
+         * Follow the shared list after the seed (ADR 0159): append every `shared` favourite that
+         * was not in the shared list last seen and that the person does not hold, then record
+         * `shared` as seen, in one transaction. An older Client still writes the shared list, so
+         * this is how its additions reach the person. Its removals are not followed: the person's
+         * list is theirs. A list seeded with no record of what it saw takes `shared` as seen and
+         * adds nothing. False, with nothing written, before the seed or when nothing changed.
+         */
+        followShared(shared: readonly string[]): boolean
+        /**
+         * Fires on any change to this member's array or flags (local or remote): the seed flag
+         * decides which list the person sees. Returns an unsubscribe.
+         */
         observe(listener: () => void): () => void
     }
+    /**
+     * Empty the per-member lists (`favourites:`, `quickNotes:`, `bookmarks:`, `memberFlags:`) of
+     * every member key not in `activeMemberKeys` (ADR 0159 decision 5: the Owner's Client
+     * deletes a departed Member's lists). Returns the names of the types it emptied. An empty
+     * `activeMemberKeys` clears nothing: a graph always has its Owner, so an empty roster means
+     * the roster was not read.
+     */
+    clearDepartedMembers(activeMemberKeys: readonly string[]): string[]
+    /**
+     * Rewrite the concepts a [[Rename]] moved in every member's `favourites:` and `bookmarks:`
+     * types, in one transaction (ADR 0159). Concept names are graph content every member can read,
+     * so the renaming Client updates them all: a Member whose devices never saw the old name could
+     * not follow it themselves. Matched case-insensitively. Each entry moves at most once, by the
+     * first move that names it, so a move to a name another move starts from is not applied twice.
+     *
+     * The shared Graph Settings `favourites` move too, and with them each member's record of the
+     * shared list they last saw (`sharedFavouritesSeen`). No upgraded Client writes the shared list
+     * for a person's own change, but a Member who seeds later copies it, and `followShared`
+     * compares it with that record: a dead name would be copied, and a new one read as a favourite
+     * added. Returns the names of the types it changed (`meta` for the shared list), none when
+     * nothing matched.
+     */
+    renameConceptInMemberLists(moves: readonly { from: string; to: string }[]): string[]
+    /**
+     * Every concept any member has bookmarked, once each as first spelt, read from every member's
+     * `bookmarks:` map: the pages the protected-page sweep has to judge (ADR 0159).
+     */
+    bookmarkedConcepts(): string[]
+    /**
+     * Remove from every member's `bookmarks:` map each bookmark whose concept is one of `concepts`,
+     * case-insensitively, in one transaction. A page that became a [[Protected Document]] keeps no
+     * bookmark of anyone's (ADR 0159): each holds a line of its text in the clear, where every
+     * member can read it. Returns the names of the maps it changed, none when nothing matched.
+     */
+    removeBookmarksOn(concepts: readonly string[]): string[]
     /**
      * The graph's [[Graph Dictionary]]: the root doc's `spellingDictionary` Y.Map of word ->
      * `true` (ADR 0095). A map of its own for the reason quick notes are an array of their own:
@@ -224,6 +326,24 @@ export interface GraphSync {
         add(word: string): void
         remove(words: readonly string[]): void
         /** Fires on any change to the map (local or remote). Returns an unsubscribe. */
+        observe(listener: () => void): () => void
+    }
+    /**
+     * One member's [[Bookmark]]s: the root doc's top-level `bookmarks:<memberKey>` Y.Map of
+     * bookmark id -> a Y.Map of that bookmark's fields (ADR 0159). Field by field, so a change to
+     * one field on one device and to another field on another device both stay, and a bookmark
+     * one device deleted is not brought back by an anchor update from another. A bookmark is the person's own, so
+     * each member has a map of their own, which no other member's Client lists. Top-level rather
+     * than nested under one shared map: two devices that each created a nested map under the same
+     * key while apart would keep only one of them, where a top-level named type is the same type
+     * on every device and its entries merge. Encrypted like the rest of the root doc.
+     */
+    bookmarks(memberKey: string): {
+        /** Every well-formed bookmark, oldest first. */
+        list(): Bookmark[]
+        /** Put and remove entries by id, in one transaction, so peers see one change. */
+        apply(change: BookmarksChange): void
+        /** Fires on any change to this member's map (local or remote). Returns an unsubscribe. */
         observe(listener: () => void): () => void
     }
     /**
@@ -373,6 +493,240 @@ export interface AckResult {
 function refusalStatus(error: unknown): number | undefined {
     const status = typeof error === 'object' && error !== null ? (error as { status?: unknown }).status : undefined
     return typeof status === 'number' ? status : undefined
+}
+
+/**
+ * A bookmark's fields as its Y.Map stores them: only its own fields, and none that is undefined,
+ * which Yjs cannot encode. A caller's object may carry more (a spread of a wider type).
+ */
+function bookmarkFields(bookmark: Bookmark): Record<string, string | number> {
+    const out: Record<string, string | number> = {
+        id: bookmark.id,
+        concept: bookmark.concept,
+        line: bookmark.line,
+        text: bookmark.text,
+        createdAt: bookmark.createdAt,
+    }
+    if (bookmark.before !== undefined) out.before = bookmark.before
+    if (bookmark.after !== undefined) out.after = bookmark.after
+    if (bookmark.label !== undefined) out.label = bookmark.label
+    return out
+}
+
+/** The fields a bookmark may lack. A put without one deletes it from the stored bookmark. */
+const OPTIONAL_BOOKMARK_FIELDS = ['before', 'after', 'label'] as const
+
+/**
+ * Write `bookmark` into one member's bookmarks map, field by field (ADR 0159). Each bookmark is a
+ * nested Y.Map of its fields, so two devices that change different fields (a label here, an
+ * anchor there) both keep their change, and a field set inside a bookmark another device deleted
+ * is dropped with it. Only the fields that differ are set. The nested map is created once, when
+ * the id is new: ids are random UUIDs, so two devices never create a map under one id.
+ */
+function putBookmark(map: Y.Map<unknown>, bookmark: Bookmark): void {
+    const fields = bookmarkFields(bookmark)
+    const held = map.get(bookmark.id)
+    if (!(held instanceof Y.Map)) {
+        // A new id, or one written as a plain object before bookmarks were maps of fields.
+        const entry = new Y.Map<unknown>()
+        for (const [field, value] of Object.entries(fields)) entry.set(field, value)
+        map.set(bookmark.id, entry)
+        return
+    }
+    for (const [field, value] of Object.entries(fields)) if (held.get(field) !== value) held.set(field, value)
+    for (const field of OPTIONAL_BOOKMARK_FIELDS) if (!(field in fields) && held.has(field)) held.delete(field)
+}
+
+/** One stored bookmark as a plain object for {@link sanitizeBookmarks}: a nested map, or an older plain value. */
+function storedBookmark(value: unknown): unknown {
+    return value instanceof Y.Map ? value.toJSON() : value
+}
+
+/** The per-member list types in the root doc (ADR 0159), each named `<kind>:<memberKey>`. */
+const MEMBER_LIST_KINDS = ['favourites', 'quickNotes', 'bookmarks', 'memberFlags'] as const
+type MemberListKind = (typeof MEMBER_LIST_KINDS)[number]
+/** Which Yjs type each kind is, so a type received but never asked for by name is read as the right one. */
+const MEMBER_LIST_IS_ARRAY: Record<MemberListKind, boolean> = { favourites: true, quickNotes: true, bookmarks: false, memberFlags: false }
+
+/** `kind` and member key of a per-member type's name, or null for any other root-doc type. */
+function memberListName(name: string): { kind: MemberListKind; memberKey: string } | null {
+    const colon = name.indexOf(':')
+    if (colon <= 0 || colon === name.length - 1) return null
+    const kind = name.slice(0, colon)
+    if (!(MEMBER_LIST_KINDS as readonly string[]).includes(kind)) return null
+    return { kind: kind as MemberListKind, memberKey: name.slice(colon + 1) }
+}
+
+/** An empty member key would name one list every member shares: the opposite of a per-person list. */
+function requireMemberKey(memberKey: string, what: string): void {
+    if (memberKey === '') throw new Error(`${what}: a member key is required`)
+}
+
+/** The concept of one stored bookmark: a nested map's field, or an older plain value's. */
+function storedBookmarkConcept(value: unknown): unknown {
+    return value instanceof Y.Map ? value.get('concept') : (value as { concept?: unknown } | null)?.concept
+}
+
+/**
+ * Whether `transaction` removed a bookmark from any member's `bookmarks:` map, here or in an update
+ * from the relay: a key of one of those top-level maps that now holds nothing, or a deleted item. A
+ * field changed inside one bookmark (an anchor written back) is not a removal.
+ */
+function removedBookmark(doc: Y.Doc, transaction: Y.Transaction): boolean {
+    for (const [name, type] of doc.share) {
+        if (memberListName(name)?.kind !== 'bookmarks') continue
+        const keys = transaction.changed.get(type)
+        if (!keys) continue
+        for (const key of keys) {
+            if (key === null) continue
+            const item = type._map.get(key)
+            if (item === undefined || item.deleted) return true
+        }
+    }
+    return false
+}
+
+/**
+ * `list` with each name that `target` moves replaced, or null when it is not a list or nothing in
+ * it moved. Entries that are not names are kept as they are.
+ */
+function renamedNames(list: unknown, target: (concept: unknown) => string | undefined): unknown[] | null {
+    if (!Array.isArray(list)) return null
+    let moved = false
+    const next = list.map((entry) => {
+        const to = target(entry)
+        if (to === undefined || to === entry) return entry
+        moved = true
+        return to
+    })
+    return moved ? next : null
+}
+
+/**
+ * The indexes of `current` and of `next` that a longest common subsequence pairs up: the entries
+ * a minimal edit keeps where they are. Quadratic, which is fine for lists capped at a few hundred.
+ *
+ * When several subsequences are equally long, the one that keeps the most entries at the same
+ * index in both lists is chosen. A kept entry keeps its Yjs item, and a deleted and re-inserted
+ * one is a new item that a concurrent removal on another device does not reach. An entry that
+ * did not move is the least surprising one to keep.
+ */
+function keptPairs(current: readonly unknown[], next: readonly string[]): { keptCurrent: Set<number>; keptNext: Set<number> } {
+    const n = current.length
+    const m = next.length
+    // lengths[i][j]: the LCS length of current[i..] and next[j..]. inPlace[i][j]: of the LCSs
+    // that long, the most pairs whose two indexes are equal.
+    const lengths = Array.from({ length: n + 1 }, () => new Array<number>(m + 1).fill(0))
+    const inPlace = Array.from({ length: n + 1 }, () => new Array<number>(m + 1).fill(0))
+    // Which of the three moves at (i, j) gives the best (length, inPlace) pair.
+    const better = (al: number, ap: number, bl: number, bp: number) => al > bl || (al === bl && ap > bp)
+    for (let i = n - 1; i >= 0; i--) {
+        for (let j = m - 1; j >= 0; j--) {
+            let length = lengths[i + 1][j]
+            let place = inPlace[i + 1][j]
+            if (better(lengths[i][j + 1], inPlace[i][j + 1], length, place)) {
+                length = lengths[i][j + 1]
+                place = inPlace[i][j + 1]
+            }
+            if (current[i] === next[j]) {
+                const matchLength = lengths[i + 1][j + 1] + 1
+                const matchPlace = inPlace[i + 1][j + 1] + (i === j ? 1 : 0)
+                if (better(matchLength, matchPlace, length, place) || (matchLength === length && matchPlace === place)) {
+                    length = matchLength
+                    place = matchPlace
+                }
+            }
+            lengths[i][j] = length
+            inPlace[i][j] = place
+        }
+    }
+    const keptCurrent = new Set<number>()
+    const keptNext = new Set<number>()
+    let i = 0
+    let j = 0
+    while (i < n && j < m) {
+        const same = (l: number, p: number) => l === lengths[i][j] && p === inPlace[i][j]
+        if (current[i] === next[j] && same(lengths[i + 1][j + 1] + 1, inPlace[i + 1][j + 1] + (i === j ? 1 : 0))) {
+            keptCurrent.add(i++)
+            keptNext.add(j++)
+        } else if (same(lengths[i + 1][j], inPlace[i + 1][j])) i++
+        else j++
+    }
+    return { keptCurrent, keptNext }
+}
+
+/**
+ * Make `array` hold exactly `next` with the fewest deletes and inserts, in one transaction. The
+ * entries both share in order stay put, so a concurrent insert on another device keeps a
+ * neighbour to merge against and survives. A clear-and-refill would delete it with the rest.
+ */
+function replaceStrings(doc: Y.Doc, array: Y.Array<unknown>, next: readonly string[]): void {
+    const current = array.toArray()
+    const { keptCurrent, keptNext } = keptPairs(current, next)
+    if (keptCurrent.size === current.length && keptNext.size === next.length) return
+    doc.transact(() => {
+        // Highest index first, so earlier deletions do not shift the later ones.
+        for (let i = current.length - 1; i >= 0; i--) if (!keptCurrent.has(i)) array.delete(i, 1)
+        // The array now holds the kept entries in `next` order. Insert the rest between them.
+        for (let j = 0; j < next.length; j++) if (!keptNext.has(j)) array.insert(j, [next[j]])
+    })
+}
+
+/**
+ * Make `array` hold `next` by moving the one entry `moved` names, when that is the whole
+ * difference: delete it and insert it at its new index, in one transaction. Every other entry
+ * keeps its Yjs item. The two orders alone cannot say which entry moved (Kitchen up one and
+ * Garden down one give the same list), and a guess that re-inserts the wrong entry would undo a
+ * removal of it made on another device. False, with nothing written, when the lists differ in
+ * any other way.
+ */
+function moveString(doc: Y.Doc, array: Y.Array<unknown>, next: readonly string[], moved: string): boolean {
+    const key = moved.trim().toLowerCase()
+    const current = array.toArray()
+    const from = current.findIndex((entry) => typeof entry === 'string' && entry.trim().toLowerCase() === key)
+    const to = next.findIndex((entry) => entry.toLowerCase() === key)
+    if (from === -1 || to === -1) return false
+    const rest = current.filter((_, i) => i !== from)
+    const nextRest = next.filter((_, i) => i !== to)
+    if (rest.length !== nextRest.length || rest.some((entry, i) => entry !== nextRest[i])) return false
+    if (from === to) return true
+    doc.transact(() => {
+        array.delete(from, 1)
+        array.insert(to, [next[to]])
+    })
+    return true
+}
+
+/** A {@link QuickNotesList} over one root-doc Y.Array. */
+function quickNotesOver(doc: Y.Doc, array: Y.Array<unknown>): QuickNotesList {
+    return {
+        list: () => sanitizeQuickNotes(array.toArray()),
+        add(note) {
+            array.push([{ id: note.id, text: note.text, createdAt: note.createdAt }])
+        },
+        remove(ids) {
+            // Highest index first, in one transaction, so earlier deletions do not shift
+            // the indexes of later ones and peers see one change rather than several.
+            const gone = new Set(ids)
+            const items = array.toArray()
+            if (!items.some((item) => gone.has(noteId(item) ?? ''))) return
+            doc.transact(() => {
+                for (let i = items.length - 1; i >= 0; i--) {
+                    const id = noteId(items[i])
+                    if (id !== undefined && gone.has(id)) array.delete(i, 1)
+                }
+            })
+        },
+        observe(listener) {
+            array.observe(listener)
+            return () => array.unobserve(listener)
+        },
+    }
+}
+
+function noteId(item: unknown): string | undefined {
+    const id = typeof item === 'object' && item !== null ? (item as { id?: unknown }).id : undefined
+    return typeof id === 'string' ? id : undefined
 }
 
 /** How long activity changes are gathered before listeners hear them: an import acks thousands. */
@@ -956,6 +1310,9 @@ export function createGraphSync(deps: GraphSyncDeps): GraphSync {
                 ),
                 debounceMs: deps.debounceMs,
                 collectRowWhen: docId === deps.rootDocId ? undefined : deps.collectRowWhen,
+                // The root document's row is collected after a bookmark removal instead: see
+                // `bookmarkRemovals` below.
+                collectRowRequests: docId === deps.rootDocId ? () => bookmarkRemovals : undefined,
                 // The disposed-guarded reporter, not the raw callback: an engine's late
                 // rejection after dispose must not reach the next workspace's notice.
                 onError: reportError,
@@ -1012,8 +1369,23 @@ export function createGraphSync(deps: GraphSyncDeps): GraphSync {
         }
     }
 
+    /**
+     * How many bookmark removals the root document has seen this session, local or from the
+     * relay. Each makes the root engine collect its Local Cache row once that row holds the
+     * removal: the row is merged from every saved state and keeps deleted content otherwise, so a
+     * removed bookmark's line text would stay at rest in the clear, the text of a page protected
+     * since among it (ADR 0159). Counted in `afterTransaction`, which runs before the engine's own
+     * `update` handler takes its snapshot. Not for the seed from the cache: the row already holds
+     * what the seed read, and collecting it again on every open would cost a rewrite each time.
+     */
+    let bookmarkRemovals = 0
+
     // The root document is just another synced doc.
     const root = engine(deps.rootDocId)
+    root.doc.on('afterTransaction', (transaction: Y.Transaction) => {
+        if (transaction.origin === CACHE_SEED) return
+        if (removedBookmark(root.doc, transaction)) bookmarkRemovals += 1
+    })
     const registryMap = root.doc.getMap<RegistryEntry>('registry')
     if (deps.onRegistryChange) registryMap.observe(() => deps.onRegistryChange?.())
     const metaMap = root.doc.getMap<unknown>('meta')
@@ -1438,29 +1810,204 @@ export function createGraphSync(deps: GraphSyncDeps): GraphSync {
             metaMap.observe(listener)
             return () => metaMap.unobserve(listener)
         },
-        quickNotes: () => ({
-            list: () => sanitizeQuickNotes(quickNotesArray.toArray()),
-            add(note) {
-                quickNotesArray.push([{ id: note.id, text: note.text, createdAt: note.createdAt }])
-            },
-            remove(ids) {
-                // Highest index first, in one transaction, so earlier deletions do not shift
-                // the indexes of later ones and peers see one change rather than several.
-                const gone = new Set(ids)
-                root.doc.transact(() => {
-                    const items = quickNotesArray.toArray()
-                    for (let i = items.length - 1; i >= 0; i--) {
-                        const item = items[i]
-                        const id = typeof item === 'object' && item !== null ? (item as { id?: unknown }).id : undefined
-                        if (typeof id === 'string' && gone.has(id)) quickNotesArray.delete(i, 1)
+        quickNotes: () => quickNotesOver(root.doc, quickNotesArray),
+        quickNotesOf(memberKey) {
+            requireMemberKey(memberKey, 'quickNotesOf')
+            return quickNotesOver(root.doc, root.doc.getArray<unknown>(`quickNotes:${memberKey}`))
+        },
+        favourites(memberKey) {
+            requireMemberKey(memberKey, 'favourites')
+            const array = root.doc.getArray<unknown>(`favourites:${memberKey}`)
+            const flags = root.doc.getMap<unknown>(`memberFlags:${memberKey}`)
+            const seeded = () => flags.get('favouritesSeeded') === true
+            // The shared list as last seen, or null when the seed ran on a build that kept none.
+            const seen = (): string[] | null => {
+                const raw = flags.get('sharedFavouritesSeen')
+                return Array.isArray(raw) ? sanitizeFavourites(raw) : null
+            }
+            const markSeeded = (shared: readonly string[]) => {
+                flags.set('favouritesSeeded', true)
+                flags.set('sharedFavouritesSeen', sanitizeFavourites(shared))
+            }
+            /** Append the entries of `incoming` the list does not hold, case-insensitively. */
+            const appendMissing = (incoming: readonly string[]) => {
+                const held = new Set(sanitizeFavourites(array.toArray()).map((c) => c.toLowerCase()))
+                const missing = sanitizeFavourites(incoming).filter((c) => !held.has(c.toLowerCase()))
+                if (missing.length > 0) array.push(missing)
+            }
+            return {
+                list: () => sanitizeFavourites(array.toArray()),
+                replace(next, change) {
+                    const clean = sanitizeFavourites(next)
+                    root.doc.transact(() => {
+                        if (change?.seedFrom && !seeded()) markSeeded(change.seedFrom)
+                        if (change?.moved !== undefined && moveString(root.doc, array, clean, change.moved)) return
+                        replaceStrings(root.doc, array, clean)
+                    })
+                },
+                seedOnce(shared) {
+                    if (seeded()) return false
+                    root.doc.transact(() => {
+                        // Appended after anything the person already favourited, which keeps its
+                        // place. Two devices that seed while apart both append; list() dedupes.
+                        appendMissing(shared)
+                        markSeeded(shared)
+                    })
+                    return true
+                },
+                seeded,
+                followShared(shared) {
+                    if (!seeded()) return false
+                    const current = sanitizeFavourites(shared)
+                    const before = seen()
+                    const unchanged = before !== null && before.length === current.length && before.every((c, i) => c === current[i])
+                    if (unchanged) return false
+                    root.doc.transact(() => {
+                        if (before !== null) {
+                            const known = new Set(before.map((c) => c.toLowerCase()))
+                            appendMissing(current.filter((c) => !known.has(c.toLowerCase())))
+                        }
+                        flags.set('sharedFavouritesSeen', current)
+                    })
+                    return true
+                },
+                observe(listener) {
+                    const onFlags = () => listener()
+                    array.observe(listener)
+                    flags.observe(onFlags)
+                    return () => {
+                        array.unobserve(listener)
+                        flags.unobserve(onFlags)
                     }
-                })
-            },
-            observe(listener) {
-                quickNotesArray.observe(listener)
-                return () => quickNotesArray.unobserve(listener)
-            },
-        }),
+                },
+            }
+        },
+        clearDepartedMembers(activeMemberKeys) {
+            if (activeMemberKeys.length === 0) return []
+            const active = new Set(activeMemberKeys)
+            const cleared: string[] = []
+            root.doc.transact(() => {
+                for (const name of [...root.doc.share.keys()]) {
+                    const parsed = memberListName(name)
+                    if (!parsed || active.has(parsed.memberKey)) continue
+                    // A type that arrived from a peer but was never asked for by name here is a
+                    // bare AbstractType until it is: getArray/getMap gives it its real shape.
+                    if (MEMBER_LIST_IS_ARRAY[parsed.kind]) {
+                        const array = root.doc.getArray<unknown>(name)
+                        if (array.length === 0) continue
+                        array.delete(0, array.length)
+                    } else {
+                        const map = root.doc.getMap<unknown>(name)
+                        if (map.size === 0) continue
+                        for (const key of [...map.keys()]) map.delete(key)
+                    }
+                    cleared.push(name)
+                }
+            })
+            return cleared
+        },
+        renameConceptInMemberLists(moves) {
+            const renamed = new Map<string, string>()
+            for (const { from, to } of moves) {
+                const key = from.trim().toLowerCase()
+                const next = to.trim()
+                if (key === '' || next === '' || renamed.has(key)) continue
+                renamed.set(key, next)
+            }
+            const target = (concept: unknown) => (typeof concept === 'string' ? renamed.get(concept.trim().toLowerCase()) : undefined)
+            const changed: string[] = []
+            if (renamed.size === 0) return changed
+            root.doc.transact(() => {
+                for (const name of [...root.doc.share.keys()]) {
+                    const parsed = memberListName(name)
+                    if (parsed?.kind === 'favourites') {
+                        const array = root.doc.getArray<unknown>(name)
+                        const entries = array.toArray()
+                        let hit = false
+                        // Delete and insert at the same index, so the favourite keeps its place.
+                        entries.forEach((entry, i) => {
+                            const to = target(entry)
+                            if (to === undefined || to === entry) return
+                            array.delete(i, 1)
+                            array.insert(i, [to])
+                            hit = true
+                        })
+                        if (hit) changed.push(name)
+                    } else if (parsed?.kind === 'bookmarks') {
+                        const map = root.doc.getMap<unknown>(name)
+                        let hit = false
+                        for (const [id, value] of [...map.entries()]) {
+                            const to = target(storedBookmarkConcept(value))
+                            if (to === undefined) continue
+                            if (value instanceof Y.Map) {
+                                if (value.get('concept') === to) continue
+                                // Only the one field, so a concurrent change to another field stays.
+                                value.set('concept', to)
+                            } else {
+                                const [bookmark] = sanitizeBookmarks([value])
+                                if (!bookmark || bookmark.concept === to) continue
+                                putBookmark(map, { ...bookmark, id, concept: to })
+                            }
+                            hit = true
+                        }
+                        if (hit) changed.push(name)
+                    } else if (parsed?.kind === 'memberFlags') {
+                        // The shared list as this member's devices last saw it, moved with the
+                        // shared list below, so `followShared` finds nothing new in the move.
+                        const flags = root.doc.getMap<unknown>(name)
+                        const seen = renamedNames(flags.get('sharedFavouritesSeen'), target)
+                        if (seen) {
+                            flags.set('sharedFavouritesSeen', seen)
+                            changed.push(name)
+                        }
+                    }
+                }
+                // The shared Graph Settings favourites: every other setting kept exactly as stored.
+                const settings = metaMap.get('settings')
+                if (typeof settings === 'object' && settings !== null && !Array.isArray(settings)) {
+                    const shared = renamedNames((settings as Record<string, unknown>).favourites, target)
+                    if (shared) {
+                        metaMap.set('settings', { ...(settings as Record<string, unknown>), favourites: shared })
+                        changed.push('meta')
+                    }
+                }
+            })
+            return changed
+        },
+        bookmarkedConcepts() {
+            const concepts = new Map<string, string>()
+            for (const name of [...root.doc.share.keys()]) {
+                if (memberListName(name)?.kind !== 'bookmarks') continue
+                // getMap gives a type that arrived from a peer, and was never asked for here, its shape.
+                for (const value of root.doc.getMap<unknown>(name).values()) {
+                    const concept = storedBookmarkConcept(value)
+                    if (typeof concept !== 'string' || concept.trim() === '') continue
+                    const key = concept.trim().toLowerCase()
+                    if (!concepts.has(key)) concepts.set(key, concept.trim())
+                }
+            }
+            return [...concepts.values()]
+        },
+        removeBookmarksOn(concepts) {
+            const keys = new Set(concepts.map((concept) => concept.trim().toLowerCase()).filter((key) => key !== ''))
+            const changed: string[] = []
+            if (keys.size === 0) return changed
+            root.doc.transact(() => {
+                for (const name of [...root.doc.share.keys()]) {
+                    if (memberListName(name)?.kind !== 'bookmarks') continue
+                    const map = root.doc.getMap<unknown>(name)
+                    let hit = false
+                    for (const [id, value] of [...map.entries()]) {
+                        const concept = storedBookmarkConcept(value)
+                        if (typeof concept !== 'string' || !keys.has(concept.trim().toLowerCase())) continue
+                        map.delete(id)
+                        hit = true
+                    }
+                    if (hit) changed.push(name)
+                }
+            })
+            return changed
+        },
         spellingDictionary: () => ({
             list: () => sanitizeDictionaryWords([...dictionaryMap.keys()]),
             add(word) {
@@ -1476,6 +2023,25 @@ export function createGraphSync(deps: GraphSyncDeps): GraphSync {
                 return () => dictionaryMap.unobserve(listener)
             },
         }),
+        bookmarks(memberKey) {
+            requireMemberKey(memberKey, 'bookmarks')
+            const map = root.doc.getMap<unknown>(`bookmarks:${memberKey}`)
+            return {
+                list: () => sanitizeBookmarks([...map.values()].map(storedBookmark)),
+                apply(change) {
+                    root.doc.transact(() => {
+                        for (const id of change.remove) map.delete(id)
+                        for (const bookmark of change.put) putBookmark(map, bookmark)
+                    })
+                },
+                observe(listener) {
+                    // Deep: a field set inside one bookmark's map is a change to the list.
+                    const deep = () => listener()
+                    map.observeDeep(deep)
+                    return () => map.unobserveDeep(deep)
+                },
+            }
+        },
         themes: () => ({
             list() {
                 const out: GraphTheme[] = []

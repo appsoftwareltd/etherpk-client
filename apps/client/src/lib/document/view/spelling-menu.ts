@@ -15,6 +15,7 @@ import { openContextMenu, type MisspellingContextMenuTarget } from '$lib/surface
 
 import { getActiveSpellService } from '../spelling/active-spell-service'
 import type { WordRange } from '../spelling/words'
+import { editorDocument } from './editor-document'
 
 let menuView: EditorView | null = null
 
@@ -26,7 +27,10 @@ export async function openSpellingMenu(view: EditorView, hit: WordRange, x: numb
     const curly = hit.word.includes('’')
     const suggestions = curly ? found.map((s) => s.replace(/'/g, '’')) : found
     menuView = view
-    const target: MisspellingContextMenuTarget = { kind: 'misspelling', ...hit, suggestions }
+    // The line the word is on, so the menu also carries the line's [[Bookmark]] rows (ADR 0159).
+    const doc = view.state.facet(editorDocument)
+    const line = doc ? { concept: doc.concept, panelId: doc.panelId, line: view.state.doc.lineAt(hit.from).number } : undefined
+    const target: MisspellingContextMenuTarget = { kind: 'misspelling', ...hit, suggestions, line }
     openContextMenu(target, x, y)
 }
 
