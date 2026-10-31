@@ -11,6 +11,7 @@ const render = (body: string, ctx: TemplateContext = context) => renderTemplate(
 describe('renderTemplate: the named variables', () => {
     it.each([
         ['{{date}}', '2026-10-14'],
+        ['{{today}}', '2026-10-14'],
         ['{{yesterday}}', '2026-10-13'],
         ['{{tomorrow}}', '2026-10-15'],
         ['{{time}}', '14:05'],

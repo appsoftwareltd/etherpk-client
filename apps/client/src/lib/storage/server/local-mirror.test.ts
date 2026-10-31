@@ -948,6 +948,7 @@ describe('local mirror', () => {
             // The four phases a pass does, in the order it does them.
             expect([...new Set(seen.map((entry) => entry.phase))]).toEqual(['scanning', 'reading', 'writing', 'assets'])
             expect(seen.every((entry) => entry.kind === 'full')).toBe(true)
+            expect(seen.some((entry) => entry.phase === 'reading' && entry.done === 2 && entry.total === 2)).toBe(true)
             expect(seen.some((entry) => entry.phase === 'writing' && entry.done === 2 && entry.total === 2)).toBe(true)
             expect(seen.some((entry) => entry.phase === 'assets' && entry.done === 1 && entry.total === 1)).toBe(true)
             // Nothing claims to be running once the pass is over.
@@ -1331,6 +1332,237 @@ describe('local mirror', () => {
             await new Promise((resolve) => setTimeout(resolve, 60))
             expect(graph.asked.length).toBe(asked)
             mirror.dispose()
+        })
+
+        it('a keystroke’s pass does not ask the server about edits elsewhere', async () => {
+            const adapter = tickingAdapter()
+            const docs: FakeDocument[] = [{ docId: 'p1', kind: 'page', concept: 'Doc', text: 'first\n' }]
+            const graph = editedElsewhere(docs)
+            const mirror = createLocalMirror(graph.src, adapter, { debounceMs: 0, catchUpIntervalMs: 60_000 })
+            mirror.start()
+            await vi.waitFor(() => expect(mirror.status().lastSyncAt).toBeDefined())
+            await vi.waitFor(() => expect(mirror.status().syncing).toBe(false))
+            expect(graph.asked).toHaveLength(1)
+
+            docs[0].text = 'second\n'
+            graph.src.fire('Doc')
+            await vi.waitFor(async () => expect(await textOf(adapter, 'pages', 'Doc.md')).toContain('second'))
+            await vi.waitFor(() => expect(mirror.status().syncing).toBe(false))
+            expect(graph.asked).toHaveLength(1)
+            mirror.dispose()
+        })
+
+        it('a timed check the server cannot answer announces no write and does not call the folder checked', async () => {
+            const adapter = tickingAdapter()
+            const graph = editedElsewhere([{ docId: 'p1', kind: 'page', concept: 'Doc', text: 'first\n' }])
+            graph.setReachable(false)
+            let now = 1
+            const mirror = createLocalMirror(graph.src, adapter, {
+                debounceMs: 0,
+                catchUpIntervalMs: 60_000,
+                catchUpRetryMs: 10,
+                now: () => now,
+            })
+            mirror.start()
+            await vi.waitFor(() => expect(mirror.status().lastSyncAt).toBe(1))
+            await vi.waitFor(() => expect(mirror.status().syncing).toBe(false))
+            const syncing: boolean[] = []
+            mirror.onStatus((status) => syncing.push(status.syncing))
+            now = 2
+            const checks = graph.asked.length
+            await vi.waitFor(() => expect(graph.asked.length).toBeGreaterThan(checks + 1))
+
+            expect(syncing).not.toContain(true)
+            expect(mirror.status().lastSyncAt).toBe(1)
+            mirror.dispose()
+        })
+
+        /**
+         * Fake the mirror's timers only: a pass hashes what it writes with Web Crypto, which no fake
+         * clock moves, so these wait for a pass on real event-loop turns instead.
+         */
+        function fakeMirrorTimers() {
+            vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+        }
+        async function until(done: () => boolean | Promise<boolean>): Promise<void> {
+            for (let turn = 0; turn < 2_000; turn++) {
+                if (await done()) return
+                await new Promise((resolve) => setImmediate(resolve))
+            }
+            throw new Error('the mirror did not get there')
+        }
+        const settled = (mirror: { status(): MirrorStatus }) => until(() => mirror.status().lastSyncAt !== undefined && !mirror.status().syncing)
+
+        it('a timed check that finds a document behind asks once, and writes it in that check', async () => {
+            fakeMirrorTimers()
+            try {
+                const adapter = tickingAdapter()
+                const graph = editedElsewhere([{ docId: 'p1', kind: 'page', concept: 'Doc', text: 'first\n' }])
+                const mirror = createLocalMirror(graph.src, adapter, { debounceMs: 0, catchUpIntervalMs: 1_000 })
+                mirror.start()
+                await settled(mirror)
+                expect(graph.asked).toHaveLength(1)
+
+                graph.edit('p1', 'second\n')
+                vi.advanceTimersByTime(1_000)
+                await until(async () => (await textOf(adapter, 'pages', 'Doc.md')).includes('second'))
+                await settled(mirror)
+                expect(graph.asked).toHaveLength(2)
+                mirror.dispose()
+            } finally {
+                vi.useRealTimers()
+            }
+        })
+
+        it('keystroke passes do not push the timed check back', async () => {
+            fakeMirrorTimers()
+            try {
+                const adapter = tickingAdapter()
+                const docs: FakeDocument[] = [{ docId: 'p1', kind: 'page', concept: 'Doc', text: 'first\n' }]
+                const graph = editedElsewhere(docs)
+                const mirror = createLocalMirror(graph.src, adapter, { debounceMs: 0, catchUpIntervalMs: 100 })
+                mirror.start()
+                await settled(mirror)
+                expect(graph.asked).toHaveLength(1)
+
+                for (const text of ['second\n', 'third\n']) {
+                    vi.advanceTimersByTime(40)
+                    docs[0].text = text
+                    graph.src.fire('Doc')
+                    vi.advanceTimersByTime(0)
+                    await until(async () => (await textOf(adapter, 'pages', 'Doc.md')).includes(text))
+                    await settled(mirror)
+                }
+                expect(graph.asked).toHaveLength(1)
+                vi.advanceTimersByTime(30)
+                await until(() => graph.asked.length === 2)
+                mirror.dispose()
+            } finally {
+                vi.useRealTimers()
+            }
+        })
+
+        it('Mirror now moves the timed check on from its own question, leaving one timer', async () => {
+            fakeMirrorTimers()
+            try {
+                const adapter = tickingAdapter()
+                const graph = editedElsewhere([{ docId: 'p1', kind: 'page', concept: 'Doc', text: 'first\n' }])
+                const mirror = createLocalMirror(graph.src, adapter, { debounceMs: 0, catchUpIntervalMs: 100 })
+                mirror.start()
+                await settled(mirror)
+                expect(graph.asked).toHaveLength(1)
+                vi.advanceTimersByTime(50)
+                await mirror.sync()
+                expect(graph.asked).toHaveLength(2)
+                expect(vi.getTimerCount()).toBe(1)
+
+                vi.advanceTimersByTime(80)
+                await settled(mirror)
+                expect(graph.asked).toHaveLength(2)
+                vi.advanceTimersByTime(20)
+                await until(() => graph.asked.length === 3)
+                mirror.dispose()
+            } finally {
+                vi.useRealTimers()
+            }
+        })
+
+        it('the retry after a failed pass is a full pass, and asks the server again', async () => {
+            const adapter = tickingAdapter()
+            let failNext = false
+            const failing: DirectoryAdapter = {
+                ...adapter,
+                async write(subdir, name, text) {
+                    if (failNext) {
+                        failNext = false
+                        throw new Error('disk hiccup')
+                    }
+                    return adapter.write(subdir, name, text)
+                },
+            }
+            const docs: FakeDocument[] = [{ docId: 'p1', kind: 'page', concept: 'Doc', text: 'first\n' }]
+            const graph = editedElsewhere(docs)
+            const mirror = createLocalMirror(graph.src, failing, { debounceMs: 0, catchUpIntervalMs: 60_000, retryDelaysMs: [10] })
+            mirror.start()
+            await vi.waitFor(() => expect(mirror.status().lastSyncAt).toBeDefined())
+            await vi.waitFor(() => expect(mirror.status().syncing).toBe(false))
+            expect(graph.asked).toHaveLength(1)
+
+            docs[0].text = 'second\n'
+            failNext = true
+            graph.src.fire('Doc')
+            await vi.waitFor(async () => expect(await textOf(adapter, 'pages', 'Doc.md')).toContain('second'))
+            await vi.waitFor(() => expect(mirror.status().syncing).toBe(false))
+            expect(graph.asked).toHaveLength(2)
+            mirror.dispose()
+        })
+
+        it('writes nothing when disposed while the server is being asked', async () => {
+            const adapter = tickingAdapter()
+            let answer: ((behind: string[]) => void) | undefined
+            const asking = source([{ docId: 'p1', kind: 'page', concept: 'Doc', text: 'first\n' }], {
+                docsBehind: () => new Promise<string[]>((resolve) => (answer = resolve)),
+            })
+            const mirror = createLocalMirror(asking, adapter)
+            const synced = mirror.sync()
+            await vi.waitFor(() => expect(answer).toBeDefined())
+            mirror.dispose()
+            answer!([])
+            await synced
+            expect(await namesIn(adapter, 'pages')).toEqual([])
+            expect(asking.readCalls).toEqual([])
+        })
+
+        it('a timed check stopped while the server is being asked does not call the folder checked', async () => {
+            const adapter = tickingAdapter()
+            let gate: ((behind: string[]) => void) | undefined
+            let holding = false
+            const asking = source([{ docId: 'p1', kind: 'page', concept: 'Doc', text: 'first\n' }], {
+                docsBehind: () => (holding ? new Promise<string[]>((resolve) => (gate = resolve)) : Promise.resolve([])),
+            })
+            let now = 1
+            const mirror = createLocalMirror(asking, adapter, { debounceMs: 0, catchUpIntervalMs: 10, now: () => now })
+            mirror.start()
+            await vi.waitFor(() => expect(mirror.status().lastSyncAt).toBe(1))
+            holding = true
+            now = 2
+            await vi.waitFor(() => expect(gate).toBeDefined())
+            mirror.stop()
+            gate!([])
+            await new Promise((resolve) => setTimeout(resolve, 20))
+            expect(mirror.status().lastSyncAt).toBe(1)
+            mirror.dispose()
+        })
+
+        it('a source that cannot ask about edits elsewhere is never reported unchecked, and arms no check', async () => {
+            fakeMirrorTimers()
+            try {
+                const mirror = createLocalMirror(source([{ docId: 'p1', kind: 'page', concept: 'Doc', text: 'first\n' }]), tickingAdapter(), {
+                    debounceMs: 0,
+                    catchUpIntervalMs: 100,
+                })
+                mirror.start()
+                await settled(mirror)
+                expect(mirror.status().changesElsewhereUnchecked).toBe(false)
+                expect(vi.getTimerCount()).toBe(0)
+                mirror.dispose()
+            } finally {
+                vi.useRealTimers()
+            }
+        })
+
+        it('Mirror now leaves no timed check behind', async () => {
+            fakeMirrorTimers()
+            try {
+                const graph = editedElsewhere([{ docId: 'p1', kind: 'page', concept: 'Doc', text: 'first\n' }])
+                const mirror = createLocalMirror(graph.src, tickingAdapter(), { catchUpIntervalMs: 100 })
+                await mirror.sync()
+                expect(graph.asked).toHaveLength(1)
+                expect(vi.getTimerCount()).toBe(0)
+                mirror.dispose()
+            } finally {
+                vi.useRealTimers()
+            }
         })
     })
 
@@ -1827,6 +2059,39 @@ describe('local mirror — names, failures and the pass lifecycle', () => {
             await new Promise((resolve) => setTimeout(resolve, 40))
             expect(asked).toHaveLength(after)
             continuous.dispose()
+        })
+
+        it('a document written once is not read again for the next document’s edit', async () => {
+            const docs: FakeDocument[] = [
+                { docId: 'p1', kind: 'page', concept: 'Garden', text: 'first\n' },
+                { docId: 'p2', kind: 'page', concept: 'Shed', text: 'first\n' },
+            ]
+            const feed = source(docs)
+            const adapter = tickingAdapter()
+            const mirror = createLocalMirror(feed, adapter, { debounceMs: 0 })
+            mirror.start()
+            await idle(mirror)
+
+            docs[0].text = 'second\n'
+            feed.fire('Garden')
+            await vi.waitFor(async () => expect(await textOf(adapter, 'pages', 'Garden.md')).toContain('second'))
+            await idle(mirror)
+            docs[1].text = 'second\n'
+            feed.fire('Shed')
+            await vi.waitFor(async () => expect(await textOf(adapter, 'pages', 'Shed.md')).toContain('second'))
+            await idle(mirror)
+            expect(feed.readCalls.at(-1)).toEqual(['p2'])
+            mirror.dispose()
+        })
+
+        it('Mirror now with nothing changed reads no document', async () => {
+            const feed = source([{ docId: 'p1', kind: 'page', concept: 'Garden', text: 'first\n' }])
+            const mirror = createLocalMirror(feed, tickingAdapter())
+            await mirror.sync()
+            const reads = feed.readCalls.length
+            await mirror.sync()
+            expect(feed.readCalls).toHaveLength(reads)
+            mirror.dispose()
         })
     })
 })

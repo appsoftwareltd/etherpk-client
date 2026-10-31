@@ -225,7 +225,7 @@
         "test:coverage": "vitest run --coverage"
     },
     "dependencies": {
-        "zod": "^4.3.6",
+        "zod": "^4.6.7",
         "qrcode": "^1.5.4",
         "uuidv7": "^1.2.1"
     },

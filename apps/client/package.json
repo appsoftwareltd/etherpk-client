@@ -70,7 +70,7 @@
         "y-protocols": "^1.0.7",
         "yaml": "^2.9.0",
         "yjs": "^13.6.31",
-        "zod": "^4.3.6"
+        "zod": "^4.6.7"
     },
     "etherpk": {
         "builtInExtensions": [

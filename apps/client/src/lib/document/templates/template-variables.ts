@@ -100,7 +100,9 @@ function isKnown(inner: string): boolean {
 /** The text a variable stands for, or null for a name this module does not know. */
 function valueOf(inner: string, day: Date, context: TemplateContext): string | null {
     switch (inner.toLowerCase()) {
+        // `today` is `date` under the name the `/Today` command uses, beside `yesterday` and `tomorrow`.
         case 'date':
+        case 'today':
             return formatISODate(day)
         case 'yesterday':
             return formatISODate(shiftDate(day, -1))

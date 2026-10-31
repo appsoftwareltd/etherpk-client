@@ -1,7 +1,7 @@
 import { foldedRanges } from '@codemirror/language'
 import type { Extension, Transaction, TransactionSpec } from '@codemirror/state'
 import type { EditorView } from '@codemirror/view'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { setActiveEditorView } from '../active-editor'
 import { setActiveGraphSettings } from '../active-graph-settings'
@@ -338,6 +338,8 @@ describe('registerEditorCommands — a locked Protected Document', () => {
             'editor.insertWikilinkOpen',
             'editor.insertWikilinkClose',
             'date.today',
+            'date.yesterday',
+            'date.tomorrow',
             'editor.insertCodeBlock',
             'table.insert',
             // Would make the frontmatter line a bullet.
@@ -605,6 +607,30 @@ describe('registerEditorCommands — dates and assets', () => {
         expect(ed.fixture()).toMatch(/^- Garden \[\[\d{4}-\d{2}-\d{2}\]\]\|$/)
     })
 
+    describe('on a fixed clock', () => {
+        // Only Date is faked: the editor fixture's own timers keep running.
+        const at = (day: Date) => vi.useFakeTimers({ toFake: ['Date'], now: day })
+        afterEach(() => vi.useRealTimers())
+
+        it('Yesterday inserts the day before as a wikilink with the caret after it', async () => {
+            at(new Date(2026, 2, 1, 12))
+            const { ed } = await runCommand('- Garden |', 'date.yesterday')
+            expect(ed.fixture()).toBe('- Garden [[2026-02-28]]|')
+        })
+
+        it('Tomorrow inserts the day after as a wikilink with the caret after it', async () => {
+            at(new Date(2026, 11, 31, 12))
+            const { ed } = await runCommand('- Garden |', 'date.tomorrow')
+            expect(ed.fixture()).toBe('- Garden [[2027-01-01]]|')
+        })
+
+        it('Today inserts the day the same clock reads', async () => {
+            at(new Date(2026, 9, 14, 12))
+            const { ed } = await runCommand('- Garden |', 'date.today')
+            expect(ed.fixture()).toBe('- Garden [[2026-10-14]]|')
+        })
+    })
+
     it('Date Picker opens the calendar at the caret and writes nothing', async () => {
         const { ed, transactions } = await runCommand('- Garden |shed', 'date.pick')
         const effects = transactions.flatMap((tr) => tr.effects).filter((e) => e.is(openDateCalendar))
@@ -861,6 +887,8 @@ describe('registerEditorCommands — what the Command Bar and Command Menu offer
             ['dictionary', 'editor.spellCheckOff'],
             ['photo', 'asset.upload'],
             ['now', 'date.today'],
+            ['previous', 'date.yesterday'],
+            ['next', 'date.tomorrow'],
             ['calendar', 'date.pick'],
             ['strong', 'editor.bold'],
             ['emphasis', 'editor.italic'],

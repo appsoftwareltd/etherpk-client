@@ -47,6 +47,8 @@ describe('the Command Menu order', () => {
             'Go to backlinks',
             'Show older entry',
             'Today',
+            'Yesterday',
+            'Tomorrow',
             'Upload asset',
             'Date Picker',
             'Lock protected documents',

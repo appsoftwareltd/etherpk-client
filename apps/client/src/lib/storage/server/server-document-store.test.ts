@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { createGraphKeyring } from '$lib/crypto'
 import { createGraphSync, type TransportSocket } from '$lib/sync/graph-sync'
 import { createLoopbackRelay } from '$lib/sync/loopback-relay'
+import { createScriptedRelay, type ScriptedRelay } from '$lib/sync/testing/scripted-relay'
 import { fixedSyncToken } from '$lib/sync/sync-token'
 import { openGraphCache, type GraphCache } from '$lib/sync/local-cache'
 import { DocumentNotFoundError } from '$lib/document/types'
@@ -1077,6 +1078,88 @@ describe('ServerDocumentStore contracts', () => {
         expect(removed).not.toHaveBeenCalled()
         expect(renamed).not.toHaveBeenCalled()
         expect(content).not.toHaveBeenCalled()
+        await s.dispose()
+    })
+})
+
+describe('ServerDocumentStore creating documents', () => {
+    it('starts a day with no text when given none', async () => {
+        const s = await store(createLoopbackRelay())
+        await s.createJournal('2026-07-15')
+        expect(s.open('2026-07-15').getText()).toBe('')
+        await s.dispose()
+    })
+
+    it('seeds the text as given when it does not start with the template', async () => {
+        const s = await store(createLoopbackRelay())
+        await s.createJournal('2026-07-15', '- water the beans\n', { template: '## Morning\n' })
+        expect(s.open('2026-07-15').getText()).toBe('- water the beans\n')
+        await s.dispose()
+    })
+
+    it('seeds the template and the text after it as one text', async () => {
+        const s = await store(createLoopbackRelay())
+        await s.createJournal('2026-07-15', '## Morning\n- water the beans\n', { template: '## Morning\n' })
+        expect(s.open('2026-07-15').getText()).toBe('## Morning\n- water the beans\n')
+        await s.dispose()
+    })
+
+    it('creates one document when two calls start the same day or page at once', async () => {
+        const s = await store(createLoopbackRelay())
+        const days = await Promise.allSettled([s.createJournal('2026-07-15', 'first'), s.createJournal('2026-07-15', 'second')])
+        expect(days.map((result) => result.status).sort()).toEqual(['fulfilled', 'rejected'])
+        expect(String((days.find((result) => result.status === 'rejected') as PromiseRejectedResult).reason)).toMatch(/already exists/)
+        const pages = await Promise.allSettled([s.createPage('Garden', 'first'), s.createPage('Garden', 'second')])
+        expect(pages.map((result) => result.status).sort()).toEqual(['fulfilled', 'rejected'])
+        expect(String((pages.find((result) => result.status === 'rejected') as PromiseRejectedResult).reason)).toMatch(/A page for "Garden" already exists/)
+        expect(s.listDocuments().map((entry) => entry.concept).sort()).toEqual(['2026-07-15', 'Garden'])
+        // Asked again once the first has finished, it refuses before it waits on anything.
+        await expect(s.createPage('Garden')).rejects.toThrow('A page for "Garden" already exists')
+        await s.dispose()
+    })
+})
+
+describe('ServerDocumentStore against a relay that is slow to answer', () => {
+    async function storeOver(relay: ScriptedRelay, readyTimeoutMs: number) {
+        const cache = await openGraphCache(`g1-slow-${++cacheSeq}`)
+        const graph = createGraphSync({
+            graphId: 'g1',
+            rootDocId: ROOT,
+            keyring: createGraphKeyring('g1'),
+            relayUrl: 'ws://relay',
+            token: fixedSyncToken('t'),
+            cache,
+            connect: relay.connect,
+            debounceMs: 5,
+        })
+        return createServerDocumentStore(graph, { readyTimeoutMs })
+    }
+
+    it('waits the ready timeout for the connection before reading the registry from the cache alone', async () => {
+        const relay = createScriptedRelay()
+        const s = await storeOver(relay, 2_000)
+        let scanned = false
+        const scanning = s.scan().then(() => (scanned = true))
+        await vi.waitFor(() => expect(relay.sockets).toHaveLength(1))
+        await new Promise((resolve) => setTimeout(resolve, 30))
+        expect(scanned).toBe(false)
+
+        relay.latest().open()
+        await scanning
+        // Read to the relay's last page: confirmed, and still so once the connection is gone.
+        relay.latest().drop()
+        expect(await s.confirmRegistry(0)).toBe(true)
+        await s.dispose()
+    })
+
+    it('says it cannot tell which documents are behind when the relay does not answer in time', async () => {
+        const relay = createScriptedRelay({ autoOpen: true })
+        const s = await storeOver(relay, 2_000)
+        await s.scan()
+        await expect(s.docsBehind(['018f47a0-7b5d-7cc5-b5c1-f0fbcde20001'], 50)).resolves.toBeNull()
+        // The question went to the relay, and nothing answered it.
+        expect(relay.latest().sentOfType('watermarks')).toHaveLength(1)
+        await expect(s.docsBehind([], 50)).resolves.toEqual([])
         await s.dispose()
     })
 })

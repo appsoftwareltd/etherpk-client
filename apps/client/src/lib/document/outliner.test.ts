@@ -721,3 +721,136 @@ describe('indentBlock and the edges of a block', () => {
         expect(keepsOutline(L('- Garden\n  - Kitchen'), 1, 0, ['', '  '])).toBe(true)
     })
 })
+
+// What a block put in may and may not do to the lines around it, case by case: each case reaches
+// one of keepsOutline's three checks and no other.
+describe('a block put into the outline, line by line', () => {
+    const keeps = (doc: string, at: number, removed: number, block: string) => keepsOutline(L(doc), at, removed, L(block))
+
+    it('reads only the block’s own lines for an indented heading, from its first line with text', () => {
+        // The heading above the block is the document's, not the block's.
+        expect(keeps('- Garden\n  ## Sowing\n- Shed', 2, 0, '\n- Kitchen')).toBe(true)
+    })
+
+    it('measures every root against the first one with text, not against a line above the block', () => {
+        expect(keeps('- Garden\n  - Kitchen', 2, 0, '\n- Shed\n- Barn')).toBe(true)
+        expect(keeps('- Garden\n  - Kitchen', 1, 0, '  \n  - Shed')).toBe(true)
+    })
+
+    it('refuses roots at different indentations, the last one included', () => {
+        expect(keeps('- Garden', 1, 0, '  - Kitchen\n- Shed')).toBe(false)
+    })
+
+    it('reads past a bare blank line between roots to the next root', () => {
+        expect(keeps('- Garden', 1, 0, '  - Kitchen\n\n  - Shed')).toBe(true)
+        expect(keeps('- Garden', 1, 0, '  - Kitchen\n \n  - Shed')).toBe(true)
+    })
+
+    it('lets a block in place of a prose line take none of the lines that line held', () => {
+        // Only an empty bullet's children pass to the block: a prose line is no bullet.
+        expect(keeps('Shopping:\n  - eggs', 0, 1, '- Shopping')).toBe(false)
+    })
+
+    it('keeps a continuation line with the bullet above the block', () => {
+        expect(keeps('- Garden\n  more', 1, 0, '  - Kitchen')).toBe(true)
+    })
+
+    it('keeps a continuation line of the empty bullet it replaces with the block’s first line', () => {
+        expect(keeps('- Garden\n  - \n    note', 1, 1, '  - Agent\n    - Chat')).toBe(true)
+    })
+
+    it('refuses a block whose bare blank line would move a later bullet to the top level', () => {
+        expect(keeps('- Garden\n  - Kitchen\n  - Barn', 2, 0, '  - Shed\n')).toBe(false)
+    })
+})
+
+describe('healOrphanIndent at the edges', () => {
+    it('returns new lines and leaves the caller’s untouched', () => {
+        const lines = L('- a\n    - b')
+        expect(healOrphanIndent(lines, 0, 1)).toEqual(L('- a\n  - b'))
+        expect(lines).toEqual(L('- a\n    - b'))
+    })
+
+    it('stops at the end of the lines, wherever the range says it ends', () => {
+        expect(healOrphanIndent(L('- a\n    - b'), 0, 5)).toEqual(L('- a\n  - b'))
+    })
+
+    it('moves no line of a fenced block past the end of its range', () => {
+        expect(healOrphanIndent(L('- a\n      - b\n        ```\n        x\n        ```'), 0, 2)).toEqual(L('- a\n  - b\n    ```\n        x\n        ```'))
+    })
+
+    it('moves a form-2 block with the bullet still open at its indent, not the deeper one before it', () => {
+        expect(healOrphanIndent(L('- a\n      - b\n            - c\n        ```\n        x\n        ```'), 0, 5)).toEqual(
+            L('- a\n  - b\n    - c\n    ```\n    x\n    ```'),
+        )
+    })
+
+    it('leaves a form-2 block alone under a bullet whose content column it does not reach', () => {
+        expect(healOrphanIndent(L('- a\n      - b\n       ```\n       x\n       ```'), 0, 4)).toEqual(L('- a\n  - b\n       ```\n       x\n       ```'))
+    })
+
+    it('moves a form-2 block with the prose line it sits under, whatever its column', () => {
+        expect(healOrphanIndent(L('Shopping:\n      eggs\n       ```\n       x\n       ```'), 0, 4)).toEqual(L('Shopping:\n  eggs\n   ```\n   x\n   ```'))
+    })
+
+    it('leaves a form-2 block nobody owns where it is', () => {
+        expect(healOrphanIndent(L('```\nx\n```\n- a'), 0, 3)).toEqual(L('```\nx\n```\n- a'))
+    })
+
+    it('leaves the frontmatter as it is', () => {
+        expect(healOrphanIndent(L('---\ntags:\n    - garden\n---\n- a'), 0, 4)).toEqual(L('---\ntags:\n    - garden\n---\n- a'))
+    })
+
+    it('leaves an indented blank line under prose alone', () => {
+        expect(healOrphanIndent(L('Shopping:\n  \n- a'), 0, 2)).toEqual(L('Shopping:\n  \n- a'))
+    })
+
+    it('leaves a line it does not move exactly as written, tabs included', () => {
+        expect(healOrphanIndent(['- a', '\t- b', '\t\tmore'], 0, 2)).toEqual(['- a', '\t- b', '\t\tmore'])
+        expect(healOrphanIndent(['- a', '\t\tmore', '\t\t', '  - b'], 0, 3)).toEqual(['- a', '\t\tmore', '\t\t', '  - b'])
+    })
+
+    it('moves a fenced block’s own lines with it, and heals the line after it on its own', () => {
+        expect(healOrphanIndent(L('- a\n      - b\n        ```\n        x\n        ```\n    - c'), 0, 5)).toEqual(
+            L('- a\n  - b\n    ```\n    x\n    ```\n  - c'),
+        )
+    })
+})
+
+describe('healAfterRangeDelete at the edges', () => {
+    it('returns new lines and leaves the caller’s untouched', () => {
+        const lines = L('- a\n\n    - b')
+        expect(healAfterRangeDelete(lines, 1)).toEqual({ lines: L('- a\n  - b'), caretLine: 1 })
+        expect(lines).toEqual(L('- a\n\n    - b'))
+    })
+
+    it('puts a caret past the end on the last line', () => {
+        expect(healAfterRangeDelete(L('- a\n    - b'), 9).caretLine).toBe(1)
+    })
+
+    it('puts the caret on the new last line when the artifact removed was the last', () => {
+        expect(healAfterRangeDelete(L('- a\n    - b\n'), 2)).toEqual({ lines: L('- a\n  - b'), caretLine: 1 })
+    })
+
+    it('heals nothing when the line above the one that followed whole lines also ends a group', () => {
+        expect(healAfterRangeDelete(L('- a\n      - b\n\n## Sowing'), 3, true)).toEqual({ lines: L('- a\n      - b\n\n## Sowing'), caretLine: 3 })
+    })
+})
+
+describe('joinsBulletIntoProse at the edges', () => {
+    it('is false for a range that ends before it starts', () => {
+        expect(joinsBulletIntoProse(L('- eggs\nShopping:'), 1, 0, 4)).toBe(false)
+    })
+
+    it('is false for a range that starts inside a fence', () => {
+        expect(joinsBulletIntoProse(L('```\nx\n```\n- a'), 1, 3, 3)).toBe(false)
+    })
+
+    it('is false for a range that ends on a bullet-looking line of code', () => {
+        expect(joinsBulletIntoProse(L('Shopping:\n```\n- x\n```'), 0, 2, 3)).toBe(false)
+    })
+
+    it('is true for a range that ends on a form-1 bullet, which is a bullet line', () => {
+        expect(joinsBulletIntoProse(L('Shopping:\n- ```js\n  x\n  ```'), 0, 1, 4)).toBe(true)
+    })
+})

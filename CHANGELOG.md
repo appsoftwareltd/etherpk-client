@@ -107,11 +107,15 @@ starts at 0.9.3.
   done, to a tick in the Tasks view and to a Kanban move into or out of Done. In the editor, one
   **Ctrl+Z** undoes all of it. In the Tasks view and on a Kanban board, a notice says how many
   nested tasks changed and has **Undo**.
+- **Yesterday and Tomorrow in the `/` menu.** They insert the day before and the day after today
+  as a link, `[[2026-10-30]]`, as **Today** does for today.
+- **The `{{today}}` Template variable.** It gives the same date as `{{date}}`.
 - Updated dependencies.
 
 ### Headless Client
 
 - Updated dependencies.
+- **The `{{today}}` Template variable** gives the same date as `{{date}}`.
 - **Renaming a page moves everyone's favourites and bookmarks to the new name** on a synced graph,
   as renaming it in the Client does.
 - **`set_task` changes the tasks nested under a task, as the Client does.** Status `done` ticks

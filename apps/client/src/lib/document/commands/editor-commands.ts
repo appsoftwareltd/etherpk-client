@@ -1,6 +1,6 @@
 /**
  * The first-party **editor Commands** the Command Menu surfaces (Dual Mode Editor.md →
- * *Command Menu*): date insertion (Today / Date Picker) and the ten table-editing actions.
+ * *Command Menu*): date insertion (Today / Yesterday / Tomorrow / Date Picker) and the ten table-editing actions.
  * Each is registered with the Command registry (id → handler) and reaches the live editor
  * through `getActiveEditorView()` — so the same Commands are invocable later from a
  * keybinding that holds no view. The matching menu-item descriptors are registered with the
@@ -48,7 +48,7 @@ import {
     removeRowsAbove,
     removeRowsBelow,
 } from '../markdown-table-edit'
-import { formatISODate } from '../calendar/month-grid-core'
+import { formatISODate, shiftDate } from '../calendar/month-grid-core'
 import { openDateCalendar } from '../view/augmentations/date-calendar'
 import { acceptTableSize, openTableSizePicker } from '../view/augmentations/table-size-picker'
 import { clampTableSize, type TableSize } from '../view/augmentations/table-size-picker-core'
@@ -66,6 +66,14 @@ function insertAtCursor(view: EditorView, text: string): void {
         selection: { anchor: at + text.length },
         userEvent: 'input.complete',
     })
+}
+
+/**
+ * The wikilink to the day `offset` days from today: `[[YYYY-MM-DD]]`, the journal entry's name.
+ * The clock is read when the command runs, never cached, because a tab stays open for days.
+ */
+function dayLink(offset: number): string {
+    return `[[${formatISODate(shiftDate(new Date(), offset))}]]`
 }
 
 /** Where the caret goes after a table edit: a body row (0-based) or the header, and a column. */
@@ -185,7 +193,9 @@ export function registerEditorCommands(
     })
 
     // ── Commands ────────────────────────────────────────────────────────────
-    command('date.today', withWritableView((view) => insertAtCursor(view, `[[${formatISODate(new Date())}]]`)))
+    command('date.today', withWritableView((view) => insertAtCursor(view, dayLink(0))))
+    command('date.yesterday', withWritableView((view) => insertAtCursor(view, dayLink(-1))))
+    command('date.tomorrow', withWritableView((view) => insertAtCursor(view, dayLink(1))))
     command(
         'date.pick',
         withWritableView((view) => view.dispatch({ effects: openDateCalendar.of({ pos: view.state.selection.main.head }) })),
@@ -296,6 +306,8 @@ export function registerEditorCommands(
     item({ id: 'editor.spellCheckOn', title: 'Spell check: turn on', detail: 'Underline misspellings on this device', icon: 'spell-check', group: 'Editor', order: 180, keywords: ['spelling', 'spellcheck', 'dictionary'], when: () => !isSpellCheckEnabled(), command: 'editor.toggleSpellCheck', args: { enabled: true } })
     item({ id: 'asset.upload', title: 'Upload asset', detail: 'Insert an image or file', icon: 'image', group: 'Asset', order: 30, keywords: ['image', 'file', 'attach', 'upload', 'photo'], when: writable, command: 'asset.upload' })
     item({ id: 'date.today', title: 'Today', detail: 'Insert today as a wikilink', icon: 'today', group: 'Date', order: 20, keywords: ['now'], when: writable, command: 'date.today' })
+    item({ id: 'date.yesterday', title: 'Yesterday', detail: 'Insert yesterday as a wikilink', icon: 'yesterday', group: 'Date', order: 21, keywords: ['previous', 'last'], when: writable, command: 'date.yesterday' })
+    item({ id: 'date.tomorrow', title: 'Tomorrow', detail: 'Insert tomorrow as a wikilink', icon: 'tomorrow', group: 'Date', order: 22, keywords: ['next'], when: writable, command: 'date.tomorrow' })
     item({ id: 'date.pick', title: 'Date Picker', detail: 'Pick a date to insert', icon: 'calendar', group: 'Date', order: 40, keywords: ['date', 'calendar'], when: writable, command: 'date.pick' })
     // The menu's `/` has replaced any selection by the time a row runs, so from here a toggle
     // opens an empty pair with the caret inside; the wrap keys and chords are the selection path.

@@ -194,3 +194,47 @@ describe('a journal day deleted and started again', () => {
         await eventually(async () => expect(await textOf(again, DAY)).toBe('- the new line\n'))
     })
 })
+
+// A day started before the registry caught up keeps its entry against an older delete it may lose
+// a merge to, but only until the registry has caught up once with the device connected (ADR 0157).
+describe('a journal day started before the registry caught up', () => {
+    it('is deleted by a delete made elsewhere once the registry has caught up', async () => {
+        const relay = createLoopbackRelay()
+        const keyring = createGraphKeyring('g-claim-released')
+        const b = await device(relay, keyring, { online: false })
+        await b.store.createJournal(DAY, '- water the beans\n')
+        // The store gives the claim up when it hears the connection open and the registry has then
+        // caught up. Activity is told coalesced, so wait to be told too, as the store is.
+        let toldOpen = false
+        const stop = b.graph.onActivity((activity) => {
+            if (activity.connection === 'open') toldOpen = true
+        })
+        b.net.goOnline()
+        await eventually(() => expect(toldOpen).toBe(true))
+        stop()
+        await b.graph.rootCaughtUp()
+        await eventually(async () => expect(b.graph.activity().unsentDocuments).toBe(0))
+
+        const a = await device(relay, keyring)
+        await eventually(() => expect(entriesFor(a, DAY)).toHaveLength(1))
+        await a.store.deleteDocument(DAY)
+        await a.graph.flushAll()
+        await a.graph.awaitAcked({ stallMs: 2000 })
+
+        await eventually(() => expect(entriesFor(b, DAY)).toHaveLength(0))
+        // Nothing sets it again: the claim was given up when the registry caught up.
+        await new Promise((resolve) => setTimeout(resolve, 100))
+        expect(entriesFor(b, DAY)).toHaveLength(0)
+        expect(entriesFor(a, DAY)).toHaveLength(0)
+    })
+
+    it('is deleted by the device’s own delete, made before the registry caught up', async () => {
+        const relay = createLoopbackRelay()
+        const keyring = createGraphKeyring('g-claim-own-delete')
+        const b = await device(relay, keyring, { online: false })
+        await b.store.createJournal(DAY, '- water the beans\n')
+        await b.store.deleteDocument(DAY)
+        await new Promise((resolve) => setTimeout(resolve, 20))
+        expect(entriesFor(b, DAY)).toHaveLength(0)
+    })
+})

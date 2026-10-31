@@ -56,6 +56,10 @@ export const ICON_PATHS: Record<string, string> = {
     // Slash menu
     today: '<rect x="2.5" y="3" width="11" height="11" rx="1.5"/><path d="M2.5 6.5h11M5.5 2v2M10.5 2v2"/><circle cx="8" cy="10" r="1.3" fill="currentColor" stroke="none"/>',
     calendar: '<rect x="2.5" y="3" width="11" height="11" rx="1.5"/><path d="M2.5 6.5h11M5.5 2v2M10.5 2v2"/>',
+    /** The calendar with a chevron pointing back a day: the Yesterday row. */
+    yesterday: '<rect x="2.5" y="3" width="11" height="11" rx="1.5"/><path d="M2.5 6.5h11M5.5 2v2M10.5 2v2"/><path d="M9 8.4 7.1 10.25 9 12.1"/>',
+    /** The calendar with a chevron pointing on a day: the Tomorrow row. */
+    tomorrow: '<rect x="2.5" y="3" width="11" height="11" rx="1.5"/><path d="M2.5 6.5h11M5.5 2v2M10.5 2v2"/><path d="M7 8.4l1.9 1.85L7 12.1"/>',
 
     // The `#` menu: a task's priority, and its waiting, doing and cancelled states.
     flag: '<path d="M4 14V3h7l-1.5 2.5L11 8H4"/>',

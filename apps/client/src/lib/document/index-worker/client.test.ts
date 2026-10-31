@@ -763,3 +763,117 @@ describe('remote graph index — the cross-tab locks', () => {
         index.dispose()
     })
 })
+
+// The open's startup patience is measured from the worker's last message and checked on an
+// interval: these pin when it gives up, and that it leaves no interval running once it settles.
+describe('remote graph index — startup patience', () => {
+    beforeEach(() => {
+        vi.useFakeTimers()
+    })
+    afterEach(() => {
+        vi.useRealTimers()
+    })
+
+    /** Start a refresh against a worker that has not answered, and track how it ends. */
+    function startOpen(options: { openTimeoutMs?: number; adoptedOpenTimeoutMs?: number } = {}) {
+        const worker = scriptedWorker()
+        const index = createRemoteGraphIndex(fakeSource([doc('Garden')]).source, worker.transport, { graphId: 'g1', ...options })
+        const state: { outcome: 'pending' | 'resolved' | 'rejected'; error?: unknown } = { outcome: 'pending' }
+        const refreshed = index.refresh().then(
+            () => {
+                state.outcome = 'resolved'
+            },
+            (error: unknown) => {
+                state.outcome = 'rejected'
+                state.error = error
+            },
+        )
+        return { worker, index, state, refreshed }
+    }
+
+    it('counts the idle time from the worker’s last message, not from when the open started', async () => {
+        const { worker, index, state } = startOpen({ openTimeoutMs: 100 })
+        await vi.advanceTimersByTimeAsync(60)
+        worker.push({ type: 'progress', phase: 'indexing', done: 1, total: 3 })
+        await vi.advanceTimersByTimeAsync(70)
+        expect(state.outcome).toBe('pending')
+
+        await vi.advanceTimersByTimeAsync(100)
+        expect(state.outcome).toBe('rejected')
+        expect(String(state.error)).toMatch(/did not answer/)
+        index.dispose()
+    })
+
+    it('looks no more often than every 25 ms, however short the budget', async () => {
+        const { index, state } = startOpen({ openTimeoutMs: 10 })
+        await vi.advanceTimersByTimeAsync(15)
+        expect(state.outcome).toBe('pending')
+        await vi.advanceTimersByTimeAsync(15)
+        expect(state.outcome).toBe('rejected')
+        index.dispose()
+    })
+
+    it('waits 60 seconds by default once the worker has adopted the port', async () => {
+        const { worker, index, state } = startOpen({ openTimeoutMs: 50 })
+        worker.push({ type: 'attached' })
+        await vi.advanceTimersByTimeAsync(59_000)
+        expect(state.outcome).toBe('pending')
+        await vi.advanceTimersByTimeAsync(2_000)
+        expect(state.outcome).toBe('rejected')
+        index.dispose()
+    })
+
+    it('still gives up once the adoption patience it was given has passed', async () => {
+        const { worker, index, state } = startOpen({ openTimeoutMs: 50, adoptedOpenTimeoutMs: 200 })
+        worker.push({ type: 'attached' })
+        await vi.advanceTimersByTimeAsync(300)
+        expect(state.outcome).toBe('rejected')
+        index.dispose()
+    })
+
+    it('leaves no interval running once the worker answers', async () => {
+        const { worker, index, refreshed, state } = startOpen({ openTimeoutMs: 100 })
+        worker.push({ type: 'opened', openId: worker.of('open')[0].openId, persisted: true, indexedDocuments: 3 })
+        await refreshed
+        expect(state.outcome).toBe('resolved')
+        expect(vi.getTimerCount()).toBe(0)
+        index.dispose()
+    })
+
+    it('leaves no interval running once the worker reports it failed to start', async () => {
+        const { worker, index, refreshed, state } = startOpen({ openTimeoutMs: 100 })
+        worker.push({ type: 'error', message: 'the index worker failed to start' })
+        await refreshed
+        expect(state.outcome).toBe('rejected')
+        expect(vi.getTimerCount()).toBe(0)
+        index.dispose()
+    })
+
+    it('leaves no interval running once it gives up', async () => {
+        const { index, state } = startOpen({ openTimeoutMs: 100 })
+        await vi.advanceTimersByTimeAsync(150)
+        expect(state.outcome).toBe('rejected')
+        expect(vi.getTimerCount()).toBe(0)
+        index.dispose()
+    })
+
+    it('starts the budget again on a replacement worker without leaving the first interval running', async () => {
+        const { worker, index, refreshed, state } = startOpen({ openTimeoutMs: 100 })
+        await vi.advanceTimersByTimeAsync(60)
+        worker.push({ type: 'transport-changed' })
+        worker.push({ type: 'opened', openId: worker.of('open')[0].openId, persisted: true, indexedDocuments: 3 })
+        await refreshed
+        expect(state.outcome).toBe('resolved')
+        expect(vi.getTimerCount()).toBe(0)
+        index.dispose()
+    })
+
+    it('refuses to open once disposed, and sends the worker nothing', async () => {
+        const worker = scriptedWorker()
+        const index = createRemoteGraphIndex(fakeSource([doc('Garden')]).source, worker.transport, { graphId: 'g1' })
+        index.dispose()
+        const refreshed = index.refresh()
+        expect(worker.of('open')).toHaveLength(0)
+        await expect(refreshed).rejects.toThrow(/disposed/)
+    })
+})

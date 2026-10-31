@@ -12,6 +12,7 @@ import {
     type TransportSocket,
 } from './graph-sync'
 import { createLoopbackRelay } from './loopback-relay'
+import { createScriptedRelay, type ScriptedRelay } from './testing/scripted-relay'
 import { STABLE_CONNECTION_MS } from './reconnect-backoff'
 import { fixedSyncToken } from './sync-token'
 import { openGraphCache, type GraphCache } from './local-cache'
@@ -2608,69 +2609,10 @@ describe('graph-sync protocol mismatch', () => {
  * socket was cut, and cut again on every reconnect.
  */
 describe('graph-sync operation window', () => {
-    /** A relay that answers catch-ups at once and acks appends only when the test says. */
-    function relayHoldingAcks() {
-        const appends: Array<{ outboxId: string; docId: string; socket: number }> = []
-        const sockets: Array<{ receive: (data: string) => void; drop: () => void }> = []
-        const connect = (): TransportSocket => {
-            const index = sockets.length
-            let receive: (data: string) => void = () => {}
-            let closed: (event?: TransportCloseEvent) => void = () => {}
-            let live = true
-            sockets.push({
-                receive: (data) => receive(data),
-                drop: () => {
-                    live = false
-                    closed({ code: 1006, reason: '' })
-                },
-            })
-            return {
-                send(data) {
-                    if (!live) return
-                    const message = JSON.parse(data) as { type: string; outboxId?: string; docId?: string; requestId?: string; generation?: number; afterSeq?: number }
-                    if (message.type === 'append') appends.push({ outboxId: message.outboxId!, docId: message.docId!, socket: index })
-                    if (message.type === 'catchup') {
-                        queueMicrotask(() =>
-                            receive(JSON.stringify({
-                                v: SYNC_PROTOCOL_VERSION,
-                                type: 'catchup_batch',
-                                requestId: message.requestId,
-                                docId: message.docId,
-                                generation: message.generation,
-                                state: 'active',
-                                updates: [],
-                                throughSeq: message.afterSeq ?? 0,
-                                hasMore: false,
-                            })),
-                        )
-                    }
-                },
-                close: () => {},
-                onOpen: (callback) => queueMicrotask(callback),
-                onMessage: (callback) => {
-                    receive = callback
-                },
-                onClose: (callback) => {
-                    closed = callback
-                },
-            }
-        }
-        const ack = (append: { outboxId: string; socket: number }) =>
-            sockets[append.socket].receive(JSON.stringify({
-                v: SYNC_PROTOCOL_VERSION,
-                type: 'ack',
-                outboxId: append.outboxId,
-                generation: 1,
-                state: 'active',
-                seq: 1,
-            }))
-        return { connect, appends, sockets, ack }
-    }
-
     const docIds = (count: number) =>
         Array.from({ length: count }, (_, n) => `018f47a0-7b5d-7cc5-b5c1-${(0x100000 + n).toString(16).padStart(12, '0')}`)
 
-    async function graphOver(relay: ReturnType<typeof relayHoldingAcks>) {
+    async function graphOver(relay: ScriptedRelay, extra: Partial<GraphSyncDeps> = {}) {
         const graphId = `g-window-${Math.floor(performance.now() * 1000)}`
         const cache = await openGraphCache(graphId)
         const graph = createGraphSync({
@@ -2683,35 +2625,36 @@ describe('graph-sync operation window', () => {
             connect: relay.connect,
             debounceMs: 5,
             retryDelayMs: () => 0,
+            ...extra,
         })
         await graph.ready()
         return { graph, cache }
     }
 
     it('keeps at most the window unacknowledged across many documents, and sends the rest as acks arrive', async () => {
-        const relay = relayHoldingAcks()
+        const relay = createScriptedRelay({ autoOpen: true })
         const { graph, cache } = await graphOver(relay)
         const docs = docIds(OPERATION_WINDOW + 20)
         for (const docId of docs) graph.docSync(docId).doc.getText('content').insert(0, docId)
 
         await graph.flushAll()
-        await vi.waitFor(() => expect(relay.appends).toHaveLength(OPERATION_WINDOW))
+        await vi.waitFor(() => expect(relay.appends()).toHaveLength(OPERATION_WINDOW))
         await new Promise((resolve) => setTimeout(resolve, 30))
-        expect(relay.appends).toHaveLength(OPERATION_WINDOW)
+        expect(relay.appends()).toHaveLength(OPERATION_WINDOW)
 
-        relay.ack(relay.appends[0])
-        await vi.waitFor(() => expect(relay.appends).toHaveLength(OPERATION_WINDOW + 1))
+        relay.ack(relay.appends()[0])
+        await vi.waitFor(() => expect(relay.appends()).toHaveLength(OPERATION_WINDOW + 1))
 
         // Answer everything as it arrives: every document's operation goes out exactly once. Each
         // wait acks every append that has arrived since the last, rather than one at a time.
         let answered = 1
         while (answered < docs.length) {
-            await vi.waitFor(() => expect(relay.appends.length).toBeGreaterThan(answered))
-            while (answered < relay.appends.length) relay.ack(relay.appends[answered++])
+            await vi.waitFor(() => expect(relay.appends().length).toBeGreaterThan(answered))
+            while (answered < relay.appends().length) relay.ack(relay.appends()[answered++])
         }
         await expect(graph.awaitAcked({ stallMs: 2_000 })).resolves.toEqual({ settled: true, outstanding: 0 })
-        expect(new Set(relay.appends.map((append) => append.docId)).size).toBe(docs.length)
-        expect(relay.appends).toHaveLength(docs.length)
+        expect(new Set(relay.appends().map((append) => append.docId)).size).toBe(docs.length)
+        expect(relay.appends()).toHaveLength(docs.length)
 
         graph.dispose()
         cache.dispose()
@@ -2720,22 +2663,143 @@ describe('graph-sync operation window', () => {
     }, 20_000)
 
     it('resends no more than the window when the connection opens again', async () => {
-        const relay = relayHoldingAcks()
+        const relay = createScriptedRelay({ autoOpen: true })
         const { graph, cache } = await graphOver(relay)
         const docs = docIds(OPERATION_WINDOW + 20)
         for (const docId of docs) graph.docSync(docId).doc.getText('content').insert(0, docId)
         await graph.flushAll()
-        await vi.waitFor(() => expect(relay.appends).toHaveLength(OPERATION_WINDOW))
+        await vi.waitFor(() => expect(relay.appends()).toHaveLength(OPERATION_WINDOW))
 
         relay.sockets[0].drop()
-        await vi.waitFor(() => expect(relay.appends.filter((append) => append.socket === 1)).toHaveLength(OPERATION_WINDOW))
+        await vi.waitFor(() => expect(relay.appends().filter((append) => append.socket === 1)).toHaveLength(OPERATION_WINDOW))
         await new Promise((resolve) => setTimeout(resolve, 30))
-        expect(relay.appends.filter((append) => append.socket === 1)).toHaveLength(OPERATION_WINDOW)
+        expect(relay.appends().filter((append) => append.socket === 1)).toHaveLength(OPERATION_WINDOW)
 
         graph.dispose()
         cache.dispose()
         // The same workload as above, and the same timeout.
     }, 20_000)
+
+    /** A graph with one more edited document than the window holds, and the window full. */
+    async function windowFull(extra: Partial<GraphSyncDeps> = {}) {
+        const relay = createScriptedRelay({ autoOpen: true })
+        // A refused write is sent again only on the retry round, which these tests never reach.
+        const errors: Error[] = []
+        const { graph, cache } = await graphOver(relay, { refusalRetryDelayMs: () => 60_000, onError: (error) => errors.push(error), ...extra })
+        const docs = docIds(OPERATION_WINDOW + 1)
+        for (const docId of docs) graph.docSync(docId).doc.getText('content').insert(0, 'water the beans')
+        await graph.flushAll()
+        await vi.waitFor(() => expect(relay.appends()).toHaveLength(OPERATION_WINDOW))
+        const sent = new Set(relay.appends().map((append) => append.docId))
+        const waiting = docs.filter((docId) => !sent.has(docId))
+        expect(waiting).toHaveLength(1)
+        /** Whether the waiting document's operation has gone out. */
+        const waitingSent = () => relay.appends().some((append) => append.docId === waiting[0])
+        return { relay, graph, cache, errors, waitingSent }
+    }
+
+    /** Nothing more is sent for a while: what was sent is all the session will send. */
+    const quietFor = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+    it('gives a refused operation’s place in the window to the next one waiting', async () => {
+        const { relay, graph, cache, errors, waitingSent } = await windowFull()
+        relay.refuse(relay.appends()[0])
+        await vi.waitFor(() => expect(waitingSent()).toBe(true))
+        expect(errors).toEqual([])
+        graph.dispose()
+        cache.dispose()
+    }, 20_000)
+
+    it('gives an operation’s place to the next one when the relay says its document has a newer generation', async () => {
+        const { relay, graph, cache, waitingSent } = await windowFull()
+        relay.staleGeneration(relay.appends()[0])
+        await vi.waitFor(() => expect(waitingSent()).toBe(true))
+        graph.dispose()
+        cache.dispose()
+    }, 20_000)
+
+    it('frees nothing for a refusal of an operation that is not the one in flight', async () => {
+        const { relay, graph, cache, waitingSent } = await windowFull()
+        const first = relay.appends()[0]
+        relay.refuse({ ...first, outboxId: '018f47a0-7b5d-7cc5-b5c1-0000000000aa' })
+        await quietFor(50)
+        expect(waitingSent()).toBe(false)
+
+        relay.refuse(first)
+        await vi.waitFor(() => expect(waitingSent()).toBe(true))
+        graph.dispose()
+        cache.dispose()
+    }, 20_000)
+})
+
+describe('graph-sync subscriptions across a reconnect', () => {
+    const docIds = (count: number) =>
+        Array.from({ length: count }, (_, n) => `018f47a0-7b5d-7cc5-b5c1-${(0x200000 + n).toString(16).padStart(12, '0')}`)
+
+    async function session(relay: ScriptedRelay, extra: Partial<GraphSyncDeps> = {}) {
+        const graphId = `g-subscribe-${Math.floor(performance.now() * 1000)}`
+        const cache = await openGraphCache(graphId)
+        const errors: Error[] = []
+        const graph = createGraphSync({
+            graphId,
+            rootDocId: ROOT,
+            keyring: createGraphKeyring(graphId),
+            relayUrl: 'ws://relay',
+            token: fixedSyncToken('t'),
+            cache,
+            connect: relay.connect,
+            debounceMs: 5,
+            retryDelayMs: () => 0,
+            onError: (error) => errors.push(error),
+            ...extra,
+        })
+        await vi.waitFor(() => expect(relay.sockets).toHaveLength(1))
+        relay.latest().open()
+        await graph.connected()
+        return { graph, cache, errors }
+    }
+
+    it('resubscribes exactly the per-message limit in one message, with no empty one after it', async () => {
+        const relay = createScriptedRelay()
+        const { graph, cache } = await session(relay)
+        // With the root, exactly the limit.
+        const releases = docIds(SYNC_PROTOCOL_LIMITS.maxSubscriptionDocIds - 1).map((docId) => graph.retainDoc(docId))
+
+        relay.latest().drop()
+        await vi.waitFor(() => expect(relay.sockets).toHaveLength(2))
+        relay.latest().open()
+        const batches = relay.latest().sentOfType('subscribe')
+        expect(batches.map((batch) => (batch.docIds as string[]).length)).toEqual([SYNC_PROTOCOL_LIMITS.maxSubscriptionDocIds])
+        for (const release of releases) release()
+        graph.dispose()
+        cache.dispose()
+    }, 20_000)
+
+    it('sends nothing for a document released while the connection is down, then or once it is back', async () => {
+        const relay = createScriptedRelay()
+        // A reconnect that waits, so one release lands with no socket at all.
+        const { graph, cache, errors } = await session(relay, { retryDelayMs: () => 100 })
+        const [garden, kitchen] = docIds(2)
+        const releaseGarden = graph.retainDoc(garden)
+        const releaseKitchen = graph.retainDoc(kitchen)
+        await vi.waitFor(() => expect(relay.latest().sentOfType('subscribe')).toHaveLength(3))
+
+        relay.latest().drop()
+        releaseGarden()
+        await vi.waitFor(() => expect(relay.sockets).toHaveLength(2), { timeout: 2_000 })
+        // The new socket is being made and is not open yet.
+        releaseKitchen()
+        await new Promise((resolve) => setTimeout(resolve, 50))
+        expect(relay.latest().sent).toEqual([])
+
+        relay.latest().open()
+        await new Promise((resolve) => setTimeout(resolve, 50))
+        expect(relay.latest().sentOfType('unsubscribe')).toEqual([])
+        expect(relay.latest().sentOfType('subscribe').flatMap((batch) => batch.docIds as string[])).toEqual([ROOT])
+        expect(errors).toEqual([])
+        graph.dispose()
+        cache.dispose()
+    })
 })
 
 describe('graph-sync follows a new Graph Key epoch (ADR 0127)', () => {
@@ -3762,6 +3826,16 @@ describe('graph-sync session contracts', () => {
             expect(s.gs.docSync(DOC_A).generation()).toBe(1)
             expect(s.gs.docSync(DOC_A).unsentOperations()).toBe(1)
             expect(refreshKeyring).not.toHaveBeenCalled()
+            s.gs.dispose()
+        })
+
+        it('ends access for good when the relay says the membership was revoked', async () => {
+            const s = await scriptedSession()
+            s.sockets[0].open()
+            await s.gs.connected()
+            s.sockets[0].message({ type: 'error', code: 'membership_revoked', message: 'revoked' })
+            await vi.waitFor(() => expect(s.losses).toEqual([{ kind: 'membership' }]))
+            expect(s.gs.activity().connection).toBe('ended')
             s.gs.dispose()
         })
 
