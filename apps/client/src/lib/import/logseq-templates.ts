@@ -182,19 +182,20 @@ export function extractTemplateBlocks(lines: string[]): { lines: string[]; templ
 
 /** Logseq's dynamic variables EtherPK has an equal for, by their name trimmed and lower-cased. */
 const DYNAMIC_VARIABLES: Record<string, { variable: string; link: boolean }> = {
-    // Logseq writes these as page references, `[[Oct 14th, 2026]]`. EtherPK's variables are
-    // plain text, so the link is written around them.
-    today: { variable: '{{date}}', link: true },
-    yesterday: { variable: '{{yesterday}}', link: true },
-    tomorrow: { variable: '{{tomorrow}}', link: true },
+    // Logseq writes these as page references, `[[Oct 14th, 2026]]`. EtherPK's day variables link
+    // the day themselves, and `{{title}}` is plain text, so the link is written around it.
+    today: { variable: '{{date}}', link: false },
+    yesterday: { variable: '{{yesterday}}', link: false },
+    tomorrow: { variable: '{{tomorrow}}', link: false },
     'current page': { variable: '{{title}}', link: true },
     time: { variable: '{{time}}', link: false },
 }
 
 /**
  * A Template page's text with Logseq's dynamic variables turned into Template Variables:
- * `<% today %>` becomes `[[{{date}}]]`, and `<% time %>` becomes `{{time}}`. A variable already
- * inside a wikilink (`[[<% today %>]]`, `[[<% today %> harvest]]`) gets no second pair of brackets.
+ * `<% today %>` becomes `{{date}}`, `<% current page %>` becomes `[[{{title}}]]`, and `<% time %>`
+ * becomes `{{time}}`. A variable already inside a wikilink (`[[<% current page %>]]`,
+ * `[[<% today %> harvest]]`) gets no second pair of brackets.
  *
  * Every variable is converted, code included, because Logseq fills them in everywhere and so
  * does EtherPK. Any other `<% … %>` (a natural-language date such as `<% next monday %>`) is kept

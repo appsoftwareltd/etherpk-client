@@ -129,9 +129,11 @@ AGENTS.md                                     this file
   is a Template: the user copies its body into any document with `/Template`, and a new day
   opens holding the graph's Journal Template (`journalTemplate` in `etherpk/settings.json`,
   the page's name). Only the body is copied, never the frontmatter. In the body, `{{date}}`
-  (or `{{today}}`), `{{yesterday}}` and `{{tomorrow}}` (`YYYY-MM-DD`), `{{time}}` (`HH:mm`),
-  `{{datetime}}` and `{{title}}` (the name of the document it is copied into) are filled in as
-  plain text, so a link is written around one: `[[{{date}}]]`. `{{date:DD/MM/YYYY}}` formats with the tokens
+  (or `{{today}}`), `{{yesterday}}` and `{{tomorrow}}` become a link to that day's journal
+  entry (`[[2026-06-02]]`), or the bare day when the variable is already inside a wikilink
+  (`[[{{date}}]]`). `{{time}}` (`HH:mm`), `{{datetime}}` and `{{title}}` (the name of the document
+  it is copied into) are filled in as plain text, so a link to the title is written
+  `[[{{title}}]]`. `{{date:DD/MM/YYYY}}` formats with the tokens
   `YYYY YY MM DD HH mm ss`, `{{cursor}}` marks where the caret lands, `\{{` is a literal `{{`,
   and any other name is copied as written. Keep a Template's variables as they are: its tasks
   and links count for nothing in the graph. When you write a document from a Template

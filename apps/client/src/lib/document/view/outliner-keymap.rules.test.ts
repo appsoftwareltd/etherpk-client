@@ -2740,6 +2740,7 @@ describe('inserting a Template', () => {
         { rule: 'on an empty prose line, an outline starts at the margin', precedent: 'EtherPK', before: 'Intro\n|', body: '- Review\n  - beans', after: 'Intro\n- Review\n  - beans|' },
         { rule: 'after prose on the same line, an outline starts on a line of its own', precedent: 'EtherPK', before: 'Intro|', body: '- Review\n  - beans', after: 'Intro\n- Review\n  - beans|' },
         { rule: 'the variables are filled in', precedent: 'Logseq', before: '- |', body: '- [[{{date}}]] in [[{{title}}]]', after: '- [[2026-10-14]] in [[Garden]]|' },
+        { rule: 'a day variable links that day’s journal entry', precedent: 'Logseq', before: '- |', body: '- {{date}} after {{yesterday}}', after: '- [[2026-10-14]] after [[2026-10-13]]|' },
         { rule: '{{cursor}} puts the caret where it stood', precedent: 'AS Notes', before: '- |', body: '- Notes: {{cursor}}\n- Tasks', after: '- Notes: |\n- Tasks' },
         { rule: '{{cursor}} on an empty bullet of the Template puts the caret on it', precedent: 'EtherPK', before: '- |', body: '- Notes\n  - {{cursor}}\n- Tasks', after: '- Notes\n  - |\n- Tasks' },
         { rule: '{{cursor}} before a bullet’s marker puts the caret after it', precedent: 'EtherPK', before: '- |', body: '- Notes\n{{cursor}}- Tasks', after: '- Notes\n- |Tasks' },

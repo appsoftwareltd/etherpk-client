@@ -438,7 +438,7 @@ describe('convertLogseq templates', () => {
                 'template: true',
                 '---',
                 '- [[{{date}}]] notes',
-                '- planted on [[{{date}}]], before [[{{tomorrow}}]] and after [[{{yesterday}}]]',
+                '- planted on {{date}}, before {{tomorrow}} and after {{yesterday}}',
                 '- at {{time}} on [[{{title}}]]',
                 '- later <% next monday %> and <% last friday %> and <% NEXT MONDAY %>',
             ].join('\n'),
@@ -517,7 +517,7 @@ describe('convertLogseq templates', () => {
             src('pages/Evening.md', 'template:: evening\n- close the shed'),
         ])
         expect(doc(graph, 'Morning Routine').text).toBe(
-            '---\ntitle: Morning Routine\ntemplate: true\n---\n- stretch\n- water the beans on [[{{date}}]]',
+            '---\ntitle: Morning Routine\ntemplate: true\n---\n- stretch\n- water the beans on {{date}}',
         )
         expect(doc(graph, 'Evening').text).toBe('---\ntitle: Evening\ntemplate: true\n---\n- close the shed')
         expect(report(graph, 'rename')).toEqual([

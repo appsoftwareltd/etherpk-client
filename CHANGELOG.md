@@ -110,6 +110,11 @@ starts at 0.9.3.
 - **Yesterday and Tomorrow in the `/` menu.** They insert the day before and the day after today
   as a link, `[[2026-10-30]]`, as **Today** does for today.
 - **The `{{today}}` Template variable.** It gives the same date as `{{date}}`.
+- **The day Template variables give a link.** `{{date}}`, `{{today}}`, `{{yesterday}}` and
+  `{{tomorrow}}` now give a link to the day's journal entry, such as `[[2026-11-01]]`. A variable
+  that is already inside a link, such as `[[{{date}}]]`, still gives only the day, so your
+  Templates copy as before. For the day as plain text, use `{{date:YYYY-MM-DD}}`. The Obsidian and
+  AS Notes imports write a template's `{{date}}` as `{{date:YYYY-MM-DD}}`, to keep the plain day.
 - **The Client does not start when `ORIGIN` is not an HTTP or HTTPS origin with no path**, such as
   `https://app.example.com`. Before, a value of another form was used as it was.
 - Updated dependencies.
@@ -118,6 +123,8 @@ starts at 0.9.3.
 
 - Updated dependencies.
 - **The `{{today}}` Template variable** gives the same date as `{{date}}`.
+- **The day Template variables give a link**, such as `[[2026-11-01]]`, in `create_page` and
+  `append_document`, as they do in the Client.
 - **Renaming a page moves everyone's favourites and bookmarks to the new name** on a synced graph,
   as renaming it in the Client does.
 - **`set_task` changes the tasks nested under a task, as the Client does.** Status `done` ticks

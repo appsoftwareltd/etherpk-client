@@ -10,10 +10,10 @@ const render = (body: string, ctx: TemplateContext = context) => renderTemplate(
 
 describe('renderTemplate: the named variables', () => {
     it.each([
-        ['{{date}}', '2026-10-14'],
-        ['{{today}}', '2026-10-14'],
-        ['{{yesterday}}', '2026-10-13'],
-        ['{{tomorrow}}', '2026-10-15'],
+        ['{{date}}', '[[2026-10-14]]'],
+        ['{{today}}', '[[2026-10-14]]'],
+        ['{{yesterday}}', '[[2026-10-13]]'],
+        ['{{tomorrow}}', '[[2026-10-15]]'],
         ['{{time}}', '14:05'],
         ['{{datetime}}', '2026-10-14 14:05'],
         ['{{title}}', 'Garden'],
@@ -22,29 +22,40 @@ describe('renderTemplate: the named variables', () => {
     })
 
     it('matches a name without regard to case or the spaces inside the braces', () => {
-        expect(render('{{ Date }} and {{TITLE}}').text).toBe('2026-10-14 and Garden')
+        expect(render('{{ Date }} and {{TITLE}}').text).toBe('[[2026-10-14]] and Garden')
     })
 
-    it('gives plain text, so a link is written around the variable', () => {
+    it('links a day to its journal entry, and gives the time, the title and a format as plain text', () => {
+        expect(render('{{date}} {{datetime}} {{title}} {{date:YYYY-MM-DD}}').text).toBe('[[2026-10-14]] 2026-10-14 14:05 Garden 2026-10-14')
+    })
+
+    it('adds no second pair of brackets to a day already inside a wikilink', () => {
         expect(render('- [[{{date}}]] review of [[{{title}}]]').text).toBe('- [[2026-10-14]] review of [[Garden]]')
+        expect(render('- see [[{{yesterday}} harvest]]').text).toBe('- see [[2026-10-13 harvest]]')
+        expect(render('- [[Garden [[{{tomorrow}}]]]]').text).toBe('- [[Garden [[2026-10-15]]]]')
+    })
+
+    it('links a day that follows a closed wikilink, or an unclosed one on an earlier line', () => {
+        expect(render('- [[Garden]] {{date}}').text).toBe('- [[Garden]] [[2026-10-14]]')
+        expect(render('- [[Garden\n- {{date}}').text).toBe('- [[Garden\n- [[2026-10-14]]')
     })
 
     it('reads the date from the context day, not from the clock', () => {
         const monday: TemplateContext = { day: '2026-10-19', now, title: '2026-10-19' }
-        expect(render('{{date}} {{yesterday}} {{tomorrow}} {{time}}', monday).text).toBe('2026-10-19 2026-10-18 2026-10-20 14:05')
+        expect(render('{{date}} {{yesterday}} {{tomorrow}} {{time}}', monday).text).toBe('[[2026-10-19]] [[2026-10-18]] [[2026-10-20]] 14:05')
     })
 
     it('steps across the ends of months and years', () => {
-        expect(render('{{yesterday}}', { ...context, day: '2026-03-01' }).text).toBe('2026-02-28')
-        expect(render('{{tomorrow}}', { ...context, day: '2026-12-31' }).text).toBe('2027-01-01')
-        expect(render('{{yesterday}}', { ...context, day: '2028-03-01' }).text).toBe('2028-02-29')
+        expect(render('{{yesterday}}', { ...context, day: '2026-03-01' }).text).toBe('[[2026-02-28]]')
+        expect(render('{{tomorrow}}', { ...context, day: '2026-12-31' }).text).toBe('[[2027-01-01]]')
+        expect(render('{{yesterday}}', { ...context, day: '2028-03-01' }).text).toBe('[[2028-02-29]]')
     })
 
     it('steps by calendar day across a daylight saving change', () => {
         // 29 March 2026 is 23 hours long in Europe; adding 24 hours of milliseconds would skip it
         // on a machine in that zone. Calendar arithmetic does not depend on the zone at all.
-        expect(render('{{tomorrow}}', { ...context, day: '2026-03-28' }).text).toBe('2026-03-29')
-        expect(render('{{tomorrow}}', { ...context, day: '2026-03-29' }).text).toBe('2026-03-30')
+        expect(render('{{tomorrow}}', { ...context, day: '2026-03-28' }).text).toBe('[[2026-03-29]]')
+        expect(render('{{tomorrow}}', { ...context, day: '2026-03-29' }).text).toBe('[[2026-03-30]]')
     })
 })
 
@@ -93,7 +104,7 @@ describe('renderTemplate: the cursor', () => {
     })
 
     it('reports the offset in the rendered text, after the variables before it grew or shrank', () => {
-        expect(render('{{date}} {{cursor}}')).toEqual({ text: '2026-10-14 ', cursor: 11 })
+        expect(render('{{date}} {{cursor}}')).toEqual({ text: '[[2026-10-14]] ', cursor: 15 })
     })
 
     it('keeps only the first cursor and removes the rest', () => {
@@ -103,7 +114,7 @@ describe('renderTemplate: the cursor', () => {
 
 describe('renderTemplate: what is copied as written', () => {
     it('copies an unknown name as written', () => {
-        expect(render('Hello {{name}}, {{date}}').text).toBe('Hello {{name}}, 2026-10-14')
+        expect(render('Hello {{name}}, {{date}}').text).toBe('Hello {{name}}, [[2026-10-14]]')
     })
 
     it('copies braces with nothing between them as written', () => {
@@ -111,11 +122,11 @@ describe('renderTemplate: what is copied as written', () => {
     })
 
     it('writes a literal {{ for a backslash before the braces', () => {
-        expect(render('\\{{date}} is {{date}}').text).toBe('{{date}} is 2026-10-14')
+        expect(render('\\{{date}} is {{date}}').text).toBe('{{date}} is [[2026-10-14]]')
     })
 
     it('replaces variables inside code too', () => {
-        expect(render('```\nlog {{date}}\n```\n`{{time}}`').text).toBe('```\nlog 2026-10-14\n```\n`14:05`')
+        expect(render('```\nlog {{date}}\n```\n`{{time}}`').text).toBe('```\nlog [[2026-10-14]]\n```\n`14:05`')
     })
 
     it('never reads its own output again', () => {

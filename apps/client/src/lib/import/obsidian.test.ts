@@ -255,7 +255,8 @@ describe('convertObsidian', () => {
 
 /**
  * Obsidian's core Templates plugin keeps templates in one folder (`.obsidian/templates.json`), and
- * its variables are already EtherPK's (`{{date}}`, `{{time}}`, `{{title}}`, `{{date:FORMAT}}`).
+ * its variables are EtherPK's (`{{time}}`, `{{title}}`, `{{date:FORMAT}}`), except that Obsidian's
+ * `{{date}}` gives plain text and becomes `{{date:YYYY-MM-DD}}`.
  * A page from that folder becomes a Template (ADR 0144), and the daily notes template the graph's
  * Journal Template (ADR 0145).
  */
@@ -270,11 +271,21 @@ describe('convertObsidian templates', () => {
             src('Notes.md', 'not a template'),
         ])
         expect(doc(graph, 'Daily').text).toBe(
-            '---\ntitle: Daily\ntags:\n  - plan\ntemplate: true\n---\n# {{date}}\n- [ ] water the beans at {{time}} on [[{{title}}]]',
+            '---\ntitle: Daily\ntags:\n  - plan\ntemplate: true\n---\n# {{date:YYYY-MM-DD}}\n- [ ] water the beans at {{time}} on [[{{title}}]]',
         )
         expect(doc(graph, 'Weekly').text).toBe('---\ntitle: Weekly\ntemplate: true\n---\n{{date:YYYY-MM-DD}} review')
         expect(doc(graph, 'Notes').text).toBe('---\ntitle: Notes\n---\nnot a template')
         expect(graph.settings).toBeUndefined()
+    })
+
+    it('writes every {{date}} in a Template as the plain day, as Obsidian filled it in', async () => {
+        const graph = await convertObsidian([
+            src('.obsidian/templates.json', '{"folder": "Templates"}'),
+            src('Templates/Log.md', '- {{date}} and {{ Date }} in [[{{date}}]], \\{{date}} and {{date:DD}}'),
+        ])
+        expect(doc(graph, 'Log').text).toBe(
+            '---\ntitle: Log\ntemplate: true\n---\n- {{date:YYYY-MM-DD}} and {{date:YYYY-MM-DD}} in [[{{date:YYYY-MM-DD}}]], \\{{date}} and {{date:DD}}',
+        )
     })
 
     it('marks nothing without a templates folder', async () => {
@@ -307,7 +318,7 @@ describe('convertObsidian templates', () => {
             src('Templates/Daily.md', '# {{date}}'),
         ])
         expect(report(graph, 'degradation').map((r) => r.detail)).toEqual([
-            '.obsidian/templates.json sets the date format to "DD/MM/YYYY". In EtherPK, `{{date}}` always gives YYYY-MM-DD. To keep the old form, write `{{date:DD/MM/YYYY}}` in a Template.',
+            '.obsidian/templates.json sets the date format to "DD/MM/YYYY". The Templates\' `{{date}}` became `{{date:YYYY-MM-DD}}`. To keep the old form, change it to `{{date:DD/MM/YYYY}}`.',
         ])
     })
 

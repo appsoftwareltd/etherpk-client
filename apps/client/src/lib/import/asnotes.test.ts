@@ -271,7 +271,7 @@ describe('convertAsNotes', () => {
 
         it('imports templates as Templates scoped under Templates', async () => {
             const graph = await convertAsNotes(workspace(src('templates/Journal.md', '# {{date}}\n'), src('Journal.md', 'a page')))
-            expect(doc(graph, '[[Templates]] Journal').text).toBe('---\ntitle: "[[Templates]] Journal"\ntemplate: true\n---\n# {{date}}\n')
+            expect(doc(graph, '[[Templates]] Journal').text).toBe('---\ntitle: "[[Templates]] Journal"\ntemplate: true\n---\n# {{date:YYYY-MM-DD}}\n')
             expect(doc(graph, 'Journal').text).toBe('---\ntitle: Journal\n---\na page')
             expect(graph.report).toContainEqual({
                 category: 'rename',
@@ -311,8 +311,8 @@ describe('convertAsNotes', () => {
                     '  - garden',
                     'template: true',
                     '---',
-                    '# {{title}} on {{date}}',
-                    'Started {{time:HH:mm:ss}}, logged {{date}} {{time:HH:mm:ss}}',
+                    '# {{title}} on {{date:YYYY-MM-DD}}',
+                    'Started {{time:HH:mm:ss}}, logged {{date:YYYY-MM-DD}} {{time:HH:mm:ss}}',
                     'Due {{date:DD/MM/YY}}, from {{date:YYYY-MM-DD HH:mm}} at {{time:HH:mm}}',
                     'Kept {{title}} {{cursor}} \\{{filename}} {{unknown}} {{MMM}} {{v2.0}}',
                     '```',
@@ -349,7 +349,7 @@ describe('convertAsNotes', () => {
         it('reports a template whose frontmatter it cannot mark, and leaves it out of the settings', async () => {
             const block = '---\ntitle: A: B\nsettings:\n  width: 3\n---\n'
             const graph = await convertAsNotes(workspace(src('templates/Journal.md', `${block}# {{date}}`)))
-            expect(doc(graph, '[[Templates]] Journal').text).toBe(`${block}# {{date}}`)
+            expect(doc(graph, '[[Templates]] Journal').text).toBe(`${block}# {{date:YYYY-MM-DD}}`)
             expect(graph.settings).toBeUndefined()
             expect(details(graph, 'unsupported')).toContain(
                 'This page is a template in AS Notes, but its frontmatter is not valid YAML, so it was not made a Template. Correct the frontmatter and add `template: true` to make it one.',

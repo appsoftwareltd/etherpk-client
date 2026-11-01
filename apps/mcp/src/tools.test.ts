@@ -373,7 +373,7 @@ describe('templates (ADR 0144)', () => {
         const g = await graph('g-template-create')
         await template(g, 'Meeting', '- Notes on [[{{title}}]] from {{date}}{{cursor}}\n  - [ ] send the minutes')
         expect(await createPage(g, { title: 'Kitchen Sync', template: 'meeting', text: '- extra' })).toEqual({ concept: 'Kitchen Sync', created: true })
-        expect((await readDocument(g, 'Kitchen Sync')).text).toBe(`- Notes on [[Kitchen Sync]] from ${todayISO()}\n  - [ ] send the minutes\n- extra`)
+        expect((await readDocument(g, 'Kitchen Sync')).text).toBe(`- Notes on [[Kitchen Sync]] from [[${todayISO()}]]\n  - [ ] send the minutes\n- extra`)
     })
 
     it('append_document fills a journal day with that day, from a Template alone', async () => {

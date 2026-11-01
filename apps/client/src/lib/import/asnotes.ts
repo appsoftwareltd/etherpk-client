@@ -135,14 +135,16 @@ function asNotesTaskText(label: string): string {
 
 /**
  * AS Notes placeholders whose EtherPK variable has another name or prints something else, by the
- * placeholder as AS Notes matches it: trimmed, with its case. `{{date}}`, `{{title}}` and
- * `{{cursor}}` mean the same in both and are not listed.
+ * placeholder as AS Notes matches it: trimmed, with its case. `{{title}}` and `{{cursor}}` mean
+ * the same in both and are not listed.
  */
 const RENAMED_PLACEHOLDERS: Record<string, string> = {
+    // AS Notes prints the day as plain text, and EtherPK's `{{date}}` links it.
+    date: '{{date:YYYY-MM-DD}}',
     filename: '{{title}}',
     // AS Notes prints the time with seconds, and EtherPK's `{{time}}` without them.
     time: '{{time:HH:mm:ss}}',
-    datetime: '{{date}} {{time:HH:mm:ss}}',
+    datetime: '{{date:YYYY-MM-DD}} {{time:HH:mm:ss}}',
 }
 
 /** A placeholder with an optional escaping backslash, read the way EtherPK's renderer reads a variable. */
@@ -159,7 +161,8 @@ function isAsNotesDateFormat(body: string): boolean {
 
 /**
  * An AS Notes template's text with its placeholders written as the EtherPK variables that give
- * the same text: `{{filename}}` as `{{title}}`, `{{time}}` with its seconds, and a bare format as
+ * the same text: `{{date}}` as the plain day, `{{filename}}` as `{{title}}`, `{{time}}` with its
+ * seconds, and a bare format as
  * `{{date:FORMAT}}`, or `{{time:FORMAT}}` when it has no date in it. AS Notes fills placeholders
  * in wherever they are, code included, and so does EtherPK, so the whole text is read. An escaped
  * placeholder and one AS Notes does not know are left as written, as both apps leave them.

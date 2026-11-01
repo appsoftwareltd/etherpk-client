@@ -100,6 +100,9 @@ async function readTemplatesConfig(files: SourceFile[]): Promise<TemplatesConfig
 const DEFAULT_DATE_FORMAT = 'YYYY-MM-DD'
 const DEFAULT_TIME_FORMAT = 'HH:mm'
 
+/** A bare `{{date}}`, with an optional escaping backslash, read as EtherPK's renderer reads it. */
+const DATE_VARIABLE = /(\\?)\{\{\s*date\s*\}\}/gi
+
 /** A `{{date:FORMAT}}` or `{{time:FORMAT}}` variable, read as EtherPK's renderer reads it. */
 const FORMAT_VARIABLE = /(\\?)\{\{\s*(?:date|time):([^{}]+)\}\}/gi
 
@@ -156,7 +159,7 @@ export async function convertObsidian(files: SourceFile[], control?: ImportContr
     const { templateNotes, dailyTemplate } = templatePages(notes, templatesConfig, dailyNotes, resolveNote)
     // Obsidian's `{{date}}` and `{{time}}` used these formats. EtherPK's always use its own, and a
     // Template that links a day as `[[{{date}}]]` needs the ISO form to reach the journal, so the
-    // variables are left alone and the difference is reported.
+    // day is written as `{{date:YYYY-MM-DD}}` and the difference is reported.
     reportTemplateFormats(templatesConfig, report)
 
     // ---- Body conversion.
@@ -313,14 +316,14 @@ type NoteLinks = ReturnType<typeof noteLinks>
 type AssetPlan = Awaited<ReturnType<typeof planAssets>>
 
 /**
- * Obsidian's `{{date}}` and `{{time}}` used the formats the Templates settings name. EtherPK's always use
- * its own, so a format that differs is reported with the variable that keeps it.
+ * Obsidian's `{{date}}` and `{{time}}` used the formats the Templates settings name. The import writes
+ * EtherPK's own formats, so a format that differs is reported with the variable that keeps it.
  */
 function reportTemplateFormats(templatesConfig: TemplatesConfig | null, report: ReportEntry[]): void {
     if (templatesConfig?.dateFormat && templatesConfig.dateFormat !== DEFAULT_DATE_FORMAT) {
         report.push({
             category: 'degradation',
-            detail: `.obsidian/templates.json sets the date format to "${templatesConfig.dateFormat}". In EtherPK, \`{{date}}\` always gives YYYY-MM-DD. To keep the old form, write \`{{date:${templatesConfig.dateFormat}}}\` in a Template.`,
+            detail: `.obsidian/templates.json sets the date format to "${templatesConfig.dateFormat}". The Templates' \`{{date}}\` became \`{{date:YYYY-MM-DD}}\`. To keep the old form, change it to \`{{date:${templatesConfig.dateFormat}}}\`.`,
         })
     }
     if (templatesConfig?.timeFormat && templatesConfig.timeFormat !== DEFAULT_TIME_FORMAT) {
@@ -487,16 +490,6 @@ function convertNote(
         }
         return { kind: note.kind, concept: note.concept, fileName: note.fileName, text: `${note.keptBlock}${body}` }
     }
-    if (template) {
-        // Obsidian fills a template's formats in wherever they are, code included, as EtherPK does.
-        const unfilled = new Set<string>()
-        for (const match of body.matchAll(FORMAT_VARIABLE)) {
-            if (!match[1]) for (const token of unsupportedMomentTokens(match[2])) unfilled.add(token)
-        }
-        if (unfilled.size > 0) {
-            report.push({ category: 'unsupported', concept: note.concept, detail: momentTokensDetail([...unfilled]) })
-        }
-    }
     const { title, ...rest } = withAliasesList(note.frontmatter, note.aliases)
     if (typeof title === 'string' && title.trim() !== '' && title !== note.concept) {
         report.push({
@@ -511,8 +504,24 @@ function convertNote(
         kind: note.kind,
         concept: note.concept,
         fileName: note.fileName,
-        text: `${buildFrontmatter(frontmatter)}${body}`,
+        text: `${buildFrontmatter(frontmatter)}${template ? templateText(note.concept, body, report) : body}`,
     }
+}
+
+/**
+ * A Template's body with Obsidian's `{{date}}` written as the variable that gives the same plain
+ * day, since EtherPK's `{{date}}` links the day. The Moment tokens EtherPK does not fill in are
+ * reported. Obsidian fills a template's variables in wherever they are, code included, as EtherPK does.
+ */
+function templateText(concept: string, body: string, report: ReportEntry[]): string {
+    const unfilled = new Set<string>()
+    for (const match of body.matchAll(FORMAT_VARIABLE)) {
+        if (!match[1]) for (const token of unsupportedMomentTokens(match[2])) unfilled.add(token)
+    }
+    if (unfilled.size > 0) {
+        report.push({ category: 'unsupported', concept, detail: momentTokensDetail([...unfilled]) })
+    }
+    return body.replace(DATE_VARIABLE, (whole: string, backslash: string) => (backslash ? whole : '{{date:YYYY-MM-DD}}'))
 }
 
 /** The notes that become Templates: every page in the Templates folder, and the daily notes template. */

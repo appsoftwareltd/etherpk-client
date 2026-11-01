@@ -2,11 +2,15 @@
  * [[Template Variable]]s: the `{{name}}` text in a [[Template]] that is filled in when the
  * Template is copied (ADR 0144).
  *
- * Every variable gives plain text, so a link is written around one (`[[{{date}}]]`). The date
- * variables read the context's `day`, which is the receiving [[Journal Entry]]'s own day or
- * today anywhere else; the time variables read the clock. A name this module does not know is
- * copied as written, so `{{name}}` in a Handlebars sample survives a copy, and a backslash before
- * the braces (`\{{date}}`) writes the braces literally.
+ * The day variables (`{{date}}`, `{{today}}`, `{{yesterday}}`, `{{tomorrow}}`) give a wikilink to
+ * that day's journal entry, `[[2026-10-14]]`, as the `/Today` command does. One already inside a
+ * wikilink (`[[{{date}}]]`, `[[{{date}} harvest]]`) gives the bare day, so a Template written
+ * before the day variables linked themselves copies as it always did. Every other variable gives
+ * plain text, and `{{date:YYYY-MM-DD}}` is the day without the link. The date variables read the
+ * context's `day`, which is the receiving [[Journal Entry]]'s own day or today anywhere else; the
+ * time variables read the clock. A name this module does not know is copied as written, so
+ * `{{name}}` in a Handlebars sample survives a copy, and a backslash before the braces
+ * (`\{{date}}`) writes the braces literally.
  *
  * Pure and framework-free: the Client's insert command, the Journal Template's [[Draft]] and the
  * Headless Client all render through `renderTemplate`.
@@ -49,6 +53,9 @@ const FORMAT_TOKEN = /YYYY|YY|MM|DD|HH|mm|ss/g
 
 const FORMAT_PREFIX = /^(date|time):(.+)$/i
 
+/** The variables that name a day, by their lower-cased name. Each links to the day's journal entry. */
+const DAY_VARIABLES = new Set(['date', 'today', 'yesterday', 'tomorrow'])
+
 /** The context for copying a Template into the document named `concept`, at `now`. */
 export function templateContextFor(concept: string, now: Date = new Date()): TemplateContext {
     return { day: isJournalConcept(concept) ? concept.trim() : todayISO(now), now, title: concept }
@@ -75,9 +82,29 @@ export function renderTemplate(body: string, context: TemplateContext): Rendered
             cursor ??= text.length
             continue
         }
-        text += valueOf(inner.trim(), day, context) ?? whole
+        const value = valueOf(inner.trim(), day, context)
+        if (value === null) text += whole
+        else text += DAY_VARIABLES.has(name) && !insideWikilink(body, match.index) ? `[[${value}]]` : value
     }
     return { text: text + body.slice(last), cursor }
+}
+
+/**
+ * Whether `at` falls inside a wikilink that opens earlier on its line. Brackets are counted from
+ * the start of the line, because a wikilink never runs past its line.
+ */
+function insideWikilink(text: string, at: number): boolean {
+    let depth = 0
+    for (let i = text.lastIndexOf('\n', at - 1) + 1; i < at; i++) {
+        if (text.startsWith('[[', i)) {
+            depth += 1
+            i += 1
+        } else if (text.startsWith(']]', i) && depth > 0) {
+            depth -= 1
+            i += 1
+        }
+    }
+    return depth > 0
 }
 
 /** Every variable in `text`, for marking them in a Template as it is written. */
