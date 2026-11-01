@@ -2758,6 +2758,7 @@ describe('inserting a Template', () => {
         { rule: 'after a bullet’s closing fence, the Template starts on the next block, as a paste does', precedent: 'EtherPK', before: '- a\n  ```\n  x\n  ```|\n- c', body: '- Notes:  \n- Tasks', after: '- a\n  ```\n  x\n  ```\n- Notes:  \n- Tasks|\n- c' },
         { rule: 'after an opening fence, the Template is the first code', precedent: 'EtherPK', before: '- ```py|\n  x\n  ```', body: 'one\ntwo', after: '- ```py\n  one\n  two|\n  x\n  ```' },
         { rule: 'after a prose closing fence, the Template is prose on the next line', precedent: 'EtherPK', before: '```\nx\n```|', body: 'one\ntwo', after: '```\nx\n```\none\ntwo|' },
+        { rule: 'a Template that ends on an empty bullet keeps it, with the caret on it', precedent: 'Logseq', before: '- |', body: '- Garden\n  - ', after: '- Garden\n  - |' },
         { rule: 'over selected blocks, the Template replaces them', precedent: 'EtherPK', before: '«- Old\n  - child»\n- Next', body: '- Review\n  - beans', after: '- Review\n  - beans|\n- Next' },
     ]
     for (const row of rows) {

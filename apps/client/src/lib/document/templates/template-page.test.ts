@@ -32,6 +32,11 @@ describe('templateBody', () => {
         expect(templateBody('- Kitchen')).toBe('- Kitchen')
     })
 
+    it('keeps the marker space of an empty bullet on its last line, so the bullet stays a bullet', () => {
+        expect(templateBody('---\ntemplate: true\n---\n- Garden\n  - \n- Kitchen\n  - \n')).toBe('- Garden\n  - \n- Kitchen\n  - ')
+        expect(templateBody('- Garden\n  - \n  \n\n')).toBe('- Garden\n  - ')
+    })
+
     it('is empty for a Template with nothing below its frontmatter', () => {
         expect(templateBody('---\ntemplate: true\n---\n')).toBe('')
     })
@@ -42,6 +47,10 @@ describe('templateBodyOf', () => {
 
     it('is the body of a store snapshot of a Template, without the blank lines around it', () => {
         expect(templateBodyOf(snapshot('\n- [[{{date}}]] review\n\n'))).toBe('- [[{{date}}]] review')
+    })
+
+    it('keeps the marker space of an empty bullet on its last line', () => {
+        expect(templateBodyOf(snapshot('- Garden\n  - \n'))).toBe('- Garden\n  - ')
     })
 
     it('reads Windows and old Mac line endings as line feeds, as the editor does (ADR 0112)', () => {

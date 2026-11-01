@@ -115,6 +115,8 @@ starts at 0.9.3.
   that is already inside a link, such as `[[{{date}}]]`, still gives only the day, so your
   Templates copy as before. For the day as plain text, use `{{date:YYYY-MM-DD}}`. The Obsidian and
   AS Notes imports write a template's `{{date}}` as `{{date:YYYY-MM-DD}}`, to keep the plain day.
+- **A Template that ends with an empty bullet keeps the bullet.** Before, the inserted Template
+  ended with a hyphen in place of the empty bullet.
 - **The Client does not start when `ORIGIN` is not an HTTP or HTTPS origin with no path**, such as
   `https://app.example.com`. Before, a value of another form was used as it was.
 - Updated dependencies.
@@ -125,6 +127,8 @@ starts at 0.9.3.
 - **The `{{today}}` Template variable** gives the same date as `{{date}}`.
 - **The day Template variables give a link**, such as `[[2026-11-01]]`, in `create_page` and
   `append_document`, as they do in the Client.
+- **A Template that ends with an empty bullet keeps the bullet** in `create_page` and
+  `append_document`.
 - **Renaming a page moves everyone's favourites and bookmarks to the new name** on a synced graph,
   as renaming it in the Client does.
 - **`set_task` changes the tasks nested under a task, as the Client does.** Status `done` ticks

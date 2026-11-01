@@ -49,8 +49,9 @@ export function templateBodyOf(snapshot: TemplateSnapshot | null | undefined): s
 /**
  * The body in the form the editor holds text: line feeds only (ADR 0112), since a file another app
  * wrote may end its lines otherwise and a copy is offset by the editor's own lines. Then without
- * the blank lines before and after it.
+ * the blank lines before and after it. The last line with text keeps its own trailing whitespace:
+ * an empty bullet there is `- `, and without the space after its marker it reads as a hyphen.
  */
 function withoutBlankEnds(body: string): string {
-    return lineFeedsOnly(body).replace(/^(?:[ \t]*\n)+/, '').replace(/\s+$/, '')
+    return lineFeedsOnly(body).replace(/^(?:[ \t]*\n)+/, '').replace(/(?:\n[ \t]*)+$/, '')
 }
