@@ -12,7 +12,7 @@
  * leaving both surfaces as they are.
  */
 
-import { tryGetActiveCommandRegistry } from '$lib/surface'
+import { tryGetActiveCommandRegistry } from '#lib/surface/index.js'
 
 import type { InlineAction } from './inline-action'
 

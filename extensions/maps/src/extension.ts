@@ -11,12 +11,12 @@
  */
 import type { ExtensionContext } from '@appsoftwareltd/etherpk-extension-api'
 
-import { env } from '$env/dynamic/public'
-import { tryGetActiveAssetStore } from '$lib/document/active-asset-store'
-import { getActiveGraphIndex } from '$lib/document/backlinks'
-import { svelteView } from '$lib/extensions/svelte-view.svelte'
-import { managedSyncOrigin } from '$lib/sync/sync-deployment'
-import { workspaceService } from '$lib/workspace/workspace-services'
+import * as env from '$app/env/public'
+import { tryGetActiveAssetStore } from '#lib/document/active-asset-store.js'
+import { getActiveGraphIndex } from '#lib/document/backlinks/index.js'
+import { svelteView } from '#lib/extensions/svelte-view.svelte.js'
+import { managedSyncOrigin } from '#lib/sync/sync-deployment.js'
+import { workspaceService } from '#lib/workspace/workspace-services.js'
 
 import MapViewShell from './MapViewShell.svelte'
 import { createPlaceSearch } from './place-search'

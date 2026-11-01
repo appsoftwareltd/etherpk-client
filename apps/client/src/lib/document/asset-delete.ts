@@ -24,7 +24,7 @@
  * mounted editor. The Command wires the real ones.
  */
 
-import type { DocumentKind } from '$lib/storage'
+import type { DocumentKind } from '#lib/storage/index.js'
 
 import type { AssetUsage, AssetUsageDocument } from './index-db'
 import { containsCipherFence } from './protection/fence-info'

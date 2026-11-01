@@ -12,7 +12,7 @@
  * target rather than on whatever is focused.
  */
 
-import { type NoticeAction, showNotice } from '$lib/activity/notices'
+import { type NoticeAction, showNotice } from '#lib/activity/notices.js'
 import {
     type ContextMenuTarget,
     type CommandRegistry,
@@ -20,7 +20,7 @@ import {
     isDocumentTarget,
     isWikilinkTarget,
     registerContextMenuItem,
-} from '$lib/surface'
+} from '#lib/surface/index.js'
 
 import { addFavourite, isFavourite, moveFavourite, removeFavourite, restoreFavourite } from '../favourites'
 import { isJournalConcept } from '../journal-concept'

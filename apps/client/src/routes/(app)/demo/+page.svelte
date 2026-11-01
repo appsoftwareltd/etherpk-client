@@ -12,14 +12,14 @@
     import { goto } from "$app/navigation";
     import { page } from "$app/state";
     import manifest from "virtual:demo-graph";
-    import { showNotice } from "$lib/activity/notices";
-    import { tryClaimLock } from "$lib/cross-tab-lock";
-    import { DEMO_GRAPH_ID, openDemoGraph } from "$lib/demo/demo-graph";
-    import { fetchDemoBundle, type SeedProgress } from "$lib/demo/seed";
-    import { todayISO } from "$lib/document/calendar/month-grid-core";
+    import { showNotice } from "#lib/activity/notices.js";
+    import { tryClaimLock } from "#lib/cross-tab-lock.js";
+    import { DEMO_GRAPH_ID, openDemoGraph } from "#lib/demo/demo-graph.js";
+    import { fetchDemoBundle, type SeedProgress } from "#lib/demo/seed.js";
+    import { todayISO } from "#lib/document/calendar/month-grid-core.js";
     import { formatBytes } from "@appsoftwareltd/etherpk-shared";
-    import { createIdbGraphRegistry, createWebFsDirectoryAdapter, getOpfsRoot } from "$lib/storage";
-    import { forgetGraphDeviceMemory } from "$lib/workspace/graph-device-memory";
+    import { createIdbGraphRegistry, createWebFsDirectoryAdapter, getOpfsRoot } from "#lib/storage/index.js";
+    import { forgetGraphDeviceMemory } from "#lib/workspace/graph-device-memory.js";
 
     type Phase =
         | { kind: "confirm-reset" }
@@ -62,7 +62,7 @@
                 // The notice rail lives in the app layout, so this outlasts the navigation.
                 showNotice({ id: "demo-reset-notice", tone: "info", text: "The demo is back as it shipped." });
             }
-            await goto(`/g/${DEMO_GRAPH_ID}`, { replaceState: true });
+            await goto(`/g/${DEMO_GRAPH_ID}`, { replace: true });
         } catch (err) {
             phase = { kind: "error", reset, message: (err as Error).message };
         }

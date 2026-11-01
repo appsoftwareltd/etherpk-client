@@ -4,11 +4,11 @@ import { join } from 'node:path'
 
 import { afterEach, beforeAll, describe, expect, it } from 'vitest'
 
-import { createGraphKeyring } from '$lib/crypto'
-import { createLoopbackRelay } from '$lib/sync/loopback-relay'
-import { fixedSyncToken } from '$lib/sync/sync-token'
-import { assetNameFromRef, createAssetStore } from '$lib/storage/fs/asset-store'
-import { createMemoryDirectoryAdapter } from '$lib/storage/fs/memory-adapter'
+import { createGraphKeyring } from '#lib/crypto/index.js'
+import { createLoopbackRelay } from '#lib/sync/loopback-relay.js'
+import { fixedSyncToken } from '#lib/sync/sync-token.js'
+import { assetNameFromRef, createAssetStore } from '#lib/storage/fs/asset-store.js'
+import { createMemoryDirectoryAdapter } from '#lib/storage/fs/memory-adapter.js'
 
 import { chromiumOnThisMachine, WARM_UP_TIMEOUT, warmChromium } from './chromium-fixture'
 import { openHeadlessFolder } from './headless-folder'

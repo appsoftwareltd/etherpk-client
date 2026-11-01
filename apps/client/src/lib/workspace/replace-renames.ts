@@ -12,11 +12,11 @@
  * without a workspace or an editor.
  */
 
-import type { ReplaceOutcome, ReplaceRequest } from '$lib/document/find/replace-question'
+import type { ReplaceOutcome, ReplaceRequest } from '#lib/document/find/replace-question.js'
 
 import { asksSomething, type ProposedRename } from './link-rename-controller'
 
-export type { ReplaceMode, ReplaceOutcome, ReplaceRequest } from '$lib/document/find/replace-question'
+export type { ReplaceMode, ReplaceOutcome, ReplaceRequest } from '#lib/document/find/replace-question.js'
 
 /** What the dialog is told besides its rows. */
 export interface ReplaceQuestion {

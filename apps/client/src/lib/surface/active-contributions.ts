@@ -5,7 +5,7 @@
  */
 
 import type { ContributionRegistry } from './contribution-registry'
-import { setWorkspaceService, workspaceService } from '$lib/workspace/workspace-services'
+import { setWorkspaceService, workspaceService } from '#lib/workspace/workspace-services.js'
 
 export function setActiveContributionRegistry(registry: ContributionRegistry | null): void {
     setWorkspaceService('contributions', registry ?? undefined)

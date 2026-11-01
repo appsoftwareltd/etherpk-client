@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { bumpEpoch, createGraphKeyring, currentEpoch, envelopeEpochId, fromBase64Url } from '$lib/crypto'
+import { bumpEpoch, createGraphKeyring, currentEpoch, envelopeEpochId, fromBase64Url } from '#lib/crypto/index.js'
 
 import { GRAPH_NAME_MAX_BYTES, createGraphNamePublisher, openGraphName, sealGraphName } from './graph-name-envelope'
 

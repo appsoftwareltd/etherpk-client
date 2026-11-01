@@ -7,7 +7,7 @@
  * so the folder survives as a backlink.
  */
 
-import { portableFileStem } from '$lib/document/wikilink'
+import { portableFileStem } from '#lib/document/wikilink/index.js'
 
 import { dedupeConcept, scopedConceptName } from './convert-shared'
 import type { ReportEntry } from './types'

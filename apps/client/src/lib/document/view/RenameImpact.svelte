@@ -8,8 +8,8 @@
      * swapping it. Shared by the rename dialog and the dialog for the renames a link edit
      * proposes, so a plan reads the same wherever it is shown.
      */
-    import { type RenameLinkStrategy, type RenamePlan, mergeCount, scopedAliasRewrites } from "$lib/storage/rename";
-    import { conceptKey } from "$lib/storage/fs/identity";
+    import { type RenameLinkStrategy, type RenamePlan, mergeCount, scopedAliasRewrites } from "#lib/storage/rename.js";
+    import { conceptKey } from "#lib/storage/fs/identity.js";
 
     let {
         concept,

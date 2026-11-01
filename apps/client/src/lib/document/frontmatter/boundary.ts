@@ -17,7 +17,7 @@
  * delimiter mid-typing does not delete the seam and is plain text until it balances again, as a
  * half-typed opener is.
  */
-import { frontmatterSpan } from '$lib/storage/fs/frontmatter-span'
+import { frontmatterSpan } from '#lib/storage/fs/frontmatter-span.js'
 
 /** A change as every guard sees it: the range of the OLD text it replaces. */
 export interface SeamChange {

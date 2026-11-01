@@ -1,12 +1,13 @@
 <script lang="ts">
     import ErrorCard from "../components/ErrorCard.svelte";
+    import type { ThemePreference } from "../theme";
 
     let {
         data,
         signInUrl,
         homeHref = "/home",
     }: {
-        data: { errorCode: string; message: string; themePreference?: string };
+        data: { errorCode: string; message: string; themePreference?: ThemePreference };
         /** Where "Back to sign in" points. The Server may hand off to its configured issuer. */
         signInUrl: string;
         /** The deployment's home, where the logo and Go to home both lead. */

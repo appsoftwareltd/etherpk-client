@@ -2,7 +2,7 @@
  * Runs in the browser before the app starts, ahead of every page and component module.
  */
 import { z } from 'zod'
-import { installDefaultPolicy } from '$lib/security/trusted-types'
+import { installDefaultPolicy } from '#lib/security/trusted-types.js'
 
 // The default Trusted Types policy (ADR 0130) must exist before any library writes a string to a
 // sink, or the browser refuses the write.

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { armourProtected, keyFingerprint, sealProtected, toBase64Url } from '$lib/crypto'
-import { createMemoryDirectoryAdapter } from '$lib/storage/fs/memory-adapter'
+import { armourProtected, keyFingerprint, sealProtected, toBase64Url } from '#lib/crypto/index.js'
+import { createMemoryDirectoryAdapter } from '#lib/storage/fs/memory-adapter.js'
 
 import { CIPHER_FENCE_INFO, cipherFences, documentProtection } from './cipher-fence'
 import { DEFAULT_LOCK_SETTINGS } from './lock-machine'

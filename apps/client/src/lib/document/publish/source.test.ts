@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { createMemoryDirectoryAdapter } from '$lib/storage/fs/memory-adapter'
+import { createMemoryDirectoryAdapter } from '#lib/storage/fs/memory-adapter.js'
 
 import { folderPublishReader, readPublishSource } from './source'
 

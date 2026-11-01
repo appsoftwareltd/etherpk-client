@@ -11,7 +11,7 @@
      */
     import { onDestroy, onMount } from 'svelte'
 
-    import type { ViewRef } from '$lib/layout'
+    import type { ViewRef } from '#lib/layout/index.js'
 
     import { registerDevViewDispose, registerDevViewMount } from './dev-view-state.svelte'
 

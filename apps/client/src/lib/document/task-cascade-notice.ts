@@ -9,7 +9,7 @@
  * move itself is visible where it was made.
  */
 
-import { showNotice } from '$lib/activity/notices'
+import { showNotice } from '#lib/activity/notices.js'
 
 import { parseTaskLine } from './task-tags'
 import type { TaskWrite, TaskWriteOutcome } from './task-write'

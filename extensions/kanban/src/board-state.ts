@@ -11,7 +11,7 @@
  */
 import { z } from 'zod'
 
-import { conceptKey, type TaskStatus } from '$lib/document/backlinks'
+import { conceptKey, type TaskStatus } from '#lib/document/backlinks/index.js'
 
 export const BOARD_STATE_KEY_PREFIX = 'etherpk-kanban:'
 const VERSION = 1

@@ -7,9 +7,9 @@
  * a lens over documents: nothing here is stored, and every card is a task line that the
  * [[Derived Index]] reported.
  */
-import type { TaskHit, TaskPriorityFilter, TaskStatus } from '$lib/document/index-db'
-import { bulletLabel } from '$lib/document/index-derive'
-import { parseTaskLine, parseTaskTags } from '$lib/document/task-tags'
+import type { TaskHit, TaskPriorityFilter, TaskStatus } from '#lib/document/index-db.js'
+import { bulletLabel } from '#lib/document/index-derive.js'
+import { parseTaskLine, parseTaskTags } from '#lib/document/task-tags.js'
 
 /**
  * The View kind a board is registered under, which the manifest declares with its address

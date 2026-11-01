@@ -19,8 +19,8 @@
 import type { Extension } from '@codemirror/state'
 import type { EditorView } from '@codemirror/view'
 
-import type { TrustedMarkup } from '$lib/security/trusted-types'
-import { iconSvg } from '$lib/surface/icons'
+import type { TrustedMarkup } from '#lib/security/trusted-types.js'
+import { iconSvg } from '#lib/surface/icons.js'
 
 import { applyTaskTag } from '../../task-tags'
 import { isInCode } from '../../wikilink/code-ranges'

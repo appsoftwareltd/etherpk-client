@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import type { MapPicture } from '../publish/publish'
 import type { MapPictureRenderer, MapPictureRequest } from '../publish/map-picture-renderer'
-import { createContributionRegistry } from '$lib/surface/contribution-registry'
+import { createContributionRegistry } from '#lib/surface/contribution-registry.js'
 import { MAP_PICTURE_KIND } from '../publish/map-picture-renderer'
 
 import { createQuotedMapPictures, quotedMapPicturesIn, quotedMapSize } from './quoted-map-pictures'

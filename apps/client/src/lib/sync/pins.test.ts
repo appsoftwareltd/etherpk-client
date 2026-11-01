@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { generateIdentityKeyPair, generateSigningKeyPair, openVault, toBase64Url, type KeyVault } from '$lib/crypto'
+import { generateIdentityKeyPair, generateSigningKeyPair, openVault, toBase64Url, type KeyVault } from '#lib/crypto/index.js'
 import { pinState, publishedIdentity, savePin, withPin } from './pins'
 import { createFakeSyncServer, newVault, seedAccount } from './testing/fake-sync-server'
 

@@ -3,8 +3,8 @@
  * [[Tasks View]]'s own query narrowed to one [[Task Status]] and one priority, so the board and
  * a Tasks View filtered to the same concept can never disagree (ADR 0113).
  */
-import type { TaskPriorityFilter, TaskQuery, TaskStatus } from '$lib/document/index-db'
-import type { TaskPageResult } from '$lib/document/index-worker/client'
+import type { TaskPriorityFilter, TaskQuery, TaskStatus } from '#lib/document/index-db.js'
+import type { TaskPageResult } from '#lib/document/index-worker/client.js'
 import { BOARD_LANES, BOARD_SECTIONS, type BoardCell, type BoardLane, type BoardSnapshot, toCard } from './board-model'
 
 /** The one round trip a board needs from the index client. */

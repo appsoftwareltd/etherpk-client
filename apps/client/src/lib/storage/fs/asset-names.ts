@@ -1,6 +1,6 @@
 /**
  * The asset file-name rule on its own, with no imports behind it: the Demo Graph bundle check
- * (demo-graph-plugin.ts) runs in the Vite config process, where `$lib` does not resolve, and
+ * (demo-graph-plugin.ts) runs in the Vite config process, where `#lib` does not resolve, and
  * needs to read the content hash out of a committed asset name exactly as the store does.
  */
 

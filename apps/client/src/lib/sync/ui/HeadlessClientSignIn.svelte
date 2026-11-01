@@ -12,8 +12,8 @@
      */
     import { onDestroy, tick } from "svelte";
 
-    import { SyncApiError } from "$lib/sync/sync-api";
-    import { describeSyncFailure } from "$lib/sync/sync-error-copy";
+    import { SyncApiError } from "#lib/sync/sync-api.js";
+    import { describeSyncFailure } from "#lib/sync/sync-error-copy.js";
 
     import { loginCommand, tokensPageUrl } from "./agents-tab";
 

@@ -18,8 +18,8 @@
  * Back was meant to find Settings again (2026-09-20).
  */
 
-import { DIRECTORY_SEGMENT, EXTENSION_ADDRESS_KIND } from '$lib/extensions/addresses'
-import type { ViewRef } from '$lib/layout'
+import { DIRECTORY_SEGMENT, EXTENSION_ADDRESS_KIND } from '#lib/extensions/addresses.js'
+import type { ViewRef } from '#lib/layout/index.js'
 
 import { encodeConceptPath } from './concept-path'
 import { extensionAddresses } from './extension-addresses'

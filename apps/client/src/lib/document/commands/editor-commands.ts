@@ -11,7 +11,7 @@
 import { toggleFold } from '@codemirror/language'
 import type { EditorView } from '@codemirror/view'
 
-import { showNotice } from '$lib/activity/notices'
+import { showNotice } from '#lib/activity/notices.js'
 
 import {
     type CommandBarItem,

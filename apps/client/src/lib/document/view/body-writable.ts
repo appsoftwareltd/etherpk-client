@@ -17,7 +17,7 @@
 
 import type { EditorState } from '@codemirror/state'
 
-import { getActiveProtectionStatus } from '$lib/document/protection/active-protection'
+import { getActiveProtectionStatus } from '#lib/document/protection/active-protection.js'
 
 import { fenceInText, isProtectedDocumentFacet } from './augmentations/protected-fence'
 

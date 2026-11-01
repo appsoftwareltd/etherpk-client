@@ -1,10 +1,10 @@
 import { error } from '@sveltejs/kit'
 import type { RequestHandler } from './$types'
-import { env } from '$env/dynamic/private'
-import { parseOptionalManagedClientAuthConfig } from '$lib/server/auth/config'
-import { suppressClientSso } from '$lib/server/auth/cookies'
-import { isSameOriginPost } from '$lib/server/auth/same-origin'
-import { revokeManagedClientGrant, takeManagedClientSession } from '$lib/server/auth/managed-logout'
+import * as env from '$app/env/private'
+import { parseOptionalManagedClientAuthConfig } from '#lib/server/auth/config.js'
+import { suppressClientSso } from '#lib/server/auth/cookies.js'
+import { isSameOriginPost } from '#lib/server/auth/same-origin.js'
+import { revokeManagedClientGrant, takeManagedClientSession } from '#lib/server/auth/managed-logout.js'
 
 /**
  * End only this Client's own session: **Forget this server** on Managed Sync uses it. It is

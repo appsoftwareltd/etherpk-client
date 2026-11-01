@@ -11,7 +11,7 @@
 import type { Extension } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
 
-import type { AssetStore } from '$lib/storage/fs/asset-store'
+import type { AssetStore } from '#lib/storage/fs/asset-store.js'
 
 import { startAssetUpload } from '../upload-activity'
 

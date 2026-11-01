@@ -13,7 +13,7 @@
  */
 import type { JournalPanelProps, MountedJournalPanel } from '@appsoftwareltd/etherpk-extension-api'
 
-import type { ClientJournalPanel } from '$lib/surface/journal-panels'
+import type { ClientJournalPanel } from '#lib/surface/journal-panels.js'
 
 import { clientShadowSheets, extensionStyleSheets } from './styles'
 

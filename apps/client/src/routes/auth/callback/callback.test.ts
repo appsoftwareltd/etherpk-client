@@ -6,28 +6,26 @@ import {
     encryptSessionCookie,
     transactionCookieName,
     type AuthorizationTransaction,
-} from '$lib/server/auth/session-cookie'
-import { resetOAuthMetadataCache } from '$lib/server/auth/oauth-client'
+} from '#lib/server/auth/session-cookie.js'
+import { resetOAuthMetadataCache } from '#lib/server/auth/oauth-client.js'
 
 // The route reads its managed preset from the private environment; the shared mock is empty.
-vi.mock('$env/dynamic/private', () => ({
-    env: {
-        CLIENT_PUBLIC_URL: 'https://app.example.com',
-        CORPORATE_ISSUER: 'https://accounts.example.com',
-        MANAGED_OAUTH_CLIENT_ID: 'etherpk-client',
-        MANAGED_SYNC_URL: 'https://sync.example.com',
-        CLIENT_SESSION_SECRET: 'a-client-session-secret-with-32-bytes',
-    },
+vi.mock('$app/env/private', () => ({
+    CLIENT_PUBLIC_URL: 'https://app.example.com',
+    CORPORATE_ISSUER: 'https://accounts.example.com',
+    MANAGED_OAUTH_CLIENT_ID: 'etherpk-client',
+    MANAGED_SYNC_URL: 'https://sync.example.com',
+    CLIENT_SESSION_SECRET: 'a-client-session-secret-with-32-bytes',
 }))
 
 const logged = vi.hoisted(() => ({ warn: vi.fn(), info: vi.fn(), error: vi.fn(), debug: vi.fn() }))
-vi.mock('$lib/server/logger', () => ({ logger: logged }))
+vi.mock('#lib/server/logger.js', () => ({ logger: logged }))
 
 // The ID token's signature and nonce are checked against Corporate's JWKS; stand in for jose so
 // these cases exercise the route rather than the cryptography (oauth-client.test.ts covers that).
 const verification = vi.hoisted(() => ({ nonceMatches: true }))
-vi.mock('$lib/server/auth/oauth-client', async (importOriginal) => {
-    const actual = await importOriginal<typeof import('$lib/server/auth/oauth-client')>()
+vi.mock('#lib/server/auth/oauth-client.js', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('#lib/server/auth/oauth-client.js')>()
     return {
         ...actual,
         verifyIdTokenNonce: vi.fn(async () => {

@@ -22,7 +22,7 @@
 import { EditorSelection, EditorState, type Extension, type SelectionRange, type Text, type Transaction, type TransactionSpec } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
 
-import { frontmatterLines } from '$lib/storage/fs/frontmatter-span'
+import { frontmatterLines } from '#lib/storage/fs/frontmatter-span.js'
 
 import { fencedBlocks } from '../fenced-code'
 import { type OutlineLine, outlineLines } from '../indent-unit'

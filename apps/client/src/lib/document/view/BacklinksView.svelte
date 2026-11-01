@@ -38,10 +38,10 @@
      */
     import { onDestroy, onMount, untrack } from "svelte";
 
-    import { viewKey, type ViewRef, type ViewVisibility } from "$lib/layout";
-    import { tryGetActiveEventBus } from "$lib/surface";
-    import { iconSvg } from "$lib/surface/icons";
-    import { workspaceService } from "$lib/workspace/workspace-services";
+    import { viewKey, type ViewRef, type ViewVisibility } from "#lib/layout/index.js";
+    import { tryGetActiveEventBus } from "#lib/surface/index.js";
+    import { iconSvg } from "#lib/surface/icons.js";
+    import { workspaceService } from "#lib/workspace/workspace-services.js";
 
     import { getActiveDocument } from "../active-document";
     import { type BacklinksState, createBacklinksLoader, getActiveGraphIndex, linksToConcept } from "../backlinks";

@@ -62,6 +62,7 @@ export function parseLegalPageUrl(value: string | undefined, name: string): stri
  * to the page, which a changed setting can move, or 404 where the deployment has none.
  */
 export function serveLegalPage(url: string | null): never {
-    if (url) redirect(307, url)
+    // The deployment's own setting, which may name another origin (checked by parseLegalPageUrl).
+    if (url) redirect(307, url, { external: true })
     error(404, 'Not found')
 }

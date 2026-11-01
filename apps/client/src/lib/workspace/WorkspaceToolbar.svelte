@@ -24,7 +24,7 @@
      */
     import { PUBLIC_DOCS_URL } from '@appsoftwareltd/etherpk-shared'
 
-    import SidebarToggleIcon from '$lib/layout/renderers/SidebarToggleIcon.svelte'
+    import SidebarToggleIcon from '#lib/layout/renderers/SidebarToggleIcon.svelte'
 
     import type { MirrorIndicator } from './mirror-indicator'
 

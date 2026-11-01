@@ -11,7 +11,7 @@
      * the complexity of windowing is not yet earned. If very long documents turn up, this is
      * where paging would go.
      */
-    import type { AssetViewerProps } from "$lib/surface";
+    import type { AssetViewerProps } from "#lib/surface/index.js";
 
     import { closePdf, fitScale, openPdf, renderPage, type PdfDocument } from "./pdf-render";
 

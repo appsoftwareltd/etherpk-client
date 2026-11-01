@@ -3,11 +3,11 @@ import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 
-import { createGraphKeyring } from '$lib/crypto'
-import { createLoopbackRelay } from '$lib/sync/loopback-relay'
-import { fixedSyncToken } from '$lib/sync/sync-token'
+import { createGraphKeyring } from '#lib/crypto/index.js'
+import { createLoopbackRelay } from '#lib/sync/loopback-relay.js'
+import { fixedSyncToken } from '#lib/sync/sync-token.js'
 
-import { fakeEmbeddingModel } from '$lib/document/semantic/embedding-model'
+import { fakeEmbeddingModel } from '#lib/document/semantic/embedding-model.js'
 
 import { openHeadlessGraph, type HeadlessGraph, type HeadlessGraphDeps } from './headless-graph'
 import { cacheFile, folderCacheDir, folderKey, graphCacheDir, indexFile, listGraphStores, nodeIndexHost, removeCacheRoot, removeUnlistedGraphCaches, stampGraphCacheOwner, vectorsFile } from './persistence'
@@ -261,7 +261,7 @@ describe('the local cache snapshot', () => {
         // As v8.deserialize hands a snapshot back: every typed array a zero-copy view on the
         // file's one buffer. IndexedDB's structured clone copies a view's WHOLE buffer, so
         // without a copy per row this is rows × file size of memory (2026-09-17: 28 GB).
-        const { openGraphCache } = await import('$lib/sync/local-cache')
+        const { openGraphCache } = await import('#lib/sync/local-cache.js')
         const { captureLocalCache, restoreLocalCache } = await import('./persistence')
         const graphId = `g-views-${Math.floor(performance.now() * 1000)}`
         const cache = await openGraphCache(graphId)

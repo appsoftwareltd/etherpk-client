@@ -13,8 +13,8 @@
 import { mkdir, readFile, realpath, writeFile } from 'node:fs/promises'
 import nodePath, { basename, dirname, isAbsolute, join, resolve } from 'node:path'
 
-import { isBranchName, parseRepository } from '$lib/document/publish/host/github-repository'
-import type { GitHubRepository } from '$lib/document/publish/host/github-api'
+import { isBranchName, parseRepository } from '#lib/document/publish/host/github-repository.js'
+import type { GitHubRepository } from '#lib/document/publish/host/github-api.js'
 
 import { defaultConfigPath } from './config'
 import type { HeadlessBackend } from './headless-graph'

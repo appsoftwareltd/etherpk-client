@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
-import type { ProtectionRecord } from '$lib/crypto'
-import type { DirectoryAdapter } from '$lib/storage/fs/directory-adapter'
-import { createMemoryDirectoryAdapter } from '$lib/storage/fs/memory-adapter'
+import type { ProtectionRecord } from '#lib/crypto/index.js'
+import type { DirectoryAdapter } from '#lib/storage/fs/directory-adapter.js'
+import { createMemoryDirectoryAdapter } from '#lib/storage/fs/memory-adapter.js'
 
 import { PROTECTION_FILE, filesystemProtectionStore, inMemoryProtectionStore, localProtectionStore, vaultProtectionStore } from './protection-store'
 

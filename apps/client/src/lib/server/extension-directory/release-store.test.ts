@@ -5,7 +5,7 @@ import { pathToFileURL } from 'node:url'
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
-import { type DirectoryListing, releaseKey } from '$lib/extensions/directory-format'
+import { type DirectoryListing, releaseKey } from '#lib/extensions/directory-format.js'
 
 import { createReleaseStore, registryName, releasePath } from './release-store'
 import { integrityOf, packageTarball } from './testing'

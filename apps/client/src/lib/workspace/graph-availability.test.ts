@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
-import { ManagedTokenError } from '$lib/auth/managed-token'
-import type { GraphRecord, ServerGraphScope } from '$lib/storage'
-import { SyncApiError } from '$lib/sync/sync-api'
+import { ManagedTokenError } from '#lib/auth/managed-token.js'
+import type { GraphRecord, ServerGraphScope } from '#lib/storage/index.js'
+import { SyncApiError } from '#lib/sync/sync-api.js'
 
 import { diagnoseMissingGraph, type DiagnosisConnection, type MissingGraphDeps } from './graph-availability'
 

@@ -17,8 +17,8 @@
  * which reads the kept preferences back and starts unpinned.
  */
 
-import { TASK_FILTER_KEY_PREFIX } from '$lib/document/task-filter-store'
-import { READING_POSITIONS_KEY_PREFIX } from '$lib/navigation/reading-positions'
+import { TASK_FILTER_KEY_PREFIX } from '#lib/document/task-filter-store.js'
+import { READING_POSITIONS_KEY_PREFIX } from '#lib/navigation/reading-positions.js'
 
 /** The per-graph keys a reset forgets, so a test can assert the exact set. */
 export function workspaceResetKeys(graphId: string): string[] {

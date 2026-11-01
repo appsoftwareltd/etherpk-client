@@ -13,8 +13,8 @@
      */
     import { tick } from "svelte";
 
-    import { getActiveCommandRegistry, listContextMenuItems, tryGetActiveContributionRegistry } from "$lib/surface";
-    import { iconSvg } from "$lib/surface/icons";
+    import { getActiveCommandRegistry, listContextMenuItems, tryGetActiveContributionRegistry } from "#lib/surface/index.js";
+    import { iconSvg } from "#lib/surface/icons.js";
 
     import { closeContextMenu, getContextMenuState, subscribeContextMenu, type ContextMenuState } from "../context-menu-store";
 

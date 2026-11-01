@@ -14,7 +14,7 @@
  * The cache rows are plaintext Yjs state, so this needs no keyring and no relay.
  */
 import * as Y from 'yjs'
-import { sanitizeQuickNotes } from '$lib/document/quick-notes'
+import { sanitizeQuickNotes } from '#lib/document/quick-notes.js'
 import { openGraphCache, type GraphCache } from './local-cache'
 import type { RegistryEntry } from './graph-sync'
 

@@ -12,7 +12,7 @@ import { readdir, readFile } from 'node:fs/promises'
 import { join, relative, resolve, sep } from 'node:path'
 import type { Plugin } from 'vite'
 
-// Relative rather than through `$lib`: this runs in the config process, before the alias exists.
+// Relative rather than through `#lib`: this runs in the config process, before the alias exists.
 import { buildDemoBundleManifest, type BundleSource } from './src/lib/demo/bundle-manifest'
 
 const VIRTUAL_ID = 'virtual:demo-graph'

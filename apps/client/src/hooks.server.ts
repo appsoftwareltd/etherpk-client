@@ -1,29 +1,30 @@
-import type { Handle, RequestEvent, ServerInit } from '@sveltejs/kit'
+import type { RequestEvent } from '@sveltejs/kit'
+import type { Handle, ServerInit } from '@sveltejs/kit/hooks'
 import { hostname } from 'node:os'
-import { building } from '$app/environment'
+import { building } from '$app/env'
 import { SIGNED_IN_STATUS_PATH, applySecurityHeaders } from '@appsoftwareltd/etherpk-shared'
 import { createHandleError, logRequest } from '@appsoftwareltd/etherpk-shared/server/request-log'
-import { env } from '$env/dynamic/private'
-import { initLoggerFromEnv, logger, shutdownLogger } from '$lib/server/logger'
-import { parseOptionalManagedClientAuthConfig } from '$lib/server/auth/config'
+import * as env from '$app/env/private'
+import { initLoggerFromEnv, logger, shutdownLogger } from '#lib/server/logger.js'
+import { parseOptionalManagedClientAuthConfig } from '#lib/server/auth/config.js'
 import {
     clearManagedCookies,
     isClientSsoChecked,
     isClientSsoSuppressed,
     takeClientSsoAttempted,
-} from '$lib/server/auth/cookies'
+} from '#lib/server/auth/cookies.js'
 import {
     buildManagedClientSsoCheckUrl,
     managedClientSsoCheckResponse,
     shouldAskWhetherSignedInElsewhere,
     shouldAttemptManagedClientSso,
-} from '$lib/server/auth/managed-routing'
+} from '#lib/server/auth/managed-routing.js'
 import {
     decryptSessionCookie,
     isManagedSession,
     MANAGED_SESSION_COOKIE,
-} from '$lib/server/auth/session-cookie'
-import { SETTINGS_COOKIE_NAME, parseSettings } from '$lib/settings'
+} from '#lib/server/auth/session-cookie.js'
+import { SETTINGS_COOKIE_NAME, parseSettings } from '#lib/settings.js'
 import {
     THEME_COOKIE_NAME,
     decorateHtmlWithTheme,
@@ -31,7 +32,6 @@ import {
     resolveTheme,
 } from '@appsoftwareltd/etherpk-shared/theme'
 import { buildStampComment, decorateHtmlWithBuildStamp } from '@appsoftwareltd/etherpk-shared/build-stamp'
-import { refusedRequestPath } from '@appsoftwareltd/etherpk-shared/server/request-path'
 
 // Which build is serving this page: the first line of every page source, so `view-source:`
 // answers it against `git log` without a shell on the box (see build-stamp.ts).
@@ -75,10 +75,6 @@ export const handleError = createHandleError({ logger, hostname: appHostname })
 
 /** One JSON request line per request that reaches the server (static assets never do). */
 export const handle: Handle = async ({ event, resolve }) => {
-    // A path that starts with `//` reads as another host once a page writes it back into a link
-    // or a form action. No route answers one.
-    const refused = refusedRequestPath(event.url)
-    if (refused) return refused
     const start = performance.now()
     const response = await respond(event, resolve)
     await logRequest({ logger, hostname: appHostname }, event, response, { durationMs: performance.now() - start })

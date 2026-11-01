@@ -22,10 +22,10 @@
 
     import { afterNavigate } from "$app/navigation";
     import { page } from "$app/state";
-    import { inkFor } from "$lib/contrast-ink";
-    import { createIdbGraphRegistry, type GraphRecord } from "$lib/storage";
-    import { iconSvg } from "$lib/surface/icons";
-    import { graphAccentFor } from "$lib/workspace/graph-accent.svelte";
+    import { inkFor } from "#lib/contrast-ink.js";
+    import { createIdbGraphRegistry, type GraphRecord } from "#lib/storage/index.js";
+    import { iconSvg } from "#lib/surface/icons.js";
+    import { graphAccentFor } from "#lib/workspace/graph-accent.svelte.js";
 
     // Nothing here closes the menu by hand: the header does that on `afterNavigate`, so a link
     // is never torn out of the DOM by its own click handler on the way to the destination.
@@ -71,7 +71,9 @@
         void load();
     });
 
-    afterNavigate(() => {
+    afterNavigate(({ shallow, type }) => {
+        // A shallow entry is not a page change (it runs the navigation hooks since SvelteKit 3).
+        if (shallow && type === "goto") return;
         void load();
     });
 </script>

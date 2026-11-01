@@ -9,7 +9,7 @@
  */
 
 import type { RemoteGraphIndex } from '../index-worker/client'
-import { setWorkspaceService, workspaceService } from '$lib/workspace/workspace-services'
+import { setWorkspaceService, workspaceService } from '#lib/workspace/workspace-services.js'
 
 export function setActiveGraphIndex(index: RemoteGraphIndex | null): void {
     setWorkspaceService('index', index ?? undefined)

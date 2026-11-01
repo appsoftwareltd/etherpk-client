@@ -10,7 +10,7 @@
  *   when you're back online".
  */
 
-import { dismissNotice, showNotice } from '$lib/activity/notices'
+import { dismissNotice, showNotice } from '#lib/activity/notices.js'
 import { formatBytes } from '@appsoftwareltd/etherpk-shared'
 
 import type { LanguageStatus, SpellService } from './spell-service'

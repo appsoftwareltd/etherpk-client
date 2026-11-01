@@ -3,8 +3,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import type { DirectoryAdapter } from '$lib/storage/fs/directory-adapter'
-import { createMemoryDirectoryAdapter } from '$lib/storage/fs/memory-adapter'
+import type { DirectoryAdapter } from '#lib/storage/fs/directory-adapter.js'
+import { createMemoryDirectoryAdapter } from '#lib/storage/fs/memory-adapter.js'
 
 import { openHeadlessFolder, type HeadlessFolderDeps } from './headless-folder'
 import type { HeadlessGraph } from './headless-graph'

@@ -8,8 +8,8 @@ import {
     type DocumentCreatingStore,
 } from './draft'
 import type { DocumentStore, EditorDocument, TextChange } from './types'
-import { createFilesystemDocumentStore } from '$lib/storage/fs/filesystem-store'
-import { createMemoryDirectoryAdapter } from '$lib/storage/fs/memory-adapter'
+import { createFilesystemDocumentStore } from '#lib/storage/fs/filesystem-store.js'
+import { createMemoryDirectoryAdapter } from '#lib/storage/fs/memory-adapter.js'
 
 /**
  * [[Draft]] promotion (ADR 0050), exercised against fakes of both backends' shapes — the

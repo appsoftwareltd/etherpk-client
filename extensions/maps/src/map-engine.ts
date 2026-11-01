@@ -21,7 +21,7 @@
 import { AttributionControl, LngLatBounds, Map as MapLibreMap, NavigationControl } from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 
-import type { MapLine, MapPoint } from '$lib/document/map-text'
+import type { MapLine, MapPoint } from '#lib/document/map-text.js'
 
 import type { Basemap } from './basemap'
 import { blankStyle, NAMED_PLACES, routeLayers, SINGLE_PLACE_ZOOM, WORLD } from './map-drawing'

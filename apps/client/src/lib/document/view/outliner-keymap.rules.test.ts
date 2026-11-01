@@ -19,7 +19,7 @@ import { undoDepth } from '@codemirror/commands'
 import { type Transaction, type TransactionSpec } from '@codemirror/state'
 import { EditorView, keymap, showTooltip, type WidgetType } from '@codemirror/view'
 
-import { createContributionRegistry, setActiveContributionRegistry } from '$lib/surface'
+import { createContributionRegistry, setActiveContributionRegistry } from '#lib/surface/index.js'
 
 import { hiddenSyntax, type HiddenSyntaxSpec, hiddenSyntaxPieces } from './augmentations/base-renderer'
 import { followFenceRegistrations, interactiveFenceAugmentation } from './augmentations/interactive-fence'

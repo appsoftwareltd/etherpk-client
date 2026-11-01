@@ -57,8 +57,8 @@ export function buildAdminMenu(urls: { usersUrl: string; storageUrl: string }): 
  * it as the top navigation marks its own. A link to another origin never matches, and a path only
  * matches whole segments: /account is not current on /accounts.
  */
-export function isCurrentDestination(href: string, current: URL): boolean {
-    const target = new URL(href, current)
+export function isCurrentDestination(href: string, current: Pick<URL, 'href' | 'origin' | 'pathname'>): boolean {
+    const target = new URL(href, current.href)
     if (target.origin !== current.origin) return false
     const path = target.pathname.replace(/\/$/, '') || '/'
     return current.pathname === path || (path !== '/' && current.pathname.startsWith(`${path}/`))

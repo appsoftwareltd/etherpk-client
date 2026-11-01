@@ -1,5 +1,5 @@
-import { clearManagedAccessToken } from '$lib/auth/managed-token'
-import { forgetShell } from '$lib/offline/app-shell'
+import { clearManagedAccessToken } from '#lib/auth/managed-token.js'
+import { forgetShell } from '#lib/offline/app-shell.js'
 import { announceAccountSignal } from './account-signal'
 import { clearSyncAccount } from './account-scope'
 import { listSyncConnections } from './sync-connection'

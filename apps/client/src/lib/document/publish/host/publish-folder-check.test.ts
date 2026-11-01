@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import type { KnownFolder } from '$lib/storage/server/mirror-takeover'
+import type { KnownFolder } from '#lib/storage/synced/mirror-takeover.js'
 
 import { findPublishFolderOverlap, publishFolderOverlapMessage } from './publish-folder-check'
 

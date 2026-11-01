@@ -19,8 +19,8 @@
  * workspace sooner aborts `signal`: the wait for the relay ends at once, the note stays in the
  * outbox for the workspace's own engine to ship, and the result is honestly "not synced".
  */
-import type { GraphKeyring } from '$lib/crypto'
-import type { QuickNote } from '$lib/document/quick-notes'
+import type { GraphKeyring } from '#lib/crypto/index.js'
+import type { QuickNote } from '#lib/document/quick-notes.js'
 
 import { browserTransport, createGraphSync, type TransportSocket } from './graph-sync'
 import { openGraphCache } from './local-cache'

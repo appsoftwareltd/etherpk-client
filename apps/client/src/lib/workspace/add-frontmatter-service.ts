@@ -10,12 +10,12 @@
 import { isolateHistory } from '@codemirror/commands'
 import type { EditorState, TransactionSpec } from '@codemirror/state'
 
-import { type AddableKey, type AddedFrontmatter, withAddedFrontmatter } from '$lib/document/frontmatter/add-frontmatter'
-import { isJournalConcept } from '$lib/document/journal-concept'
-import { canCreateDocuments } from '$lib/document/draft'
-import { DocumentNotFoundError } from '$lib/document/types'
-import { editorHistory } from '$lib/document/view/editor-history'
-import { frontmatterSpan } from '$lib/storage/fs/frontmatter-span'
+import { type AddableKey, type AddedFrontmatter, withAddedFrontmatter } from '#lib/document/frontmatter/add-frontmatter.js'
+import { isJournalConcept } from '#lib/document/journal-concept.js'
+import { canCreateDocuments } from '#lib/document/draft.js'
+import { DocumentNotFoundError } from '#lib/document/types.js'
+import { editorHistory } from '#lib/document/view/editor-history.js'
+import { frontmatterSpan } from '#lib/storage/fs/frontmatter-span.js'
 
 import { type FrontmatterStore, registryAliases } from './publish-service'
 

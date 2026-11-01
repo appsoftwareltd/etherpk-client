@@ -22,10 +22,10 @@
  */
 import type { ExtensionContext, ViewContribution } from '@appsoftwareltd/etherpk-extension-api'
 
-import type { MapItemsResult } from '$lib/document/index-map-items'
-import { MAP_FENCE_INFO } from '$lib/document/map-text'
-import { MAP_PICTURE_KIND, type MapPictureRenderer } from '$lib/document/publish/map-picture-renderer'
-import type { AssetStore } from '$lib/storage/fs/asset-store'
+import type { MapItemsResult } from '#lib/document/index-map-items.js'
+import { MAP_FENCE_INFO } from '#lib/document/map-text.js'
+import { MAP_PICTURE_KIND, type MapPictureRenderer } from '#lib/document/publish/map-picture-renderer.js'
+import type { AssetStore } from '#lib/storage/fs/asset-store.js'
 
 import { createBasemaps } from './basemap'
 import { MAP_VIEW_KIND, MAP_WHOLE_KIND } from './identity'

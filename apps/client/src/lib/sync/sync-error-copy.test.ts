@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { ManagedTokenError } from '$lib/auth/managed-token'
-import { EnvelopeError, KeyringConflictError, RecoveryCodeError } from '$lib/crypto'
+import { ManagedTokenError } from '#lib/auth/managed-token.js'
+import { EnvelopeError, KeyringConflictError, RecoveryCodeError } from '#lib/crypto/index.js'
 import { NoVaultError } from './recovery-unlock'
 import { SyncProtocolMismatchError } from './messages'
 import { InviteNotAcceptedError, InviteeChangedError } from './invites'

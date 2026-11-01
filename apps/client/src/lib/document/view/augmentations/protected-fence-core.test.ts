@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { CIPHER_FENCE_INFO } from '$lib/document/protection/fence-info'
+import { CIPHER_FENCE_INFO } from '#lib/document/protection/fence-info.js'
 
 import {
     changeTouchesProtected,

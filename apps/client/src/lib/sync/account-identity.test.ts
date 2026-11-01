@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { fingerprint, generateIdentityKeyPair, generateSigningKeyPair, identityPublicKeys, openVault } from '$lib/crypto'
+import { fingerprint, generateIdentityKeyPair, generateSigningKeyPair, identityPublicKeys, openVault } from '#lib/crypto/index.js'
 import { ForeignIdentityError, accountIdentityFingerprint, ensureAccountIdentity } from './account-identity'
 import { createFakeSyncServer, seedAccount, seedLegacyAccount } from './testing/fake-sync-server'
 

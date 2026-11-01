@@ -5,10 +5,10 @@
 
 import { describe, expect, it } from 'vitest'
 
-import type { DirectoryAdapter } from '$lib/storage/fs/directory-adapter'
-import { createFilesystemDocumentStore } from '$lib/storage/fs/filesystem-store'
-import { createMemoryDirectoryAdapter } from '$lib/storage/fs/memory-adapter'
-import type { DocumentIdentity, DocumentText } from '$lib/storage/server/server-document-store'
+import type { DirectoryAdapter } from '#lib/storage/fs/directory-adapter.js'
+import { createFilesystemDocumentStore } from '#lib/storage/fs/filesystem-store.js'
+import { createMemoryDirectoryAdapter } from '#lib/storage/fs/memory-adapter.js'
+import type { DocumentIdentity, DocumentText } from '#lib/storage/synced/server-document-store.js'
 
 import { filesystemFormattingSource, serverFormattingSource } from './formatting-sources'
 

@@ -9,13 +9,13 @@
  * as a [[Kanban Board]] (ADR 0113) or a [[Map View]] (ADR 0118). State an extension keeps under a
  * concept's name follows through the `concept:renamed` Event, reported before the Views move.
  */
-import type { RenameLinkStrategy, RenameOptions, RenamePlan, RenameResult } from '$lib/storage/rename'
-import { renameSteps } from '$lib/storage/rename'
-import { type DbBacklinkGroup, referencedInBody } from '$lib/document/index-db'
-import { reachedWithin } from '$lib/reached-within'
-import { cascadeFor, isScopedBy, movedConcept } from '$lib/document/wikilink/rename'
-import { parseViewKey, viewKey } from '$lib/layout/view-ref'
-import { conceptKey } from '$lib/storage/fs/identity'
+import type { RenameLinkStrategy, RenameOptions, RenamePlan, RenameResult } from '#lib/storage/rename.js'
+import { renameSteps } from '#lib/storage/rename.js'
+import { type DbBacklinkGroup, referencedInBody } from '#lib/document/index-db.js'
+import { reachedWithin } from '#lib/reached-within.js'
+import { cascadeFor, isScopedBy, movedConcept } from '#lib/document/wikilink/rename.js'
+import { parseViewKey, viewKey } from '#lib/layout/view-ref.js'
+import { conceptKey } from '#lib/storage/fs/identity.js'
 
 interface DocumentMutationStore {
     planRename(from: string, to: string, referencingDocuments?: number): Promise<RenamePlan>

@@ -14,11 +14,11 @@
  */
 import type { ExtensionContext, MenuTarget } from '@appsoftwareltd/etherpk-extension-api'
 
-import { getActiveEditorView } from '$lib/document/active-editor'
-import { CARET_CONCEPT_DETAIL, caretConcepts, forConceptsDetail } from '$lib/document/caret-concepts'
-import { showConceptPicker } from '$lib/document/view/augmentations/concept-picker'
-import { editorDocument } from '$lib/document/view/editor-document'
-import { parseViewKey } from '$lib/layout/view-ref'
+import { getActiveEditorView } from '#lib/document/active-editor.js'
+import { CARET_CONCEPT_DETAIL, caretConcepts, forConceptsDetail } from '#lib/document/caret-concepts.js'
+import { showConceptPicker } from '#lib/document/view/augmentations/concept-picker.js'
+import { editorDocument } from '#lib/document/view/editor-document.js'
+import { parseViewKey } from '#lib/layout/view-ref.js'
 
 import { MAP_VIEW_KIND, MAP_WHOLE, MAPS_OPEN_AT_CARET, MAPS_OPEN_FOR, MAPS_OPEN_FROM_MENU, MAPS_OPEN_PAGE, MAPS_OPEN_WHOLE, mapViewOf } from './identity'
 

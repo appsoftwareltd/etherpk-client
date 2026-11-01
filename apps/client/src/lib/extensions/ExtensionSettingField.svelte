@@ -9,7 +9,7 @@
     import type { SettingDeclaration } from "@appsoftwareltd/etherpk-extension-api";
     import { createSubscriber } from "svelte/reactivity";
 
-    import { extensionSettingKey, type PersonSettings } from "$lib/person-settings/person-settings";
+    import { extensionSettingKey, type PersonSettings } from "#lib/person-settings/person-settings.js";
 
     const { extensionId, setting, settings }: { extensionId: string; setting: SettingDeclaration; settings: PersonSettings } = $props();
 

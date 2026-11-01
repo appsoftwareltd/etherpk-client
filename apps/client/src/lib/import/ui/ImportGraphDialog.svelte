@@ -1,6 +1,6 @@
 <script lang="ts" module>
-    import type { ServerGraphScope } from "$lib/storage/graph-registry";
-    import type { SyncApi } from "$lib/sync/sync-api";
+    import type { ServerGraphScope } from "#lib/storage/graph-registry.js";
+    import type { SyncApi } from "#lib/sync/sync-api.js";
 
     /**
      * One Sync Server a synced import can go to (ADR 0111): every server the device holds is
@@ -36,12 +36,12 @@
      * a dialog to show the message in. After that the [[Activity Toast]] owns the run.
      */
     import { tick } from "svelte";
-    import { ActivityConflictError, isRunning } from "$lib/activity/store";
-    import { isFsaSupported, pickGraphDirectory } from "$lib/storage";
-    import type { GraphRegistry } from "$lib/storage/graph-registry";
-    import { getOpfsRoot } from "$lib/storage/fs/web-fs-adapter";
-    import { describeSyncFailure } from "$lib/sync/sync-error-copy";
-    import { serverHost } from "$lib/sync/sync-connections";
+    import { ActivityConflictError, isRunning } from "#lib/activity/store.js";
+    import { isFsaSupported, pickGraphDirectory } from "#lib/storage/index.js";
+    import type { GraphRegistry } from "#lib/storage/graph-registry.js";
+    import { getOpfsRoot } from "#lib/storage/fs/web-fs-adapter.js";
+    import { describeSyncFailure } from "#lib/sync/sync-error-copy.js";
+    import { serverHost } from "#lib/sync/sync-connections.js";
     import { PUBLIC_DOCS_URL } from "@appsoftwareltd/etherpk-shared";
     import Modal from "@appsoftwareltd/etherpk-shared/dialog";
     import {
@@ -49,8 +49,8 @@
         parseProtectionRecord,
         unlockProtectionRecord,
         type ProtectionRecord,
-    } from "$lib/crypto";
-    import { PROTECTION_FILE } from "$lib/document/protection/protection-store";
+    } from "#lib/crypto/index.js";
+    import { PROTECTION_FILE } from "#lib/document/protection/protection-store.js";
 
     import { describeOversize, oversizeAssets } from "../asset-preflight";
     import { startImport } from "../import-activity";

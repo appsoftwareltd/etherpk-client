@@ -26,7 +26,7 @@
  * storage holds with this tab's copy: it applies this tab's changes since its last write to what is
  * stored now. A footprint another tab forgot is never written back by a tab that read it earlier.
  *
- * Kept free of `$lib` imports, so an e2e fixture can import it.
+ * Kept free of `#lib` imports, so an e2e fixture can import it.
  */
 
 /** An image's rendered footprint: the widget's full height and the picture's width and left offset (px). */

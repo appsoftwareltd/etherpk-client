@@ -26,7 +26,7 @@ import {
     unarmourProtected,
     toBase64Url,
     unlockProtectionRecord,
-} from '$lib/crypto'
+} from '#lib/crypto/index.js'
 
 import {
     type CipherFence,

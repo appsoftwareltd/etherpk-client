@@ -12,7 +12,7 @@
  */
 import { isShortMapLink } from '@appsoftwareltd/etherpk-shared'
 
-import type { MapPoint } from '$lib/document/map-text'
+import type { MapPoint } from '#lib/document/map-text.js'
 
 /** A place read from the search box: where it is, a name when the input carried one, and how. */
 export interface PlaceInput {

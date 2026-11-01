@@ -20,7 +20,7 @@
 import type { Extension } from '@codemirror/state'
 import { type EditorView, ViewPlugin } from '@codemirror/view'
 
-import { isApplePlatform } from '$lib/surface'
+import { isApplePlatform } from '#lib/surface/index.js'
 
 import { PLAIN_PASTE_USER_EVENT } from '../paste-clamp'
 

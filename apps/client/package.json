@@ -6,9 +6,9 @@
     "type": "module",
     "scripts": {
         "dev": "node build-extensions.mjs && vite dev",
-        "build": "node build-extensions.mjs && vite build",
+        "build": "node build-extensions.mjs && vite build && node scripts/build-server.mjs",
         "preview": "vite preview",
-        "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+        "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json && tsc -p src/service-worker/tsconfig.json",
         "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
         "test": "svelte-kit sync && vitest run",
         "test:performance:sync": "svelte-kit sync && vitest run src/lib/sync/graph-sync.test.ts -t \"keeps a 2400-document background walk bounded\"",
@@ -17,8 +17,8 @@
     },
     "devDependencies": {
         "@appsoftwareltd/etherpk-extension-graph-view": "workspace:*",
-        "@sveltejs/adapter-node": "^5.5.4",
-        "@sveltejs/kit": "^2.70.3",
+        "@sveltejs/adapter-node": "^6.0.0",
+        "@sveltejs/kit": "^3.0.0",
         "@sveltejs/vite-plugin-svelte": "^7.0.0",
         "@tailwindcss/vite": "^4.2.2",
         "@types/mustache": "4.2.6",
@@ -28,7 +28,7 @@
         "fast-check": "^4.9.0",
         "linkedom": "0.18.13",
         "svelte": "^5.57.1",
-        "svelte-check": "^4.4.6",
+        "svelte-check": "^4.7.5",
         "tailwindcss": "^4.2.2",
         "typescript": "^6.0.2",
         "vite": "^8.3.3",
@@ -76,5 +76,9 @@
         "builtInExtensions": [
             "@appsoftwareltd/etherpk-extension-graph-view"
         ]
+    },
+    "imports": {
+        "#lib": "./src/lib/index.js",
+        "#lib/*": "./src/lib/*"
     }
 }

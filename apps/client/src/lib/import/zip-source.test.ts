@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { createZipWriter, type ZipSink } from '$lib/zip/zip-writer'
+import { createZipWriter, type ZipSink } from '#lib/zip/zip-writer.js'
 
 import { commonZipRoot, normaliseZipPath, prepareZipSource } from './zip-source'
 

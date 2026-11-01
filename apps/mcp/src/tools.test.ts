@@ -4,14 +4,14 @@ import { join } from 'node:path'
 
 import { afterEach, describe, expect, it } from 'vitest'
 
-import { createGraphKeyring } from '$lib/crypto'
-import { todayISO } from '$lib/document/calendar/month-grid-core'
-import { createLoopbackRelay } from '$lib/sync/loopback-relay'
-import { fixedSyncToken } from '$lib/sync/sync-token'
-import { createMemoryDirectoryAdapter } from '$lib/storage/fs/memory-adapter'
-import { assetNameFromRef, createAssetStore } from '$lib/storage/fs/asset-store'
+import { createGraphKeyring } from '#lib/crypto/index.js'
+import { todayISO } from '#lib/document/calendar/month-grid-core.js'
+import { createLoopbackRelay } from '#lib/sync/loopback-relay.js'
+import { fixedSyncToken } from '#lib/sync/sync-token.js'
+import { createMemoryDirectoryAdapter } from '#lib/storage/fs/memory-adapter.js'
+import { assetNameFromRef, createAssetStore } from '#lib/storage/fs/asset-store.js'
 
-import { fakeEmbeddingModel } from '$lib/document/semantic/embedding-model'
+import { fakeEmbeddingModel } from '#lib/document/semantic/embedding-model.js'
 
 import { openHeadlessFolder } from './headless-folder'
 import { openHeadlessGraph, type HeadlessGraph, type HeadlessGraphDeps } from './headless-graph'

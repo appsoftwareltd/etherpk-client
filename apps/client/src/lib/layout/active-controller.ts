@@ -9,7 +9,7 @@
  */
 
 import type { LayoutController } from './types'
-import { setWorkspaceService, workspaceService } from '$lib/workspace/workspace-services'
+import { setWorkspaceService, workspaceService } from '#lib/workspace/workspace-services.js'
 
 export function setActiveLayoutController(controller: LayoutController | null): void {
     setWorkspaceService('layout', controller ?? undefined)

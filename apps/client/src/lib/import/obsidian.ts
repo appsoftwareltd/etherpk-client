@@ -11,8 +11,8 @@
  * notes template the [[Journal Template]] (ADR 0145).
  */
 
-import { MARKDOWN_LINK } from '$lib/document/markdown-link-target'
-import { normaliseAliases } from '$lib/document/frontmatter/identity'
+import { MARKDOWN_LINK } from '#lib/document/markdown-link-target.js'
+import { normaliseAliases } from '#lib/document/frontmatter/identity.js'
 
 import { type PlannedAsset, normaliseRef, planAssets } from './assets'
 import { buildFrontmatter, createFenceTracker, outsideInlineCode, readSourceFrontmatter, UNREADABLE_FRONTMATTER_DETAIL } from './convert-shared'

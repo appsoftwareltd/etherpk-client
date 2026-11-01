@@ -12,7 +12,7 @@
  * follow them to their other devices (installed-sync.ts). What the device does to keep in step with
  * those settings (`installRelease`, `stageRelease`, `removeFromDevice`) touches this device alone.
  */
-import { extensionDataKey, type PersonSettings } from '$lib/person-settings/person-settings'
+import { extensionDataKey, type PersonSettings } from '#lib/person-settings/person-settings.js'
 
 import { admitInstalled, type Catalogue } from './catalogue'
 import { type DirectoryExtension, type DirectoryListing, type DirectoryRelease, releaseBase } from './directory-format'

@@ -26,10 +26,10 @@
         SYNC_CONNECTIONS_STORAGE_KEY,
         type ApproverSession,
         type PendingDeviceApproval,
-    } from "$lib/sync";
+    } from "#lib/sync/index.js";
     import { untrack } from "svelte";
-    import { announceAccountSignal } from "$lib/sync/account-signal";
-    import { describeSyncFailure } from "$lib/sync/sync-error-copy";
+    import { announceAccountSignal } from "#lib/sync/account-signal.js";
+    import { describeSyncFailure } from "#lib/sync/sync-error-copy.js";
     import Modal from "@appsoftwareltd/etherpk-shared/dialog";
 
     /** How often to look for new requests, and how often to look for the reveal of one being handled. */

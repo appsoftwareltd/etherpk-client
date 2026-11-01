@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
-import { createLayoutController } from '$lib/layout/controller'
-import { createStubRenderer } from '$lib/layout/testing/stub-renderer'
-import type { LayoutController } from '$lib/layout/types'
+import { createLayoutController } from '#lib/layout/controller.js'
+import { createStubRenderer } from '#lib/layout/testing/stub-renderer.js'
+import type { LayoutController } from '#lib/layout/types.js'
 
 import { createHistoryEngine, type HistoryEngine, type VisitState } from './history'
 import type { ViewPosition } from './position'

@@ -26,8 +26,8 @@ import { isolateHistory } from '@codemirror/commands'
 import { type EditorState, type Extension, type Range, StateEffect, StateField, type TransactionSpec } from '@codemirror/state'
 import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate, WidgetType } from '@codemirror/view'
 
-import { type FrontmatterProblem, frontmatterProblems } from '$lib/document/frontmatter/frontmatter-problems'
-import { tidyFrontmatter } from '$lib/document/frontmatter/frontmatter-yaml'
+import { type FrontmatterProblem, frontmatterProblems } from '#lib/document/frontmatter/frontmatter-problems.js'
+import { tidyFrontmatter } from '#lib/document/frontmatter/frontmatter-yaml.js'
 
 import { isJournalConcept } from '../../journal-concept'
 import { analysisFor } from '../analysis/editor-analysis'

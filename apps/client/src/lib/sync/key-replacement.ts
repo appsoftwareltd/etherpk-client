@@ -26,7 +26,7 @@ import {
     sha256,
     signMessage,
     toBase64Url,
-} from '$lib/crypto'
+} from '#lib/crypto/index.js'
 import { collectKeyHandouts } from './key-handouts'
 import { NoVaultError } from './recovery-unlock'
 import type { KeyReplaceResponse, SyncApi } from './sync-api'

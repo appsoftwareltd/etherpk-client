@@ -36,7 +36,7 @@
 
 import { EditorState, type Extension, MapMode, Transaction, type TransactionSpec } from '@codemirror/state'
 
-import { frontmatterLines } from '$lib/storage/fs/frontmatter-span'
+import { frontmatterLines } from '#lib/storage/fs/frontmatter-span.js'
 
 import { fencedBlocks } from '../fenced-code'
 import { blockBodyEnd, branchRange, bulletContent, contentColumn, formOneOpeners, isBulletLine, lineIndent, markerLength, opaqueLineFlags, ownerBulletIndex, trimLineEnd } from '../outliner'

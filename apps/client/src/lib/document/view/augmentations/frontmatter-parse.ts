@@ -31,7 +31,7 @@ import { type Input, parseMixed, type SyntaxNodeRef } from '@lezer/common'
 import type { BlockContext, Line, MarkdownConfig } from '@lezer/markdown'
 import { tags as t } from '@lezer/highlight'
 
-import { frontmatterSpan } from '$lib/storage/fs/frontmatter-span'
+import { frontmatterSpan } from '#lib/storage/fs/frontmatter-span.js'
 
 /** The whole block, delimiters included. */
 export const FRONTMATTER_NODE = 'Frontmatter'

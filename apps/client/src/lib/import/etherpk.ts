@@ -5,24 +5,24 @@
  * [[Graph Settings]] are part of the graph's content).
  */
 
-import { type QuickNote, sanitizeQuickNotes } from '$lib/document/quick-notes'
-import { type Bookmark, sanitizeBookmarks } from '$lib/document/bookmarks/bookmarks'
-import { parseDictionaryFile } from '$lib/document/spelling/graph-dictionary'
-import type { GraphTheme } from '$lib/document/publish/theme/graph-theme'
-import { parseGraphThemeFile, themeIdOfFileName } from '$lib/storage/fs/theme-files'
-import { conceptOf, fileStem, journalConceptOf } from '$lib/storage/fs/identity'
-import { parseFrontmatter } from '$lib/storage/fs/frontmatter'
-import { isJournalConcept } from '$lib/document/journal-concept'
-import { withFrontmatterIdentity } from '$lib/document/frontmatter/identity'
-import { portableFileStem } from '$lib/document/wikilink'
+import { type QuickNote, sanitizeQuickNotes } from '#lib/document/quick-notes.js'
+import { type Bookmark, sanitizeBookmarks } from '#lib/document/bookmarks/bookmarks.js'
+import { parseDictionaryFile } from '#lib/document/spelling/graph-dictionary.js'
+import type { GraphTheme } from '#lib/document/publish/theme/graph-theme.js'
+import { parseGraphThemeFile, themeIdOfFileName } from '#lib/storage/fs/theme-files.js'
+import { conceptOf, fileStem, journalConceptOf } from '#lib/storage/fs/identity.js'
+import { parseFrontmatter } from '#lib/storage/fs/frontmatter.js'
+import { isJournalConcept } from '#lib/document/journal-concept.js'
+import { withFrontmatterIdentity } from '#lib/document/frontmatter/identity.js'
+import { portableFileStem } from '#lib/document/wikilink/index.js'
 
 import { planAssets } from './assets'
 import { dedupeConcept } from './convert-shared'
 import { baseName, contentFiles, findFile, isMarkdownPath, readText } from './source'
-import { containsCipherFence } from '$lib/document/protection/fence-info'
-import { PROTECTION_FILE } from '$lib/document/protection/protection-store'
-import { ProtectionRecordFormatError, parseProtectionRecord, type ProtectionRecord } from '$lib/crypto'
-import { AGENTS_MD_FILE, CLAUDE_MD_FILE } from '$lib/storage/fs/agents-md'
+import { containsCipherFence } from '#lib/document/protection/fence-info.js'
+import { PROTECTION_FILE } from '#lib/document/protection/protection-store.js'
+import { ProtectionRecordFormatError, parseProtectionRecord, type ProtectionRecord } from '#lib/crypto/index.js'
+import { AGENTS_MD_FILE, CLAUDE_MD_FILE } from '#lib/storage/fs/agents-md.js'
 
 import { breathe, type ConvertedDocument, type ConvertedGraph, type ImportControl, type ReportEntry, type SourceFile } from './types'
 

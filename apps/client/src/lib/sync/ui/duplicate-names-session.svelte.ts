@@ -10,9 +10,9 @@
  * store's `mergeDuplicates`. This is plumbing.
  */
 
-import { documentProtection } from '$lib/document/protection/cipher-fence'
-import { type DuplicateName, findDuplicateNames, longestFirst, mergedText, textSummary } from '$lib/storage/server/duplicate-names'
-import type { ServerDocumentStore } from '$lib/storage/server/server-document-store'
+import { documentProtection } from '#lib/document/protection/cipher-fence.js'
+import { type DuplicateName, findDuplicateNames, longestFirst, mergedText, textSummary } from '#lib/storage/synced/duplicate-names.js'
+import type { ServerDocumentStore } from '#lib/storage/synced/server-document-store.js'
 import { mergeOutcomeMessage } from './duplicate-names-copy'
 
 export type DuplicateNamesSource = Pick<ServerDocumentStore, 'listIdentities' | 'onDocumentsChanged' | 'readTexts' | 'mergeDuplicates'>

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
-import { parseFrontmatter } from '$lib/storage/fs/frontmatter'
-import { aliasesOf } from '$lib/storage/fs/identity'
+import { parseFrontmatter } from '#lib/storage/fs/frontmatter.js'
+import { aliasesOf } from '#lib/storage/fs/identity.js'
 
 import { convertObsidian } from './obsidian'
 import type { ConvertedGraph, SourceFile } from './types'

@@ -19,19 +19,19 @@
  * the socket closed moments later on a still-draining buffer.
  */
 
-import { mapWithPool } from '$lib/concurrency'
+import { mapWithPool } from '#lib/concurrency.js'
 import { formatBytes } from '@appsoftwareltd/etherpk-shared'
-import type { AssetStore, SavedAsset } from '$lib/storage/fs/asset-store'
-import { frontmatterIdentity, syncedImportText } from '$lib/document/frontmatter/identity'
-import { sanitizeGraphSettings } from '$lib/storage/fs/graph-settings'
-import type { GraphSync, RegistryEntry } from '$lib/sync/graph-sync'
-import type { ProtectionRecordStore } from '$lib/document/protection/protection-store'
-import { containsCipherFence } from '$lib/document/protection/fence-info'
-import { isJournalConcept } from '$lib/document/journal-concept'
+import type { AssetStore, SavedAsset } from '#lib/storage/fs/asset-store.js'
+import { frontmatterIdentity, syncedImportText } from '#lib/document/frontmatter/identity.js'
+import { sanitizeGraphSettings } from '#lib/storage/fs/graph-settings.js'
+import type { GraphSync, RegistryEntry } from '#lib/sync/graph-sync.js'
+import type { ProtectionRecordStore } from '#lib/document/protection/protection-store.js'
+import { containsCipherFence } from '#lib/document/protection/fence-info.js'
+import { isJournalConcept } from '#lib/document/journal-concept.js'
 
 import { buildReportPage } from './report'
 import { holdProtectionKey, repointSealedReferences } from './sealed-references'
-import { AssetRefusedError } from '$lib/storage/server/server-asset-store'
+import { AssetRefusedError } from '#lib/storage/synced/server-asset-store.js'
 
 /**
  * How many assets may fail for reasons OTHER than their own size before the import is abandoned,

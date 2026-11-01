@@ -14,8 +14,8 @@
 import type { Extension } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
 
-import { parseInertHtml } from '$lib/security/trusted-types'
-import type { AssetStore } from '$lib/storage/fs/asset-store'
+import { parseInertHtml } from '#lib/security/trusted-types.js'
+import type { AssetStore } from '#lib/storage/fs/asset-store.js'
 
 import { defaultMaxImageDisplaySize } from '../asset-upload'
 import { RICH_PASTE_USER_EVENT } from '../editor-history'

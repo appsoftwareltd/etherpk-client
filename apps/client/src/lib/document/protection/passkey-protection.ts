@@ -16,11 +16,11 @@
  * secret on every unlock, and a per-graph salt keeps two graphs on one device from sharing a
  * derived secret.
  */
-import type { DeviceProtectionWrap } from '$lib/crypto'
-import { deviceWrapFromPrf, unlockWithDeviceWrap } from '$lib/crypto'
-import { createReopenableConnection, type ReopenableConnection } from '$lib/storage/idb-connection'
-import { createSafetyCopy, type SafetyCopy } from '$lib/storage/safety-copy'
-import { reportStorageRecovery } from '$lib/storage/storage-recovery'
+import type { DeviceProtectionWrap } from '#lib/crypto/index.js'
+import { deviceWrapFromPrf, unlockWithDeviceWrap } from '#lib/crypto/index.js'
+import { createReopenableConnection, type ReopenableConnection } from '#lib/storage/idb-connection.js'
+import { createSafetyCopy, type SafetyCopy } from '#lib/storage/safety-copy.js'
+import { reportStorageRecovery } from '#lib/storage/storage-recovery.js'
 
 const DB_NAME = 'etherpk-protection'
 const DB_VERSION = 1
@@ -209,7 +209,7 @@ export function recoverableDeviceWrap(value: unknown): DeviceProtectionWrap | nu
 
 /**
  * Keep every wrap in a `localStorage` safety copy as well, and heal the primary from it on a
- * miss. A phone that loses its IndexedDB (`$lib/storage/safety-copy.ts` says how) used to lose
+ * miss. A phone that loses its IndexedDB (`#lib/storage/safety-copy.ts` says how) used to lose
  * every passkey binding with it, and the person had to enrol again on a device that had done
  * nothing wrong. The copy is the same ciphertext under the same PRF-derived key, on the same
  * device, so nothing ADR 0057 protects moves: what unwraps it still never leaves the

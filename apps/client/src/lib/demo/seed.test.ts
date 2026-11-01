@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { createMemoryDirectoryAdapter } from '$lib/storage/fs/memory-adapter'
+import { createMemoryDirectoryAdapter } from '#lib/storage/fs/memory-adapter.js'
 
 import type { DemoBundleManifest } from './bundle-manifest'
 import { type DemoFile, demoFileUrl, fetchDemoBundle, materializeDemoGraph } from './seed'

@@ -30,9 +30,9 @@
  * remote link; after any other edit or a caret move the rewrite is a step of its own.
  */
 
-import { runActivity } from '$lib/activity/store'
-import type { Activity } from '$lib/activity/types'
-import { type AssetStore, type SavedAsset, isImageExt, splitNameExt } from '$lib/storage/fs/asset-store'
+import { runActivity } from '#lib/activity/store.js'
+import type { Activity } from '#lib/activity/types.js'
+import { type AssetStore, type SavedAsset, isImageExt, splitNameExt } from '#lib/storage/fs/asset-store.js'
 import { type EditorState, StateEffect, StateField, type TransactionSpec } from '@codemirror/state'
 import type { EditorView } from '@codemirror/view'
 

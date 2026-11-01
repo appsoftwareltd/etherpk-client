@@ -6,7 +6,7 @@
  * the installed app on a phone and the website elsewhere. A `geo:` link is not used, because only
  * Android opens one reliably.
  */
-import type { MapPoint } from '$lib/document/map-text'
+import type { MapPoint } from '#lib/document/map-text.js'
 
 /** Whether the device is an iPhone, iPad or Mac, from what the browser says it runs on. */
 export function isAppleDevice(userAgent: string, platform = ''): boolean {

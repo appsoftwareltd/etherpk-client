@@ -11,9 +11,9 @@
  * done" means (`settle` on the graph, `flush` here).
  */
 
-import type { EditorDocument } from '$lib/document/types'
-import type { RenameOptions, RenamePlan, RenameResult } from '$lib/storage/rename'
-import { frontmatterSpan } from '$lib/storage/fs/frontmatter-span'
+import type { EditorDocument } from '#lib/document/types.js'
+import type { RenameOptions, RenamePlan, RenameResult } from '#lib/storage/rename.js'
+import { frontmatterSpan } from '#lib/storage/fs/frontmatter-span.js'
 
 export interface HeadlessDocument {
     /** Case-insensitive identity key (`conceptKey(concept)`). */

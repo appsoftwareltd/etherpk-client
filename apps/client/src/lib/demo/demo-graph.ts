@@ -11,11 +11,11 @@
  * so it first claims the graph's index-owner lock (the ADR 0042 election). Held elsewhere
  * means the demo is open in another tab, and the answer is `held`, not a stolen lock.
  */
-import { discardIndexPool, type DiscardIndexPoolResult } from '$lib/document/index-pool-discard'
-import { indexOwnerLockName } from '$lib/document/index-pool-names'
-import type { DirectoryAdapter } from '$lib/storage/fs/directory-adapter'
-import type { GraphRegistry } from '$lib/storage/graph-registry'
-import { opfsGraphFolderName } from '$lib/storage/fs/opfs-graph-folder'
+import { discardIndexPool, type DiscardIndexPoolResult } from '#lib/document/index-pool-discard.js'
+import { indexOwnerLockName } from '#lib/document/index-pool-names.js'
+import type { DirectoryAdapter } from '#lib/storage/fs/directory-adapter.js'
+import type { GraphRegistry } from '#lib/storage/graph-registry.js'
+import { opfsGraphFolderName } from '#lib/storage/fs/opfs-graph-folder.js'
 
 import type { DemoBundleManifest } from './bundle-manifest'
 import { type DemoFile, type SeedProgress, materializeDemoGraph } from './seed'

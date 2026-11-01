@@ -36,9 +36,9 @@ import { accessTokenKind, looksLikeAgentSetupCode } from '@appsoftwareltd/etherp
 // Inlined by Vite at build time, so the bundle carries the version and needs no file at runtime.
 import pkg from '../package.json'
 
-import { EnvelopeError, fromBase64Url, mergeKeyringEpochs, toBase64Url, type KeyVault } from '$lib/crypto'
-import { createGraphNamePublisher } from '$lib/sync/graph-name-envelope'
-import { readKeyHandouts } from '$lib/sync/key-handouts'
+import { EnvelopeError, fromBase64Url, mergeKeyringEpochs, toBase64Url, type KeyVault } from '#lib/crypto/index.js'
+import { createGraphNamePublisher } from '#lib/sync/graph-name-envelope.js'
+import { readKeyHandouts } from '#lib/sync/key-handouts.js'
 
 import { connectAccount, openAccountVault, resolveGraphById, type HeadlessAccount } from './account'
 import { exchangeForAgentToken, redeemSetupCode, revokeHeldToken } from './agent-token'

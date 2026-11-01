@@ -1,6 +1,6 @@
 <script lang="ts">
-    import ClientAccountNavigationMenu from "$lib/components/ClientAccountNavigationMenu.svelte";
-    import GraphNavigationMenu from "$lib/components/GraphNavigationMenu.svelte";
+    import ClientAccountNavigationMenu from "#lib/components/ClientAccountNavigationMenu.svelte";
+    import GraphNavigationMenu from "#lib/components/GraphNavigationMenu.svelte";
     import ThemeToggle from "@appsoftwareltd/etherpk-shared/theme-toggle";
     import { PUBLIC_DOCS_URL, buildApplicationNavigation } from "@appsoftwareltd/etherpk-shared";
     import ApplicationHeader from "@appsoftwareltd/etherpk-shared/application-header";

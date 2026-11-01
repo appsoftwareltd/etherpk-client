@@ -2,12 +2,12 @@ import { describe, expect, it, vi } from 'vitest'
 
 import type { ExtensionContext, ExtensionPackage, ViewContribution } from '@appsoftwareltd/etherpk-extension-api'
 
-import { commandMenuItemsInOrder } from '$lib/surface/command-menu'
-import { listContextMenuItems } from '$lib/surface/context-menu'
-import { graphSidebarButtons } from '$lib/surface/graph-sidebar-buttons'
-import { listJournalPanels } from '$lib/surface/journal-panels'
+import { commandMenuItemsInOrder } from '#lib/surface/command-menu.js'
+import { listContextMenuItems } from '#lib/surface/context-menu.js'
+import { graphSidebarButtons } from '#lib/surface/graph-sidebar-buttons.js'
+import { listJournalPanels } from '#lib/surface/journal-panels.js'
 
-import { createPersonSettings } from '$lib/person-settings/person-settings'
+import { createPersonSettings } from '#lib/person-settings/person-settings.js'
 
 import type { CatalogueEntry } from './catalogue'
 import { createScopedContext } from './scoped-context'

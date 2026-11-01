@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { encryptVault, generateIdentityKeyPair, generateSigningKeyPair, identityPublicKeys, openVault } from '$lib/crypto'
+import { encryptVault, generateIdentityKeyPair, generateSigningKeyPair, identityPublicKeys, openVault } from '#lib/crypto/index.js'
 import { rotateGraphKey } from './epoch-rotation'
 import { collectKeyHandouts } from './key-handouts'
 import { MissingGraphKeyError } from './keys'

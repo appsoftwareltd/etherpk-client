@@ -30,7 +30,7 @@
 import type { Tree } from '@lezer/common'
 import { parser } from '@lezer/markdown'
 
-import { assetNameFromRef, displayNameForRef } from '$lib/storage/fs/asset-store'
+import { assetNameFromRef, displayNameForRef } from '#lib/storage/fs/asset-store.js'
 
 import { parseImageLine } from './image-line'
 import { markdownLinks } from './markdown-link-target'

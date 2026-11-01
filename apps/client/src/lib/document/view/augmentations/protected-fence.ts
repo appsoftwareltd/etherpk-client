@@ -30,16 +30,16 @@ import {
     type ProtectionStatus,
     getActiveProtectionStatus,
     protectionGeneration,
-} from '$lib/document/protection/active-protection'
-import type { FenceUnreadableReason } from '$lib/document/protection/protection-service'
+} from '#lib/document/protection/active-protection.js'
+import type { FenceUnreadableReason } from '#lib/document/protection/protection-service.js'
 
-import { setTrustedMarkup } from '$lib/security/trusted-types'
-import { iconSvg } from '$lib/surface/icons'
+import { setTrustedMarkup } from '#lib/security/trusted-types.js'
+import { iconSvg } from '#lib/surface/icons.js'
 
 import { EXTERNAL } from '../cm-document'
 import { refuseEdit } from '../edit-refused'
-import type { Backend } from '$lib/document/frontmatter/proposal'
-import { frontmatterSpan } from '$lib/storage/fs/frontmatter-span'
+import type { Backend } from '#lib/document/frontmatter/proposal.js'
+import { frontmatterSpan } from '#lib/storage/fs/frontmatter-span.js'
 
 import {
     type ProtectedRange,
@@ -49,7 +49,7 @@ import {
     protectedRanges,
     protectionWouldVanish,
 } from './protected-fence-core'
-import { type GuardedChange, frontmatterWouldVanish } from '$lib/document/frontmatter/boundary'
+import { type GuardedChange, frontmatterWouldVanish } from '#lib/document/frontmatter/boundary.js'
 
 import { type IsProtectedDocument, isProtectedDocumentFacet } from './protected-document'
 

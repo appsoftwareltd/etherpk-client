@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { getNotices, resetNotices } from '$lib/activity/notices'
+import { getNotices, resetNotices } from '#lib/activity/notices.js'
 
 import type { LanguageStatus, SpellService, SpellState } from './spell-service'
 import { bindSpellingNotices } from './spelling-notices'

@@ -5,9 +5,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 
-import { createGraphKeyring } from '$lib/crypto'
-import { createLoopbackRelay } from '$lib/sync/loopback-relay'
-import { fixedSyncToken } from '$lib/sync/sync-token'
+import { createGraphKeyring } from '#lib/crypto/index.js'
+import { createLoopbackRelay } from '#lib/sync/loopback-relay.js'
+import { fixedSyncToken } from '#lib/sync/sync-token.js'
 
 import { runGraphHost, sessionGraph, type GraphHostDeps, type HostedGraph } from './graph-host'
 import { hostEndpoint, readHostRecord } from './host-endpoint'

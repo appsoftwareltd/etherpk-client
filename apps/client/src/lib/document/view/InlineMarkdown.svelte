@@ -16,7 +16,7 @@
      * reference's **delete** needs the line it is written on, and that belongs to the document
      * editor. See `AssetActions.svelte`.
      */
-    import { attachContextMenu } from "$lib/surface";
+    import { attachContextMenu } from "#lib/surface/index.js";
 
     import { conceptIsMissing, openConcept } from "../open-concept";
     import { runAssetCommand } from "../asset-affordances";

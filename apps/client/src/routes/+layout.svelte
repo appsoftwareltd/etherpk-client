@@ -6,12 +6,11 @@
     import { beforeNavigate } from "$app/navigation";
     import { continueIfSignedInElsewhere } from "@appsoftwareltd/etherpk-shared";
     import { updated } from "$app/state";
-    import { dev } from "$app/environment";
     import { goto } from "$app/navigation";
-    import { watchAppInstall } from "$lib/storage/app-install";
-    import InstallAppDialog from "$lib/install/InstallAppDialog.svelte";
-    import { welcomeInstalledApp } from "$lib/install/install-notices";
-    import { launchTarget } from "$lib/install/launch-target";
+    import { watchAppInstall } from "#lib/storage/app-install.js";
+    import InstallAppDialog from "#lib/install/InstallAppDialog.svelte";
+    import { welcomeInstalledApp } from "#lib/install/install-notices.js";
+    import { launchTarget } from "#lib/install/launch-target.js";
 
     let { children, data } = $props();
 
@@ -22,10 +21,12 @@
     const openedHref = typeof location === "undefined" ? "" : location.href;
 
     // A deployed update must not leave this tab running stale client code: once the
-    // version poll (svelte.config `kit.version.pollInterval`) sees a new build, the next
+    // version poll (vite.config `version.pollInterval`) sees a new build, the next
     // client-side navigation becomes a full-page load, picking up the new hashed assets.
     // Mixed-version tabs caused days of unreproducible bug reports (2026-07-28/29).
-    beforeNavigate(({ willUnload, to }) => {
+    beforeNavigate(({ willUnload, to, shallow, type }) => {
+        if (shallow && type === 'goto') return;
+
         if (updated.current && !willUnload && to?.url) {
             location.href = to.url.href;
         }
@@ -35,11 +36,11 @@
         // A sign-in made at the account site since the last silent check missed: ask there, and
         // go through the silent check on a yes, so the visit comes back signed in.
         if (data.signedInElsewhereCheck) void continueIfSignedInElsewhere(data.signedInElsewhereCheck);
-        // The service worker (src/service-worker.ts, ADR 0142) keeps the app's files so the app
-        // starts with no network, and makes it installable. SvelteKit serves it as a module in
-        // development. Registering a new script at the same scope replaces the old `/sw.js`.
+        // The service worker (src/service-worker/index.ts, ADR 0142) keeps the app's files so the
+        // app starts with no network, and makes it installable. SvelteKit builds it as a module.
+        // Registering a new script at the same scope replaces the old `/sw.js`.
         if ("serviceWorker" in navigator) {
-            navigator.serviceWorker.register("/service-worker.js", { type: dev ? "module" : "classic" }).catch((err) => {
+            navigator.serviceWorker.register("/service-worker.js", { type: "module" }).catch((err) => {
                 console.warn("[sw] Registration failed:", err);
             });
         }

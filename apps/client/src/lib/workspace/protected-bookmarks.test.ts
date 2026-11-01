@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import type { Bookmark } from '$lib/document/bookmarks/bookmarks'
-import { CIPHER_FENCE_INFO } from '$lib/document/protection/fence-info'
+import type { Bookmark } from '#lib/document/bookmarks/bookmarks.js'
+import { CIPHER_FENCE_INFO } from '#lib/document/protection/fence-info.js'
 
 import {
     bookmarksOnProtectedPages,

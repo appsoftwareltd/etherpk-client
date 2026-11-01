@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { deriveVaultWrapKey, encryptVault, generateIdentityKeyPair, generateRecoveryCode, RecoveryCodeError, toBase64Url } from '$lib/crypto'
+import { deriveVaultWrapKey, encryptVault, generateIdentityKeyPair, generateRecoveryCode, RecoveryCodeError, toBase64Url } from '#lib/crypto/index.js'
 import { clearSyncAccount, setSyncAccount } from './account-scope'
 import { NoVaultError } from './recovery-unlock'
 import type { SyncApi } from './sync-api'

@@ -1,12 +1,12 @@
 import { error, redirect, type Cookies } from '@sveltejs/kit'
 import type { RequestHandler } from './$types'
-import { env } from '$env/dynamic/private'
-import { parseOptionalManagedClientAuthConfig } from '$lib/server/auth/config'
+import * as env from '$app/env/private'
+import { parseOptionalManagedClientAuthConfig } from '#lib/server/auth/config.js'
 import {
     markClientSsoChecked,
     setClientSsoAttempted,
     setManagedSession,
-} from '$lib/server/auth/cookies'
+} from '#lib/server/auth/cookies.js'
 import {
     describeOAuthFailure,
     discoverOAuthMetadata,
@@ -16,13 +16,13 @@ import {
     verifyIdTokenNonce,
     type ManagedTokenSet,
     type OAuthMetadata,
-} from '$lib/server/auth/oauth-client'
+} from '#lib/server/auth/oauth-client.js'
 import {
     decryptSessionCookie,
     transactionCookieName,
     type AuthorizationTransaction,
-} from '$lib/server/auth/session-cookie'
-import { logger } from '$lib/server/logger'
+} from '#lib/server/auth/session-cookie.js'
+import { logger } from '#lib/server/logger.js'
 
 /** Why a callback was turned away. The stage alone goes into the log, never a code or token. */
 type RefusalStage =

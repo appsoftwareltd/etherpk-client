@@ -11,7 +11,7 @@
 
 import type { EditorView } from '@codemirror/view'
 
-import { openContextMenu, type MisspellingContextMenuTarget } from '$lib/surface'
+import { openContextMenu, type MisspellingContextMenuTarget } from '#lib/surface/index.js'
 
 import { getActiveSpellService } from '../spelling/active-spell-service'
 import type { WordRange } from '../spelling/words'

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { createPersonSettings } from '$lib/person-settings/person-settings'
+import { createPersonSettings } from '#lib/person-settings/person-settings.js'
 
 import type { CatalogueEntry } from './catalogue'
 import { createExtensionDirectory } from './directory'

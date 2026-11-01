@@ -9,8 +9,8 @@
 
 import type { EditorView } from '@codemirror/view'
 
-import { showNotice } from '$lib/activity/notices'
-import { type CommandRegistry, type ContributionRegistry, registerCommandMenuItem } from '$lib/surface'
+import { showNotice } from '#lib/activity/notices.js'
+import { type CommandRegistry, type ContributionRegistry, registerCommandMenuItem } from '#lib/surface/index.js'
 
 import { getActiveEditorView } from '../active-editor'
 import { conceptKey } from '../backlinks/backlink-index'

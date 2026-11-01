@@ -12,7 +12,7 @@
  * ancestry) is a noted follow-on.
  */
 
-import type { DocumentKind } from '$lib/storage'
+import type { DocumentKind } from '#lib/storage/index.js'
 
 import { wikilinkOccurrencesInSource } from '../wikilink'
 

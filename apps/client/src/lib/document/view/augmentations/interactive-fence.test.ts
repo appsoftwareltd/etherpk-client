@@ -2,7 +2,7 @@ import { EditorState, Transaction } from '@codemirror/state'
 import { type Decoration, EditorView } from '@codemirror/view'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
-import { createContributionRegistry, setActiveContributionRegistry } from '$lib/surface'
+import { createContributionRegistry, setActiveContributionRegistry } from '#lib/surface/index.js'
 
 import { appendFenceLine, removeFenceLine, replaceFenceLine } from '../../fence-body'
 import { editorAnalysis } from '../analysis/editor-analysis'

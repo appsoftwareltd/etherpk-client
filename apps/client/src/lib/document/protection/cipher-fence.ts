@@ -15,8 +15,8 @@ import {
     protectedEnvelopeWrittenAt,
     resolveLastWriteWins,
     unarmourProtected,
-} from '$lib/crypto'
-import { frontmatterSpan } from '$lib/storage/fs/frontmatter-span'
+} from '#lib/crypto/index.js'
+import { frontmatterSpan } from '#lib/storage/fs/frontmatter-span.js'
 
 import { fenceLineInfo, fencedBlocks } from '../fenced-code'
 import { CIPHER_FENCE_INFO } from './fence-info'

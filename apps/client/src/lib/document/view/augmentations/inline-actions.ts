@@ -13,8 +13,8 @@
 import type { Extension } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
 
-import { setTrustedMarkup } from '$lib/security/trusted-types'
-import { iconSvg } from '$lib/surface/icons'
+import { setTrustedMarkup } from '#lib/security/trusted-types.js'
+import { iconSvg } from '#lib/surface/icons.js'
 
 import type { InlineAction } from '../../inline-action'
 

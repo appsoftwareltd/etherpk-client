@@ -110,6 +110,8 @@ starts at 0.9.3.
 - **Yesterday and Tomorrow in the `/` menu.** They insert the day before and the day after today
   as a link, `[[2026-10-30]]`, as **Today** does for today.
 - **The `{{today}}` Template variable.** It gives the same date as `{{date}}`.
+- **The Client does not start when `ORIGIN` is not an HTTP or HTTPS origin with no path**, such as
+  `https://app.example.com`. Before, a value of another form was used as it was.
 - Updated dependencies.
 
 ### Headless Client

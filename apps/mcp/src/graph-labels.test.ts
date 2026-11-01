@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { createGraphKeyring, toBase64Url, type GraphKeyring } from '$lib/crypto'
-import { sealGraphName } from '$lib/sync/graph-name-envelope'
-import type { ServerGraphRecord } from '$lib/sync/sync-api'
+import { createGraphKeyring, toBase64Url, type GraphKeyring } from '#lib/crypto/index.js'
+import { sealGraphName } from '#lib/sync/graph-name-envelope.js'
+import type { ServerGraphRecord } from '#lib/sync/sync-api.js'
 
 import { NO_KEY_LABEL, NO_NAME_LABEL, describeGraphLabel, findGraphByName, graphLabel, resolveGraphLabel } from './graph-labels'
 

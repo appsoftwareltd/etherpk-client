@@ -12,7 +12,7 @@
  * common shape of a hosted picture, and a `data:` / `blob:` url is always one.
  */
 
-import { isImageExt } from '$lib/storage/fs/asset-store'
+import { isImageExt } from '#lib/storage/fs/asset-store.js'
 
 const HAS_SCHEME = /^[a-z][a-z0-9+.-]*:/i
 const INLINE_DATA = /^(?:data|blob):/i

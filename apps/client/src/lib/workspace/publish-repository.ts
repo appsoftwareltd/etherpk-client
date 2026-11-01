@@ -8,10 +8,10 @@
  * read (ADR 0148). The repository is per device (`publication-destination-idb.ts`). The tab is
  * told whether a token is set, never what it is.
  */
-import { type GitHubApi, GitHubError, type GitHubRepository, createGitHubApi } from '$lib/document/publish/host/github-api'
-import { checkRepository, describeGitHubError } from '$lib/document/publish/host/github-repository'
-import type { PersonSettings } from '$lib/person-settings/person-settings'
-import type { GitHubTokenState, RepositoryCheckState } from '$lib/sync/ui/publish-tab'
+import { type GitHubApi, GitHubError, type GitHubRepository, createGitHubApi } from '#lib/document/publish/host/github-api.js'
+import { checkRepository, describeGitHubError } from '#lib/document/publish/host/github-repository.js'
+import type { PersonSettings } from '#lib/person-settings/person-settings.js'
+import type { GitHubTokenState, RepositoryCheckState } from '#lib/sync/ui/publish-tab.js'
 
 /** Where the person's GitHub token is kept among their settings: a core key, outside every extension's prefix. */
 export const GITHUB_TOKEN_SETTING = 'publish.github.token'

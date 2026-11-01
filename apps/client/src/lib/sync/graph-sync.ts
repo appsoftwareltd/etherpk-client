@@ -7,8 +7,8 @@
  * The transport is injected (a `connect(url)` factory) so this unit-tests without real sockets.
  */
 import * as Y from 'yjs'
-import { currentEpoch, deriveJournalIdSecret, journalDocId, keyringReader, type KeyringSource } from '$lib/crypto'
-import { performanceRecorder } from '$lib/diagnostics/performance'
+import { currentEpoch, deriveJournalIdSecret, journalDocId, keyringReader, type KeyringSource } from '#lib/crypto/index.js'
+import { performanceRecorder } from '#lib/diagnostics/performance.js'
 import { SYNC_PROTOCOL_LIMITS, type QuotaErrorCode } from '@appsoftwareltd/etherpk-shared'
 import { CACHE_SEED, createDocSync, type DocSync } from './doc-sync'
 import type { GraphCache } from './local-cache'
@@ -21,11 +21,11 @@ import {
 import { createPresenceSession, type PresenceSession } from './presence-session'
 import type { SyncTokenSource } from './sync-token'
 import { keyRetryDelayMs, reconnectDelayMs, refusalRetryDelayMs, STABLE_CONNECTION_MS } from './reconnect-backoff'
-import { type QuickNote, sanitizeQuickNotes } from '$lib/document/quick-notes'
-import { sanitizeDictionaryWords } from '$lib/document/spelling/graph-dictionary'
-import { type Bookmark, type BookmarksChange, sanitizeBookmarks } from '$lib/document/bookmarks/bookmarks'
-import { type GraphTheme, isThemeFilePath, sanitizeGraphTheme } from '$lib/document/publish/theme/graph-theme'
-import { sanitizeFavourites } from '$lib/storage/fs/graph-settings'
+import { type QuickNote, sanitizeQuickNotes } from '#lib/document/quick-notes.js'
+import { sanitizeDictionaryWords } from '#lib/document/spelling/graph-dictionary.js'
+import { type Bookmark, type BookmarksChange, sanitizeBookmarks } from '#lib/document/bookmarks/bookmarks.js'
+import { type GraphTheme, isThemeFilePath, sanitizeGraphTheme } from '#lib/document/publish/theme/graph-theme.js'
+import { sanitizeFavourites } from '#lib/storage/fs/graph-settings.js'
 
 /** Why a socket closed: the WebSocket close code and reason, when the transport knows them. */
 export interface TransportCloseEvent {

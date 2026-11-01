@@ -18,8 +18,8 @@
     import { getAppliedResolvedTheme, THEME_CHANGE_EVENT } from "@appsoftwareltd/etherpk-shared/theme";
     import type { Attachment } from "svelte/attachments";
 
-    import type { ViewProps } from "$lib/layout";
-    import { workspaceService } from "$lib/workspace/workspace-services";
+    import type { ViewProps } from "#lib/layout/index.js";
+    import { workspaceService } from "#lib/workspace/workspace-services.js";
 
     import { INTERACTIVE_FENCE_KIND, lookupInteractiveFence } from "./augmentations/interactive-fence-contract";
     import { mountDetachedFence } from "./detached-fence";

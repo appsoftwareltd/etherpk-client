@@ -5,7 +5,7 @@
      * link inside a button is a control the keyboard cannot reach. A wikilink looks like a link
      * and opens nothing; the card opens the task.
      */
-    import { type InlineMark, inlineParts } from "$lib/document/inline-parts";
+    import { type InlineMark, inlineParts } from "#lib/document/inline-parts.js";
 
     const { text }: { text: string } = $props();
 

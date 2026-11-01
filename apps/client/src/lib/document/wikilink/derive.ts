@@ -57,7 +57,7 @@ function truncateToBytes(value: string, maxBytes: number): string {
  * `etc.`, `A/B` and `A_B`, two titles that truncate alike), is not a loss: identity is the
  * frontmatter `title` (ADR 0007, ADR 0061), and the file name is disambiguated by the allocators -
  * `allocateFileName` in `storage/fs/filesystem-store.ts` for the Filesystem Backend and
- * `planMirrorNames` in `storage/server/mirror-names.ts` for the Local Mirror - which suffix it
+ * `planMirrorNames` in `storage/synced/mirror-names.ts` for the Local Mirror - which suffix it
  * ` (2)`, ` (3)`, ... by the rule in `storage/file-names.ts`. Never write a stem from here to
  * disk without one of them.
  */

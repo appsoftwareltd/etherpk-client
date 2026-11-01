@@ -17,16 +17,16 @@
  */
 
 
-import type { StoreChange, StoreChangeListener } from '$lib/document/backlinks/live-index'
-import { frontmatterIdentity, normaliseAliases, sameAliases, withFrontmatterIdentity } from '$lib/document/frontmatter/identity'
-import { renderFrontmatter } from '$lib/document/frontmatter/frontmatter-yaml'
-import type { IndexIncludeFact } from '$lib/document/index-db'
-import { type IndexProperty, propertiesOf } from '$lib/document/properties'
-import { isTemplate } from '$lib/document/templates/template-page'
-import { includeFactsOf } from '$lib/document/publish/publication'
-import { dayIsNotAPageName, isJournalConcept } from '$lib/document/journal-concept'
-import { lineFeedsOnly } from '$lib/document/line-endings'
-import { type TextSplice, countWikilinkTargets, rewriteWikilinkScope, wikilinkScopeSplices } from '$lib/document/wikilink/rename'
+import type { StoreChange, StoreChangeListener } from '#lib/document/backlinks/live-index.js'
+import { frontmatterIdentity, normaliseAliases, sameAliases, withFrontmatterIdentity } from '#lib/document/frontmatter/identity.js'
+import { renderFrontmatter } from '#lib/document/frontmatter/frontmatter-yaml.js'
+import type { IndexIncludeFact } from '#lib/document/index-db.js'
+import { type IndexProperty, propertiesOf } from '#lib/document/properties.js'
+import { isTemplate } from '#lib/document/templates/template-page.js'
+import { includeFactsOf } from '#lib/document/publish/publication.js'
+import { dayIsNotAPageName, isJournalConcept } from '#lib/document/journal-concept.js'
+import { lineFeedsOnly } from '#lib/document/line-endings.js'
+import { type TextSplice, countWikilinkTargets, rewriteWikilinkScope, wikilinkScopeSplices } from '#lib/document/wikilink/rename.js'
 import { frontmatterSpan } from './frontmatter-span'
 import {
     DocumentNotFoundError,
@@ -34,9 +34,9 @@ import {
     type EditorDocument,
     type SpliceOutcome,
     type TextChange,
-} from '$lib/document/types'
-import { documentProtection } from '$lib/document/protection/cipher-fence'
-import { containsCipherFence } from '$lib/document/protection/fence-info'
+} from '#lib/document/types.js'
+import { documentProtection } from '#lib/document/protection/cipher-fence.js'
+import { containsCipherFence } from '#lib/document/protection/fence-info.js'
 import { portableFileName, suffixedFileName } from '../file-names'
 import { mergeDocuments } from '../merge'
 import { aliasesAfterRename, planRename, refuseProtectedMerges, refuseUnreadableBlocks, unreadableBlockRefusal } from '../rename-plan'

@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
-import { createGraphKeyring } from '$lib/crypto'
-import { createLoopbackRelay } from '$lib/sync/loopback-relay'
-import { fixedSyncToken } from '$lib/sync/sync-token'
+import { createGraphKeyring } from '#lib/crypto/index.js'
+import { createLoopbackRelay } from '#lib/sync/loopback-relay.js'
+import { fixedSyncToken } from '#lib/sync/sync-token.js'
 
 import { loadEmbeddingModel } from './embedder'
 import { openHeadlessGraph } from './headless-graph'

@@ -5,7 +5,7 @@
  */
 import type { DocCache, DocCacheState, DurableOutboxOperation, NewOutboxOperation } from './doc-sync'
 import * as Y from 'yjs'
-import { createReopenableConnection } from '$lib/storage/idb-connection'
+import { createReopenableConnection } from '#lib/storage/idb-connection.js'
 import { mergeStateVectors, stateVectorCovers } from './state-vector'
 
 const DB_NAME = 'etherpk-sync'

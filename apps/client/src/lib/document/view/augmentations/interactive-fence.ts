@@ -54,7 +54,7 @@ import {
 } from '@codemirror/state'
 import { Decoration, type DecorationSet, EditorView, keymap, runScopeHandlers, ViewPlugin, WidgetType } from '@codemirror/view'
 
-import { type ContributionRegistry, tryGetActiveContributionRegistry } from '$lib/surface'
+import { type ContributionRegistry, tryGetActiveContributionRegistry } from '#lib/surface/index.js'
 
 import { analysisFor } from '../analysis/editor-analysis'
 import { editorDocument } from '../editor-document'

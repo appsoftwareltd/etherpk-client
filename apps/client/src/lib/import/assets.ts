@@ -6,8 +6,8 @@
  * names verbatim - they already conform.
  */
 
-import { publishSlug } from '$lib/document/wikilink'
-import { assetFileName, isImageExt, splitNameExt } from '$lib/storage/fs/asset-store'
+import { publishSlug } from '#lib/document/wikilink/index.js'
+import { assetFileName, isImageExt, splitNameExt } from '#lib/storage/fs/asset-store.js'
 
 import { baseName } from './source'
 import { breathe, type ConvertedAsset, type ImportControl, type SourceFile } from './types'

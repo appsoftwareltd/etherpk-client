@@ -8,8 +8,8 @@
  * single stray character typed into an envelope makes it undecryptable for good. A key holder
  * edits through unlock → edit → re-encrypt, which replaces the body as one delete plus one insert.
  */
-import { documentProtection } from '$lib/document/protection/cipher-fence'
-import type { GuardedChange } from '$lib/document/frontmatter/boundary'
+import { documentProtection } from '#lib/document/protection/cipher-fence.js'
+import type { GuardedChange } from '#lib/document/frontmatter/boundary.js'
 
 export interface ProtectedRange {
     /** Character offset of the opening fence's first character. */

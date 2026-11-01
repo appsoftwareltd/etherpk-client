@@ -19,7 +19,7 @@
  * settles. The only such query is `backlinks`, whose callers tolerate a miss.
  */
 
-import { claimLockWhenFree, crossTabLocksAvailable, tryClaimLock } from '$lib/cross-tab-lock'
+import { claimLockWhenFree, crossTabLocksAvailable, tryClaimLock } from '#lib/cross-tab-lock.js'
 
 import type { IndexRequest, IndexResponse } from './protocol'
 import { indexOwnerLockName } from '../index-pool-names'

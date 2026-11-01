@@ -1,7 +1,7 @@
 import type { ExtensionModule, ExtensionPackage, SettingsSection } from '@appsoftwareltd/etherpk-extension-api'
 import { describe, expect, it, vi } from 'vitest'
 
-import { createPersonSettings } from '$lib/person-settings/person-settings'
+import { createPersonSettings } from '#lib/person-settings/person-settings.js'
 
 import type { Catalogue } from './catalogue'
 import { settingsSectionsFor } from './settings-sections'

@@ -14,7 +14,7 @@
  * Pure: strings only.
  */
 
-import { portableFileStem } from '$lib/document/wikilink/derive'
+import { portableFileStem } from '#lib/document/wikilink/derive.js'
 
 import { fileStem } from './fs/identity'
 

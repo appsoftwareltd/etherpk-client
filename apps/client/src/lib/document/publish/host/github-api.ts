@@ -15,7 +15,7 @@
  * - **It names what went wrong.** Every refusal becomes a {@link GitHubError} with a code the
  *   caller can act on and word for a person (`github-repository.ts`).
  *
- * Framework-free and free of `$lib` imports: the Playwright suites and the Headless Client load
+ * Framework-free and free of `#lib` imports: the Playwright suites and the Headless Client load
  * it through relative paths.
  */
 

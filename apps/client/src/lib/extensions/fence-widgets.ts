@@ -14,7 +14,7 @@
  */
 import type { FenceOptions, FenceWidget, MountedFence } from '@appsoftwareltd/etherpk-extension-api'
 
-import type { InteractiveFence, InteractiveFenceContext, InteractiveFenceView } from '$lib/document/view/augmentations/interactive-fence-contract'
+import type { InteractiveFence, InteractiveFenceContext, InteractiveFenceView } from '#lib/document/view/augmentations/interactive-fence-contract.js'
 
 import { clientShadowSheets, extensionStyleSheets } from './styles'
 

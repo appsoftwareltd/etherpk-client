@@ -21,7 +21,7 @@
  *
  * Framework-free: `QuotedMap.svelte` shows the pictures, and only it knows the panel.
  */
-import { type ContributionRegistry, tryGetActiveContributionRegistry } from '$lib/surface'
+import { type ContributionRegistry, tryGetActiveContributionRegistry } from '#lib/surface/index.js'
 
 import { MAP_PICTURE_KIND, type MapPictureRenderer } from '../publish/map-picture-renderer'
 import type { MapPicture } from '../publish/publish'

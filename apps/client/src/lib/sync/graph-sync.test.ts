@@ -2,7 +2,7 @@ import 'fake-indexeddb/auto'
 import { describe, expect, it, vi } from 'vitest'
 import * as Y from 'yjs'
 import { SYNC_PROTOCOL_LIMITS, SYNC_PROTOCOL_VERSION } from '@appsoftwareltd/etherpk-shared'
-import { createGraphKeyring, fromBase64Url } from '$lib/crypto'
+import { createGraphKeyring, fromBase64Url } from '#lib/crypto/index.js'
 import {
     createGraphSync,
     OPERATION_WINDOW,

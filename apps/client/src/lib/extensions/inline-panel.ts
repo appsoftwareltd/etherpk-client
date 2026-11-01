@@ -5,7 +5,7 @@
 import type { InlinePanel, InlinePanelOptions } from '@appsoftwareltd/etherpk-extension-api'
 import type { EditorView } from '@codemirror/view'
 
-import { type InlinePanelHandle, openInlinePanel } from '$lib/document/view/augmentations/inline-panels'
+import { type InlinePanelHandle, openInlinePanel } from '#lib/document/view/augmentations/inline-panels.js'
 
 export function openExtensionPanel(view: EditorView | null, options: InlinePanelOptions & { at?: 'caret' | 'end' | 'caret-or-end' }): InlinePanel | null {
     if (!view) return null

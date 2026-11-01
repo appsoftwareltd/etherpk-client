@@ -16,7 +16,7 @@
  * retrying a contention error until the deadline. It never steals the lock: a live worker in
  * another tab keeps its index, and the caller decides what to tell the user.
  */
-import { graphIdOfOpfsFolder } from '$lib/storage/fs/opfs-graph-folder'
+import { graphIdOfOpfsFolder } from '#lib/storage/fs/opfs-graph-folder.js'
 
 import { indexPoolDirectoryName, indexPoolLifetimeLockName } from './index-pool-names'
 

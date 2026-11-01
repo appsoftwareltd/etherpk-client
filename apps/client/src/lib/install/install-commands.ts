@@ -4,7 +4,7 @@
  * Protected Document, and it is offered only while installing is possible here.
  */
 
-import { type CommandRegistry, type ContributionRegistry, registerCommandMenuItem } from '$lib/surface'
+import { type CommandRegistry, type ContributionRegistry, registerCommandMenuItem } from '#lib/surface/index.js'
 
 export const APP_INSTALL = 'app.install'
 

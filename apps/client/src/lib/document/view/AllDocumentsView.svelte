@@ -13,12 +13,12 @@
      */
     import { onDestroy, onMount } from "svelte";
 
-    import { getActiveDocumentStore } from "$lib/document";
-    import { nameMatchKey } from "$lib/document/name-match";
-    import { matchScore } from "$lib/document/view/augmentations/wikilink-complete-core";
-    import { getActiveLayoutController, type ViewRef } from "$lib/layout";
-    import type { FilesystemDocumentStore } from "$lib/storage";
-    import { attachContextMenu, tryGetActiveEventBus, type DocumentContextMenuTarget } from "$lib/surface";
+    import { getActiveDocumentStore } from "#lib/document/index.js";
+    import { nameMatchKey } from "#lib/document/name-match.js";
+    import { matchScore } from "#lib/document/view/augmentations/wikilink-complete-core.js";
+    import { getActiveLayoutController, type ViewRef } from "#lib/layout/index.js";
+    import type { FilesystemDocumentStore } from "#lib/storage/index.js";
+    import { attachContextMenu, tryGetActiveEventBus, type DocumentContextMenuTarget } from "#lib/surface/index.js";
 
     const { view: _view }: { view: ViewRef } = $props();
 

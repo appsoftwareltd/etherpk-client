@@ -16,7 +16,7 @@ import {
     sha256,
     signMessage,
     toBase64Url,
-} from '$lib/crypto'
+} from '#lib/crypto/index.js'
 import {
     InviteNotAcceptedError,
     InviteeChangedError,

@@ -4,7 +4,7 @@
  * within a few metres of the original (ADR 0118: an imported route keeps its original recording as an Asset, so nothing
  * is lost by thinning the copy the map draws).
  */
-import type { MapLine, MapPoint } from '$lib/document/map-text'
+import type { MapLine, MapPoint } from '#lib/document/map-text.js'
 
 /** An area in degrees. `east` may pass 180 when the area crosses the date line. */
 export interface Bounds {

@@ -11,7 +11,7 @@
 import { lstat, mkdir, readFile, realpath, stat, writeFile } from 'node:fs/promises'
 import { basename, dirname, join, resolve, sep } from 'node:path'
 
-import type { AssetStore } from '$lib/storage/fs/asset-store'
+import type { AssetStore } from '#lib/storage/fs/asset-store.js'
 
 import { defaultConfigPath } from './config'
 import { within } from './local-folders'

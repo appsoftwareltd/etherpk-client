@@ -4,8 +4,8 @@
      * is its one primary action; the name beside it is a label, not a second way in. Synced graphs
      * have a row of their own (SyncedGraphRow).
      */
-    import { isDemoGraph } from '$lib/demo/demo-graph'
-    import type { GraphRecord } from '$lib/storage'
+    import { isDemoGraph } from '#lib/demo/demo-graph.js'
+    import type { GraphRecord } from '#lib/storage/index.js'
     import { OPEN_BUTTON, OPEN_ICON, RESET_ICON } from './graphs-page-icons'
 
     let {

@@ -2,7 +2,7 @@ import type { EditorState, TransactionSpec } from '@codemirror/state'
 import { EditorView, type WidgetType } from '@codemirror/view'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { createContributionRegistry, setActiveContributionRegistry } from '$lib/surface'
+import { createContributionRegistry, setActiveContributionRegistry } from '#lib/surface/index.js'
 
 import { editorFixture, type HeadlessEditor } from '../testing/editor-state-fixture'
 import { FenceRenderCoordinator, fenceRenderAugmentation } from './fence-render'

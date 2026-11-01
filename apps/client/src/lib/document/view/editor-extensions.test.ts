@@ -8,7 +8,7 @@ import { undoDepth } from '@codemirror/commands'
 import { EditorState, type Transaction } from '@codemirror/state'
 import { describe, expect, it } from 'vitest'
 
-import { createContributionRegistry, setActiveContributionRegistry } from '$lib/surface'
+import { createContributionRegistry, setActiveContributionRegistry } from '#lib/surface/index.js'
 
 import { editorAnalysis } from './analysis/editor-analysis'
 import { registerInteractiveFence } from './augmentations/interactive-fence-contract'

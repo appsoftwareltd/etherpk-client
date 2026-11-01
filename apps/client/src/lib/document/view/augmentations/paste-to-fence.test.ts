@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { createContributionRegistry, setActiveContributionRegistry } from '$lib/surface'
+import { createContributionRegistry, setActiveContributionRegistry } from '#lib/surface/index.js'
 
 import { editorFixture } from '../testing/editor-state-fixture'
 import { interactiveFenceAugmentation } from './interactive-fence'

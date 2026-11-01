@@ -11,7 +11,7 @@
  * Pure over the `DirectoryAdapter` seam, so the whole thing is exercised in Node over the
  * in-memory adapter; the browser supplies an OPFS-rooted adapter and `fetch`.
  */
-import { SUBDIRS, type DirectoryAdapter, type Subdir } from '$lib/storage/fs/directory-adapter'
+import { SUBDIRS, type DirectoryAdapter, type Subdir } from '#lib/storage/fs/directory-adapter.js'
 
 import type { DemoBundleManifest } from './bundle-manifest'
 import { type DateShift, shiftDatesInText, shiftJournalFileName } from './date-shift'

@@ -14,10 +14,10 @@
         sendInvite,
         type InviteLookup,
         type SyncApi,
-    } from "$lib/sync";
-    import { INVITE_SELF_COPY, describeSyncFailure } from "$lib/sync/sync-error-copy";
+    } from "#lib/sync/index.js";
+    import { INVITE_SELF_COPY, describeSyncFailure } from "#lib/sync/sync-error-copy.js";
     import Modal from "@appsoftwareltd/etherpk-shared/dialog";
-    import { copyFailureMessage, writeClipboardText } from "$lib/document/commands/clipboard-text";
+    import { copyFailureMessage, writeClipboardText } from "#lib/document/commands/clipboard-text.js";
     import SecurityFingerprint from "./SecurityFingerprint.svelte";
 
     let {

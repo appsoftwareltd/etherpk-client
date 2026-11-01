@@ -5,7 +5,7 @@
 
 import type { EditorState } from '@codemirror/state'
 
-import { frontmatterSpan } from '$lib/storage/fs/frontmatter-span'
+import { frontmatterSpan } from '#lib/storage/fs/frontmatter-span.js'
 
 import { caretBesideFence } from './augmentations/interactive-fence'
 

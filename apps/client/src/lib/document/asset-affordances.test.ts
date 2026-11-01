@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { createContributionRegistry, registerAssetViewer, setActiveContributionRegistry } from '$lib/surface'
+import { createContributionRegistry, registerAssetViewer, setActiveContributionRegistry } from '#lib/surface/index.js'
 
 import { assetActions, canCopyImageAsset, canOpenAsset } from './asset-affordances'
 

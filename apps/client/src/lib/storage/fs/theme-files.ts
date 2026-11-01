@@ -13,7 +13,7 @@
  * over the in-memory adapter. A missing or malformed file reads as no theme.
  */
 
-import { type GraphTheme, isGraphThemeId, sanitizeGraphTheme } from '$lib/document/publish/theme/graph-theme'
+import { type GraphTheme, isGraphThemeId, sanitizeGraphTheme } from '#lib/document/publish/theme/graph-theme.js'
 
 import type { DirectoryAdapter } from './directory-adapter'
 

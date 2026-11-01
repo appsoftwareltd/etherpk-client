@@ -8,7 +8,7 @@
  */
 
 import { type BacklinkIndex, type IndexDoc, buildBacklinkIndex } from './backlink-index'
-import type { DocumentKind } from '$lib/storage'
+import type { DocumentKind } from '#lib/storage/index.js'
 
 /**
  * What changed, when the source knows. A named `concept` means ONLY that document's content

@@ -2,10 +2,10 @@ import { undo } from '@codemirror/commands'
 import { EditorState } from '@codemirror/state'
 import { describe, expect, it } from 'vitest'
 
-import { createInMemoryDocumentStore } from '$lib/document/in-memory-store'
-import { type HeadlessEditor, editorFixture } from '$lib/document/view/testing/editor-state-fixture'
-import { createFilesystemDocumentStore } from '$lib/storage/fs/filesystem-store'
-import { createMemoryDirectoryAdapter } from '$lib/storage/fs/memory-adapter'
+import { createInMemoryDocumentStore } from '#lib/document/in-memory-store.js'
+import { type HeadlessEditor, editorFixture } from '#lib/document/view/testing/editor-state-fixture.js'
+import { createFilesystemDocumentStore } from '#lib/storage/fs/filesystem-store.js'
+import { createMemoryDirectoryAdapter } from '#lib/storage/fs/memory-adapter.js'
 
 import { addFrontmatterThroughEditor, addFrontmatterThroughStore, readForAddFrontmatter } from './add-frontmatter-service'
 

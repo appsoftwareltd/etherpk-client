@@ -10,7 +10,7 @@
  * `null`, and the caller decides between falling back to the workspace (which owns the unlock
  * prompt, the Recovery Code ritual and every notice) and giving up.
  */
-import { fromBase64Url, openVault, type GraphKeyring, type OpenedVault } from '$lib/crypto'
+import { fromBase64Url, openVault, type GraphKeyring, type OpenedVault } from '#lib/crypto/index.js'
 
 import { relayUrlFrom } from './sync-connections'
 import { syncApiFor, syncConnectionFor } from './sync-connection'

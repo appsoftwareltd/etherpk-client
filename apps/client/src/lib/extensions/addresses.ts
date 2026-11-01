@@ -13,7 +13,7 @@
  */
 import type { ExtensionManifest, ViewRef } from '@appsoftwareltd/etherpk-extension-api'
 
-import { encodeConceptPath } from '$lib/navigation/concept-path'
+import { encodeConceptPath } from '#lib/navigation/concept-path.js'
 
 /** The segment every Extension Directory extension's addresses start with. */
 export const DIRECTORY_SEGMENT = 'x'

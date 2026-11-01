@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { addBookmark, getBookmarks, resetBookmarks, setBookmarks } from '$lib/document/bookmarks/bookmarks'
+import { addBookmark, getBookmarks, resetBookmarks, setBookmarks } from '#lib/document/bookmarks/bookmarks.js'
 
 import {
     BOOKMARKS_FILE,

@@ -14,10 +14,10 @@
  * graph lives on, and only that server is asked; a graph with no record here is looked for on each
  * connected server in turn, the selected one first.
  */
-import { ManagedTokenError } from '$lib/auth/managed-token'
-import type { GraphRecord, ServerGraphScope } from '$lib/storage'
-import { sameScope } from '$lib/storage/graph-registry'
-import { SyncApiError, type ServerGraphRecord } from '$lib/sync/sync-api'
+import { ManagedTokenError } from '#lib/auth/managed-token.js'
+import type { GraphRecord, ServerGraphScope } from '#lib/storage/index.js'
+import { sameScope } from '#lib/storage/graph-registry.js'
+import { SyncApiError, type ServerGraphRecord } from '#lib/sync/sync-api.js'
 
 export type MissingGraphDiagnosis =
     /**

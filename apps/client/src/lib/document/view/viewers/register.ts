@@ -7,7 +7,7 @@
  * PDF is loaded lazily by its own module; nothing here pulls pdf.js in.
  */
 
-import { type ContributionRegistry, registerAssetViewer } from '$lib/surface'
+import { type ContributionRegistry, registerAssetViewer } from '#lib/surface/index.js'
 
 import ImageAssetViewer from './ImageAssetViewer.svelte'
 import PdfAssetViewer from './PdfAssetViewer.svelte'

@@ -11,7 +11,7 @@
  * link all show the same thing.
  */
 
-import { parseFrontmatter } from '$lib/storage/fs/frontmatter'
+import { parseFrontmatter } from '#lib/storage/fs/frontmatter.js'
 
 import { type BacklinkIndex, buildBacklinkIndex, canonicalKey, conceptKey } from '../backlinks/backlink-index'
 import { wikilinkSegments } from '../wikilink/model'

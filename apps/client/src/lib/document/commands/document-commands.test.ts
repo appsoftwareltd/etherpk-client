@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { getNotices, resetNotices } from '$lib/activity/notices'
-import { createCommandRegistry, createContributionRegistry, listContextMenuItems } from '$lib/surface'
-import type { ContextMenuTarget } from '$lib/surface'
+import { getNotices, resetNotices } from '#lib/activity/notices.js'
+import { createCommandRegistry, createContributionRegistry, listContextMenuItems } from '#lib/surface/index.js'
+import type { ContextMenuTarget } from '#lib/surface/index.js'
 
 import { getFavourites, resetFavourites, setFavourites } from '../favourites'
 import {

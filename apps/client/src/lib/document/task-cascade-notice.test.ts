@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 
-import { getNotices, resetNotices } from '$lib/activity/notices'
+import { getNotices, resetNotices } from '#lib/activity/notices.js'
 
 import { showCascadeNotice, TASK_CASCADE_NOTICE } from './task-cascade-notice'
 import type { TaskWrite, TaskWriteOutcome } from './task-write'

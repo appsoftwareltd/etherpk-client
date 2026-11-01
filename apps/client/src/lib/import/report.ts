@@ -4,7 +4,7 @@
  * backlinks - and deletable once read.
  */
 
-import { portableFileStem } from '$lib/document/wikilink'
+import { portableFileStem } from '#lib/document/wikilink/index.js'
 
 import { buildFrontmatter, dedupeConcept } from './convert-shared'
 import type { ConvertedDocument, ConvertedGraph, ImportFormat, ReportEntry } from './types'

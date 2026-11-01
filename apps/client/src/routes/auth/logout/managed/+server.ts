@@ -1,14 +1,14 @@
 import { error } from '@sveltejs/kit'
 import type { RequestHandler } from './$types'
-import { env } from '$env/dynamic/private'
-import { parseOptionalManagedClientAuthConfig } from '$lib/server/auth/config'
+import * as env from '$app/env/private'
+import { parseOptionalManagedClientAuthConfig } from '#lib/server/auth/config.js'
 import {
     nextHopAfterClient,
     revokeManagedClientGrant,
     takeManagedClientSession,
     type CascadeSource,
-} from '$lib/server/auth/managed-logout'
-import { isSameOriginPost } from '$lib/server/auth/same-origin'
+} from '#lib/server/auth/managed-logout.js'
+import { isSameOriginPost } from '#lib/server/auth/same-origin.js'
 
 /**
  * Start coordinated sign-out from the Client: revoke this Client's refresh grant, then hand the

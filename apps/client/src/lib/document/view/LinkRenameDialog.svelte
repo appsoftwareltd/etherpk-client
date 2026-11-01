@@ -24,7 +24,7 @@
      * document only.
      */
     import Dialog from "@appsoftwareltd/etherpk-shared/dialog";
-    import type { RenameLinkStrategy } from "$lib/storage/rename";
+    import type { RenameLinkStrategy } from "#lib/storage/rename.js";
 
     import { type LinkRenameChoice, type LinkRenameRow, previewPlans } from "./link-renames";
     import RenameRow from "./RenameRow.svelte";

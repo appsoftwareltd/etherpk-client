@@ -15,13 +15,13 @@
 import type { Extension } from '@codemirror/state'
 import { EditorView, type ViewUpdate } from '@codemirror/view'
 
-import type { AssetStore } from '$lib/storage/fs/asset-store'
+import type { AssetStore } from '#lib/storage/fs/asset-store.js'
 
 import type { ConceptCandidate } from '../index-db'
 import type { RemoteGraphIndex } from '../index-worker/client'
 import { assetDropAugmentation } from './augmentations/asset-drop'
 import { assetLinkAugmentation } from './augmentations/asset-link'
-import type { Backend } from '$lib/document/frontmatter/proposal'
+import type { Backend } from '#lib/document/frontmatter/proposal.js'
 
 import { type FrontmatterOptions, frontmatterAugmentation } from './augmentations/frontmatter'
 import { frontmatterAssist } from './augmentations/frontmatter-assist'

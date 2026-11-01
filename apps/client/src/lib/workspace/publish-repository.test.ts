@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
-import { GitHubError } from '$lib/document/publish/host/github-api'
-import { FakeGitHub } from '$lib/document/publish/host/testing/fake-github'
-import { createPersonSettings } from '$lib/person-settings/person-settings'
+import { GitHubError } from '#lib/document/publish/host/github-api.js'
+import { FakeGitHub } from '#lib/document/publish/host/testing/fake-github.js'
+import { createPersonSettings } from '#lib/person-settings/person-settings.js'
 
 import { GITHUB_TOKEN_SETTING, NO_TOKEN_MESSAGE, checkWithToken, gitHubApiFor, gitHubTokenControls, requireReady } from './publish-repository'
 

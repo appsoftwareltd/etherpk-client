@@ -11,7 +11,7 @@
  * only name it.
  */
 
-import { showNotice } from '$lib/activity/notices'
+import { showNotice } from '#lib/activity/notices.js'
 
 import {
     type CommandRegistry,

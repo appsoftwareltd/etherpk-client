@@ -4,9 +4,9 @@
  */
 import type { ViewContribution } from '@appsoftwareltd/etherpk-extension-api'
 
-import { buildCatalogue } from '$lib/extensions/catalogue'
-import { createScopedContext } from '$lib/extensions/scoped-context'
-import { fakeClientServices, fakeGraphServices } from '$lib/extensions/testing'
+import { buildCatalogue } from '#lib/extensions/catalogue.js'
+import { createScopedContext } from '#lib/extensions/scoped-context.js'
+import { fakeClientServices, fakeGraphServices } from '#lib/extensions/testing.js'
 
 import packageJson from '../package.json'
 

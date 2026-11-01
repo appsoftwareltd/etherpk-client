@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { dismissNotice, getNotices } from '$lib/activity/notices'
+import { dismissNotice, getNotices } from '#lib/activity/notices.js'
 
 import { getBookmarks, resetBookmarks, setBookmarks, type Bookmark, type BookmarksPersist } from './bookmarks'
 import { BOOKMARK_NOTICE_ID, removeBookmarksWithUndo } from './remove-with-undo'

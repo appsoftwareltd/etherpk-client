@@ -22,21 +22,21 @@
      * surface to ask on and always optimise.
      */
     import Dialog from "@appsoftwareltd/etherpk-shared/dialog";
-    import { tryGetActiveAssetStore } from "$lib/document";
+    import { tryGetActiveAssetStore } from "#lib/document/index.js";
     import {
         type AssetPickerState,
         closeAssetPicker,
         getAssetPickerState,
         resolveAssetPickerTarget,
         subscribeAssetPicker,
-    } from "$lib/document/view/asset-picker";
+    } from "#lib/document/view/asset-picker.js";
     import {
         ClipboardAccessRefused,
         clipboardAssetFiles,
         nameClipboardFile,
         readClipboardImages,
-    } from "$lib/document/view/clipboard-assets";
-    import { startAssetUpload } from "$lib/document/view/upload-activity";
+    } from "#lib/document/view/clipboard-assets.js";
+    import { startAssetUpload } from "#lib/document/view/upload-activity.js";
 
     let picker = $state<AssetPickerState>(getAssetPickerState());
     let optimizeImages = $state(true);

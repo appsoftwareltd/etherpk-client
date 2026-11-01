@@ -10,7 +10,7 @@
      * so a screen reader never reads it as the document's, and not in the editor's height map.
      * Shown while the document can be written; DocumentView says when.
      */
-    import { iconSvg } from '$lib/surface/icons'
+    import { iconSvg } from '#lib/surface/icons.js'
 
     import { CONTENT_PAD_X } from './cm-document'
     import type { EndKind } from './end-of-document'

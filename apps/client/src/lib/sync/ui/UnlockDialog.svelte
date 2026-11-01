@@ -22,8 +22,8 @@
         setVaultWrapKey,
         unlockWithRecoveryCode,
         type DeviceApprovalRequest,
-    } from "$lib/sync";
-    import { describeSyncFailure } from "$lib/sync/sync-error-copy";
+    } from "#lib/sync/index.js";
+    import { describeSyncFailure } from "#lib/sync/sync-error-copy.js";
     import { PUBLIC_DOCS_URL } from "@appsoftwareltd/etherpk-shared";
     import Modal from "@appsoftwareltd/etherpk-shared/dialog";
 

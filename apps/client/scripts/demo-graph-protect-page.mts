@@ -14,8 +14,8 @@
  */
 import { readFileSync, writeFileSync } from 'node:fs'
 
-import { armourProtected, createProtectionRecord, keyFingerprint, newKdfParams, sealProtected, serialiseProtectionRecord } from '$lib/crypto'
-import { documentBody, documentProtection, protectDocumentText } from '$lib/document/protection/cipher-fence'
+import { armourProtected, createProtectionRecord, keyFingerprint, newKdfParams, sealProtected, serialiseProtectionRecord } from '#lib/crypto/index.js'
+import { documentBody, documentProtection, protectDocumentText } from '#lib/document/protection/cipher-fence.js'
 
 const PASSPHRASE = 'monstera'
 const PAGE = 'static/demo-graph/pages/Where I hide the good fertiliser.md'

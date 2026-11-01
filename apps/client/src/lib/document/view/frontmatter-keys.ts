@@ -26,7 +26,7 @@
 import { EditorSelection, EditorState, type Extension, Prec, type StateCommand, Transaction, type TransactionSpec } from '@codemirror/state'
 import { type KeyBinding, keymap } from '@codemirror/view'
 
-import { isFrontmatterDelimiter } from '$lib/storage/fs/frontmatter-span'
+import { isFrontmatterDelimiter } from '#lib/storage/fs/frontmatter-span.js'
 
 import { analysisFor } from './analysis/editor-analysis'
 import { selectAllOnOneSideOfFrontmatter } from './frontmatter-boundary'

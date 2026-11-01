@@ -125,10 +125,9 @@ describe('createHandleError', () => {
         const logger = appLogger()
         const handleError = createHandleError({ logger, hostname: 'pod-1' })
         const result = handleError({
-            error: new Error('Not found: /favicon.ico'),
+            kind: 'framework',
+            error: { status: 404, message: 'Not Found' },
             event: requestEvent('https://www.test/favicon.ico'),
-            status: 404,
-            message: 'Not Found',
         })
 
         expect(result).toEqual({ message: 'Page not found' })
@@ -136,14 +135,53 @@ describe('createHandleError', () => {
         expect(logger.warn).not.toHaveBeenCalled()
     })
 
+    it("keeps SvelteKit's own safe message for any other refusal it raises", () => {
+        const logger = appLogger()
+        const handleError = createHandleError({ logger, hostname: 'pod-1' })
+        const result = handleError({
+            kind: 'framework',
+            error: { status: 405, message: 'POST method not allowed' },
+            event: requestEvent('https://www.test/health', { method: 'POST' }),
+        })
+
+        expect(result).toBeUndefined()
+        expect(logger.error).not.toHaveBeenCalled()
+    })
+
+    it('keeps an error the app raised on purpose as it was raised, and does not log it', () => {
+        // SvelteKit 3 passes `error(403, ...)` here too. Its message was written for the visitor.
+        const logger = appLogger()
+        const handleError = createHandleError({ logger, hostname: 'pod-1' })
+        const result = handleError({
+            kind: 'app',
+            error: { status: 403, message: 'Only the owner can do this' },
+            event: requestEvent('https://www.test/g/abc'),
+        })
+
+        expect(result).toBeUndefined()
+        expect(logger.error).not.toHaveBeenCalled()
+    })
+
+    it('logs a failure SvelteKit raised itself at error when it is a 5xx', () => {
+        const logger = appLogger()
+        const handleError = createHandleError({ logger, hostname: 'pod-1' })
+        const result = handleError({
+            kind: 'framework',
+            error: { status: 500, message: 'Internal Error' },
+            event: requestEvent('https://www.test/x'),
+        })
+
+        expect(result).toEqual({ message: 'Something went wrong' })
+        expect(logger.error).toHaveBeenCalledWith('Unexpected server error', expect.objectContaining({ status: 500 }))
+    })
+
     it('logs an unexpected failure at error with its stack, and shows the visitor nothing of it', () => {
         const logger = appLogger()
         const handleError = createHandleError({ logger, hostname: 'pod-1' })
         const result = handleError({
+            kind: 'unknown',
             error: new Error('database is down'),
             event: requestEvent('https://www.test/g/abc/d/Private?email=a%40b.test'),
-            status: 500,
-            message: 'Internal Error',
         })
 
         expect(result).toEqual({ message: 'Something went wrong' })
@@ -161,10 +199,9 @@ describe('createHandleError', () => {
         const logger = appLogger()
         const handleError = createHandleError({ logger, hostname: 'pod-1' })
         handleError({
+            kind: 'unknown',
             error: new Error('render failed'),
             event: requestEvent('https://app.test/share?text=water%20the%20beans'),
-            status: 500,
-            message: 'Internal Error',
         })
 
         expect(logger.error).toHaveBeenCalledWith('Unexpected server error', expect.objectContaining({

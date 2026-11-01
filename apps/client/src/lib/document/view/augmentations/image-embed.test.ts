@@ -2,7 +2,7 @@ import type { EditorState } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { AssetUnavailableError } from '$lib/storage/fs/asset-store'
+import { AssetUnavailableError } from '#lib/storage/fs/asset-store.js'
 
 import { editorFixture } from '../testing/editor-state-fixture'
 import { imageDecoded, imageEmbedAugmentation, imageKey, markImageDecoded } from './image-embed'

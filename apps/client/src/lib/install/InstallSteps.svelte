@@ -5,7 +5,7 @@
      * what installing gives. Shared by the Install dialog and the section in Graph Settings, so
      * the two never disagree.
      */
-    import { canInstall, installSteps } from "$lib/storage/install-platform";
+    import { canInstall, installSteps } from "#lib/storage/install-platform.js";
     import { installDialog, installPlatform, installState, startInstall } from "./install-state.svelte";
 
     const install = $derived(installState());

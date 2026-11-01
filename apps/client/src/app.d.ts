@@ -5,7 +5,7 @@ declare global {
         interface Locals {
             themePreference: import('@appsoftwareltd/etherpk-shared/theme').ThemePreference
             resolvedTheme: import('@appsoftwareltd/etherpk-shared/theme').ResolvedTheme
-            settings: import('$lib/settings').ClientSettings
+            settings: import('#lib/settings.js').ClientSettings
             managedSessionAvailable: boolean
             /**
              * Set when the silent check skipped this load only because one missed recently: the
@@ -15,13 +15,13 @@ declare global {
         }
         interface PageState {
             /** Navigation History: the Visit this history entry lands on (ADR 0023). */
-            etherpkVisit?: import('$lib/navigation').VisitState
+            etherpkVisit?: import('#lib/navigation/index.js').VisitState
             /**
              * Settings open on this entry, and the tab it is on (ADR 0023, 2026-09-20). `pushed`
              * says the workspace pushed the entry to open it, so closing is a Back; an entry
              * adopted from a deep link or reload closes by stripping the address in place.
              */
-            etherpkSettings?: { tab: import('$lib/workspace/device-memory').SettingsTab; pushed: boolean }
+            etherpkSettings?: { tab: import('#lib/workspace/device-memory.js').SettingsTab; pushed: boolean }
         }
     }
 

@@ -12,17 +12,18 @@
      */
     import { onMount, tick, untrack } from "svelte";
 
-    import { dev } from "$app/environment";
-    import { afterNavigate, goto, replaceState } from "$app/navigation";
+    import { dev } from "$app/env";
+    import { afterNavigate, goto } from "$app/navigation";
+    import { queueHistoryWrite } from "#lib/navigation/history-writes.js";
     import { page } from "$app/state";
-    import { env } from "$env/dynamic/public";
-    import ExtensionSettingsSections from "$lib/extensions/ExtensionSettingsSections.svelte";
-    import { iconSvg } from "$lib/surface/icons";
-    import { RELEASE_VERSION } from "$lib/release";
-    import { managedSyncOrigin } from "$lib/sync/sync-deployment";
-    import AgentCommandRow from "$lib/sync/ui/AgentCommandRow.svelte";
-    import { AGENT_SKILL_ROW, headlessClientPackage } from "$lib/sync/ui/agents-tab";
-    import HeadlessClientSignIn from "$lib/sync/ui/HeadlessClientSignIn.svelte";
+    import * as env from "$app/env/public";
+    import ExtensionSettingsSections from "#lib/extensions/ExtensionSettingsSections.svelte";
+    import { iconSvg } from "#lib/surface/icons.js";
+    import { RELEASE_VERSION } from "#lib/release.js";
+    import { managedSyncOrigin } from "#lib/sync/sync-deployment.js";
+    import AgentCommandRow from "#lib/sync/ui/AgentCommandRow.svelte";
+    import { AGENT_SKILL_ROW, headlessClientPackage } from "#lib/sync/ui/agents-tab.js";
+    import HeadlessClientSignIn from "#lib/sync/ui/HeadlessClientSignIn.svelte";
     import {
         type DeviceStorageReport,
         type DirectoryAdapter,
@@ -49,21 +50,21 @@
         storageRecoveryItems,
         subscribeStorageRecoveries,
         writeGraphSettings,
-    } from "$lib/storage";
+    } from "#lib/storage/index.js";
     import {
         type GraphAssetTools,
         filesystemAssetTools,
-    } from "$lib/storage/fs/asset-orphans";
-    import { readKnownGraphFolders } from "$lib/storage/folder-ownership";
+    } from "#lib/storage/fs/asset-orphans.js";
+    import { readKnownGraphFolders } from "#lib/storage/folder-ownership.js";
     import {
         findFolderOwner,
         openAsLocalGraphRefusal,
-    } from "$lib/storage/server/mirror-takeover";
-    import { deleteAssetCopies } from "$lib/storage/server/asset-copies";
+    } from "#lib/storage/synced/mirror-takeover.js";
+    import { deleteAssetCopies } from "#lib/storage/synced/asset-copies.js";
     import {
         discardIndexPool,
         discardUnlistedIndexPools,
-    } from "$lib/document/index-pool-discard";
+    } from "#lib/document/index-pool-discard.js";
     import {
         accountIdentityFingerprint,
         inspectInvite,
@@ -118,7 +119,7 @@
         type HandoutOutcome,
         type KeyReplacementResult,
         type PreparedKeyReplacement,
-    } from "$lib/sync";
+    } from "#lib/sync/index.js";
     import {
         PUBLIC_DOCS_URL,
         formatBytes,
@@ -127,7 +128,7 @@
     import {
         managedSignInHref,
         returnHereSignedIn,
-    } from "$lib/auth/sign-in-links";
+    } from "#lib/auth/sign-in-links.js";
     import {
         EnvelopeError,
         fingerprint,
@@ -136,25 +137,25 @@
         type GraphKeyring,
         type KeyVault,
         type PublicIdentity,
-    } from "$lib/crypto";
-    import { promptRecoveryCode } from "$lib/sync/recovery-code-prompt";
-    import { describeSyncFailure } from "$lib/sync/sync-error-copy";
-    import { describeConnectionCheckFailure } from "$lib/sync/connection-check";
-    import InviteDialog from "$lib/sync/ui/InviteDialog.svelte";
-    import AcceptInviteDialog from "$lib/sync/ui/AcceptInviteDialog.svelte";
-    import VerifyMemberDialog from "$lib/sync/ui/VerifyMemberDialog.svelte";
-    import { checkAccountIdentity, reportIdentityRepair } from "$lib/sync/ui/identity-check";
-    import { describeRotation, rotateGraphKeyOnce } from "$lib/sync/ui/key-rotation";
-    import UnlockDialog from "$lib/sync/ui/UnlockDialog.svelte";
+    } from "#lib/crypto/index.js";
+    import { promptRecoveryCode } from "#lib/sync/recovery-code-prompt.js";
+    import { describeSyncFailure } from "#lib/sync/sync-error-copy.js";
+    import { describeConnectionCheckFailure } from "#lib/sync/connection-check.js";
+    import InviteDialog from "#lib/sync/ui/InviteDialog.svelte";
+    import AcceptInviteDialog from "#lib/sync/ui/AcceptInviteDialog.svelte";
+    import VerifyMemberDialog from "#lib/sync/ui/VerifyMemberDialog.svelte";
+    import { checkAccountIdentity, reportIdentityRepair } from "#lib/sync/ui/identity-check.js";
+    import { describeRotation, rotateGraphKeyOnce } from "#lib/sync/ui/key-rotation.js";
+    import UnlockDialog from "#lib/sync/ui/UnlockDialog.svelte";
     import DevicePasscodeDialog, {
         type DevicePasscodeDialogMode,
-    } from "$lib/sync/ui/DevicePasscodeDialog.svelte";
-    import { devicePasscodeState } from "$lib/sync/ui/device-passcode-state.svelte";
-    import DevicePasscodeSection from "$lib/workspace/DevicePasscodeSection.svelte";
-    import ResetDialog from "$lib/sync/ui/ResetDialog.svelte";
-    import TransferOwnershipDialog from "$lib/sync/ui/TransferOwnershipDialog.svelte";
-    import RenameGraphDialog from "$lib/sync/ui/RenameGraphDialog.svelte";
-    import GraphSettingsDialog from "$lib/sync/ui/GraphSettingsDialog.svelte";
+    } from "#lib/sync/ui/DevicePasscodeDialog.svelte";
+    import { devicePasscodeState } from "#lib/sync/ui/device-passcode-state.svelte.js";
+    import DevicePasscodeSection from "#lib/workspace/DevicePasscodeSection.svelte";
+    import ResetDialog from "#lib/sync/ui/ResetDialog.svelte";
+    import TransferOwnershipDialog from "#lib/sync/ui/TransferOwnershipDialog.svelte";
+    import RenameGraphDialog from "#lib/sync/ui/RenameGraphDialog.svelte";
+    import GraphSettingsDialog from "#lib/sync/ui/GraphSettingsDialog.svelte";
     import Modal from "@appsoftwareltd/etherpk-shared/dialog";
     import { delayedFlag } from "@appsoftwareltd/etherpk-shared/delayed";
     import {
@@ -163,36 +164,36 @@
         saveUnsentChangesFile,
         staleCopyUnsentChanges,
         type UnsentDocument,
-    } from "$lib/sync/unsent-changes";
+    } from "#lib/sync/unsent-changes.js";
     import ImportGraphDialog, {
         type ImportSyncTarget,
-    } from "$lib/import/ui/ImportGraphDialog.svelte";
+    } from "#lib/import/ui/ImportGraphDialog.svelte";
     import {
         importMarkers,
         type ImportMarker,
-    } from "$lib/import/import-marker";
-    import { clearManagedAccessToken, freshManagedBearerToken } from "$lib/auth/managed-token";
-    import { showNotice } from "$lib/activity/notices";
-    import GraphPickerRow from "$lib/workspace/GraphPickerRow.svelte";
-    import InstallOffer from "$lib/install/InstallOffer.svelte";
+    } from "#lib/import/import-marker.js";
+    import { clearManagedAccessToken, freshManagedBearerToken } from "#lib/auth/managed-token.js";
+    import { showNotice } from "#lib/activity/notices.js";
+    import GraphPickerRow from "#lib/workspace/GraphPickerRow.svelte";
+    import InstallOffer from "#lib/install/InstallOffer.svelte";
     import SyncServerGroup, {
         type SyncServerGroupActions,
-    } from "$lib/workspace/SyncServerGroup.svelte";
+    } from "#lib/workspace/SyncServerGroup.svelte";
     import SyncServerSettings, {
         type SyncServerSettingsActions,
-    } from "$lib/workspace/SyncServerSettings.svelte";
+    } from "#lib/workspace/SyncServerSettings.svelte";
     import {
         SyncServerView,
         refusedCredential,
-    } from "$lib/workspace/sync-server-view.svelte";
+    } from "#lib/workspace/sync-server-view.svelte.js";
     import {
         CUSTOM_SERVER_ICON,
         LOCAL_GRAPHS_ICON,
         MANAGED_SERVER_ICON,
         NOT_SET_ICON,
-    } from "$lib/workspace/graphs-page-icons";
-    import { forgetGraphOnDevice } from "$lib/workspace/graph-device-memory";
-    import { isDemoGraph } from "$lib/demo/demo-graph";
+    } from "#lib/workspace/graphs-page-icons.js";
+    import { forgetGraphOnDevice } from "#lib/workspace/graph-device-memory.js";
+    import { isDemoGraph } from "#lib/demo/demo-graph.js";
     import {
         copyServer,
         countCopiesByServer,
@@ -202,7 +203,7 @@
         persistableGraphRecord,
         type SyncedGraphView,
         type SyncedMember,
-    } from "$lib/workspace/graph-picker-helpers";
+    } from "#lib/workspace/graph-picker-helpers.js";
 
     const registry = createIdbGraphRegistry();
     const supported = isFsaSupported();
@@ -239,12 +240,14 @@
         page.url.searchParams.get("server"),
     );
 
-    function tabIn(url: URL): GraphsPageTab {
+    function tabIn(url: { readonly searchParams: Pick<URLSearchParams, "get"> }): GraphsPageTab {
         const tab = url.searchParams.get("tab");
         return tab === "sync" || tab === "agents" || tab === "device" ? tab : "graphs";
     }
 
-    afterNavigate(({ to }) => {
+    afterNavigate(({ to, shallow, type }) => {
+        // This page's own shallow replaces run the navigation hooks since SvelteKit 3.
+        if (shallow && type === "goto") return;
         if (!to?.url) return;
         activeTab = tabIn(to.url);
         requestedSyncPanel = to.url.searchParams.get("server");
@@ -1484,22 +1487,27 @@
      */
     function showTab(tab: GraphsPageTab) {
         activeTab = tab;
-        const url = new URL(window.location.href);
-        if (tab === "graphs") url.searchParams.delete("tab");
-        else url.searchParams.set("tab", tab);
-        // The server sub-tab belongs to the Sync tab's address alone.
-        if (tab !== "sync") url.searchParams.delete("server");
-        replaceState(url.pathname + url.search + url.hash, page.state);
+        void queueHistoryWrite(() => {
+            const url = new URL(window.location.href);
+            if (tab === "graphs") url.searchParams.delete("tab");
+            else url.searchParams.set("tab", tab);
+            // The server sub-tab belongs to the Sync tab's address alone.
+            if (tab !== "sync") url.searchParams.delete("server");
+            return goto(url.pathname + url.search + url.hash, { shallow: true, replace: true, state: page.state });
+        });
     }
 
     /** Show the Sync tab on one server's sub-tab, or Add, with the choice kept in the address. */
     function showSyncPanel(panel: SyncServerView | "add") {
-        requestedSyncPanel = panel === "add" ? "add" : panel.host;
+        const host = panel === "add" ? "add" : panel.host;
+        requestedSyncPanel = host;
         activeTab = "sync";
-        const url = new URL(window.location.href);
-        url.searchParams.set("tab", "sync");
-        url.searchParams.set("server", requestedSyncPanel);
-        replaceState(url.pathname + url.search + url.hash, page.state);
+        void queueHistoryWrite(() => {
+            const url = new URL(window.location.href);
+            url.searchParams.set("tab", "sync");
+            url.searchParams.set("server", host);
+            return goto(url.pathname + url.search + url.hash, { shallow: true, replace: true, state: page.state });
+        });
     }
 
     /**
@@ -1546,12 +1554,14 @@
     // opens it again and a reload does not.
     $effect(() => {
         if (page.url.searchParams.get("sync") !== "connect") return;
-        const url = new URL(page.url);
-        url.searchParams.delete("sync");
-        url.searchParams.set("tab", "sync");
         // After a macrotask, as announceArrival does: on a first load the router is still starting.
         setTimeout(() => {
-            replaceState(url.pathname + url.search, {});
+            void queueHistoryWrite(() => {
+                const url = new URL(window.location.href);
+                url.searchParams.delete("sync");
+                url.searchParams.set("tab", "sync");
+                return goto(url.pathname + url.search, { shallow: true, replace: true });
+            });
             untrack(() => void openConnectSync());
         }, 0);
     });
@@ -1671,12 +1681,16 @@
                   : null;
         if (!notice) return;
         setStatus(notice);
-        const url = new URL(page.url);
-        url.searchParams.delete("managed");
-        if (sync === "disconnected") url.searchParams.delete("sync");
         // After a macrotask: on a first load SvelteKit's router finishes starting after this
-        // page mounts, and replaceState before then throws in development.
-        setTimeout(() => replaceState(url.pathname + url.search, {}), 0);
+        // page mounts, and a shallow goto before then throws in development.
+        setTimeout(() => {
+            void queueHistoryWrite(() => {
+                const url = new URL(window.location.href);
+                url.searchParams.delete("managed");
+                if (sync === "disconnected") url.searchParams.delete("sync");
+                return goto(url.pathname + url.search, { shallow: true, replace: true });
+            });
+        }, 0);
     }
 
     /** Signed out of `server`, an action that needs the account starts the way back in instead. */
@@ -1777,7 +1791,7 @@
         if (server) showSyncPanel(server);
         // Sent here by a page that needed this connection: go back to it once it works.
         if (returnTo && server?.authState === "authenticated")
-            void goto(returnTo);
+            void queueHistoryWrite(() => goto(returnTo));
     }
 
     async function openFolder() {
@@ -1796,7 +1810,7 @@
                 return;
             }
             if (owner?.kind === "local-graph" && owner.relation === "same") {
-                await goto(`/g/${owner.graphId}`);
+                await queueHistoryWrite(() => goto(`/g/${owner.graphId}`));
                 return;
             }
             const adapter = createWebFsDirectoryAdapter(handle);
@@ -1809,7 +1823,7 @@
                 createdAt: Date.now(),
                 handle,
             });
-            await goto(`/g/${id}`);
+            await queueHistoryWrite(() => goto(`/g/${id}`));
         } catch (err) {
             // Closing the picker rejects with an AbortError whose message names the browser API;
             // it is a choice, not a failure, so it is said plainly and not as an error.
@@ -1960,13 +1974,13 @@
                                 `Saved your code, but could not finish setup: ${err.message}`,
                                 "error",
                             );
-                        void goto(`/g/${graph.id}`);
+                        void queueHistoryWrite(() => goto(`/g/${graph.id}`));
                     },
                 });
                 return;
             }
             await commit();
-            await goto(`/g/${graph.id}`);
+            await queueHistoryWrite(() => goto(`/g/${graph.id}`));
         } catch (err) {
             createError = describeSyncFailure(err, "create a synced graph");
         } finally {
@@ -2039,12 +2053,12 @@
 
     /** The finished toast's "Open" button - the only thing that navigates. */
     function onImported(result: { graphId: string }) {
-        void goto(`/g/${result.graphId}`);
+        void queueHistoryWrite(() => goto(`/g/${result.graphId}`));
     }
 
     async function openGraph(graph: GraphRecord) {
         if (graph.backend === "server") {
-            await goto(`/g/${graph.id}`);
+            await queueHistoryWrite(() => goto(`/g/${graph.id}`));
             return;
         }
         const granted = await ensurePermission(graph.handle);
@@ -2056,7 +2070,7 @@
             );
             return;
         }
-        await goto(`/g/${graph.id}`);
+        await queueHistoryWrite(() => goto(`/g/${graph.id}`));
     }
 
     /**
@@ -4080,7 +4094,7 @@
                     onrename={() => renameGraph(graph)}
                     onsettings={() => void openLocalSettings(graph)}
                     onforget={() => void askForget(graph)}
-                    onreset={() => void goto("/demo?reset=1")}
+                    onreset={() => void queueHistoryWrite(() => goto("/demo?reset=1"))}
                 />
             {/snippet}
 

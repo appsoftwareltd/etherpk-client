@@ -11,7 +11,7 @@
  *   works rather than at the defaults every time.
  */
 
-import { ADDABLE_KEYS, type AddableKey, DEFAULT_ADD_FRONTMATTER_KEYS } from '$lib/document/frontmatter/add-frontmatter'
+import { ADDABLE_KEYS, type AddableKey, DEFAULT_ADD_FRONTMATTER_KEYS } from '#lib/document/frontmatter/add-frontmatter.js'
 
 export const SETTINGS_TAB_KEY_PREFIX = 'etherpk-settings-tab:'
 export const LAST_PUBLICATION_KEY_PREFIX = 'etherpk-last-publication:'

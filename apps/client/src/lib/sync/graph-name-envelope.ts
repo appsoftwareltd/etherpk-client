@@ -14,7 +14,7 @@
  * name. The plaintext is padded into 64-byte buckets so the ciphertext length reveals little
  * about the name.
  */
-// Relative rather than `$lib`: the Playwright fixtures seal and open name envelopes with this
+// Relative rather than `#lib`: the Playwright fixtures seal and open name envelopes with this
 // module, and the test process resolves no alias (the crypto modules are relative for the same reason).
 import {
     contextAad,

@@ -15,7 +15,7 @@
  *
  * Pure: bytes in, manifest or a list of problems out. The Node side supplies the hash.
  */
-// Relative, not $lib: this file is also loaded by the Vite config process (demo-graph-plugin.ts).
+// Relative, not #lib: this file is also loaded by the Vite config process (demo-graph-plugin.ts).
 import { assetHashFromName } from '../storage/fs/asset-names'
 import { SUBDIRS, type Subdir } from '../storage/fs/directory-adapter'
 

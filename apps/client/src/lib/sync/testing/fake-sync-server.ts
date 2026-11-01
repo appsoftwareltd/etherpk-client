@@ -35,7 +35,7 @@ import {
     toBase64Url,
     utf8,
     verifySignature,
-} from '$lib/crypto'
+} from '#lib/crypto/index.js'
 import { writeSignedVault } from '../vault-update'
 import {
     SyncApiError,

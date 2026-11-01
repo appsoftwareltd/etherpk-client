@@ -10,7 +10,7 @@ import { codeFolding, foldService, toggleFold } from '@codemirror/language'
 import { type ChangeSpec, EditorSelection, type EditorState, type Extension, MapMode, type StateCommand, type Transaction, type TransactionSpec } from '@codemirror/state'
 import { type Command, type KeyBinding, keymap } from '@codemirror/view'
 
-import { frontmatterLines } from '$lib/storage/fs/frontmatter-span'
+import { frontmatterLines } from '#lib/storage/fs/frontmatter-span.js'
 
 import { getActiveGraphSettings } from '../active-graph-settings'
 import {

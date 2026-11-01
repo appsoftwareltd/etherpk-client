@@ -17,7 +17,7 @@
  * Backend); this is the Filesystem Backend path only.
  */
 
-import { publishSlug } from '$lib/document/wikilink'
+import { publishSlug } from '#lib/document/wikilink/index.js'
 
 import { assetHashFromName, isSafeAssetName } from './asset-names'
 import type { DirectoryAdapter } from './directory-adapter'

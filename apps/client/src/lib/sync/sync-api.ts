@@ -1,7 +1,7 @@
 import type { MapLinkRequest, MapLinkResponse, PlaceReverseRequest, PlaceSearchRequest, SyncAccountSummary } from '@appsoftwareltd/etherpk-shared'
 
 // This module imports no other module of the Client: the Playwright fixtures reach it by relative
-// path and resolve no `$lib` alias, so anything it named would have to be importable the same way.
+// path and resolve no `#lib` alias, so anything it named would have to be importable the same way.
 
 /**
  * The client's REST bridge to the sync server (plan Phase 4). Authenticates with a

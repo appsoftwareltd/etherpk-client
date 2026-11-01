@@ -9,7 +9,7 @@
  * - The launch that opened this page arrives too, and is ignored: the page already carried it out.
  */
 
-import { SHORTCUT_PARAM } from '$lib/navigation/launch-shortcuts'
+import { SHORTCUT_PARAM } from '#lib/navigation/launch-shortcuts.js'
 
 /** The address to navigate to, or null to stay. `openedHref` is the address the page was opened at. */
 export function launchTarget(targetUrl: string | undefined, origin: string, openedHref: string): string | null {

@@ -15,8 +15,8 @@
  * postcode search off, and a URL names a self-hosted copy. Unset in development, it is the Client's
  * own origin, where `dev-postcodes-plugin.ts` serves the set `pnpm postcodes:build` built.
  */
-import { dev } from '$app/environment'
-import { env } from '$env/dynamic/public'
+import { dev } from '$app/env'
+import * as env from '$app/env/public'
 
 import type { PlaceSearchResult } from './map-block-services'
 

@@ -31,7 +31,7 @@ import { editorDocument } from '../editor-document'
 import { isProtectedDocumentFacet } from './protected-document'
 import { tableAtCaret, tableInsertable } from '../table-context'
 import { type PopoverBase, type PopoverRow, popoverMenu } from './popover-menu'
-import { iconSvg } from '$lib/surface/icons'
+import { iconSvg } from '#lib/surface/icons.js'
 
 import { openWikilinkContext } from './wikilink-complete-core'
 import { openSlashContext, rankCommandMenu } from './slash-complete-core'

@@ -23,7 +23,7 @@
 
 import { ChangeSet, type ChangeSpec, EditorState, type Extension, MapMode, type Text, Transaction, type TransactionSpec } from '@codemirror/state'
 
-import { frontmatterLines } from '$lib/storage/fs/frontmatter-span'
+import { frontmatterLines } from '#lib/storage/fs/frontmatter-span.js'
 
 import { type FencedBlockRange, fencedBlocks, fenceLineInfo, normaliseFenceLines } from '../fenced-code'
 import { editorAnalysisField, type EditorAnalysis } from './analysis/editor-analysis'

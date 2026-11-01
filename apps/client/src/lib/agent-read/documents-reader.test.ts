@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import type { ConceptCandidate, DbBacklinkGroup, TaskHit } from '$lib/document/index-db'
+import type { ConceptCandidate, DbBacklinkGroup, TaskHit } from '#lib/document/index-db.js'
 
 import { type AgentReadIndex, type AgentReadSource, createDocumentsReader } from './documents-reader'
 import { READ_TEXT_CAP } from './read-rules'

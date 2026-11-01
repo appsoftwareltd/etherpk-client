@@ -9,7 +9,7 @@
  * each other as well as the tabs beside them. Where BroadcastChannel is missing nothing is sent
  * and each tab finds out at its next token request.
  */
-import { clearManagedAccessToken } from '$lib/auth/managed-token'
+import { clearManagedAccessToken } from '#lib/auth/managed-token.js'
 
 const CHANNEL = 'etherpk-sync-account'
 

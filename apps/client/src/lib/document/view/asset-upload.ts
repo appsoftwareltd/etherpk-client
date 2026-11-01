@@ -7,9 +7,9 @@
 
 import type { EditorView } from '@codemirror/view'
 
-import { mapWithPool } from '$lib/concurrency'
-import { type AssetStore, type SavedAsset, buildAssetMarkdown } from '$lib/storage/fs/asset-store'
-import { imageDisplaySizeOf } from '$lib/storage/fs/graph-settings'
+import { mapWithPool } from '#lib/concurrency.js'
+import { type AssetStore, type SavedAsset, buildAssetMarkdown } from '#lib/storage/fs/asset-store.js'
+import { imageDisplaySizeOf } from '#lib/storage/fs/graph-settings.js'
 
 import { getActiveGraphSettings } from '../active-graph-settings'
 import { bulletContent, contentColumn, isBulletLine, lineIndent } from '../outliner'

@@ -20,9 +20,9 @@
  * Framework-free and injected, so the workspace only says when to sweep and where the answers
  * come from.
  */
-import { type Bookmark, conceptKeyOf } from '$lib/document/bookmarks/bookmarks'
-import type { ConceptCandidate } from '$lib/document/index-db'
-import { documentProtection } from '$lib/document/protection/cipher-fence'
+import { type Bookmark, conceptKeyOf } from '#lib/document/bookmarks/bookmarks.js'
+import type { ConceptCandidate } from '#lib/document/index-db.js'
+import { documentProtection } from '#lib/document/protection/cipher-fence.js'
 
 /** The notice a sweep posts, which the workspace takes down when the graph closes. */
 export const PROTECTED_BOOKMARKS_NOTICE_ID = 'protected-bookmarks'

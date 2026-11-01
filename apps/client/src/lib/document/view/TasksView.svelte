@@ -23,10 +23,10 @@
         type TaskStatus,
         taskDateKey,
     } from "../backlinks";
-    import ChoiceDropdown from "$lib/components/ChoiceDropdown.svelte";
-    import type { ViewRef } from "$lib/layout";
-    import { tryGetActiveEventBus } from "$lib/surface";
-    import { workspaceService } from "$lib/workspace/workspace-services";
+    import ChoiceDropdown from "#lib/components/ChoiceDropdown.svelte";
+    import type { ViewRef } from "#lib/layout/index.js";
+    import { tryGetActiveEventBus } from "#lib/surface/index.js";
+    import { workspaceService } from "#lib/workspace/workspace-services.js";
 
     import { getActiveDocument } from "../active-document";
     import { conceptIsMissing, openConcept, openConceptAtLine } from "../open-concept";

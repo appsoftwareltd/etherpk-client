@@ -8,7 +8,7 @@
  * reserved.
  */
 
-import { parseFrontmatter } from '$lib/storage/fs/frontmatter'
+import { parseFrontmatter } from '#lib/storage/fs/frontmatter.js'
 
 import { isEmptyValue } from '../frontmatter/frontmatter-yaml'
 import { conceptKey } from '../backlinks/backlink-index'

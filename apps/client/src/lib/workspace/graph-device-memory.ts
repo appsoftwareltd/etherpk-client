@@ -13,26 +13,26 @@
  * Unsent changes are the caller's to settle first (`discardUnlessUnsent`): deleting the Local
  * Cache deletes them.
  */
-import { BACKLINKS_PREFERENCES_KEY_PREFIX } from '$lib/document/backlinks-preferences'
-import { discardIndexPool } from '$lib/document/index-pool-discard'
-import { localProtectionKey } from '$lib/document/protection/protection-store'
-import { SPELLING_LANGUAGES_KEY_PREFIX } from '$lib/document/spelling/languages'
-import { TASK_FILTER_KEY_PREFIX } from '$lib/document/task-filter-store'
-import { imageFootprintsKey } from '$lib/document/view/augmentations/image-footprints'
-import { LOCAL_LAYOUT_KEY_PREFIX } from '$lib/layout/store'
-import { READING_POSITIONS_KEY_PREFIX } from '$lib/navigation/reading-positions'
-import { RECENTS_KEY_PREFIX } from '$lib/navigation/recents'
+import { BACKLINKS_PREFERENCES_KEY_PREFIX } from '#lib/document/backlinks-preferences.js'
+import { discardIndexPool } from '#lib/document/index-pool-discard.js'
+import { localProtectionKey } from '#lib/document/protection/protection-store.js'
+import { SPELLING_LANGUAGES_KEY_PREFIX } from '#lib/document/spelling/languages.js'
+import { TASK_FILTER_KEY_PREFIX } from '#lib/document/task-filter-store.js'
+import { imageFootprintsKey } from '#lib/document/view/augmentations/image-footprints.js'
+import { LOCAL_LAYOUT_KEY_PREFIX } from '#lib/layout/store.js'
+import { READING_POSITIONS_KEY_PREFIX } from '#lib/navigation/reading-positions.js'
+import { RECENTS_KEY_PREFIX } from '#lib/navigation/recents.js'
 import {
     clearLastGraphId,
     createIdbGraphRegistry,
     forgetMirrorFolder,
     getLastGraphId,
     type GraphRecord,
-} from '$lib/storage'
-import { FOLDER_PATH_KEY_PREFIX } from '$lib/storage/fs/folder-path'
-import { deleteGraphCache } from '$lib/sync/local-cache'
-import { deleteAssetCopies } from '$lib/storage/server/asset-copies'
-import { deleteGraphRecords } from '$lib/extensions/graph-records'
+} from '#lib/storage/index.js'
+import { FOLDER_PATH_KEY_PREFIX } from '#lib/storage/fs/folder-path.js'
+import { deleteGraphCache } from '#lib/sync/local-cache.js'
+import { deleteAssetCopies } from '#lib/storage/synced/asset-copies.js'
+import { deleteGraphRecords } from '#lib/extensions/graph-records.js'
 
 import { LAST_PUBLICATION_KEY_PREFIX, SETTINGS_TAB_KEY_PREFIX } from './device-memory'
 

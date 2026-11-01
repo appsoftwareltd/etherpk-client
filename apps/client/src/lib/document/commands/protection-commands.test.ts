@@ -5,7 +5,7 @@ import {
     createContributionRegistry,
     listCommandMenuItems,
     listContextMenuItems,
-} from '$lib/surface'
+} from '#lib/surface/index.js'
 
 import {
     DOCUMENT_PROTECT,

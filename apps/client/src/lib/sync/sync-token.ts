@@ -12,7 +12,7 @@
  * is cheap and carries no key material.
  */
 
-import { fromBase64Url } from '$lib/crypto'
+import { fromBase64Url } from '#lib/crypto/index.js'
 
 /**
  * Supplies a currently-valid sync token, re-minting when the held one is near expiry.

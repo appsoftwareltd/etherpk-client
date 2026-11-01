@@ -11,10 +11,10 @@
  */
 import type { ExtensionAssets } from '@appsoftwareltd/etherpk-extension-api'
 
-import { defaultMaxImageDisplaySize } from '$lib/document/view/asset-upload'
-import { canvasToBlob, drawImageToCanvas } from '$lib/document/view/image-canvas'
-import { canvasEncoder, optimizeImage } from '$lib/document/view/image-optimize'
-import { type AssetStore, buildAssetMarkdown } from '$lib/storage/fs/asset-store'
+import { defaultMaxImageDisplaySize } from '#lib/document/view/asset-upload.js'
+import { canvasToBlob, drawImageToCanvas } from '#lib/document/view/image-canvas.js'
+import { canvasEncoder, optimizeImage } from '#lib/document/view/image-optimize.js'
+import { type AssetStore, buildAssetMarkdown } from '#lib/storage/fs/asset-store.js'
 
 /** The longest side an image is sent at, in pixels: what the large models read without scaling it again. */
 export const MAX_PREPARED_EDGE = 2048

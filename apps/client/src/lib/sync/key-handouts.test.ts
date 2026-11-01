@@ -9,7 +9,7 @@ import {
     openVault,
     sha256,
     signMessage,
-} from '$lib/crypto'
+} from '#lib/crypto/index.js'
 import { rotateGraphKey } from './epoch-rotation'
 import { acceptInvite, prepareInvite, sendInvite } from './invites'
 import { collectKeyHandouts, readKeyHandouts } from './key-handouts'

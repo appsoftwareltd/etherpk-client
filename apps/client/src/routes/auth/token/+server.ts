@@ -1,24 +1,24 @@
-import { error, json } from '@sveltejs/kit'
+import { error } from '@sveltejs/kit'
 import type { RequestHandler } from './$types'
-import { env } from '$env/dynamic/private'
-import { parseOptionalManagedClientAuthConfig } from '$lib/server/auth/config'
-import { clearManagedCookies, setManagedSession } from '$lib/server/auth/cookies'
-import { isSameOriginPost } from '$lib/server/auth/same-origin'
-import { refreshOnce } from '$lib/server/auth/refresh-once'
+import * as env from '$app/env/private'
+import { parseOptionalManagedClientAuthConfig } from '#lib/server/auth/config.js'
+import { clearManagedCookies, setManagedSession } from '#lib/server/auth/cookies.js'
+import { isSameOriginPost } from '#lib/server/auth/same-origin.js'
+import { refreshOnce } from '#lib/server/auth/refresh-once.js'
 import {
     describeOAuthFailure,
     discoverOAuthMetadata,
     isDefinitiveOAuthTokenFailure,
     refreshAccessToken,
-} from '$lib/server/auth/oauth-client'
+} from '#lib/server/auth/oauth-client.js'
 import {
     MANAGED_SESSION_COOKIE,
     decryptSessionCookie,
     heldAccessToken,
     isManagedSession,
     type ManagedSession,
-} from '$lib/server/auth/session-cookie'
-import { logger } from '$lib/server/logger'
+} from '#lib/server/auth/session-cookie.js'
+import { logger } from '#lib/server/logger.js'
 
 /** How soon the browser should try again after a transient failure, in seconds. */
 const RETRY_AFTER_SECONDS = 5
@@ -89,7 +89,7 @@ export const POST: RequestHandler = async ({ cookies, fetch, request, url }) => 
 }
 
 function tokenResponse(accessToken: string, expiresAt: number) {
-    return json({ accessToken, expiresAt }, { headers: { 'Cache-Control': 'no-store' } })
+    return Response.json({ accessToken, expiresAt }, { headers: { 'Cache-Control': 'no-store' } })
 }
 
 /**
@@ -103,14 +103,14 @@ function noSession() {
 }
 
 function unauthorized() {
-    return json({ error: 'Managed Sync sign-in is required' }, {
+    return Response.json({ error: 'Managed Sync sign-in is required' }, {
         status: 401,
         headers: { 'Cache-Control': 'no-store' },
     })
 }
 
 function unavailable() {
-    return json({ error: 'Managed Sync sign-in is temporarily unavailable' }, {
+    return Response.json({ error: 'Managed Sync sign-in is temporarily unavailable' }, {
         status: 503,
         headers: { 'Cache-Control': 'no-store', 'Retry-After': String(RETRY_AFTER_SECONDS) },
     })

@@ -9,8 +9,8 @@
 
 import { createSubscriber } from 'svelte/reactivity'
 
-import { type AppInstallState, appInstallState, promptInstall, subscribeAppInstall } from '$lib/storage/app-install'
-import { currentInstallPlatform } from '$lib/storage/install-platform'
+import { type AppInstallState, appInstallState, promptInstall, subscribeAppInstall } from '#lib/storage/app-install.js'
+import { currentInstallPlatform } from '#lib/storage/install-platform.js'
 
 const subscribe = createSubscriber((update) => subscribeAppInstall(() => update()))
 

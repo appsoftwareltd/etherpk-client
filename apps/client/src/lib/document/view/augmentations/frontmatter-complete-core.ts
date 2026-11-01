@@ -12,9 +12,9 @@
  *
  * A character first, always: a list that opened on an empty line would take the next Enter.
  */
-import { FRONTMATTER_PROPERTIES } from '$lib/document/frontmatter/identity'
-import { yamlScalar } from '$lib/document/frontmatter/frontmatter-yaml'
-import { frontmatterSpan } from '$lib/storage/fs/frontmatter-span'
+import { FRONTMATTER_PROPERTIES } from '#lib/document/frontmatter/identity.js'
+import { yamlScalar } from '#lib/document/frontmatter/frontmatter-yaml.js'
+import { frontmatterSpan } from '#lib/storage/fs/frontmatter-span.js'
 
 import type { PropertyKeyInfo, PropertyValueInfo } from '../../index-db'
 

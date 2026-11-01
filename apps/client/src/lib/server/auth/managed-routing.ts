@@ -1,4 +1,4 @@
-import { SIGN_IN_PATH } from '$lib/extensions/sign-in'
+import { SIGN_IN_PATH } from '#lib/extensions/sign-in.js'
 
 interface ManagedClientSsoRequest {
     configured: boolean

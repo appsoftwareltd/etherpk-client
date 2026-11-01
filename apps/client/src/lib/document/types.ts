@@ -7,7 +7,7 @@
  * Yjs Y.Text; the harness uses an in-memory store. All three look identical here.
  */
 
-import type { ViewRef } from '$lib/layout'
+import type { ViewRef } from '#lib/layout/index.js'
 
 export class DocumentNotFoundError extends Error {
     constructor(readonly target: string) {

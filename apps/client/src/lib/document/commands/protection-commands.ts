@@ -18,7 +18,7 @@ import {
     isDocumentTarget,
     registerCommandMenuItem,
     registerContextMenuItem,
-} from '$lib/surface'
+} from '#lib/surface/index.js'
 
 export const PROTECTION_LOCK_NOW = 'protection.lockNow'
 export const PROTECTION_UNLOCK = 'protection.unlock'

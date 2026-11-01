@@ -15,8 +15,8 @@
  * `convert-client.ts` instead, so a large graph never blocks the UI.
  */
 
-import { normaliseIndentUnit } from '$lib/document/indent-unit'
-import { containsCipherFence } from '$lib/document/protection/fence-info'
+import { normaliseIndentUnit } from '#lib/document/indent-unit.js'
+import { containsCipherFence } from '#lib/document/protection/fence-info.js'
 
 import { convertAsNotes } from './asnotes'
 import { convertEtherpk } from './etherpk'

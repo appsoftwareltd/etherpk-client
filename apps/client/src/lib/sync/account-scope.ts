@@ -1,4 +1,4 @@
-import type { ServerGraphScope } from '$lib/storage/graph-registry'
+import type { ServerGraphScope } from '#lib/storage/graph-registry.js'
 
 /**
  * The account this browser last confirmed through `/sync/me` on each Sync Server it holds a

@@ -12,7 +12,7 @@
  * Framework-free: handles are anything with `isSameEntry` and `resolve`, so the rule is unit
  * tested with stand-ins and the browser glue only gathers the known folders.
  */
-import type { ComparableHandle, FolderGraph, KnownFolder } from '$lib/storage/server/mirror-takeover'
+import type { ComparableHandle, FolderGraph, KnownFolder } from '#lib/storage/synced/mirror-takeover.js'
 
 /** Whose graph folder a chosen folder overlaps, and how. */
 export type PublishFolderOverlap = FolderGraph & { relation: 'same' | 'inside' | 'contains' }

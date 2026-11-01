@@ -2,8 +2,8 @@ import { Transaction, type TransactionSpec } from '@codemirror/state'
 import type { EditorView } from '@codemirror/view'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { getNotices, resetNotices } from '$lib/activity/notices'
-import { createCommandRegistry, createContributionRegistry, listCommandMenuItems } from '$lib/surface'
+import { getNotices, resetNotices } from '#lib/activity/notices.js'
+import { createCommandRegistry, createContributionRegistry, listCommandMenuItems } from '#lib/surface/index.js'
 
 import { setActiveEditorView } from '../active-editor'
 import type { TemplateEntry } from '../index-db'

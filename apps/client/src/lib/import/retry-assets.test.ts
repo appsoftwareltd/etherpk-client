@@ -1,12 +1,12 @@
 import 'fake-indexeddb/auto'
 import { describe, expect, it } from 'vitest'
 
-import { createGraphKeyring } from '$lib/crypto'
-import type { AssetStore, SavedAsset } from '$lib/storage/fs/asset-store'
-import { createGraphSync } from '$lib/sync/graph-sync'
-import { createLoopbackRelay } from '$lib/sync/loopback-relay'
-import { openGraphCache } from '$lib/sync/local-cache'
-import { fixedSyncToken } from '$lib/sync/sync-token'
+import { createGraphKeyring } from '#lib/crypto/index.js'
+import type { AssetStore, SavedAsset } from '#lib/storage/fs/asset-store.js'
+import { createGraphSync } from '#lib/sync/graph-sync.js'
+import { createLoopbackRelay } from '#lib/sync/loopback-relay.js'
+import { openGraphCache } from '#lib/sync/local-cache.js'
+import { fixedSyncToken } from '#lib/sync/sync-token.js'
 
 import { convertSource } from './convert'
 import { materializeToServer } from './materialize-server'

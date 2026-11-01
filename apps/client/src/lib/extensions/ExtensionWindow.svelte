@@ -8,7 +8,7 @@
      */
     import type { Attachment } from "svelte/attachments";
 
-    import FullWindow from "$lib/components/FullWindow.svelte";
+    import FullWindow from "#lib/components/FullWindow.svelte";
 
     const {
         title,

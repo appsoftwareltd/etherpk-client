@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createGraphKeyring, deriveVaultWrapKey, fingerprint, identityPublicKeys, openVault, samePublicIdentity } from '$lib/crypto'
+import { createGraphKeyring, deriveVaultWrapKey, fingerprint, identityPublicKeys, openVault, samePublicIdentity } from '#lib/crypto/index.js'
 import { rotateGraphKey } from './epoch-rotation'
 import { prepareKeyReplacement } from './key-replacement'
 import { savePin } from './pins'

@@ -10,7 +10,7 @@
  * What is returned is the vault key, never the wrap key, as Device Approval caches: it keeps
  * working after the Recovery Code is regenerated on another device.
  */
-import { deriveVaultWrapKey, EnvelopeError, fromBase64Url, openVault, RecoveryCodeError } from '$lib/crypto'
+import { deriveVaultWrapKey, EnvelopeError, fromBase64Url, openVault, RecoveryCodeError } from '#lib/crypto/index.js'
 import type { SyncApi } from './sync-api'
 
 /** The account has no vault yet, so there is nothing for a Recovery Code to open. */

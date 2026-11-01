@@ -10,7 +10,7 @@
 import { describe, expect, it } from 'vitest'
 import type { EditorView } from '@codemirror/view'
 
-import type { AssetStore, SavedAsset } from '$lib/storage/fs/asset-store'
+import type { AssetStore, SavedAsset } from '#lib/storage/fs/asset-store.js'
 
 import { uploadAndInsert } from './asset-upload'
 import type { ImageOptimizer } from './image-optimize'

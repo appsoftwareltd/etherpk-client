@@ -1,6 +1,6 @@
 /**
  * The address segments Built-in Extensions declare (ADR 0121), read from their manifests alone,
- * for the route's parameter matcher (src/params/extensionAddress.ts).
+ * for the route's parameter matcher (src/params.ts).
  *
  * The router loads the matcher before any page, so it must not load any extension's code: this
  * reads only the compiled-in packages' package.json files and the loaded extensions' manifests,

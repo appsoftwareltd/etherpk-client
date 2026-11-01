@@ -12,7 +12,7 @@
  * limit) is what GitHub's documentation and answers seen in use say, which is as far as a fake
  * can know it.
  *
- * Relative imports only: the Playwright suites load it with no `$lib` alias.
+ * Relative imports only: the Playwright suites load it with no `#lib` alias.
  */
 import { base64ToBytes, bytesToBase64 } from '../github-api'
 import { gitBlobSha } from '../git-blob-sha'

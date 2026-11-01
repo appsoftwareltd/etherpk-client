@@ -13,7 +13,7 @@ import type {
     InteractiveFence,
     InteractiveFenceContext,
     InteractiveFenceInfo,
-} from '$lib/document/view/augmentations/interactive-fence-contract'
+} from '#lib/document/view/augmentations/interactive-fence-contract.js'
 
 import type { MapBlockServices } from './map-block-services'
 

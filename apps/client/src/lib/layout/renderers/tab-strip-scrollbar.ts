@@ -19,8 +19,8 @@
 
 import type { DockviewApi } from 'dockview-core'
 
-import { setTrustedMarkup } from '$lib/security/trusted-types'
-import { iconSvg } from '$lib/surface/icons'
+import { setTrustedMarkup } from '#lib/security/trusted-types.js'
+import { iconSvg } from '#lib/surface/icons.js'
 
 import { markIcon, type TabMark } from './tab-renderer'
 

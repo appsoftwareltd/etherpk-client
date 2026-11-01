@@ -6,7 +6,7 @@
      * opens and by a page's own dialog, where the page's row has no tick (the page always takes the
      * name typed) and each scope the new name renames has one (ADR 0065, amended 2026-10-04).
      */
-    import type { RenameLinkStrategy, RenamePlan } from "$lib/storage/rename";
+    import type { RenameLinkStrategy, RenamePlan } from "#lib/storage/rename.js";
 
     import RenameImpact from "./RenameImpact.svelte";
 

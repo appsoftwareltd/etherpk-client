@@ -5,8 +5,8 @@
  * frontmatter.
  */
 
-import { frontmatterData, renderFrontmatter } from '$lib/document/frontmatter/frontmatter-yaml'
-import { frontmatterSpan } from '$lib/storage/fs/frontmatter-span'
+import { frontmatterData, renderFrontmatter } from '#lib/document/frontmatter/frontmatter-yaml.js'
+import { frontmatterSpan } from '#lib/storage/fs/frontmatter-span.js'
 
 /**
  * A source document's Frontmatter as a converter must see it. `parseFrontmatter` answers "no

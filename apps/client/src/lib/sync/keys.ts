@@ -20,8 +20,8 @@ import {
     generateRecoveryCode,
     generateSigningKeyPair,
     openVault,
-} from '$lib/crypto'
-import type { VaultProtectionAccess } from '$lib/document/protection/protection-store'
+} from '#lib/crypto/index.js'
+import type { VaultProtectionAccess } from '#lib/document/protection/protection-store.js'
 
 import type { SyncApi } from './sync-api'
 import { updateVault, writeSignedVault } from './vault-update'

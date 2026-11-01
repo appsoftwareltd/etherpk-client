@@ -1,0 +1,770 @@
+/**
+ * Cascade, Merge, delete and resurrection against the real ServerDocumentStore (ADR 0038,
+ * 0039). A server document's identity lives ONLY in the encrypted registry, so these are
+ * registry operations - which is exactly why they need pinning separately from the
+ * filesystem backend, where identity is frontmatter.
+ */
+import 'fake-indexeddb/auto'
+import { describe, expect, it, vi } from 'vitest'
+
+import { createGraphKeyring } from '#lib/crypto/index.js'
+import { createGraphSync } from '#lib/sync/graph-sync.js'
+import { createLoopbackRelay } from '#lib/sync/loopback-relay.js'
+import { fixedSyncToken } from '#lib/sync/sync-token.js'
+import { openGraphCache } from '#lib/sync/local-cache.js'
+
+import { createServerDocumentStore, type ServerDocumentStoreOptions } from './server-document-store'
+
+async function graph(id: string, options: Partial<ServerDocumentStoreOptions> = {}) {
+    const relay = createLoopbackRelay()
+    const cache = await openGraphCache(`${id}-${Math.floor(performance.now() * 1000)}`)
+    const sync = createGraphSync({
+        graphId: id,
+        rootDocId: '018f47a0-7b5d-7cc5-b5c1-f0fbcde22000',
+        keyring: createGraphKeyring(id),
+        relayUrl: 'ws://loopback/sync',
+        token: fixedSyncToken('t'),
+        cache,
+        connect: relay.connect,
+        debounceMs: 5,
+    })
+    await sync.ready()
+    const store = createServerDocumentStore(sync, { ...options })
+    return { sync, store, dispose: () => { sync.dispose(); cache.dispose() } }
+}
+
+/** Create a page and give it some content. */
+async function page(store: Awaited<ReturnType<typeof graph>>['store'], title: string, body = '') {
+    await store.createPage(title)
+    if (body) store.open(title).applyChange({ from: 0, to: 0, insert: body })
+}
+
+/**
+ * A rename that names one of a page's aliases renames that alias (ADR 0065, amended 2026-10-04).
+ * The registry resolves an alias to its page by name, so these pin that the page keeps its title.
+ */
+describe('server rename — renaming an alias', () => {
+    async function kanban(id: string) {
+        const g = await graph(id)
+        await page(g.store, 'Kanban', '- k')
+        await g.store.setAliases('Kanban', ['Board', 'Desk'])
+        await page(g.store, 'Notes', '- see [[Board]] and [[Kanban]]')
+        return g
+    }
+    const aliasesOf = (g: Awaited<ReturnType<typeof graph>>, concept: string) =>
+        g.store.listDocuments().find((entry) => entry.concept === concept)?.aliases
+
+    it('plans the alias as an alias, not as the page it resolves to', async () => {
+        const g = await kanban('g-alias-rename-plan')
+        const plan = await g.store.planRename('Board', 'Boards', 0)
+        expect(plan.aliasOf).toBe('Kanban')
+        expect(plan.direct.hasDocument).toBe(false)
+        expect(plan.aliases[0]).toEqual({ holder: 'Kanban', from: 'Board', to: 'Boards' })
+        g.dispose()
+    })
+
+    it('under the alias arm, gives the page the new name beside the old, and retitles nothing', async () => {
+        const g = await kanban('g-alias-rename-keep')
+
+        const result = await g.store.renamePage('Board', 'Boards', { strategy: 'alias' })
+
+        expect(result).toMatchObject({ concept: 'Boards', aliasOf: 'Kanban', rewritten: 0, cascaded: 0, merged: 0, aliasesRewritten: ['Kanban'] })
+        expect(g.store.listDocuments().map((entry) => entry.concept).sort()).toEqual(['Kanban', 'Notes'])
+        expect(aliasesOf(g, 'Kanban')).toEqual(['Board', 'Boards', 'Desk'])
+        // Shown in the block, as every synced document's aliases are (ADR 0061, amended 2026-10-03).
+        expect(g.store.open('Kanban').getText()).toBe('---\ntitle: Kanban\naliases:\n  - Board\n  - Boards\n  - Desk\n---\n- k')
+        expect(g.store.open('Notes').getText()).toBe('- see [[Board]] and [[Kanban]]')
+        g.dispose()
+    })
+
+    it('under the rewrite arm, swaps the alias and rewrites the links that say it, and no other', async () => {
+        const g = await kanban('g-alias-rename-rewrite')
+
+        const result = await g.store.renamePage('Board', 'Boards', { strategy: 'rewrite' })
+
+        expect(result.rewrittenDocuments).toEqual(['Notes'])
+        expect(aliasesOf(g, 'Kanban')).toEqual(['Boards', 'Desk'])
+        expect(g.store.open('Notes').getText()).toBe('- see [[Boards]] and [[Kanban]]')
+        expect(() => g.store.open('Board')).toThrow()
+        expect(g.store.listDocuments().map((entry) => entry.concept).sort()).toEqual(['Kanban', 'Notes'])
+        g.dispose()
+    })
+})
+
+describe('server rename — the cascade', () => {
+    it('renames scoped concepts at every depth', async () => {
+        const g = await graph('g-cascade')
+        await page(g.store, 'Physics')
+        await page(g.store, '[[Physics]] Quantum', '- q')
+        await page(g.store, '[[[[Physics]] Quantum]] Fields', '- f')
+        await page(g.store, 'Unrelated', '- u')
+
+        const result = await g.store.renamePage('Physics', 'Physical Science', { strategy: 'alias' })
+
+        expect(result.cascaded).toBe(2)
+        const concepts = g.store.listDocuments().map((d) => d.concept)
+        expect(concepts).toContain('[[Physical Science]] Quantum')
+        expect(concepts).toContain('[[[[Physical Science]] Quantum]] Fields')
+        expect(concepts).not.toContain('[[Physics]] Quantum')
+        // Content travels with the entry, because only the entry moved, and the old name it now
+        // answers to shows in a block (ADR 0061, amended 2026-10-03). The rename released the
+        // engines it brought current, so the read waits for the seed like any other consumer.
+        await g.store.whenReady('[[Physical Science]] Quantum')
+        expect(g.store.open('[[Physical Science]] Quantum').getText()).toBe(
+            '---\ntitle: "[[Physical Science]] Quantum"\naliases:\n  - "[[Physics]] Quantum"\n---\n- q',
+        )
+        g.dispose()
+    })
+
+    it('gives every cascaded document its old name as an alias', async () => {
+        const g = await graph('g-cascade-alias')
+        await page(g.store, 'Physics')
+        await page(g.store, '[[Physics]] Quantum')
+
+        await g.store.renamePage('Physics', 'Physical Science', { strategy: 'alias' })
+
+        const snapshot = await g.store.snapshotForIndex()
+        const scoped = snapshot.find((d) => d.concept === '[[Physical Science]] Quantum')
+        expect(scoped?.aliases).toContain('[[Physics]] Quantum')
+        g.dispose()
+    })
+
+    it('rewrites scoped references in bodies under the rewrite arm', async () => {
+        const g = await graph('g-cascade-rewrite')
+        await page(g.store, 'Physics')
+        await page(g.store, '[[Physics]] Quantum')
+        await page(g.store, 'Notes', '- see [[[[Physics]] Quantum]] and [[Physics]]')
+
+        await g.store.renamePage('Physics', 'Physical Science', { strategy: 'rewrite' })
+
+        const text = g.store.open('Notes').getText()
+        expect(text).toContain('[[[[Physical Science]] Quantum]]')
+        expect(text).not.toContain('[[Physics]]')
+        g.dispose()
+    })
+})
+
+describe('server rename — Merge on collision', () => {
+    it('joins the bodies rather than refusing', async () => {
+        const g = await graph('g-merge')
+        await page(g.store, 'Physics', '- from physics')
+        await page(g.store, 'Recipes', '- from recipes')
+
+        const result = await g.store.renamePage('Physics', 'Recipes', { strategy: 'alias' })
+
+        expect(result.merged).toBe(1)
+        const text = g.store.open('Recipes').getText()
+        expect(text).toContain('- from recipes')
+        expect(text).toContain('- from physics')
+        // One document remains under that name.
+        expect(g.store.listDocuments().filter((d) => d.concept === 'Recipes')).toHaveLength(1)
+        expect(g.store.listDocuments().map((d) => d.concept)).not.toContain('Physics')
+        g.dispose()
+    })
+})
+
+describe('server delete', () => {
+    it('drops the registry entry and deletes the stored content server-side', async () => {
+        const g = await graph('g-delete')
+        await page(g.store, 'Physics', '- content')
+        await page(g.store, 'Recipes')
+        const docId = [...g.sync.registry().entries()].find(([, entry]) => entry.title === 'Physics')?.[0]
+
+        await g.store.deleteDocument('Physics')
+
+        expect(g.store.listDocuments().map((d) => d.concept)).toEqual(['Recipes'])
+        if (!docId) throw new Error('expected Physics document id')
+        await vi.waitFor(() => expect(g.sync.docSync(docId).lifecycle()).toBe('deleted'))
+        g.dispose()
+    })
+
+    it('reports the CONCEPT on removal, so an open tab can be closed', async () => {
+        const g = await graph('g-delete-notify')
+        await page(g.store, 'Physics')
+        const removed: string[] = []
+        g.store.onDocumentRemoved((target) => removed.push(target))
+
+        await g.store.deleteDocument('Physics')
+
+        expect(removed).toEqual(['Physics'])
+        g.dispose()
+    })
+
+    it('never cascades: scoped children survive', async () => {
+        const g = await graph('g-delete-scope')
+        await page(g.store, 'Physics')
+        await page(g.store, '[[Physics]] Quantum')
+
+        await g.store.deleteDocument('Physics')
+
+        expect(g.store.listDocuments().map((d) => d.concept)).toEqual(['[[Physics]] Quantum'])
+        g.dispose()
+    })
+
+    it('is idempotent', async () => {
+        const g = await graph('g-delete-twice')
+        await page(g.store, 'Physics')
+        await g.store.deleteDocument('Physics')
+        await expect(g.store.deleteDocument('Physics')).resolves.toBeUndefined()
+        g.dispose()
+    })
+})
+
+describe('server resurrection', () => {
+    it('an edit brings back a document deleted elsewhere, as ITS original entry', async () => {
+        // ADR 0039 §4. The entry captured at open time is what returns, so a journal comes
+        // back a journal rather than a bare page.
+        const resurrected: string[] = []
+        const g = await graph('g-resurrect', { onResurrected: (c) => resurrected.push(c) })
+        const today = await g.store.createJournal('2026-07-27')
+        const doc = g.store.open(today)
+
+        await g.store.deleteDocument(today)
+        expect(g.store.listDocuments().map((d) => d.concept)).not.toContain(today)
+
+        doc.applyChange({ from: 0, to: 0, insert: 'still writing' })
+
+        expect(resurrected).toEqual([today])
+        const back = g.store.listDocuments().find((d) => d.concept === today)
+        expect(back?.kind).toBe('journal')
+        expect(g.store.open(today).getText()).toContain('still writing')
+        g.dispose()
+    })
+
+    it('merely holding a document open does NOT resurrect it', async () => {
+        const g = await graph('g-no-resurrect')
+        await page(g.store, 'Physics')
+        const doc = g.store.open('Physics')
+
+        await g.store.deleteDocument('Physics')
+
+        // Reading is not asserting it should exist.
+        void doc.getText()
+        expect(g.store.listDocuments().map((d) => d.concept)).not.toContain('Physics')
+        g.dispose()
+    })
+
+    it('an edit made straight on the Y.Text resurrects, not just one via applyChange', async () => {
+        // How the editor actually writes on this backend: DocumentView binds the Y.Text with
+        // yCollab and suppresses onChange, so `applyChange` never runs for a Server-backed
+        // document. With the check living only there, the rule passed its tests and did
+        // nothing in the app.
+        const resurrected: string[] = []
+        const g = await graph('g-resurrect-ytext', { onResurrected: (c) => resurrected.push(c) })
+        await page(g.store, 'Physics')
+        g.store.open('Physics') // the View mounting is what arms the watch
+        const ytext = g.store.getYText('Physics')!
+
+        await g.store.deleteDocument('Physics')
+        ytext.insert(0, 'still writing')
+
+        expect(resurrected).toEqual(['Physics'])
+        expect(g.store.listDocuments().map((d) => d.concept)).toContain('Physics')
+        g.dispose()
+    })
+
+    it('deleting a document you have open does not resurrect it from under you', async () => {
+        // The delete clears the Y.Text after dropping the entry, and that clear is itself a
+        // local content change to a document with no entry - the exact shape of a
+        // resurrection. Unstamped, the deleter undid its own delete a millisecond later.
+        const resurrected: string[] = []
+        const g = await graph('g-delete-self', { onResurrected: (c) => resurrected.push(c) })
+        await page(g.store, 'Physics', '- something to clear')
+        g.store.open('Physics')
+
+        await g.store.deleteDocument('Physics')
+
+        expect(resurrected).toEqual([])
+        expect(g.store.listDocuments().map((d) => d.concept)).not.toContain('Physics')
+        g.dispose()
+    })
+})
+
+void vi
+
+describe('server rename — a Protected Document never merges (ADR 0062)', () => {
+    const FENCE = '```etherpk-cipher\nAQQAAAGZaLmAAGZha2UtZW52ZWxvcGU\n```'
+
+    it('refuses a rename onto a protected page and leaves both documents untouched', async () => {
+        const g = await graph('g-merge-protected-target')
+        await page(g.store, 'Notes', '- notes')
+        await page(g.store, 'Vault', FENCE)
+
+        const plan = await g.store.planRename('Notes', 'Vault', 0)
+        expect(plan.refusal).toContain('“Vault” is a protected document')
+        await expect(g.store.renamePage('Notes', 'Vault', { strategy: 'alias' })).rejects.toThrow(/protected document/)
+
+        expect(g.store.open('Vault').getText()).toBe(FENCE)
+        expect(g.store.open('Notes').getText()).toBe('- notes')
+        expect(g.store.listDocuments().map((d) => d.concept).sort()).toEqual(['Notes', 'Vault'])
+        g.dispose()
+    })
+
+    it('refuses a protected page being renamed onto a taken name', async () => {
+        const g = await graph('g-merge-protected-source')
+        await page(g.store, 'Notes', '- notes')
+        await page(g.store, 'Vault', FENCE)
+
+        await expect(g.store.renamePage('Vault', 'Notes', { strategy: 'alias' })).rejects.toThrow(/“Vault” is a protected document/)
+
+        expect(g.store.open('Notes').getText()).toBe('- notes')
+        g.dispose()
+    })
+
+    it('still renames a protected page onto a free name', async () => {
+        const g = await graph('g-rename-protected-free')
+        await page(g.store, 'Vault', FENCE)
+
+        const result = await g.store.renamePage('Vault', 'Safe', { strategy: 'alias' })
+
+        expect(result.merged).toBe(0)
+        expect(g.store.open('Safe').getText()).toContain(FENCE)
+        g.dispose()
+    })
+})
+
+describe('server rename — Merge keeps one frontmatter block', () => {
+    it('drops the absorbed document’s block rather than pasting it into the survivor’s body', async () => {
+        const g = await graph('g-merge-frontmatter')
+        await page(g.store, 'Recipes', '---\ntitle: Recipes\n---\n- from recipes')
+        await page(g.store, 'Physics', '---\ntitle: Physics\n---\n- from physics')
+        // The registry holds identity; the write-back carries it into the block the text has.
+        await g.store.setAliases('Physics', ['Phys'])
+        expect(g.store.open('Physics').getText()).toContain('- Phys')
+
+        await g.store.renamePage('Physics', 'Recipes', { strategy: 'alias' })
+
+        const text = g.store.open('Recipes').getText()
+        expect(text).toContain('- from recipes')
+        expect(text).toContain('- from physics')
+        // One block, at the top, carrying the unioned aliases; the absorbed block is identity the
+        // registry already holds, not body text.
+        expect(text.match(/^---$/gm)).toHaveLength(2)
+        expect(text).not.toContain('title: Physics')
+        const snapshot = await g.store.snapshotForIndex()
+        const survivor = snapshot.find((d) => d.concept === 'Recipes')
+        expect(survivor?.aliases).toEqual(expect.arrayContaining(['Phys', 'Physics']))
+        g.dispose()
+    })
+})
+
+/**
+ * A [[Pageless Concept]] renames by rewriting its links (ADR 0064): no registry entry is
+ * written, and a taken name is a redirect rather than a Merge.
+ */
+describe('server rename — a pageless concept', () => {
+    it('rewrites every link at any depth and adds no registry entry', async () => {
+        const g = await graph('g-pageless')
+        await page(g.store, 'Notes', '- see [[Physcis]]')
+        await page(g.store, 'Diary', '- and [[[[Physcis]] Quantum]]')
+
+        const plan = await g.store.planRename('Physcis', 'Physics')
+        expect(plan.refusal).toBeNull()
+        expect(plan.direct).toMatchObject({ hasDocument: false, merges: false, redirects: false })
+
+        const result = await g.store.renamePage('Physcis', 'Physics', { strategy: 'rewrite' })
+
+        expect(result).toEqual({ concept: 'Physics', aliasOf: null, rewritten: 2, rewrittenDocuments: ['Notes', 'Diary'], cascaded: 0, merged: 0, aliasesRewritten: [] })
+        await g.store.whenReady('Notes')
+        await g.store.whenReady('Diary')
+        expect(g.store.open('Notes').getText()).toBe('- see [[Physics]]')
+        expect(g.store.open('Diary').getText()).toBe('- and [[[[Physics]] Quantum]]')
+        expect(g.store.listDocuments().map((d) => d.concept)).toEqual(expect.not.arrayContaining(['Physics', 'Physcis']))
+        g.dispose()
+    })
+
+    it('redirects onto an existing page without merging anything into it', async () => {
+        const g = await graph('g-pageless-redirect')
+        await page(g.store, 'Physics', '- real')
+        await page(g.store, 'Notes', '- see [[Physcis]]')
+
+        const plan = await g.store.planRename('Physcis', 'Physics')
+        expect(plan.direct).toMatchObject({ merges: false, redirects: true })
+
+        const result = await g.store.renamePage('Physcis', 'Physics', { strategy: 'rewrite' })
+
+        expect(result.merged).toBe(0)
+        expect(g.store.open('Physics').getText()).toBe('- real')
+        expect(g.store.open('Notes').getText()).toBe('- see [[Physics]]')
+        expect(g.store.listDocuments()).toHaveLength(2)
+        g.dispose()
+    })
+
+    it('carries a documented scoped concept beneath it', async () => {
+        const g = await graph('g-pageless-cascade')
+        await page(g.store, '[[Physcis]] Quantum', '- q')
+        await page(g.store, 'Notes', '- see [[[[Physcis]] Quantum]]')
+
+        const result = await g.store.renamePage('Physcis', 'Physics', { strategy: 'rewrite' })
+
+        expect(result.cascaded).toBe(1)
+        expect(g.store.listDocuments().map((d) => d.concept).sort()).toEqual(['Notes', '[[Physics]] Quantum'].sort())
+        expect(g.store.open('Notes').getText()).toBe('- see [[[[Physics]] Quantum]]')
+        g.dispose()
+    })
+})
+
+/**
+ * A rewrite is per-occurrence splices, never a whole-text replace (ADR 0066): a delete-all
+ * did not cover a concurrent keystroke, which survived and was re-seated at the start of the
+ * document (" typed- see [[New]] here").
+ */
+describe('server rename — the rewrite merges with concurrent typing', () => {
+    async function pairOn(id: string) {
+        const relay = createLoopbackRelay()
+        const keyring = createGraphKeyring(id)
+        const make = async (tag: string) => {
+            const cache = await openGraphCache(`${id}-${tag}-${Math.floor(performance.now() * 1000)}`)
+            const sync = createGraphSync({
+                graphId: id,
+                rootDocId: '018f47a0-7b5d-7cc5-b5c1-f0fbcde22000',
+                keyring,
+                relayUrl: 'ws://loopback/sync',
+                token: fixedSyncToken('t'),
+                cache,
+                connect: relay.connect,
+                debounceMs: 5,
+            })
+            await sync.ready()
+            const store = createServerDocumentStore(sync, {})
+            return { sync, store, dispose: () => { sync.dispose(); cache.dispose() } }
+        }
+        return { a: await make('a'), b: await make('b') }
+    }
+    const settle = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+    async function until(read: () => string, expected: string) {
+        for (let i = 0; i < 200; i++) {
+            try { if (read() === expected) return } catch { /* not yet */ }
+            await settle(50)
+        }
+        throw new Error(`never reached ${JSON.stringify(expected)}`)
+    }
+    /** Poll until `read()` satisfies `ok`, generous because the whole suite may be running. */
+    // Both helpers poll for up to 10 s, so the tests below set a 15 s timeout: vitest's 5 s
+    // default cut them off under full-suite load before a slow convergence could land.
+    async function poll(read: () => string, ok: (text: string) => boolean) {
+        for (let i = 0; i < 200; i++) {
+            try { if (ok(read())) return } catch { /* not yet */ }
+            await settle(50)
+        }
+    }
+
+    it('a keystroke typed elsewhere while the rewrite lands stays where it was typed', { timeout: 15_000 }, async () => {
+        const { a, b } = await pairOn('g-rewrite-concurrent')
+        await a.store.createPage('Notes')
+        a.store.open('Notes').applyChange({ from: 0, to: 0, insert: '- see [[Old]] here\n- second line' })
+        await until(() => b.store.open('Notes').getText(), '- see [[Old]] here\n- second line')
+
+        // Concurrent: neither side has seen the other's change when it makes its own.
+        const renamed = a.store.renamePage('Old', 'New', { strategy: 'rewrite' })
+        const at = '- see [[Old]] here'.length
+        b.store.open('Notes').applyChange({ from: at, to: at, insert: ' typed' })
+        await renamed
+        await until(() => a.store.open('Notes').getText(), '- see [[New]] here typed\n- second line')
+        a.dispose()
+        b.dispose()
+    })
+
+    it('a keystroke typed inside the link while the rewrite lands is not thrown to the start', { timeout: 15_000 }, async () => {
+        const { a, b } = await pairOn('g-rewrite-concurrent-inside')
+        await a.store.createPage('Notes')
+        a.store.open('Notes').applyChange({ from: 0, to: 0, insert: 'x [[Old]] y' })
+        await until(() => b.store.open('Notes').getText(), 'x [[Old]] y')
+        const renamed = a.store.renamePage('Old', 'New', { strategy: 'rewrite' })
+        b.store.open('Notes').applyChange({ from: 'x [[Old'.length, to: 'x [[Old'.length, insert: 'Z' })
+        await renamed
+        // Wait for B's character to reach A, then judge the merge.
+        await poll(() => a.store.open('Notes').getText(), (text) => text.includes('Z'))
+        const text = a.store.open('Notes').getText()
+        // The CRDT keeps the concurrent character inside the brackets, beside the replaced
+        // text - on which side is client-id ordering, and either is fine. What it must never do
+        // is put it at offset 0, which is what the whole-text replace did ("Zx [[New]] y").
+        expect(text).toMatch(/^x \[\[(ZNew|NewZ)\]\] y$/)
+        a.dispose()
+        b.dispose()
+    })
+})
+
+describe('server rename — onto another page\'s alias', () => {
+    it('merges into the alias holder under its own title', async () => {
+        const g = await graph('g-alias-merge')
+        await page(g.store, 'Vegetable Growing', '- vegetables')
+        await g.store.setAliases('Vegetable Growing', ['Growing Vegetables'])
+        await page(g.store, 'Kitchen Garden', '- kitchen')
+
+        const plan = await g.store.planRename('Kitchen Garden', 'Growing Vegetables')
+        expect(plan.direct).toMatchObject({ merges: true, into: 'Vegetable Growing' })
+
+        const result = await g.store.renamePage('Kitchen Garden', 'Growing Vegetables', { strategy: 'alias' })
+
+        expect(result.concept).toBe('Vegetable Growing')
+        expect(g.store.listDocuments().map((d) => d.concept)).toEqual(['Vegetable Growing'])
+        const text = g.store.open('Vegetable Growing').getText()
+        expect(text).toContain('- vegetables')
+        expect(text).toContain('- kitchen')
+        const snapshot = await g.store.snapshotForIndex()
+        expect(snapshot[0]?.aliases).toEqual(expect.arrayContaining(['Growing Vegetables', 'Kitchen Garden']))
+        g.dispose()
+    })
+
+    it('renaming a page onto its own alias retitles it and drops the alias', async () => {
+        const g = await graph('g-alias-self')
+        await page(g.store, 'Vegetable Growing', '- vegetables')
+        await g.store.setAliases('Vegetable Growing', ['Growing Vegetables'])
+        const result = await g.store.renamePage('Vegetable Growing', 'Growing Vegetables', { strategy: 'alias' })
+        expect(result).toMatchObject({ concept: 'Growing Vegetables', merged: 0 })
+        const snapshot = await g.store.snapshotForIndex()
+        expect(snapshot.map((d) => d.concept)).toEqual(['Growing Vegetables'])
+        expect(snapshot[0]?.aliases).toEqual(['Vegetable Growing'])
+        g.dispose()
+    })
+})
+
+/**
+ * The rewrite arm over documents that are not live in the session (ADR 0038, note of
+ * 2026-09-20). The body pass used to read each registry document's text from its engine the
+ * moment the engine was created, and an engine seeds from the Local Cache asynchronously, so a
+ * document nobody had open read as empty and its links were silently left alone. These sessions
+ * share one cache name, so the second one is a warm reopen: every document is in the cache and
+ * none is live.
+ */
+describe('server rename — the rewrite over documents that are not live', () => {
+    const ROOT_ID = '018f47a0-7b5d-7cc5-b5c1-f0fbcde29000'
+    let sequence = 0
+
+    async function session(
+        relay: ReturnType<typeof createLoopbackRelay>,
+        cacheName: string,
+        keyring: ReturnType<typeof createGraphKeyring>,
+        connect: (url: string) => ReturnType<typeof relay.connect> = relay.connect,
+    ) {
+        const cache = await openGraphCache(cacheName)
+        const sync = createGraphSync({
+            graphId: 'g1',
+            rootDocId: ROOT_ID,
+            keyring,
+            relayUrl: 'ws://loopback/sync',
+            token: fixedSyncToken('t'),
+            cache,
+            connect,
+            debounceMs: 5,
+        })
+        const store = createServerDocumentStore(sync, { readyTimeoutMs: 500 })
+        await store.scan()
+        return {
+            store,
+            sync,
+            async close() {
+                await store.dispose()
+                cache.dispose()
+            },
+        }
+    }
+
+    /** Physics, a scoped page, and Notes linking to both, acknowledged by the relay and closed. */
+    async function authored(relay: ReturnType<typeof createLoopbackRelay>, keyring: ReturnType<typeof createGraphKeyring>) {
+        const cacheName = `rename-warm-${++sequence}`
+        const a = await session(relay, cacheName, keyring)
+        await page(a.store, 'Physics', '- the subject')
+        await page(a.store, 'Notes', '- see [[Physics]] and [[[[Physics]] Quantum]]')
+        await page(a.store, 'Aside', '- nothing to do with it')
+        await a.sync.flushAll()
+        await a.sync.awaitAcked({ stallMs: 1000 })
+        await a.close()
+        return cacheName
+    }
+
+    it('rewrites a referencing document held only in the warm cache, and names it', async () => {
+        const relay = createLoopbackRelay()
+        const keyring = createGraphKeyring('g1')
+        const cacheName = await authored(relay, keyring)
+
+        const b = await session(relay, cacheName, keyring)
+        const result = await b.store.renamePage('Physics', 'Physical Science', { strategy: 'rewrite', referencing: ['Notes'] })
+
+        expect(result.rewritten).toBe(1)
+        expect(result.rewrittenDocuments).toEqual(['Notes'])
+        await b.store.whenReady('Notes')
+        expect(b.store.open('Notes').getText()).toBe('- see [[Physical Science]] and [[[[Physical Science]] Quantum]]')
+        await b.close()
+    })
+
+    it('without a referencing list, reads every document rather than trusting what is live', async () => {
+        const relay = createLoopbackRelay()
+        const keyring = createGraphKeyring('g1')
+        const cacheName = await authored(relay, keyring)
+
+        const b = await session(relay, cacheName, keyring)
+        const result = await b.store.renamePage('Physics', 'Physical Science', { strategy: 'rewrite' })
+
+        expect(result.rewrittenDocuments).toEqual(['Notes'])
+        await b.close()
+    })
+
+    it('writes the block of an alias holder held only in the warm cache (ADR 0038, amended 2026-10-03)', async () => {
+        // The index derives no link from an alias, so the referencing list never names the
+        // holder; a cold one has to be brought current, or its block would keep the old alias
+        // and a later frontmatter proposal would turn the registry back.
+        const relay = createLoopbackRelay()
+        const keyring = createGraphKeyring('g1')
+        const cacheName = `rename-warm-alias-${++sequence}`
+        const a = await session(relay, cacheName, keyring)
+        await page(a.store, 'Garden', '- the scope')
+        await page(a.store, 'P', '---\ntitle: P\n---\n- p')
+        await a.store.setAliases('P', ['Planning [[Garden]]'])
+        await page(a.store, 'Diary', '- see [[Planning [[Garden]]]]')
+        await a.sync.flushAll()
+        await a.sync.awaitAcked({ stallMs: 1000 })
+        await a.close()
+
+        const b = await session(relay, cacheName, keyring)
+        const result = await b.store.renamePage('Garden', 'Gardens', { strategy: 'rewrite', referencing: ['Diary'] })
+
+        expect(result.aliasesRewritten).toEqual(['P'])
+        await b.store.whenReady('P')
+        expect(b.store.open('P').getText()).toContain('Planning [[Gardens]]')
+        expect(b.store.open('P').getText()).not.toContain('Planning [[Garden]]\n')
+        await b.close()
+    })
+
+    it('refuses the whole rename when a referencing document cannot be confirmed', async () => {
+        const relay = createLoopbackRelay()
+        const keyring = createGraphKeyring('g1')
+        const cacheName = await authored(relay, keyring)
+
+        // Another device moves Notes on, so the warm row is behind the relay.
+        const other = await session(relay, `rename-other-${++sequence}`, keyring)
+        const notes = other.store.open('Notes')
+        const release = other.store.retainDocument('Notes')
+        await vi.waitFor(() => expect(notes.getText()).toContain('[[Physics]]'), { timeout: 2000 })
+        notes.applyChange({ from: 0, to: 0, insert: '- also [[Physics]] again\n' })
+        await other.sync.flushAll()
+        await other.sync.awaitAcked({ stallMs: 1000 })
+        release()
+        await other.close()
+
+        // A relay that answers watermarks but never the document's catch-up: the store can tell
+        // Notes is behind and cannot bring it current, so it must not rewrite the stale row.
+        const b = await session(relay, cacheName, keyring, (url) => {
+            const socket = relay.connect(url)
+            const send = socket.send.bind(socket)
+            socket.send = (data) => {
+                const message = JSON.parse(data) as { type: string; docId?: string }
+                if (message.type === 'catchup' && message.docId !== ROOT_ID) return
+                send(data)
+            }
+            return socket
+        })
+        await expect(
+            b.store.renamePage('Physics', 'Physical Science', { strategy: 'rewrite', referencing: ['Notes'], timeoutMs: 200 }),
+        ).rejects.toMatchObject({ name: 'RenameUnconfirmedError', concepts: ['Notes'] })
+        // Nothing moved: not the page, not the links.
+        expect(b.store.listDocuments().map((d) => d.concept)).toContain('Physics')
+        await b.close()
+    })
+})
+
+describe('server rename - engine holds', () => {
+    // graph-sync counts one hold per document per readyDocs, taken when it is called and released
+    // by the caller's retireDocs whether or not the batch's reads succeed. A rename whose
+    // materialise failed part way must release exactly what it asked for, once each: a batch
+    // released twice, or one never asked for, frees an engine another walk still holds.
+    it('releases each batch it asked for exactly once when a batch fails', async () => {
+        const g = await graph('g-holds')
+        await page(g.store, 'Physics', '- p')
+        for (let i = 0; i < 120; i++) {
+            g.sync.registry().set(`00000000-0000-4000-8000-${i.toString(16).padStart(12, '0')}`, { kind: 'page', title: `Filler ${i}` })
+        }
+        const asked: string[] = []
+        const retired: string[] = []
+        let batches = 0
+        const failing = {
+            ...g.sync,
+            async readyDocs(ids: readonly string[]) {
+                batches += 1
+                asked.push(...ids)
+                // The real call takes the holds; its reads then fail, as a cached row that will
+                // not load does.
+                await g.sync.readyDocs(ids)
+                if (batches === 2) throw new Error('the second batch failed')
+            },
+            retireDocs(ids: readonly string[]) {
+                retired.push(...ids)
+                g.sync.retireDocs(ids)
+            },
+        }
+        const store = createServerDocumentStore(failing, {})
+        await store.scan()
+        batches = 0
+
+        await expect(store.renamePage('Physics', 'Physical Science', { strategy: 'rewrite' })).rejects.toThrow('the second batch failed')
+
+        expect(batches).toBe(2)
+        expect([...retired].sort()).toEqual([...asked].sort())
+        expect(new Set(retired).size).toBe(retired.length)
+        g.dispose()
+    })
+})
+
+/**
+ * An alias scoped by the renamed concept follows it as a scoped title does (ADR 0038, amended
+ * 2026-10-03). The registry is the authority for aliases here, so it is the registry that moves.
+ */
+describe('server rename — scoped aliases', () => {
+    const aliasesOf = async (g: Awaited<ReturnType<typeof graph>>, concept: string) =>
+        (await g.store.snapshotForIndex()).find((d) => d.concept === concept)?.aliases
+
+    it('rewrites the alias with the links under the rewrite arm, so the rewritten link resolves', async () => {
+        const g = await graph('g-alias-rewrite')
+        await page(g.store, 'Garden')
+        await page(g.store, 'P', '- p')
+        await g.store.setAliases('P', ['Planning [[Garden]]'])
+        await page(g.store, 'Diary', '- see [[Planning [[Garden]]]]')
+
+        const result = await g.store.renamePage('Garden', 'Gardens', { strategy: 'rewrite' })
+
+        expect(result.aliasesRewritten).toEqual(['P'])
+        expect(await aliasesOf(g, 'P')).toEqual(['Planning [[Gardens]]'])
+        expect(g.store.open('Diary').getText()).toContain('[[Planning [[Gardens]]]]')
+        expect(() => g.store.open('Planning [[Gardens]]')).not.toThrow()
+        g.dispose()
+    })
+
+    it('keeps the old alias and adds the new form under the alias arm', async () => {
+        const g = await graph('g-alias-alias')
+        await page(g.store, 'Garden')
+        await page(g.store, 'P', '- p')
+        await g.store.setAliases('P', ['Planning [[Garden]]'])
+
+        await g.store.renamePage('Garden', 'Gardens', { strategy: 'alias' })
+
+        expect(await aliasesOf(g, 'P')).toEqual(['Planning [[Garden]]', 'Planning [[Gardens]]'])
+        g.dispose()
+    })
+
+    it('rewrites the alias of a page the cascade retitles', async () => {
+        const g = await graph('g-alias-cascade')
+        await page(g.store, 'Garden')
+        await page(g.store, 'Tools [[Garden]]')
+        await g.store.setAliases('Tools [[Garden]]', ['[[Garden]] tools'])
+
+        const result = await g.store.renamePage('Garden', 'Gardens', { strategy: 'rewrite' })
+
+        expect(result.aliasesRewritten).toEqual(['Tools [[Gardens]]'])
+        expect(await aliasesOf(g, 'Tools [[Gardens]]')).toEqual(['[[Gardens]] tools'])
+        g.dispose()
+    })
+
+    it('refuses when another document answers to the new form, and writes nothing', async () => {
+        const g = await graph('g-alias-taken')
+        await page(g.store, 'Garden')
+        await page(g.store, 'P')
+        await g.store.setAliases('P', ['Planning [[Garden]]'])
+        await page(g.store, 'Planning [[Gardens]]')
+
+        await expect(g.store.renamePage('Garden', 'Gardens', { strategy: 'rewrite' })).rejects.toThrow('already a name of “Planning [[Gardens]]”')
+        expect(await aliasesOf(g, 'P')).toEqual(['Planning [[Garden]]'])
+        expect(g.store.listDocuments().map((d) => d.concept)).toContain('Garden')
+        g.dispose()
+    })
+})

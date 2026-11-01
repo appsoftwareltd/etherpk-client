@@ -7,7 +7,7 @@
      * The buttons are plain HTML, not the editor's imperative cluster: that one exists to keep
      * CodeMirror out of its own widgets' events, a problem a Svelte surface does not have.
      */
-    import { iconSvg } from "$lib/surface/icons";
+    import { iconSvg } from "#lib/surface/icons.js";
 
     import type { InlineAction } from "../inline-action";
 

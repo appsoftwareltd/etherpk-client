@@ -15,9 +15,9 @@
  *   rather than every rule the keymap holds.
  */
 
-import type { Keybinding } from '$lib/surface'
+import type { Keybinding } from '#lib/surface/index.js'
 
-import { findKeysAvailable } from '$lib/document/find/find-events'
+import { findKeysAvailable } from '#lib/document/find/find-events.js'
 
 /** The parts of the focused element {@link focusLeavesChordFree} reads. */
 interface FocusedElement {

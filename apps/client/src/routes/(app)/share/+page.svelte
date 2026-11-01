@@ -27,17 +27,17 @@
     import { onMount } from "svelte";
 
     import { afterNavigate, goto } from "$app/navigation";
-    import { isDemoGraph } from "$lib/demo/demo-graph";
-    import { MAX_QUICK_NOTE_LENGTH } from "$lib/document/quick-notes";
-    import { landShareDirectly, routeShare, type ShareRoute } from "$lib/document/share-landing";
+    import { isDemoGraph } from "#lib/demo/demo-graph.js";
+    import { MAX_QUICK_NOTE_LENGTH } from "#lib/document/quick-notes.js";
+    import { landShareDirectly, routeShare, type ShareRoute } from "#lib/document/share-landing.js";
     import {
         composeSharedNote,
         orderShareTargets,
         peekPendingShare,
         shareNoteText,
         stashPendingShare,
-    } from "$lib/document/share-target";
-    import { createIdbGraphRegistry, getLastGraphId, type GraphRecord } from "$lib/storage";
+    } from "#lib/document/share-target.js";
+    import { createIdbGraphRegistry, getLastGraphId, type GraphRecord } from "#lib/storage/index.js";
 
     import type { PageData } from "./$types";
 
@@ -159,6 +159,8 @@
      * new params, and the component stays mounted.
      */
     afterNavigate((navigation) => {
+        // A shallow entry is not a page change (it runs the navigation hooks since SvelteKit 3).
+        if (navigation.shallow && navigation.type === "goto") return;
         const arrived = arrivedShare();
         if (arrived && navigation.type === "enter") {
             // Hydration: the server already rendered this share, and the box may hold an edit
@@ -314,7 +316,7 @@
         if (!current()) return;
         landing = { graph, state: "opening" };
         stashPendingShare({ graphId: graph.id, text: noteText, createdAt: arrived.createdAt, truncated: arrived.truncated });
-        void goto(`/g/${graph.id}`, { replaceState: true });
+        void goto(`/g/${graph.id}`, { replace: true });
     }
 
     async function copy() {

@@ -1,12 +1,12 @@
 import 'fake-indexeddb/auto'
 import { describe, expect, it, vi } from 'vitest'
 
-import { createGraphKeyring } from '$lib/crypto'
+import { createGraphKeyring } from '#lib/crypto/index.js'
 
 import { createGraphSync } from './graph-sync'
 import { openGraphCache } from './local-cache'
 import { createLoopbackRelay } from './loopback-relay'
-import { addBookmark, resetBookmarks, setBookmarks } from '$lib/document/bookmarks/bookmarks'
+import { addBookmark, resetBookmarks, setBookmarks } from '#lib/document/bookmarks/bookmarks.js'
 
 import {
     activeMemberKeys,

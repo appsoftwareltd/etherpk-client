@@ -10,8 +10,8 @@
  * Pure over text. Malformed YAML reads as no frontmatter, as everywhere else (`parseFrontmatter`).
  */
 
-import type { IndexIncludeFact } from '$lib/document/index-db'
-import { parseFrontmatter } from '$lib/storage/fs/frontmatter'
+import type { IndexIncludeFact } from '#lib/document/index-db.js'
+import { parseFrontmatter } from '#lib/storage/fs/frontmatter.js'
 import { isEmptyValue } from '../frontmatter/frontmatter-yaml'
 
 import type { Publication, PublicationKind, PublicationSelection, PublishDocument, PublishIssue } from './types'

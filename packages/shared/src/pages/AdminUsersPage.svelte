@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { browser } from "$app/environment";
+    import { browser } from "$app/env";
     import Dialog from "../components/Dialog.svelte";
     import type { AdminAuthClient } from "../auth/page-clients";
     import { PASSWORD_HELP, WEAK_PASSWORD_CODE } from "../auth/password-strength";
@@ -667,6 +667,8 @@
 <!-- ══════════════════════════════════════════════════════════════════ -->
 
 {#if banModalUser}
+    <!-- A const, so the snippets below see it narrowed to a user. -->
+    {@const user = banModalUser}
     <Dialog
         open={true}
         title="Ban user"
@@ -677,7 +679,7 @@
     >
         {#snippet body()}
             <p class="text-sm text-gray-600 dark:text-gray-400">
-                Ban <strong>{banModalUser.name || banModalUser.email}</strong> from their account. They are signed
+                Ban <strong>{user.name || user.email}</strong> from their account. They are signed
                 out everywhere, and every device and access token they use for Sync stops syncing until the ban
                 ends or you lift it.
             </p>
@@ -706,6 +708,8 @@
 {/if}
 
 {#if resetPasswordUser}
+    <!-- A const, so the snippets below see it narrowed to a user. -->
+    {@const user = resetPasswordUser}
     <Dialog
         open={true}
         title="Reset password"
@@ -716,7 +720,7 @@
     >
         {#snippet body()}
             <p class="text-sm text-gray-600 dark:text-gray-400">
-                Set a new password for <strong>{resetPasswordUser.name || resetPasswordUser.email}</strong>. This signs them out everywhere and revokes their sync access, as their own password reset would.
+                Set a new password for <strong>{user.name || user.email}</strong>. This signs them out everywhere and revokes their sync access, as their own password reset would.
             </p>
             <div>
                 <label for="new-password" class="mb-1.5 block text-sm font-medium text-gray-500 dark:text-gray-400">New password</label>
@@ -746,6 +750,8 @@
 {/if}
 
 {#if resetTwoFactorUser}
+    <!-- A const, so the snippets below see it narrowed to a user. -->
+    {@const user = resetTwoFactorUser}
     <Dialog
         open={true}
         title="Reset two-factor authentication"
@@ -756,7 +762,7 @@
     >
         {#snippet body()}
             <p class="text-sm text-gray-600 dark:text-gray-400">
-                This turns off two-factor authentication for <strong>{resetTwoFactorUser.name || resetTwoFactorUser.email}</strong>.
+                This turns off two-factor authentication for <strong>{user.name || user.email}</strong>.
                 Their authenticator app and backup codes stop working, and they sign in with their password alone
                 until they turn it on again from their Account page. Do this only once you are sure the request comes
                 from them.
@@ -772,6 +778,8 @@
 {/if}
 
 {#if deleteModalUser}
+    <!-- A const, so the snippets below see it narrowed to a user. -->
+    {@const user = deleteModalUser}
     <Dialog
         open={true}
         title="Delete user"
@@ -782,24 +790,24 @@
     >
         {#snippet body()}
             <p class="text-sm text-gray-600 dark:text-gray-400">
-                This permanently deletes the account of <strong>{deleteModalUser.name || deleteModalUser.email}</strong>.
+                This permanently deletes the account of <strong>{user.name || user.email}</strong>.
                 They are signed out everywhere, and every device and access token they use for Sync stops syncing
                 at once. Graphs they own stay on the Sync Server until an administrator deletes them. This cannot be
                 undone.
             </p>
             <div>
                 <label for="delete-confirm" class="mb-1.5 block text-sm font-medium text-gray-500 dark:text-gray-400">
-                    Type <code class="rounded bg-gray-100 dark:bg-white/10 px-1 py-0.5 text-sm font-mono">{deleteModalUser.email}</code> to confirm
+                    Type <code class="rounded bg-gray-100 dark:bg-white/10 px-1 py-0.5 text-sm font-mono">{user.email}</code> to confirm
                 </label>
-                <input id="delete-confirm" type="text" bind:value={deleteConfirmEmail} placeholder={deleteModalUser.email} autocomplete="off" aria-describedby="delete-confirm-hint" class="block w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-gray-950 dark:text-gray-100 focus:border-red-500 focus:outline-none focus:ring-1 focus:ring-red-500" />
-                {#if deleteConfirmEmail !== deleteModalUser.email}
+                <input id="delete-confirm" type="text" bind:value={deleteConfirmEmail} placeholder={user.email} autocomplete="off" aria-describedby="delete-confirm-hint" class="block w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-white/10 px-3 py-2 text-sm text-gray-950 dark:text-gray-100 focus:border-red-500 focus:outline-none focus:ring-1 focus:ring-red-500" />
+                {#if deleteConfirmEmail !== user.email}
                     <p id="delete-confirm-hint" class="mt-1.5 text-sm text-gray-500 dark:text-gray-400">Delete user stays unavailable until this matches exactly.</p>
                 {/if}
             </div>
         {/snippet}
         {#snippet footer()}
             <button type="button" onclick={() => (deleteModalUser = null)} class="rounded-lg px-3 py-1.5 text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300">Cancel</button>
-            <button type="submit" disabled={deleting || deleteConfirmEmail !== deleteModalUser.email} data-testid="admin-delete-confirm" class="min-w-32 rounded-lg bg-red-600 px-4 py-1.5 text-center text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed">
+            <button type="submit" disabled={deleting || deleteConfirmEmail !== user.email} data-testid="admin-delete-confirm" class="min-w-32 rounded-lg bg-red-600 px-4 py-1.5 text-center text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed">
                 {deleting ? "Deleting\u2026" : "Delete user"}
             </button>
         {/snippet}

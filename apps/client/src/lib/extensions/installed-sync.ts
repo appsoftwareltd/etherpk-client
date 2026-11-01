@@ -19,7 +19,7 @@
  * `planInstalled` decides, purely, so every rule is tested in Node. `createInstalledSync` reads the
  * list, carries the plan out and says what it could not do.
  */
-import type { PersonSettings } from '$lib/person-settings/person-settings'
+import type { PersonSettings } from '#lib/person-settings/person-settings.js'
 
 import { compareVersions } from './catalogue'
 import type { ExtensionDirectory } from './directory'

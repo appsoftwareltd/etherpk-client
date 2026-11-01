@@ -10,7 +10,7 @@
  * otherwise replace the person's bookmarks with an empty list.
  */
 
-import { type Bookmark, type BookmarksPersist, sanitizeBookmarks } from '$lib/document/bookmarks/bookmarks'
+import { type Bookmark, type BookmarksPersist, sanitizeBookmarks } from '#lib/document/bookmarks/bookmarks.js'
 
 import type { DirectoryAdapter } from './directory-adapter'
 

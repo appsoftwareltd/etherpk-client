@@ -27,7 +27,7 @@
     import { type Snippet, untrack } from "svelte";
     import { createSubscriber } from "svelte/reactivity";
 
-    import { tryGetActiveContributionRegistry } from "$lib/surface";
+    import { tryGetActiveContributionRegistry } from "#lib/surface/index.js";
 
     import { extensionOfFence, isExtensionFenceInfo } from "../extension-fence";
     import { appIsDark } from "./app-theme.svelte";

@@ -21,7 +21,7 @@
  */
 import { Document, isMap, isScalar, isSeq, parseDocument, Scalar, visit, type ToStringOptions, YAMLMap } from 'yaml'
 
-import { frontmatterSpan } from '$lib/storage/fs/frontmatter-span'
+import { frontmatterSpan } from '#lib/storage/fs/frontmatter-span.js'
 
 /** The `yaml` serialiser options that make up the EtherPK style. */
 const STYLE: ToStringOptions = {

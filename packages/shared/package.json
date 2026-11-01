@@ -73,13 +73,13 @@
             "types": "./src/logging/better-auth-logger.ts",
             "default": "./src/logging/better-auth-logger.ts"
         },
-        "./server/request-path": {
-            "types": "./src/server/request-path.ts",
-            "default": "./src/server/request-path.ts"
-        },
         "./server/client-address": {
             "types": "./src/server/client-address.ts",
             "default": "./src/server/client-address.ts"
+        },
+        "./server/configured-origin": {
+            "types": "./src/server/configured-origin.ts",
+            "default": "./src/server/configured-origin.ts"
         },
         "./server/retired-cookies": {
             "types": "./src/server/retired-cookies.ts",
@@ -230,7 +230,7 @@
         "uuidv7": "^1.2.1"
     },
     "peerDependencies": {
-        "@sveltejs/kit": "^2.70.3",
+        "@sveltejs/kit": "^3.0.0",
         "svelte": "^5.57.1"
     },
     "devDependencies": {

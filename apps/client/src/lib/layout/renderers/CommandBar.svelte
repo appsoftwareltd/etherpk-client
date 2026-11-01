@@ -21,16 +21,16 @@
     import { onMount } from 'svelte'
     import { createSubscriber } from 'svelte/reactivity'
 
-    import { editorContext, registerCommandBar } from '$lib/document'
+    import { editorContext, registerCommandBar } from '#lib/document/index.js'
     import {
         COMMAND_BAR_KIND,
         type CommandBarItem,
         listCommandBarItems,
         tryGetActiveCommandRegistry,
         tryGetActiveContributionRegistry,
-    } from '$lib/surface'
+    } from '#lib/surface/index.js'
 
-    import { iconSvg } from '$lib/surface/icons'
+    import { iconSvg } from '#lib/surface/icons.js'
 
     import HScrollbar from './HScrollbar.svelte'
 

@@ -7,13 +7,15 @@
  * functions: every setting the source names must appear in the example (set, or commented out as
  * optional), and every key in the example must still be read by something.
  *
- * The source scan is lexical, not a parser. It takes two shapes as setting names:
+ * The source scan is lexical, not a parser. It takes three shapes as setting names:
  *
- *   - a property read on `env`, `environment` or `process.env` (`env.LOG_LEVEL`);
+ *   - a property read on `env`, `environment`, `privateEnv`, `publicEnv` or `process.env`
+ *     (`env.LOG_LEVEL`);
+ *   - a name imported from `$app/env/private` or `$app/env/public` (`import { LOG_LEVEL } from …`);
  *   - a quoted upper-snake string with at least one underscore (`'CORPORATE_ISSUER'`), which is how
  *     every reader helper in the apps names its variable (`getEnv('X')`, `required(environment, 'X')`).
  *
- * Both shapes need an underscore, so `'GET'` or `env.DEV` never count. The example file accepts
+ * All three need an underscore, so `'GET'` or `env.DEV` never count. The example file accepts
  * any upper-case key, because the Node adapter reads single-word settings such as `PORT`.
  *
  * The second shape also matches constants that are not settings (error codes such as
@@ -26,8 +28,10 @@ import { extname, join } from 'node:path'
 
 const NAME = '[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+'
 const ASSIGNMENT = /^#?\s*([A-Z][A-Z0-9_]*)=/
-const PROPERTY_READ = new RegExp(`\\b(?:process\\.env|environment|env)\\.([A-Z][A-Z0-9_]*)\\b`, 'g')
+const PROPERTY_READ = new RegExp(`\\b(?:process\\.env|environment|env|privateEnv|publicEnv)\\.([A-Z][A-Z0-9_]*)\\b`, 'g')
 const QUOTED_NAME = new RegExp(`['"\`](${NAME})['"\`]`, 'g')
+const ENV_MODULE_IMPORT = /import\s*\{([^}]*)\}\s*from\s*['"]\$app\/env\/(?:private|public)['"]/g
+const IMPORTED_NAME = new RegExp(`^\\s*(${NAME})\\b`)
 const SOURCE_EXTENSIONS = new Set(['.ts', '.js', '.mjs', '.svelte'])
 
 /**
@@ -43,13 +47,17 @@ export function parseEnvExampleKeys(text: string): Set<string> {
     return keys
 }
 
-/** Removes block comments and whole-line `//` comments; a trailing comment after code is kept. */
+/**
+ * Removes whole-line `//` comments, then block comments; a trailing comment after code is kept.
+ * Line comments go first, so a `/**` inside one (`// Handle /api/auth/** requests`) does not open a
+ * block comment that hides the code after it.
+ */
 function stripComments(source: string): string {
     return source
-        .replace(/\/\*[\s\S]*?\*\//g, '')
         .split('\n')
         .filter((line) => !line.trimStart().startsWith('//'))
         .join('\n')
+        .replace(/\/\*[\s\S]*?\*\//g, '')
 }
 
 /** Setting names one source file reads, by the two shapes described at the top of this module. */
@@ -60,6 +68,12 @@ export function environmentNamesInSource(source: string): Set<string> {
         // A single word (`env.DEV`) is a flag Vite provides, not a setting. The Node adapter's
         // single-word settings (`PORT`, `HOST`) are listed by each app in `readOutsideSource`.
         if (match[1].includes('_')) names.add(match[1])
+    }
+    for (const match of code.matchAll(ENV_MODULE_IMPORT)) {
+        for (const specifier of match[1].split(',')) {
+            const imported = IMPORTED_NAME.exec(specifier)
+            if (imported) names.add(imported[1])
+        }
     }
     for (const match of code.matchAll(QUOTED_NAME)) names.add(match[1])
     return names
@@ -131,4 +145,23 @@ export function compareEnvExample(input: {
         .sort()
     const listedButKeptOut = [...input.exampleKeys].filter((key) => keptOut.has(key)).sort()
     return { missingFromExample, unreadInExample, listedButKeptOut }
+}
+
+/**
+ * Settings the source reads that the app's `src/env.ts` does not declare. SvelteKit 3 serves only
+ * declared settings through `$app/env/private` and `$app/env/public`, so a read of an undeclared one
+ * finds nothing, whatever the environment holds.
+ */
+export function undeclaredSettings(input: {
+    sourceNames: ReadonlySet<string>
+    declared: Iterable<string>
+    /** Upper-snake constants in the source that are not settings, as for `compareEnvExample`. */
+    notEnvironment: Readonly<Record<string, string>>
+    /** Settings read by something other than SvelteKit's modules (the Node adapter, `process.env`). */
+    readOutsideSvelteKit: Readonly<Record<string, string>>
+}): string[] {
+    const declared = new Set(input.declared)
+    return [...input.sourceNames]
+        .filter((name) => !declared.has(name) && !(name in input.notEnvironment) && !(name in input.readOutsideSvelteKit))
+        .sort()
 }

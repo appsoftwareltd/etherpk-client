@@ -16,7 +16,7 @@
  *   machine already knows which deadline is nearer, and a `setInterval` polling every second
  *   would keep a backgrounded tab awake for no reason.
  */
-import { browser } from '$app/environment'
+import { browser } from '$app/env'
 
 import { type LockSettings, type LockStatus } from './lock-machine'
 import { ProtectionService, type ProtectionServiceDeps, type RecordProblem } from './protection-service'

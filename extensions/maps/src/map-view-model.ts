@@ -7,10 +7,10 @@
  * Every item is known by its place in the answer (its key), which is also the number the map's
  * engine draws it under, so a click on the map and a row in the list name the same item.
  */
-import type { MapItemHit, MapItemsResult } from '$lib/document/index-map-items'
-import type { IndexUpdate } from '$lib/document/index-worker/client'
-import type { MapLine } from '$lib/document/map-text'
-import type { DocumentKind } from '$lib/storage'
+import type { MapItemHit, MapItemsResult } from '#lib/document/index-map-items.js'
+import type { IndexUpdate } from '#lib/document/index-worker/client.js'
+import type { MapLine } from '#lib/document/map-text.js'
+import type { DocumentKind } from '#lib/storage/index.js'
 
 import type { EngineItem } from './map-engine'
 

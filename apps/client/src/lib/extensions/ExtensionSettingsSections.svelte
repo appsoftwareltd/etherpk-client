@@ -13,8 +13,8 @@
     import type { Attachment } from "svelte/attachments";
     import { createSubscriber } from "svelte/reactivity";
 
-    import { showNotice } from "$lib/activity/notices";
-    import { personSettings } from "$lib/person-settings/person-settings";
+    import { showNotice } from "#lib/activity/notices.js";
+    import { personSettings } from "#lib/person-settings/person-settings.js";
 
     import { builtInCatalogue } from "./built-ins";
     import type { ExtensionHost } from "./host";

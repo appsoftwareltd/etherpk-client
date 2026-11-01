@@ -19,7 +19,7 @@
  *   share, as cancelling any share sheet does.
  */
 
-import type { GraphRecord } from '$lib/storage/graph-registry'
+import type { GraphRecord } from '#lib/storage/graph-registry.js'
 
 import { MARKDOWN_LINK, linkGroups } from './markdown-link-target'
 import { MAX_QUICK_NOTE_LENGTH } from './quick-notes'

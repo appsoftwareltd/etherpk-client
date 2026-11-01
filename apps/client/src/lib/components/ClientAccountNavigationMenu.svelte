@@ -2,9 +2,9 @@
     import { onMount } from "svelte";
 
     import { page } from "$app/state";
-    import { env } from "$env/dynamic/public";
-    import { currentReturnPath, managedSignInHref, syncConnectHref } from "$lib/auth/sign-in-links";
-    import { ManagedTokenError } from "$lib/auth/managed-token";
+    import * as env from "$app/env/public";
+    import { currentReturnPath, managedSignInHref, syncConnectHref } from "#lib/auth/sign-in-links.js";
+    import { ManagedTokenError } from "#lib/auth/managed-token.js";
     import {
         DevicePasscodeLockedError,
         SYNC_CONNECTIONS_CHANGED_EVENT,
@@ -23,12 +23,12 @@
         STANDALONE_DEVICE_DISCONNECT_HELP,
         syncApiFor,
         type ResolvedSyncConnection,
-    } from "$lib/sync";
-    import { announceAccountSignal, onAccountSignal } from "$lib/sync/account-signal";
-    import { endManagedSessionInThisBrowser } from "$lib/sync/managed-sign-out";
+    } from "#lib/sync/index.js";
+    import { announceAccountSignal, onAccountSignal } from "#lib/sync/account-signal.js";
+    import { endManagedSessionInThisBrowser } from "#lib/sync/managed-sign-out.js";
     import { buildAccountMenu, dismissibleMenu, truncateNavigationEmail, type SyncAccountSummary } from "@appsoftwareltd/etherpk-shared";
     import AccountMenuLinks from "@appsoftwareltd/etherpk-shared/account-menu-links";
-    import InstallEntry from "$lib/install/InstallEntry.svelte";
+    import InstallEntry from "#lib/install/InstallEntry.svelte";
 
     /** `locked`: the server's access token waits for this device's passcode (ADR 0129). */
     type AccountState = "checking" | "authenticated" | "signed-out" | "unavailable" | "disconnected" | "locked";

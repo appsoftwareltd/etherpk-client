@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { DARK_INK, LIGHT_INK } from '$lib/contrast-ink'
+import { DARK_INK, LIGHT_INK } from '#lib/contrast-ink.js'
 
 import { toolbarAccentStyle } from './toolbar-accent'
 

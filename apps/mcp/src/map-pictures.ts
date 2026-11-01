@@ -16,7 +16,7 @@ import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import type { MapPicture } from '$lib/document/publish/publish'
+import type { MapPicture } from '#lib/document/publish/publish.js'
 import { DEFAULT_MAP_STYLES } from '@appsoftwareltd/etherpk-extension-maps/picture'
 
 import { launchChromium } from './diagrams'

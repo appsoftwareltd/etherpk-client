@@ -1,6 +1,6 @@
 <script lang="ts" module>
-    import type { GraphRecord } from "$lib/storage";
-    import type { PendingInvite } from "$lib/sync/sync-api";
+    import type { GraphRecord } from "#lib/storage/index.js";
+    import type { PendingInvite } from "#lib/sync/sync-api.js";
     import type { SyncedGraphView, SyncedMember } from "./graph-picker-helpers";
 
     /** What a server's group asks the Graphs page to do; the page owns every action. */

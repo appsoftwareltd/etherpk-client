@@ -1,8 +1,8 @@
 import sqlite3InitModule from '@sqlite.org/sqlite-wasm'
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest'
 
-import { createSchema, type IndexDoc, ingest, type SqlDb, tasksMatching, tasksMatchingCount, type TaskPriorityFilter, type TaskStatus } from '$lib/document/index-db'
-import { wrapOo1Db } from '$lib/document/index-db-sqlite'
+import { createSchema, type IndexDoc, ingest, type SqlDb, tasksMatching, tasksMatchingCount, type TaskPriorityFilter, type TaskStatus } from '#lib/document/index-db.js'
+import { wrapOo1Db } from '#lib/document/index-db-sqlite.js'
 import type { BoardSnapshot } from './board-model'
 import { readBoard, type TaskSource } from './board-queries'
 

@@ -9,7 +9,7 @@
  * defaults apply, which is what most workspaces use.
  */
 
-import { stripJsonComments } from '$lib/storage/fs/theme-files'
+import { stripJsonComments } from '#lib/storage/fs/theme-files.js'
 
 import { findFile, isJunkPath, readText } from './source'
 import type { ReportEntry, SourceFile } from './types'

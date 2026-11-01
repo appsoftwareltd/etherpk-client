@@ -20,7 +20,7 @@
  * person removes it (ADR 0036 §4, ADR 0160).
  */
 
-import { reachedWithin } from '$lib/reached-within'
+import { reachedWithin } from '#lib/reached-within.js'
 
 import type { LineAnchor } from './anchor'
 

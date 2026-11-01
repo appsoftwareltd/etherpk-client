@@ -29,7 +29,7 @@ import {
     toBase64Url,
     utf8,
     type ProtectionKdfParams,
-} from '$lib/crypto'
+} from '#lib/crypto/index.js'
 import { VaultLockedError } from './vault-locked'
 
 /** Where the passcode's record lives: the stretch's settings and a check value, no secret. */

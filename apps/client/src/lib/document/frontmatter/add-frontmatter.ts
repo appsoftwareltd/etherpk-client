@@ -7,7 +7,7 @@
  * {@link withAddedFrontmatter} returns, through the editor when the document is open in one (one
  * undo step) and through the store otherwise.
  */
-import { frontmatterSpan } from '$lib/storage/fs/frontmatter-span'
+import { frontmatterSpan } from '#lib/storage/fs/frontmatter-span.js'
 
 import { editFrontmatter, frontmatterData, frontmatterParseProblem } from './frontmatter-yaml'
 import { FRONTMATTER_PROPERTIES } from './identity'

@@ -13,8 +13,8 @@
  */
 import type { ConvertedAsset } from './types'
 import type { SkippedAsset } from './materialize-server'
-import type { AssetStore } from '$lib/storage/fs/asset-store'
-import type { GraphSync } from '$lib/sync/graph-sync'
+import type { AssetStore } from '#lib/storage/fs/asset-store.js'
+import type { GraphSync } from '#lib/sync/graph-sync.js'
 
 export interface RetryOutcome {
     uploaded: string[]

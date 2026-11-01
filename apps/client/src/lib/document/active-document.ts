@@ -13,7 +13,7 @@
  * DocumentView with no graph): it simply records the value and skips the emit.
  */
 
-import { tryGetActiveEventBus } from '$lib/surface'
+import { tryGetActiveEventBus } from '#lib/surface/index.js'
 
 let current: string | null = null
 

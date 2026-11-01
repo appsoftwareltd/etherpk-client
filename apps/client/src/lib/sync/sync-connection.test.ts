@@ -21,7 +21,7 @@ import {
 // stretched, so the device's one passcode stretches with a hash here.
 vi.mock('./device-passcode', async (importOriginal) => {
     const actual = await importOriginal<typeof import('./device-passcode')>()
-    const { sha256, utf8 } = await import('$lib/crypto')
+    const { sha256, utf8 } = await import('#lib/crypto/index.js')
     return {
         ...actual,
         devicePasscode: actual.createDevicePasscode({

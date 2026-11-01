@@ -13,7 +13,7 @@
  * check does not already backstop.
  */
 
-import { NOTICE_AUTO_DISMISS_MS } from '$lib/notice-dismissal'
+import { NOTICE_AUTO_DISMISS_MS } from '#lib/notice-dismissal.js'
 
 import type { Activity, ActivityAction, ActivityDismissal, ActivityPhase, ActivityProgress, ActivityState } from './types'
 
@@ -55,7 +55,7 @@ function snapshot(): Activity[] {
 /**
  * The default kind of a finished toast: one that only reports goes by itself; one that asks
  * something of the user - a failure to read, a weaker claim to notice, a follow-on to take -
- * stays until they close it. See `$lib/notice-dismissal`.
+ * stays until they close it. See `#lib/notice-dismissal.js`.
  */
 function defaultDismissal(entry: Entry): ActivityDismissal {
     return entry.state === 'done' && !entry.action ? 'auto' : 'manual'

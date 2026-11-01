@@ -7,9 +7,9 @@
  * listing needs no connection for it either. "Unnamed" therefore means the root document has
  * no name at all, or the relay could not be reached to ask.
  */
-import { fromBase64Url, type GraphKeyring, type KeyVault } from '$lib/crypto'
-import { openGraphName } from '$lib/sync/graph-name-envelope'
-import type { ServerGraphRecord } from '$lib/sync/sync-api'
+import { fromBase64Url, type GraphKeyring, type KeyVault } from '#lib/crypto/index.js'
+import { openGraphName } from '#lib/sync/graph-name-envelope.js'
+import type { ServerGraphRecord } from '#lib/sync/sync-api.js'
 
 export const NO_KEY_LABEL = '(no key on this account yet - open it in EtherPK first)'
 export const NO_NAME_LABEL = '(unnamed)'

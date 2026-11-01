@@ -8,7 +8,7 @@
      *   there should do the install, not explain it.
      * - `menu` and `account` show whenever the browser can install and the app is not installed.
      */
-    import { canInstall } from "$lib/storage/install-platform";
+    import { canInstall } from "#lib/storage/install-platform.js";
     import { installPlatform, installState, startInstall } from "./install-state.svelte";
 
     let { placement }: { placement: "header" | "menu" | "account" } = $props();

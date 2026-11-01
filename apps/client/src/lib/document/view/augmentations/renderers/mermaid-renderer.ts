@@ -12,7 +12,7 @@
  * (ADR 0022) and only offers the clear.
  */
 
-import { sanitizedSvgMarkup, setTrustedMarkup, type TrustedMarkup } from '$lib/security/trusted-types'
+import { sanitizedSvgMarkup, setTrustedMarkup, type TrustedMarkup } from '#lib/security/trusted-types.js'
 import type { AugmentationRenderer } from './contract'
 
 let mermaidModule: Promise<typeof import('mermaid').default> | null = null

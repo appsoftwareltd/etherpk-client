@@ -12,7 +12,7 @@ import { describe, expect, it } from 'vitest'
 import { convertSource } from './convert'
 import { importMarkerFields, phasesFor, serverImportOutcome, type ServerImportRequest } from './import-activity'
 import { materializeToFilesystem } from './materialize-filesystem'
-import { createMemoryDirectoryAdapter } from '$lib/storage/fs/memory-adapter'
+import { createMemoryDirectoryAdapter } from '#lib/storage/fs/memory-adapter.js'
 import type { ImportFormat, ImportProgress, SourceFile } from './types'
 
 function src(path: string, content: string | Uint8Array<ArrayBuffer>): SourceFile {

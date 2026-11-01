@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
-import { createAddressBook } from '$lib/extensions/addresses'
+import { createAddressBook } from '#lib/extensions/addresses.js'
 
-import { EXTENSION_ADDRESS_KIND } from '$lib/extensions/addresses'
+import { EXTENSION_ADDRESS_KIND } from '#lib/extensions/addresses.js'
 
 import { assetUrl, documentUrl, encodeConceptPath, graphUrl, themeUrl, viewUrl } from './document-url'
 import { setExtensionAddresses } from './extension-addresses'

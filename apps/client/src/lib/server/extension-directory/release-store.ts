@@ -30,8 +30,8 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { type DirectoryExtension, type DirectoryListing, type DirectoryRelease, findRelease, parseDirectoryListing } from '$lib/extensions/directory-format'
-import { logger } from '$lib/server/logger'
+import { type DirectoryExtension, type DirectoryListing, type DirectoryRelease, findRelease, parseDirectoryListing } from '#lib/extensions/directory-format.js'
+import { logger } from '#lib/server/logger.js'
 
 import { readPackageTarball } from './tar'
 

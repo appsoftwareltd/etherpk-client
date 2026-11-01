@@ -21,7 +21,7 @@ import {
     listCommandBarItems,
     listCommandMenuItems,
 } from '../../surface'
-import { getNotices, resetNotices } from '$lib/activity/notices'
+import { getNotices, resetNotices } from '#lib/activity/notices.js'
 import { clientIconNames } from '../../surface/icons'
 
 import { isSpellCheckEnabled, setSpellCheckEnabled } from '../spell-check-preference'

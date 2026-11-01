@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import type { LayoutModel, PaneModel, ViewInstance } from '$lib/layout'
+import type { LayoutModel, PaneModel, ViewInstance } from '#lib/layout/index.js'
 
 import { protectedDocumentPanels } from './lock-now'
 

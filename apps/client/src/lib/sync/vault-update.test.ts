@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { IDENTITY_PROOF_REFUSED_CODE } from '@appsoftwareltd/etherpk-shared'
-import { createGraphKeyring, encryptVault, fromBase64Url, generateSigningKeyPair, openVault, randomBytes, samePublicIdentity } from '$lib/crypto'
+import { createGraphKeyring, encryptVault, fromBase64Url, generateSigningKeyPair, openVault, randomBytes, samePublicIdentity } from '#lib/crypto/index.js'
 import { NoVaultError } from './recovery-unlock'
 import { SyncApiError } from './sync-api'
 import { createFakeSyncServer, newVault, seedAccount, seedLegacyAccount } from './testing/fake-sync-server'

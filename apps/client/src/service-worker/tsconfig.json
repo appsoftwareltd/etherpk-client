@@ -1,0 +1,12 @@
+{
+    "extends": "$app/tsconfig/service-worker",
+    "compilerOptions": {
+        "strict": true,
+        // SvelteKit's generated `$app/types` imports src/params.ts, and the extension matcher there
+        // reaches the extension API's types, which name DOM elements. The worker code itself uses
+        // only `self` from `$app/service-worker`, typed as a ServiceWorkerGlobalScope.
+        "lib": ["ESNext", "WebWorker", "DOM"]
+    },
+    // The same import chain reaches the loaded-extensions virtual module, declared beside it.
+    "include": [".", "../lib/extensions/virtual-loaded-extensions.d.ts"]
+}

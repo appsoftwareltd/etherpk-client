@@ -8,7 +8,7 @@ import { EditorState } from '@codemirror/state'
 import type { EditorView } from '@codemirror/view'
 import { describe, expect, it, vi } from 'vitest'
 
-import type { AssetStore, SavedAsset } from '$lib/storage/fs/asset-store'
+import type { AssetStore, SavedAsset } from '#lib/storage/fs/asset-store.js'
 
 import { RICH_PASTE_USER_EVENT } from './editor-history'
 import {

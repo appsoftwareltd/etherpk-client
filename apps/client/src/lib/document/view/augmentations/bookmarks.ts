@@ -32,7 +32,7 @@ import {
     type ViewUpdate,
 } from '@codemirror/view'
 
-import { showNotice } from '$lib/activity/notices'
+import { showNotice } from '#lib/activity/notices.js'
 
 import { captureAnchor, normaliseLine, type LineAnchor } from '../../bookmarks/anchor'
 import {

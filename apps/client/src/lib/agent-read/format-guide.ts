@@ -8,7 +8,7 @@
  * section is about files on a disk (folders, file names, editing safely), which a model reading the
  * graph through the Client has no use for, and every turn would pay for.
  */
-import sectionMarkdown from '$lib/storage/fs/agents-md-section.md?raw'
+import sectionMarkdown from '#lib/storage/fs/agents-md-section.md?raw'
 
 /** The heading of the part that is kept. */
 const SYNTAX_HEADING = '### Document syntax'

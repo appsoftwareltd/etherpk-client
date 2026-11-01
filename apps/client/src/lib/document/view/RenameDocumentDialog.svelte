@@ -24,7 +24,7 @@
      * closes the dialog.
      */
     import Modal from "@appsoftwareltd/etherpk-shared/dialog";
-    import type { RenameLinkStrategy, RenamePlan } from "$lib/storage/rename";
+    import type { RenameLinkStrategy, RenamePlan } from "#lib/storage/rename.js";
 
     import { type LinkRenameChoice, type LinkRenameRow, previewPlans, type RunStatus } from "./link-renames";
     import RenameRow from "./RenameRow.svelte";

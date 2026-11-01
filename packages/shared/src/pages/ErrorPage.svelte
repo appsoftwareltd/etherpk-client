@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { page } from "$app/stores";
+    import { page } from "$app/state";
     import ErrorCard from "../components/ErrorCard.svelte";
 
     /** The deployment's home, where the logo and Go to home both lead. */
@@ -7,16 +7,16 @@
 </script>
 
 <svelte:head>
-    <title>Error {$page.status} - EtherPK</title>
+    <title>Error {page.status} - EtherPK</title>
 </svelte:head>
 
-<ErrorCard brandHref={homeHref} themePreference={$page.data.themePreference ?? "system"}>
-    <p class="text-4xl font-bold text-gray-950 tabular-nums text-center">{$page.status}</p>
+<ErrorCard brandHref={homeHref} themePreference={page.data.themePreference ?? "system"}>
+    <p class="text-4xl font-bold text-gray-950 tabular-nums text-center">{page.status}</p>
     <h1 class="mt-3 text-lg font-semibold text-gray-950 text-center">
-        {$page.status === 404 ? "Page not found" : $page.status === 403 ? "Access denied" : "Something went wrong"}
+        {page.status === 404 ? "Page not found" : page.status === 403 ? "Access denied" : "Something went wrong"}
     </h1>
     <p class="mt-2 text-sm text-gray-500 text-center">
-        {$page.error?.message ?? "An unexpected error occurred. Please try again."}
+        {page.error?.message ?? "An unexpected error occurred. Please try again."}
     </p>
 
     <div class="mt-6 flex flex-col gap-2 sm:flex-row sm:justify-center">

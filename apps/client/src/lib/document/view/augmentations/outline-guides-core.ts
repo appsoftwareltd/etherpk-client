@@ -3,7 +3,7 @@
  * so it is unit-testable in isolation.
  */
 
-import { frontmatterLines } from '$lib/storage/fs/frontmatter-span'
+import { frontmatterLines } from '#lib/storage/fs/frontmatter-span.js'
 
 import { type FencedBlockRange, fencedBlocks } from '../../fenced-code'
 import type { OutlineLine } from '../../indent-unit'

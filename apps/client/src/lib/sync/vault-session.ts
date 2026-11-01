@@ -14,7 +14,7 @@
  * or lost together. This module is the one place both are stored, which is what a platform with a
  * secure key store of its own would replace.
  */
-import { fromBase64Url, toBase64Url } from '$lib/crypto'
+import { fromBase64Url, toBase64Url } from '#lib/crypto/index.js'
 import { readSyncAccount } from './account-scope'
 import { DevicePasscodeLockedError, devicePasscode } from './device-passcode'
 import { openVaultWithRecoveryCode } from './recovery-unlock'

@@ -14,8 +14,8 @@
 
 import { ChangeSet, type EditorState, type Transaction } from '@codemirror/state'
 
-import { frontmatterSpan } from '$lib/storage/fs/frontmatter-span'
-import { conceptKey } from '$lib/storage/fs/identity'
+import { frontmatterSpan } from '#lib/storage/fs/frontmatter-span.js'
+import { conceptKey } from '#lib/storage/fs/identity.js'
 
 import { type FrontmatterIdentity, frontmatterIdentity } from '../frontmatter/identity'
 

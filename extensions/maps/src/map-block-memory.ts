@@ -14,7 +14,7 @@
  * The editor reads the memory for the room it keeps for each map, and the map for whether it shows
  * folded, so the memory tells its listeners of every change and the two never disagree.
  */
-import type { InteractiveFenceInfo } from '$lib/document/view/augmentations/interactive-fence-contract'
+import type { InteractiveFenceInfo } from '#lib/document/view/augmentations/interactive-fence-contract.js'
 
 const PREFIX = 'etherpk-map-folded'
 

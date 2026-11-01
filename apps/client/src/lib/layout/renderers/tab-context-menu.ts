@@ -13,7 +13,7 @@
  * and dockview's own menu is suppressed either way so there is one menu, styled like the rest.
  */
 
-import { openContextMenu, type ContextMenuTarget } from '$lib/surface'
+import { openContextMenu, type ContextMenuTarget } from '#lib/surface/index.js'
 
 const LONG_PRESS_MS = 500
 const LONG_PRESS_SLOP_PX = 10

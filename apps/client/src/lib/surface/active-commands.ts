@@ -5,7 +5,7 @@
  */
 
 import type { CommandRegistry } from './command-registry'
-import { setWorkspaceService, workspaceService } from '$lib/workspace/workspace-services'
+import { setWorkspaceService, workspaceService } from '#lib/workspace/workspace-services.js'
 
 export function setActiveCommandRegistry(registry: CommandRegistry | null): void {
     setWorkspaceService('commands', registry ?? undefined)

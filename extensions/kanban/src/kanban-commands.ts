@@ -11,12 +11,12 @@
  */
 import type { ExtensionContext, MenuTarget } from '@appsoftwareltd/etherpk-extension-api'
 
-import { getActiveEditorView } from '$lib/document/active-editor'
-import type { TaskStatus } from '$lib/document/backlinks'
-import { CARET_CONCEPT_DETAIL, caretConcepts, forConceptsDetail } from '$lib/document/caret-concepts'
-import { showConceptPicker } from '$lib/document/view/augmentations/concept-picker'
-import { editorDocument } from '$lib/document/view/editor-document'
-import { parseViewKey } from '$lib/layout/view-ref'
+import { getActiveEditorView } from '#lib/document/active-editor.js'
+import type { TaskStatus } from '#lib/document/backlinks/index.js'
+import { CARET_CONCEPT_DETAIL, caretConcepts, forConceptsDetail } from '#lib/document/caret-concepts.js'
+import { showConceptPicker } from '#lib/document/view/augmentations/concept-picker.js'
+import { editorDocument } from '#lib/document/view/editor-document.js'
+import { parseViewKey } from '#lib/layout/view-ref.js'
 
 import { boardActions } from './board-actions'
 import { BOARD_LANES, BOARD_SECTIONS, KANBAN_VIEW_KIND, KANBAN_WHOLE } from './board-model'

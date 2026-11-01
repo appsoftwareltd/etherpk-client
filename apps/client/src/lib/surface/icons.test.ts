@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { sanitizedIconMarkup, trustedIconMarkup } from '$lib/security/trusted-types'
+import { sanitizedIconMarkup, trustedIconMarkup } from '#lib/security/trusted-types.js'
 import { iconSvg, registerIcons } from './icons'
 
 // Spies on the two ways an icon becomes trusted markup, each still doing its real work.
-vi.mock('$lib/security/trusted-types', async (importOriginal) => {
-    const actual = await importOriginal<typeof import('$lib/security/trusted-types')>()
+vi.mock('#lib/security/trusted-types.js', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('#lib/security/trusted-types.js')>()
     return {
         ...actual,
         trustedIconMarkup: vi.fn(actual.trustedIconMarkup),

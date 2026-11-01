@@ -10,7 +10,7 @@
  * an export and most zip tools produce, is stripped the way the folder picker's own name is.
  */
 
-import { blobSource, readZipDirectory, readZipEntry, zipEntryDataRange, type RandomAccessSource, type ZipEntry } from '$lib/zip/zip-reader'
+import { blobSource, readZipDirectory, readZipEntry, zipEntryDataRange, type RandomAccessSource, type ZipEntry } from '#lib/zip/zip-reader.js'
 
 import { describeSource, isJunkPath, type SourceSummary } from './source'
 import type { SourceFile } from './types'

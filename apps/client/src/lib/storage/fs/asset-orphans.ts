@@ -12,12 +12,12 @@
  *
  * Pure over the {@link DirectoryAdapter} seam, Node-testable over the in-memory fake. The
  * reference test and the protected-document rule are shared with the synced graph's scanner
- * (storage/server/asset-orphans.ts), so the two backends cannot disagree about either.
+ * (storage/synced/asset-orphans.ts), so the two backends cannot disagree about either.
  */
 
-import type { AssetByteReadiness } from '$lib/document/asset-delete'
-import { containsCipherFence } from '$lib/document/protection/fence-info'
-import type { ProtectedTextReader } from '$lib/document/protection/protected-text-reader'
+import type { AssetByteReadiness } from '#lib/document/asset-delete.js'
+import { containsCipherFence } from '#lib/document/protection/fence-info.js'
+import type { ProtectedTextReader } from '#lib/document/protection/protected-text-reader.js'
 
 import { assetNameFromRef } from './asset-store'
 import type { DirectoryAdapter, Subdir } from './directory-adapter'
@@ -36,7 +36,7 @@ export interface OrphanScan {
     scannedDocuments: number
     /**
      * TEMPORARY (ADR 0053): what the ride-along dedup-token backfill did on a synced graph.
-     * Absent on a filesystem graph. Delete with `storage/server/asset-dedup-backfill.ts`.
+     * Absent on a filesystem graph. Delete with `storage/synced/asset-dedup-backfill.ts`.
      */
     dedupBackfill?: { tokened: number; failed: number }
     /**
@@ -112,7 +112,7 @@ export function orphanScanOf(
 
 /**
  * The backend-agnostic asset operations the app performs on a whole [[Knowledge Graph]]: the
- * workspace builds it over this module (filesystem) or over storage/server/asset-orphans
+ * workspace builds it over this module (filesystem) or over storage/synced/asset-orphans
  * (synced). Absent when assets are unavailable (the dev gate, or a dialog opened outside an
  * open graph).
  *

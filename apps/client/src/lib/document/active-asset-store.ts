@@ -6,8 +6,8 @@
  * the one generation-tagged workspace service object.
  */
 
-import type { AssetStore } from '$lib/storage/fs/asset-store'
-import { setWorkspaceService, workspaceService } from '$lib/workspace/workspace-services'
+import type { AssetStore } from '#lib/storage/fs/asset-store.js'
+import { setWorkspaceService, workspaceService } from '#lib/workspace/workspace-services.js'
 
 export function setActiveAssetStore(store: AssetStore | null): void {
     setWorkspaceService('assets', store ?? undefined)

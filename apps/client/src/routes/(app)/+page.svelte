@@ -20,8 +20,8 @@
     import { onMount } from 'svelte'
 
     import { goto } from '$app/navigation'
-    import { todayISO } from '$lib/document/calendar/month-grid-core'
-    import { createIdbGraphRegistry, getLastGraphId, resolveGraphTarget, rootDestination } from '$lib/storage'
+    import { todayISO } from '#lib/document/calendar/month-grid-core.js'
+    import { createIdbGraphRegistry, getLastGraphId, resolveGraphTarget, rootDestination } from '#lib/storage/index.js'
 
     let message = $state('')
 
@@ -33,7 +33,7 @@
                 if (cancelled) return
                 const target = resolveGraphTarget(graphs, getLastGraphId())
                 // Today is read at the moment of the launch: an installed app is opened days apart.
-                await goto(rootDestination(target, window.location.search, () => todayISO()), { replaceState: true })
+                await goto(rootDestination(target, window.location.search, () => todayISO()), { replace: true })
             } catch (err) {
                 message = (err as Error).message
             }

@@ -24,8 +24,8 @@
      * One thing differs from the editor on purpose: the picture is capped to a thumbnail height,
      * because a reference is a quotation rather than the document. See {@link THUMBNAIL_MAX_HEIGHT}.
      */
-    import { AssetUnavailableError, assetNameFromRef, displayNameForRef } from "$lib/storage/fs/asset-store";
-    import { attachContextMenu } from "$lib/surface";
+    import { AssetUnavailableError, assetNameFromRef, displayNameForRef } from "#lib/storage/fs/asset-store.js";
+    import { attachContextMenu } from "#lib/surface/index.js";
 
     import { tryGetActiveAssetStore } from "../active-asset-store";
     import AssetActions from "./AssetActions.svelte";

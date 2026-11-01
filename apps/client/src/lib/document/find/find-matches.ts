@@ -16,7 +16,7 @@
 import { SearchQuery } from '@codemirror/search'
 import { CharCategory, type EditorState, findClusterBreak, type Text } from '@codemirror/state'
 
-import { frontmatterLines } from '$lib/storage/fs/frontmatter-span'
+import { frontmatterLines } from '#lib/storage/fs/frontmatter-span.js'
 
 import { extensionFences } from '../extension-fence'
 import { protectedRanges } from '../view/augmentations/protected-fence-core'

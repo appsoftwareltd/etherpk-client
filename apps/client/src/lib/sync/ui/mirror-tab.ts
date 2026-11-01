@@ -16,7 +16,7 @@
  * here for a decision, so what they hold, what they could not confirm and why they stopped are
  * reported here rather than being discovered in the folder later.
  */
-import type { MirrorStatus } from '$lib/storage/server/local-mirror'
+import type { MirrorStatus } from '#lib/storage/synced/local-mirror.js'
 
 export interface ExportEstimate {
     documents: number

@@ -27,7 +27,7 @@ import {
     isVerticalTab,
     registerContextMenuItem,
     tabPanelIdOf,
-} from '$lib/surface'
+} from '#lib/surface/index.js'
 
 import { parseViewKey } from './view-ref'
 import type { LayoutController, PaneModel, Region } from './types'

@@ -24,7 +24,7 @@
  * checked against the other.
  */
 
-import { sanitizedIconMarkup, trustedIconMarkup, type TrustedMarkup } from '$lib/security/trusted-types'
+import { sanitizedIconMarkup, trustedIconMarkup, type TrustedMarkup } from '#lib/security/trusted-types.js'
 
 /** Inner markup for each named icon; `default` is the fallback for an unknown name. */
 export const ICON_PATHS: Record<string, string> = {

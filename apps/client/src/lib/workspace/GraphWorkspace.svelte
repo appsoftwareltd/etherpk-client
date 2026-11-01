@@ -17,16 +17,12 @@
      */
     import { type Component, onMount, tick, untrack } from "svelte";
 
-    import { dev } from "$app/environment";
-    import {
-        afterNavigate,
-        goto,
-        pushState,
-        replaceState,
-    } from "$app/navigation";
+    import { dev } from "$app/env";
+    import { afterNavigate, goto } from "$app/navigation";
+    import { queueHistoryWrite } from "#lib/navigation/history-writes.js";
     import { page } from "$app/state";
-    import { env } from "$env/dynamic/public";
-    import { currentReturnPath } from "$lib/auth/sign-in-links";
+    import * as env from "$app/env/public";
+    import { currentReturnPath } from "#lib/auth/sign-in-links.js";
     import {
         capturePosition,
         clearPendingRestores,
@@ -38,7 +34,7 @@
         restorePosition,
         type HistoryEngine,
         type ReadingPositionStore,
-    } from "$lib/navigation";
+    } from "#lib/navigation/index.js";
     import {
         LAYOUT_VERSION,
         type LayoutController,
@@ -56,19 +52,19 @@
         sameView,
         viewKey,
         watchMobileLayout,
-    } from "$lib/layout";
-    import MobilePresenter from "$lib/layout/renderers/MobilePresenter.svelte";
+    } from "#lib/layout/index.js";
+    import MobilePresenter from "#lib/layout/renderers/MobilePresenter.svelte";
     import {
         refreshTabIndicators,
         type TabMark,
-    } from "$lib/layout/renderers/tab-renderer";
+    } from "#lib/layout/renderers/tab-renderer.js";
     // Type only: the adapter itself is `import()`ed in the browser (see mountPresenter).
-    import type { DockviewRenderer } from "$lib/layout/renderers/dockview-adapter";
-    import { QUICK_NOTES_VIEW, TASKS_VIEW } from "$lib/layout/serialization";
+    import type { DockviewRenderer } from "#lib/layout/renderers/dockview-adapter.js";
+    import { QUICK_NOTES_VIEW, TASKS_VIEW } from "#lib/layout/serialization.js";
     import { revealResident, toggleResidentSidebar, type Resident } from "./residents";
     import { forgetWorkspaceCompanions } from "./workspace-reset";
 
-    import type { MobileRenderer } from "$lib/layout/renderers/mobile-renderer.svelte";
+    import type { MobileRenderer } from "#lib/layout/renderers/mobile-renderer.svelte.js";
     import {
         BacklinksView,
         DocumentView,
@@ -90,47 +86,47 @@
         registerEditorCommands,
         registerLinkCommands,
         setActiveDocument,
-    } from "$lib/document";
-    import { todayISO } from "$lib/document/calendar/month-grid-core";
-    import { canonicalConceptName, openConcept, openConceptAtDocumentLine, openConceptAtLine, openConceptToTheRight, openViewInPaneOf } from "$lib/document/open-concept";
-    import AllDocumentsView from "$lib/document/view/AllDocumentsView.svelte";
-    import GraphSidebarView from "$lib/document/view/GraphSidebarView.svelte";
-    import RenameDocumentDialog from "$lib/document/view/RenameDocumentDialog.svelte";
-    import LinkRenameDialog from "$lib/document/view/LinkRenameDialog.svelte";
-    import { type LinkRenameChoice, type LinkRenameRow, previewPlans, runInOrder, type RunStatus, scopeRenamesInTypedName, usesScopeBeyondPage } from "$lib/document/view/link-renames";
-    import SearchModal from "$lib/document/view/SearchModal.svelte";
-    import TasksView from "$lib/document/view/TasksView.svelte";
-    import { registerTaskReferenceCommands } from "$lib/document/commands/task-reference-commands";
-    import { everyIndexedTask, parseTaskReference, resolveTaskReference, type TaskReference } from "$lib/document/task-reference";
-    import { taskDateKey } from "$lib/document/index-db";
-    import QuickNotesView from "$lib/document/view/QuickNotesView.svelte";
+    } from "#lib/document/index.js";
+    import { todayISO } from "#lib/document/calendar/month-grid-core.js";
+    import { canonicalConceptName, openConcept, openConceptAtDocumentLine, openConceptAtLine, openConceptToTheRight, openViewInPaneOf } from "#lib/document/open-concept.js";
+    import AllDocumentsView from "#lib/document/view/AllDocumentsView.svelte";
+    import GraphSidebarView from "#lib/document/view/GraphSidebarView.svelte";
+    import RenameDocumentDialog from "#lib/document/view/RenameDocumentDialog.svelte";
+    import LinkRenameDialog from "#lib/document/view/LinkRenameDialog.svelte";
+    import { type LinkRenameChoice, type LinkRenameRow, previewPlans, runInOrder, type RunStatus, scopeRenamesInTypedName, usesScopeBeyondPage } from "#lib/document/view/link-renames.js";
+    import SearchModal from "#lib/document/view/SearchModal.svelte";
+    import TasksView from "#lib/document/view/TasksView.svelte";
+    import { registerTaskReferenceCommands } from "#lib/document/commands/task-reference-commands.js";
+    import { everyIndexedTask, parseTaskReference, resolveTaskReference, type TaskReference } from "#lib/document/task-reference.js";
+    import { taskDateKey } from "#lib/document/index-db.js";
+    import QuickNotesView from "#lib/document/view/QuickNotesView.svelte";
     import {
         createTaskFilterStore,
         type TaskFilterStore,
-    } from "$lib/document/task-filter-store";
+    } from "#lib/document/task-filter-store.js";
     import {
         createBacklinksPreferencesStore,
         type BacklinksPreferencesStore,
-    } from "$lib/document/backlinks-preferences";
+    } from "#lib/document/backlinks-preferences.js";
     import {
         createSearchController,
         type SearchController,
-    } from "$lib/document/search";
-    import { registerDocumentCommands } from "$lib/document/commands/document-commands";
-    import { registerBacklinksCommands } from "$lib/document/commands/backlinks-commands";
-    import { registerJournalCommands } from "$lib/document/commands/journal-commands";
-    import { registerTemplateCommands } from "$lib/document/commands/template-commands";
-    import { templateBodyOf } from "$lib/document/templates/template-page";
-    import { getActiveGraphSettings } from "$lib/document/active-graph-settings";
-    import { journalTemplateAfterRename } from "$lib/document/templates/journal-template";
+    } from "#lib/document/search.js";
+    import { registerDocumentCommands } from "#lib/document/commands/document-commands.js";
+    import { registerBacklinksCommands } from "#lib/document/commands/backlinks-commands.js";
+    import { registerJournalCommands } from "#lib/document/commands/journal-commands.js";
+    import { registerTemplateCommands } from "#lib/document/commands/template-commands.js";
+    import { templateBodyOf } from "#lib/document/templates/template-page.js";
+    import { getActiveGraphSettings } from "#lib/document/active-graph-settings.js";
+    import { journalTemplateAfterRename } from "#lib/document/templates/journal-template.js";
     import {
         copyFailureMessage,
         writeClipboardText,
-    } from "$lib/document/commands/clipboard-text";
+    } from "#lib/document/commands/clipboard-text.js";
     import {
         QUICK_NOTES_OPEN,
         registerQuickNotesCommands,
-    } from "$lib/document/commands/quick-notes-commands";
+    } from "#lib/document/commands/quick-notes-commands.js";
     import {
         addQuickNote,
         adoptQuickNotes,
@@ -138,42 +134,42 @@
         requestQuickNoteFocus,
         resetQuickNotes,
         setQuickNotes,
-    } from "$lib/document/quick-notes";
-    import { peekPendingShare, takePendingShare } from "$lib/document/share-target";
+    } from "#lib/document/quick-notes.js";
+    import { peekPendingShare, takePendingShare } from "#lib/document/share-target.js";
     import {
         registerSpellingCommands,
         SPELLING_OPEN_SETTINGS,
-    } from "$lib/document/commands/spelling-commands";
-    import { setActiveSpellService } from "$lib/document/spelling/active-spell-service";
-    import { forgetImageFootprintsIn } from "$lib/document/view/augmentations/image-embed";
+    } from "#lib/document/commands/spelling-commands.js";
+    import { setActiveSpellService } from "#lib/document/spelling/active-spell-service.js";
+    import { forgetImageFootprintsIn } from "#lib/document/view/augmentations/image-embed.js";
     import {
         browserImageFootprints,
         releaseActiveImageFootprints,
         setActiveImageFootprints,
-    } from "$lib/document/view/augmentations/image-footprints";
+    } from "#lib/document/view/augmentations/image-footprints.js";
     import {
         adoptGraphDictionary,
         setGraphDictionary,
         subscribeGraphDictionary,
         unionDictionary,
-    } from "$lib/document/spelling/graph-dictionary";
+    } from "#lib/document/spelling/graph-dictionary.js";
     import {
         dictionaryBaseUrl,
         getBrowserSpellService,
-    } from "$lib/document/spelling/spell-service-host";
-    import { bindSpellingNotices } from "$lib/document/spelling/spelling-notices";
-    import { dictionaryHostLabel } from "$lib/document/spelling/ui/spelling-tab";
-    import { isSpellCheckEnabled, subscribeSpellCheck } from "$lib/document/spell-check-preference";
-    import { readDictionary, writeDictionary } from "$lib/storage/fs/dictionary-file";
+    } from "#lib/document/spelling/spell-service-host.js";
+    import { bindSpellingNotices } from "#lib/document/spelling/spelling-notices.js";
+    import { dictionaryHostLabel } from "#lib/document/spelling/ui/spelling-tab.js";
+    import { isSpellCheckEnabled, subscribeSpellCheck } from "#lib/document/spell-check-preference.js";
+    import { readDictionary, writeDictionary } from "#lib/storage/fs/dictionary-file.js";
     import {
         readQuickNotes,
         writeQuickNotes,
-    } from "$lib/storage/fs/quick-notes-file";
+    } from "#lib/storage/fs/quick-notes-file.js";
     import {
         deleteGraphTheme,
         readGraphThemes,
         writeGraphTheme,
-    } from "$lib/storage/fs/theme-files";
+    } from "#lib/storage/fs/theme-files.js";
     import {
         adoptGraphThemes,
         getGraphTheme,
@@ -183,10 +179,10 @@
         removeGraphTheme,
         setGraphThemes,
         subscribeGraphThemes,
-    } from "$lib/document/publish/theme/theme-store";
-    import ThemeView, { THEME_TITLE_PREFIX } from "$lib/document/view/ThemeView.svelte";
-    import { BACKLINKS_TITLE_PREFIX } from "$lib/document/view/BacklinksView.svelte";
-    import PublishDocumentDialog from "$lib/document/ui/PublishDocumentDialog.svelte";
+    } from "#lib/document/publish/theme/theme-store.js";
+    import ThemeView, { THEME_TITLE_PREFIX } from "#lib/document/view/ThemeView.svelte";
+    import { BACKLINKS_TITLE_PREFIX } from "#lib/document/view/BacklinksView.svelte";
+    import PublishDocumentDialog from "#lib/document/ui/PublishDocumentDialog.svelte";
     import { bundledThemeList } from "@appsoftwareltd/etherpk-themes";
     import {
         copyThemeForGraph,
@@ -199,7 +195,7 @@
         registryAliases,
         type FrontmatterStore,
         type NewPublicationInput,
-    } from "$lib/workspace/publish-service";
+    } from "#lib/workspace/publish-service.js";
     import {
         readAddFrontmatterKeys,
         readLastPublication,
@@ -208,26 +204,26 @@
         writeLastPublication,
         writeSettingsTab,
         type SettingsTab,
-    } from "$lib/workspace/device-memory";
-    import { SETTINGS_PARAM, settingsTabFromUrl, withSettingsTab, withoutSettingsTab } from "$lib/workspace/settings-url";
-    import { WORKSPACE_LAUNCH_PARAM, withoutParams, workspaceLaunchFrom } from "$lib/navigation/launch-shortcuts";
-    import { claimInstallOfferHere } from "$lib/install/install-notices";
-    import { registerInstallCommands } from "$lib/install/install-commands";
-    import { installPlatform as installRoute, installState, startInstall } from "$lib/install/install-state.svelte";
-    import { canInstall } from "$lib/storage/install-platform";
-    import { folderPublishReader, readPublishSource } from "$lib/document/publish/source";
-    import { readMembership } from "$lib/document/publish/publication";
-    import { createThemeLoader } from "$lib/document/publish/theme/sources";
-    import { createBrowserPublishEnvironment } from "$lib/document/publish/host/browser-environment";
-    import { MAP_PICTURE_KIND, type MapPictureRenderer } from "$lib/document/publish/map-picture-renderer";
-    import { MAP_FENCE_INFO } from "$lib/document/map-text";
-    import { writeSiteToDirectory } from "$lib/document/publish/host/site-writer";
-    import { downloadZip, zipSite } from "$lib/document/publish/host/zip";
-    import { publishToRepository } from "$lib/document/publish/host/github-site-folder";
-    import { createBranch } from "$lib/document/publish/host/github-repository";
-    import { seededFiles } from "$lib/document/publish/seeded";
-    import type { Publication, PublishSource } from "$lib/document/publish/types";
-    import type { PublishAttempt, PublishTabProps, PublishTarget, PublishOutcome, RepositoryCheckState } from "$lib/sync/ui/publish-tab";
+    } from "#lib/workspace/device-memory.js";
+    import { SETTINGS_PARAM, settingsTabFromUrl, withSettingsTab, withoutSettingsTab } from "#lib/workspace/settings-url.js";
+    import { WORKSPACE_LAUNCH_PARAM, withoutParams, workspaceLaunchFrom } from "#lib/navigation/launch-shortcuts.js";
+    import { claimInstallOfferHere } from "#lib/install/install-notices.js";
+    import { registerInstallCommands } from "#lib/install/install-commands.js";
+    import { installPlatform as installRoute, installState, startInstall } from "#lib/install/install-state.svelte.js";
+    import { canInstall } from "#lib/storage/install-platform.js";
+    import { folderPublishReader, readPublishSource } from "#lib/document/publish/source.js";
+    import { readMembership } from "#lib/document/publish/publication.js";
+    import { createThemeLoader } from "#lib/document/publish/theme/sources.js";
+    import { createBrowserPublishEnvironment } from "#lib/document/publish/host/browser-environment.js";
+    import { MAP_PICTURE_KIND, type MapPictureRenderer } from "#lib/document/publish/map-picture-renderer.js";
+    import { MAP_FENCE_INFO } from "#lib/document/map-text.js";
+    import { writeSiteToDirectory } from "#lib/document/publish/host/site-writer.js";
+    import { downloadZip, zipSite } from "#lib/document/publish/host/zip.js";
+    import { publishToRepository } from "#lib/document/publish/host/github-site-folder.js";
+    import { createBranch } from "#lib/document/publish/host/github-repository.js";
+    import { seededFiles } from "#lib/document/publish/seeded.js";
+    import type { Publication, PublishSource } from "#lib/document/publish/types.js";
+    import type { PublishAttempt, PublishTabProps, PublishTarget, PublishOutcome, RepositoryCheckState } from "#lib/sync/ui/publish-tab.js";
     import {
         forgetPublicationDestination,
         isRepositoryRecord,
@@ -235,94 +231,94 @@
         readPublicationDestination,
         writePublicationDestination,
         type PublicationRepositoryRecord,
-    } from "$lib/storage/publication-destination-idb";
-    import { checkWithToken, gitHubApiFor, gitHubTokenControls, personFacing, requireReady } from "$lib/workspace/publish-repository";
-    import { containsCipherFence } from "$lib/document/protection/fence-info";
-    import { registerProtectionCommands } from "$lib/document/commands/protection-commands";
-    import { registerFrontmatterCommands } from "$lib/document/commands/frontmatter-commands";
-    import AddFrontmatterDialog from "$lib/document/ui/AddFrontmatterDialog.svelte";
+    } from "#lib/storage/publication-destination-idb.js";
+    import { checkWithToken, gitHubApiFor, gitHubTokenControls, personFacing, requireReady } from "#lib/workspace/publish-repository.js";
+    import { containsCipherFence } from "#lib/document/protection/fence-info.js";
+    import { registerProtectionCommands } from "#lib/document/commands/protection-commands.js";
+    import { registerFrontmatterCommands } from "#lib/document/commands/frontmatter-commands.js";
+    import AddFrontmatterDialog from "#lib/document/ui/AddFrontmatterDialog.svelte";
     import {
         canAddFrontmatter,
         planAddFrontmatter,
         type AddableKey,
         type AddFrontmatterChoice,
-    } from "$lib/document/frontmatter/add-frontmatter";
-    import { addFrontmatterThroughEditor, addFrontmatterThroughStore, readForAddFrontmatter } from "$lib/workspace/add-frontmatter-service";
-    import { frontmatterLineOffset } from "$lib/document/reveal";
-    import { canCreateDocuments } from "$lib/document/draft";
-    import { ProtectionSession } from "$lib/document/protection/protection-session.svelte";
-    import { DocumentNotFoundError } from "$lib/document/types";
+    } from "#lib/document/frontmatter/add-frontmatter.js";
+    import { addFrontmatterThroughEditor, addFrontmatterThroughStore, readForAddFrontmatter } from "#lib/workspace/add-frontmatter-service.js";
+    import { frontmatterLineOffset } from "#lib/document/reveal.js";
+    import { canCreateDocuments } from "#lib/document/draft.js";
+    import { ProtectionSession } from "#lib/document/protection/protection-session.svelte.js";
+    import { DocumentNotFoundError } from "#lib/document/types.js";
     import {
         createProtectedDocumentStore,
         type ProtectedDocumentStore,
-    } from "$lib/document/protection/protected-store";
+    } from "#lib/document/protection/protected-store.js";
     import {
         filesystemProtectionStore,
         inMemoryProtectionStore,
         localProtectionStore,
         vaultProtectionStore,
         type ProtectionRecordStore,
-    } from "$lib/document/protection/protection-store";
+    } from "#lib/document/protection/protection-store.js";
     import {
         documentBody,
         type DocumentProtectionKind,
         documentProtection,
         protectDocumentText,
         unprotectDocumentText,
-    } from "$lib/document/protection/cipher-fence";
-    import { protectionTick } from "$lib/document/view/augmentations/protected-fence";
-    import { isJournalConcept } from "$lib/document/journal-concept";
+    } from "#lib/document/protection/cipher-fence.js";
+    import { protectionTick } from "#lib/document/view/augmentations/protected-fence.js";
+    import { isJournalConcept } from "#lib/document/journal-concept.js";
     import {
         bumpProtectionGeneration,
         setActiveProtectionStatus,
         type ProtectionStatus,
-    } from "$lib/document/protection/active-protection";
-    import { protectedDocumentPanels } from "$lib/document/protection/lock-now";
+    } from "#lib/document/protection/active-protection.js";
+    import { protectedDocumentPanels } from "#lib/document/protection/lock-now.js";
     import {
         readLockSettings,
         writeLockSettings,
-    } from "$lib/document/protection/protection-settings";
+    } from "#lib/document/protection/protection-settings.js";
     import {
         boundPasskey,
         enrolPasskey,
         passkeysAvailable,
         unlockWithPasskey,
-    } from "$lib/document/protection/passkey-protection";
-    import SetProtectionPassphraseDialog from "$lib/document/protection/ui/SetProtectionPassphraseDialog.svelte";
-    import UnlockProtectionDialog from "$lib/document/protection/ui/UnlockProtectionDialog.svelte";
-    import { registerTabCommands } from "$lib/layout/tab-commands";
+    } from "#lib/document/protection/passkey-protection.js";
+    import SetProtectionPassphraseDialog from "#lib/document/protection/ui/SetProtectionPassphraseDialog.svelte";
+    import UnlockProtectionDialog from "#lib/document/protection/ui/UnlockProtectionDialog.svelte";
+    import { registerTabCommands } from "#lib/layout/tab-commands.js";
     import {
         type AssetDeleteChoice,
         type AssetDeletePrompt,
         registerAssetCommands,
-    } from "$lib/document/commands/asset-commands";
-    import type { ProtectedAssetUsage } from "$lib/document/asset-delete";
+    } from "#lib/document/commands/asset-commands.js";
+    import type { ProtectedAssetUsage } from "#lib/document/asset-delete.js";
     import {
         filesystemStoredTexts,
         protectedUsageReader,
         serverStoredTexts,
-    } from "$lib/workspace/protected-asset-usage";
+    } from "#lib/workspace/protected-asset-usage.js";
     import {
         filesystemFormattingSource,
         serverFormattingSource,
-    } from "$lib/workspace/formatting-sources";
-    import { FormattingScanSession } from "$lib/document/formatting/ui/formatting-session.svelte";
-    import { DuplicateNamesSession } from "$lib/sync/ui/duplicate-names-session.svelte";
-    import DuplicateNamesDialog from "$lib/sync/ui/DuplicateNamesDialog.svelte";
-    import { offersDuplicateReview } from "$lib/sync/ui/duplicate-names-copy";
-    import { revealLine, revealTop } from "$lib/document/reveal";
-    import { protectedTextReader } from "$lib/document/protection/protected-text-reader";
-    import { registerAssetViewers } from "$lib/document/view/viewers/register";
-    import { canCopyImageAsset, canOpenAsset } from "$lib/document/asset-affordances";
-    import { copyImageToClipboard } from "$lib/document/view/clipboard-image";
-    import AssetView from "$lib/document/view/AssetView.svelte";
-    import DeleteAssetDialog from "$lib/document/ui/DeleteAssetDialog.svelte";
+    } from "#lib/workspace/formatting-sources.js";
+    import { FormattingScanSession } from "#lib/document/formatting/ui/formatting-session.svelte.js";
+    import { DuplicateNamesSession } from "#lib/sync/ui/duplicate-names-session.svelte.js";
+    import DuplicateNamesDialog from "#lib/sync/ui/DuplicateNamesDialog.svelte";
+    import { offersDuplicateReview } from "#lib/sync/ui/duplicate-names-copy.js";
+    import { revealLine, revealTop } from "#lib/document/reveal.js";
+    import { protectedTextReader } from "#lib/document/protection/protected-text-reader.js";
+    import { registerAssetViewers } from "#lib/document/view/viewers/register.js";
+    import { canCopyImageAsset, canOpenAsset } from "#lib/document/asset-affordances.js";
+    import { copyImageToClipboard } from "#lib/document/view/clipboard-image.js";
+    import AssetView from "#lib/document/view/AssetView.svelte";
+    import DeleteAssetDialog from "#lib/document/ui/DeleteAssetDialog.svelte";
     import {
         adoptFavourites,
         resetFavourites,
         setFavourites,
         renameFavourite,
-    } from "$lib/document/favourites";
+    } from "#lib/document/favourites.js";
     import {
         getBookmarks,
         removeBookmarks,
@@ -330,26 +326,26 @@
         setBookmarks,
         subscribeBookmarks,
         type BookmarksSession,
-    } from "$lib/document/bookmarks/bookmarks";
-    import { BOOKMARK_NOTICE_ID, reason as sentenceOf } from "$lib/document/bookmarks/remove-with-undo";
-    import { BOOKMARK_STATUS_NOTICE_ID, resetBookmarkStatus } from "$lib/document/bookmarks/status";
-    import { registerBookmarkCommands } from "$lib/document/commands/bookmark-commands";
-    import { registerPasteCommands } from "$lib/document/commands/paste-commands";
-    import { bookmarksFileBinding } from "$lib/storage/fs/bookmarks-file";
+    } from "#lib/document/bookmarks/bookmarks.js";
+    import { BOOKMARK_NOTICE_ID, reason as sentenceOf } from "#lib/document/bookmarks/remove-with-undo.js";
+    import { BOOKMARK_STATUS_NOTICE_ID, resetBookmarkStatus } from "#lib/document/bookmarks/status.js";
+    import { registerBookmarkCommands } from "#lib/document/commands/bookmark-commands.js";
+    import { registerPasteCommands } from "#lib/document/commands/paste-commands.js";
+    import { bookmarksFileBinding } from "#lib/storage/fs/bookmarks-file.js";
     import {
         createProtectedBookmarkSweeper,
         fencedPages,
         folderDocumentTexts,
         PROTECTED_BOOKMARKS_NOTICE_ID,
-    } from "$lib/workspace/protected-bookmarks";
-    import { createRecents, type RecentsStore } from "$lib/navigation/recents";
+    } from "#lib/workspace/protected-bookmarks.js";
+    import { createRecents, type RecentsStore } from "#lib/navigation/recents.js";
     import {
         mergeCount,
         type RenameLinkStrategy,
         type RenamePlan,
         type RenameResult,
-    } from "$lib/storage/rename";
-    import ContextMenu from "$lib/surface/ui/ContextMenu.svelte";
+    } from "#lib/storage/rename.js";
+    import ContextMenu from "#lib/surface/ui/ContextMenu.svelte";
     import {
         type CommandRegistry,
         type EventBus,
@@ -357,39 +353,39 @@
         createCommandRegistry,
         createContributionRegistry,
         createEventBus,
-    } from "$lib/surface";
-    import { iconSvg, registerIcons } from "$lib/surface/icons";
-    import { personSettings } from "$lib/person-settings/person-settings";
-    import { createKeybindingTable } from "$lib/surface/keybindings";
-    import { builtInCatalogue } from "$lib/extensions/built-ins";
-    import { withInstalled } from "$lib/extensions/catalogue";
-    import { EXTENSION_ADDRESS_KIND } from "$lib/extensions/addresses";
-    import ExtensionAddressView from "$lib/extensions/ExtensionAddressView.svelte";
-    import ExtensionView from "$lib/extensions/ExtensionView.svelte";
-    import { createDialogs } from "$lib/extensions/dialogs";
-    import { createExtensionDirectory } from "$lib/extensions/directory";
-    import { releaseBase } from "$lib/extensions/directory-format";
-    import { createExtensionHost } from "$lib/extensions/host";
-    import { browserSignIn } from "$lib/extensions/sign-in";
-    import { createInstalledExtensions } from "$lib/extensions/installed";
-    import { createInstalledSync } from "$lib/extensions/installed-sync";
-    import { lookupInteractiveFence } from "$lib/document/view/augmentations/interactive-fence-contract";
-    import { insertBlock } from "$lib/document/view/block-insert";
-    import FenceView from "$lib/document/view/FenceView.svelte";
-    import { type FenceRef, fenceViewTarget, parseFenceViewTarget, setFenceHosting } from "$lib/document/view/fence-hosting";
-    import { closeFenceWindow, openFenceWindow } from "$lib/document/view/fence-window";
-    import { createDocumentsReader } from "$lib/agent-read/documents-reader";
-    import { filesystemReadSource, serverReadSource } from "$lib/agent-read/read-sources";
-    import { tryGetActiveAssetStore } from "$lib/document/active-asset-store";
-    import { createExtensionAssets } from "$lib/extensions/extension-assets";
-    import { closeExtensionWindow, openExtensionWindow } from "$lib/extensions/extension-window";
-    import { graphRecords } from "$lib/extensions/graph-records";
-    import { openExtensionPanel } from "$lib/extensions/inline-panel";
-    import type { GraphServices } from "$lib/extensions/services";
-    import { createExtensionSwitches } from "$lib/extensions/switches";
-    import { setExtensionAddresses } from "$lib/navigation/extension-addresses";
+    } from "#lib/surface/index.js";
+    import { iconSvg, registerIcons } from "#lib/surface/icons.js";
+    import { personSettings } from "#lib/person-settings/person-settings.js";
+    import { createKeybindingTable } from "#lib/surface/keybindings.js";
+    import { builtInCatalogue } from "#lib/extensions/built-ins.js";
+    import { withInstalled } from "#lib/extensions/catalogue.js";
+    import { EXTENSION_ADDRESS_KIND } from "#lib/extensions/addresses.js";
+    import ExtensionAddressView from "#lib/extensions/ExtensionAddressView.svelte";
+    import ExtensionView from "#lib/extensions/ExtensionView.svelte";
+    import { createDialogs } from "#lib/extensions/dialogs.js";
+    import { createExtensionDirectory } from "#lib/extensions/directory.js";
+    import { releaseBase } from "#lib/extensions/directory-format.js";
+    import { createExtensionHost } from "#lib/extensions/host.js";
+    import { browserSignIn } from "#lib/extensions/sign-in.js";
+    import { createInstalledExtensions } from "#lib/extensions/installed.js";
+    import { createInstalledSync } from "#lib/extensions/installed-sync.js";
+    import { lookupInteractiveFence } from "#lib/document/view/augmentations/interactive-fence-contract.js";
+    import { insertBlock } from "#lib/document/view/block-insert.js";
+    import FenceView from "#lib/document/view/FenceView.svelte";
+    import { type FenceRef, fenceViewTarget, parseFenceViewTarget, setFenceHosting } from "#lib/document/view/fence-hosting.js";
+    import { closeFenceWindow, openFenceWindow } from "#lib/document/view/fence-window.js";
+    import { createDocumentsReader } from "#lib/agent-read/documents-reader.js";
+    import { filesystemReadSource, serverReadSource } from "#lib/agent-read/read-sources.js";
+    import { tryGetActiveAssetStore } from "#lib/document/active-asset-store.js";
+    import { createExtensionAssets } from "#lib/extensions/extension-assets.js";
+    import { closeExtensionWindow, openExtensionWindow } from "#lib/extensions/extension-window.js";
+    import { graphRecords } from "#lib/extensions/graph-records.js";
+    import { openExtensionPanel } from "#lib/extensions/inline-panel.js";
+    import type { GraphServices } from "#lib/extensions/services.js";
+    import { createExtensionSwitches } from "#lib/extensions/switches.js";
+    import { setExtensionAddresses } from "#lib/navigation/extension-addresses.js";
     import { getAppliedResolvedTheme, THEME_CHANGE_EVENT } from "@appsoftwareltd/etherpk-shared/theme";
-    import { describeFilesystemSaveFailure } from "$lib/storage/fs/save-error-copy";
+    import { describeFilesystemSaveFailure } from "#lib/storage/fs/save-error-copy.js";
     import {
         type AssetStore,
         type DocumentConflict,
@@ -424,59 +420,59 @@
         subscribeStorageRecoveries,
         type StorageRecovery,
         writeMirrorFolder,
-    } from "$lib/storage";
+    } from "#lib/storage/index.js";
     import {
         type GraphAssetTools,
         filesystemAssetTools,
-    } from "$lib/storage/fs/asset-orphans";
-    import { displayAssetName } from "$lib/storage/fs/asset-store";
-    import { opfsGraphFolderName } from "$lib/storage/fs/opfs-graph-folder";
+    } from "#lib/storage/fs/asset-orphans.js";
+    import { displayAssetName } from "#lib/storage/fs/asset-store.js";
+    import { opfsGraphFolderName } from "#lib/storage/fs/opfs-graph-folder.js";
     import {
         listCompleteServerAssetIds,
         listServerAssets,
         type ListedAsset,
         serverAssetTools,
-    } from "$lib/storage/server/asset-orphans";
+    } from "#lib/storage/synced/asset-orphans.js";
     import {
         createServerDocumentStore,
         type ServerDocumentStore,
-    } from "$lib/storage/server/server-document-store";
-    import { createServerAssetStore, type ServerAssetStore } from "$lib/storage/server/server-asset-store";
-    import { openAssetCopies } from "$lib/storage/server/asset-copies";
+    } from "#lib/storage/synced/server-document-store.js";
+    import { createServerAssetStore, type ServerAssetStore } from "#lib/storage/synced/server-asset-store.js";
+    import { openAssetCopies } from "#lib/storage/synced/asset-copies.js";
     import {
         MIRROR_PHASE_LABELS,
         createLocalMirror,
         type LocalMirror,
         type MirrorProgress,
         type MirrorStatus,
-    } from "$lib/storage/server/local-mirror";
+    } from "#lib/storage/synced/local-mirror.js";
     import {
         createMirrorSource,
         type MirrorSourceDeps,
-    } from "$lib/storage/server/mirror-source";
+    } from "#lib/storage/synced/mirror-source.js";
     import {
         checkMirrorTakeover,
         type MirrorTakeover,
-    } from "$lib/storage/server/mirror-takeover";
+    } from "#lib/storage/synced/mirror-takeover.js";
     import {
         readKnownGraphFolders,
         readOnlyFolder,
-    } from "$lib/storage/folder-ownership";
+    } from "#lib/storage/folder-ownership.js";
     import {
         findPublishFolderOverlap,
         publishFolderOverlapMessage,
-    } from "$lib/document/publish/host/publish-folder-check";
+    } from "#lib/document/publish/host/publish-folder-check.js";
     import {
         runGraphExport,
         type ExportReport,
-    } from "$lib/storage/server/export/graph-export";
+    } from "#lib/storage/synced/export/graph-export.js";
     import {
         createSaveFileSink,
         createScratchFileSink,
         pickExportFile,
         saveFilePickerAvailable,
         type DeliverableSink,
-    } from "$lib/storage/server/export/export-sink";
+    } from "#lib/storage/synced/export/export-sink.js";
     import {
         EXPORT_SCRATCH_SWEEP_INTERVAL_MS,
         exportLockName,
@@ -485,20 +481,20 @@
         scratchFileName,
         sweepExportScratch,
         type ScratchFile,
-    } from "$lib/storage/server/export/export-scratch";
-    import type { ExportTabProps } from "$lib/sync/ui/mirror-tab";
-    import { describeDeviceStorage } from "$lib/storage/storage-persistence";
+    } from "#lib/storage/synced/export/export-scratch.js";
+    import type { ExportTabProps } from "#lib/sync/ui/mirror-tab.js";
+    import { describeDeviceStorage } from "#lib/storage/storage-persistence.js";
     import { formatBytes } from "@appsoftwareltd/etherpk-shared";
-    import { portableFileStem } from "$lib/document/wikilink";
+    import { portableFileStem } from "#lib/document/wikilink/index.js";
     import {
         claimLockWhenFree,
         crossTabLocksAvailable,
         tryClaimLock,
-    } from "$lib/cross-tab-lock";
-    import { isRunning, runActivity } from "$lib/activity/store";
-    import { dismissNotice, retractNotice, showNotice } from "$lib/activity/notices";
-    import type { ActivityOutcome } from "$lib/activity/store";
-    import type { ActivityProgress } from "$lib/activity/types";
+    } from "#lib/cross-tab-lock.js";
+    import { isRunning, runActivity } from "#lib/activity/store.js";
+    import { dismissNotice, retractNotice, showNotice } from "#lib/activity/notices.js";
+    import type { ActivityOutcome } from "#lib/activity/store.js";
+    import type { ActivityProgress } from "#lib/activity/types.js";
     import { type MirrorIndicator, mirrorIndicatorView } from "./mirror-indicator";
     import { createIndexingIndicator } from "./indexing-indicator";
     import { toolbarAccentStyle } from "./toolbar-accent";
@@ -517,11 +513,11 @@
         "writing",
         "assets",
     ];
-    import RecoveryCodeDialog from "$lib/sync/ui/RecoveryCodeDialog.svelte";
-    import UnlockDialog from "$lib/sync/ui/UnlockDialog.svelte";
-    import GraphSettingsDialog from "$lib/sync/ui/GraphSettingsDialog.svelte";
-    import { headlessClientPackage, type AgentsTabProps } from "$lib/sync/ui/agents-tab";
-    import { RELEASE_VERSION } from "$lib/release";
+    import RecoveryCodeDialog from "#lib/sync/ui/RecoveryCodeDialog.svelte";
+    import UnlockDialog from "#lib/sync/ui/UnlockDialog.svelte";
+    import GraphSettingsDialog from "#lib/sync/ui/GraphSettingsDialog.svelte";
+    import { headlessClientPackage, type AgentsTabProps } from "#lib/sync/ui/agents-tab.js";
+    import { RELEASE_VERSION } from "#lib/release.js";
     import ConfirmDialog from "@appsoftwareltd/etherpk-shared/confirm-dialog";
     import Dialog from "@appsoftwareltd/etherpk-shared/dialog";
     import WorkspaceOpenState from "./WorkspaceOpenState.svelte";
@@ -538,22 +534,22 @@
         createFrontmatterController,
         type DocumentIdentity,
     } from "./frontmatter-controller";
-    import { withFrontmatterIdentity } from "$lib/document/frontmatter/identity";
-    import { referencedInBody } from "$lib/document/index-db";
-    import { proposeFrontmatter } from "$lib/document/frontmatter/proposal";
-    import { frontmatterSpan } from "$lib/storage/fs/frontmatter-span";
-    import { conceptKey, fileStem } from "$lib/storage/fs/identity";
-    import type { Subdir } from "$lib/storage/fs/directory-adapter";
+    import { withFrontmatterIdentity } from "#lib/document/frontmatter/identity.js";
+    import { referencedInBody } from "#lib/document/index-db.js";
+    import { proposeFrontmatter } from "#lib/document/frontmatter/proposal.js";
+    import { frontmatterSpan } from "#lib/storage/fs/frontmatter-span.js";
+    import { conceptKey, fileStem } from "#lib/storage/fs/identity.js";
+    import type { Subdir } from "#lib/storage/fs/directory-adapter.js";
     import {
         joinGraphPath,
         readGraphFolderPath,
         writeGraphFolderPath,
-    } from "$lib/storage/fs/folder-path";
-    import GraphFolderPathDialog from "$lib/storage/ui/GraphFolderPathDialog.svelte";
-    import { isScopedBy, rewriteWikilinkScope } from "$lib/document/wikilink/rename";
+    } from "#lib/storage/fs/folder-path.js";
+    import GraphFolderPathDialog from "#lib/storage/ui/GraphFolderPathDialog.svelte";
+    import { isScopedBy, rewriteWikilinkScope } from "#lib/document/wikilink/rename.js";
     import { asksSomething, createLinkRenameController, type ProposedRename } from "./link-rename-controller";
     import { createReplaceRenames, type ReplaceOutcome, type ReplaceQuestion, type ReplaceRequest } from "./replace-renames";
-    import { findOrigin, requestFind } from "$lib/document/find/find-events";
+    import { findOrigin, requestFind } from "#lib/document/find/find-events.js";
     import { EditorView } from "@codemirror/view";
     import {
         createGraphSync,
@@ -594,39 +590,39 @@
         type SyncTokenSource,
         type WriteRefusal,
         readSyncAccount,
-    } from "$lib/sync";
-    import { checkAccountIdentity } from "$lib/sync/ui/identity-check";
-    import DevicePasscodeDialog from "$lib/sync/ui/DevicePasscodeDialog.svelte";
+    } from "#lib/sync/index.js";
+    import { checkAccountIdentity } from "#lib/sync/ui/identity-check.js";
+    import DevicePasscodeDialog from "#lib/sync/ui/DevicePasscodeDialog.svelte";
     import {
         devicePasscodeNoticeShown,
         markDevicePasscodeNoticeShown,
-    } from "$lib/sync/device-passcode-notice";
-    import { describeRotation, rotateGraphKeyOnce, rotationDue } from "$lib/sync/ui/key-rotation";
+    } from "#lib/sync/device-passcode-notice.js";
+    import { describeRotation, rotateGraphKeyOnce, rotationDue } from "#lib/sync/ui/key-rotation.js";
     import {
         AccountEnded,
         onAccountSignal,
         type AccountEndReason,
-    } from "$lib/sync/account-signal";
+    } from "#lib/sync/account-signal.js";
     import {
         describeAccessLoss,
         workspaceAccessLoss,
         type WorkspaceAccessLoss,
-    } from "$lib/sync/access-loss";
+    } from "#lib/sync/access-loss.js";
     import {
         discardUnlessUnsent,
         readUnsentChanges,
         saveUnsentChangesFile,
         staleCopyUnsentChanges,
         type UnsentDocument,
-    } from "$lib/sync/unsent-changes";
+    } from "#lib/sync/unsent-changes.js";
     import {
         createIndicatorSettle,
         describeKeyWait,
         describeSyncActivity,
         type SyncIndicator,
         type SyncStatusAction,
-    } from "$lib/sync/sync-indicator";
-    import { describeWriteRefusal, type WriteRefusalCopy } from "$lib/sync/write-refusal";
+    } from "#lib/sync/sync-indicator.js";
+    import { describeWriteRefusal, type WriteRefusalCopy } from "#lib/sync/write-refusal.js";
     import {
         BOOKMARKS_NEED_MEMBER_KEY,
         clearDepartedMemberLists,
@@ -634,9 +630,9 @@
         ownerRoleFromListing,
         refusingBookmarksPersist,
         type PersonalLists,
-    } from "$lib/sync/member-lists";
-    import { settingsKeepingSharedFavourites } from "$lib/sync/personal-favourites";
-    import type { GraphMember } from "$lib/sync/sync-api";
+    } from "#lib/sync/member-lists.js";
+    import { settingsKeepingSharedFavourites } from "#lib/sync/personal-favourites.js";
+    import type { GraphMember } from "#lib/sync/sync-api.js";
     import { syncPlanNotice, type SyncPlanNotice } from "@appsoftwareltd/etherpk-shared";
     import {
         createGraphKeyring,
@@ -644,7 +640,7 @@
         type GraphKeyring,
         type KeyringSource,
         type ProtectionRecord,
-    } from "$lib/crypto";
+    } from "#lib/crypto/index.js";
     import {
         diagnoseMissingGraph,
         type MissingGraphDeps,
@@ -860,7 +856,7 @@
      * not open; once ready it reports what a completed action did — the rename summary
      * (ADR 0038 §5: a cascade or a merge is never silent), the delete, a resurrection
      * (ADR 0039 §4), a settings-save failure. Once the graph is open these go through
-     * `notify` to the app's notice rail (`$lib/activity/notices`), beside the Activity
+     * `notify` to the app's notice rail (`#lib/activity/notices.js`), beside the Activity
      * Toasts; `message` itself is what the open-state notice shows when the open fails.
      */
     let message = $state("");
@@ -1007,7 +1003,7 @@
         }
         // The new key arrived signed with the owner's new keys: they are compared on the Graphs page.
         if (syncActivity.waitingForKey !== null && keyWaitOutcome?.kind === "owner-key-changed") {
-            actions.push({ id: "sync-state-verify-owner", label: "Compare fingerprints", run: () => void goto("/graphs") });
+            actions.push({ id: "sync-state-verify-owner", label: "Compare fingerprints", run: () => void queueHistoryWrite(() => goto("/graphs")) });
         }
         const unsent = syncIndicator?.unsent ?? 0;
         if (unsent > 0 && syncIndicator?.state !== "sending" && syncIndicator?.state !== "synced") {
@@ -2882,7 +2878,9 @@
                 controller = undefined;
                 renderer = undefined;
                 mobileRenderer = undefined;
-                replaceState(`/g/${graphId}${withoutSettingsTab(page.url.search)}`, {});
+                void queueHistoryWrite(() =>
+                    goto(`/g/${graphId}${withoutSettingsTab(page.url.search)}`, { shallow: true, replace: true }),
+                );
                 await attempt.wait(tick());
                 await mountPresenter(attempt, freshLayout().model);
                 notify("Workspace reset");
@@ -3133,9 +3131,16 @@
     // (shallow state does not survive a reload — degraded to Reading Position
     // by design). Same-graph only: cross-graph navigation remounts via the
     // {#key} in the route layout.
+    /**
+     * A Back/Forward, or a `goto` that is not one of the workspace's own shallow entries. Those are
+     * handled by the $effects on page.state, and since SvelteKit 3 they run the navigation hooks too.
+     */
+    function arrivesFromElsewhere(navigation: { type: string; shallow?: boolean }): boolean {
+        return navigation.type === "popstate" || (navigation.type === "goto" && !navigation.shallow);
+    }
+
     afterNavigate((navigation) => {
-        if (navigation.type !== "popstate" && navigation.type !== "goto")
-            return;
+        if (!arrivesFromElsewhere(navigation)) return;
         // A shallow pop carries its Visit (or its Settings tab) in page.state — the $effects
         // above own that path; running visitFromUrl too would double-apply (redundant
         // openView + a Reading-Position restore racing the snapshot restore).
@@ -4788,17 +4793,22 @@
             // 2026-09-20). That drop is what closes the modal when the Publish tab
             // sends someone to a theme or a page, and what lets Back find it again.
             pushUrl: (url, state) =>
-                pushState(url + withoutSettingsTab(page.url.search), { etherpkVisit: state }),
+                void queueHistoryWrite(() =>
+                    goto(url + withoutSettingsTab(page.url.search), { shallow: true, state: { etherpkVisit: state } }),
+                ),
             replaceUrl: (url, state) =>
-                replaceState(url + withoutSettingsTab(page.url.search), { etherpkVisit: state }),
+                void queueHistoryWrite(() =>
+                    goto(url + withoutSettingsTab(page.url.search), { shallow: true, replace: true, state: { etherpkVisit: state } }),
+                ),
             // The last page closed. Unlike a Visit this keeps Settings: a page can close under an
             // open modal (a delete from elsewhere, Lock now), and the modal stays where it was.
             // `location`, not `page.url`, which shallow writes never update.
-            replaceUrlWithoutVisit: (url) => {
-                const state = { ...page.state };
-                delete state.etherpkVisit;
-                replaceState(url + location.search, state);
-            },
+            replaceUrlWithoutVisit: (url) =>
+                void queueHistoryWrite(() => {
+                    const state = { ...page.state };
+                    delete state.etherpkVisit;
+                    return goto(url + location.search, { shallow: true, replace: true, state });
+                }),
             capture: capturePosition,
             restore: (key, position) => void restorePosition(key, position),
             readingPosition: (key) => readingPositions?.get(key) ?? null,
@@ -5124,7 +5134,7 @@
 
         if (useMobile) {
             const { createMobileRenderer } = await attempt.wait(
-                import("$lib/layout/renderers/mobile-renderer.svelte"),
+                import("#lib/layout/renderers/mobile-renderer.svelte.js"),
             );
             mobileRenderer = createMobileRenderer(registry, {
                 onActiveViewChange: (panelId) => {
@@ -5135,7 +5145,7 @@
             renderer = mobileRenderer;
         } else {
             const { createDockviewRenderer } = await attempt.wait(
-                import("$lib/layout/renderers/dockview-adapter"),
+                import("#lib/layout/renderers/dockview-adapter.js"),
             );
             mobileRenderer = undefined;
             await waitForSize(container!, attempt);
@@ -5257,7 +5267,13 @@
     function runLaunchFromUrl() {
         if (!new URLSearchParams(location.search).has(WORKSPACE_LAUNCH_PARAM)) return;
         const launch = workspaceLaunchFrom(location.search);
-        replaceState(location.pathname + withoutParams(location.search, [WORKSPACE_LAUNCH_PARAM]) + location.hash, page.state);
+        void queueHistoryWrite(() =>
+            goto(location.pathname + withoutParams(location.search, [WORKSPACE_LAUNCH_PARAM]) + location.hash, {
+                shallow: true,
+                replace: true,
+                state: page.state,
+            }),
+        );
         if (launch === "search") void commandRegistry?.execute("search.open");
         else if (launch === "quick-note") void commandRegistry?.execute(QUICK_NOTES_OPEN);
     }
@@ -5302,13 +5318,15 @@
         const tab = settingsTabFromUrl(page.url);
         // `location`, not `page.url`: seed() may just have replaced the address, which
         // `page.url` does not reflect (shallow writes never update it).
-        const search = tab
-            ? withSettingsTab(location.search, tab)
-            : withoutSettingsTab(location.search);
-        const state = { ...page.state };
-        if (tab) state.etherpkSettings = { tab, pushed: false };
-        else delete state.etherpkSettings;
-        replaceState(location.pathname + search, state);
+        void queueHistoryWrite(() => {
+            const search = tab
+                ? withSettingsTab(location.search, tab)
+                : withoutSettingsTab(location.search);
+            const state = { ...page.state };
+            if (tab) state.etherpkSettings = { tab, pushed: false };
+            else delete state.etherpkSettings;
+            return goto(location.pathname + search, { shallow: true, replace: true, state });
+        });
     }
 
     /** Swap presenters when the viewport crosses the breakpoint, carrying state. */
@@ -5502,7 +5520,7 @@
                 heldCopyUnsent = { unsent: outcome.unsent, downloaded: false };
                 return;
             }
-            await goto("/graphs");
+            await queueHistoryWrite(() => goto("/graphs"));
         } catch (err) {
             removeHeldCopyError = describeSyncFailure(err, "remove this graph from this device");
         } finally {
@@ -6295,28 +6313,42 @@
             return;
         }
         const target = tab ?? readSettingsTab(graphId) ?? "general";
-        if (page.state.etherpkSettings) {
-            // Open already: the Publish tab is mounted and read its report request once, so a
-            // report asked for now is not shown (as before this change) - and must not be
-            // carried to some later, unrelated open.
-            pendingPublishReport = undefined;
-            moveSettingsTab(target);
-            return;
-        }
-        pendingPublishReport = options.publishReport;
-        pushState(location.pathname + withSettingsTab(location.search, target), {
-            ...page.state,
-            etherpkSettings: { tab: target, pushed: true },
+        // Decided when the write runs: an open still on its way to the address counts as open.
+        void queueHistoryWrite(() => {
+            if (page.state.etherpkSettings) {
+                // Open already: the Publish tab is mounted and read its report request once, so a
+                // report asked for now is not shown (as before this change) - and must not be
+                // carried to some later, unrelated open.
+                pendingPublishReport = undefined;
+                return renameSettingsEntry(target);
+            }
+            pendingPublishReport = options.publishReport;
+            return goto(location.pathname + withSettingsTab(location.search, target), {
+                shallow: true,
+                state: {
+                    ...page.state,
+                    etherpkSettings: { tab: target, pushed: true },
+                },
+            });
         });
     }
 
     /** The open Settings changes tab: the same history entry, renamed - never a second entry. */
     function moveSettingsTab(tab: SettingsTab) {
+        void queueHistoryWrite(() => renameSettingsEntry(tab));
+    }
+
+    /** The Settings entry renamed for `tab`. Run only as a queued history write. */
+    function renameSettingsEntry(tab: SettingsTab): Promise<void> | undefined {
         const current = page.state.etherpkSettings;
-        if (!current || current.tab === tab) return;
-        replaceState(location.pathname + withSettingsTab(location.search, tab), {
-            ...page.state,
-            etherpkSettings: { ...current, tab },
+        if (!current || current.tab === tab) return undefined;
+        return goto(location.pathname + withSettingsTab(location.search, tab), {
+            shallow: true,
+            replace: true,
+            state: {
+                ...page.state,
+                etherpkSettings: { ...current, tab },
+            },
         });
     }
 
@@ -6331,15 +6363,28 @@
         graphSettingsDialog = null;
         // A prep still in flight must not land the modal again while the Back is on its way.
         settingsShowToken += 1;
-        const current = page.state.etherpkSettings;
-        if (!current) return;
-        if (current.pushed) {
+        void queueHistoryWrite(() => {
+            const current = page.state.etherpkSettings;
+            if (!current) return undefined;
+            if (current.pushed) return goBack();
+            const state = { ...page.state };
+            delete state.etherpkSettings;
+            return goto(location.pathname + withoutSettingsTab(location.search), { shallow: true, replace: true, state });
+        });
+    }
+
+    /** Back one history entry, settled once SvelteKit has put that entry's state in page.state. */
+    async function goBack(): Promise<void> {
+        const before = page.state;
+        await new Promise<void>((resolve) => {
+            addEventListener("popstate", () => resolve(), { once: true });
             history.back();
-            return;
+        });
+        // For a shallow entry SvelteKit replaces page.state after it has resolved the route, a
+        // little after the popstate event. Wait for that, for half a second at most.
+        for (let waited = 0; waited < 500 && page.state === before; waited += 10) {
+            await new Promise((resolve) => setTimeout(resolve, 10));
         }
-        const state = { ...page.state };
-        delete state.etherpkSettings;
-        replaceState(location.pathname + withoutSettingsTab(location.search), state);
     }
 
     /**
@@ -7445,7 +7490,7 @@
     downloadError={unsentDownloadError}
     ondownload={() => void downloadUnsentChanges()}
     ongrant={() => void grantAccess()}
-    onback={() => void goto("/graphs")}
+    onback={() => void queueHistoryWrite(() => goto("/graphs"))}
     onretry={() => void retryOpen()}
     onsetup={() => void setUpHere()}
     {returnPath}
@@ -7463,11 +7508,11 @@
         <DevicePasscodeDialog
             mode="unlock"
             ondone={afterUnlock}
-            onclose={() => goto("/graphs")}
+            onclose={() => queueHistoryWrite(() => goto("/graphs"))}
             onforgotten={afterPasscodeForgotten}
         />
     {:else}
-        <UnlockDialog serverOrigin={graphServerOrigin} onunlocked={afterUnlock} onclose={() => goto("/graphs")} />
+        <UnlockDialog serverOrigin={graphServerOrigin} onunlocked={afterUnlock} onclose={() => queueHistoryWrite(() => goto("/graphs"))} />
     {/if}
 {:else if passcodeOffer}
     <DevicePasscodeDialog

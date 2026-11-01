@@ -9,7 +9,7 @@
  */
 import type { ExtensionContext } from '@appsoftwareltd/etherpk-extension-api'
 
-import { svelteView } from '$lib/extensions/svelte-view.svelte'
+import { svelteView } from '#lib/extensions/svelte-view.svelte.js'
 
 import KanbanView from './KanbanView.svelte'
 import { registerKanban } from './register'

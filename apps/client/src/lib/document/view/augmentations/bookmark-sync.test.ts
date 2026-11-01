@@ -8,7 +8,7 @@ import { EditorState, type StateEffect, type TransactionSpec } from '@codemirror
 import { type DecorationSet, EditorView, type ViewUpdate } from '@codemirror/view'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { dismissNotice, getNotices } from '$lib/activity/notices'
+import { dismissNotice, getNotices } from '#lib/activity/notices.js'
 
 import { captureAnchor } from '../../bookmarks/anchor'
 import { getBookmarks, resetBookmarks, setBookmarkLabel, setBookmarks, type Bookmark, type BookmarksPersist } from '../../bookmarks/bookmarks'

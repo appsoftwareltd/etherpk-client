@@ -14,8 +14,8 @@
  * - **After the seed**: the person's own list. An older Client still writes the shared list, so
  *   each shared entry not seen before joins the person's list once (`followShared`).
  */
-import type { FavouritesPersist } from '$lib/document/favourites'
-import { type GraphSettings, sanitizeFavourites, sanitizeGraphSettings } from '$lib/storage/fs/graph-settings'
+import type { FavouritesPersist } from '#lib/document/favourites.js'
+import { type GraphSettings, sanitizeFavourites, sanitizeGraphSettings } from '#lib/storage/fs/graph-settings.js'
 
 import type { GraphSync } from './graph-sync'
 

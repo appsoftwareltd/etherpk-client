@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { createMemoryDirectoryAdapter } from '$lib/storage/fs/memory-adapter'
-import { type GraphRecord, type GraphStoragePort, createGraphRegistry } from '$lib/storage/graph-registry'
+import { createMemoryDirectoryAdapter } from '#lib/storage/fs/memory-adapter.js'
+import { type GraphRecord, type GraphStoragePort, createGraphRegistry } from '#lib/storage/graph-registry.js'
 
 import type { DemoBundleManifest } from './bundle-manifest'
 import { DEMO_GRAPH_FOLDER, DEMO_GRAPH_ID, type DemoGraphDeps, isDemoGraph, openDemoGraph, planDemoOpen } from './demo-graph'

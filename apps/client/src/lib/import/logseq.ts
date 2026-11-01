@@ -11,9 +11,9 @@
 import {
     normalizeDisplaySize,
     parseImageDisplaySizeHint,
-} from '$lib/document/view/augmentations/image-display-size'
-import { portableFileStem } from '$lib/document/wikilink'
-import { MARKDOWN_LINK } from '$lib/document/markdown-link-target'
+} from '#lib/document/view/augmentations/image-display-size.js'
+import { portableFileStem } from '#lib/document/wikilink/index.js'
+import { MARKDOWN_LINK } from '#lib/document/markdown-link-target.js'
 
 import { type AssetPlan, normaliseRef, planAssets, tryDecode } from './assets'
 import { buildFrontmatter, createFenceTracker, dedupeConcept, outsideInlineCode, scopedConceptName } from './convert-shared'

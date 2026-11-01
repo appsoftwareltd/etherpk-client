@@ -6,7 +6,7 @@
  * drag-and-drop and dialog routes use.
  */
 
-import { isImageExt, splitNameExt } from '$lib/storage/fs/asset-store'
+import { isImageExt, splitNameExt } from '#lib/storage/fs/asset-store.js'
 
 /** The slice of `DataTransfer` the rule reads. */
 export interface ClipboardPayload {

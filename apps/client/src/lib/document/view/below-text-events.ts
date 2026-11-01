@@ -24,7 +24,7 @@
 
 import { EditorView } from '@codemirror/view'
 
-import type { AssetStore } from '$lib/storage/fs/asset-store'
+import type { AssetStore } from '#lib/storage/fs/asset-store.js'
 
 import { documentBacklinksOf } from './document-backlinks'
 import { endButtonsOf } from './end-of-document'

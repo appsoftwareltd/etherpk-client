@@ -14,8 +14,8 @@
     import { openDB } from 'idb'
     import { onMount } from 'svelte'
 
-    import { DocumentView, setActiveAssetStore, setActiveDocumentStore } from '$lib/document'
-    import { todayISO } from '$lib/document/calendar/month-grid-core'
+    import { DocumentView, setActiveAssetStore, setActiveDocumentStore } from '#lib/document/index.js'
+    import { todayISO } from '#lib/document/calendar/month-grid-core.js'
     import {
         type DocumentConflict,
         type FilesystemDocumentStore,
@@ -26,8 +26,8 @@
         getOpfsRoot,
         isFsaSupported,
         pickGraphDirectory,
-    } from '$lib/storage'
-    import type { ViewRef } from '$lib/layout'
+    } from '#lib/storage/index.js'
+    import type { ViewRef } from '#lib/layout/index.js'
 
     // ── OPFS adapter self-test ────────────────────────────────────────────
     let opfsResult = $state('idle')

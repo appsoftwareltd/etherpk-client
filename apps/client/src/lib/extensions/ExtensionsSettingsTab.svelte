@@ -25,8 +25,8 @@
     import type { Attachment } from "svelte/attachments";
     import { createSubscriber } from "svelte/reactivity";
 
-    import { personSettings, type PersonSettings } from "$lib/person-settings/person-settings";
-    import { personSettingsSync, type PersonSettingsSync, type PersonSettingsSyncState } from "$lib/person-settings/person-settings-sync";
+    import { personSettings, type PersonSettings } from "#lib/person-settings/person-settings.js";
+    import { personSettingsSync, type PersonSettingsSync, type PersonSettingsSyncState } from "#lib/person-settings/person-settings-sync.js";
 
     import { compareVersions } from "./catalogue";
     import type { DirectoryState, ExtensionDirectory } from "./directory";

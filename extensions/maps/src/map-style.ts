@@ -12,10 +12,10 @@
  *   own tiles, or a provider's.
  * - Set empty: no basemap. Places and routes are still drawn, on a plain background.
  */
-import { env } from '$env/dynamic/public'
-import { dev } from '$app/environment'
+import * as env from '$app/env/public'
+import { dev } from '$app/env'
 
-import type { MapPictureRequest } from '$lib/document/publish/map-picture-renderer'
+import type { MapPictureRequest } from '#lib/document/publish/map-picture-renderer.js'
 
 import { DEFAULT_MAP_STYLES, type MapStyles } from './map-host'
 

@@ -18,7 +18,7 @@ import {
     sha256,
     signMessage,
     toBase64Url,
-} from '$lib/crypto'
+} from '#lib/crypto/index.js'
 import { collectKeyHandouts, keyHandoutAad, serializeHandoutPayload } from './key-handouts'
 import { MissingGraphKeyError } from './keys'
 import { pinState, publishedIdentity, withPin } from './pins'

@@ -4,8 +4,8 @@
  * from the store's own copy, never through the projection that shows an unlocked Protected
  * Document's plaintext.
  */
-import type { FilesystemDocumentStore } from '$lib/storage/fs/filesystem-store'
-import type { ServerDocumentStore } from '$lib/storage/server/server-document-store'
+import type { FilesystemDocumentStore } from '#lib/storage/fs/filesystem-store.js'
+import type { ServerDocumentStore } from '#lib/storage/synced/server-document-store.js'
 
 import type { AgentReadSource } from './documents-reader'
 

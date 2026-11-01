@@ -1,10 +1,10 @@
 import type { LayoutServerLoad } from './$types'
-import { env as privateEnv } from '$env/dynamic/private'
-import { env as publicEnv } from '$env/dynamic/public'
+import * as privateEnv from '$app/env/private'
+import * as publicEnv from '$app/env/public'
 import { buildAccountUrl, buildBillingUrl, buildHomeUrl, buildPricingUrl, buildSyncServerUrl } from '@appsoftwareltd/etherpk-shared'
-import { parseOptionalManagedClientAuthConfig } from '$lib/server/auth/config'
-import { configuredSyncServerUrl } from '$lib/sync/sync-deployment'
-import { clientLegalLinks } from '$lib/server/legal'
+import { parseOptionalManagedClientAuthConfig } from '#lib/server/auth/config.js'
+import { configuredSyncServerUrl } from '#lib/sync/sync-deployment.js'
+import { clientLegalLinks } from '#lib/server/legal.js'
 
 export const load: LayoutServerLoad = ({ locals }) => {
     const managedAuthConfig = parseOptionalManagedClientAuthConfig(privateEnv)

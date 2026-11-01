@@ -20,15 +20,15 @@
      */
     import { onMount, tick } from "svelte";
 
-    import LoadingSweep from "$lib/components/LoadingSweep.svelte";
+    import LoadingSweep from "#lib/components/LoadingSweep.svelte";
 
-    import { conceptKey } from "$lib/document/backlinks/backlink-index";
-    import { GitHubError } from "$lib/document/publish/host/github-api";
-    import { isBranchName, parseRepository } from "$lib/document/publish/host/github-repository";
-    import type { GraphTheme } from "$lib/document/publish/theme/graph-theme";
-    import type { Publication, PublicationKind, PublicationSelection } from "$lib/document/publish/types";
-    import { suggestPublicationId } from "$lib/workspace/publish-service";
-    import type { NewPublicationInput, PublicationChanges, PublishDocumentSummary } from "$lib/workspace/publish-service";
+    import { conceptKey } from "#lib/document/backlinks/backlink-index.js";
+    import { GitHubError } from "#lib/document/publish/host/github-api.js";
+    import { isBranchName, parseRepository } from "#lib/document/publish/host/github-repository.js";
+    import type { GraphTheme } from "#lib/document/publish/theme/graph-theme.js";
+    import type { Publication, PublicationKind, PublicationSelection } from "#lib/document/publish/types.js";
+    import { suggestPublicationId } from "#lib/workspace/publish-service.js";
+    import type { NewPublicationInput, PublicationChanges, PublishDocumentSummary } from "#lib/workspace/publish-service.js";
 
     import type { GitHubTokenState, GraphPublishingState, PublicationDestinationState, PublishTabProps, PublishTarget, RepositoryCheckState } from "./publish-tab";
 

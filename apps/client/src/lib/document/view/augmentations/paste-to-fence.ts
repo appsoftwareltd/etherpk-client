@@ -25,7 +25,7 @@ import { isolateHistory } from '@codemirror/commands'
 import type { EditorState, Extension, Transaction } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
 
-import { tryGetActiveContributionRegistry } from '$lib/surface'
+import { tryGetActiveContributionRegistry } from '#lib/surface/index.js'
 
 import { safeFenceLine } from '../../fence-body'
 import { blockInsertable, blockTakesLine, insertContext, planBlockInsert } from '../block-insert'

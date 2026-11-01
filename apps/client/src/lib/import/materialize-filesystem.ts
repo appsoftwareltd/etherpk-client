@@ -9,16 +9,16 @@
  * no second rollback mechanism.
  */
 
-import type { DirectoryAdapter } from '$lib/storage/fs/directory-adapter'
-import { sanitizeGraphSettings, writeGraphSettings } from '$lib/storage/fs/graph-settings'
-import { readQuickNotes, writeQuickNotes } from '$lib/storage/fs/quick-notes-file'
-import { readGraphThemes, writeGraphTheme } from '$lib/storage/fs/theme-files'
-import { unionQuickNotes } from '$lib/document/quick-notes'
-import { unionBookmarks } from '$lib/document/bookmarks/bookmarks'
-import { readBookmarks, writeBookmarks } from '$lib/storage/fs/bookmarks-file'
-import { unionDictionary } from '$lib/document/spelling/graph-dictionary'
-import { readDictionary, writeDictionary } from '$lib/storage/fs/dictionary-file'
-import { filesystemProtectionStore } from '$lib/document/protection/protection-store'
+import type { DirectoryAdapter } from '#lib/storage/fs/directory-adapter.js'
+import { sanitizeGraphSettings, writeGraphSettings } from '#lib/storage/fs/graph-settings.js'
+import { readQuickNotes, writeQuickNotes } from '#lib/storage/fs/quick-notes-file.js'
+import { readGraphThemes, writeGraphTheme } from '#lib/storage/fs/theme-files.js'
+import { unionQuickNotes } from '#lib/document/quick-notes.js'
+import { unionBookmarks } from '#lib/document/bookmarks/bookmarks.js'
+import { readBookmarks, writeBookmarks } from '#lib/storage/fs/bookmarks-file.js'
+import { unionDictionary } from '#lib/document/spelling/graph-dictionary.js'
+import { readDictionary, writeDictionary } from '#lib/storage/fs/dictionary-file.js'
+import { filesystemProtectionStore } from '#lib/document/protection/protection-store.js'
 
 import { buildReportPage } from './report'
 import { breathe, type ConvertedGraph, type ImportControl, type ImportFormat } from './types'

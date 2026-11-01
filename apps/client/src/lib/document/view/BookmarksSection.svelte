@@ -13,7 +13,7 @@
     import {
         BOOKMARK_OPEN,
         BOOKMARK_REMOVE_ALL,
-    } from "$lib/document/commands/bookmark-commands";
+    } from "#lib/document/commands/bookmark-commands.js";
     import {
         conceptKeyOf,
         getBookmarks,
@@ -21,18 +21,18 @@
         setBookmarkLabel,
         subscribeBookmarks,
         type Bookmark,
-    } from "$lib/document/bookmarks/bookmarks";
+    } from "#lib/document/bookmarks/bookmarks.js";
     import {
         readCollapsedGroups,
         writeCollapsedGroups,
-    } from "$lib/document/bookmarks/collapsed-groups";
-    import { reason } from "$lib/document/bookmarks/remove-with-undo";
+    } from "#lib/document/bookmarks/collapsed-groups.js";
+    import { reason } from "#lib/document/bookmarks/remove-with-undo.js";
     import {
         missingBookmarkLines,
         subscribeBookmarkLabelEdit,
         subscribeBookmarkStatus,
         takeBookmarkLabelEdit,
-    } from "$lib/document/bookmarks/status";
+    } from "#lib/document/bookmarks/status.js";
     import {
         attachContextMenu,
         formatChordHint,
@@ -40,9 +40,9 @@
         openContextMenu,
         tryGetActiveCommandRegistry,
         type ContextMenuTarget,
-    } from "$lib/surface";
-    import { iconSvg } from "$lib/surface/icons";
-    import { currentWorkspaceServices } from "$lib/workspace/workspace-services";
+    } from "#lib/surface/index.js";
+    import { iconSvg } from "#lib/surface/icons.js";
+    import { currentWorkspaceServices } from "#lib/workspace/workspace-services.js";
 
     let bookmarks = $state.raw<Bookmark[]>([]);
     /** Ids whose line an editor looked for and did not find. */

@@ -21,7 +21,7 @@
  * fallback identity a restored View is opened under.
  */
 
-import type { LayoutController, SidebarSide, ViewRef } from '$lib/layout'
+import type { LayoutController, SidebarSide, ViewRef } from '#lib/layout/index.js'
 
 export interface Resident {
     /** The View kind the resident is recognised by, whatever target it was opened on. */

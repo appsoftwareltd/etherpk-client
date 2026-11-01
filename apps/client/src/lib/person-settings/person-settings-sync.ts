@@ -19,15 +19,15 @@
  * when the window is focused again (at most once a minute), when the device comes back online and
  * when its Sync connections change. When the account ends here its settings leave the device.
  */
-import { onAccountSignal } from '$lib/sync/account-signal'
-import { readSyncAccount } from '$lib/sync/account-scope'
-import { NoVaultError } from '$lib/sync/recovery-unlock'
-import { updateSettingsVault } from '$lib/sync/settings-vault-update'
-import type { SyncApi } from '$lib/sync/sync-api'
-import { primarySyncConnection, syncApiFor } from '$lib/sync/sync-connection'
-import { SYNC_CONNECTIONS_CHANGED_EVENT, SYNC_CONNECTIONS_STORAGE_KEY } from '$lib/sync/sync-connections'
-import { getVaultWrapKey } from '$lib/sync/vault-session'
-import { readVault, updateVault } from '$lib/sync/vault-update'
+import { onAccountSignal } from '#lib/sync/account-signal.js'
+import { readSyncAccount } from '#lib/sync/account-scope.js'
+import { NoVaultError } from '#lib/sync/recovery-unlock.js'
+import { updateSettingsVault } from '#lib/sync/settings-vault-update.js'
+import type { SyncApi } from '#lib/sync/sync-api.js'
+import { primarySyncConnection, syncApiFor } from '#lib/sync/sync-connection.js'
+import { SYNC_CONNECTIONS_CHANGED_EVENT, SYNC_CONNECTIONS_STORAGE_KEY } from '#lib/sync/sync-connections.js'
+import { getVaultWrapKey } from '#lib/sync/vault-session.js'
+import { readVault, updateVault } from '#lib/sync/vault-update.js'
 
 import { personSettings, readPersonSettings, type PersonSettings, type PersonSettingsRecord } from './person-settings'
 

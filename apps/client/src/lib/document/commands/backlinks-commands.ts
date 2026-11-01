@@ -12,7 +12,7 @@
  * No default keys: Alt+B already reaches the same references in the Backlinks panel.
  */
 
-import { type CommandRegistry, type ContributionRegistry, registerCommandMenuItem } from '$lib/surface'
+import { type CommandRegistry, type ContributionRegistry, registerCommandMenuItem } from '#lib/surface/index.js'
 
 import { getActiveEditorView } from '../active-editor'
 import type { BacklinksPreferencesStore } from '../backlinks-preferences'

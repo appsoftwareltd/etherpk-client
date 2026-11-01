@@ -15,7 +15,7 @@
      * A loaded bar that sat a little lower, a little taller or with its text further left jolted the
      * page as the day loaded.
      */
-    import { iconSvg } from "$lib/surface/icons";
+    import { iconSvg } from "#lib/surface/icons.js";
 
     let {
         mode,

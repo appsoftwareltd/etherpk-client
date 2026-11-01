@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { createCommandRegistry, createContributionRegistry, listCommandMenuItems } from '$lib/surface'
+import { createCommandRegistry, createContributionRegistry, listCommandMenuItems } from '#lib/surface/index.js'
 
 import { createBacklinksPreferencesStore } from '../backlinks-preferences'
 import { BACKLINKS_BELOW_DOCUMENTS, BACKLINKS_GO_TO_BELOW_DOCUMENT, registerBacklinksCommands } from './backlinks-commands'

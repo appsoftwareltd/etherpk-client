@@ -3,7 +3,7 @@
  * section. Plain functions, so the wording and the rule for when the dialog shows are tested
  * without a component.
  */
-import type { MergeDuplicatesOutcome } from '$lib/storage/server/server-document-store'
+import type { MergeDuplicatesOutcome } from '#lib/storage/synced/server-document-store.js'
 
 /**
  * Whether the dialog at graph open offers the review. Only once the registry has been confirmed

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { EnvelopeError, deriveVaultWrapKey, generateRecoveryCode, toBase64Url, type ProtectionRecord } from '$lib/crypto'
-import { ManagedTokenError } from '$lib/auth/managed-token'
+import { EnvelopeError, deriveVaultWrapKey, generateRecoveryCode, toBase64Url, type ProtectionRecord } from '#lib/crypto/index.js'
+import { ManagedTokenError } from '#lib/auth/managed-token.js'
 import { setSyncAccount } from './account-scope'
 import { devicePasscode } from './device-passcode'
 import { ensureGraphKeys, vaultProtectionAccess } from './keys'

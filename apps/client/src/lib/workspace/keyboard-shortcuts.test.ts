@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { eventMatches, parseChord } from '$lib/surface'
+import { eventMatches, parseChord } from '#lib/surface/index.js'
 
 import { APP_KEYBINDINGS, EDITOR_SHORTCUTS, focusLeavesChordFree } from './keyboard-shortcuts'
 

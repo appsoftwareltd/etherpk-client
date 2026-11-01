@@ -20,8 +20,8 @@
      */
     import { onDestroy, onMount, untrack } from "svelte";
 
-    import type { ViewVisibility } from "$lib/layout";
-    import { workspaceService } from "$lib/workspace/workspace-services";
+    import type { ViewVisibility } from "#lib/layout/index.js";
+    import { workspaceService } from "#lib/workspace/workspace-services.js";
 
     import { type BacklinksState, createBacklinksLoader, getActiveGraphIndex, linksToConcept } from "../backlinks";
     import type { BacklinksPreferences } from "../backlinks-preferences";

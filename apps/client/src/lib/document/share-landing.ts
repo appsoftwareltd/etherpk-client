@@ -17,15 +17,15 @@
  * session has reported the note saved, a later failure is a sync problem the page says so
  * about, never a reason to hand the same text over again.
  */
-import type { GraphKeyring } from '$lib/crypto'
-import type { GraphRecord } from '$lib/storage/graph-registry'
+import type { GraphKeyring } from '#lib/crypto/index.js'
+import type { GraphRecord } from '#lib/storage/graph-registry.js'
 import {
     addQuickNoteOverSession,
     type QuickNoteDelivery,
     type QuickNoteSessionDeps,
     type QuickNoteSessionHooks,
-} from '$lib/sync/quick-note-session'
-import { heldGraphKeyring, resolveSyncedGraphConnection, type SyncedGraphConnection } from '$lib/sync/synced-graph-access'
+} from '#lib/sync/quick-note-session.js'
+import { heldGraphKeyring, resolveSyncedGraphConnection, type SyncedGraphConnection } from '#lib/sync/synced-graph-access.js'
 
 import type { QuickNote } from './quick-notes'
 

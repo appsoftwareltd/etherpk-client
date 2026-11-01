@@ -27,10 +27,10 @@
      * an [[Export]]. Naming it "Graph" would invert the glossary.
      */
     import { onMount } from "svelte";
-    import { normalizeDisplaySize } from "$lib/document";
+    import { normalizeDisplaySize } from "#lib/document/index.js";
     import { formatBytes } from "@appsoftwareltd/etherpk-shared";
-    import { type GraphSettings } from "$lib/storage";
-    import InstallSteps from "$lib/install/InstallSteps.svelte";
+    import { type GraphSettings } from "#lib/storage/index.js";
+    import InstallSteps from "#lib/install/InstallSteps.svelte";
     import {
         DEFAULT_IMAGE_DISPLAY_SIZE,
         DEFAULT_RECENT_COUNT,
@@ -38,27 +38,27 @@
         MAX_RECENT_COUNT,
         MIN_RECENT_COUNT,
         normalizeHexColor,
-    } from "$lib/storage/fs/graph-settings";
-    import type { GraphAssetTools } from "$lib/storage/fs/asset-orphans";
-    import OrphanAssetsSection from "$lib/storage/ui/OrphanAssetsSection.svelte";
-    import FormattingSection from "$lib/document/formatting/ui/FormattingSection.svelte";
+    } from "#lib/storage/fs/graph-settings.js";
+    import type { GraphAssetTools } from "#lib/storage/fs/asset-orphans.js";
+    import OrphanAssetsSection from "#lib/storage/ui/OrphanAssetsSection.svelte";
+    import FormattingSection from "#lib/document/formatting/ui/FormattingSection.svelte";
     import DuplicateNamesSection from "./DuplicateNamesSection.svelte";
     import type { DuplicateNamesSession } from "./duplicate-names-session.svelte";
-    import type { FormattingSectionProps } from "$lib/document/formatting/ui/formatting-section";
+    import type { FormattingSectionProps } from "#lib/document/formatting/ui/formatting-section.js";
     import Modal from "@appsoftwareltd/etherpk-shared/dialog";
-    import ProtectionSettingsTab from "$lib/document/protection/ui/ProtectionSettingsTab.svelte";
-    import SpellingSettingsTab from "$lib/document/spelling/ui/SpellingSettingsTab.svelte";
-    import ExtensionsSettingsTab from "$lib/extensions/ExtensionsSettingsTab.svelte";
-    import type { ExtensionDirectory } from "$lib/extensions/directory";
-    import type { InstalledSync } from "$lib/extensions/installed-sync";
-    import type { ExtensionHost } from "$lib/extensions/host";
-    import type { SpellingTabProps } from "$lib/document/spelling/ui/spelling-tab";
-    import type { ProtectionTabProps } from "$lib/document/protection/ui/protection-tab";
+    import ProtectionSettingsTab from "#lib/document/protection/ui/ProtectionSettingsTab.svelte";
+    import SpellingSettingsTab from "#lib/document/spelling/ui/SpellingSettingsTab.svelte";
+    import ExtensionsSettingsTab from "#lib/extensions/ExtensionsSettingsTab.svelte";
+    import type { ExtensionDirectory } from "#lib/extensions/directory.js";
+    import type { InstalledSync } from "#lib/extensions/installed-sync.js";
+    import type { ExtensionHost } from "#lib/extensions/host.js";
+    import type { SpellingTabProps } from "#lib/document/spelling/ui/spelling-tab.js";
+    import type { ProtectionTabProps } from "#lib/document/protection/ui/protection-tab.js";
     import type { MirrorTabProps } from "./mirror-tab";
-    import type { TemplateEntry } from "$lib/document/index-db";
+    import type { TemplateEntry } from "#lib/document/index-db.js";
     import type { PublishTabProps } from "./publish-tab";
     import PublishSettingsTab from "./PublishSettingsTab.svelte";
-    import { PRESENCE_PALETTE } from "$lib/sync/presence-identity";
+    import { PRESENCE_PALETTE } from "#lib/sync/presence-identity.js";
     import {
         AGENT_TOOLS,
         type AgentTool,
@@ -73,9 +73,9 @@
     } from "./agents-tab";
     import AgentCommandRowView from "./AgentCommandRow.svelte";
     import HeadlessClientSignIn from "./HeadlessClientSignIn.svelte";
-    import ExtensionSettingsSections from "$lib/extensions/ExtensionSettingsSections.svelte";
-    import { iconSvg } from "$lib/surface/icons";
-    import { MIRROR_PHASE_LABELS } from "$lib/storage/server/local-mirror";
+    import ExtensionSettingsSections from "#lib/extensions/ExtensionSettingsSections.svelte";
+    import { iconSvg } from "#lib/surface/icons.js";
+    import { MIRROR_PHASE_LABELS } from "#lib/storage/synced/local-mirror.js";
 
     let {
         graphId,

@@ -7,7 +7,7 @@
  * key of its own for the account, and invites would then be sealed to it. When the two differ,
  * the vault's identity is published again with a signed write, and the caller warns the user.
  */
-import { type KeyVault, bytesEqual, fingerprint, fromBase64Url, identityPublicKeys } from '$lib/crypto'
+import { type KeyVault, bytesEqual, fingerprint, fromBase64Url, identityPublicKeys } from '#lib/crypto/index.js'
 import { IDENTITY_PROOF_REFUSED_CODE, KEY_SIGNATURE_REFUSED_CODE } from '@appsoftwareltd/etherpk-shared'
 import { SyncApiError, type PublishedIdentityJson, type SyncApi } from './sync-api'
 import { updateVault } from './vault-update'

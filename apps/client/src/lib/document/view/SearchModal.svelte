@@ -17,8 +17,8 @@
      */
     import { tick, untrack } from "svelte";
 
-    import LoadingSweep from "$lib/components/LoadingSweep.svelte";
-    import { getActiveLayoutController } from "$lib/layout";
+    import LoadingSweep from "#lib/components/LoadingSweep.svelte";
+    import { getActiveLayoutController } from "#lib/layout/index.js";
     import {
         namePageCount,
         namePageRows,
@@ -37,7 +37,7 @@
         valueSuggestions,
         type SearchSuggestion,
     } from "../search-suggest";
-    import { iconSvg } from "$lib/surface/icons";
+    import { iconSvg } from "#lib/surface/icons.js";
 
     const { controller }: { controller: SearchController } = $props();
 

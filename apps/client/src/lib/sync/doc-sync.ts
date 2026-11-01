@@ -6,8 +6,8 @@
  */
 import * as Y from 'yjs'
 import { Awareness, applyAwarenessUpdate, encodeAwarenessUpdate, removeAwarenessStates } from 'y-protocols/awareness'
-import { contextAad, envelopeEpochId, openSymmetric, sealSymmetric, toBase64Url, fromBase64Url } from '$lib/crypto'
-import { currentEpoch, keyForEpoch, keyringReader, type KeyringSource } from '$lib/crypto'
+import { contextAad, envelopeEpochId, openSymmetric, sealSymmetric, toBase64Url, fromBase64Url } from '#lib/crypto/index.js'
+import { currentEpoch, keyForEpoch, keyringReader, type KeyringSource } from '#lib/crypto/index.js'
 import { SYNC_PROTOCOL_LIMITS } from '@appsoftwareltd/etherpk-shared'
 import type { RelayClientMessage, RelayServerMessage } from './messages'
 import { mergeStateVectors } from './state-vector'

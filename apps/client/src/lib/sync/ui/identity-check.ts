@@ -7,7 +7,7 @@
  * else's key. It never blocks opening a graph: the keys work either way, and a check that fails for
  * any other reason is tried again on the next use.
  */
-import { showNotice } from '$lib/activity/notices'
+import { showNotice } from '#lib/activity/notices.js'
 import { ForeignIdentityError, ensureAccountIdentity } from '../account-identity'
 import type { SyncApi } from '../sync-api'
 import { serverHost } from '../sync-connections'

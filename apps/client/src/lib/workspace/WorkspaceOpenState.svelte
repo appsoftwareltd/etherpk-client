@@ -1,10 +1,10 @@
 <script lang="ts">
-    import LoadingSweep from '$lib/components/LoadingSweep.svelte'
-    import InstallOffer from '$lib/install/InstallOffer.svelte'
-    import { managedSignInHref, syncConnectHref } from '$lib/auth/sign-in-links'
+    import LoadingSweep from '#lib/components/LoadingSweep.svelte'
+    import InstallOffer from '#lib/install/InstallOffer.svelte'
+    import { managedSignInHref, syncConnectHref } from '#lib/auth/sign-in-links.js'
 
-    import type { AccessLossNotice } from '$lib/sync/access-loss'
-    import { serverHost } from '$lib/sync/sync-connections'
+    import type { AccessLossNotice } from '#lib/sync/access-loss.js'
+    import { serverHost } from '#lib/sync/sync-connections.js'
 
     import type { MissingGraphDiagnosis } from './graph-availability'
 

@@ -24,7 +24,7 @@
      * **Preview.** The theme, unsaved edits included, rendered over a publication of the graph
      * that uses it (or a bundled sample when none does) into a sandboxed frame with an opaque
      * origin, so a theme's script previews with no reach into the app. The rendered site is
-     * handed to the service worker and framed from its preview route (`src/service-worker.ts`), which is
+     * handed to the service worker and framed from its preview route (`src/service-worker/index.ts`), which is
      * what lets the site's scripts run: a page inside the app's own document would inherit the
      * app's Content Security Policy and could run no inline script. Without a worker the page is
      * inlined into a `srcdoc` frame instead (`host/preview.ts`), which shows it without its
@@ -40,9 +40,9 @@
     import { languages } from "@codemirror/language-data";
     import { strToU8, zipSync } from "fflate";
 
-    import type { ViewRef } from "$lib/layout";
-    import { workspaceService } from "$lib/workspace/workspace-services";
-    import { setSandboxedSrcdoc } from "$lib/security/trusted-types";
+    import type { ViewRef } from "#lib/layout/index.js";
+    import { workspaceService } from "#lib/workspace/workspace-services.js";
+    import { setSandboxedSrcdoc } from "#lib/security/trusted-types.js";
 
     import { bundledTheme } from "@appsoftwareltd/etherpk-themes";
 
@@ -550,7 +550,7 @@
                     <div class="min-h-0 flex-1 bg-white">
                         {#if previewUrl !== null}
                             <!-- allow-same-origin so the navigation reaches the service worker, whose response then
-                                 sandboxes the document to an opaque origin (see src/service-worker.ts): a theme's script previews
+                                 sandboxes the document to an opaque origin (see src/service-worker/index.ts): a theme's script previews
                                  with no reach into the app. The src is set by the effect above so a click inside the
                                  frame is not undone. -->
                             <iframe title="Theme preview" class="h-full w-full border-0" sandbox="allow-scripts allow-same-origin allow-forms" bind:this={frame} data-testid="theme-view-preview-frame"></iframe>

@@ -7,7 +7,7 @@
  * 409 and the change is applied again to the newer Settings Vault.
  */
 import { settingsVaultWriteTranscript } from '@appsoftwareltd/etherpk-shared'
-import { type SettingsVault, fromBase64Url, openSettingsVault, sealSettingsVault, sha256, signMessage, toBase64Url } from '$lib/crypto'
+import { type SettingsVault, fromBase64Url, openSettingsVault, sealSettingsVault, sha256, signMessage, toBase64Url } from '#lib/crypto/index.js'
 import type { SyncApi } from './sync-api'
 import { isVersionConflict } from './vault-update'
 

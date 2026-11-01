@@ -1,4 +1,4 @@
-import { SyncApiError } from '$lib/sync/sync-api'
+import { SyncApiError } from '#lib/sync/sync-api.js'
 
 /** Socket and TLS error codes Node's fetch reports as the cause of "fetch failed". */
 const TLS_CODES = new Set([

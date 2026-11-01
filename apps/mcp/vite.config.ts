@@ -6,7 +6,7 @@ import { builtinModules } from 'node:module'
 const here = fileURLToPath(new URL('.', import.meta.url))
 
 /**
- * A Node bundle of the headless client. `$lib` resolves into the client's own source, so the
+ * A Node bundle of the headless client. `#lib` resolves into the client's own source, so the
  * sync engine, crypto, index and server store are compiled in rather than copied (ADR 0072).
  * Everything else that is a real package stays external and is installed with this one; the
  * shared workspace package exports TypeScript source, so it has to be bundled too.
@@ -26,7 +26,7 @@ const isBundled = (id: string) => [...bundled].some((name) => id === name || id.
 export default defineConfig({
     resolve: {
         alias: {
-            $lib: resolve(here, '../client/src/lib'),
+            '#lib': resolve(here, '../client/src/lib'),
         },
     },
     build: {
@@ -42,7 +42,7 @@ export default defineConfig({
             external: (id) =>
                 builtinModules.includes(id) ||
                 id.startsWith('node:') ||
-                (!id.startsWith('.') && !id.startsWith('/') && !id.startsWith('$lib') && !isBundled(id) && !id.includes('/client/src/lib')),
+                (!id.startsWith('.') && !id.startsWith('/') && !id.startsWith('#lib') && !isBundled(id) && !id.includes('/client/src/lib')),
         },
     },
     ssr: {

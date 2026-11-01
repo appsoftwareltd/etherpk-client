@@ -1,7 +1,7 @@
 import 'fake-indexeddb/auto'
 import { describe, expect, it, vi } from 'vitest'
 
-import { createGraphKeyring } from '$lib/crypto'
+import { createGraphKeyring } from '#lib/crypto/index.js'
 
 import { createGraphSync } from './graph-sync'
 import { openGraphCache } from './local-cache'

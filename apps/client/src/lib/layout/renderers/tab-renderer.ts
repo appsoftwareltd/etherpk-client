@@ -31,8 +31,8 @@
  */
 import type { GroupPanelPartInitParameters, ITabRenderer } from 'dockview-core'
 
-import { setTrustedMarkup } from '$lib/security/trusted-types'
-import { iconSvg } from '$lib/surface/icons'
+import { setTrustedMarkup } from '#lib/security/trusted-types.js'
+import { iconSvg } from '#lib/surface/icons.js'
 
 /** The mark a tab wears, if any: which glyph, and the title that explains it on hover. */
 export interface TabMark {

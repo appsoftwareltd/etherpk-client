@@ -3,10 +3,10 @@
  * each one's whole text, and the compare-and-set write that fixes it. The scan itself is
  * `document/formatting/scan.ts`; this is the wiring, kept out of the component so it can be tested.
  */
-import { createBreather } from '$lib/activity/breathe'
-import type { DocumentRead, FormattingSource, ScanDocument } from '$lib/document/formatting/scan'
-import type { FilesystemDocumentStore } from '$lib/storage/fs/filesystem-store'
-import type { ServerDocumentStore } from '$lib/storage/server/server-document-store'
+import { createBreather } from '#lib/activity/breathe.js'
+import type { DocumentRead, FormattingSource, ScanDocument } from '#lib/document/formatting/scan.js'
+import type { FilesystemDocumentStore } from '#lib/storage/fs/filesystem-store.js'
+import type { ServerDocumentStore } from '#lib/storage/synced/server-document-store.js'
 
 /** Journals newest first, then pages by name: the order the graph's lists use. */
 function inListOrder(documents: ScanDocument[]): ScanDocument[] {

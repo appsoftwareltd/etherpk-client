@@ -32,7 +32,7 @@ import {
     toBase64Url,
     utf8,
     verifySignature,
-} from '$lib/crypto'
+} from '#lib/crypto/index.js'
 import { type PinState, pinState, publishedIdentity, withPin } from './pins'
 import { NoVaultError } from './recovery-unlock'
 import { SyncApiError, type PendingInvite, type SyncApi } from './sync-api'

@@ -16,7 +16,7 @@
     import type { Attachment } from "svelte/attachments";
     import { createSubscriber } from "svelte/reactivity";
 
-    import type { ViewProps } from "$lib/layout";
+    import type { ViewProps } from "#lib/layout/index.js";
 
     import type { ExtensionHost, ViewSlot } from "./host";
     import { clientShadowSheets, extensionStyleSheets } from "./styles";

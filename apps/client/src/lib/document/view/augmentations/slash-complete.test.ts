@@ -1,7 +1,7 @@
 import { EditorState } from '@codemirror/state'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
-import { createContributionRegistry, registerCommandMenuItem, setActiveContributionRegistry } from '$lib/surface'
+import { createContributionRegistry, registerCommandMenuItem, setActiveContributionRegistry } from '#lib/surface/index.js'
 
 import { editorAnalysis } from '../analysis/editor-analysis'
 import { commandMenuOpen, slashCompletion } from './slash-complete'

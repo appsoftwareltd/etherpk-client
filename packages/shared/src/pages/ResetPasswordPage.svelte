@@ -6,7 +6,7 @@
     import { PASSWORD_HELP, WEAK_PASSWORD_CODE } from "../auth/password-strength";
     import AlertBanner from "../components/AlertBanner.svelte";
     import { page } from "$app/state";
-    import { replaceState } from "$app/navigation";
+    import { goto } from "$app/navigation";
     import { onMount } from "svelte";
     import { pathWithQuery } from "../navigation/sign-in-return";
 
@@ -44,12 +44,12 @@
 
     onMount(() => {
         if (!page.url.searchParams.has("token")) return;
-        const withoutToken = new URL(page.url);
+        const withoutToken = new URL(page.url.href);
         withoutToken.searchParams.delete("token");
         // On a first page load this runs while SvelteKit is still starting its router, and
         // replaceState throws until it has. The router finishes in the same task, so the next
         // task is soon enough.
-        const timer = setTimeout(() => replaceState(withoutToken, page.state), 0);
+        const timer = setTimeout(() => goto(withoutToken, { shallow: true, replace: true, state: page.state }), 0);
         return () => clearTimeout(timer);
     });
 

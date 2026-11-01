@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { type MirrorStatus, OFFLINE_MESSAGE } from '$lib/storage/server/local-mirror'
+import { type MirrorStatus, OFFLINE_MESSAGE } from '#lib/storage/synced/local-mirror.js'
 
 import { mirrorIndicatorView } from './mirror-indicator'
 

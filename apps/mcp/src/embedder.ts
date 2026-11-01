@@ -29,7 +29,7 @@ import { pathToFileURL } from 'node:url'
 
 import { Tokenizer } from '@huggingface/tokenizers'
 
-import { type EmbeddingModel, normalise } from '$lib/document/semantic/embedding-model'
+import { type EmbeddingModel, normalise } from '#lib/document/semantic/embedding-model.js'
 
 import { cacheRoot } from './persistence'
 

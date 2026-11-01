@@ -1,13 +1,11 @@
 import { describe, expect, it, vi } from 'vitest'
 
-vi.mock('$env/dynamic/private', () => ({
-    env: {
-        CLIENT_PUBLIC_URL: 'https://app.example.com',
-        CORPORATE_ISSUER: 'https://accounts.example.com',
-        MANAGED_OAUTH_CLIENT_ID: 'etherpk-client',
-        MANAGED_SYNC_URL: 'https://sync.example.com',
-        CLIENT_SESSION_SECRET: 'a-client-session-secret-with-32-bytes',
-    },
+vi.mock('$app/env/private', () => ({
+    CLIENT_PUBLIC_URL: 'https://app.example.com',
+    CORPORATE_ISSUER: 'https://accounts.example.com',
+    MANAGED_OAUTH_CLIENT_ID: 'etherpk-client',
+    MANAGED_SYNC_URL: 'https://sync.example.com',
+    CLIENT_SESSION_SECRET: 'a-client-session-secret-with-32-bytes',
 }))
 
 const { load } = await import('./+page.server')

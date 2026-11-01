@@ -7,7 +7,7 @@
  * [[Task Detail]] showing a renamed document follows it, and a board re-keyed because its own
  * concept was renamed starts where the board it replaces left off.
  */
-import { conceptKey } from '$lib/document/backlinks'
+import { conceptKey } from '#lib/document/backlinks/index.js'
 import type { BoardCell } from './board-model'
 import type { BoardState } from './board-state'
 

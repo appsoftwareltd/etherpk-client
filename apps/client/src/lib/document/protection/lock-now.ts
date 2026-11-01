@@ -11,7 +11,7 @@
  *
  * Pure over the serialized model, so "which tabs go" is a unit-testable question.
  */
-import type { LayoutModel } from '$lib/layout'
+import type { LayoutModel } from '#lib/layout/index.js'
 
 /** The three named regions, in a stable order. Mirrors `layout/model.ts`, which is not public. */
 const REGIONS = ['left-sidebar', 'main', 'right-sidebar'] as const

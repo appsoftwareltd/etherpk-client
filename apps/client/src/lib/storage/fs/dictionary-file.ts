@@ -9,7 +9,7 @@
  * the in-memory adapter. A missing file reads as no words.
  */
 
-import { dictionaryFileText, parseDictionaryFile } from '$lib/document/spelling/graph-dictionary'
+import { dictionaryFileText, parseDictionaryFile } from '#lib/document/spelling/graph-dictionary.js'
 
 import type { DirectoryAdapter } from './directory-adapter'
 

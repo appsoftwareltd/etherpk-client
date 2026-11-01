@@ -1,8 +1,8 @@
 import { error } from '@sveltejs/kit'
 import type { PageServerLoad } from './$types'
-import { env } from '$env/dynamic/private'
-import { parseOptionalManagedClientAuthConfig } from '$lib/server/auth/config'
-import { nextHopAfterClient } from '$lib/server/auth/managed-logout'
+import * as env from '$app/env/private'
+import { parseOptionalManagedClientAuthConfig } from '#lib/server/auth/config.js'
+import { nextHopAfterClient } from '#lib/server/auth/managed-logout.js'
 
 /**
  * The Client's step in a sign-out started on the account site or the Sync portal: the page clears

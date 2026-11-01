@@ -9,7 +9,7 @@
  */
 import type { ExtensionGraphRecords } from '@appsoftwareltd/etherpk-extension-api'
 
-import { createReopenableConnection, type ReopenableConnection } from '$lib/storage/idb-connection'
+import { createReopenableConnection, type ReopenableConnection } from '#lib/storage/idb-connection.js'
 
 const DB_NAME = 'etherpk-extension-records'
 const DB_VERSION = 1

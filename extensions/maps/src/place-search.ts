@@ -35,8 +35,8 @@ import {
     readPlaceFeatures,
 } from '@appsoftwareltd/etherpk-shared'
 
-import type { MapPoint } from '$lib/document/map-text'
-import { SyncApiError, type SyncApi } from '$lib/sync/sync-api'
+import type { MapPoint } from '#lib/document/map-text.js'
+import { SyncApiError, type SyncApi } from '#lib/sync/sync-api.js'
 
 import type { NearestPlace, PlaceSearch, PlaceSearchResult } from './map-block-services'
 import { haversineMeters } from './map-geometry'

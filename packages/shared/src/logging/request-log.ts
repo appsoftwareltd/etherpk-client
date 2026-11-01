@@ -4,11 +4,13 @@
  *
  * - `handleError` logs only a 5xx. SvelteKit also calls it for a plain 404, which the request
  *   line has already recorded at info; logging that again at error would put every
- *   `/favicon.ico` and bot probe in the error stream.
+ *   `/favicon.ico` and bot probe in the error stream. It leaves an error the app raised with
+ *   `error(...)` as it was raised.
  * - The path is redacted before it is logged, because Better Auth's password-reset link carries
  *   its token in the path.
  */
-import type { HandleServerError, RequestEvent } from '@sveltejs/kit'
+import type { RequestEvent } from '@sveltejs/kit'
+import type { HandleServerError } from '@sveltejs/kit/hooks'
 import type { AppLogger } from './better-auth-logger'
 import { redactPath, redactRequestQuery, redactUrl, shouldCaptureErrorResponseBody } from './redaction'
 
@@ -115,27 +117,35 @@ async function errorBodyFields(response: Response): Promise<Record<string, unkno
 }
 
 /**
- * SvelteKit's `handleError`: called for an unexpected error in a load, action or endpoint, and for
- * a route that does not exist. Only a 5xx is logged, at error with its stack; a 404 or 405 is
- * already on the request line at info, and logging it again as an error would make the error
- * stream useless for alerting. The visitor never sees the error's own text.
+ * SvelteKit's `handleError`, which since SvelteKit 3 is called for every error but a redirect:
+ *
+ * - An error the app raised with `error(...)` (`kind: 'app'`) is kept as it was raised, and not
+ *   logged. Its message was written for the visitor, and its status is on the request line.
+ * - An error SvelteKit raised itself (`kind: 'framework'`), such as a route that does not exist,
+ *   keeps SvelteKit's own safe message (a 404 reads "Page not found"), and is logged only when it
+ *   is a 5xx. A 404 or 405 is already on the request line at info, and logging it again as an
+ *   error would make the error stream useless for alerting.
+ * - Anything else was thrown by our code or code it calls (`kind: 'unknown'`): a 500, logged at
+ *   error with its stack. The visitor never sees the error's own text.
  */
 export function createHandleError(context: RequestLogContext): HandleServerError {
-    return ({ error, event, status }) => {
-        if (status >= 500) {
-            context.logger.error('Unexpected server error', {
-                status,
-                method: event.request.method,
-                path: redactPath(event.url.pathname),
-                query: redactRequestQuery(event.url.pathname, event.url.search),
-                error: error instanceof Error ? error.message : String(error),
-                stack: error instanceof Error ? error.stack : undefined,
-                ip: safeClientAddress(event),
-                userAgent: event.request.headers.get('user-agent') ?? undefined,
-                userId: localUserId(event),
-                hostname: context.hostname,
-            })
-        }
-        return { message: status === 404 ? 'Page not found' : 'Something went wrong' }
+    return (caught) => {
+        if (caught.kind === 'app' || caught.kind === 'validation') return
+        const status = caught.kind === 'framework' ? caught.error.status : 500
+        if (status < 500) return status === 404 ? { message: 'Page not found' } : undefined
+        const { error, event } = caught
+        context.logger.error('Unexpected server error', {
+            status,
+            method: event.request.method,
+            path: redactPath(event.url.pathname),
+            query: redactRequestQuery(event.url.pathname, event.url.search),
+            error: error instanceof Error ? error.message : caught.kind === 'framework' ? caught.error.message : String(error),
+            stack: error instanceof Error ? error.stack : undefined,
+            ip: safeClientAddress(event),
+            userAgent: event.request.headers.get('user-agent') ?? undefined,
+            userId: localUserId(event),
+            hostname: context.hostname,
+        })
+        return { message: 'Something went wrong' }
     }
 }

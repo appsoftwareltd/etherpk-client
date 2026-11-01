@@ -8,10 +8,10 @@
  * The session is throwaway: its own in-memory cache under a `-name` suffix, never the graph's
  * persisted one, so a listing leaves nothing behind for the next `serve` to reconcile.
  */
-import type { GraphKeyring } from '$lib/crypto'
-import { createGraphSync, type TransportSocket } from '$lib/sync/graph-sync'
-import { openGraphCache } from '$lib/sync/local-cache'
-import type { SyncTokenSource } from '$lib/sync/sync-token'
+import type { GraphKeyring } from '#lib/crypto/index.js'
+import { createGraphSync, type TransportSocket } from '#lib/sync/graph-sync.js'
+import { openGraphCache } from '#lib/sync/local-cache.js'
+import type { SyncTokenSource } from '#lib/sync/sync-token.js'
 
 import { nodeTransport } from './node-transport'
 

@@ -6,7 +6,7 @@
  */
 import type { ExtensionManifest, ExtensionPersonStorage, ExtensionSettings } from '@appsoftwareltd/etherpk-extension-api'
 
-import { extensionDataKey, extensionSettingKey } from '$lib/person-settings/person-settings'
+import { extensionDataKey, extensionSettingKey } from '#lib/person-settings/person-settings.js'
 
 import type { ClientServices } from './services'
 

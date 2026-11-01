@@ -4,8 +4,8 @@
  * Server refused a revoked token. Without the notice the tab would stay editable with a green
  * dot, and in the first case its edits would replay into the shared graph after a re-invite.
  */
-import { ManagedTokenError } from '$lib/auth/managed-token'
-import { managedSignInHref, syncConnectHref } from '$lib/auth/sign-in-links'
+import { ManagedTokenError } from '#lib/auth/managed-token.js'
+import { managedSignInHref, syncConnectHref } from '#lib/auth/sign-in-links.js'
 import { AccountEnded } from './account-signal'
 import type { SyncAccessLoss } from './graph-sync'
 

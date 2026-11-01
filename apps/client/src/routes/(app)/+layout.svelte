@@ -1,17 +1,17 @@
 <script lang="ts">
     import { page } from "$app/state";
-    import ActivityToastHost from "$lib/activity/ui/ActivityToastHost.svelte";
-    import AssetUploadModal from "$lib/components/AssetUploadModal.svelte";
-    import ClientAccountNavigationMenu from "$lib/components/ClientAccountNavigationMenu.svelte";
-    import GraphNavigationMenu from "$lib/components/GraphNavigationMenu.svelte";
-    import InstallEntry from "$lib/install/InstallEntry.svelte";
+    import ActivityToastHost from "#lib/activity/ui/ActivityToastHost.svelte";
+    import AssetUploadModal from "#lib/components/AssetUploadModal.svelte";
+    import ClientAccountNavigationMenu from "#lib/components/ClientAccountNavigationMenu.svelte";
+    import GraphNavigationMenu from "#lib/components/GraphNavigationMenu.svelte";
+    import InstallEntry from "#lib/install/InstallEntry.svelte";
     import ThemeToggle from "@appsoftwareltd/etherpk-shared/theme-toggle";
-    import DeviceApprovalPrompt from "$lib/sync/ui/DeviceApprovalPrompt.svelte";
-    import RecoveryCodeHost from "$lib/sync/ui/RecoveryCodeHost.svelte";
+    import DeviceApprovalPrompt from "#lib/sync/ui/DeviceApprovalPrompt.svelte";
+    import RecoveryCodeHost from "#lib/sync/ui/RecoveryCodeHost.svelte";
     import { buildApplicationNavigation } from "@appsoftwareltd/etherpk-shared";
     import ApplicationHeader from "@appsoftwareltd/etherpk-shared/application-header";
-    import { suppressBrowserChords } from "$lib/surface";
-    import { startPersonSettingsSync } from "$lib/person-settings/person-settings-sync";
+    import { suppressBrowserChords } from "#lib/surface/index.js";
+    import { startPersonSettingsSync } from "#lib/person-settings/person-settings-sync.js";
 
     let { data, children } = $props();
 

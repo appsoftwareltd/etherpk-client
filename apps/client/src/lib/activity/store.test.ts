@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { NOTICE_AUTO_DISMISS_MS } from '$lib/notice-dismissal'
+import { NOTICE_AUTO_DISMISS_MS } from '#lib/notice-dismissal.js'
 
 import { createBreather } from './breathe'
 import {

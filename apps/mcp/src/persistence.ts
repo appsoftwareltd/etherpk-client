@@ -42,10 +42,10 @@ import { mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/p
 import { homedir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 
-import { INDEX_SCHEMA_VERSION, createSchema, isUsableIndex, type SqlDb } from '$lib/document/index-db'
-import { wrapOo1Db } from '$lib/document/index-db-sqlite'
-import type { IndexDbHost } from '$lib/document/index-worker/core'
-import { EMBEDDING_SCHEMA, EMBEDDING_STORE_VERSION, prepareEmbeddingStore, semanticStatus, type SemanticStatus } from '$lib/document/semantic/embedding-db'
+import { INDEX_SCHEMA_VERSION, createSchema, isUsableIndex, type SqlDb } from '#lib/document/index-db.js'
+import { wrapOo1Db } from '#lib/document/index-db-sqlite.js'
+import type { IndexDbHost } from '#lib/document/index-worker/core.js'
+import { EMBEDDING_SCHEMA, EMBEDDING_STORE_VERSION, prepareEmbeddingStore, semanticStatus, type SemanticStatus } from '#lib/document/semantic/embedding-db.js'
 
 /** The Local Cache's IndexedDB database and stores, as `sync/local-cache.ts` names them. */
 const CACHE_DB = 'etherpk-sync'

@@ -15,7 +15,7 @@
  * It also carries "show the top": a journal day reached by its date (ADR 0154).
  */
 
-import { frontmatterSpan } from '$lib/storage/fs/frontmatter-span'
+import { frontmatterSpan } from '#lib/storage/fs/frontmatter-span.js'
 
 /**
  * Where a reveal lands: a 0-based body line, `'top'` (the document scrolled to its very top with the

@@ -1,8 +1,8 @@
 import type { PageServerLoad } from './$types'
-import { env as privateEnv } from '$env/dynamic/private'
-import { env as publicEnv } from '$env/dynamic/public'
+import * as privateEnv from '$app/env/private'
+import * as publicEnv from '$app/env/public'
 import { serveLegalPage } from '@appsoftwareltd/etherpk-shared/legal'
-import { clientLegalLinks } from '$lib/server/legal'
+import { clientLegalLinks } from '#lib/server/legal.js'
 
 /**
  * The Client renders no legal text of its own. A managed Client sends this to EtherPK's page on

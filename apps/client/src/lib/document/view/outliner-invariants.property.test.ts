@@ -12,9 +12,9 @@ import { keymap } from '@codemirror/view'
 import fc from 'fast-check'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
-import { createContributionRegistry, setActiveContributionRegistry } from '$lib/surface'
+import { createContributionRegistry, setActiveContributionRegistry } from '#lib/surface/index.js'
 
-import { frontmatterLines } from '$lib/storage/fs/frontmatter-span'
+import { frontmatterLines } from '#lib/storage/fs/frontmatter-span.js'
 
 import { fencedBlocks, fenceLineInfo } from '../fenced-code'
 import { normaliseIndentUnit, outlineLines } from '../indent-unit'

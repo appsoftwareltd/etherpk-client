@@ -26,7 +26,7 @@
  * and the rest are dropped, and colours resolve to sRGB.
  */
 
-import { splitNameExt } from '$lib/storage/fs/asset-store'
+import { splitNameExt } from '#lib/storage/fs/asset-store.js'
 
 import { canvasToBlob, drawImageToCanvas } from './image-canvas'
 

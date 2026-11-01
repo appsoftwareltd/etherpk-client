@@ -11,7 +11,7 @@
 import type { Tree } from '@lezer/common'
 import { fileLinkPath, isFileUrl } from '../../file-link'
 
-import { assetNameFromRef } from '$lib/storage/fs/asset-store'
+import { assetNameFromRef } from '#lib/storage/fs/asset-store.js'
 
 import { isImageTarget } from './image-target'
 import { MARKDOWN_LINK, linkGroups } from '../../markdown-link-target'

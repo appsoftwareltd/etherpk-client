@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest'
 
-import type { GraphKeyring } from '$lib/crypto'
-import type { GraphRecord } from '$lib/storage/graph-registry'
-import type { QuickNoteSessionDeps } from '$lib/sync/quick-note-session'
-import type { SyncedGraphConnection } from '$lib/sync/synced-graph-access'
+import type { GraphKeyring } from '#lib/crypto/index.js'
+import type { GraphRecord } from '#lib/storage/graph-registry.js'
+import type { QuickNoteSessionDeps } from '#lib/sync/quick-note-session.js'
+import type { SyncedGraphConnection } from '#lib/sync/synced-graph-access.js'
 
 import { landShareDirectly, routeShare, type DirectShareRoute, type ShareLandingDeps } from './share-landing'
 

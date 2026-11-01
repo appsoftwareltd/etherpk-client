@@ -14,7 +14,7 @@
  */
 import { type GeoJSONSource, type Map as MapLibreMap, type MapSourceDataEvent, Marker } from 'maplibre-gl'
 
-import type { MapPoint } from '$lib/document/map-text'
+import type { MapPoint } from '#lib/document/map-text.js'
 
 import { NAMED_PLACES } from './map-drawing'
 import { oneSpotAt } from './map-geometry'

@@ -4,8 +4,8 @@ import { convertSource } from './convert'
 import { convertEtherpk } from './etherpk'
 import { buildReportPage } from './report'
 import type { SourceFile } from './types'
-import { graphThemeFileText } from '$lib/storage/fs/theme-files'
-import type { ProtectionRecord } from '$lib/crypto'
+import { graphThemeFileText } from '#lib/storage/fs/theme-files.js'
+import type { ProtectionRecord } from '#lib/crypto/index.js'
 
 const RECORD: ProtectionRecord = {
     v: 1,

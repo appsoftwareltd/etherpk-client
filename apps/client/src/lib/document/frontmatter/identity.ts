@@ -12,8 +12,8 @@
  * Pure: no store, no editor. The YAML rules (what counts as a block, how it parses) come from
  * `storage/fs`, shared with the scan and the editor's analysis, so there is one rule.
  */
-import { frontmatterSpan } from '$lib/storage/fs/frontmatter-span'
-import { aliasesOf, conceptKey } from '$lib/storage/fs/identity'
+import { frontmatterSpan } from '#lib/storage/fs/frontmatter-span.js'
+import { aliasesOf, conceptKey } from '#lib/storage/fs/identity.js'
 
 import { editFrontmatter, frontmatterData } from './frontmatter-yaml'
 

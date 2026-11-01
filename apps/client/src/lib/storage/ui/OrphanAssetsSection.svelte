@@ -9,7 +9,7 @@
      * (`OrphanScan.unchecked`): an asset used only inside an unread one looks unused to it, so
      * the person can unlock and scan again before deleting.
      */
-    import type { GraphAssetTools, OrphanScan } from "$lib/storage/fs/asset-orphans";
+    import type { GraphAssetTools, OrphanScan } from "#lib/storage/fs/asset-orphans.js";
 
     let { assetTools }: { assetTools: GraphAssetTools } = $props();
 

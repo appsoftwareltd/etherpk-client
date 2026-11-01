@@ -18,7 +18,7 @@
 import type { FencePresentation, PublishedFence, PublishFenceRequest, QuoteFenceRequest } from '@appsoftwareltd/etherpk-extension-api'
 import { StateEffect } from '@codemirror/state'
 
-import { type ContributionRegistry, tryGetActiveContributionRegistry } from '$lib/surface'
+import { type ContributionRegistry, tryGetActiveContributionRegistry } from '#lib/surface/index.js'
 
 import type { FenceBodyEdit } from '../../fence-body'
 

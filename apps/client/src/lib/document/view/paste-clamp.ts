@@ -62,7 +62,7 @@
 
 import { EditorSelection, EditorState, type Extension, Transaction } from '@codemirror/state'
 
-import { frontmatterLines } from '$lib/storage/fs/frontmatter-span'
+import { frontmatterLines } from '#lib/storage/fs/frontmatter-span.js'
 
 import { type FencedBlockRange, fencedBlocks, fencedBlocksAtLine, fenceLineInfo } from '../fenced-code'
 import { INDENT_UNIT, normaliseIndentUnit, outlineLines } from '../indent-unit'

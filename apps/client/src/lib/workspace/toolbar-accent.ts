@@ -7,7 +7,7 @@
  * whatever colour is picked. No colour sets nothing, and the theme decides.
  */
 
-import { inkFor } from '$lib/contrast-ink'
+import { inkFor } from '#lib/contrast-ink.js'
 
 export function toolbarAccentStyle(color: string | null): string {
     return color ? `--gk-toolbar-accent: ${color}; --gk-toolbar-ink: ${inkFor(color)};` : ''

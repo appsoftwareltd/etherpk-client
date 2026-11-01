@@ -9,7 +9,7 @@
      * two features. The editor groups are the reference card for the CodeMirror keymap.
      */
     import Modal from "@appsoftwareltd/etherpk-shared/dialog";
-    import { boundOnPlatform, formatChord, isApplePlatform } from "$lib/surface";
+    import { boundOnPlatform, formatChord, isApplePlatform } from "#lib/surface/index.js";
 
     import { APP_KEYBINDINGS, APP_SHORTCUT_GROUPS, EDITOR_SHORTCUTS, type AppShortcutGroup, type ShortcutBinding } from "./keyboard-shortcuts";
 

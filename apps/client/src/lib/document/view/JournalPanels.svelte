@@ -2,7 +2,7 @@
     /**
      * The [[Journal Panel]]s beneath a journal tab's entry (ADR 0120, amended 2026-10-12): every
      * panel extensions registered, in the order they were registered, each drawn by its extension
-     * for the tab's day (`$lib/extensions/journal-panels.ts`). A panel registered while the tab is
+     * for the tab's day (`#lib/extensions/journal-panels.ts`). A panel registered while the tab is
      * open (an extension switched on) is drawn as it arrives, and one withdrawn goes.
      *
      * DocumentView puts this in the editor's scroller after the text and before the [[Backlink]]s,
@@ -15,10 +15,10 @@
     import type { Attachment } from "svelte/attachments";
     import { createSubscriber } from "svelte/reactivity";
 
-    import type { ViewVisibility } from "$lib/layout";
-    import { mountJournalPanel } from "$lib/extensions/journal-panels";
-    import { tryGetActiveContributionRegistry } from "$lib/surface";
-    import { type ClientJournalPanel, JOURNAL_PANEL_KIND, listJournalPanels } from "$lib/surface/journal-panels";
+    import type { ViewVisibility } from "#lib/layout/index.js";
+    import { mountJournalPanel } from "#lib/extensions/journal-panels.js";
+    import { tryGetActiveContributionRegistry } from "#lib/surface/index.js";
+    import { type ClientJournalPanel, JOURNAL_PANEL_KIND, listJournalPanels } from "#lib/surface/journal-panels.js";
 
     import { CONTENT_PAD_X } from "./cm-document";
 

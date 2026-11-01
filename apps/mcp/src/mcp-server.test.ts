@@ -3,9 +3,9 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
 
-import { createGraphKeyring } from '$lib/crypto'
-import { createLoopbackRelay } from '$lib/sync/loopback-relay'
-import { fixedSyncToken } from '$lib/sync/sync-token'
+import { createGraphKeyring } from '#lib/crypto/index.js'
+import { createLoopbackRelay } from '#lib/sync/loopback-relay.js'
+import { fixedSyncToken } from '#lib/sync/sync-token.js'
 
 import { openHeadlessGraph, type HeadlessGraph } from './headless-graph'
 import { createMcpServer } from './mcp-server'

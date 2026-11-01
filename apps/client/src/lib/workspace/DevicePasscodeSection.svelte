@@ -7,8 +7,8 @@
      */
     import DevicePasscodeDialog, {
         type DevicePasscodeDialogMode,
-    } from "$lib/sync/ui/DevicePasscodeDialog.svelte";
-    import { devicePasscodeState } from "$lib/sync/ui/device-passcode-state.svelte";
+    } from "#lib/sync/ui/DevicePasscodeDialog.svelte";
+    import { devicePasscodeState } from "#lib/sync/ui/device-passcode-state.svelte.js";
 
     let {
         ondone,

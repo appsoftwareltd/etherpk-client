@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import type { GraphRecord } from '$lib/storage'
+import type { GraphRecord } from '#lib/storage/index.js'
 
 import { forgetGraphOnDevice, graphDeviceMemoryKeys, type ForgetGraphDeps } from './graph-device-memory'
 

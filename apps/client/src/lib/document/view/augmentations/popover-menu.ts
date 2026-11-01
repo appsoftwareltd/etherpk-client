@@ -16,7 +16,7 @@
 import { type EditorState, type Extension, type Facet, Prec, StateEffect, StateField } from '@codemirror/state'
 import { EditorView, keymap, showTooltip, tooltips, type Tooltip, type TooltipView } from '@codemirror/view'
 
-import { setTrustedMarkup, type TrustedMarkup } from '$lib/security/trusted-types'
+import { setTrustedMarkup, type TrustedMarkup } from '#lib/security/trusted-types.js'
 
 import { editorScroller } from '../editor-scroller'
 import { isFindReplace, isFindSelect } from '../../find/find-edit'

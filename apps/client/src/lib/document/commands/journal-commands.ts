@@ -6,7 +6,7 @@
  * there is an older day to load under the cap.
  */
 
-import { type CommandRegistry, type ContributionRegistry, registerCommandMenuItem } from '$lib/surface'
+import { type CommandRegistry, type ContributionRegistry, registerCommandMenuItem } from '#lib/surface/index.js'
 
 import { getActiveEditorView } from '../active-editor'
 import { journalRollOf, type JournalRollControl } from '../view/journal-roll-dom'

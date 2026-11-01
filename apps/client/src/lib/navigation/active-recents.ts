@@ -8,7 +8,7 @@
  */
 
 import { createRecents, type RecentsStore } from './recents'
-import { setWorkspaceService, workspaceService } from '$lib/workspace/workspace-services'
+import { setWorkspaceService, workspaceService } from '#lib/workspace/workspace-services.js'
 
 const NONE: RecentsStore = {
     list: () => [],

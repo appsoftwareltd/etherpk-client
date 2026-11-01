@@ -6,7 +6,7 @@
      * as Key changed.
      */
     import Modal from "@appsoftwareltd/etherpk-shared/dialog";
-    import { describeSyncFailure } from "$lib/sync/sync-error-copy";
+    import { describeSyncFailure } from "#lib/sync/sync-error-copy.js";
     import SecurityFingerprint from "./SecurityFingerprint.svelte";
 
     let {

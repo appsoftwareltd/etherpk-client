@@ -12,7 +12,7 @@
  */
 
 import type { DocumentStore } from './types'
-import { setWorkspaceService, workspaceService } from '$lib/workspace/workspace-services'
+import { setWorkspaceService, workspaceService } from '#lib/workspace/workspace-services.js'
 
 export function setActiveDocumentStore(store: DocumentStore | null): void {
     setWorkspaceService('store', store ?? undefined)

@@ -21,8 +21,8 @@
 import { type EditorState, type Extension, type Range, RangeSet, type Text } from '@codemirror/state'
 import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate, WidgetType } from '@codemirror/view'
 
-import { type AssetStore, assetNameFromRef } from '$lib/storage/fs/asset-store'
-import { openContextMenu, tryGetActiveCommandRegistry } from '$lib/surface'
+import { type AssetStore, assetNameFromRef } from '#lib/storage/fs/asset-store.js'
+import { openContextMenu, tryGetActiveCommandRegistry } from '#lib/surface/index.js'
 
 import { assetTargetAt, attachAssetContextMenu, buildAssetActions } from './asset-actions'
 import { splitMarksAtLineText, treeChanged } from './base-renderer'

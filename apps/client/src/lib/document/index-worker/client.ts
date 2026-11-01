@@ -39,7 +39,7 @@ import type {
 } from '../backlinks/live-index'
 import { INDEX_DISCARDED_PREFIX } from './core'
 import type { IndexRequest, IndexResponse } from './protocol'
-import { performanceRecorder } from '$lib/diagnostics/performance'
+import { performanceRecorder } from '#lib/diagnostics/performance.js'
 
 /**
  * Dirty documents above which replacing the whole index is cheaper than re-indexing each.

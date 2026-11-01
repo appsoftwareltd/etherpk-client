@@ -12,7 +12,7 @@
  * branch or bound a group.
  */
 
-import { frontmatterLines } from '$lib/storage/fs/frontmatter-span'
+import { frontmatterLines } from '#lib/storage/fs/frontmatter-span.js'
 
 import { type FencedBlockRange, fencedBlocks, fencedBlocksAtLine, fencedBlockTree } from './fenced-code'
 import { INDENT_UNIT, type OutlineLine, outlineLines } from './indent-unit'

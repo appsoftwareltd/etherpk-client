@@ -1,15 +1,13 @@
 import type { Cookies } from '@sveltejs/kit'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { resetOAuthMetadataCache } from '$lib/server/auth/oauth-client'
+import { resetOAuthMetadataCache } from '#lib/server/auth/oauth-client.js'
 
-vi.mock('$env/dynamic/private', () => ({
-    env: {
-        CLIENT_PUBLIC_URL: 'https://app.example.com',
-        CORPORATE_ISSUER: 'https://accounts.example.com',
-        MANAGED_OAUTH_CLIENT_ID: 'etherpk-client',
-        MANAGED_SYNC_URL: 'https://sync.example.com',
-        CLIENT_SESSION_SECRET: 'a-client-session-secret-with-32-bytes',
-    },
+vi.mock('$app/env/private', () => ({
+    CLIENT_PUBLIC_URL: 'https://app.example.com',
+    CORPORATE_ISSUER: 'https://accounts.example.com',
+    MANAGED_OAUTH_CLIENT_ID: 'etherpk-client',
+    MANAGED_SYNC_URL: 'https://sync.example.com',
+    CLIENT_SESSION_SECRET: 'a-client-session-secret-with-32-bytes',
 }))
 
 const { GET } = await import('./+server')

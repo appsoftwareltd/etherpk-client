@@ -5,10 +5,10 @@
  * Settings modal and the workspace that fills it both name the shape, and a Svelte instance
  * script cannot export a type. Every callback is the workspace's, over the open graph.
  */
-import type { PublishReport } from '$lib/document/publish/publish'
-import type { GraphTheme } from '$lib/document/publish/theme/graph-theme'
-import type { Publication, PublishIssue } from '$lib/document/publish/types'
-import type { NewPublicationInput, PublicationChanges, PublishDocumentSummary } from '$lib/workspace/publish-service'
+import type { PublishReport } from '#lib/document/publish/publish.js'
+import type { GraphTheme } from '#lib/document/publish/theme/graph-theme.js'
+import type { Publication, PublishIssue } from '#lib/document/publish/types.js'
+import type { NewPublicationInput, PublicationChanges, PublishDocumentSummary } from '#lib/workspace/publish-service.js'
 
 export interface GraphPublishingState {
     publications: Publication[]

@@ -9,7 +9,7 @@
      * The dialog only confirms. The Graphs page runs the accept itself, with its own checks for
      * a copy of the graph this browser still holds.
      */
-    import type { InviteCheck } from "$lib/sync";
+    import type { InviteCheck } from "#lib/sync/index.js";
     import Modal from "@appsoftwareltd/etherpk-shared/dialog";
     import SecurityFingerprint from "./SecurityFingerprint.svelte";
 

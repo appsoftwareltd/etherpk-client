@@ -10,8 +10,8 @@
  * (ADR 0129) which may hold it sealed: a token saved again, sealed, or opened in another tab is the
  * one the next request presents.
  */
-import { env } from '$env/dynamic/public'
-import { managedBearerToken } from '$lib/auth/managed-token'
+import * as env from '$app/env/public'
+import { managedBearerToken } from '#lib/auth/managed-token.js'
 import { normaliseServerOrigin } from './account-scope'
 import { DevicePasscodeLockedError, devicePasscode } from './device-passcode'
 import { createSyncApi, type SyncApi } from './sync-api'

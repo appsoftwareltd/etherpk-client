@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { createCommandRegistry, createContributionRegistry, listContextMenuItems } from '$lib/surface'
-import type { ContextMenuTarget } from '$lib/surface'
+import { createCommandRegistry, createContributionRegistry, listContextMenuItems } from '#lib/surface/index.js'
+import type { ContextMenuTarget } from '#lib/surface/index.js'
 
 import {
     TABS_CLOSE_LEFT,

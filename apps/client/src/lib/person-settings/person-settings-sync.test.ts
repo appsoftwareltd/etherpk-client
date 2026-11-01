@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { openSettingsVault, openVault, randomBytes, sealSettingsVault } from '$lib/crypto'
-import { createFakeSyncServer, seedAccount } from '$lib/sync/testing/fake-sync-server'
-import { updateVault } from '$lib/sync/vault-update'
+import { openSettingsVault, openVault, randomBytes, sealSettingsVault } from '#lib/crypto/index.js'
+import { createFakeSyncServer, seedAccount } from '#lib/sync/testing/fake-sync-server.js'
+import { updateVault } from '#lib/sync/vault-update.js'
 
 import { createPersonSettings, extensionSettingKey } from './person-settings'
 import { createPersonSettingsSync, type PersonSettingsAccount } from './person-settings-sync'

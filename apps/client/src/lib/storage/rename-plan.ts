@@ -6,8 +6,8 @@
  * the work that actually happens come from one source.
  */
 
-import { frontmatterIdentity } from '$lib/document/frontmatter/identity'
-import { cascadeFor, rewriteWikilinkScope } from '$lib/document/wikilink/rename'
+import { frontmatterIdentity } from '#lib/document/frontmatter/identity.js'
+import { cascadeFor, rewriteWikilinkScope } from '#lib/document/wikilink/rename.js'
 import { conceptKey } from './fs/identity'
 import { type AliasRewrite, type RenameLinkStrategy, type RenamePlan, type RenameStep, renameRefusal, renameSteps } from './rename'
 

@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest'
 
-import { DEFAULT_LOCK_SETTINGS } from '$lib/document/protection/lock-machine'
-import { ProtectionService } from '$lib/document/protection/protection-service'
-import { inMemoryProtectionStore } from '$lib/document/protection/protection-store'
-import { protectedTextReader } from '$lib/document/protection/protected-text-reader'
+import { DEFAULT_LOCK_SETTINGS } from '#lib/document/protection/lock-machine.js'
+import { ProtectionService } from '#lib/document/protection/protection-service.js'
+import { inMemoryProtectionStore } from '#lib/document/protection/protection-store.js'
+import { protectedTextReader } from '#lib/document/protection/protected-text-reader.js'
 
 import { deleteOrphanedAssets, scanOrphanedAssets } from './asset-orphans'
 import { createMemoryDirectoryAdapter } from './memory-adapter'

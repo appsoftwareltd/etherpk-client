@@ -33,7 +33,7 @@
  */
 import { EditorSelection, EditorState, type Extension, type StateCommand } from '@codemirror/state'
 
-import { type GuardedChange, crossesFrontmatterSeam, frontmatterWouldGrow, joinsFrontmatterDelimiter, removesClosingDelimiter } from '$lib/document/frontmatter/boundary'
+import { type GuardedChange, crossesFrontmatterSeam, frontmatterWouldGrow, joinsFrontmatterDelimiter, removesClosingDelimiter } from '#lib/document/frontmatter/boundary.js'
 
 import { analysisFor } from './analysis/editor-analysis'
 import { EXTERNAL, collaborative } from './cm-document'

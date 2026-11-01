@@ -23,11 +23,11 @@
  * nothing here reads Obsidian's constructs.
  */
 
-import { MARKDOWN_LINK } from '$lib/document/markdown-link-target'
-import { normaliseAliases } from '$lib/document/frontmatter/identity'
-import { isJournalConcept } from '$lib/document/journal-concept'
-import { parseTaskTags } from '$lib/document/task-tags'
-import { parseWikilinks } from '$lib/document/wikilink'
+import { MARKDOWN_LINK } from '#lib/document/markdown-link-target.js'
+import { normaliseAliases } from '#lib/document/frontmatter/identity.js'
+import { isJournalConcept } from '#lib/document/journal-concept.js'
+import { parseTaskTags } from '#lib/document/task-tags.js'
+import { parseWikilinks } from '#lib/document/wikilink/index.js'
 
 import { type PlannedAsset, planAssets, tryDecode } from './assets'
 import { readAsNotesFrontmatter } from './asnotes-frontmatter'

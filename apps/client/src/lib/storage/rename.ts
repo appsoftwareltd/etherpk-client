@@ -11,7 +11,7 @@
  * one IS the rewrite (ADR 0064).
  */
 
-import { dayIsNotAPageName, isJournalConcept } from '$lib/document/journal-concept'
+import { dayIsNotAPageName, isJournalConcept } from '#lib/document/journal-concept.js'
 import { conceptKey } from './fs/identity'
 
 /** How the rename deals with existing inbound links. */

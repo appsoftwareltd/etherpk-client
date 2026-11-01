@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
-import { BACKLINKS_PREFERENCES_KEY_PREFIX } from '$lib/document/backlinks-preferences'
-import { RECENTS_KEY_PREFIX } from '$lib/navigation/recents'
+import { BACKLINKS_PREFERENCES_KEY_PREFIX } from '#lib/document/backlinks-preferences.js'
+import { RECENTS_KEY_PREFIX } from '#lib/navigation/recents.js'
 
 import { forgetWorkspaceCompanions, workspaceResetKeys } from './workspace-reset'
 

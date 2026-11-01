@@ -19,8 +19,8 @@
      */
     import { type Component, onDestroy, onMount, tick, untrack } from "svelte";
 
-    import type { ViewRef, ViewVisibility } from "$lib/layout";
-    import { tryGetActiveEventBus } from "$lib/surface";
+    import type { ViewRef, ViewVisibility } from "#lib/layout/index.js";
+    import { tryGetActiveEventBus } from "#lib/surface/index.js";
 
     import { getActiveDocument, setActiveDocument } from "../active-document";
     import { getActiveDocumentStore } from "../active-store";

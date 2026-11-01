@@ -10,7 +10,7 @@
  * progress-reporting runs; the tenants supply the phases and the work.
  */
 
-import type { NoticeDismissal } from '$lib/notice-dismissal'
+import type { NoticeDismissal } from '#lib/notice-dismissal.js'
 
 /** What a phase counts. `bytes` renders through `formatBytes`; `items` renders bare. */
 export type ActivityUnit = 'items' | 'bytes'
@@ -53,7 +53,7 @@ export interface ActivityAction {
 }
 
 /**
- * Whether a finished toast goes on its own or waits to be closed - see `$lib/notice-dismissal`.
+ * Whether a finished toast goes on its own or waits to be closed - see `#lib/notice-dismissal.js`.
  * `manual` while running: a running toast is never dismissed at all.
  */
 export type ActivityDismissal = NoticeDismissal

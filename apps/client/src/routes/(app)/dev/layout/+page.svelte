@@ -12,7 +12,7 @@
      */
     import { onMount, tick } from 'svelte'
 
-    import { dev } from '$app/environment'
+    import { dev } from '$app/env'
     import {
         LAYOUT_VERSION,
         createLayoutController,
@@ -25,18 +25,18 @@
         type PaneHandle,
         type Region,
         type ViewRef,
-    } from '$lib/layout'
-    import { DocumentView, createInMemoryDocumentStore, setActiveDocumentStore } from '$lib/document'
-    import DevView from '$lib/layout/dev/DevView.svelte'
-    import { devViewStats, resetDevViewStats } from '$lib/layout/dev/dev-view-state.svelte'
-    import MobilePresenter from '$lib/layout/renderers/MobilePresenter.svelte'
+    } from '#lib/layout/index.js'
+    import { DocumentView, createInMemoryDocumentStore, setActiveDocumentStore } from '#lib/document/index.js'
+    import DevView from '#lib/layout/dev/DevView.svelte'
+    import { devViewStats, resetDevViewStats } from '#lib/layout/dev/dev-view-state.svelte.js'
+    import MobilePresenter from '#lib/layout/renderers/MobilePresenter.svelte'
     import {
         readSettingsFromDocument,
         withSidebarCollapsed,
         writeSettingsToDocument,
-    } from '$lib/settings'
+    } from '#lib/settings.js'
 
-    import type { MobileRenderer } from '$lib/layout/renderers/mobile-renderer.svelte'
+    import type { MobileRenderer } from '#lib/layout/renderers/mobile-renderer.svelte.js'
 
     const GRAPH_ID = 'dev'
     const REGIONS: Region[] = ['main', 'left-sidebar', 'right-sidebar']
@@ -118,14 +118,14 @@
         }
     }
 
-    async function build(model?: import('$lib/layout').LayoutModel) {
+    async function build(model?: import('#lib/layout/index.js').LayoutModel) {
         const initial = model ? { version: LAYOUT_VERSION, model } : await store!.load(GRAPH_ID)
         if (useMobile) {
-            const { createMobileRenderer } = await import('$lib/layout/renderers/mobile-renderer.svelte')
+            const { createMobileRenderer } = await import('#lib/layout/renderers/mobile-renderer.svelte.js')
             mobileRenderer = createMobileRenderer(registry)
             renderer = mobileRenderer
         } else {
-            const { createDockviewRenderer } = await import('$lib/layout/renderers/dockview-adapter')
+            const { createDockviewRenderer } = await import('#lib/layout/renderers/dockview-adapter.js')
             mobileRenderer = undefined
             // dockview computes split proportions from the container's size, so it
             // must be laid out before we create and populate it — otherwise the

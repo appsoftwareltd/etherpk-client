@@ -15,13 +15,13 @@
  * publishing a site with its diagrams turned to text.
  */
 
-import { selectDocuments } from '$lib/document/publish/selection'
-import { isPublicationId } from '$lib/document/publish/publication'
-import type { Publication } from '$lib/document/publish/types'
-import { writeSite } from '$lib/document/publish/host/site-writer'
-import { GitHubError, type GitHubRepository, createGitHubApi } from '$lib/document/publish/host/github-api'
-import { describeGitHubError } from '$lib/document/publish/host/github-repository'
-import { type RepositoryPublishResult, publishToRepository } from '$lib/document/publish/host/github-site-folder'
+import { selectDocuments } from '#lib/document/publish/selection.js'
+import { isPublicationId } from '#lib/document/publish/publication.js'
+import type { Publication } from '#lib/document/publish/types.js'
+import { writeSite } from '#lib/document/publish/host/site-writer.js'
+import { GitHubError, type GitHubRepository, createGitHubApi } from '#lib/document/publish/host/github-api.js'
+import { describeGitHubError } from '#lib/document/publish/host/github-repository.js'
+import { type RepositoryPublishResult, publishToRepository } from '#lib/document/publish/host/github-site-folder.js'
 import {
     type PublicationChanges,
     createPublicationPage,
@@ -29,7 +29,7 @@ import {
     suggestPublicationId,
     summarisePublishing,
     updatePublicationPage,
-} from '$lib/workspace/publish-service'
+} from '#lib/workspace/publish-service.js'
 
 import { chromiumStatus, openDiagramRenderer } from './diagrams'
 import { needsMaps, openMapRenderer } from './map-pictures'

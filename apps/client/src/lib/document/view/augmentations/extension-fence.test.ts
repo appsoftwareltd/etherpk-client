@@ -2,7 +2,7 @@ import { EditorSelection, EditorState } from '@codemirror/state'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import * as Y from 'yjs'
 
-import { createContributionRegistry, setActiveContributionRegistry } from '$lib/surface'
+import { createContributionRegistry, setActiveContributionRegistry } from '#lib/surface/index.js'
 
 import { replaceFenceLine } from '../../fence-body'
 import { editorAnalysis } from '../analysis/editor-analysis'

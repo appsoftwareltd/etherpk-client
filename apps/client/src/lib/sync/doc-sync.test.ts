@@ -10,7 +10,7 @@ import {
     openSymmetric,
     sealSymmetric,
     toBase64Url,
-} from '$lib/crypto'
+} from '#lib/crypto/index.js'
 import {
     contentBlocked,
     createDocSync,
@@ -1232,7 +1232,7 @@ describe('Graph Key epochs (ADR 0127)', () => {
         sent.filter((m): m is Extract<RelayClientMessage, { type: 'append' }> => m.type === 'append')
 
     async function plaintextOf(envelope: string, keyring: ReturnType<typeof createGraphKeyring>): Promise<Uint8Array> {
-        const { openSymmetric, contextAad, fromBase64Url, keyForEpoch } = await import('$lib/crypto')
+        const { openSymmetric, contextAad, fromBase64Url, keyForEpoch } = await import('#lib/crypto/index.js')
         return (await openSymmetric({ keyForEpoch: (id) => keyForEpoch(keyring, id), envelope: fromBase64Url(envelope), aad: contextAad('update', 'graph:g1', 'doc:d1') })).plaintext
     }
 
@@ -1273,7 +1273,7 @@ describe('Graph Key epochs (ADR 0127)', () => {
     })
 
     it('seals again an operation queued behind the head, which was never sent', async () => {
-        const { sealSymmetric, contextAad, toBase64Url } = await import('$lib/crypto')
+        const { sealSymmetric, contextAad, toBase64Url } = await import('#lib/crypto/index.js')
         const cache = memoryCache()
         const engine = rotatable(cache)
         // What an earlier session left: two operations, both under epoch 1.

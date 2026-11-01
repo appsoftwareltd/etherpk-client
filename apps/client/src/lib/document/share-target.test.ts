@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import type { GraphRecord } from '$lib/storage/graph-registry'
+import type { GraphRecord } from '#lib/storage/graph-registry.js'
 
 import { MAX_QUICK_NOTE_LENGTH } from './quick-notes'
 import {

@@ -5,7 +5,7 @@
      * a filesystem rename changes only the local display name) and an async onsave that
      * performs the actual write — the dialog shows busy/error states around it.
      */
-    import { describeSyncFailure } from "$lib/sync/sync-error-copy";
+    import { describeSyncFailure } from "#lib/sync/sync-error-copy.js";
     import Modal from "@appsoftwareltd/etherpk-shared/dialog";
 
     let {

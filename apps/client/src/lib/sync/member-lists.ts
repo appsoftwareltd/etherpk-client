@@ -8,9 +8,9 @@
  * The member key is the Member's Sync Principal id: the account's id on the Sync Server that holds
  * the graph, as the graph's registry record stores it (`serverScope.principalId`).
  */
-import type { Bookmark, BookmarksPersist } from '$lib/document/bookmarks/bookmarks'
-import type { QuickNote } from '$lib/document/quick-notes'
-import { type GraphSettings, sanitizeGraphSettings } from '$lib/storage/fs/graph-settings'
+import type { Bookmark, BookmarksPersist } from '#lib/document/bookmarks/bookmarks.js'
+import type { QuickNote } from '#lib/document/quick-notes.js'
+import { type GraphSettings, sanitizeGraphSettings } from '#lib/storage/fs/graph-settings.js'
 
 import type { GraphSync, QuickNotesList } from './graph-sync'
 import { type PersonalFavourites, personalFavourites } from './personal-favourites'

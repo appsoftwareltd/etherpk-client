@@ -17,8 +17,8 @@
  * be all the document holds after its frontmatter gets an empty line after it, the one place left
  * for the caret.
  */
-import { MAP_FENCE_INFO } from '$lib/document/map-text'
-import { bulletContent, contentColumn, isBulletLine, lineIndent, taskDone } from '$lib/document/outliner'
+import { MAP_FENCE_INFO } from '#lib/document/map-text.js'
+import { bulletContent, contentColumn, isBulletLine, lineIndent, taskDone } from '#lib/document/outliner.js'
 
 export interface MapInsertPlan {
     from: number

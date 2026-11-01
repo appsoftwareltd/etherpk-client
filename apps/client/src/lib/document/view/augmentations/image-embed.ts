@@ -40,7 +40,7 @@
 import { type EditorState, type Extension, findClusterBreak, type Range, StateEffect, StateField } from '@codemirror/state'
 import { Decoration, type DecorationSet, EditorView, WidgetType } from '@codemirror/view'
 
-import { AssetUnavailableError, type ResolvedAsset, assetNameFromRef } from '$lib/storage/fs/asset-store'
+import { AssetUnavailableError, type ResolvedAsset, assetNameFromRef } from '#lib/storage/fs/asset-store.js'
 
 import { assetTargetAt, attachAssetContextMenu, buildAssetActions } from './asset-actions'
 import { loadAssetWithRetry } from './asset-load-retry'

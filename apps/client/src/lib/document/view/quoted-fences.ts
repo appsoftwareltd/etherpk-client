@@ -20,7 +20,7 @@
  */
 import type { PublishedFence, QuoteFenceRequest } from '@appsoftwareltd/etherpk-extension-api'
 
-import { cleanedFencePicture } from '$lib/security/svg-file'
+import { cleanedFencePicture } from '#lib/security/svg-file.js'
 
 import { checkedFenceAnswer } from '../fence-answer'
 import type { InteractiveFence } from './augmentations/interactive-fence-contract'

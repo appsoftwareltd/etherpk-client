@@ -34,16 +34,16 @@
         getActiveDocument,
         getActiveDocumentStore,
         getActiveGraphSettings,
-    } from "$lib/document";
+    } from "#lib/document/index.js";
     import JournalCalendar from "./JournalCalendar.svelte";
-    import { FAVOURITE_MOVE } from "$lib/document/commands/document-commands";
-    import { subscribeFavourites } from "$lib/document/favourites";
+    import { FAVOURITE_MOVE } from "#lib/document/commands/document-commands.js";
+    import { subscribeFavourites } from "#lib/document/favourites.js";
     import BookmarksSection from "./BookmarksSection.svelte";
-    import { getActiveLayoutController, type ViewRef } from "$lib/layout";
-    import { prefersMobileLayout } from "$lib/layout/breakpoint";
-    import { getActiveRecents } from "$lib/navigation/active-recents";
-    import type { FilesystemDocumentStore } from "$lib/storage";
-    import { recentCountOf } from "$lib/storage/fs/graph-settings";
+    import { getActiveLayoutController, type ViewRef } from "#lib/layout/index.js";
+    import { prefersMobileLayout } from "#lib/layout/breakpoint.js";
+    import { getActiveRecents } from "#lib/navigation/active-recents.js";
+    import type { FilesystemDocumentStore } from "#lib/storage/index.js";
+    import { recentCountOf } from "#lib/storage/fs/graph-settings.js";
     import {
         attachContextMenu,
         createControlHelp,
@@ -56,16 +56,16 @@
         tryGetActiveContributionRegistry,
         tryGetActiveEventBus,
         type DocumentContextMenuTarget,
-    } from "$lib/surface";
-    import { getActiveGraphIndex } from "$lib/document/backlinks/active-index";
-    import { openConcept } from "$lib/document/open-concept";
-    import { iconSvg } from "$lib/surface/icons";
-    import SyncStatus from "$lib/sync/ui/SyncStatus.svelte";
+    } from "#lib/surface/index.js";
+    import { getActiveGraphIndex } from "#lib/document/backlinks/active-index.js";
+    import { openConcept } from "#lib/document/open-concept.js";
+    import { iconSvg } from "#lib/surface/icons.js";
+    import SyncStatus from "#lib/sync/ui/SyncStatus.svelte";
     import {
         currentWorkspaceServices,
         type ProtectionControls,
         workspaceService,
-    } from "$lib/workspace/workspace-services";
+    } from "#lib/workspace/workspace-services.js";
 
     const { view: _view }: { view: ViewRef } = $props();
 

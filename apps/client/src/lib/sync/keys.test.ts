@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
-import { deriveVaultWrapKey, fromBase64Url, generateRecoveryCode, openVault, samePublicIdentity } from '$lib/crypto'
-import type { ProtectionRecord } from '$lib/crypto'
+import { deriveVaultWrapKey, fromBase64Url, generateRecoveryCode, openVault, samePublicIdentity } from '#lib/crypto/index.js'
+import type { ProtectionRecord } from '#lib/crypto/index.js'
 import { MissingGraphKeyError, VaultExistsError, createAccountKeys, ensureGraphKeys, regenerateRecoveryCode, vaultProtectionAccess } from './keys'
 import { SyncApiError } from './sync-api'
 import { createFakeSyncServer, seedAccount } from './testing/fake-sync-server'

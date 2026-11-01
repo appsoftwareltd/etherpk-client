@@ -7,7 +7,7 @@ import { EditorState } from '@codemirror/state'
 import type { EditorView } from '@codemirror/view'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import type { AssetStore, SavedAsset } from '$lib/storage/fs/asset-store'
+import type { AssetStore, SavedAsset } from '#lib/storage/fs/asset-store.js'
 
 import { type ProtectionStatus, setActiveProtectionStatus } from '../protection/active-protection'
 

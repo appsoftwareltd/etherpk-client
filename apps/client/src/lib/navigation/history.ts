@@ -23,8 +23,8 @@
  * against a real controller + stub renderer with no browser.
  */
 
-import type { LayoutController, ViewRef } from '$lib/layout'
-import { parseViewKey, viewKey } from '$lib/layout'
+import type { LayoutController, ViewRef } from '#lib/layout/index.js'
+import { parseViewKey, viewKey } from '#lib/layout/index.js'
 
 import { graphUrl, viewUrl } from './document-url'
 import type { ViewPosition } from './position'

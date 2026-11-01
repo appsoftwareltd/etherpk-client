@@ -12,13 +12,13 @@
     import { onMount } from 'svelte'
 
     import { goto } from '$app/navigation'
-    import { SHELL_PATH } from '$lib/offline/app-shell'
+    import { SHELL_PATH } from '#lib/offline/app-shell.js'
 
     let message = $state('')
 
     onMount(() => {
         const target = location.pathname === SHELL_PATH ? '/graphs' : location.href
-        goto(target, { replaceState: true }).catch((err: unknown) => {
+        goto(target, { replace: true }).catch((err: unknown) => {
             message = err instanceof Error ? err.message : String(err)
         })
     })

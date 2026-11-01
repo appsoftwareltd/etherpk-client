@@ -5,7 +5,7 @@
  * first.
  */
 
-import { type NoticeAction, showNotice } from '$lib/activity/notices'
+import { type NoticeAction, showNotice } from '#lib/activity/notices.js'
 
 import { BookmarksClosedError, removeBookmarksForUndo, type Bookmark } from './bookmarks'
 

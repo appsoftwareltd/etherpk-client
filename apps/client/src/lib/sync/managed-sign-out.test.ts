@@ -8,7 +8,7 @@ const TEAM = 'https://team.example.org'
 
 const signals = vi.hoisted(() => ({ announce: vi.fn() }))
 vi.mock('./account-signal', () => ({ announceAccountSignal: signals.announce }))
-vi.mock('$lib/auth/managed-token', () => ({ clearManagedAccessToken: vi.fn() }))
+vi.mock('#lib/auth/managed-token.js', () => ({ clearManagedAccessToken: vi.fn() }))
 // This device holds Managed Sync beside a custom server (ADR 0111).
 vi.mock('./sync-connection', () => ({
     listSyncConnections: () => [

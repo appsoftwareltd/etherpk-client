@@ -8,7 +8,7 @@
  * over the in-memory adapter. A missing or malformed file reads as no notes.
  */
 
-import { type QuickNote, sanitizeQuickNotes } from '$lib/document/quick-notes'
+import { type QuickNote, sanitizeQuickNotes } from '#lib/document/quick-notes.js'
 
 import type { DirectoryAdapter } from './directory-adapter'
 

@@ -1,5 +1,5 @@
 /**
- * Browser glue for `storage/server/mirror-takeover.ts`: the folders this device's IndexedDB says
+ * Browser glue for `storage/synced/mirror-takeover.ts`: the folders this device's IndexedDB says
  * belong to something, and a look inside a chosen folder that changes nothing.
  *
  * Browser-only; the decisions themselves are unit-tested in `mirror-takeover.test.ts`, and this
@@ -8,7 +8,7 @@
 import type { Subdir } from './fs/directory-adapter'
 import { createIdbGraphStoragePort } from './graph-registry-idb'
 import { listMirrorFolders } from './mirror-folder-idb'
-import { type FolderReader, type KnownFolder, knownFolders } from './server/mirror-takeover'
+import { type FolderReader, type KnownFolder, knownFolders } from './synced/mirror-takeover'
 
 /**
  * Every local graph's folder and every other graph's mirror on this device. Read from the raw

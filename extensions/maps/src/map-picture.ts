@@ -18,8 +18,8 @@
  */
 import { Map as MapLibreMap } from 'maplibre-gl'
 
-import { readMapBody } from '$lib/document/map-text'
-import type { MapPicture } from '$lib/document/publish/publish'
+import { readMapBody } from '#lib/document/map-text.js'
+import type { MapPicture } from '#lib/document/publish/publish.js'
 
 import { attributionText } from './attribution-text'
 import { blankStyle, fitName, NAMED_PLACES, routeLayers, SINGLE_PLACE_ZOOM, WORLD } from './map-drawing'

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { ManagedTokenError } from '$lib/auth/managed-token'
+import { ManagedTokenError } from '#lib/auth/managed-token.js'
 import { AccountEnded } from './account-signal'
 import { describeAccessLoss, workspaceAccessLoss } from './access-loss'
 import { SyncApiError } from './sync-api'

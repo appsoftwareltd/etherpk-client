@@ -2,12 +2,12 @@ import { EditorSelection, EditorState, type TransactionSpec } from '@codemirror/
 import { type EditorView, showTooltip } from '@codemirror/view'
 import { afterEach, describe, expect, it } from 'vitest'
 
-import { setActiveEditorView } from '$lib/document/active-editor'
-import { conceptPicker } from '$lib/document/view/augmentations/concept-picker'
-import { editorDocument } from '$lib/document/view/editor-document'
-import { commandMenuDetail, commandMenuItemsInOrder, listCommandMenuItems } from '$lib/surface/command-menu'
-import { listContextMenuItems } from '$lib/surface/context-menu'
-import { graphSidebarButtons } from '$lib/surface'
+import { setActiveEditorView } from '#lib/document/active-editor.js'
+import { conceptPicker } from '#lib/document/view/augmentations/concept-picker.js'
+import { editorDocument } from '#lib/document/view/editor-document.js'
+import { commandMenuDetail, commandMenuItemsInOrder, listCommandMenuItems } from '#lib/surface/command-menu.js'
+import { listContextMenuItems } from '#lib/surface/context-menu.js'
+import { graphSidebarButtons } from '#lib/surface/index.js'
 
 import { MAP_WHOLE_KIND, MAPS_OPEN_AT_CARET, MAPS_OPEN_FOR, MAPS_OPEN_WHOLE } from './identity'
 import { registerMapViewCommands } from './map-view-commands'

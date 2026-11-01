@@ -18,9 +18,9 @@
     import { tick, untrack } from 'svelte'
     import { createSubscriber } from 'svelte/reactivity'
 
-    import type { MapItemHit, MapItemsResult } from '$lib/document/index-map-items'
-    import { formatMapPoint, type MapPoint } from '$lib/document/map-text'
-    import { iconSvg } from '$lib/surface/icons'
+    import type { MapItemHit, MapItemsResult } from '#lib/document/index-map-items.js'
+    import { formatMapPoint, type MapPoint } from '#lib/document/map-text.js'
+    import { iconSvg } from '#lib/surface/icons.js'
 
     import { MAPBOX_REFUSED_NOTE } from './basemap'
     import { MAPS_OPEN_WHOLE } from './identity'

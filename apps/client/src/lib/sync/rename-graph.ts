@@ -3,7 +3,7 @@
  * (the /graphs picker): connect, read the canonical [[Graph Name]] + shared settings
  * (ADR 0031), optionally write them back, flush, disconnect.
  */
-import type { GraphKeyring } from '$lib/crypto'
+import type { GraphKeyring } from '#lib/crypto/index.js'
 import { browserTransport, createGraphSync, type GraphMeta, type TransportSocket } from './graph-sync'
 import { openGraphCache } from './local-cache'
 import type { SyncTokenSource } from './sync-token'

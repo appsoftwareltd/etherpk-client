@@ -12,7 +12,7 @@
  * The renderer contract stays dumb; the clearing is the host's business.
  */
 
-import type { ContributionRegistry } from '$lib/surface'
+import type { ContributionRegistry } from '#lib/surface/index.js'
 
 import { clearRenderCaches, renderCacheSizes } from '../rendered-common'
 import { registerAugmentationRenderer } from './contract'

@@ -15,8 +15,8 @@
  * No DOM, no CodeMirror — a surface builds its own buttons from this.
  */
 
-import { assetNameFromRef, isImageExt, splitNameExt } from '$lib/storage/fs/asset-store'
-import { type AssetContextMenuTarget, canViewAsset, tryGetActiveCommandRegistry, tryGetActiveContributionRegistry } from '$lib/surface'
+import { assetNameFromRef, isImageExt, splitNameExt } from '#lib/storage/fs/asset-store.js'
+import { type AssetContextMenuTarget, canViewAsset, tryGetActiveCommandRegistry, tryGetActiveContributionRegistry } from '#lib/surface/index.js'
 
 import { ASSET_COPY_IMAGE, ASSET_DELETE, ASSET_DOWNLOAD, ASSET_OPEN } from './commands/asset-commands'
 import type { InlineAction } from './inline-action'

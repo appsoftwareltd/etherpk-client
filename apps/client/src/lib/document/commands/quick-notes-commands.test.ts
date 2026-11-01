@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { createCommandRegistry, createContributionRegistry, listCommandMenuItems } from '$lib/surface'
-import type { CommandMenuContext } from '$lib/surface'
+import { createCommandRegistry, createContributionRegistry, listCommandMenuItems } from '#lib/surface/index.js'
+import type { CommandMenuContext } from '#lib/surface/index.js'
 
 import type { DocumentCreatingStore } from '../draft'
 import { getQuickNotes, type QuickNote, resetQuickNotes, setQuickNotes } from '../quick-notes'

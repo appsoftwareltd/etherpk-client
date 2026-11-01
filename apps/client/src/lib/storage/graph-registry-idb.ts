@@ -21,7 +21,7 @@ import { getOpfsRoot } from './fs/web-fs-adapter'
 import { isClosedConnectionError } from './idb-connection'
 import { createSafetyCopy } from './safety-copy'
 import { reportStorageRecovery } from './storage-recovery'
-import { readSyncAccounts } from '$lib/sync/account-scope'
+import { readSyncAccounts } from '#lib/sync/account-scope.js'
 
 const DB_NAME = 'etherpk'
 const DB_VERSION = 1

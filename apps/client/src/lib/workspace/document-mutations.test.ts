@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import type { RenamePlan, RenameResult } from '$lib/storage/rename'
+import type { RenamePlan, RenameResult } from '#lib/storage/rename.js'
 
 import {
     INDEX_CATCH_UP_MS,

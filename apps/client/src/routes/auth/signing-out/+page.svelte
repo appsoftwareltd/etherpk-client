@@ -8,7 +8,7 @@
      * the next Client page to lock.
      */
     import { onMount } from "svelte";
-    import { endManagedSessionInThisBrowser } from "$lib/sync/managed-sign-out";
+    import { endManagedSessionInThisBrowser } from "#lib/sync/managed-sign-out.js";
     import type { PageProps } from "./$types";
 
     let { data }: PageProps = $props();

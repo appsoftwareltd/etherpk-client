@@ -5,12 +5,12 @@
 import type { ViewContribution } from '@appsoftwareltd/etherpk-extension-api'
 import { describe, expect, it } from 'vitest'
 
-import { MAP_PICTURE_KIND } from '$lib/document/publish/map-picture-renderer'
-import { INTERACTIVE_FENCE_KIND } from '$lib/document/view/augmentations/interactive-fence-contract'
-import { createExtensionHost } from '$lib/extensions/host'
-import { createExtensionSwitches } from '$lib/extensions/switches'
-import { fakeClientServices, memoryStorage } from '$lib/extensions/testing'
-import { listCommandMenuItems } from '$lib/surface/command-menu'
+import { MAP_PICTURE_KIND } from '#lib/document/publish/map-picture-renderer.js'
+import { INTERACTIVE_FENCE_KIND } from '#lib/document/view/augmentations/interactive-fence-contract.js'
+import { createExtensionHost } from '#lib/extensions/host.js'
+import { createExtensionSwitches } from '#lib/extensions/switches.js'
+import { fakeClientServices, memoryStorage } from '#lib/extensions/testing.js'
+import { listCommandMenuItems } from '#lib/surface/command-menu.js'
 
 import { MAP_VIEW_KIND, MAP_WHOLE, MAP_WHOLE_KIND, mapViewOf } from './identity'
 import { registerMaps } from './register'

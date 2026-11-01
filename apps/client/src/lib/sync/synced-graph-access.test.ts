@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 
-import { createGraphKeyring, encryptVault, generateIdentityKeyPair, toBase64Url } from '$lib/crypto'
+import { createGraphKeyring, encryptVault, generateIdentityKeyPair, toBase64Url } from '#lib/crypto/index.js'
 
 import { heldGraphKeyring, openHeldVault, resolveSyncedGraphConnection } from './synced-graph-access'
 import { SYNC_CONNECTIONS_STORAGE_KEY } from './sync-connections'

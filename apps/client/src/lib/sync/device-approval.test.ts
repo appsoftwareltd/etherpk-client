@@ -14,7 +14,7 @@ import {
     sealSymmetric,
     toBase64Url,
     utf8,
-} from '$lib/crypto'
+} from '#lib/crypto/index.js'
 import {
     ApprovalTamperedError,
     answerDeviceApproval,

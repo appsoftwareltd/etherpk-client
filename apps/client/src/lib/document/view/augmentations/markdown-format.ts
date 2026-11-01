@@ -24,7 +24,7 @@ import { type EditorState, type Extension, type Line, type Range } from '@codemi
 import { Decoration, EditorView } from '@codemirror/view'
 import type { SyntaxNode } from '@lezer/common'
 
-import { isFrontmatterDelimiter } from '$lib/storage/fs/frontmatter-span'
+import { isFrontmatterDelimiter } from '#lib/storage/fs/frontmatter-span.js'
 
 import { contentColumn } from '../../outliner'
 import type { InlineMark } from '../../inline-parts'

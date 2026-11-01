@@ -10,8 +10,8 @@
     import type { Attachment } from "svelte/attachments";
     import { createSubscriber } from "svelte/reactivity";
 
-    import type { ViewProps, ViewRef } from "$lib/layout";
-    import { personSettings, type PersonSettings } from "$lib/person-settings/person-settings";
+    import type { ViewProps, ViewRef } from "#lib/layout/index.js";
+    import { personSettings, type PersonSettings } from "#lib/person-settings/person-settings.js";
 
     import { DIRECTORY_SEGMENT } from "./addresses";
     import type { DirectoryState, ExtensionDirectory } from "./directory";

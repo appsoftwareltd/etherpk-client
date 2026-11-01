@@ -7,10 +7,9 @@
  * In development the reports are also kept in memory, the newest few hundred, and `GET` returns
  * them: the Client's e2e suite reads them once it has run, and fails on any Trusted Types violation.
  */
-import { dev } from '$app/environment'
-import { json } from '@sveltejs/kit'
-import { createLogBudget, parseCspReport, readLimitedText, type CspViolation } from '$lib/server/csp-report'
-import { logger } from '$lib/server/logger'
+import { dev } from '$app/env'
+import { createLogBudget, parseCspReport, readLimitedText, type CspViolation } from '#lib/server/csp-report.js'
+import { logger } from '#lib/server/logger.js'
 import type { RequestHandler } from './$types'
 
 /** A report is a few hundred bytes: anything far larger is not one. */
@@ -36,4 +35,4 @@ export const POST: RequestHandler = async ({ request }) => {
     return new Response(null, { status: 204 })
 }
 
-export const GET: RequestHandler = () => (dev ? json(kept) : new Response(null, { status: 404 }))
+export const GET: RequestHandler = () => (dev ? Response.json(kept) : new Response(null, { status: 404 }))

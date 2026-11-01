@@ -17,7 +17,7 @@
 import { ChangeSet, type ChangeDesc, EditorSelection, EditorState, type Extension, Prec, StateEffect, StateField, type Text, Transaction, type TransactionSpec } from '@codemirror/state'
 import { type EditorView, ViewPlugin, type ViewUpdate } from '@codemirror/view'
 
-import { frontmatterLines } from '$lib/storage/fs/frontmatter-span'
+import { frontmatterLines } from '#lib/storage/fs/frontmatter-span.js'
 
 import { bulletContent, isBulletLine, lineIndent, ownerBulletIndex, taskDone } from '../outliner'
 import { caretKeptOff } from './augmentations/interactive-fence'

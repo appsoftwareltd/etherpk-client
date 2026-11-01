@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { createCommandRegistry, createContributionRegistry, listCommandMenuItems, listContextMenuItems } from '$lib/surface'
+import { createCommandRegistry, createContributionRegistry, listCommandMenuItems, listContextMenuItems } from '#lib/surface/index.js'
 
 import { ADD_FRONTMATTER_TO_ACTIVE, DOCUMENT_ADD_FRONTMATTER, registerFrontmatterCommands } from './frontmatter-commands'
 

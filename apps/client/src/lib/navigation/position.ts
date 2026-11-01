@@ -8,7 +8,7 @@
  */
 
 import type { ReadingPositionStore } from './reading-positions'
-import { setWorkspaceService, workspaceService } from '$lib/workspace/workspace-services'
+import { setWorkspaceService, workspaceService } from '#lib/workspace/workspace-services.js'
 
 export interface ViewPosition {
     scrollTop: number

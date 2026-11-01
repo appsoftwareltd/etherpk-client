@@ -5,10 +5,10 @@
  * folder's files on a [[Filesystem Backend]]. Nothing here holds a [[Protection Key]].
  */
 
-import type { AssetStore } from '$lib/storage/fs/asset-store'
-import type { DirectoryAdapter } from '$lib/storage/fs/directory-adapter'
-import { aliasesOf, conceptOf, journalConceptOf } from '$lib/storage/fs/identity'
-import { parseFrontmatter } from '$lib/storage/fs/frontmatter'
+import type { AssetStore } from '#lib/storage/fs/asset-store.js'
+import type { DirectoryAdapter } from '#lib/storage/fs/directory-adapter.js'
+import { aliasesOf, conceptOf, journalConceptOf } from '#lib/storage/fs/identity.js'
+import { parseFrontmatter } from '#lib/storage/fs/frontmatter.js'
 
 import type { PublishDocument, PublishSource } from './types'
 

@@ -1,12 +1,12 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import type { ConceptCandidate } from '$lib/document/index-db'
-import { DEFAULT_LOCK_SETTINGS } from '$lib/document/protection/lock-machine'
-import { ProtectionService } from '$lib/document/protection/protection-service'
-import { inMemoryProtectionStore } from '$lib/document/protection/protection-store'
-import { protectedTextReader } from '$lib/document/protection/protected-text-reader'
-import { createFilesystemDocumentStore } from '$lib/storage/fs/filesystem-store'
-import { createMemoryDirectoryAdapter } from '$lib/storage/fs/memory-adapter'
+import type { ConceptCandidate } from '#lib/document/index-db.js'
+import { DEFAULT_LOCK_SETTINGS } from '#lib/document/protection/lock-machine.js'
+import { ProtectionService } from '#lib/document/protection/protection-service.js'
+import { inMemoryProtectionStore } from '#lib/document/protection/protection-store.js'
+import { protectedTextReader } from '#lib/document/protection/protected-text-reader.js'
+import { createFilesystemDocumentStore } from '#lib/storage/fs/filesystem-store.js'
+import { createMemoryDirectoryAdapter } from '#lib/storage/fs/memory-adapter.js'
 
 import { filesystemStoredTexts, protectedUsageReader, serverStoredTexts } from './protected-asset-usage'
 

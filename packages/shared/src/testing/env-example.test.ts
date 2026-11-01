@@ -7,6 +7,7 @@ import {
     environmentNamesInSource,
     environmentNamesInTree,
     parseEnvExampleKeys,
+    undeclaredSettings,
 } from './env-example'
 
 describe('parseEnvExampleKeys', () => {
@@ -39,11 +40,37 @@ describe('environmentNamesInSource', () => {
         expect([...names].sort()).toEqual(['LOG_LEVEL', 'PUBLIC_CUSTOM_SYNC_URL', 'SYNC_PUBLIC_URL'])
     })
 
+    it('finds property reads on the privateEnv and publicEnv names a page gives the two modules', () => {
+        const names = environmentNamesInSource('const a = privateEnv.TERMS_URL; const b = publicEnv.PUBLIC_TERMS_URL')
+        expect([...names].sort()).toEqual(['PUBLIC_TERMS_URL', 'TERMS_URL'])
+    })
+
     it('finds quoted upper-snake names passed to any reader', () => {
         const names = environmentNamesInSource(
             "required(environment, 'CORPORATE_ISSUER'); getEnv(\"SYNC_TOKEN_SECRET\"); const keys = [`S3_BUCKET`]",
         )
         expect([...names].sort()).toEqual(['CORPORATE_ISSUER', 'S3_BUCKET', 'SYNC_TOKEN_SECRET'])
+    })
+
+    it("finds names imported from SvelteKit's environment modules", () => {
+        const names = environmentNamesInSource(
+            [
+                "import { LOG_LEVEL, OPENOBSERVE_URL as url } from '$app/env/private'",
+                'import {',
+                '    PUBLIC_DICTIONARY_URL,',
+                '    PORT,',
+                "} from \"$app/env/public\"",
+                "import { dev } from '$app/env'",
+            ].join('\n'),
+        )
+        expect([...names].sort()).toEqual(['LOG_LEVEL', 'OPENOBSERVE_URL', 'PUBLIC_DICTIONARY_URL'])
+    })
+
+    it('is not misled by a block-comment opener inside a line comment', () => {
+        const names = environmentNamesInSource(
+            ['// Handle /api/auth/** requests here', 'const header = env.ADDRESS_HEADER', '/** A later doc comment. */'].join('\n'),
+        )
+        expect([...names]).toEqual(['ADDRESS_HEADER'])
     })
 
     it('ignores names that appear only in comments', () => {
@@ -134,5 +161,16 @@ describe('compareEnvExample', () => {
                 readOutsideSource: {},
             }),
         ).toEqual({ missingFromExample: [], unreadInExample: [], listedButKeptOut: [] })
+    })
+})
+
+describe('undeclaredSettings', () => {
+    it('lists settings the source reads that src/env.ts does not declare', () => {
+        expect(undeclaredSettings({
+            sourceNames: new Set(['LOG_LEVEL', 'S3_BUCKET', 'STALE_EPOCH', 'GIT_COMMIT']),
+            declared: ['LOG_LEVEL'],
+            notEnvironment: { STALE_EPOCH: 'an error code' },
+            readOutsideSvelteKit: { GIT_COMMIT: 'read from process.env by the build' },
+        })).toEqual(['S3_BUCKET'])
     })
 })

@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 
-import { SUBDIRS } from '$lib/storage/fs/directory-adapter'
+import { SUBDIRS } from '#lib/storage/fs/directory-adapter.js'
 
 import { createNodeDirectoryAdapter, isGraphFolder } from './node-directory-adapter'
 

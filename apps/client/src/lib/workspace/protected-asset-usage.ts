@@ -9,11 +9,11 @@
  * looking at. A synced read the relay could not confirm current, and a file that could not be
  * read, come back as null, which the policy counts as unread.
  */
-import { type ProtectedAssetUsage, protectedAssetUsage } from '$lib/document/asset-delete'
-import type { ConceptCandidate } from '$lib/document/index-db'
-import type { DirectoryAdapter } from '$lib/storage/fs/directory-adapter'
-import { type DocumentEntry, conceptKey } from '$lib/storage'
-import type { DocumentIdentity, DocumentText } from '$lib/storage/server/server-document-store'
+import { type ProtectedAssetUsage, protectedAssetUsage } from '#lib/document/asset-delete.js'
+import type { ConceptCandidate } from '#lib/document/index-db.js'
+import type { DirectoryAdapter } from '#lib/storage/fs/directory-adapter.js'
+import { type DocumentEntry, conceptKey } from '#lib/storage/index.js'
+import type { DocumentIdentity, DocumentText } from '#lib/storage/synced/server-document-store.js'
 
 /** A batch of concepts to their stored text, or null for any that could not be read. */
 export type StoredTextReader = (concepts: readonly string[]) => Promise<Map<string, string | null>>

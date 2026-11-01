@@ -1,11 +1,11 @@
 import 'fake-indexeddb/auto'
 import { describe, expect, it, vi } from 'vitest'
 
-import { createGraphKeyring } from '$lib/crypto'
-import { createGraphSync, type TransportSocket } from '$lib/sync/graph-sync'
-import { openGraphCache } from '$lib/sync/local-cache'
-import { createLoopbackRelay } from '$lib/sync/loopback-relay'
-import { fixedSyncToken } from '$lib/sync/sync-token'
+import { createGraphKeyring } from '#lib/crypto/index.js'
+import { createGraphSync, type TransportSocket } from '#lib/sync/graph-sync.js'
+import { openGraphCache } from '#lib/sync/local-cache.js'
+import { createLoopbackRelay } from '#lib/sync/loopback-relay.js'
+import { fixedSyncToken } from '#lib/sync/sync-token.js'
 
 import { readGraphName } from './graph-names'
 

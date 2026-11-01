@@ -4,7 +4,7 @@
  * search API such as `https://photon.example.com/api`. Unset or empty, searches go through the
  * graph's Sync Server.
  */
-import { env } from '$env/dynamic/public'
+import * as env from '$app/env/public'
 
 export function placeSearchPhotonUrl(value: string | undefined = env.PUBLIC_PLACE_SEARCH_URL): string | null {
     const url = value?.trim()

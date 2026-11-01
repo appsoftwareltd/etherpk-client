@@ -15,8 +15,8 @@
 
 import type { EditorView } from '@codemirror/view'
 
-import { displayNameForRef } from '$lib/storage/fs/asset-store'
-import { type AssetContextMenuTarget, openContextMenu } from '$lib/surface'
+import { displayNameForRef } from '#lib/storage/fs/asset-store.js'
+import { type AssetContextMenuTarget, openContextMenu } from '#lib/surface/index.js'
 
 import { type AssetActionOptions, assetActions, runAssetCommand } from '../../asset-affordances'
 import { allAssetReferences } from '../../asset-reference'

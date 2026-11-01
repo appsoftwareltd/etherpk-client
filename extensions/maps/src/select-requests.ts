@@ -8,7 +8,7 @@
  * `reveal.ts` keeps the line a document should land on: a Map Block takes it as it mounts, or
  * hears it when it is open already. Taking it clears it, so one request selects one item once.
  */
-import { conceptKey } from '$lib/document/backlinks/backlink-index'
+import { conceptKey } from '#lib/document/backlinks/backlink-index.js'
 
 /** How long a request waits for its Map Block: long enough for a cold document to open. */
 const WAIT_MS = 30_000

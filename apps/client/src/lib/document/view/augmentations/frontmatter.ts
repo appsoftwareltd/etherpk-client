@@ -33,7 +33,7 @@ import { syntaxTree } from '@codemirror/language'
 import { type EditorState, type Extension, type Range, RangeSet, StateEffect, type Transaction } from '@codemirror/state'
 import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate, WidgetType } from '@codemirror/view'
 
-import type { ProposalStep } from '$lib/document/frontmatter/proposal'
+import type { ProposalStep } from '#lib/document/frontmatter/proposal.js'
 
 import { analysisFor } from '../analysis/editor-analysis'
 import { EXTERNAL } from '../cm-document'

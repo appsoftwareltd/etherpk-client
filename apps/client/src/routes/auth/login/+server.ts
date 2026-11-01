@@ -1,13 +1,13 @@
 import { error, redirect } from '@sveltejs/kit'
 import type { RequestHandler } from './$types'
-import { env } from '$env/dynamic/private'
-import { parseOptionalManagedClientAuthConfig } from '$lib/server/auth/config'
+import * as env from '$app/env/private'
+import { parseOptionalManagedClientAuthConfig } from '#lib/server/auth/config.js'
 import {
     clearClientSsoChecked,
     clearClientSsoSuppression,
     setAuthorizationTransaction,
-} from '$lib/server/auth/cookies'
-import { beginAuthorization, discoverOAuthMetadata } from '$lib/server/auth/oauth-client'
+} from '#lib/server/auth/cookies.js'
+import { beginAuthorization, discoverOAuthMetadata } from '#lib/server/auth/oauth-client.js'
 
 export const GET: RequestHandler = async ({ url, cookies, fetch, setHeaders }) => {
     // Each redirect starts a new transaction with its own state and cookie. A cached one, replayed
@@ -29,5 +29,6 @@ export const GET: RequestHandler = async ({ url, cookies, fetch, setHeaders }) =
         interaction,
     )
     await setAuthorizationTransaction(cookies, flow.transaction, config)
-    redirect(303, flow.authorizationUrl)
+    // Corporate's authorization endpoint, on another origin.
+    redirect(303, flow.authorizationUrl, { external: true })
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { sha256, toBase64Url, utf8, type ProtectionKdfParams } from '$lib/crypto'
+import { sha256, toBase64Url, utf8, type ProtectionKdfParams } from '#lib/crypto/index.js'
 import {
     DEVICE_PASSCODE_RECORD_KEY,
     DevicePasscodeLockedError,

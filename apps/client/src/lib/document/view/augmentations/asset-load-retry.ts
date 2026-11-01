@@ -8,7 +8,7 @@
  * found or `null` for missing, and so is a failure `retryable` does not accept (a damaged file):
  * retrying that would download it again for ever. The widget cancels when it leaves the document.
  */
-import { withRetry } from '$lib/retry'
+import { withRetry } from '#lib/retry.js'
 
 /** The first wait after a failed attempt; each later one doubles, up to {@link ASSET_RETRY_MAX_DELAY_MS}. */
 export const ASSET_RETRY_BASE_DELAY_MS = 2_000

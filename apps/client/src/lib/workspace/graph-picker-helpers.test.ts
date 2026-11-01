@@ -1,11 +1,11 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import type { GraphRecord } from '$lib/storage'
+import type { GraphRecord } from '#lib/storage/index.js'
 
-import { createGraphKeyring, generateIdentityKeyPair, generateSigningKeyPair, toBase64Url } from '$lib/crypto'
-import { sealGraphName } from '$lib/sync/graph-name-envelope'
-import { withPin } from '$lib/sync/pins'
-import { newVault } from '$lib/sync/testing/fake-sync-server'
+import { createGraphKeyring, generateIdentityKeyPair, generateSigningKeyPair, toBase64Url } from '#lib/crypto/index.js'
+import { sealGraphName } from '#lib/sync/graph-name-envelope.js'
+import { withPin } from '#lib/sync/pins.js'
+import { newVault } from '#lib/sync/testing/fake-sync-server.js'
 
 import type { SyncAccountSummary } from '@appsoftwareltd/etherpk-shared'
 

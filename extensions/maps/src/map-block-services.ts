@@ -6,8 +6,8 @@
  */
 import type { PlaceSearchCredit } from '@appsoftwareltd/etherpk-shared'
 
-import type { MapPoint } from '$lib/document/map-text'
-import type { InteractiveFenceInfo } from '$lib/document/view/augmentations/interactive-fence-contract'
+import type { MapPoint } from '#lib/document/map-text.js'
+import type { InteractiveFenceInfo } from '#lib/document/view/augmentations/interactive-fence-contract.js'
 
 import type { Basemaps } from './basemap'
 import type { MapBlockMemory } from './map-block-memory'

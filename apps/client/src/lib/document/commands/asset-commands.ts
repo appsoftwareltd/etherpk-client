@@ -25,9 +25,9 @@ import {
     isAssetTarget,
     isEditableAssetTarget,
     registerContextMenuItem,
-} from '$lib/surface'
-import type { AssetStore, ResolvedAsset } from '$lib/storage/fs/asset-store'
-import type { GraphAssetTools } from '$lib/storage/fs/asset-orphans'
+} from '#lib/surface/index.js'
+import type { AssetStore, ResolvedAsset } from '#lib/storage/fs/asset-store.js'
+import type { GraphAssetTools } from '#lib/storage/fs/asset-orphans.js'
 
 import { type AssetDeletePlan, type ProtectedAssetUsage, assetUsageNeedles, planAssetDelete } from '../asset-delete'
 import { removeAssetReference } from '../view/asset-remove'

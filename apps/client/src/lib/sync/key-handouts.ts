@@ -29,7 +29,7 @@ import {
     sha256,
     utf8,
     verifySignature,
-} from '$lib/crypto'
+} from '#lib/crypto/index.js'
 import { pinState, publishedIdentity, withPin } from './pins'
 import type { PendingKeyHandout, SyncApi } from './sync-api'
 import { updateVault } from './vault-update'

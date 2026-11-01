@@ -9,7 +9,7 @@
  * follow a link at all. From the keyboard, Alt+Enter follows the link at the caret,
  * Mod+Alt+Enter opens it in the Pane to the right (ADR 0155), and Shift+F10 or the
  * ContextMenu key opens its menu there. The model lives in
- * `$lib/document/wikilink` (see Wikilinks.md, ADR 0011).
+ * `#lib/document/wikilink/index.js` (see Wikilinks.md, ADR 0011).
  */
 
 import { type EditorState, type Extension, RangeSetBuilder, StateEffect, type Transaction } from '@codemirror/state'

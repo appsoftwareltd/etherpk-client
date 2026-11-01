@@ -10,7 +10,7 @@
  */
 
 import type { EventBus } from './types'
-import { setWorkspaceService, workspaceService } from '$lib/workspace/workspace-services'
+import { setWorkspaceService, workspaceService } from '#lib/workspace/workspace-services.js'
 
 export function setActiveEventBus(bus: EventBus | null): void {
     setWorkspaceService('events', bus ?? undefined)

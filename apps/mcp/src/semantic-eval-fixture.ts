@@ -10,7 +10,7 @@
  * with it - the reason the mode exists. `JUNK` should match nothing above the floor.
  */
 
-import type { IndexDoc } from '$lib/document/index-db'
+import type { IndexDoc } from '#lib/document/index-db.js'
 
 export const DOCS: IndexDoc[] = [
     {

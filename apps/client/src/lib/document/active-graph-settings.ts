@@ -8,8 +8,8 @@
  * Settings can be replaced during a session when local or synced settings change.
  */
 
-import type { GraphSettings } from '$lib/storage/fs/graph-settings'
-import { setWorkspaceService, workspaceService } from '$lib/workspace/workspace-services'
+import type { GraphSettings } from '#lib/storage/fs/graph-settings.js'
+import { setWorkspaceService, workspaceService } from '#lib/workspace/workspace-services.js'
 
 const DEFAULT_SETTINGS: GraphSettings = {}
 

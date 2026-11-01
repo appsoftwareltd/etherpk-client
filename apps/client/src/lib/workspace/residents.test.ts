@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import type { LayoutController, ViewRef } from '$lib/layout'
+import type { LayoutController, ViewRef } from '#lib/layout/index.js'
 
 import { revealResident, toggleResidentSidebar } from './residents'
 

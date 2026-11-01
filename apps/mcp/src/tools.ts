@@ -37,27 +37,27 @@ import {
     searchText as searchIndexText,
     TASK_PAGE_LIMIT,
     type TextSearchOutput,
-} from '$lib/agent-read/read-rules'
-import { todayISO } from '$lib/document/calendar/month-grid-core'
-import { normaliseIndentUnit } from '$lib/document/indent-unit'
-import { lineFeedsOnly } from '$lib/document/line-endings'
-import { isJournalConcept } from '$lib/document/journal-concept'
-import { DocumentUnconfirmedError } from '$lib/document/types'
-import { withAliasesInAddedBlock } from '$lib/document/frontmatter/identity'
-import { withFrontmatterPatch } from '$lib/document/frontmatter/patch'
-import { withPublishing } from '$lib/document/frontmatter/publishing'
-import { isPublicationId } from '$lib/document/publish/publication'
-import { parseFrontmatter } from '$lib/storage/fs/frontmatter'
-import { frontmatterSpan } from '$lib/storage/fs/frontmatter-span'
-import { conceptKey } from '$lib/storage/fs/identity'
-import { OPEN_TASK_STATUSES, TASK_PRIORITY_FILTERS, TASK_STATUSES, type TaskDueWindow, type TaskPriorityFilter, type TaskStatus, referencedInBody } from '$lib/document/index-db'
-import { type RenameLinkStrategy, RenameUnconfirmedError, mergeCount, renameSteps } from '$lib/storage/rename'
-import { buildAssetMarkdown, displayAssetName, mimeTypeForExt, splitNameExt } from '$lib/storage/fs/asset-store'
-import { AssetRefusedError, assetIdFromRef } from '$lib/storage/server/server-asset-store'
+} from '#lib/agent-read/read-rules.js'
+import { todayISO } from '#lib/document/calendar/month-grid-core.js'
+import { normaliseIndentUnit } from '#lib/document/indent-unit.js'
+import { lineFeedsOnly } from '#lib/document/line-endings.js'
+import { isJournalConcept } from '#lib/document/journal-concept.js'
+import { DocumentUnconfirmedError } from '#lib/document/types.js'
+import { withAliasesInAddedBlock } from '#lib/document/frontmatter/identity.js'
+import { withFrontmatterPatch } from '#lib/document/frontmatter/patch.js'
+import { withPublishing } from '#lib/document/frontmatter/publishing.js'
+import { isPublicationId } from '#lib/document/publish/publication.js'
+import { parseFrontmatter } from '#lib/storage/fs/frontmatter.js'
+import { frontmatterSpan } from '#lib/storage/fs/frontmatter-span.js'
+import { conceptKey } from '#lib/storage/fs/identity.js'
+import { OPEN_TASK_STATUSES, TASK_PRIORITY_FILTERS, TASK_STATUSES, type TaskDueWindow, type TaskPriorityFilter, type TaskStatus, referencedInBody } from '#lib/document/index-db.js'
+import { type RenameLinkStrategy, RenameUnconfirmedError, mergeCount, renameSteps } from '#lib/storage/rename.js'
+import { buildAssetMarkdown, displayAssetName, mimeTypeForExt, splitNameExt } from '#lib/storage/fs/asset-store.js'
+import { AssetRefusedError, assetIdFromRef } from '#lib/storage/synced/server-asset-store.js'
 
 import { readLocalFile, writeDownload } from './headless-assets'
 import { FolderRefused, folderUnder } from './local-folders'
-import { parseTaskLine, type TaskPriority } from '$lib/document/task-tags'
+import { parseTaskLine, type TaskPriority } from '#lib/document/task-tags.js'
 import {
     everyIndexedTask,
     parseTaskReference,
@@ -66,23 +66,23 @@ import {
     type TaskReferenceSources,
     taskFingerprint,
     taskReferenceUrl,
-} from '$lib/document/task-reference'
-import { ancestorChain, bulletLabel, deriveDoc } from '$lib/document/index-derive'
-import { isTemplate, templateBody } from '$lib/document/templates/template-page'
-import { renderTemplate, templateContextFor } from '$lib/document/templates/template-variables'
+} from '#lib/document/task-reference.js'
+import { ancestorChain, bulletLabel, deriveDoc } from '#lib/document/index-derive.js'
+import { isTemplate, templateBody } from '#lib/document/templates/template-page.js'
+import { renderTemplate, templateContextFor } from '#lib/document/templates/template-variables.js'
 import { type ConceptFacts, createGraphModel, type GraphFilter, shortestPath, visibleGraph } from '@appsoftwareltd/etherpk-extension-graph-view/model'
 import { bridges, findClusters, hubs, isolatedDocuments, pagelessByDocuments, type RankedConcept } from '@appsoftwareltd/etherpk-extension-graph-view/model'
-import { lineWriteChanges, nestedTaskWrites } from '$lib/document/task-cascade'
-import { taskLineWith } from '$lib/document/task-write'
+import { lineWriteChanges, nestedTaskWrites } from '#lib/document/task-cascade.js'
+import { taskLineWith } from '#lib/document/task-write.js'
 
 import type { HeadlessDocument } from './headless-documents'
 import type { HeadlessGraph } from './headless-graph'
 
 /**
  * Sizes an agent's context can absorb; the caller can page or narrow, never exceed them. Shared with
- * the browser's [[Agent Chat]] (`$lib/agent-read/read-rules`), so the two never drift apart.
+ * the browser's [[Agent Chat]] (`#lib/agent-read/read-rules.js`), so the two never drift apart.
  */
-export { LIST_PAGE_LIMIT, READ_MANY_LIMIT, READ_MANY_TEXT_CAP, READ_TEXT_CAP, SEARCH_PAGE_LIMIT, TASK_PAGE_LIMIT, type TextSearchOutput } from '$lib/agent-read/read-rules'
+export { LIST_PAGE_LIMIT, READ_MANY_LIMIT, READ_MANY_TEXT_CAP, READ_TEXT_CAP, SEARCH_PAGE_LIMIT, TASK_PAGE_LIMIT, type TextSearchOutput } from '#lib/agent-read/read-rules.js'
 
 export type ToolErrorCode =
     /** The graph could not be opened (not logged in, the keys no longer open the vault, no such graph); the message says why. */

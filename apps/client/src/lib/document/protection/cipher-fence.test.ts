@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { armourProtected, keyFingerprint, sealProtected, toBase64Url } from '$lib/crypto'
+import { armourProtected, keyFingerprint, sealProtected, toBase64Url } from '#lib/crypto/index.js'
 
 import { CIPHER_FENCE_INFO, cipherFences, documentProtection, protectDocumentText, replaceCipherFenceBody, unprotectDocumentText } from './cipher-fence'
 

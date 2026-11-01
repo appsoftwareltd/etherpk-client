@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { SyncApiError } from '$lib/sync/sync-api'
+import { SyncApiError } from '#lib/sync/sync-api.js'
 import { describeConnectionFailure } from './connection-errors'
 
 const SERVER = 'https://sync.example.com'

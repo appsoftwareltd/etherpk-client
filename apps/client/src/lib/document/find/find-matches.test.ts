@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { EditorState } from '@codemirror/state'
 
-import { armourProtected, keyFingerprint, sealProtected } from '$lib/crypto'
+import { armourProtected, keyFingerprint, sealProtected } from '#lib/crypto/index.js'
 
 import { editorAnalysis } from '../view/analysis/editor-analysis'
 import { CIPHER_FENCE_INFO } from '../protection/cipher-fence'

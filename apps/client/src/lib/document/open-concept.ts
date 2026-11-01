@@ -13,7 +13,7 @@
  * required a document) rather than of anything they intended.
  */
 
-import { getActiveLayoutController, type LayoutController, type ViewRef } from '$lib/layout'
+import { getActiveLayoutController, type LayoutController, type ViewRef } from '#lib/layout/index.js'
 
 import { getActiveGraphIndex } from './backlinks'
 import { conceptKey } from './backlinks/backlink-index'

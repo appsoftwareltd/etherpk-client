@@ -36,7 +36,8 @@
             syncServerUrl: string;
             /** Whether this deployment sends email; unset means it does. */
             mailEnabled?: boolean;
-            user?: { id: string; name: string; email: string; emailVerified: boolean; image?: string | null } | null;
+            /** The signed-in account: the layout above this page redirects a visitor who has none. */
+            user: { id: string; name: string; email: string; emailVerified: boolean; image?: string | null; twoFactorEnabled?: boolean | null };
         };
         authClient: AccountAuthClient;
     } = $props();

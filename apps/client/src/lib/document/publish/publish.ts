@@ -10,7 +10,7 @@
  * theme, the derived files. Everything derived is computed from the included documents alone.
  */
 
-import { parseFrontmatter } from '$lib/storage/fs/frontmatter'
+import { parseFrontmatter } from '#lib/storage/fs/frontmatter.js'
 
 import { backlinksFor, conceptKey } from '../backlinks/backlink-index'
 import { extensionOfFence, isExtensionFenceInfo } from '../extension-fence'

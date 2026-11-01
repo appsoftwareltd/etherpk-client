@@ -16,10 +16,10 @@ import type {
     Keybinding,
 } from '@appsoftwareltd/etherpk-extension-api'
 
-import type { CommandRegistry, ContributionRegistry, EventBus } from '$lib/surface'
+import type { CommandRegistry, ContributionRegistry, EventBus } from '#lib/surface/index.js'
 import type { ClientDialogs } from './dialogs'
-import type { PersonSettings } from '$lib/person-settings/person-settings'
-import type { TrustedMarkup } from '$lib/security/trusted-types'
+import type { PersonSettings } from '#lib/person-settings/person-settings.js'
+import type { TrustedMarkup } from '#lib/security/trusted-types.js'
 
 /** The key chords the workspace listens for, which extensions add to. */
 export interface KeybindingTable {

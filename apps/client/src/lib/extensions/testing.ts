@@ -4,12 +4,12 @@
  */
 import { vi } from 'vitest'
 
-import { createCommandRegistry, createContributionRegistry, createEventBus } from '$lib/surface'
+import { createCommandRegistry, createContributionRegistry, createEventBus } from '#lib/surface/index.js'
 
-import { createPersonSettings, type PersonSettings } from '$lib/person-settings/person-settings'
+import { createPersonSettings, type PersonSettings } from '#lib/person-settings/person-settings.js'
 
 import type { ClientServices, GraphServices } from './services'
-import type { TrustedMarkup } from '$lib/security/trusted-types'
+import type { TrustedMarkup } from '#lib/security/trusted-types.js'
 
 /** A Storage over a plain map, as localStorage behaves. */
 export function memoryStorage(initial: Record<string, string> = {}): Storage {

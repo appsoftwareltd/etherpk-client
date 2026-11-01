@@ -33,12 +33,13 @@ export default defineConfig({
         }
     },
     resolve: {
-        alias: {
-            '$env/dynamic/private': resolve(__dirname, 'src/__mocks__/env.private.ts'),
-            '$env/dynamic/public': resolve(__dirname, 'src/__mocks__/env.public.ts'),
-            '$app/environment': resolve(__dirname, 'src/__mocks__/app-environment.ts'),
-            '$lib': resolve(__dirname, 'src/lib')
-        }
+        // Exact matches: a plain '$app/env' key would also catch '$app/env/private'.
+        alias: [
+            { find: /^\$app\/env\/private$/, replacement: resolve(__dirname, 'src/__mocks__/env.private.ts') },
+            { find: /^\$app\/env\/public$/, replacement: resolve(__dirname, 'src/__mocks__/env.public.ts') },
+            { find: /^\$app\/env$/, replacement: resolve(__dirname, 'src/__mocks__/app-env.ts') },
+            { find: '#lib', replacement: resolve(__dirname, 'src/lib') },
+        ]
     },
     test: {
         environment: 'node',

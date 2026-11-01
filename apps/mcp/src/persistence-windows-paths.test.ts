@@ -12,8 +12,8 @@
 import { basename } from 'node:path/win32'
 import { describe, expect, it, vi } from 'vitest'
 
-import { INDEX_SCHEMA_VERSION } from '$lib/document/index-db'
-import { EMBEDDING_STORE_VERSION } from '$lib/document/semantic/embedding-db'
+import { INDEX_SCHEMA_VERSION } from '#lib/document/index-db.js'
+import { EMBEDDING_STORE_VERSION } from '#lib/document/semantic/embedding-db.js'
 
 const fake = vi.hoisted(() => ({ listing: [] as string[], removed: [] as string[] }))
 

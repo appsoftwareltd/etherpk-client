@@ -14,9 +14,9 @@
  * Pure over an injected clock and output so the flow is testable without a terminal.
  */
 
-import { openVaultWithRecoveryCode } from '$lib/sync/recovery-unlock'
-import { beginDeviceApproval, pollDeviceApproval } from '$lib/sync/device-approval'
-import type { SyncApi } from '$lib/sync/sync-api'
+import { openVaultWithRecoveryCode } from '#lib/sync/recovery-unlock.js'
+import { beginDeviceApproval, pollDeviceApproval } from '#lib/sync/device-approval.js'
+import type { SyncApi } from '#lib/sync/sync-api.js'
 
 export interface LoginIo {
     /** A line for the user: the code, progress, the outcome. Never a secret. */

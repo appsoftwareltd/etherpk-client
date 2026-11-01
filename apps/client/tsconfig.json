@@ -1,17 +1,23 @@
 {
-    "extends": "./.svelte-kit/tsconfig.json",
+    "extends": "$app/tsconfig",
     "compilerOptions": {
-        "allowJs": true,
-        "checkJs": true,
-        "esModuleInterop": true,
-        "forceConsistentCasingInFileNames": true,
-        "resolveJsonModule": true,
-        "skipLibCheck": true,
         "sourceMap": true,
         "strict": true,
-        "moduleResolution": "bundler"
+        // For the compiled-in extensions, which are packages of their own: the Client's
+        // package.json `imports` field does not apply to them (see the alias in vite.config.ts).
+        "paths": {
+            "#lib/*": ["./src/lib/*"]
+        }
     },
+    "include": [
+        "src",
+        "vite.config.ts",
+        "../../extensions/agent-chat/src",
+        "../../extensions/kanban/src",
+        "../../extensions/maps/src"
+    ],
     "exclude": [
-        "node_modules"
+        "node_modules",
+        "src/service-worker"
     ]
 }

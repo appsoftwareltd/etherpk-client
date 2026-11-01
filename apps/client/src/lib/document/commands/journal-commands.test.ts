@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { createCommandRegistry, createContributionRegistry, listCommandMenuItems } from '$lib/surface'
+import { createCommandRegistry, createContributionRegistry, listCommandMenuItems } from '#lib/surface/index.js'
 
 import type { JournalRollControl } from '../view/journal-roll-dom'
 import { JOURNAL_SHOW_OLDER_ENTRY, registerJournalCommands } from './journal-commands'

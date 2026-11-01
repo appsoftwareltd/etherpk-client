@@ -16,7 +16,7 @@ import { SETTINGS_TABS, type SettingsTab } from './device-memory'
 export const SETTINGS_PARAM = 'settings'
 
 /** The tab an address names, or null when it names none - or names something that is not a tab. */
-export function settingsTabFromUrl(url: URL): SettingsTab | null {
+export function settingsTabFromUrl(url: { readonly searchParams: Pick<URLSearchParams, 'get'> }): SettingsTab | null {
     const raw = url.searchParams.get(SETTINGS_PARAM)
     return raw && (SETTINGS_TABS as readonly string[]).includes(raw) ? (raw as SettingsTab) : null
 }

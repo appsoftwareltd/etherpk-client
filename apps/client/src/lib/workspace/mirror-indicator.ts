@@ -10,7 +10,7 @@
  * stopped, which after a browser restart is the normal state until the folder's permission is
  * given back - and with the Settings tab as its only home, that looked identical to working.
  */
-import { MIRROR_PHASE_LABELS, type MirrorStatus } from '$lib/storage/server/local-mirror'
+import { MIRROR_PHASE_LABELS, type MirrorStatus } from '#lib/storage/synced/local-mirror.js'
 
 export type MirrorIndicator =
     | { state: 'hidden' }

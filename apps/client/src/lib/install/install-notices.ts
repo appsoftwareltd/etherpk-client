@@ -4,10 +4,10 @@
  * storage recovery notice). Offers that stand in a place of their own are `InstallOffer.svelte`.
  */
 
-import { showNotice } from '$lib/activity/notices'
-import { appInstallState } from '$lib/storage/app-install'
-import { type InstallOfferMoment, claimInstallOffer, installOfferEligible } from '$lib/storage/install-offers'
-import { currentInstallPlatform } from '$lib/storage/install-platform'
+import { showNotice } from '#lib/activity/notices.js'
+import { appInstallState } from '#lib/storage/app-install.js'
+import { type InstallOfferMoment, claimInstallOffer, installOfferEligible } from '#lib/storage/install-offers.js'
+import { currentInstallPlatform } from '#lib/storage/install-platform.js'
 
 export const INSTALL_WELCOME_NOTICE = 'install-welcome'
 

@@ -1,7 +1,7 @@
 import 'fake-indexeddb/auto'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { type DeviceProtectionWrap, keyFingerprint, toBase64Url } from '$lib/crypto'
+import { type DeviceProtectionWrap, keyFingerprint, toBase64Url } from '#lib/crypto/index.js'
 
 import {
     type DeviceWrapStore,

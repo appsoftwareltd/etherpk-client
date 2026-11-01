@@ -6,7 +6,7 @@
  * and there is no progress to report. It shares the rail so that everything the app has to say
  * appears in one place, in one style, rather than a banner per cause in a corner each.
  *
- * The same dismissal rules as a finished toast (`$lib/notice-dismissal`): one that only
+ * The same dismissal rules as a finished toast (`#lib/notice-dismissal.js`): one that only
  * *reports* goes by itself after the shared delay; one that says something went wrong, or that
  * asks something of the user, stays until closed, because closing it is the acknowledgement.
  * A caller may say `manual` outright for a standing notice, and may hear about the close
@@ -17,7 +17,7 @@
  * one status line (the workspace) replaces its own notice rather than piling up.
  */
 
-import { NOTICE_AUTO_DISMISS_MS, type NoticeDismissal } from '$lib/notice-dismissal'
+import { NOTICE_AUTO_DISMISS_MS, type NoticeDismissal } from '#lib/notice-dismissal.js'
 
 export type NoticeTone = 'info' | 'error'
 

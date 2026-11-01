@@ -20,47 +20,47 @@
         setActiveDocumentStore,
         setActiveGraphIndex,
         setActiveGraphSettings,
-    } from '$lib/document'
+    } from '#lib/document/index.js'
     import {
         createCommandRegistry,
         createContributionRegistry,
         createEventBus,
         setActiveCommandRegistry,
         setActiveContributionRegistry,
-    } from '$lib/surface'
-    import { iconSvg, registerIcons } from '$lib/surface/icons'
-    import { personSettings } from '$lib/person-settings/person-settings'
-    import { conceptKey } from '$lib/document/backlinks'
-    import { createDocumentsReader } from '$lib/agent-read/documents-reader'
-    import { todayISO } from '$lib/document/calendar/month-grid-core'
-    import { builtInCatalogue } from '$lib/extensions/built-ins'
-    import { createExtensionAssets } from '$lib/extensions/extension-assets'
-    import { openExtensionWindow } from '$lib/extensions/extension-window'
-    import { graphRecords } from '$lib/extensions/graph-records'
-    import { openExtensionPanel } from '$lib/extensions/inline-panel'
-    import { createDialogs } from '$lib/extensions/dialogs'
-    import { createExtensionHost } from '$lib/extensions/host'
-    import { browserSignIn } from '$lib/extensions/sign-in'
-    import { insertBlock } from '$lib/document/view/block-insert'
-    import { createExtensionSwitches } from '$lib/extensions/switches'
-    import { RELEASE_VERSION } from '$lib/release'
-    import { createAssetStore, createMemoryDirectoryAdapter } from '$lib/storage'
-    import { performanceRecorder } from '$lib/diagnostics/performance'
+    } from '#lib/surface/index.js'
+    import { iconSvg, registerIcons } from '#lib/surface/icons.js'
+    import { personSettings } from '#lib/person-settings/person-settings.js'
+    import { conceptKey } from '#lib/document/backlinks/index.js'
+    import { createDocumentsReader } from '#lib/agent-read/documents-reader.js'
+    import { todayISO } from '#lib/document/calendar/month-grid-core.js'
+    import { builtInCatalogue } from '#lib/extensions/built-ins.js'
+    import { createExtensionAssets } from '#lib/extensions/extension-assets.js'
+    import { openExtensionWindow } from '#lib/extensions/extension-window.js'
+    import { graphRecords } from '#lib/extensions/graph-records.js'
+    import { openExtensionPanel } from '#lib/extensions/inline-panel.js'
+    import { createDialogs } from '#lib/extensions/dialogs.js'
+    import { createExtensionHost } from '#lib/extensions/host.js'
+    import { browserSignIn } from '#lib/extensions/sign-in.js'
+    import { insertBlock } from '#lib/document/view/block-insert.js'
+    import { createExtensionSwitches } from '#lib/extensions/switches.js'
+    import { RELEASE_VERSION } from '#lib/release.js'
+    import { createAssetStore, createMemoryDirectoryAdapter } from '#lib/storage/index.js'
+    import { performanceRecorder } from '#lib/diagnostics/performance.js'
     import {
         editorAnalysisDiagnostics,
         resetEditorAnalysisDiagnostics,
-    } from '$lib/document/view/analysis/editor-analysis'
+    } from '#lib/document/view/analysis/editor-analysis.js'
     import {
         browserImageFootprints,
         releaseActiveImageFootprints,
         setActiveImageFootprints,
-    } from '$lib/document/view/augmentations/image-footprints'
+    } from '#lib/document/view/augmentations/image-footprints.js'
     import {
         resetWikilinkDecorationDiagnostics,
         wikilinkDecorationDiagnostics,
-    } from '$lib/document/view/augmentations/wikilink'
-    import type { ViewRef } from '$lib/layout'
-    import CommandBar from '$lib/layout/renderers/CommandBar.svelte'
+    } from '#lib/document/view/augmentations/wikilink.js'
+    import type { ViewRef } from '#lib/layout/index.js'
+    import CommandBar from '#lib/layout/renderers/CommandBar.svelte'
 
     const store = createInMemoryDocumentStore({
         'doc-a':

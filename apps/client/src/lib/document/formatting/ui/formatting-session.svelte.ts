@@ -9,7 +9,7 @@
  * Everything worth testing is one layer down, in `scan.ts`; this is plumbing.
  */
 
-import { cancelActivity, dismissActivity, runActivity, type ActivityOutcome } from '$lib/activity/store'
+import { cancelActivity, dismissActivity, runActivity, type ActivityOutcome } from '#lib/activity/store.js'
 
 import { isBackupConfirmation } from '../backup-confirmation'
 import type { FormattingCheckId } from '../checks'

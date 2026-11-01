@@ -9,7 +9,7 @@
  * [[Protected Document]] contributes nothing: derivation gives it no rows, and the query leaves
  * out every page the index flags as protected as well.
  */
-import type { DocumentKind } from '$lib/storage'
+import type { DocumentKind } from '#lib/storage/index.js'
 
 import { conceptKey } from './backlinks/backlink-index'
 import { activeIndexGeneration, conceptFamilyKeys, type SqlDb } from './index-db'

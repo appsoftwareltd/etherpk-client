@@ -10,8 +10,8 @@
  * The key is the one the import wizard unwrapped from the passphrase the person typed. It lives
  * only as long as the import, outside the graph's protection session, and is never stored.
  */
-import { armourProtected, keyFingerprint, openProtected, sealProtected, toBase64Url } from '$lib/crypto'
-import { cipherFences, replaceCipherFenceBody } from '$lib/document/protection/cipher-fence'
+import { armourProtected, keyFingerprint, openProtected, sealProtected, toBase64Url } from '#lib/crypto/index.js'
+import { cipherFences, replaceCipherFenceBody } from '#lib/document/protection/cipher-fence.js'
 
 /** A Protection Key in hand, with the fingerprint every fence sealed under it carries. */
 export interface HeldProtectionKey {

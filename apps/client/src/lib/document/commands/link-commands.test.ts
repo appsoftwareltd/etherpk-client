@@ -1,7 +1,7 @@
 import { markdown } from '@codemirror/lang-markdown'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { createCommandRegistry, createContributionRegistry, listCommandMenuItems } from '$lib/surface'
+import { createCommandRegistry, createContributionRegistry, listCommandMenuItems } from '#lib/surface/index.js'
 
 import { clearActiveEditorView, setActiveEditorView } from '../active-editor'
 import { LINK_COPY_PATH } from '../link-affordances'

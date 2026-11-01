@@ -16,10 +16,10 @@
     import { tick, untrack } from 'svelte'
     import { createSubscriber } from 'svelte/reactivity'
 
-    import { appendFenceLine, removeFenceLine, replaceFenceLine, type FenceBodyEdit } from '$lib/document/fence-body'
-    import { formatMapPoint, type MapItem, type MapPoint, readMapBody, writeMapLine, writeMapPlace, writeMapRoute } from '$lib/document/map-text'
-    import type { InteractiveFenceContext } from '$lib/document/view/augmentations/interactive-fence-contract'
-    import { iconSvg } from '$lib/surface/icons'
+    import { appendFenceLine, removeFenceLine, replaceFenceLine, type FenceBodyEdit } from '#lib/document/fence-body.js'
+    import { formatMapPoint, type MapItem, type MapPoint, readMapBody, writeMapLine, writeMapPlace, writeMapRoute } from '#lib/document/map-text.js'
+    import type { InteractiveFenceContext } from '#lib/document/view/augmentations/interactive-fence-contract.js'
+    import { iconSvg } from '#lib/surface/icons.js'
 
     import { MAPBOX_REFUSED_NOTE } from './basemap'
     import { readGpx } from './gpx'

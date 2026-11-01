@@ -9,8 +9,8 @@
  * to an empty string, the deployment has no dictionaries and spell checking says so.
  */
 
-import { env } from '$env/dynamic/public'
-import { dev } from '$app/environment'
+import * as env from '$app/env/public'
+import { dev } from '$app/env'
 
 import { createDictionaryCache } from './dictionary-cache'
 import { createSpellingLanguagesStore } from './languages'

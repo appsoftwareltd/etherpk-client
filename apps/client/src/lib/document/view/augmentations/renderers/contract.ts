@@ -8,7 +8,7 @@
  * Extension will own (Extension Architecture.md).
  */
 
-import { type ContributionRegistry, tryGetActiveContributionRegistry } from '$lib/surface'
+import { type ContributionRegistry, tryGetActiveContributionRegistry } from '#lib/surface/index.js'
 
 export const AUGMENTATION_RENDERER_KIND = 'augmentation-renderer'
 

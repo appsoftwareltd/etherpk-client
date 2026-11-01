@@ -1,15 +1,15 @@
 import { describe, expect, it } from 'vitest'
 
-import { encryptVault, generateIdentityKeyPair, toBase64Url } from '$lib/crypto'
-import { deriveVaultWrapKey, generateRecoveryCode } from '$lib/crypto/recovery-code'
+import { encryptVault, generateIdentityKeyPair, toBase64Url } from '#lib/crypto/index.js'
+import { deriveVaultWrapKey, generateRecoveryCode } from '#lib/crypto/recovery-code.js'
 import {
     answerDeviceApproval,
     approveDevice,
     readApproverExchange,
     type ApproverSession,
     type PendingDeviceApproval,
-} from '$lib/sync/device-approval'
-import type { SyncApi } from '$lib/sync/sync-api'
+} from '#lib/sync/device-approval.js'
+import type { SyncApi } from '#lib/sync/sync-api.js'
 
 import {
     approvalWaitControls,

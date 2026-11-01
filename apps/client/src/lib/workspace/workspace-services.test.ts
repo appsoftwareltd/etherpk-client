@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { getActiveDocumentStore, setActiveDocumentStore } from '$lib/document/active-store'
-import { getActiveGraphSettings, setActiveGraphSettings } from '$lib/document/active-graph-settings'
-import type { DocumentStore } from '$lib/document/types'
+import { getActiveDocumentStore, setActiveDocumentStore } from '#lib/document/active-store.js'
+import { getActiveGraphSettings, setActiveGraphSettings } from '#lib/document/active-graph-settings.js'
+import type { DocumentStore } from '#lib/document/types.js'
 import {
     clearWorkspaceServices,
     currentWorkspaceServices,

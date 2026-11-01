@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, it } from 'vitest'
 
-import { createGraphKeyring } from '$lib/crypto'
-import { createLoopbackRelay } from '$lib/sync/loopback-relay'
-import { openGraphCache } from '$lib/sync/local-cache'
-import { fixedSyncToken } from '$lib/sync/sync-token'
-import { createGraphSync, type TransportSocket } from '$lib/sync/graph-sync'
+import { createGraphKeyring } from '#lib/crypto/index.js'
+import { createLoopbackRelay } from '#lib/sync/loopback-relay.js'
+import { openGraphCache } from '#lib/sync/local-cache.js'
+import { fixedSyncToken } from '#lib/sync/sync-token.js'
+import { createGraphSync, type TransportSocket } from '#lib/sync/graph-sync.js'
 
 import { openHeadlessGraph, type HeadlessGraph } from './headless-graph'
 import { createPage, editDocument, listDocuments, rename, search } from './tools'

@@ -4,8 +4,8 @@
      * Keyless — the new owner already holds the Graph Key, so it works even for a locked-out
      * owner. Shared by the Synced-graphs panel and the Account Reset flow.
      */
-    import type { SyncApi } from "$lib/sync";
-    import { describeSyncFailure } from "$lib/sync/sync-error-copy";
+    import type { SyncApi } from "#lib/sync/index.js";
+    import { describeSyncFailure } from "#lib/sync/sync-error-copy.js";
     import Modal from "@appsoftwareltd/etherpk-shared/dialog";
 
     interface Member {

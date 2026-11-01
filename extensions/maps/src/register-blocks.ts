@@ -8,9 +8,9 @@
  */
 import type { ExtensionContext } from '@appsoftwareltd/etherpk-extension-api'
 
-import { MAP_FENCE_INFO } from '$lib/document/map-text'
-import { INTERACTIVE_FENCE_KIND } from '$lib/document/view/augmentations/interactive-fence-contract'
-import type { AssetStore } from '$lib/storage/fs/asset-store'
+import { MAP_FENCE_INFO } from '#lib/document/map-text.js'
+import { INTERACTIVE_FENCE_KIND } from '#lib/document/view/augmentations/interactive-fence-contract.js'
+import type { AssetStore } from '#lib/storage/fs/asset-store.js'
 
 import type { Basemaps } from './basemap'
 import type { MapBlockServices, PlaceSearch } from './map-block-services'

@@ -1,14 +1,14 @@
 <script lang="ts">
     /**
-     * The page every extension's sign-in returns to (ADR 0140, `$lib/extensions/sign-in.ts`). A
+     * The page every extension's sign-in returns to (ADR 0140, `#lib/extensions/sign-in.ts`). A
      * service sends the sign-in popup here with what it answered in the query or the fragment. The
      * page passes that on to the sign-in waiting in the Client over a BroadcastChannel, takes it out
      * of the address bar so it stays in no history entry, and closes the popup. Where the browser
      * will not let the page close itself, it says the window can be closed.
      */
     import { onMount } from 'svelte'
-    import { afterNavigate, replaceState } from '$app/navigation'
-    import { readReturnParameters, SIGN_IN_CHANNEL } from '$lib/extensions/sign-in'
+    import { afterNavigate, goto } from '$app/navigation'
+    import { readReturnParameters, SIGN_IN_CHANNEL } from '#lib/extensions/sign-in.js'
 
     let outcome = $state<'passing' | 'done' | 'refused' | 'empty'>('passing')
 
@@ -26,11 +26,13 @@
     })
 
     // SvelteKit's router counts as started only just after the first navigation's afterNavigate
-    // callbacks (kit 2.70 `client.js`), and refuses replaceState before then. So the answer is
+    // callbacks (kit `client.js`), and refuses a shallow goto before then. So the answer is
     // passed on in onMount, and taken out of the address bar a microtask after this callback.
-    afterNavigate(() => {
+    afterNavigate(({ shallow, type }) => {
+        // The shallow replace below runs the navigation hooks since SvelteKit 3.
+        if (shallow && type === 'goto') return
         queueMicrotask(() => {
-            if (location.search || location.hash) replaceState(location.pathname, {})
+            if (location.search || location.hash) goto(location.pathname, { shallow: true, replace: true })
         })
     })
 </script>

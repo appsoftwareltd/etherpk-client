@@ -8,7 +8,7 @@
  * GPX is plain, regular XML, so it is read with patterns rather than a DOM parser. That keeps the
  * reader the same in the browser and in Node, and an unknown element is simply skipped.
  */
-import type { MapPoint } from '$lib/document/map-text'
+import type { MapPoint } from '#lib/document/map-text.js'
 
 export interface GpxRoute {
     /** The track's or route's own `<name>`, or '' when it has none. */

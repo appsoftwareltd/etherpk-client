@@ -11,7 +11,7 @@
 import { type Extension, MapMode, StateField, type Transaction } from '@codemirror/state'
 import type { EditorView } from '@codemirror/view'
 
-import { iconSvg } from '$lib/surface/icons'
+import { iconSvg } from '#lib/surface/icons.js'
 
 import type { ConceptCandidate } from '../../index-db'
 import { isInCode } from '../../wikilink/code-ranges'

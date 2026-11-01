@@ -32,7 +32,7 @@ import {
     openVault,
     sealApprovalReply,
     toBase64Url,
-} from '$lib/crypto'
+} from '#lib/crypto/index.js'
 import { SyncApiError, type PendingDeviceApproval, type SyncApi } from './sync-api'
 import { updateVault } from './vault-update'
 

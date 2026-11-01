@@ -6,7 +6,7 @@
  */
 import type { ExtensionContext } from '@appsoftwareltd/etherpk-extension-api'
 
-import type { MapItemsResult } from '$lib/document/index-map-items'
+import type { MapItemsResult } from '#lib/document/index-map-items.js'
 
 import type { Basemaps } from './basemap'
 import type { MapSelectRequests } from './select-requests'

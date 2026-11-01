@@ -15,9 +15,8 @@
 import { readFile } from 'node:fs/promises'
 import { extname } from 'node:path'
 
-import { json } from '@sveltejs/kit'
 
-import { releaseStore } from '$lib/server/extension-directory/store'
+import { releaseStore } from '#lib/server/extension-directory/store.js'
 
 import type { RequestHandler } from './$types'
 
@@ -44,7 +43,7 @@ const TYPES: Record<string, string> = {
 
 async function serve(params: { id: string; key: string; path: string }, request: Request, body: boolean): Promise<Response> {
     const found = await releaseStore().file(params.id, params.key, params.path)
-    if (!found.ok) return json({ message: found.message }, { status: found.status, headers: { 'cache-control': 'no-store' } })
+    if (!found.ok) return Response.json({ message: found.message }, { status: found.status, headers: { 'cache-control': 'no-store' } })
     const etag = `"${params.key}"`
     const headers = {
         'content-type': TYPES[extname(found.file).toLowerCase()] ?? 'application/octet-stream',

@@ -11,7 +11,7 @@
         claimInstallOffer,
         dismissInstallOffer,
         installOfferEligible,
-    } from "$lib/storage/install-offers";
+    } from "#lib/storage/install-offers.js";
     import { installPlatform, installState, startInstall } from "./install-state.svelte";
 
     let { moment, text }: { moment: InstallOfferMoment; text: string } = $props();

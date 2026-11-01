@@ -5,7 +5,7 @@
  * beside code that reads `window`.
  */
 
-import type { TransportSocket } from '$lib/sync/graph-sync'
+import type { TransportSocket } from '#lib/sync/graph-sync.js'
 
 export function nodeTransport(url: string): TransportSocket {
     const ws = new WebSocket(url)

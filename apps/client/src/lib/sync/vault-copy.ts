@@ -12,7 +12,7 @@
  * access changed, and the copy never hides it. Nothing is written in that mode, so the copy can
  * open a graph whose key it holds and do nothing else.
  */
-import { ManagedTokenError } from '$lib/auth/managed-token'
+import { ManagedTokenError } from '#lib/auth/managed-token.js'
 import { readSyncAccount } from './account-scope'
 import { ensureGraphKeys, MissingGraphKeyError, type KeyBootstrapResult } from './keys'
 import { SyncApiError, type SyncApi } from './sync-api'

@@ -9,7 +9,7 @@
  * joined before pins existed is pinned on first use, marked unverified, so the owner is not asked
  * to reach every member before a shared graph can carry on.
  */
-import { type KeyVault, type PinnedIdentity, type PublicIdentity, bytesEqual, fromBase64Url, toBase64Url } from '$lib/crypto'
+import { type KeyVault, type PinnedIdentity, type PublicIdentity, bytesEqual, fromBase64Url, toBase64Url } from '#lib/crypto/index.js'
 import type { PublishedIdentityJson, SyncApi } from './sync-api'
 import { updateVault } from './vault-update'
 

@@ -12,7 +12,7 @@ import { outlineLines, type OutlineLine } from '../../indent-unit'
 import { isHeadingLine } from '../../outliner'
 import { findTables, type MarkdownTable } from '../../markdown-table'
 import { codeRanges, type CodeRange } from '../../wikilink/code-ranges'
-import { frontmatterSpan, isFrontmatterDelimiter } from '$lib/storage/fs/frontmatter-span'
+import { frontmatterSpan, isFrontmatterDelimiter } from '#lib/storage/fs/frontmatter-span.js'
 
 import { wikilinkSegmentsInSource } from '../../wikilink/source'
 import { renderableFences, type RenderableFence } from '../augmentations/fence-render-core'

@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import type { PlaceSearchFeature } from '@appsoftwareltd/etherpk-shared'
 
-import { SyncApiError } from '$lib/sync/sync-api'
+import { SyncApiError } from '#lib/sync/sync-api.js'
 
 import { createPlaceSearch, nearestPlaceName, type PlaceSearchOptions, type PlaceSearchServer, placeResults, ukPostcode } from './place-search'
 

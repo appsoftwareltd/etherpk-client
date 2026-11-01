@@ -7,7 +7,7 @@
     import { getAppliedResolvedTheme, THEME_CHANGE_EVENT } from "@appsoftwareltd/etherpk-shared/theme";
     import type { Attachment } from "svelte/attachments";
 
-    import FullWindow from "$lib/components/FullWindow.svelte";
+    import FullWindow from "#lib/components/FullWindow.svelte";
     import type { DocumentStore } from "../types";
     import type { InteractiveFence } from "./augmentations/interactive-fence-contract";
     import { type DetachedFenceGone, mountDetachedFence } from "./detached-fence";

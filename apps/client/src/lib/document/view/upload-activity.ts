@@ -12,10 +12,10 @@
  * an optimiser or nothing.
  */
 
-import { runActivity } from '$lib/activity/store'
-import type { Activity } from '$lib/activity/types'
+import { runActivity } from '#lib/activity/store.js'
+import type { Activity } from '#lib/activity/types.js'
 import { formatBytes } from '@appsoftwareltd/etherpk-shared'
-import type { AssetStore } from '$lib/storage/fs/asset-store'
+import type { AssetStore } from '#lib/storage/fs/asset-store.js'
 import type { EditorView } from '@codemirror/view'
 
 import { type UploadOutcome, uploadAndInsert } from './asset-upload'

@@ -12,9 +12,9 @@
  *
  * Pure apart from its collaborators, so the sequencing is unit-tested without a workspace.
  */
-import { type IdentityPatch, frontmatterIdentity } from '$lib/document/frontmatter/identity'
-import { type Backend, type ProposalStep, type RegistryIdentity, proposeFrontmatter } from '$lib/document/frontmatter/proposal'
-import type { EpisodeEnd } from '$lib/document/view/augmentations/frontmatter-episode'
+import { type IdentityPatch, frontmatterIdentity } from '#lib/document/frontmatter/identity.js'
+import { type Backend, type ProposalStep, type RegistryIdentity, proposeFrontmatter } from '#lib/document/frontmatter/proposal.js'
+import type { EpisodeEnd } from '#lib/document/view/augmentations/frontmatter-episode.js'
 
 /** A document's identity as the registry has it, plus what the proposal needs to read it. */
 export interface DocumentIdentity extends RegistryIdentity {

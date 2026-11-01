@@ -16,7 +16,7 @@ import { type Extension, StateEffect, StateField } from '@codemirror/state'
 import type { EditorView } from '@codemirror/view'
 
 import { tryGetActiveCommandRegistry } from '../../../surface'
-import { iconSvg } from '$lib/surface/icons'
+import { iconSvg } from '#lib/surface/icons.js'
 
 import { type PopoverBase, popoverMenu, refreshPopovers } from './popover-menu'
 

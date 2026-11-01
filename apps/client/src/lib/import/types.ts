@@ -7,10 +7,10 @@
  * same converted graph can land on a Filesystem or Server destination.
  */
 
-import type { QuickNote } from '$lib/document/quick-notes'
-import type { Bookmark } from '$lib/document/bookmarks/bookmarks'
-import type { GraphTheme } from '$lib/document/publish/theme/graph-theme'
-import type { ProtectionRecord } from '$lib/crypto'
+import type { QuickNote } from '#lib/document/quick-notes.js'
+import type { Bookmark } from '#lib/document/bookmarks/bookmarks.js'
+import type { GraphTheme } from '#lib/document/publish/theme/graph-theme.js'
+import type { ProtectionRecord } from '#lib/crypto/index.js'
 
 /** The recognised source formats. `markdown` is an arbitrary folder routed through the Obsidian pipeline. */
 export type ImportFormat = 'logseq' | 'obsidian' | 'etherpk' | 'markdown' | 'asnotes'

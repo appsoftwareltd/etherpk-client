@@ -8,7 +8,7 @@
  * backend, and the tests a fake.
  */
 
-import { frontmatterLines } from '$lib/storage/fs/frontmatter-span'
+import { frontmatterLines } from '#lib/storage/fs/frontmatter-span.js'
 
 import { containsCipherFence } from '../protection/fence-info'
 import type { SpliceOutcome } from '../types'

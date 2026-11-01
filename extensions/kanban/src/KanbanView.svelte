@@ -18,20 +18,20 @@
     import { onMount, tick } from "svelte";
     import { MediaQuery } from "svelte/reactivity";
 
-    import { conceptKey, getActiveGraphIndex, type TaskStatus, taskDateKey } from "$lib/document/backlinks";
-    import { openConceptAtLine } from "$lib/document/open-concept";
-    import { createSettleScheduler } from "$lib/document/settle-scheduler";
-    import { bulletLabel } from "$lib/document/index-derive";
-    import { findIndexedTask, isTaskLine, type TaskChanges, type TaskWrite, type TaskWriteOutcome, undoTaskWrite, writeTaskChanges } from "$lib/document/task-write";
-    import type { DocumentStore } from "$lib/document/types";
-    import { TASK_COPY_REFERENCE } from "$lib/document/commands/task-reference-commands";
-    import DocumentView from "$lib/document/view/DocumentView.svelte";
-    import type { ViewRef, ViewVisibility } from "$lib/layout";
-    import { DESKTOP_MEDIA_QUERY } from "$lib/layout/breakpoint";
-    import { attachContextMenu, openContextMenu } from "$lib/surface/context-menu-store";
-    import { tryGetActiveEventBus } from "$lib/surface/active-bus";
-    import { iconSvg } from "$lib/surface/icons";
-    import { currentWorkspaceServices, workspaceService } from "$lib/workspace/workspace-services";
+    import { conceptKey, getActiveGraphIndex, type TaskStatus, taskDateKey } from "#lib/document/backlinks/index.js";
+    import { openConceptAtLine } from "#lib/document/open-concept.js";
+    import { createSettleScheduler } from "#lib/document/settle-scheduler.js";
+    import { bulletLabel } from "#lib/document/index-derive.js";
+    import { findIndexedTask, isTaskLine, type TaskChanges, type TaskWrite, type TaskWriteOutcome, undoTaskWrite, writeTaskChanges } from "#lib/document/task-write.js";
+    import type { DocumentStore } from "#lib/document/types.js";
+    import { TASK_COPY_REFERENCE } from "#lib/document/commands/task-reference-commands.js";
+    import DocumentView from "#lib/document/view/DocumentView.svelte";
+    import type { ViewRef, ViewVisibility } from "#lib/layout/index.js";
+    import { DESKTOP_MEDIA_QUERY } from "#lib/layout/breakpoint.js";
+    import { attachContextMenu, openContextMenu } from "#lib/surface/context-menu-store.js";
+    import { tryGetActiveEventBus } from "#lib/surface/active-bus.js";
+    import { iconSvg } from "#lib/surface/icons.js";
+    import { currentWorkspaceServices, workspaceService } from "#lib/workspace/workspace-services.js";
 
     import { registerBoard, takeBoardHandover } from "./board-actions";
     import { createBoardStateStore, type TaskDetailState } from "./board-state";

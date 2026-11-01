@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { AssetIntegrityError } from '$lib/storage/fs/asset-store'
-import { createCommandRegistry, createContributionRegistry, listContextMenuItems } from '$lib/surface'
-import type { AssetContextMenuTarget } from '$lib/surface'
+import { AssetIntegrityError } from '#lib/storage/fs/asset-store.js'
+import { createCommandRegistry, createContributionRegistry, listContextMenuItems } from '#lib/surface/index.js'
+import type { AssetContextMenuTarget } from '#lib/surface/index.js'
 
 import {
     ASSET_COPY_IMAGE,

@@ -5,7 +5,7 @@
  * about every kind the Client does not address itself. Held here, rather than imported, so URL code
  * never loads an extension: an address book is built from manifests the workspace already read.
  */
-import type { AddressBook } from '$lib/extensions/addresses'
+import type { AddressBook } from '#lib/extensions/addresses.js'
 
 let current: AddressBook | null = null
 

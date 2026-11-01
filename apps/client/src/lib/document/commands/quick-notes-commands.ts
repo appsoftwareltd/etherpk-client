@@ -11,7 +11,7 @@ import {
     type CommandRegistry,
     type ContributionRegistry,
     registerCommandMenuItem,
-} from '$lib/surface'
+} from '#lib/surface/index.js'
 
 import { formatISODate, todayISO } from '../calendar/month-grid-core'
 import { canCreateDocuments, type DocumentCreatingStore, whenDocumentText } from '../draft'

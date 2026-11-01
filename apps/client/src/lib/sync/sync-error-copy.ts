@@ -9,8 +9,8 @@
  * Pure, so the mapping is unit tested rather than inferred from a screenshot.
  */
 import type { QuotaErrorCode } from '@appsoftwareltd/etherpk-shared'
-import { ManagedTokenError } from '$lib/auth/managed-token'
-import { EnvelopeError, KeyringConflictError, RecoveryCodeError } from '$lib/crypto'
+import { ManagedTokenError } from '#lib/auth/managed-token.js'
+import { EnvelopeError, KeyringConflictError, RecoveryCodeError } from '#lib/crypto/index.js'
 import { NoVaultError } from './recovery-unlock'
 import { InviteNotAcceptedError, InviteeChangedError } from './invites'
 import { ForeignIdentityError } from './account-identity'

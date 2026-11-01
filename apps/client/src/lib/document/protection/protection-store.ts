@@ -20,9 +20,9 @@
  * key would replace the record and orphan every document sealed under the old key, so nothing
  * that writes a record proceeds on anything but `missing`, or `ok` under the same key.
  */
-import type { ProtectionRecord, ProtectionRecordProblem } from '$lib/crypto'
-import { ProtectionRecordFormatError, parseProtectionRecord, serialiseProtectionRecord, validateProtectionRecord } from '$lib/crypto'
-import type { DirectoryAdapter } from '$lib/storage/fs/directory-adapter'
+import type { ProtectionRecord, ProtectionRecordProblem } from '#lib/crypto/index.js'
+import { ProtectionRecordFormatError, parseProtectionRecord, serialiseProtectionRecord, validateProtectionRecord } from '#lib/crypto/index.js'
+import type { DirectoryAdapter } from '#lib/storage/fs/directory-adapter.js'
 
 /** The graph-folder file holding the record. Deliberately not `settings.json`. */
 export const PROTECTION_FILE = 'protection.json'

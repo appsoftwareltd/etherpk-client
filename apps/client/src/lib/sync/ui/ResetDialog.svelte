@@ -11,8 +11,8 @@
      */
     import { onDestroy } from "svelte";
     import { delayedFlag } from "@appsoftwareltd/etherpk-shared/delayed";
-    import { createSyncApiFor, serverHost, syncConnectionFor, type SyncApi } from "$lib/sync";
-    import { describeSyncFailure } from "$lib/sync/sync-error-copy";
+    import { createSyncApiFor, serverHost, syncConnectionFor, type SyncApi } from "#lib/sync/index.js";
+    import { describeSyncFailure } from "#lib/sync/sync-error-copy.js";
     import Modal from "@appsoftwareltd/etherpk-shared/dialog";
     import TransferOwnershipDialog from "./TransferOwnershipDialog.svelte";
 

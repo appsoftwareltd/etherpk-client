@@ -12,10 +12,10 @@
      * the same way from the button, the Command Menu and a keybinding.
      */
     import { onDestroy, onMount } from "svelte";
-    import InstallOffer from "$lib/install/InstallOffer.svelte";
+    import InstallOffer from "#lib/install/InstallOffer.svelte";
 
-    import type { ViewRef } from "$lib/layout";
-    import { tryGetActiveCommandRegistry, tryGetActiveEventBus } from "$lib/surface";
+    import type { ViewRef } from "#lib/layout/index.js";
+    import { tryGetActiveCommandRegistry, tryGetActiveEventBus } from "#lib/surface/index.js";
 
     import { QUICK_NOTES_MOVE } from "../commands/quick-notes-commands";
     import {

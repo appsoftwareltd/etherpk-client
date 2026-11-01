@@ -9,8 +9,8 @@
  * Framework-agnostic — no SvelteKit imports. Callers pass env values explicitly.
  *
  * Usage (SvelteKit hooks.server.ts):
- *   import { env } from '$env/dynamic/private'
- *   import { initLoggerFromEnv, logger } from '$lib/server/logger'
+ *   import * as env from '$app/env/private'
+ *   import { initLoggerFromEnv, logger } from '#lib/server/logger.js'
  *   initLoggerFromEnv({ logLevel: env.LOG_LEVEL, openObserveUrl: env.OPENOBSERVE_URL, ... })
  *
  * Usage (standalone scripts like migrate.ts):

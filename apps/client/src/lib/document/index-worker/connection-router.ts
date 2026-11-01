@@ -12,7 +12,7 @@
 
 import type { IndexCore } from './core'
 import type { IndexRequest, IndexResponse } from './protocol'
-import { performanceRecorder } from '$lib/diagnostics/performance'
+import { performanceRecorder } from '#lib/diagnostics/performance.js'
 
 export interface IndexConnection {
     post(response: IndexResponse): void

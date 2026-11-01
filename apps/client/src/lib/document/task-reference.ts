@@ -10,7 +10,7 @@
  * unrelated tasks sharing one by chance is not a practical concern at that length; two tasks with
  * the same words share it by design, and are reported as ambiguous rather than guessed between.
  *
- * Framework-free, and shared with the Headless Client through the `$lib` alias.
+ * Framework-free, and shared with the Headless Client through the `#lib` alias.
  */
 import { documentUrl } from '../navigation/document-url'
 import { fencedBlocks } from './fenced-code'

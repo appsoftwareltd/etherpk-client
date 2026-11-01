@@ -8,12 +8,12 @@
  * [[Protected Document]] by name, while an Agent Chat leaves it out entirely, because what it reads
  * may be sent to a model provider.
  */
-import { withoutTemplateContent } from '$lib/document/backlinks/shown-backlinks'
-import type { DbBacklinkGroup, PropertyKeyInfo, PropertyMatch } from '$lib/document/index-db'
-import type { SearchCountResult, SearchTextResult } from '$lib/document/index-worker/client'
-import { documentProtection } from '$lib/document/protection/cipher-fence'
-import { containsCipherFence } from '$lib/document/protection/fence-info'
-import { type PropertyFilter, parseSearchQuery } from '$lib/document/search-query'
+import { withoutTemplateContent } from '#lib/document/backlinks/shown-backlinks.js'
+import type { DbBacklinkGroup, PropertyKeyInfo, PropertyMatch } from '#lib/document/index-db.js'
+import type { SearchCountResult, SearchTextResult } from '#lib/document/index-worker/client.js'
+import { documentProtection } from '#lib/document/protection/cipher-fence.js'
+import { containsCipherFence } from '#lib/document/protection/fence-info.js'
+import { type PropertyFilter, parseSearchQuery } from '#lib/document/search-query.js'
 
 /** Documents one listing returns at most; the caller pages for more. */
 export const LIST_PAGE_LIMIT = 200

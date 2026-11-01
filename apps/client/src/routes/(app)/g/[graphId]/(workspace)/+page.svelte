@@ -1,2 +1,2 @@
 <!-- Bare /g/[graphId]: the workspace is the (workspace) layout; nothing here.
-     The Visit engine replaceState-normalises this URL to the active Document URL. -->
+     The Visit engine replaces this URL in history with the active Document URL. -->

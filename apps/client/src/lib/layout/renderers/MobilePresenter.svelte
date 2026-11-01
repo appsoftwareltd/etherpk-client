@@ -8,18 +8,18 @@
      */
     import { untrack } from 'svelte'
 
-    import type { LayoutController, LayoutModel, Region, ViewInstance } from '$lib/layout'
-    import { attachContextMenu, type ContextMenuTarget, createControlHelp, tryGetActiveCommandRegistry } from '$lib/surface'
+    import type { LayoutController, LayoutModel, Region, ViewInstance } from '#lib/layout/index.js'
+    import { attachContextMenu, type ContextMenuTarget, createControlHelp, tryGetActiveCommandRegistry } from '#lib/surface/index.js'
 
     import CommandBar from './CommandBar.svelte'
     import type { MobileRenderer } from './mobile-renderer.svelte'
     import SidebarToggleIcon from './SidebarToggleIcon.svelte'
     import { NO_PAGE_OPEN } from './no-page-open'
     import { markIcon, tabTitleWidth, type TabMark } from './tab-renderer'
-    import { iconSvg } from '$lib/surface/icons'
+    import { iconSvg } from '#lib/surface/icons.js'
     import { unavailableViewMessage } from './unavailable-view'
     import { createViewVisibility, watchPageVisibility } from '../view-visibility'
-    import { workspaceService } from '$lib/workspace/workspace-services'
+    import { workspaceService } from '#lib/workspace/workspace-services.js'
 
     let {
         controller,

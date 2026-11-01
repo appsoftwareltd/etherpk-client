@@ -9,7 +9,7 @@
  *
  * Pure: the editor's plugin decides when to show these.
  */
-import { frontmatterSpan } from '$lib/storage/fs/frontmatter-span'
+import { frontmatterSpan } from '#lib/storage/fs/frontmatter-span.js'
 
 import { explicitSlugOf } from '../publish/slugs'
 import { readMembership, readPageDate, readPublicationDefinition } from '../publish/publication'

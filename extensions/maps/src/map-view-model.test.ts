@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
-import type { MapItemHit, MapItemsResult } from '$lib/document/index-map-items'
-import { readMapLine } from '$lib/document/map-text'
+import type { MapItemHit, MapItemsResult } from '#lib/document/index-map-items.js'
+import { readMapLine } from '#lib/document/map-text.js'
 
 import { engineItems, filterKeys, findSelection, groupByDocument, itemLabel, sameAnswer, sharedName, spotHeading, spotSummary, summarise, touchesMaps } from './map-view-model'
 

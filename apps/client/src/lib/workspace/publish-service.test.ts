@@ -1,14 +1,14 @@
 import { describe, expect, it } from 'vitest'
 
-import { createInMemoryDocumentStore } from '$lib/document/in-memory-store'
-import { proposeFrontmatter } from '$lib/document/frontmatter/proposal'
-import { discoverPublications } from '$lib/document/publish/publication'
-import { buildNav } from '$lib/document/publish/nav'
-import { SAMPLE_SOURCE } from '$lib/document/publish/sample-graph'
-import { documents as fixtureDocuments, source as fixtureSource } from '$lib/document/publish/fixture-graph'
-import { createThemeLoader } from '$lib/document/publish/theme/sources'
-import { createFilesystemDocumentStore } from '$lib/storage/fs/filesystem-store'
-import { createMemoryDirectoryAdapter } from '$lib/storage/fs/memory-adapter'
+import { createInMemoryDocumentStore } from '#lib/document/in-memory-store.js'
+import { proposeFrontmatter } from '#lib/document/frontmatter/proposal.js'
+import { discoverPublications } from '#lib/document/publish/publication.js'
+import { buildNav } from '#lib/document/publish/nav.js'
+import { SAMPLE_SOURCE } from '#lib/document/publish/sample-graph.js'
+import { documents as fixtureDocuments, source as fixtureSource } from '#lib/document/publish/fixture-graph.js'
+import { createThemeLoader } from '#lib/document/publish/theme/sources.js'
+import { createFilesystemDocumentStore } from '#lib/storage/fs/filesystem-store.js'
+import { createMemoryDirectoryAdapter } from '#lib/storage/fs/memory-adapter.js'
 
 import {
     copyThemeForGraph,

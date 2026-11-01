@@ -1,5 +1,5 @@
 /**
- * The rules the service worker (`src/service-worker.ts`) follows to start the Client with no
+ * The rules the service worker (`src/service-worker/index.ts`) follows to start the Client with no
  * network (ADR 0142), kept here so they are unit tested apart from the worker's plumbing.
  *
  * The Client's pages are rendered by its server, so a cached copy of one page cannot simply be

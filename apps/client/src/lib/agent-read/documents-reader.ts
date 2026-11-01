@@ -23,11 +23,11 @@ import type {
     ExtensionDocuments,
 } from '@appsoftwareltd/etherpk-extension-api'
 
-import type { ConceptCandidate, DbBacklinkGroup, TaskHit, TaskQuery } from '$lib/document/index-db'
-import type { TaskPageResult } from '$lib/document/index-worker/client'
-import { wikilinkOccurrencesInSource } from '$lib/document/wikilink/source'
-import { frontmatterSpan } from '$lib/storage/fs/frontmatter-span'
-import { conceptKey } from '$lib/storage/fs/identity'
+import type { ConceptCandidate, DbBacklinkGroup, TaskHit, TaskQuery } from '#lib/document/index-db.js'
+import type { TaskPageResult } from '#lib/document/index-worker/client.js'
+import { wikilinkOccurrencesInSource } from '#lib/document/wikilink/source.js'
+import { frontmatterSpan } from '#lib/storage/fs/frontmatter-span.js'
+import { conceptKey } from '#lib/storage/fs/identity.js'
 
 import { formatGuide } from './format-guide'
 import { backlinkSources, capText, holdsEncryptedText, LIST_PAGE_LIMIT, SEARCH_PAGE_LIMIT, searchText, TASK_PAGE_LIMIT, type TextSearchIndex } from './read-rules'

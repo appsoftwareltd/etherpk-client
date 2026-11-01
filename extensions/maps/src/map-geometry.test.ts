@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import type { MapLine } from '$lib/document/map-text'
+import type { MapLine } from '#lib/document/map-text.js'
 
 import { formatDistance, frameRoom, haversineMeters, itemsBounds, oneSpotAt, placesAtSpot, routeLengthMeters, simplifyPath, worldPixels } from './map-geometry'
 

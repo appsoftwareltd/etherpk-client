@@ -9,7 +9,7 @@
      * Scrolls in both directions rather than shrinking to fit: the point of opening it here is
      * to see the pixels.
      */
-    import type { AssetViewerProps } from "$lib/surface";
+    import type { AssetViewerProps } from "#lib/surface/index.js";
 
     let { url, name }: AssetViewerProps = $props();
 </script>

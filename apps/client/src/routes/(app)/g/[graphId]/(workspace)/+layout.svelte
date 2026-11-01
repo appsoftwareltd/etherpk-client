@@ -10,10 +10,10 @@
      */
     import { onMount, type Snippet } from 'svelte'
 
-    import { isDemoGraph } from '$lib/demo/demo-graph'
-    import { ensurePersistentStorage } from '$lib/storage/storage-persistence'
-    import DemoBar from '$lib/demo/ui/DemoBar.svelte'
-    import GraphWorkspace from '$lib/workspace/GraphWorkspace.svelte'
+    import { isDemoGraph } from '#lib/demo/demo-graph.js'
+    import { ensurePersistentStorage } from '#lib/storage/storage-persistence.js'
+    import DemoBar from '#lib/demo/ui/DemoBar.svelte'
+    import GraphWorkspace from '#lib/workspace/GraphWorkspace.svelte'
 
     import type { LayoutData } from './$types'
 
@@ -72,7 +72,7 @@
 
     /*
      * The demo bar is desktop chrome. Below the presenter breakpoint (LAYOUT_BREAKPOINT_PX in
-     * $lib/layout/breakpoint.ts: the same 1024px, kept in px so the bar swaps exactly where
+     * #lib/layout/breakpoint.ts: the same 1024px, kept in px so the bar swaps exactly where
      * the presenter does) the phone presenter mounts and the bar's copy wraps to three lines,
      * past the height reserved for it, covering the tab strip. So below it the bar is left
      * out and nothing is reserved. A stylesheet query rather than one in script: the server

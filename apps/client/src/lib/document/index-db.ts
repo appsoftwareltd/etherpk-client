@@ -9,7 +9,7 @@
  * case-insensitive (ADR 0011).
  */
 
-import type { DocumentKind } from '$lib/storage'
+import type { DocumentKind } from '#lib/storage/index.js'
 
 import { conceptKey } from './backlinks'
 import { fencedBlocks } from './fenced-code'

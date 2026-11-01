@@ -17,7 +17,7 @@
  * follow when they arrive.
  */
 
-import type { ResolvedAsset } from '$lib/storage/fs/asset-store'
+import type { ResolvedAsset } from '#lib/storage/fs/asset-store.js'
 
 import { canvasToBlob, drawImageToCanvas } from './image-canvas'
 

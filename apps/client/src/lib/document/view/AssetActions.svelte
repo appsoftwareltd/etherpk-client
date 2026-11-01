@@ -9,7 +9,7 @@
      * Command refuses a target without one, so the button is absent rather than dead.
      * The drawing is `InlineActions.svelte`, shared with the [[File Link]] cluster.
      */
-    import { displayNameForRef } from "$lib/storage/fs/asset-store";
+    import { displayNameForRef } from "#lib/storage/fs/asset-store.js";
 
     import { assetActions, runAssetCommand } from "../asset-affordances";
     import type { InlineAction } from "../inline-action";

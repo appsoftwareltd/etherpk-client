@@ -24,7 +24,7 @@ import {
     sha256,
     signMessage,
     toBase64Url,
-} from '$lib/crypto'
+} from '#lib/crypto/index.js'
 import { NoVaultError } from './recovery-unlock'
 import { SyncApiError, type SyncApi } from './sync-api'
 

@@ -1,6 +1,6 @@
 /**
  * Applying a {@link ViewPosition} to a CodeMirror editor — the document-side
- * half of the position seam ($lib/navigation stays CM-free). Selection offsets
+ * half of the position seam (#lib/navigation stays CM-free). Selection offsets
  * may predate remote edits, so they are clamped to the live doc length rather
  * than trusted (ADR 0023: approximate restoration is accepted).
  */
@@ -8,7 +8,7 @@
 import { EditorSelection, Transaction, type TransactionSpec } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
 
-import type { ViewPosition } from '$lib/navigation'
+import type { ViewPosition } from '#lib/navigation/index.js'
 
 export function clampSelection(
     position: ViewPosition,

@@ -18,7 +18,7 @@
  * Engine-agnostic like `index-db.ts`, so the whole of it is node-tested over in-memory SQLite.
  */
 
-import type { DocumentKind } from '$lib/storage'
+import type { DocumentKind } from '#lib/storage/index.js'
 
 import { activeIndexGeneration, type SqlDb } from '../index-db'
 import { passageBody, passageBreadcrumb } from './passages'

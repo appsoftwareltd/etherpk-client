@@ -15,7 +15,7 @@
      * a replace waiting on the rename question (said after a moment, the buttons doing nothing),
      * and what the last replace did. The count is announced once typing stops, never per key.
      */
-    import { formatChordHint, isApplePlatform } from "$lib/surface";
+    import { formatChordHint, isApplePlatform } from "#lib/surface/index.js";
 
     import type { FindOptions } from "../find/find-matches";
     import type { FindController, FindSnapshot } from "../find/find-controller";

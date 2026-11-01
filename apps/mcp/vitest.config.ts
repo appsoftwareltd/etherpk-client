@@ -7,7 +7,7 @@ const here = fileURLToPath(new URL('.', import.meta.url))
 export default defineConfig({
     resolve: {
         alias: {
-            $lib: resolve(here, '../client/src/lib'),
+            '#lib': resolve(here, '../client/src/lib'),
         },
     },
     test: {

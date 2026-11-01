@@ -1,5 +1,5 @@
 import type { PageServerLoad } from './$types'
-import { sanitiseClientReturnPath } from '$lib/server/auth/oauth-client'
+import { sanitiseClientReturnPath } from '#lib/server/auth/oauth-client.js'
 
 /**
  * Where a managed sign-in that could not finish lands: what happened, and "Sign in again" back to

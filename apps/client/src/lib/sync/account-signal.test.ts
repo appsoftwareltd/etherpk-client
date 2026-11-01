@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { clearManagedAccessToken, managedBearerToken } from '$lib/auth/managed-token'
+import { clearManagedAccessToken, managedBearerToken } from '#lib/auth/managed-token.js'
 import { AccountEnded, announceAccountSignal, onAccountSignal, type AccountSignal } from './account-signal'
 
 const issued = (token: string) => Response.json({ accessToken: token, expiresAt: Date.now() + 15 * 60_000 })

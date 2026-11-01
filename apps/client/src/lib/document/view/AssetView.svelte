@@ -15,10 +15,10 @@
      * is framed, for the reasons in ADR 0055. A type with no viewer is not a failure: the tab
      * says so and offers the download, which always works.
      */
-    import { AssetIntegrityError, AssetUnavailableError, displayAssetName, type ResolvedAsset } from "$lib/storage/fs/asset-store";
-    import { assetViewerFor, tryGetActiveContributionRegistry } from "$lib/surface";
-    import { viewKey, type ViewRef } from "$lib/layout";
-    import { workspaceService } from "$lib/workspace/workspace-services";
+    import { AssetIntegrityError, AssetUnavailableError, displayAssetName, type ResolvedAsset } from "#lib/storage/fs/asset-store.js";
+    import { assetViewerFor, tryGetActiveContributionRegistry } from "#lib/surface/index.js";
+    import { viewKey, type ViewRef } from "#lib/layout/index.js";
+    import { workspaceService } from "#lib/workspace/workspace-services.js";
 
     import { tryGetActiveAssetStore } from "../active-asset-store";
     import { loadAssetWithRetry } from "./augmentations/asset-load-retry";

@@ -15,7 +15,7 @@ import {
     isDocumentTarget,
     registerCommandMenuItem,
     registerContextMenuItem,
-} from '$lib/surface'
+} from '#lib/surface/index.js'
 
 /** Open the Add frontmatter dialog for the document a Context Menu targets. */
 export const DOCUMENT_ADD_FRONTMATTER = 'document.addFrontmatter'

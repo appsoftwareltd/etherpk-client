@@ -14,8 +14,8 @@
 import { access, mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 
-import { isSingleFileName } from '$lib/storage/fs/asset-names'
-import { SUBDIRS, type DirectoryAdapter, type DirEntry, type Subdir } from '$lib/storage/fs/directory-adapter'
+import { isSingleFileName } from '#lib/storage/fs/asset-names.js'
+import { SUBDIRS, type DirectoryAdapter, type DirEntry, type Subdir } from '#lib/storage/fs/directory-adapter.js'
 
 function isMissing(error: unknown): boolean {
     return (error as NodeJS.ErrnoException | null)?.code === 'ENOENT'

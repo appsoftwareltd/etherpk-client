@@ -1,17 +1,17 @@
 /** Framework-free application helpers for the graph picker route. */
 import type { SyncAccountSummary, SyncPlanNotice } from '@appsoftwareltd/etherpk-shared'
-import { fromBase64Url, type GraphKeyring, type KeyVault } from '$lib/crypto'
-import { pinState, publishedIdentity } from '$lib/sync/pins'
-import type { GraphRecord } from '$lib/storage'
-import { openGraphName } from '$lib/sync/graph-name-envelope'
-import type { HandoutOutcome } from '$lib/sync/key-handouts'
-import { describeKeyWait } from '$lib/sync/sync-indicator'
+import { fromBase64Url, type GraphKeyring, type KeyVault } from '#lib/crypto/index.js'
+import { pinState, publishedIdentity } from '#lib/sync/pins.js'
+import type { GraphRecord } from '#lib/storage/index.js'
+import { openGraphName } from '#lib/sync/graph-name-envelope.js'
+import type { HandoutOutcome } from '#lib/sync/key-handouts.js'
+import { describeKeyWait } from '#lib/sync/sync-indicator.js'
 import type {
     GraphMember,
     GraphStorageFigures,
     OwnedStorageTotals,
     SyncApi,
-} from '$lib/sync/sync-api'
+} from '#lib/sync/sync-api.js'
 
 /**
  * What the owner's pins say about a member's key (ADR 0126): compared and unchanged, never
