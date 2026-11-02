@@ -20,7 +20,7 @@ describe('the Tasks View filter store', () => {
     it('starts at the defaults: everything unfinished, grouped by priority, no name', () => {
         expect(createTaskFilterStore('g', fakeStorage()).get()).toEqual({
             concept: null,
-            statuses: ['open', 'doing', 'waiting'],
+            statuses: ['open', 'doing', 'waiting', 'test'],
             priorities: [1, 2, 3, null],
             due: 'any',
             groupBy: 'priority',
@@ -39,6 +39,14 @@ describe('the Tasks View filter store', () => {
         })
         // A second graph is untouched by the first — the key carries the graph id.
         expect(createTaskFilterStore('graph-b', storage).get().concept).toBeNull()
+    })
+
+    it('carries a filter saved before Test and Archived into them: Test beside Waiting, Archived beside Done', () => {
+        const saved = (statuses: string[]) =>
+            fakeStorage({ [`${TASK_FILTER_KEY_PREFIX}g`]: JSON.stringify({ version: 1, filter: { ...defaultTaskFilter(), statuses } }) })
+        expect(createTaskFilterStore('g', saved(['open', 'doing', 'waiting'])).get().statuses).toEqual(['open', 'doing', 'waiting', 'test'])
+        expect(createTaskFilterStore('g', saved(['done', 'cancelled'])).get().statuses).toEqual(['done', 'cancelled', 'archived'])
+        expect(createTaskFilterStore('g', saved(['open'])).get().statuses).toEqual(['open'])
     })
 
     it('degrades a corrupt or stale payload to the defaults rather than throwing', () => {

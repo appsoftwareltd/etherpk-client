@@ -24,7 +24,7 @@ import { createContributionRegistry, setActiveContributionRegistry } from '#lib/
 import { hiddenSyntax, type HiddenSyntaxSpec, hiddenSyntaxPieces } from './augmentations/base-renderer'
 import { followFenceRegistrations, interactiveFenceAugmentation } from './augmentations/interactive-fence'
 import { addInlinePanel, inlinePanelsField, panelCaretBlocks, planPanelInsert, removeInlinePanel } from './augmentations/inline-panels'
-import { endOfDocument, type EndKind, startAtEnd, takeBackIfLeft } from './end-of-document'
+import { endOfDocument, type EndKind, startAfterCaret, startAtEnd, takeBackIfLeft } from './end-of-document'
 import { type InteractiveFence, registerInteractiveFence } from './augmentations/interactive-fence-contract'
 import { pasteAsFence } from './augmentations/paste-to-fence'
 import { markdownWithCodeHighlight } from './augmentations/code-highlight'
@@ -2520,6 +2520,66 @@ describe('the end of the document', () => {
         expect(editor.text()).toBe('Some notes\n\n')
         takeBackIfLeft(editor)
         expect(editor.fixture()).toBe('Some notes|')
+    })
+
+    // With the caret in the document, the floating buttons start their line after the caret's block
+    // rather than at the end (ADR 0168): the text button after the caret's whole tree, so no nested
+    // line is orphaned, the bullet button as a sibling of the caret's bullet. A blank line separates
+    // a new text line from what follows it.
+    const afterCaret: { rule: string; precedent: Rule['precedent']; kind: EndKind; before: string; after: string }[] = [
+        { rule: 'the text button splits the list after the caret\'s tree, with a blank line each side', precedent: 'EtherPK', kind: 'line', before: '- Gar|den\n  - water\n- Kitchen', after: '- Garden\n  - water\n\n|\n\n- Kitchen' },
+        { rule: 'from a nested bullet, after its whole tree, as Mod+Enter leaves one', precedent: 'EtherPK', kind: 'line', before: '- Garden\n  - wa|ter\n  - weed\n- Kitchen', after: '- Garden\n  - water\n  - weed\n\n|\n\n- Kitchen' },
+        { rule: 'in the last tree, after it with nothing below', precedent: 'EtherPK', kind: 'line', before: '- Gar|den\n  - water', after: '- Garden\n  - water\n\n|' },
+        { rule: 'after a paragraph, keeping the blank line already below it', precedent: 'EtherPK', kind: 'line', before: 'Line o|ne\nLine two\n\nMore', after: 'Line one\nLine two\n\n|\n\nMore' },
+        { rule: 'after a heading line', precedent: 'EtherPK', kind: 'line', before: '# Gar|den\nSome notes', after: '# Garden\n\n|\n\nSome notes' },
+        { rule: 'after a code block the caret is in', precedent: 'EtherPK', kind: 'line', before: '```\nco|de\n```\nAfter', after: '```\ncode\n```\n\n|\n\nAfter' },
+        { rule: 'from a blank line, after the text above it', precedent: 'EtherPK', kind: 'line', before: 'Some notes\n|\nMore', after: 'Some notes\n\n|\n\nMore' },
+        { rule: 'the bullet button adds a sibling after the caret\'s bullet and the bullets under it', precedent: 'Logseq', kind: 'bullet', before: '- Garden\n  - wa|ter\n    - fill the can\n  - weed', after: '- Garden\n  - water\n    - fill the can\n  - |\n  - weed' },
+        { rule: 'a top-level bullet after a top-level one', precedent: 'Logseq', kind: 'bullet', before: '- Gar|den\n- Kitchen', after: '- Garden\n- |\n- Kitchen' },
+        { rule: 'a plain bullet after a task', precedent: 'EtherPK', kind: 'bullet', before: '- [ ] Wa|ter\n- Weed', after: '- [ ] Water\n- |\n- Weed' },
+        { rule: 'after a paragraph, a top-level bullet between blank lines', precedent: 'EtherPK', kind: 'bullet', before: 'Some no|tes\n\nMore', after: 'Some notes\n\n- |\n\nMore' },
+        { rule: 'after a paragraph followed by a list, a bullet that joins it', precedent: 'EtherPK', kind: 'bullet', before: 'Some no|tes\n- Garden', after: 'Some notes\n\n- |\n- Garden' },
+        { rule: 'with the caret in the frontmatter, at the end as with no caret', precedent: 'EtherPK', kind: 'line', before: '---\ntitle: Gar|den\n---\nSome notes', after: '---\ntitle: Garden\n---\nSome notes\n\n|' },        { rule: 'a bullet-shaped line in a code block is code: the line goes after the block', precedent: 'EtherPK', kind: 'bullet', before: '```\n- it|em\n```\nAfter', after: '```\n- item\n```\n\n- |\n\nAfter' },
+        { rule: 'and the text button too, from a blank code line under it', precedent: 'EtherPK', kind: 'line', before: '```\n- item\n|\n```\nAfter', after: '```\n- item\n\n```\n\n|\n\nAfter' },
+        { rule: 'in a code block inside a bullet, the bullet button adds a sibling of that bullet', precedent: 'EtherPK', kind: 'bullet', before: '- Garden\n  ```\n  - co|de\n  ```\n- Kitchen', after: '- Garden\n  ```\n  - code\n  ```\n- |\n- Kitchen' },
+        { rule: 'indented bullets after a paragraph stay with it: the line goes after them', precedent: 'EtherPK', kind: 'line', before: '- Garden\npro|se\n  - water', after: '- Garden\nprose\n  - water\n\n|' },
+        { rule: 'and after an indented tree\'s following siblings, which a blank line would orphan', precedent: 'EtherPK', kind: 'line', before: '- a\n  - b\nprose\n  - c|\n  - d\n- e', after: '- a\n  - b\nprose\n  - c\n  - d\n\n|\n\n- e' },
+        { rule: 'the bullet button after a paragraph goes after the indented bullets that follow it', precedent: 'EtherPK', kind: 'bullet', before: '- Garden\npro|se\n  - water', after: '- Garden\nprose\n  - water\n\n- |' },
+    ]
+    for (const row of afterCaret) {
+        it(`${row.rule} (${row.precedent})`, () => {
+            const editor = open(row.before)
+            startAfterCaret(editor, row.kind)
+            expect(editor.fixture()).toBe(row.after)
+        })
+    }
+
+    it('a line started after the caret is taken back out, with the lines it added, when the caret leaves it untouched (EtherPK)', () => {
+        const editor = open('- Gar|den\n- Kitchen')
+        startAfterCaret(editor, 'line')
+        select(editor, 0)
+        expect(editor.fixture()).toBe('- |Garden\n- Kitchen')
+    })
+
+    it('a second press on the line a press at the end started stays at the end, at the same depth (EtherPK)', () => {
+        const editor = open('- Garden\n  - wat|er')
+        startAtEnd(editor, 'bullet')
+        startAfterCaret(editor, 'bullet')
+        expect(editor.fixture()).toBe('- Garden\n  - water\n- |')
+    })
+
+    it('with the caret in the frontmatter, a bullet a panel holds at the end is not reused (EtherPK)', () => {
+        const editor = open('---\ntitle: Gar|den\n---\n- Kitchen\n- ')
+        editor.dispatch(editor.state.update({ effects: addInlinePanel.of({ id: 1, lineStart: editor.state.doc.line(5).from, mode: 'line' }) }))
+        startAfterCaret(editor, 'bullet')
+        expect(editor.fixture()).toBe('---\ntitle: Garden\n---\n- Kitchen\n- \n- |')
+    })
+
+    it('pressing again after the caret starts afresh rather than stacking lines (EtherPK)', () => {
+        const editor = open('Some no|tes\n\nMore')
+        startAfterCaret(editor, 'line')
+        startAfterCaret(editor, 'bullet')
+        expect(editor.fixture()).toBe('Some notes\n\n- |\n\nMore')
     })
 
     it('leaves a line the caret is still on alone when asked after an update (EtherPK)', () => {

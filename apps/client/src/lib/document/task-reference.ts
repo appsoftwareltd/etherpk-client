@@ -69,33 +69,22 @@ export function taskReferenceId(reference: TaskReference): string {
     return `${SCHEME}${taskReferenceUrl(reference)}`
 }
 
-/**
- * Where a reference was copied from, which its first line says: a [[Kanban Board]] (the board for
- * a concept, or the Graph Kanban when `concept` is null), or a document.
- */
-export type TaskReferenceSource = { kind: 'board'; concept: string | null } | { kind: 'document' }
-
 export interface TaskReferenceContext {
     /** The graph's name, which tells an agent with several EtherPK servers which one to use; null when it has none. */
     graphName: string | null
-    source: TaskReferenceSource
 }
 
 /**
- * The text a person copies: where the task is from, its words, the reference, and how an agent
- * reads it. An agent does not know the reference format, so the last line names the tools.
+ * The text a person copies: the graph the task is in, its words, the reference, and how an agent
+ * reads it. An agent does not know the reference format, so the last line names the tools. The
+ * same wherever it is copied from (the editor, the Tasks View, a Kanban card): a task is a task,
+ * whichever View showed it.
  */
 export function formatTaskReference(reference: TaskReference, label: string, context: TaskReferenceContext): string {
     const graph = context.graphName ? `the graph "${context.graphName}" (${reference.graphId})` : `the graph ${reference.graphId}`
-    const from =
-        context.source.kind === 'document'
-            ? ''
-            : context.source.concept === null
-              ? 'the Graph Kanban in '
-              : `the Kanban board for "${context.source.concept}" in `
     const server = context.graphName ? `"${context.graphName}"` : 'that graph'
     return [
-        `EtherPK task from ${from}${graph}`,
+        `EtherPK task from ${graph}`,
         `Task: ${taskWords(label)}`,
         `Reference: ${taskReferenceId(reference)}`,
         `This is not a web address. Use the EtherPK MCP server connected to ${server}: read_task with this whole text to read the task and its detail, set_task if you are asked to change its status, add_task_note to record what you did.`,

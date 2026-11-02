@@ -175,6 +175,6 @@ describe('the documents reader an Agent Chat reads the graph through (ADR 0147)'
             ['open', null, null],
             ['doing', 1, '2026-10-20'],
         ])
-        expect(asked).toMatchObject({ concept: 'Garden', statuses: ['open', 'doing', 'waiting'], today: '2026-10-15' })
+        expect(asked).toMatchObject({ concept: 'Garden', statuses: ['open', 'doing', 'waiting', 'test'], today: '2026-10-15' })
     })
 })

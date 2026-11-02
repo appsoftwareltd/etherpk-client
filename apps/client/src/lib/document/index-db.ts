@@ -25,6 +25,7 @@ import {
     type TaskRow,
 } from './index-derive'
 import type { IndexProperty } from './properties'
+import type { TaskStatus } from './task-tags'
 import { containsCipherFence } from './protection/fence-info'
 import { derivePassages } from './semantic/passages'
 
@@ -167,9 +168,10 @@ export interface SqlDb {
  * `map_items` and `map_concepts`, and reads a [[Map Block]]'s names instead of its coordinates
  * into `block_fts` and `passages` (ADR 0118). 17 adds `pages.template` and derives no tasks,
  * places or variable links for a [[Template]] (ADR 0144). 18 adds `tasks.free_tag`, a task's first
- * [[Free Tag]], and reads Task Tags past a Free Tag in the leading run (ADR 0166).
+ * [[Free Tag]], and reads Task Tags past a Free Tag in the leading run (ADR 0166). 19 adds
+ * `tasks.test` and `tasks.archived`, the `#T` and `#A` states (ADR 0167).
  */
-export const INDEX_SCHEMA_VERSION = 18
+export const INDEX_SCHEMA_VERSION = 19
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS index_metadata (
@@ -207,7 +209,8 @@ CREATE TABLE IF NOT EXISTS tasks (
   page_id INTEGER NOT NULL, block_local_id INTEGER NOT NULL, done INTEGER NOT NULL,
   text TEXT NOT NULL, line INTEGER NOT NULL,
   priority INTEGER, waiting INTEGER NOT NULL DEFAULT 0, doing INTEGER NOT NULL DEFAULT 0,
-  cancelled INTEGER NOT NULL DEFAULT 0, due TEXT, completion TEXT, scheduled TEXT,
+  test INTEGER NOT NULL DEFAULT 0, cancelled INTEGER NOT NULL DEFAULT 0,
+  archived INTEGER NOT NULL DEFAULT 0, due TEXT, completion TEXT, scheduled TEXT,
   free_tag TEXT);
 -- free_tag is the task's first [[Free Tag]], lower-cased, or NULL: what a [[Kanban Board]] section
 -- orders by first (ADR 0166).
@@ -487,18 +490,21 @@ function insertDerived(db: SqlDb, pageId: number, doc: IndexDoc): string[] {
     for (const t of tasks) {
         db.run(
             `INSERT INTO tasks (page_id, block_local_id, done, text, line,
-                                priority, waiting, doing, cancelled, due, completion, scheduled, free_tag)
-             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+                                priority, waiting, doing, test, cancelled, archived, due, completion, scheduled, free_tag)
+             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
             [
                 pageId,
                 t.blockLocalId,
-                t.done ? 1 : 0,
+                // Number(), not a ternary per flag: SQLite stores the booleans as 1 and 0.
+                Number(t.done),
                 t.text,
                 t.line,
                 t.priority,
-                t.waiting ? 1 : 0,
-                t.doing ? 1 : 0,
-                t.cancelled ? 1 : 0,
+                Number(t.waiting),
+                Number(t.doing),
+                Number(t.test),
+                Number(t.cancelled),
+                Number(t.archived),
                 t.due,
                 t.completion,
                 t.scheduled,
@@ -1948,22 +1954,25 @@ export function assetUsage(db: SqlDb, needles: readonly string[]): AssetUsage {
 // ── The Tasks View ──────────────────────────────────────────────────────────
 
 /**
- * The five [[Task]] states, as a partition. They are mutually exclusive by construction, so
- * a task is in exactly one and the Status chips can be a plain multi-select:
+ * The seven [[Task]] states, as a partition (`taskStatus` in task-tags.ts states the rule). They
+ * are mutually exclusive by construction, so a task is in exactly one and the Status chips can be
+ * a plain multi-select:
  *
- *   waiting   open and `#W`                doing  open, `#D`, not `#W`
- *   open      open and neither             done   checked, not `#C`
- *   cancelled checked and `#C`
+ *   open      unticked, none of the below  doing     unticked, `#D`, not `#W` or `#T`
+ *   waiting   unticked, `#W`, not `#T`      test      unticked and `#T`
+ *   done      ticked, not `#C` or `#A`      cancelled ticked, `#C`, not `#A`
+ *   archived  ticked and `#A`
  *
  * `cancelled` earns a state of its own because ADR 0032 makes a cancelled task *checked* -
- * without one it would hide inside `done` with no way to ask for it or exclude it.
+ * without one it would hide inside `done` with no way to ask for it or exclude it. `archived`
+ * (ADR 0167) is the same, and is the state a [[Kanban Board]] has no lane for.
  */
-export type TaskStatus = 'open' | 'doing' | 'waiting' | 'done' | 'cancelled'
+export type { TaskStatus }
 
-export const TASK_STATUSES: readonly TaskStatus[] = ['open', 'doing', 'waiting', 'done', 'cancelled']
+export const TASK_STATUSES: readonly TaskStatus[] = ['open', 'doing', 'waiting', 'test', 'done', 'cancelled', 'archived']
 
 /** The states a task that is not finished can be in - the Tasks View's default selection. */
-export const OPEN_TASK_STATUSES: readonly TaskStatus[] = ['open', 'doing', 'waiting']
+export const OPEN_TASK_STATUSES: readonly TaskStatus[] = ['open', 'doing', 'waiting', 'test']
 
 /** A priority chip. `null` is the real, selectable "no priority" bucket, not "unset". */
 export type TaskPriorityFilter = 1 | 2 | 3 | null
@@ -2012,7 +2021,9 @@ export interface TaskHit {
     priority: number | null
     waiting: boolean
     doing: boolean
+    test: boolean
     cancelled: boolean
+    archived: boolean
     due: string | null
     completion: string | null
     scheduled: string | null
@@ -2041,11 +2052,13 @@ export function taskDateKey(date: Date, days = 0): string {
 
 /** The SQL predicate for one status, over the `tasks` columns. */
 const STATUS_SQL: Record<TaskStatus, string> = {
-    open: '(t.done = 0 AND t.waiting = 0 AND t.doing = 0)',
-    doing: '(t.done = 0 AND t.doing = 1 AND t.waiting = 0)',
-    waiting: '(t.done = 0 AND t.waiting = 1)',
-    done: '(t.done = 1 AND t.cancelled = 0)',
-    cancelled: '(t.done = 1 AND t.cancelled = 1)',
+    open: '(t.done = 0 AND t.waiting = 0 AND t.doing = 0 AND t.test = 0)',
+    doing: '(t.done = 0 AND t.doing = 1 AND t.waiting = 0 AND t.test = 0)',
+    waiting: '(t.done = 0 AND t.waiting = 1 AND t.test = 0)',
+    test: '(t.done = 0 AND t.test = 1)',
+    done: '(t.done = 1 AND t.cancelled = 0 AND t.archived = 0)',
+    cancelled: '(t.done = 1 AND t.cancelled = 1 AND t.archived = 0)',
+    archived: '(t.done = 1 AND t.archived = 1)',
 }
 
 /**
@@ -2088,7 +2101,9 @@ interface TaskRowResult {
     priority: number | null
     waiting: number
     doing: number
+    test: number
     cancelled: number
+    archived: number
     due: string | null
     completion: string | null
     scheduled: string | null
@@ -2169,7 +2184,9 @@ interface TaskRowResult {
     priority: number | null
     waiting: number
     doing: number
+    test: number
     cancelled: number
+    archived: number
     due: string | null
     completion: string | null
     scheduled: string | null
@@ -2190,7 +2207,7 @@ export function tasksMatching(db: SqlDb, query: TaskQuery, offset: number, limit
     // One extra row decides `hasMore` without a second COUNT, as searchText does.
     const rows = db.all<TaskRowResult>(
         `SELECT t.page_id, p.concept, p.kind, t.block_local_id, t.line, t.done, t.text,
-                t.priority, t.waiting, t.doing, t.cancelled, t.due, t.completion, t.scheduled
+                t.priority, t.waiting, t.doing, t.test, t.cancelled, t.archived, t.due, t.completion, t.scheduled
          FROM tasks t JOIN pages p ON p.id = t.page_id
          WHERE ${predicate.where}
          ORDER BY ${query.byFreeTag ? `${BY_FREE_TAG_SQL}, ` : ''}${ORDER_SQL[query.groupBy]}, ${TIE_BREAK_SQL}
@@ -2291,7 +2308,9 @@ function toHit(row: TaskRowResult): Omit<TaskHit, 'breadcrumb' | 'parentTask'> {
         priority: row.priority,
         waiting: row.waiting !== 0,
         doing: row.doing !== 0,
+        test: row.test !== 0,
         cancelled: row.cancelled !== 0,
+        archived: row.archived !== 0,
         due: row.due,
         completion: row.completion,
         scheduled: row.scheduled,

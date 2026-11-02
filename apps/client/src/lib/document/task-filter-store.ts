@@ -23,7 +23,8 @@ import {
 } from './backlinks'
 
 export const TASK_FILTER_KEY_PREFIX = 'etherpk-task-filter:'
-const VERSION = 1
+/** 2 added the Test and Archived statuses (ADR 0167); a version 1 filter is carried into them. */
+const VERSION = 2
 const SAVE_DEBOUNCE_MS = 300
 
 /** The filter as the View holds it — the query minus `today`, which is never remembered. */
@@ -37,7 +38,7 @@ export interface TaskFilterState {
 
 const stateSchema = z.object({
     concept: z.string().nullable(),
-    statuses: z.array(z.enum(['open', 'doing', 'waiting', 'done', 'cancelled'])),
+    statuses: z.array(z.enum(['open', 'doing', 'waiting', 'test', 'done', 'cancelled', 'archived'])),
     // `null` is the real "no priority" bucket, so the union must admit it.
     priorities: z.array(z.union([z.literal(1), z.literal(2), z.literal(3), z.null()])),
     due: z.enum(['any', 'overdue', 'today', 'next7']),
@@ -59,6 +60,18 @@ export function defaultTaskFilter(): TaskFilterState {
         due: 'any',
         groupBy: 'priority',
     }
+}
+
+/**
+ * A filter saved before Test and Archived existed, with them added where they were carved from:
+ * Test beside Waiting, so "Unfinished" stays unfinished, and Archived beside Done, which is what
+ * an archived task was before it had a status of its own.
+ */
+function withNewStatuses(filter: TaskFilterState): TaskFilterState {
+    const statuses = [...filter.statuses]
+    if (statuses.includes('waiting')) statuses.push('test')
+    if (statuses.includes('done')) statuses.push('archived')
+    return { ...filter, statuses }
 }
 
 export interface TaskFilterStore {
@@ -90,7 +103,9 @@ export function createTaskFilterStore(
         if (!raw) return defaultTaskFilter()
         try {
             const parsed = payloadSchema.safeParse(JSON.parse(raw))
-            if (!parsed.success || parsed.data.version !== VERSION) return defaultTaskFilter()
+            if (!parsed.success) return defaultTaskFilter()
+            if (parsed.data.version === 1) return withNewStatuses(parsed.data.filter)
+            if (parsed.data.version !== VERSION) return defaultTaskFilter()
             return parsed.data.filter
         } catch {
             return defaultTaskFilter()

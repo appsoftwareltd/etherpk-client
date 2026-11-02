@@ -40,7 +40,7 @@ export type {
 } from './context'
 export type { ExtensionAssets } from './assets'
 export type { AuthorizeOptions, ExtensionAuth } from './auth'
-export type { ExtensionDialogs, PromptOptions } from './dialogs'
+export type { ChooseChoice, ChooseOptions, ExtensionDialogs, PromptOptions } from './dialogs'
 export type { DocumentBacklink, DocumentSearchResult, DocumentSummary, DocumentTask, DocumentText, ExtensionDocuments } from './documents'
 export type {
     ExtensionEditor,

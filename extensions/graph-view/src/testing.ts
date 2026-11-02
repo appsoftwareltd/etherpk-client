@@ -86,7 +86,7 @@ export function fakeContext(options: { desktop?: boolean } = {}) {
         notify: vi.fn(),
         // The Graph View draws no fences or panels, asks nothing and shows no frames.
         editor: { registerFence: () => () => {}, insertBlock: () => false, openPanel: () => null },
-        dialogs: { prompt: async () => undefined },
+        dialogs: { prompt: async () => undefined, choose: async () => undefined },
         embeds: {
             frameHosts: [],
             frame: () => {

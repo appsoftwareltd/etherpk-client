@@ -190,10 +190,12 @@ since a browser page cannot open a local file - nothing checks that the file exi
 **task tags**, recognised only in the run of tokens immediately after the checkbox:
 
 - priority: `#P1` `#P2` `#P3`
-- state: `#W` (waiting), `#D` (doing), `#C` (cancelled)
+- state: `#W` (waiting), `#D` (doing), `#T` (test), `#C` (cancelled), `#A` (archived)
 - dates: `#D-YYYY-MM-DD` (due), `#S-YYYY-MM-DD` (scheduled), `#C-YYYY-MM-DD` (completed)
 
-A bare letter is a state, a dated letter is a date. A **free tag** is the user's own label, such as
+A bare letter is a state, a dated letter is a date. `#W`, `#D` and `#T` go on an unticked task
+and `#C` and `#A` on a ticked one; a state the checkbox contradicts means nothing. An archived task
+(`- [x] #A`) is finished and kept off Kanban boards. A **free tag** is the user's own label, such as
 `#bug` or `#needs-review`: letters, digits and single hyphens with at least one letter, anywhere
 in a task's text but not in code or links. EtherPK shows free tags as labels and groups a Kanban
 board's cards by the first one; they carry no state. Write task tags first: a free tag in the run
@@ -201,8 +203,8 @@ does not end it. Any other `#` text in the line is plain text.
 Example: `- [ ] #P1 #D-2026-07-01 Ship the release [[Acme]] #launch`. A task is *about* every
 concept linked on its own line, on any ancestor block or heading, and the document it is in,
 the scopes in that document's name included: the tasks on `[[Acme]] Website` are about Acme too.
-Ticking a task in EtherPK ticks every task nested under it, and unticking it unticks them except
-a cancelled one (`#C`). When you mark a parent task done by editing the file, tick its nested
+Ticking a task in EtherPK ticks every task nested under it, archiving it archives them, and
+unticking it unticks them except a cancelled (`#C`) or archived (`#A`) one. When you mark a parent task done by editing the file, tick its nested
 tasks too, so the file reads as EtherPK would leave it.
 
 **Fenced code.** Three or more backticks (tildes are not recognised), closed by a bare fence of

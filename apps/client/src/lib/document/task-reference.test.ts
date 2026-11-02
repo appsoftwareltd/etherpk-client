@@ -52,10 +52,10 @@ describe('the reference as copied', () => {
         expect(taskReferenceId(reference)).toBe(id)
     })
 
-    it('names the board, the graph by name and id, the words, the reference and how an agent reads it', () => {
-        expect(formatTaskReference(reference, '#P1 Send the quote', { graphName: 'Work', source: { kind: 'board', concept: 'Acme' } })).toBe(
+    it('names the graph by name and id, the words, the reference and how an agent reads it', () => {
+        expect(formatTaskReference(reference, '#P1 Send the quote', { graphName: 'Work' })).toBe(
             [
-                'EtherPK task from the Kanban board for "Acme" in the graph "Work" (g-1)',
+                'EtherPK task from the graph "Work" (g-1)',
                 'Task: Send the quote',
                 `Reference: ${id}`,
                 'This is not a web address. Use the EtherPK MCP server connected to "Work": read_task with this whole text to read the task and its detail, set_task if you are asked to change its status, add_task_note to record what you did.',
@@ -63,22 +63,14 @@ describe('the reference as copied', () => {
         )
     })
 
-    it('names the Graph Kanban, or no board when copied in a document', () => {
-        const words = '#P1 Send the quote'
-        expect(formatTaskReference(reference, words, { graphName: 'Work', source: { kind: 'board', concept: null } }).split('\n')[0]).toBe(
-            'EtherPK task from the Graph Kanban in the graph "Work" (g-1)',
-        )
-        expect(formatTaskReference(reference, words, { graphName: 'Work', source: { kind: 'document' } }).split('\n')[0]).toBe('EtherPK task from the graph "Work" (g-1)')
-    })
-
     it('names the graph by its id alone when it has no name', () => {
-        const copied = formatTaskReference(reference, 'Send the quote', { graphName: null, source: { kind: 'document' } }).split('\n')
+        const copied = formatTaskReference(reference, 'Send the quote', { graphName: null }).split('\n')
         expect(copied[0]).toBe('EtherPK task from the graph g-1')
         expect(copied[3]).toContain('Use the EtherPK MCP server connected to that graph:')
     })
 
     it('reads back from the text as copied, the reference line alone, or the etherpk: form alone', () => {
-        const copied = formatTaskReference(reference, 'Send the quote', { graphName: 'Work', source: { kind: 'document' } })
+        const copied = formatTaskReference(reference, 'Send the quote', { graphName: 'Work' })
         expect(parseTaskReference(copied)).toEqual(reference)
         expect(parseTaskReference(copied.split('\n')[2])).toEqual(reference)
         expect(parseTaskReference(id)).toEqual(reference)
@@ -86,7 +78,7 @@ describe('the reference as copied', () => {
 
     it('reads the etherpk: reference before anything shaped like one in the task\'s words', () => {
         const words = 'Compare /g/g-2/d/Other#task=1-aaaaaaaaaaaa with the plan'
-        expect(parseTaskReference(formatTaskReference(reference, words, { graphName: 'Work', source: { kind: 'document' } }))).toEqual(reference)
+        expect(parseTaskReference(formatTaskReference(reference, words, { graphName: 'Work' }))).toEqual(reference)
     })
 
     it('still reads the web address an earlier version copied, with any origin or none', () => {

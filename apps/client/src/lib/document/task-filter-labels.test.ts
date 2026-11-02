@@ -18,14 +18,17 @@ import {
 
 describe('statusFilterLabel', () => {
     it.each<[TaskStatus[], string]>([
-        [['open', 'doing', 'waiting'], 'Unfinished'],
-        [['waiting', 'open', 'doing'], 'Unfinished'],
-        [['open', 'doing', 'waiting', 'done', 'cancelled'], 'All statuses'],
-        [['cancelled', 'done'], 'Finished'],
+        [['open', 'doing', 'waiting', 'test'], 'Unfinished'],
+        [['waiting', 'test', 'open', 'doing'], 'Unfinished'],
+        [['open', 'doing', 'waiting', 'test', 'done', 'cancelled', 'archived'], 'All statuses'],
+        [['cancelled', 'archived', 'done'], 'Finished'],
+        [['archived'], 'Archived'],
+        [['test', 'waiting'], 'Waiting, Test'],
         [['doing'], 'Doing'],
         [['waiting', 'open'], 'Open, Waiting'],
         [['open', 'done', 'cancelled'], '3 statuses'],
         [['open', 'doing', 'waiting', 'done'], '4 statuses'],
+        [['open', 'doing', 'waiting'], '3 statuses'],
         [[], 'Choose status'],
     ])('%j reads %s', (statuses, label) => {
         expect(statusFilterLabel(statuses)).toBe(label)
@@ -50,7 +53,7 @@ describe('priorityFilterLabel', () => {
 
 describe('the options', () => {
     it('lists every status in the order a task moves through them', () => {
-        expect(STATUS_OPTIONS.map((o) => o.label)).toEqual(['Open', 'Doing', 'Waiting', 'Done', 'Cancelled'])
+        expect(STATUS_OPTIONS.map((o) => o.label)).toEqual(['Open', 'Doing', 'Waiting', 'Test', 'Done', 'Cancelled', 'Archived'])
     })
 
     it('names the no-priority bucket so it cannot be read as "tick none"', () => {

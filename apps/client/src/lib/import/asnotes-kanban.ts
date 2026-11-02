@@ -106,9 +106,13 @@ function laneState(lane: string): { done: boolean; tags: TaskTags } | null {
             return { done: false, tags: { doing: true } }
         case 'waiting':
             return { done: false, tags: { waiting: true } }
+        case 'test':
+        case 'testing':
+            return { done: false, tags: { test: true } }
         case 'done':
-        case ARCHIVE:
             return { done: true, tags: {} }
+        case ARCHIVE:
+            return { done: true, tags: { archived: true } }
         case 'cancelled':
         case 'canceled':
             return { done: true, tags: { cancelled: true } }
@@ -196,7 +200,6 @@ export function boardPageBody(
 ): string {
     const out: string[] = []
     const unknownLanes = new Map<string, number>()
-    let archived = 0
     let keptPeople = false
     let hadTimes = false
     let hadOrder = false
@@ -205,7 +208,6 @@ export function boardPageBody(
         const state = laneState(lane)
         const cards = board.cards.filter((c) => c.lane === lane).sort(byCardOrder)
         if (!state) unknownLanes.set(lane, cards.length)
-        if (lane === ARCHIVE) archived += cards.length
         for (const card of cards) {
             const tags: TaskTags = { ...(state?.tags ?? {}) }
             const { priority, waiting, dueDate, assignee, labels, created, updated, sortOrder } = card.data
@@ -242,13 +244,6 @@ export function boardPageBody(
             category: 'degradation',
             concept,
             detail: `Lane "${lane}" has no EtherPK task status, so its ${n} ${plural(n, 'card was imported as an open task', 'cards were imported as open tasks')}`,
-        })
-    }
-    if (archived > 0) {
-        report.push({
-            category: 'degradation',
-            concept,
-            detail: `${archived} archived ${plural(archived, 'card was imported as a done task', 'cards were imported as done tasks')}`,
         })
     }
     if (keptPeople) {

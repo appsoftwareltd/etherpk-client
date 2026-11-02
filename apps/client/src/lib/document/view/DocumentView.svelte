@@ -77,7 +77,7 @@
     import { prefersMobileLayout } from '#lib/layout/breakpoint.js'
     import { isApplePlatform } from '#lib/surface/index.js'
     import EndOfDocument from './EndOfDocument.svelte'
-    import { type EndKind, startAtEnd } from './end-of-document'
+    import { type EndKind, floatingButtonRoom, startAfterCaret, startAtEnd } from './end-of-document'
     import { bodyWritable } from './body-writable'
     import DocumentViewSelf from './DocumentView.svelte'
     import JournalRoll from './JournalRoll.svelte'
@@ -162,14 +162,6 @@
 
     let host = $state<HTMLDivElement>()
     /**
-     * The two buttons after the text (ADR 0149), first in the editor's scroller after its content,
-     * before the Journal Panels and the Backlinks, and moved from editor to editor as they are. On a
-     * tab's own document and each older day in a Journal Roll, not in an embedded editor: a
-     * [[Task Detail]] shows one task.
-     */
-    let endHolder: HTMLDivElement | undefined
-    let endSection: ReturnType<typeof mount> | undefined
-    /**
      * Whether the mounted document's content has arrived. Until it has, an empty editor is not an
      * empty document, and no hint is shown: "Type to start" over a day that has text would be a lie.
      * Nor are the buttons after the text, which would write into a document still loading. Set by the
@@ -209,56 +201,39 @@
     let rollSection: ReturnType<typeof mount> | undefined
     /** Whether the roll draws anything: a bar, or loaded days. */
     let rollDrawn = $state(false)
-    /** Whether the buttons after the text are drawn: the body takes edits and its content is in. */
-    const endDrawn = $derived(!embedded && endWritable && contentReady)
+    /**
+     * Whether the two buttons float at the tab's bottom left (ADR 0149, ADR 0168): on a tab's own
+     * document while its body takes edits and its content is in. Not in an embedded editor, where a
+     * [[Task Detail]] shows one task, and not on a Journal Roll's older days, whose presses come
+     * through the tab's pair.
+     */
+    const endShown = $derived(ownsTab && endWritable && contentReady)
     /** Something is drawn beneath the text, so the text gives up its full pane height. */
-    const belowTextDrawn = $derived(endDrawn || panelsDrawn || backlinksDrawn || rollDrawn)
+    const belowTextDrawn = $derived(panelsDrawn || backlinksDrawn || rollDrawn)
     /** Set once the View is gone, so a remount still on its way (a Draft promotion) builds nothing. */
     let destroyed = false
 
-    /** Put the buttons after `scroller`'s content, mounting them the first time. */
-    function placeEndButtons(scroller: HTMLElement): void {
-        if (embedded) return
-        if (!endHolder) {
-            endHolder = document.createElement('div')
-            endHolder.style.display = 'contents'
-            endHolder.addEventListener('mousedown', pressBesideEndButtons)
-            endSection = mount(EndOfDocument, {
-                target: endHolder,
-                props: {
-                    get shown() {
-                        return endDrawn
-                    },
-                    onstart: startAtEndOfText,
-                },
-            })
-        }
-        scroller.appendChild(endHolder)
-    }
-
-    function unmountEndButtons(): void {
-        if (endSection) void unmount(endSection)
-        endSection = undefined
-        endHolder?.remove()
-        endHolder = undefined
-    }
+    /**
+     * What this View's mode adds to the feature stack, which is the same for every mode. An older
+     * day in a Journal Roll carries the reader's position through its edits (reading-point.ts). A
+     * caret moved into view stays clear of the floating buttons (ADR 0168), in a tab's own editor and
+     * an older day's alike, which the tab's scroller scrolls.
+     */
+    const modeExtensions = [...(rolled ? [followReadingPoint] : []), ...(embedded ? [] : [floatingButtonRoom])]
 
     /**
-     * A press on the buttons' row beside the buttons puts the caret at the end of the text, as a
-     * press in the line of room under the last line did before the row took its place (ADR 0135),
-     * rather than leaving the press to the scroller, which takes the focus from the editor.
+     * A floating button was pressed. With the caret in an editor of this tab (its own document or an
+     * older day in its Journal Roll), the new line goes after the caret's block there: the buttons
+     * keep the editor's focus through the press. With none, it goes at the end of the tab's own
+     * document. Either way the editor then has the keyboard.
      */
-    function pressBesideEndButtons(event: MouseEvent): void {
-        if (event.button !== 0 || !(event.target instanceof Element) || !event.target.matches('[data-end-of-document]')) return
-        const cm = editor?.view
-        if (!cm) return
-        event.preventDefault()
-        cm.dispatch({ selection: { anchor: cm.state.doc.length }, userEvent: 'select.pointer', scrollIntoView: true })
-        cm.focus()
-    }
-
-    /** A button after the text was pressed: start its line at the end and give the editor the keyboard. */
-    function startAtEndOfText(kind: EndKind): void {
+    function startNewLine(kind: EndKind): void {
+        const focused = editorAt(document.activeElement)
+        if (focused?.hasFocus && host?.contains(focused.dom) && bodyWritable(focused.state)) {
+            startAfterCaret(focused, kind)
+            focused.focus()
+            return
+        }
         const cm = editor?.view
         if (!cm || !bodyWritable(cm.state)) return
         startAtEnd(cm, kind)
@@ -1264,10 +1239,9 @@
             currentText: () => doc!.getText(),
             ...(collabYText ? { collab: { ytext: collabYText, awareness } } : {}),
             // The feature stack lives in editor-extensions.ts (order-tested); the View supplies
-            // only the services the features need and its own focus / update hooks.
-            // An older day in a Journal Roll carries the reader's position through its edits
-            // (reading-point.ts); the feature stack is the same for every mode.
-            extensions: [...(rolled ? [followReadingPoint] : []), ...editorExtensions({
+            // only the services the features need, its own focus / update hooks, and what its mode
+            // adds (`modeExtensions`).
+            extensions: [...modeExtensions, ...editorExtensions({
                 assetStore: () => tryGetActiveAssetStore(),
                 graphIndex: () => getActiveGraphIndex(),
                 // [[Frontmatter]] is a proposal against the registry (ADR 0061); the workspace
@@ -1406,11 +1380,11 @@
             dom.removeEventListener('focusin', noteFocus)
         }
         observeScrollbar(editor.view.scrollDOM)
-        // The buttons after the text, the Journal Panels, the backlinks and the roll beneath it, after
-        // the content in the scroller (ADR 0149, ADR 0120 amended 2026-10-12, ADR 0135, ADR 0136), and
-        // the presses and drops on the scroller outside the text, which CodeMirror does not hear.
+        // The Journal Panels, the backlinks and the roll beneath the text, after the content in the
+        // scroller (ADR 0120 amended 2026-10-12, ADR 0135, ADR 0136), and the presses and drops on the
+        // scroller outside the text, which CodeMirror does not hear. Whether the floating buttons
+        // show (ADR 0168) follows the body's writability.
         endWritable = bodyWritable(editor.view.state)
-        placeEndButtons(editor.view.scrollDOM)
         placeJournalPanels(editor.view.scrollDOM)
         placeBacklinks(editor.view.scrollDOM)
         placeRoll(editor.view.scrollDOM)
@@ -1540,7 +1514,6 @@
         detachBelowText?.()
         detachBelowText = undefined
         // Kept for the next editor; out of this one's scroller before it goes.
-        endHolder?.remove()
         panelsHolder?.remove()
         backlinksHolder?.remove()
         rollHolder?.remove()
@@ -1566,7 +1539,6 @@
         detachDraftWatch?.()
         detachReveal?.()
         teardownEditor({ capturePosition: ownsTab })
-        unmountEndButtons()
         unmountJournalPanels()
         unmountBacklinks()
         unmountRoll()
@@ -1577,8 +1549,8 @@
     class={[
         'document-view',
         showLock && 'document-view--lock',
+        (showLock || endShown) && 'document-view--floating',
         belowTextDrawn && 'document-view--below-text',
-        endDrawn && 'document-view--end-buttons',
         rolled && 'document-view--rolled',
     ]}
     data-testid="document-view"
@@ -1599,6 +1571,9 @@
                 <MatchList {find} controller={findController} id={findListId} onescape={() => findController.focusBox()} />
             </div>
         {/if}
+    {/if}
+    {#if endShown}
+        <EndOfDocument onstart={startNewLine} />
     {/if}
     {#if showLock}
         <button
@@ -1722,9 +1697,9 @@
         padding: 0.125rem 0.5rem;
         cursor: pointer;
     }
-    /* Over an unlocked Protected Document the Lock button owns the bottom-right corner, so the
-       strip sits above it (button height plus the gap) rather than giving up its right margin. */
-    .document-view--lock .document-view__refusal {
+    /* The floating buttons own the bottom corners, so the strip sits above them (button height
+       plus the gap) rather than giving up its margins. */
+    .document-view--floating .document-view__refusal {
         bottom: calc(1rem + 2.75rem + 0.75rem + var(--gk-match-list-height, 0px));
     }
     /* The Match List (ADR 0153) takes the foot of the View in the flow, so the editor above it
@@ -1770,9 +1745,10 @@
             background-color 120ms ease,
             transform 120ms ease;
     }
-    /* Room to scroll the last line clear of the button: a long document's end would otherwise
-       sit under it, unreadable and unclickable. Only while the button is showing. */
-    .document-view--lock .document-view__editor :global(.cm-content) {
+    /* Room to scroll the last line clear of the floating buttons, the Lock button on the right and
+       the new line buttons on the left (ADR 0168): a long document's end would otherwise sit under
+       them, unreadable and unclickable. Only while one of them is showing. */
+    .document-view--floating .document-view__editor :global(.cm-content) {
         padding-bottom: 4.5rem;
     }
     /*
@@ -1795,16 +1771,9 @@
         min-height: 0;
         padding-bottom: calc(0.75rem + var(--gk-line-pitch));
     }
-    /* The buttons after the text (ADR 0149) sit directly under the last line, or the placeholder,
-       a line's spacing below it, in place of the line of room above, which a press beside them
-       stands in for (`pressBesideEndButtons`). Child combinators, so a day's own buttons in a
-       Journal Roll decide its spacing. */
-    .document-view--end-buttons > .document-view__editor > :global(.cm-editor) > :global(.cm-scroller) > :global(.cm-content) {
-        padding-bottom: 0.25rem;
-    }
     /* Child combinators: the older days in a Journal Roll are editors inside this one, and the
-       Lock button's room belongs to the tab's own scroller only. */
-    .document-view--lock.document-view--below-text > .document-view__editor > :global(.cm-editor) > :global(.cm-scroller) {
+       floating buttons' room belongs to the tab's own scroller only. */
+    .document-view--floating.document-view--below-text > .document-view__editor > :global(.cm-editor) > :global(.cm-scroller) {
         padding-bottom: 3.75rem;
     }
     /*

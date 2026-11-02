@@ -14,8 +14,10 @@ const IN: Record<TaskStatus, string> = {
     open: '  - [ ] #P2 #D-2026-10-01 Send the quote',
     doing: '  - [ ] #P2 #D #D-2026-10-01 Send the quote',
     waiting: '  - [ ] #P2 #W #D-2026-10-01 Send the quote',
+    test: '  - [ ] #P2 #T #D-2026-10-01 Send the quote',
     done: '  - [x] #P2 #D-2026-10-01 Send the quote',
     cancelled: '  - [x] #P2 #C #D-2026-10-01 Send the quote',
+    archived: '  - [x] #P2 #A #D-2026-10-01 Send the quote',
 }
 
 const STATUSES = Object.keys(IN) as TaskStatus[]

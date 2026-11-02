@@ -28,8 +28,12 @@ export interface TaskTags {
     waiting: boolean
     /** `#D` — doing (in progress). One of ADR 0032's three minted extensions; dated `#D-` is due. */
     doing: boolean
+    /** `#T` — test: unticked and waiting on a check before it is done (ADR 0167). */
+    test: boolean
     /** `#C` — minted; a cancelled task is *checked*, so the tag carries the truth. */
     cancelled: boolean
+    /** `#A` — archived: ticked, and off every [[Kanban Board]] (ADR 0167). */
+    archived: boolean
     /** `YYYY-MM-DD`, or null. Kept as a string: it sorts and compares correctly as one. */
     due: string | null
     completion: string | null
@@ -46,7 +50,9 @@ const EMPTY: Omit<TaskTags, 'text'> = {
     priority: null,
     waiting: false,
     doing: false,
+    test: false,
     cancelled: false,
+    archived: false,
     due: null,
     completion: null,
     scheduled: null,
@@ -63,17 +69,31 @@ const DATE = /^(\d{4}-\d{2}-\d{2})$/
 /** Where the checkbox ends on a raw task line, or -1 when the line is not a task. */
 const CHECKBOX = /^\s*-\s+\[([ xX])\]\s?/
 
-type TagKind = 'priority' | 'waiting' | 'doing' | 'cancelled' | 'due' | 'completion' | 'scheduled'
+type TagKind = 'priority' | 'waiting' | 'doing' | 'test' | 'cancelled' | 'archived' | 'due' | 'completion' | 'scheduled'
+
+/**
+ * The bare-letter state tags and how each is written, in the order a tag run writes them. A bare
+ * letter is a state; the same letter with a date is a date, so `#D` is doing where `#D-YYYY-MM-DD`
+ * is due, and `#C` is cancelled where `#C-YYYY-MM-DD` is completion. The words two were minted as
+ * (`#doing`, `#cancelled`) are NOT read: ADR 0032 re-minted them before any production graph
+ * carried them. `#T` and `#A` came with ADR 0167.
+ */
+const STATE_TAGS = [
+    ['waiting', '#W'],
+    ['doing', '#D'],
+    ['test', '#T'],
+    ['cancelled', '#C'],
+    ['archived', '#A'],
+] as const
+
+type StateKind = (typeof STATE_TAGS)[number][0]
+
+const STATE_BY_TOKEN = new Map<string, StateKind>(STATE_TAGS.map(([kind, token]) => [token, kind]))
 
 /** Read one token as a tag, or null if it is not one (which ends the run). */
 function readTag(token: string): { kind: TagKind; value: string } | null {
-    if (token === '#W') return { kind: 'waiting', value: '' }
-    // A bare letter is a state; the same letter with a date (matched below) is a date. So
-    // `#D` is doing where `#D-YYYY-MM-DD` is due, and `#C` is cancelled where `#C-YYYY-MM-DD`
-    // is completion. The words the two were minted as (`#doing`, `#cancelled`) are NOT read:
-    // ADR 0032 re-minted them before any production graph carried them.
-    if (token === '#D') return { kind: 'doing', value: '' }
-    if (token === '#C') return { kind: 'cancelled', value: '' }
+    const state = STATE_BY_TOKEN.get(token)
+    if (state) return { kind: state, value: '' }
     if (token === '#P1' || token === '#P2' || token === '#P3') {
         return { kind: 'priority', value: token.slice(2) }
     }
@@ -101,7 +121,9 @@ function recordTag(tags: Omit<TaskTags, 'text'>, tag: { kind: TagKind; value: st
             break
         case 'waiting':
         case 'doing':
+        case 'test':
         case 'cancelled':
+        case 'archived':
             tags[tag.kind] = true
             break
         default:
@@ -154,7 +176,7 @@ const FREE_TAG_WORD = /^[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*$/
  * Anything a [[Task Tag]] is or could be, in any case: `#p1` and `#P4` are not Task Tags, but a
  * person who wrote them meant one, so neither is a Free Tag either.
  */
-const TASK_TAG_SHAPED = /^(?:P\d+|W|D|C|[DCS]-[\d-]*)$/i
+const TASK_TAG_SHAPED = /^(?:P\d+|W|D|T|C|A|[DCS]-[\d-]*)$/i
 
 function isFreeTagWord(word: string): boolean {
     return FREE_TAG_WORD.test(word) && /[A-Za-z]/.test(word) && !TASK_TAG_SHAPED.test(word)
@@ -235,6 +257,26 @@ export function taskTagTokens(label: string): string[] {
     return label.slice(0, scanRun(label).end).split(/\s+/).filter((token) => readTag(token) !== null)
 }
 
+/**
+ * The [[Task Status]]es, in the order a task moves through them. Mutually exclusive by
+ * construction ({@link taskStatus}), so a task is in exactly one.
+ */
+export type TaskStatus = 'open' | 'doing' | 'waiting' | 'test' | 'done' | 'cancelled' | 'archived'
+
+/**
+ * A task's [[Task Status]], from its checkbox and its bare-letter tags: the one statement of the
+ * rule, which the index's SQL (`STATUS_SQL` in index-db.ts) mirrors.
+ *
+ * A ticked task is Archived with `#A`, otherwise Cancelled with `#C`, otherwise Done. An unticked
+ * one takes the state furthest along that it carries: Test, then Waiting, then Doing, then Open.
+ * A state the checkbox contradicts (`#A` unticked, `#T` ticked) is ignored, so the checkbox alone
+ * decides whether a task is finished.
+ */
+export function taskStatus(done: boolean, tags: Pick<TaskTags, 'waiting' | 'doing' | 'test' | 'cancelled' | 'archived'>): TaskStatus {
+    if (done) return tags.archived ? 'archived' : tags.cancelled ? 'cancelled' : 'done'
+    return tags.test ? 'test' : tags.waiting ? 'waiting' : tags.doing ? 'doing' : 'open'
+}
+
 /** A raw source line's task state, or null when the line is not a [[Task]]. */
 export interface ParsedTaskLine extends TaskTags {
     done: boolean
@@ -281,23 +323,22 @@ export type TaskTagCommand =
     | { kind: 'priority'; value: TaskPriority }
     | { kind: 'waiting' }
     | { kind: 'doing' }
+    | { kind: 'test' }
     | { kind: 'cancelled' }
+    | { kind: 'archived' }
     | { kind: 'due' | 'scheduled' | 'completion'; value: string }
 
-/** The order tags are written back in. Fixed, so the same set always reads the same way. */
-const TAG_ORDER = ['priority', 'waiting', 'doing', 'cancelled', 'scheduled', 'due', 'completion'] as const
-
+/**
+ * The tag run for `tags`, in a fixed order (priority, the states, then scheduled, due and
+ * completion), so the same set always reads the same way.
+ */
 export function serialiseTags(tags: TaskTags): string[] {
     const out: string[] = []
-    for (const kind of TAG_ORDER) {
-        if (kind === 'priority' && tags.priority !== null) out.push(`#P${tags.priority}`)
-        else if (kind === 'waiting' && tags.waiting) out.push('#W')
-        else if (kind === 'doing' && tags.doing) out.push('#D')
-        else if (kind === 'cancelled' && tags.cancelled) out.push('#C')
-        else if (kind === 'scheduled' && tags.scheduled !== null) out.push(`#S-${tags.scheduled}`)
-        else if (kind === 'due' && tags.due !== null) out.push(`#D-${tags.due}`)
-        else if (kind === 'completion' && tags.completion !== null) out.push(`#C-${tags.completion}`)
-    }
+    if (tags.priority !== null) out.push(`#P${tags.priority}`)
+    for (const [kind, token] of STATE_TAGS) if (tags[kind]) out.push(token)
+    if (tags.scheduled !== null) out.push(`#S-${tags.scheduled}`)
+    if (tags.due !== null) out.push(`#D-${tags.due}`)
+    if (tags.completion !== null) out.push(`#C-${tags.completion}`)
     return out
 }
 
@@ -326,13 +367,11 @@ export function applyTaskTag(line: string, command: TaskTagCommand): string | nu
             tags.priority = tags.priority === command.value ? null : command.value
             break
         case 'waiting':
-            tags.waiting = !tags.waiting
-            break
         case 'doing':
-            tags.doing = !tags.doing
-            break
+        case 'test':
         case 'cancelled':
-            tags.cancelled = !tags.cancelled
+        case 'archived':
+            tags[command.kind] = !tags[command.kind]
             break
         default:
             tags[command.kind] = command.value
@@ -341,4 +380,72 @@ export function applyTaskTag(line: string, command: TaskTagCommand): string | nu
     // Exactly one space between the checkbox, each tag, and the text — and no trailing
     // space when a task has tags but no text yet, which is how it looks mid-typing.
     return [indent + checkbox, ...serialiseTags(tags), tags.text].filter((part) => part !== '').join(' ')
+}
+
+// ── Writing a status (ADR 0113) ───────────────────────────────────────────────────────────
+
+/** What to change about a task. Anything left out stays as it is. */
+export interface TaskChanges {
+    status?: TaskStatus
+    priority?: TaskPriority | null
+    /** `YYYY-MM-DD`, or null to remove the date. */
+    due?: string | null
+    scheduled?: string | null
+}
+
+const MARKER = /^(\s*-\s+\[)[ xX](\])\s?/
+
+/**
+ * `line` with `changes` made, or null when `line` is not a task.
+ *
+ * A changed tag run is written in the fixed order the `#` helper writes (`serialiseTags`), for
+ * the reason `applyTaskTag` gives: the run is a set, and a predictable order is worth more than
+ * one that carries no meaning. A task already as asked comes back untouched, so a move that
+ * changes nothing reorders nothing either.
+ */
+export function taskLineWith(line: string, changes: TaskChanges): string | null {
+    const parsed = parseTaskLine(line)
+    const marker = MARKER.exec(line)
+    if (!parsed || !marker) return null
+    const { done: wasDone, ...current } = parsed
+    const tags: TaskTags = { ...current }
+    const done = changes.status === undefined ? wasDone : withStatus(tags, changes.status)
+    if (changes.priority !== undefined) tags.priority = changes.priority
+    if (changes.due !== undefined) tags.due = changes.due
+    if (changes.scheduled !== undefined) tags.scheduled = changes.scheduled
+    if (done === wasDone && sameTags(tags, current)) return line
+    // One space between the checkbox, each tag and the text, and none at the end when a task has
+    // tags but no text: the way the `#` helper writes a run.
+    return [`${marker[1]}${done ? 'x' : ' '}${marker[2]}`, ...serialiseTags(tags), tags.text].filter((part) => part !== '').join(' ')
+}
+
+/** How each [[Task Status]] is written: its checkbox, and the state tag it carries, if any. */
+const STATUS_LINE: Record<TaskStatus, { done: boolean; state: StateKind | null }> = {
+    open: { done: false, state: null },
+    doing: { done: false, state: 'doing' },
+    waiting: { done: false, state: 'waiting' },
+    test: { done: false, state: 'test' },
+    done: { done: true, state: null },
+    cancelled: { done: true, state: 'cancelled' },
+    archived: { done: true, state: 'archived' },
+}
+
+/**
+ * Write `status` into `tags`, exclusive as a status is: its one state tag set and every other
+ * state cleared. Returns whether the checkbox is ticked.
+ */
+function withStatus(tags: TaskTags, status: TaskStatus): boolean {
+    const line = STATUS_LINE[status]
+    for (const [state] of STATE_TAGS) tags[state] = state === line.state
+    return line.done
+}
+
+function sameTags(a: TaskTags, b: TaskTags): boolean {
+    return (
+        a.priority === b.priority &&
+        STATE_TAGS.every(([state]) => a[state] === b[state]) &&
+        a.due === b.due &&
+        a.scheduled === b.scheduled &&
+        a.completion === b.completion
+    )
 }

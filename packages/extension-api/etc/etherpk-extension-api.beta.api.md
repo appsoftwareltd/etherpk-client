@@ -10,6 +10,22 @@ export interface AuthorizeOptions {
 }
 
 // @public
+export interface ChooseChoice {
+    label: string;
+    value: string;
+}
+
+// @public
+export interface ChooseOptions {
+    choices: ChooseChoice[];
+    label: string;
+    message?: string;
+    submitLabel?: string | ((value: string) => string);
+    title: string;
+    value?: string;
+}
+
+// @public
 export const CLIENT_COMMANDS: readonly string[];
 
 // @public
@@ -116,7 +132,7 @@ export interface DocumentTask extends Omit<DocumentSummary, 'aliases'> {
     priority: 1 | 2 | 3 | null;
     scheduled: string | null;
     // (undocumented)
-    status: 'open' | 'doing' | 'waiting' | 'done' | 'cancelled';
+    status: 'open' | 'doing' | 'waiting' | 'test' | 'done' | 'cancelled' | 'archived';
     text: string;
 }
 
@@ -215,6 +231,7 @@ export interface ExtensionContributions {
 
 // @public
 export interface ExtensionDialogs {
+    choose(options: ChooseOptions): Promise<string | undefined>;
     prompt(options: PromptOptions): Promise<string | undefined>;
 }
 

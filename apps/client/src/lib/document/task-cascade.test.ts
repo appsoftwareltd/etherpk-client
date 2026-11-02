@@ -73,6 +73,28 @@ describe('the tasks a write to a task brings with it', () => {
         expect(cascade(text, 0, '- [x] Garden')).toBe('- [x] Garden\n  - [x] weed')
     })
 
+    it('archiving a task archives every task nested under it, ticking the open ones', () => {
+        const text = '- [x] Garden\n  - [ ] weed\n  - [x] #C plant the leeks\n    - [ ] #P1 #W water the beans\n  - [x] #A dig\n- [x] Kitchen'
+        expect(cascade(text, 0, '- [x] #A Garden')).toBe(
+            '- [x] #A Garden\n  - [x] #A weed\n  - [x] #A plant the leeks\n    - [x] #P1 #A water the beans\n  - [x] #A dig\n- [x] Kitchen',
+        )
+    })
+
+    it('archiving an open task archives its nested tasks too', () => {
+        const text = '- [ ] Garden\n  - [ ] weed'
+        expect(cascade(text, 0, '- [x] #A Garden')).toBe('- [x] #A Garden\n  - [x] #A weed')
+    })
+
+    it('unticking leaves an Archived task ticked', () => {
+        const text = '- [x] #A Garden\n  - [x] #A weed\n  - [x] water the beans'
+        expect(cascade(text, 0, '- [ ] Garden')).toBe('- [ ] Garden\n  - [x] #A weed\n  - [ ] water the beans')
+    })
+
+    it('an Archived task made Done ticks its open nested tasks and leaves the Archived ones', () => {
+        const text = '- [x] #A Garden\n  - [ ] weed\n  - [x] #A dig'
+        expect(cascade(text, 0, '- [x] Garden')).toBe('- [x] Garden\n  - [x] weed\n  - [x] #A dig')
+    })
+
     it('a Done task made Cancelled leaves its nested tasks as they are', () => {
         const lines = '- [x] Garden\n  - [x] weed'.split('\n')
         expect(nestedTaskWrites(lines, 0, '- [x] #C Garden')).toEqual([])

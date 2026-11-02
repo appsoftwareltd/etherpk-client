@@ -25,6 +25,7 @@ import { type InteractiveFence, registerInteractiveFence } from './augmentations
 import { collapsedInteractiveFences, interactiveFences } from './augmentations/interactive-fence-state'
 import { isBlockSelection, snappedBlockSelection } from './block-select'
 import { clampColumn } from './caret-clamp'
+import { startAfterCaret } from './end-of-document'
 import { toggleBullet } from './outliner-keymap'
 import { PLAIN_PASTE_USER_EVENT } from './paste-clamp'
 import { bulletToggleable } from './task-toggleable'
@@ -570,6 +571,43 @@ describe('outliner invariants under random key sequences', { timeout: 30_000 }, 
                 for (let i = owner; i <= last; i++) expect(ownerBulletIndex(after, i), JSON.stringify({ i, text, after })).not.toBeNull()
             }),
             fuzz(300),
+        )
+    })
+
+    it('a new line button pressed anywhere keeps every fenced block and the frontmatter, and creates no orphan', () => {
+        // Editor Content Rules → End of document: the press after the caret's block (ADR 0168) writes
+        // into the middle of lists, fences and paragraphs, where a line in the wrong place orphans the
+        // bullets after it or pairs a fence differently.
+        fc.assert(
+            fc.property(
+                outlineArb,
+                afterChildrenArb,
+                formOneArb,
+                frontmatterArb,
+                edgeTextArb,
+                fc.nat(),
+                fc.constantFrom<'line' | 'bullet'>('line', 'bullet'),
+                (outline, afterChildren, formOne, frontmatter, edgeText, pick, kind) => {
+                    const doc = render(outline, 'unit', [], afterChildren, [], formOne, frontmatter, edgeText)
+                    const lines = doc.split('\n')
+                    if (!noOrphans(lines) || !markersIntact(lines)) return
+                    const caretLine = pick % lines.length
+                    // A whitespace-only line is tidied when the caret leaves it, whatever moves the caret:
+                    // the rows cover a press from a blank line, and this judges the press alone.
+                    if (lines[caretLine].trim() === '' && lines[caretLine] !== '') return
+                    const pos = lines.slice(0, caretLine).join('\n').length + (caretLine > 0 ? 1 : 0)
+                    const editor = editorFixture(doc.slice(0, pos) + '|' + doc.slice(pos))
+                    startAfterCaret(editor, kind)
+                    const after = editor.text().split('\n')
+                    const info = JSON.stringify({ doc, line: caretLine, kind, after })
+                    expect(codeHeld(after), info).toBe(codeHeld(lines))
+                    expect(fencesBalanced(after), info).toBe(fencesBalanced(lines))
+                    expect(() => noOrphans(after), info).not.toThrow()
+                    expect(indentsOnGrid(after), info).toBe(true)
+                    expect(markersIntact(after), info).toBe(true)
+                },
+            ),
+            fuzz(400),
         )
     })
 

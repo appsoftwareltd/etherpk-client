@@ -1,5 +1,6 @@
 /**
- * `context.dialogs`: the dialogs the Client draws for an extension (`PromptDialog.svelte`).
+ * `context.dialogs`: the dialogs the Client draws for an extension (`PromptDialog.svelte`,
+ * `ChooseDialog.svelte`).
  *
  * Each dialog names the extension that asks, so a question is never mistaken for the Client's own.
  *
@@ -7,23 +8,28 @@
  * so two extensions can never stack dialogs over each other, and the keyboard always has one place to
  * be.
  */
-import type { PromptOptions } from '@appsoftwareltd/etherpk-extension-api'
-import { mount, unmount } from 'svelte'
+import type { ChooseOptions, PromptOptions } from '@appsoftwareltd/etherpk-extension-api'
+import { type Component, mount, unmount } from 'svelte'
 
+import ChooseDialog from './ChooseDialog.svelte'
 import PromptDialog from './PromptDialog.svelte'
 
 /** `context.dialogs` for every extension: the scoped context passes the asking extension's name. */
 export interface ClientDialogs {
     prompt(options: PromptOptions, from: string): Promise<string | undefined>
+    choose(options: ChooseOptions, from: string): Promise<string | undefined>
 }
+
+/** What each dialog component takes: the extension's options, its name, and where the answer goes. */
+type DialogProps<O> = { options: O; from: string; onanswer: (value: string | undefined) => void }
 
 let queue: Promise<unknown> = Promise.resolve()
 
-function ask(options: PromptOptions, from: string): Promise<string | undefined> {
+function ask<O>(component: Component<DialogProps<O>>, options: O, from: string): Promise<string | undefined> {
     return new Promise((resolve) => {
         const target = document.body
         let answered = false
-        const dialog = mount(PromptDialog, {
+        const dialog = mount(component, {
             target,
             props: {
                 options,
@@ -40,12 +46,16 @@ function ask(options: PromptOptions, from: string): Promise<string | undefined> 
     })
 }
 
+/** Ask once every question asked before has been answered. */
+function inTurn<O>(component: Component<DialogProps<O>>, options: O, from: string): Promise<string | undefined> {
+    const next = queue.then(() => ask(component, options, from))
+    queue = next.catch(() => undefined)
+    return next
+}
+
 export function createDialogs(): ClientDialogs {
     return {
-        prompt(options, from) {
-            const next = queue.then(() => ask(options, from))
-            queue = next.catch(() => undefined)
-            return next
-        },
+        prompt: (options, from) => inTurn(PromptDialog, options, from),
+        choose: (options, from) => inTurn(ChooseDialog, options, from),
     }
 }

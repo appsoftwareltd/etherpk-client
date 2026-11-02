@@ -14,6 +14,7 @@ import {
     tasksMatchingCount,
 } from './index-db'
 import { wrapOo1Db } from './index-db-sqlite'
+import { parseTaskLine, taskStatus } from './task-tags'
 
 // The [[Tasks View]]'s query, against a real in-memory sqlite-wasm DB (ADR 0015).
 // This is where ADR 0051's Task Concept rules are actually pinned down.
@@ -170,8 +171,11 @@ describe('task status partition', () => {
                     '- [ ] #D in progress',
                     '- [ ] #W waiting on someone',
                     '- [ ] #W #D waiting outranks doing',
+                    '- [ ] #T #W under test',
+                    '- [ ] #A archived only when ticked',
                     '- [x] finished',
                     '- [x] #C dropped',
+                    '- [x] #C #A put away',
                 ].join('\n'),
             ),
         ])
@@ -183,17 +187,34 @@ describe('task status partition', () => {
             '#D in progress',
             '#W waiting on someone',
             '#W #D waiting outranks doing',
+            '#T #W under test',
+            '#A archived only when ticked',
         ])
     })
 
     it('puts a task in exactly one state', () => {
         const counted = TASK_STATUSES.map((status) => texts(query({ statuses: [status] })).length)
-        expect(counted.reduce((a, b) => a + b, 0)).toBe(6)
+        expect(counted.reduce((a, b) => a + b, 0)).toBe(9)
     })
 
     it('keeps a cancelled task out of done, so it is reachable rather than merely absent', () => {
         expect(texts(query({ statuses: ['done'] }))).toEqual(['finished'])
         expect(texts(query({ statuses: ['cancelled'] }))).toEqual(['#C dropped'])
+    })
+
+    it('puts a task under test in Test, and an archived one in Archived only when it is ticked', () => {
+        expect(texts(query({ statuses: ['test'] }))).toEqual(['#T #W under test'])
+        expect(texts(query({ statuses: ['waiting'] }))).toEqual(['#W waiting on someone', '#W #D waiting outranks doing'])
+        expect(texts(query({ statuses: ['archived'] }))).toEqual(['#C #A put away'])
+    })
+
+    it('agrees with taskStatus, the rule the editor and the Headless Client read', () => {
+        for (const status of TASK_STATUSES) {
+            for (const text of texts(query({ statuses: [status] }))) {
+                const task = parseTaskLine(`- [${status === 'done' || status === 'cancelled' || status === 'archived' ? 'x' : ' '}] ${text}`)!
+                expect(taskStatus(task.done, task), text).toBe(status)
+            }
+        }
     })
 
     it('shows nothing when every status chip is off — a genuine empty selection', () => {

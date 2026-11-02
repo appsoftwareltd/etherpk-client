@@ -1,7 +1,7 @@
 import { EditorSelection, EditorState, type TransactionSpec } from '@codemirror/state'
 import { type EditorView, showTooltip } from '@codemirror/view'
 import type { GraphSidebarButton } from '@appsoftwareltd/etherpk-extension-api'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { setActiveEditorView } from '#lib/document/active-editor.js'
 import { registerLinkCommands } from '#lib/document/commands/link-commands.js'
@@ -12,7 +12,7 @@ import { commandMenuDetail, commandMenuItemsInOrder, listCommandMenuItems } from
 import { listContextMenuItems } from '#lib/surface/context-menu.js'
 import { type BoardActions, registerBoard } from './board-actions'
 import type { BoardCell } from './board-model'
-import { KANBAN_OPEN_AT_CARET, KANBAN_OPEN_BOARD, KANBAN_OPEN_BOARD_FOR, KANBAN_OPEN_WHOLE, type KanbanCardTarget, registerKanbanCommands } from './kanban-commands'
+import { KANBAN_OPEN_AT_CARET, KANBAN_OPEN_BOARD, KANBAN_OPEN_BOARD_FOR, KANBAN_OPEN_WHOLE, type KanbanCardTarget, type KanbanLaneTarget, registerKanbanCommands } from './kanban-commands'
 import { kanbanContext } from './testing'
 
 // The rows a [[Kanban Board]] card's context menu offers, and how they reach the board that raised
@@ -20,7 +20,7 @@ import { kanbanContext } from './testing'
 
 /** The Commands registered through the context the Client builds, and where they asked to open things. */
 function setup(isDesktop = true) {
-    const { context, services } = kanbanContext({ desktop: isDesktop })
+    const { context, services, client } = kanbanContext({ desktop: isDesktop })
     registerKanbanCommands(context)
     const { commands, contributions } = services
     const opened = (mock: unknown) => (mock as { mock: { calls: [string | { target: string }, { inPaneOf?: string } | undefined][] } }).mock.calls
@@ -32,10 +32,15 @@ function setup(isDesktop = true) {
         /** Each page opened: its concept and the panel whose Pane it was asked into. */
         pagesOpened: () => opened(services.layout.openDocument).map(([concept, options]) => [concept as string, options?.inPaneOf]),
         openView: services.layout.openView,
+        /** The Client's choose dialog, which a test answers. */
+        choose: vi.mocked(client.dialogs.choose),
         /** How the graph resolves names, which a test may change. */
         concepts: services.concepts,
     }
 }
+
+/** A board that does nothing, for a test to override the one action it is about. */
+const NO_ACTIONS: BoardActions = { open: () => {}, openInTab: () => {}, copyReference: () => {}, move: () => {}, moveAll: () => {} }
 
 function card(status: KanbanCardTarget['status'], priority: KanbanCardTarget['priority']): KanbanCardTarget {
     return { kind: 'kanban.card', board: 'board-1', card: 'Acme:0', label: 'Send the quote', status, priority }
@@ -51,8 +56,10 @@ describe("a card's context menu", () => {
             'Copy task reference',
             'Move to Doing',
             'Move to Waiting',
+            'Move to Test',
             'Move to Done',
             'Move to Cancelled',
+            'Archive',
             'Priority P2',
             'Priority P3',
             'No priority',
@@ -72,16 +79,18 @@ describe("a card's context menu", () => {
     it("asks the board that raised the menu to move the card, keeping what the row does not change", async () => {
         const { commands, contributions } = setup()
         const moves: Array<[string, BoardCell]> = []
-        const actions: BoardActions = { open: () => {}, openInTab: () => {}, copyReference: () => {}, move: (key, to) => moves.push([key, to]) }
+        const actions: BoardActions = { ...NO_ACTIONS, move: (key, to) => moves.push([key, to]) }
         const unregister = registerBoard('board-1', actions)
         const rows = listContextMenuItems(contributions, card('open', 1))
 
         await commands.execute(rows.find((r) => r.label === 'Move to Waiting')!.command, card('open', 1))
         await commands.execute(rows.find((r) => r.label === 'No priority')!.command, card('open', 1))
+        await commands.execute(rows.find((r) => r.label === 'Archive')!.command, card('open', 1))
 
         expect(moves).toEqual([
             ['Acme:0', { status: 'waiting', priority: 1 }],
             ['Acme:0', { status: 'open', priority: null }],
+            ['Acme:0', { status: 'archived', priority: 1 }],
         ])
         unregister()
     })
@@ -99,6 +108,45 @@ describe("a card's context menu", () => {
         expect(listContextMenuItems(contributions, { kind: 'document-tab', concept: 'Acme' }).map((r) => r.label)).not.toContain(
             'Open Kanban Board',
         )
+    })
+})
+
+describe("a lane's context menu", () => {
+    const lane = (status: KanbanLaneTarget['status'], count = 3): KanbanLaneTarget => ({ kind: 'kanban.lane', board: 'board-1', status, label: 'Done', count })
+
+    it('asks where to move the lane, starting at Archived from Done, and has the board that raised it move it there', async () => {
+        const { commands, contributions, choose } = setup()
+        choose.mockResolvedValueOnce('archived')
+        const moved: string[][] = []
+        const unregister = registerBoard('board-1', { ...NO_ACTIONS, moveAll: (from, to) => moved.push([from, to]) })
+        const rows = listContextMenuItems(contributions, lane('done'))
+        expect(rows.map((r) => r.label)).toEqual(['Move all to lane…'])
+        await commands.execute(rows[0].command, lane('done'))
+
+        const [options] = choose.mock.calls[0]
+        expect(options.choices.map((c) => c.label)).toEqual(['Open', 'Doing', 'Waiting', 'Test', 'Cancelled', 'Archived'])
+        expect(options.value).toBe('archived')
+        // The button's words follow the choice, so it says what confirming will do.
+        const submitLabel = options.submitLabel as (value: string) => string
+        expect(submitLabel('archived')).toBe('Archive 3 tasks')
+        expect(submitLabel('test')).toBe('Move 3 tasks to Test')
+        expect(moved).toEqual([['done', 'archived']])
+        unregister()
+    })
+
+    it('starts at the next lane along from an unfinished lane, and moves nothing when the question is cancelled', async () => {
+        const { commands, choose } = setup()
+        const moved: string[][] = []
+        const unregister = registerBoard('board-1', { ...NO_ACTIONS, moveAll: (from, to) => moved.push([from, to]) })
+        await commands.execute('kanban.lane.moveAll', lane('waiting'))
+        expect(choose.mock.calls[0][0].value).toBe('test')
+        expect(moved).toEqual([])
+        unregister()
+    })
+
+    it('offers nothing on an empty lane, nor when the phone layout is showing', () => {
+        expect(listContextMenuItems(setup().contributions, lane('done', 0))).toEqual([])
+        expect(listContextMenuItems(setup(false).contributions, lane('done'))).toEqual([])
     })
 })
 

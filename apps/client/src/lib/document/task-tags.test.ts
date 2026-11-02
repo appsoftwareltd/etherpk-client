@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { applyTaskTag, freeTagsIn, parseTaskLine, parseTaskTags, taskDisplay, taskTagRun, taskTagTokens, toggleTaskLine, withoutFreeTags } from './task-tags'
+import { applyTaskTag, freeTagsIn, parseTaskLine, parseTaskTags, taskDisplay, taskStatus, taskTagRun, taskTagTokens, toggleTaskLine, withoutFreeTags } from './task-tags'
 
 describe('parseTaskTags', () => {
     it('reads the full minted tag set from the leading run', () => {
@@ -9,7 +9,9 @@ describe('parseTaskTags', () => {
             priority: 1,
             waiting: true,
             doing: true,
+            test: false,
             cancelled: false,
+            archived: false,
             due: '2026-09-15',
             completion: '2026-09-20',
             scheduled: '2026-09-10',
@@ -53,7 +55,9 @@ describe('parseTaskTags', () => {
             priority: null,
             waiting: false,
             doing: false,
+            test: false,
             cancelled: false,
+            archived: false,
             due: null,
             completion: null,
             scheduled: null,
@@ -280,5 +284,60 @@ describe('applyTaskTag', () => {
 
     it('refuses a line that is not a task', () => {
         expect(applyTaskTag('- a plain bullet', { kind: 'waiting' })).toBeNull()
+    })
+})
+
+describe('the Test and Archived states', () => {
+    it('reads bare #T as test and bare #A as archived', () => {
+        expect(parseTaskLine('- [ ] #P1 #T Check the gate')).toMatchObject({ test: true, archived: false, priority: 1, text: 'Check the gate' })
+        expect(parseTaskLine('- [x] #A Water the beans')).toMatchObject({ archived: true, test: false, text: 'Water the beans' })
+    })
+
+    it('is case-sensitive, so #t and #a are Free Tags in the text', () => {
+        expect(parseTaskLine('- [ ] #t Check')).toMatchObject({ test: false, text: '#t Check' })
+        expect(freeTagsIn('#t #a Check')).toEqual([])
+    })
+
+    it('never reads #T or #A as a Free Tag, whatever its case', () => {
+        expect(freeTagsIn('Check #T and #A and #garden')).toEqual(['garden'])
+    })
+
+    it('sets and clears each state with the # helper, writing it with the other states', () => {
+        expect(applyTaskTag('- [ ] Check', { kind: 'test' })).toBe('- [ ] #T Check')
+        expect(applyTaskTag('- [ ] #T Check', { kind: 'test' })).toBe('- [ ] Check')
+        expect(applyTaskTag('- [x] #P2 Check', { kind: 'archived' })).toBe('- [x] #P2 #A Check')
+        expect(applyTaskTag('- [ ] #A #W #P1 Check', { kind: 'test' })).toBe('- [ ] #P1 #W #T #A Check')
+    })
+})
+
+describe('taskStatus', () => {
+    const status = (line: string) => {
+        const task = parseTaskLine(line)!
+        return taskStatus(task.done, task)
+    }
+
+    it('reads an unticked task as Open, Doing, Waiting or Test', () => {
+        expect(status('- [ ] Plant')).toBe('open')
+        expect(status('- [ ] #D Plant')).toBe('doing')
+        expect(status('- [ ] #W Plant')).toBe('waiting')
+        expect(status('- [ ] #T Plant')).toBe('test')
+    })
+
+    it('lets the state furthest along win on an unticked task: Test, then Waiting, then Doing', () => {
+        expect(status('- [ ] #D #W Plant')).toBe('waiting')
+        expect(status('- [ ] #D #W #T Plant')).toBe('test')
+    })
+
+    it('reads a ticked task as Done, Cancelled or Archived, Archived winning', () => {
+        expect(status('- [x] Plant')).toBe('done')
+        expect(status('- [x] #C Plant')).toBe('cancelled')
+        expect(status('- [x] #A Plant')).toBe('archived')
+        expect(status('- [x] #C #A Plant')).toBe('archived')
+    })
+
+    it('ignores a state the checkbox contradicts', () => {
+        expect(status('- [ ] #A Plant')).toBe('open')
+        expect(status('- [ ] #C Plant')).toBe('open')
+        expect(status('- [x] #T #W Plant')).toBe('done')
     })
 })

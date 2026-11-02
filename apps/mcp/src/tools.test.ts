@@ -850,6 +850,19 @@ describe('set_task', () => {
         expect(await setTask(g, { concept: 'Plan', line: 1, changes: { status: 'cancelled' } })).toMatchObject({ nested: [] })
         expect((await readDocument(g, 'Plan')).text.split('\n')[2]).toBe('  - [ ] #W #D-2026-07-01 wait for review')
     })
+
+    it('archives the tasks nested under an archived task, and moves a task to test', async () => {
+        const g = await withTasks('g-set-task-archive')
+        expect(await setTask(g, { concept: 'Plan', line: 1, changes: { status: 'archived' } })).toMatchObject({
+            status: 'archived',
+            nested: [{ line: 2, text: '#A #D-2026-07-01 wait for review', done: true }],
+        })
+        expect((await readDocument(g, 'Plan')).text.split('\n').slice(1, 3)).toEqual(['- [x] #P2 #A write the plan', '  - [x] #A #D-2026-07-01 wait for review'])
+        await indexed(g, async () => (await tasks(g, { concept: 'Plan', statuses: ['archived'] })).total === 2)
+
+        expect(await setTask(g, { concept: 'Plan', line: 3, changes: { status: 'test' } })).toMatchObject({ status: 'test', text: 'done already' })
+        expect((await readDocument(g, 'Plan')).text.split('\n')[3]).toBe('- [ ] #T done already')
+    })
 })
 
 // A Task Reference (ADR 0114): a task handed to an agent by position and words, found again after

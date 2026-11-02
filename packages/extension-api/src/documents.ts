@@ -84,7 +84,7 @@ export interface DocumentTask extends Omit<DocumentSummary, 'aliases'> {
     line: number
     /** The task's words, without the checkbox. */
     text: string
-    status: 'open' | 'doing' | 'waiting' | 'done' | 'cancelled'
+    status: 'open' | 'doing' | 'waiting' | 'test' | 'done' | 'cancelled' | 'archived'
     /** 1 is the highest; null when the task has none. */
     priority: 1 | 2 | 3 | null
     /** `YYYY-MM-DD`, or null. */

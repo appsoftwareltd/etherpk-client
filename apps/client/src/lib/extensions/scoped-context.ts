@@ -365,7 +365,10 @@ export function createScopedContext(
             },
         },
         // The dialog names the extension, so a person knows who is asking.
-        dialogs: { prompt: (options) => client.dialogs.prompt(options, manifest.displayName) },
+        dialogs: {
+            prompt: (options) => client.dialogs.prompt(options, manifest.displayName),
+            choose: (options) => client.dialogs.choose(options, manifest.displayName),
+        },
         embeds: {
             frameHosts: PLAYER_FRAME_HOSTS,
             frame: (options) => buildFrame(options),

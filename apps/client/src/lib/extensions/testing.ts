@@ -88,7 +88,7 @@ export function fakeClientServices(storage: Storage = memoryStorage(), settings:
         iconSvg: (name) => `<svg data-icon="${name}"/>` as unknown as TrustedMarkup,
         storage,
         settings,
-        dialogs: { prompt: vi.fn(async () => undefined) },
+        dialogs: { prompt: vi.fn(async () => undefined), choose: vi.fn(async () => undefined) },
         // A sign-in that the service answers at once, with a code and the state it was given.
         signIn: {
             redirectUri: 'https://client.example/extension-sign-in',

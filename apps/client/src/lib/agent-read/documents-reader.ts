@@ -24,6 +24,7 @@ import type {
 } from '@appsoftwareltd/etherpk-extension-api'
 
 import type { ConceptCandidate, DbBacklinkGroup, TaskHit, TaskQuery } from '#lib/document/index-db.js'
+import { taskStatus } from '#lib/document/task-tags.js'
 import type { TaskPageResult } from '#lib/document/index-worker/client.js'
 import { wikilinkOccurrencesInSource } from '#lib/document/wikilink/source.js'
 import { frontmatterSpan } from '#lib/storage/fs/frontmatter-span.js'
@@ -59,7 +60,7 @@ export interface DocumentsReaderDeps {
 }
 
 /** The statuses a task listing shows unless asked for others: the unfinished ones. */
-const OPEN_STATUSES: DocumentTask['status'][] = ['open', 'doing', 'waiting']
+const OPEN_STATUSES: DocumentTask['status'][] = ['open', 'doing', 'waiting', 'test']
 
 export function createDocumentsReader(deps: DocumentsReaderDeps): ExtensionDocuments {
     const index = (): AgentReadIndex => {
@@ -201,7 +202,7 @@ function toTask(hit: TaskHit): DocumentTask {
         kind: hit.kind,
         line: hit.line,
         text: hit.text,
-        status: hit.cancelled ? 'cancelled' : hit.done ? 'done' : hit.doing ? 'doing' : hit.waiting ? 'waiting' : 'open',
+        status: taskStatus(hit.done, hit),
         priority: hit.priority === 1 || hit.priority === 2 || hit.priority === 3 ? hit.priority : null,
         due: hit.due,
         scheduled: hit.scheduled,

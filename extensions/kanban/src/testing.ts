@@ -17,9 +17,10 @@ export function kanbanContext(options: { desktop?: boolean } = {}) {
     const [entry] = catalogue.extensions
     if (!entry) throw new Error(`The manifest was refused: ${JSON.stringify(catalogue.broken)}`)
     const views = new Map<string, ViewContribution>()
-    const scoped = createScopedContext(entry, services, fakeClientServices(), (kind, view) => {
+    const client = fakeClientServices()
+    const scoped = createScopedContext(entry, services, client, (kind, view) => {
         views.set(kind, view)
         return () => views.delete(kind)
     })
-    return { context: scoped.context, services, views, dispose: scoped.dispose }
+    return { context: scoped.context, services, client, views, dispose: scoped.dispose }
 }

@@ -53,7 +53,9 @@ export interface TaskRow {
     priority: TaskPriority | null
     waiting: boolean
     doing: boolean
+    test: boolean
     cancelled: boolean
+    archived: boolean
     due: string | null
     completion: string | null
     scheduled: string | null
@@ -268,7 +270,9 @@ export function deriveDoc(text: string, options: DeriveOptions = {}): DerivedRow
             priority: tags.priority,
             waiting: tags.waiting,
             doing: tags.doing,
+            test: tags.test,
             cancelled: tags.cancelled,
+            archived: tags.archived,
             due: tags.due,
             completion: tags.completion,
             scheduled: tags.scheduled,

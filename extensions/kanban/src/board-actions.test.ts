@@ -8,7 +8,7 @@ import { describe, expect, it } from 'vitest'
 import { boardActions, type BoardActions, conceptRenamed, documentRemoved, registerBoard, takeBoardHandover } from './board-actions'
 import { type BoardState, defaultBoardState } from './board-state'
 
-const actions: BoardActions = { open: () => {}, openInTab: () => {}, copyReference: () => {}, move: () => {} }
+const actions: BoardActions = { open: () => {}, openInTab: () => {}, copyReference: () => {}, move: () => {}, moveAll: () => {} }
 
 /**
  * A board over `concept`, registered as KanbanView registers one: its Task Detail shows

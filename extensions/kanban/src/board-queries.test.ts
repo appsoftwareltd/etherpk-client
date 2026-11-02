@@ -4,7 +4,7 @@ import { beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { createSchema, type IndexDoc, ingest, type SqlDb, tasksMatching, tasksMatchingCount, type TaskPriorityFilter, type TaskStatus } from '#lib/document/index-db.js'
 import { wrapOo1Db } from '#lib/document/index-db-sqlite.js'
 import type { BoardSnapshot } from './board-model'
-import { readBoard, type TaskSource } from './board-queries'
+import { laneTasks, readBoard, type TaskSource } from './board-queries'
 
 // A [[Kanban Board]] as it reads from a graph (ADR 0113): the tasks that answer to its concept,
 // in a lane per [[Task Status]] and a section per priority. Against a real in-memory index, so
@@ -51,15 +51,17 @@ describe('reading a board', () => {
                 '  - [ ] #W Hear back on the API',
                 '  - [x] Pick a venue',
                 '  - [x] #C Book the old venue',
+                '  - [ ] #T Check the booking form',
+                '  - [x] #A Print last year\'s flyers',
                 '  - [ ] Tidy the notes',
                 '- [ ] Buy milk',
             ]),
         ])
     })
 
-    it('lays out five lanes in the order a task moves through them, each with a section per priority', async () => {
+    it('lays out six lanes in the order a task moves through them, each with a section per priority', async () => {
         const board = await readBoard(source, 'Acme', TODAY)
-        expect(board.lanes.map((lane) => lane.label)).toEqual(['Open', 'Doing', 'Waiting', 'Done', 'Cancelled'])
+        expect(board.lanes.map((lane) => lane.label)).toEqual(['Open', 'Doing', 'Waiting', 'Test', 'Done', 'Cancelled'])
         for (const lane of board.lanes) {
             expect(lane.sections.map((section) => section.label)).toEqual(['P1', 'P2', 'P3', 'No priority'])
         }
@@ -73,6 +75,13 @@ describe('reading a board', () => {
         expect(labels(board, 'waiting', null)).toEqual(['Hear back on the API'])
         expect(labels(board, 'done', null)).toEqual(['Pick a venue'])
         expect(labels(board, 'cancelled', null)).toEqual(['Book the old venue'])
+        expect(labels(board, 'test', null)).toEqual(['Check the booking form'])
+    })
+
+    it('has no lane for Archived, so an archived task is on no board', async () => {
+        const board = await readBoard(source, 'Acme', TODAY)
+        const everyLabel = board.lanes.flatMap((lane) => lane.sections.flatMap((section) => section.cards.map((c) => c.label)))
+        expect(everyLabel).not.toContain("Print last year's flyers")
     })
 
     it('leaves out tasks that do not answer to the concept', async () => {
@@ -180,5 +189,20 @@ describe('a section with Free Tags (ADR 0166)', () => {
         const board = await readBoard(source, null, TODAY)
         expect(labels(board, 'open', 1)).toEqual(['Fix the gate', 'Sweep the path', 'Sharpen the saw', 'Paint the door', 'Rake the leaves', 'Oil the hinge'])
         expect(board.lanes[0].sections[0].cards.map((card) => card.freeTags)).toEqual([['bug'], ['bug'], ['Paint'], ['paint'], [], []])
+    })
+})
+
+describe("a lane's tasks, for moving them all", () => {
+    it('lists every task in the lane on the board, across priorities and past a page', async () => {
+        const many = Array.from({ length: 7 }, (_, i) => `  - [x] #P${(i % 3) + 1} Water bed ${i}`)
+        ingest(db, [page('Garden', ['- [ ] Weed', ...many.map((line) => line.slice(2)), '- [x] #C Plant leeks']), page('Kitchen', ['- [x] Wash up'])])
+        const tasks = await laneTasks(source, 'Garden', 'done', TODAY, 3)
+        expect(tasks.map((task) => task.text).sort()).toEqual(many.map((line) => line.replace('  - [x] ', '')).sort())
+        expect(tasks.every((task) => task.concept === 'Garden')).toBe(true)
+    })
+
+    it('lists the whole graph on the Graph Kanban', async () => {
+        ingest(db, [page('Garden', ['- [x] Water the beans']), page('Kitchen', ['- [x] Wash up'])])
+        expect((await laneTasks(source, null, 'done', TODAY)).map((task) => task.text).sort()).toEqual(['Wash up', 'Water the beans'])
     })
 })

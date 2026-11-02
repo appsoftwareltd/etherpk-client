@@ -11,8 +11,12 @@ export interface TaskTags {
     waiting?: boolean
     /** In progress (minted tag - Logseq NOW/DOING, Obsidian `[/]`). */
     doing?: boolean
+    /** Under test (`#T`, ADR 0167 - an AS Notes `test` lane). */
+    test?: boolean
     /** Cancelled (minted tag - the checkbox is checked to keep it out of open-task views). */
     cancelled?: boolean
+    /** Archived (`#A`, ADR 0167 - an AS Notes archived card); the checkbox is checked. */
+    archived?: boolean
     /** Due date, ISO `YYYY-MM-DD`. */
     due?: string
     /** Scheduled date, ISO (minted `#S-` tag). */
@@ -27,7 +31,9 @@ export function leadingTagRun(tags: TaskTags): string {
     if (tags.priority) run.push(`#P${tags.priority}`)
     if (tags.waiting) run.push('#W')
     if (tags.doing) run.push('#D')
+    if (tags.test) run.push('#T')
     if (tags.cancelled) run.push('#C')
+    if (tags.archived) run.push('#A')
     if (tags.due) run.push(`#D-${tags.due}`)
     if (tags.scheduled) run.push(`#S-${tags.scheduled}`)
     if (tags.completed) run.push(`#C-${tags.completed}`)

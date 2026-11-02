@@ -36,6 +36,7 @@ export type ContextMenuTarget =
     | WikilinkContextMenuTarget
     | MisspellingContextMenuTarget
     | LineContextMenuTarget
+    | TaskContextMenuTarget
     | BookmarkContextMenuTarget
     | BookmarkGroupContextMenuTarget
     | ExtensionContextMenuTarget
@@ -56,6 +57,17 @@ export interface EditorLine {
 
 export interface LineContextMenuTarget extends EditorLine {
     kind: 'line'
+}
+
+/** A [[Task]] a list shows, such as a row of the [[Tasks View]], by its document, line and label. */
+export interface TaskContextMenuTarget {
+    kind: 'task'
+    /** The document's concept. */
+    document: string
+    /** 0-based, counted from the body as the index counts lines. */
+    line: number
+    /** The text after the checkbox, tag run included. */
+    label: string
 }
 
 /** A [[Bookmark]]'s row in the Sidebar. */
@@ -195,6 +207,10 @@ export function editorLineOf(target: ContextMenuTarget): EditorLine | null {
     }
     if (isWikilinkTarget(target) || isMisspellingTarget(target)) return target.line ?? null
     return null
+}
+
+export function isTaskTarget(target: ContextMenuTarget): target is TaskContextMenuTarget {
+    return target.kind === 'task'
 }
 
 export function isLineTarget(target: ContextMenuTarget): target is LineContextMenuTarget {

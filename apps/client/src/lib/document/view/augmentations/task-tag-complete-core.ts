@@ -37,7 +37,9 @@ export type TaskTagAction =
     | { kind: 'priority'; value: TaskPriority }
     | { kind: 'waiting' }
     | { kind: 'doing' }
+    | { kind: 'test' }
     | { kind: 'cancelled' }
+    | { kind: 'archived' }
     | { kind: 'date'; tag: 'due' | 'scheduled' | 'completion' }
 
 export interface TaskTagItem {
@@ -65,7 +67,9 @@ export const TASK_TAG_ITEMS: readonly TaskTagItem[] = [
     { label: 'Priority 3', detail: '#P3', keywords: ['p3', 'low', 'normal'], action: { kind: 'priority', value: 3 } },
     { label: 'Waiting', detail: '#W', keywords: ['w', 'blocked', 'someone'], action: { kind: 'waiting' } },
     { label: 'Doing', detail: '#D', keywords: ['d', 'progress', 'started'], action: { kind: 'doing' } },
+    { label: 'Test', detail: '#T', keywords: ['t', 'testing', 'check', 'verify'], action: { kind: 'test' } },
     { label: 'Cancelled', detail: '#C', keywords: ['c', 'dropped', 'abandoned'], action: { kind: 'cancelled' } },
+    { label: 'Archived', detail: '#A', keywords: ['a', 'archive', 'put away'], action: { kind: 'archived' } },
     { label: 'Due date…', detail: '#D-', keywords: ['d', 'deadline', 'by'], action: { kind: 'date', tag: 'due' } },
     { label: 'Scheduled date…', detail: '#S-', keywords: ['s', 'start'], action: { kind: 'date', tag: 'scheduled' } },
     {

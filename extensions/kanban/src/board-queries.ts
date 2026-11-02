@@ -3,7 +3,7 @@
  * [[Tasks View]]'s own query narrowed to one [[Task Status]] and one priority, so the board and
  * a Tasks View filtered to the same concept can never disagree (ADR 0113).
  */
-import type { TaskPriorityFilter, TaskQuery, TaskStatus } from '#lib/document/index-db.js'
+import { TASK_PRIORITY_FILTERS, type TaskHit, type TaskPriorityFilter, type TaskQuery, type TaskStatus } from '#lib/document/index-db.js'
 import type { TaskPageResult } from '#lib/document/index-worker/client.js'
 import { BOARD_LANES, BOARD_SECTIONS, type BoardCell, type BoardLane, type BoardSnapshot, toCard } from './board-model'
 
@@ -60,4 +60,22 @@ export async function readBoard(source: TaskSource, concept: string | null, toda
 
 function sectionQuery(concept: string | null, status: TaskStatus, priority: TaskPriorityFilter, today: string): TaskQuery {
     return { concept, statuses: [status], priorities: [priority], due: 'any', groupBy: 'due', byFreeTag: true, today }
+}
+
+/** How many tasks {@link laneTasks} reads in one round trip. */
+const LANE_PAGE_SIZE = 200
+
+/**
+ * Every task in one lane of the board for `concept` (null for the Graph Kanban), across its
+ * priorities and past what the board has loaded: what "Move all to lane" moves. Read a page at a
+ * time, in the index's own order, so a lane of any length is read whole.
+ */
+export async function laneTasks(source: TaskSource, concept: string | null, status: TaskStatus, today: string, pageSize = LANE_PAGE_SIZE): Promise<TaskHit[]> {
+    const query: TaskQuery = { concept, statuses: [status], priorities: TASK_PRIORITY_FILTERS, due: 'any', groupBy: 'document', today }
+    const tasks: TaskHit[] = []
+    for (;;) {
+        const page = await source.tasks(query, tasks.length, pageSize)
+        tasks.push(...page.hits)
+        if (!page.hasMore || page.hits.length === 0) return tasks
+    }
 }

@@ -11,7 +11,7 @@ import { registerKanban } from './register'
 import { kanbanContext } from './testing'
 
 const board: ViewContribution = { mount: () => ({ destroy: () => {} }) }
-const actions: BoardActions = { open: () => {}, openInTab: () => {}, copyReference: () => {}, move: () => {} }
+const actions: BoardActions = { open: () => {}, openInTab: () => {}, copyReference: () => {}, move: () => {}, moveAll: () => {} }
 
 describe('the Kanban Board extension', () => {
     it("supplies the board View for both kinds its manifest declares, a concept's board and the Graph Kanban", () => {

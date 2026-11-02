@@ -36,7 +36,7 @@ export interface BoardState {
     detailHeight: number
 }
 
-const statusSchema = z.enum(['open', 'doing', 'waiting', 'done', 'cancelled'])
+const statusSchema = z.enum(['open', 'doing', 'waiting', 'test', 'done', 'cancelled'])
 const stateSchema = z.object({
     collapsed: z.array(statusSchema),
     detail: z.object({ document: z.string(), line: z.number().int().nonnegative(), label: z.string() }).nullable(),

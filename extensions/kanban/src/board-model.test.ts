@@ -71,7 +71,14 @@ describe('withPendingMoves', () => {
         const shown = withPendingMoves(board([['open', 1, [quote]]]), [move(quote, 'doing', 1)])
         expect(totalAt(shown, 'open', 1)).toBe(0)
         expect(totalAt(shown, 'doing', 1)).toBe(1)
-        expect(shown.lanes.map((l) => l.total)).toEqual([0, 1, 0, 0, 0])
+        expect(shown.lanes.map((l) => l.total)).toEqual([0, 1, 0, 0, 0, 0])
+    })
+
+    it('takes an archived card off the board, since Archived has no lane', () => {
+        const quote = card('Send the quote')
+        const shown = withPendingMoves(board([['done', 1, [quote, card('Other', 'Acme', 2)]]]), [move(quote, 'archived', 1)])
+        expect(labelsAt(shown, 'done', 1)).toEqual(['Other'])
+        expect(shown.lanes.map((l) => l.total)).toEqual([0, 0, 0, 0, 1, 0])
     })
 
     it('slots the card where the derived order puts it: due date, then document name, then line', () => {
@@ -153,6 +160,13 @@ describe('unsettledMoves', () => {
         expect(unsettledMoves(board([['open', null, [quote]]], { done: 40 }), pending, 1200, HOLD_MS)).toEqual(pending)
         // Gone from Open, and Done shows no cards to find it in: the index has it.
         expect(unsettledMoves(board([], { done: 41 }), pending, 1200, HOLD_MS)).toEqual([])
+    })
+
+    it('lets go of an archive once the card has left the board', () => {
+        const quote = card('Send the quote')
+        const pending = [move(quote, 'archived', null, 1000)]
+        expect(unsettledMoves(board([['done', null, [quote]]]), pending, 1200, HOLD_MS)).toEqual(pending)
+        expect(unsettledMoves(board([]), pending, 1200, HOLD_MS)).toEqual([])
     })
 
     it('holds a written move while the index has not caught up, then gives way to it', () => {

@@ -2,7 +2,7 @@
  * Task lines on the site: the checkbox becomes a static, disabled `<input>` (the `DESIGN.md`
  * rule) and the tag run after it becomes badges in the as-notes `TaskTagPlugin` markup
  * (`<span class="task-tag priority-1">Priority 1</span>`), parsed by the editor's own
- * `parseTaskLine` so every tag the editor knows (`#D` doing, `#C` cancelled, `#S-` scheduled
+ * `parseTaskLine` so every tag the editor knows (`#D` doing, `#T` test, `#C` cancelled, `#A` archived, `#S-` scheduled
  * included) is a badge and nothing else on the line is touched.
  */
 
@@ -26,7 +26,9 @@ export function taskBadges(tags: TaskTags): string[] {
     if (tags.priority !== null) out.push(badge(`priority-${tags.priority}`, `Priority ${tags.priority}`))
     if (tags.doing) out.push(badge('doing', 'Doing'))
     if (tags.waiting) out.push(badge('waiting', 'Waiting'))
+    if (tags.test) out.push(badge('test', 'Test'))
     if (tags.cancelled) out.push(badge('cancelled', 'Cancelled'))
+    if (tags.archived) out.push(badge('archived', 'Archived'))
     if (tags.due) out.push(badge('due-date', `Due ${tags.due}`))
     if (tags.scheduled) out.push(badge('scheduled-date', `Scheduled ${tags.scheduled}`))
     if (tags.completion) out.push(badge('completed-date', `Completed ${tags.completion}`))

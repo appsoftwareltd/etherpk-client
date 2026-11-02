@@ -85,7 +85,7 @@ export function graphTools(documents: ExtensionDocuments): ToolSet {
             description: 'Tasks in the graph, unfinished ones unless statuses are given, for one concept or every document.',
             inputSchema: z.object({
                 concept: z.string().optional().describe('Only the tasks that answer to this concept.'),
-                statuses: z.array(z.enum(['open', 'doing', 'waiting', 'done', 'cancelled'])).optional(),
+                statuses: z.array(z.enum(['open', 'doing', 'waiting', 'test', 'done', 'cancelled', 'archived'])).optional(),
             }),
             execute: async ({ concept, statuses }) => documents.tasks({ concept, statuses, limit: 100 }),
         }),

@@ -33,6 +33,10 @@ describe('rankTaskTagItems', () => {
         expect(rankTaskTagItems('crit')[0].detail).toBe('#P1')
         expect(rankTaskTagItems('waiting')[0].detail).toBe('#W')
         expect(rankTaskTagItems('deadline')[0].detail).toBe('#D-')
+        expect(rankTaskTagItems('T')[0].detail).toBe('#T')
+        expect(rankTaskTagItems('test')[0].detail).toBe('#T')
+        expect(rankTaskTagItems('A')[0].detail).toBe('#A')
+        expect(rankTaskTagItems('archive')[0].detail).toBe('#A')
     })
 
     it('resolves a bare letter to its state first and the hyphen to its date only, as the grammar does', () => {

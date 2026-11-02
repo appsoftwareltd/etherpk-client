@@ -9,11 +9,28 @@ starts at 0.9.3.
 
 ### Client
 
-- **Task references name their graph and board.** **Copy task reference** now copies four lines:
-  the graph's name, and the Kanban board when you copy from one; the task's words; a reference that
+- **Task references name their graph.** **Copy task reference** now copies four lines: the
+  graph's name; the task's words; a reference that
   starts `etherpk:` instead of a web address; and which Headless Client tools read it. An agent
   with several EtherPK graphs connected can tell which one the task is in, and no longer needs
   "use etherpk" in your message. References copied before still work.
+- **New line buttons float at the bottom left.** The two buttons that start a new line of text or
+  a new bullet float at the bottom left of a document, as the lock button does at the right, so
+  they are always in reach. With the cursor in the document, the line goes after the cursor's
+  block: the text button breaks out of a list to a line of text, splitting the list, and the
+  bullet button adds a bullet beside the cursor's. With no cursor, the line goes at the end.
+- **Copy task reference from a right-click.** Right-click a task's checkbox or words in the
+  editor, or a row of the Tasks view, and choose **Copy task reference**. **Shift+F10** opens the
+  same menu from the keyboard. The copied text is the same wherever you copy it from.
+- **Test and Archived task states.** `#T` marks a task under test, and Kanban boards show it in a
+  new **Test** lane between Waiting and Done. `#A` on a ticked task archives it: it leaves every
+  Kanban board and stays in its document, and the Tasks view lists it under **Archived**. A card's
+  menu has **Archive**, and archiving a task archives the tasks nested under it. The Headless
+  Client's `tasks` and `set_task` take both states.
+- **Move all to lane.** Right-click a Kanban lane's header, or its folded strip, and choose **Move
+  all to lane…** to move every task in the lane to another state, Archived included. One **Undo**
+  puts the whole move back. Extensions can ask the same kind of question with
+  `context.dialogs.choose`.
 - **Free tags on tasks.** Write your own labels, such as `#bug` or `#needs-review`, anywhere in a
   task's text. The Tasks view and Kanban cards show them as labels after the task's other tags and
   dates, and a Kanban board groups the cards in each section by their first free tag, then orders

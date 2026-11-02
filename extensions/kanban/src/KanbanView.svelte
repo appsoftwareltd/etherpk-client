@@ -9,7 +9,7 @@
      * the index after a while; a write that is refused puts it back with a notice. Nothing about
      * a move is kept anywhere but in the task's own text.
      *
-     * Desktop only. Under the phone layout the board says so rather than squeezing five lanes
+     * Desktop only. Under the phone layout the board says so rather than squeezing six lanes
      * into a phone's width, and the menus that open one are hidden there.
      *
      * Mounted through the dockview adapter, so it reads its services through module accessors
@@ -48,6 +48,7 @@
         cardKey,
         type DueState,
         laneAfter,
+        MOVE_TARGETS,
         type PendingMove,
         sameTask,
         sectionAfter,
@@ -55,9 +56,10 @@
         unsettledMoves,
         withPendingMoves,
     } from "./board-model";
-    import { readBoard, SECTION_PAGE_SIZE } from "./board-queries";
+    import { laneTasks, readBoard, SECTION_PAGE_SIZE } from "./board-queries";
     import KanbanCardText from "./KanbanCardText.svelte";
-    import type { KanbanCardTarget } from "./kanban-commands";
+    import type { KanbanCardTarget, KanbanLaneTarget } from "./kanban-commands";
+    import { type MovedTask, moveTasks, revertMoves } from "./lane-move";
     import { edgeStep, pastThreshold } from "./pointer-drag";
 
     // `visibility` reaches the Task Detail's editor, so a map in it lets go behind another tab.
@@ -104,7 +106,7 @@
      * is the move to undo; null once the line only reports what an undo did.
      */
     // Raw, so `entry` stays the history entry itself, not a proxy of it: an undo finds it by identity.
-    let cascade = $state.raw<{ text: string; entry: HistoryEntry | null } | null>(null);
+    let cascade = $state.raw<{ text: string; entry: BoardHistory | null } | null>(null);
     /** The card the keyboard is on, the one card in the tab order. */
     let activeKey = $state<string | null>(null);
     let lanesEl = $state<HTMLElement>();
@@ -440,17 +442,16 @@
         setDetailHeight(next);
     }
 
-    /** Open, or bring forward, the task's document in a tab of its own, at the task's line. */
     /**
      * Copy a Task Reference to the card's task, through the shared Command, which knows the graph,
-     * the clipboard and how to say so. The board's concept goes too, so the reference says which
-     * board it came from.
+     * the clipboard and how to say so.
      */
     function copyReference(card: BoardCard): void {
         const { document, line, text } = card;
-        void workspaceService("commands")?.execute(TASK_COPY_REFERENCE, { document, line, label: text, board: { concept: boardConceptOf(view) } });
+        void workspaceService("commands")?.execute(TASK_COPY_REFERENCE, { document, line, label: text });
     }
 
+    /** Open, or bring forward, the task's document in a tab of its own, at the task's line. */
     function openInTab(card: BoardCard): void {
         openConceptAtLine(card.document, card.line, panelId);
     }
@@ -551,7 +552,7 @@
             redoStack = [];
             const count = outcome.nested.length;
             if (count > 0) {
-                const verb = to.status === "done" ? "Ticked" : "Unticked";
+                const verb = to.status === "done" ? "Ticked" : to.status === "archived" ? "Archived" : "Unticked";
                 cascade = { text: `${verb} ${count === 1 ? "1 task" : `${count} tasks`} nested under "${card.label}".`, entry };
                 announcement = `${announcement}. ${cascade.text}`;
             }
@@ -580,8 +581,23 @@
          */
         write: TaskWrite;
     }
-    let undoStack: HistoryEntry[] = [];
-    let redoStack: HistoryEntry[] = [];
+    /**
+     * A Move all to lane (ADR 0167), kept as one move so one undo takes back every task it wrote.
+     * `writes` are, on the undo stack, the lines the move changed, and on the redo stack the lines
+     * its undo changed: reverting either makes the other.
+     */
+    interface LaneMoveEntry {
+        kind: "lane";
+        from: TaskStatus;
+        to: TaskStatus;
+        moved: number;
+        writes: MovedTask[];
+    }
+    type BoardHistory = HistoryEntry | LaneMoveEntry;
+    const isLaneMove = (entry: BoardHistory): entry is LaneMoveEntry => "kind" in entry && entry.kind === "lane";
+
+    let undoStack: BoardHistory[] = [];
+    let redoStack: BoardHistory[] = [];
 
     /** The card the board shows for a history entry's task, or one made from the entry. */
     function cardForEntry(entry: HistoryEntry): BoardCard {
@@ -609,7 +625,9 @@
     /** Undo the board's last move. */
     async function undo(): Promise<void> {
         const entry = undoStack.at(-1);
-        if (entry) await undoEntry(entry);
+        if (!entry) return;
+        if (isLaneMove(entry)) await undoLaneMove(entry);
+        else await undoEntry(entry);
     }
 
     /**
@@ -619,6 +637,10 @@
     async function undoCascade(): Promise<void> {
         const entry = cascade?.entry;
         if (!entry) return;
+        if (isLaneMove(entry)) {
+            await undoLaneMove(entry);
+            return;
+        }
         const outcome = await undoEntry(entry);
         if (!outcome.ok) return;
         const { skipped } = outcome;
@@ -665,6 +687,10 @@
         const entry = redoStack.at(-1);
         if (!entry) return;
         redoStack = redoStack.slice(0, -1);
+        if (isLaneMove(entry)) {
+            await redoLaneMove(entry);
+            return;
+        }
         const card = cardForEntry(entry);
         const outcome = await showWhileWriting(
             card,
@@ -678,6 +704,100 @@
         );
         if (outcome) undoStack = [...undoStack, { ...entry, write: writtenPart(outcome) }];
         if (activeKey === card.key) followMovedCard(card.key, outcome ? entry.to : entry.from);
+    }
+
+    // ── Move all to lane (ADR 0167) ─────────────────────────────────────────
+
+    /** A Move all to lane under way, which a second one waits for rather than racing. */
+    let movingLane = false;
+
+    const statusLabel = (status: TaskStatus) => MOVE_TARGETS.find((lane) => lane.status === status)?.label ?? status;
+    const tasks = (count: number) => (count === 1 ? "1 task" : `${count} tasks`);
+
+    /**
+     * Move every task in the lane `from`, read whole from the index rather than from the cards on
+     * screen (a lane may be collapsed, or show only its first page), into `to`, and keep the move as
+     * one entry an undo takes back. The board says it is under way, then what it did, with Undo.
+     */
+    async function moveLane(from: TaskStatus, to: TaskStatus): Promise<void> {
+        const store = workspaceService("store");
+        const index = getActiveGraphIndex();
+        if (movingLane || !store || !index || from === to) return;
+        movingLane = true;
+        notice = null;
+        cascade = { text: `Moving the tasks in ${statusLabel(from)} to ${statusLabel(to)}…`, entry: null };
+        try {
+            // Today is read now, not at mount: a board is left open for days.
+            const hits = await laneTasks(index, concept, from, taskDateKey(new Date()));
+            const moved = await moveTasks(
+                store,
+                hits.map((hit) => ({ concept: hit.concept, line: hit.line, text: hit.text })),
+                to,
+            );
+            const entry: LaneMoveEntry = { kind: "lane", from, to, moved: moved.moved, writes: moved.writes };
+            if (moved.writes.length > 0) {
+                undoStack = [...undoStack, entry];
+                redoStack = [];
+            }
+            const one = moved.refused === 1;
+            const left =
+                moved.refused === 0
+                    ? ""
+                    : ` ${tasks(moved.refused)} changed after the board read ${one ? "it" : "them"}, so ${one ? "it was" : "they were"} left in ${statusLabel(from)}.`;
+            const did = to === "archived" ? `Archived ${tasks(moved.moved)} from ${statusLabel(from)}.` : `Moved ${tasks(moved.moved)} from ${statusLabel(from)} to ${statusLabel(to)}.`;
+            cascade = { text: did + left, entry: moved.writes.length > 0 ? entry : null };
+            announcement = cascade.text;
+        } catch {
+            cascade = null;
+            notice = `Couldn't read the ${statusLabel(from)} lane's tasks from the index, so nothing was moved. Try again.`;
+            announcement = notice;
+        } finally {
+            movingLane = false;
+            retry();
+        }
+    }
+
+    /** Take a Move all to lane back: every line it wrote that still reads what it wrote. */
+    async function undoLaneMove(entry: LaneMoveEntry): Promise<void> {
+        const store = workspaceService("store");
+        if (!store || !undoStack.includes(entry)) return;
+        undoStack = undoStack.filter((e) => e !== entry);
+        // The line offers this move's undo, which is now under way: take it down, so it cannot run twice.
+        if (cascade?.entry === entry) cascade = null;
+        const { writes, skipped } = await revertMoves(store, entry.writes);
+        redoStack = [...redoStack, { ...entry, writes }];
+        cascade = {
+            entry: null,
+            text:
+                skipped === 0
+                    ? `Undone: the ${tasks(entry.moved)} ${entry.moved === 1 ? "is" : "are"} back in ${statusLabel(entry.from)}.`
+                    : `Undone, except ${tasks(skipped)} that changed since. ${skipped === 1 ? "It was" : "They were"} left as ${skipped === 1 ? "it is" : "they are"}.`,
+        };
+        announcement = cascade.text;
+        retry();
+    }
+
+    /** Make a Move all to lane again after its undo, on the same condition. */
+    async function redoLaneMove(entry: LaneMoveEntry): Promise<void> {
+        const store = workspaceService("store");
+        if (!store) return;
+        const { writes } = await revertMoves(store, entry.writes);
+        undoStack = [...undoStack, { ...entry, writes }];
+        announcement = `Moved the ${statusLabel(entry.from)} lane's tasks to ${statusLabel(entry.to)} again`;
+        retry();
+    }
+
+    /** What a lane's context menu acts on: the lane, on this board, with every task it holds counted. */
+    function laneTarget(lane: BoardLane): KanbanLaneTarget {
+        return { kind: "kanban.lane", board: uid, status: lane.status, label: lane.label, count: lane.total };
+    }
+
+    /** The Menu key and Shift+F10 on a lane's header open its menu, as a right-click does. */
+    function onLaneHeaderKeydown(event: KeyboardEvent, lane: BoardLane): void {
+        if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) return;
+        event.preventDefault();
+        const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+        openContextMenu(laneTarget(lane), rect.left + 12, rect.bottom - 4);
     }
 
     async function focusCard(key: string): Promise<void> {
@@ -943,9 +1063,11 @@
                 const found = findCard(key);
                 if (!found) return;
                 void moveCard(found.card, found.cell, to);
-                // The card is drawn anew in its new section, so the keyboard follows it there.
-                if (activeKey === key) followMovedCard(key, to);
+                // The card is drawn anew in its new section, so the keyboard follows it there. An
+                // archived card has left the board, and the keyboard stays where it was.
+                if (activeKey === key && to.status !== "archived") followMovedCard(key, to);
             },
+            moveAll: (from, to) => void moveLane(from, to),
         }, {
             concept: boardConceptOf(view),
             documentRenamed: followDocumentRename,
@@ -1110,10 +1232,12 @@
                         data-collapsed="true"
                         data-drop-target={dropTarget || undefined}
                         aria-labelledby="{uid}-{lane.status}"
+                        {@attach (node) => attachContextMenu(node, () => laneTarget(lane))}
                     >
                         <button
                             type="button"
                             onclick={() => toggleCollapsed(lane.status)}
+                            onkeydown={(event) => onLaneHeaderKeydown(event, lane)}
                             class="flex min-h-0 flex-1 flex-col items-center gap-2 rounded-xl px-1 py-2.5 text-(--gk-text-muted) hover:bg-(--gk-surface-2) hover:text-(--gk-text-strong) focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--gk-accent)"
                             aria-label="Expand the {lane.label} lane, {lane.total} {lane.total === 1 ? 'task' : 'tasks'}"
                             data-testid="kanban-lane-expand"
@@ -1141,7 +1265,12 @@
                         aria-labelledby="{uid}-{lane.status}"
                     >
                         <!-- py-1 around EtherPK's 32px icon button keeps the header the height it was. -->
-                        <header class="flex items-center justify-between gap-2 border-b border-(--gk-border-soft) py-1 pl-3 pr-1.5">
+                        <!-- A right-click on the header, or Shift+F10 on its button, offers Move all to lane. -->
+                        <header
+                            class="flex items-center justify-between gap-2 border-b border-(--gk-border-soft) py-1 pl-3 pr-1.5"
+                            data-testid="kanban-lane-header"
+                            {@attach (node) => attachContextMenu(node, () => laneTarget(lane))}
+                        >
                             <h2 id="{uid}-{lane.status}" class="m-0 text-sm font-semibold text-(--gk-text-strong)" data-testid="kanban-lane-label">
                                 {lane.label}
                             </h2>
@@ -1152,6 +1281,7 @@
                                 <button
                                     type="button"
                                     onclick={() => toggleCollapsed(lane.status)}
+                                    onkeydown={(event) => onLaneHeaderKeydown(event, lane)}
                                     class="gk-icon-button"
                                     aria-label="Collapse the {lane.label} lane"
                                     title="Collapse the {lane.label} lane"

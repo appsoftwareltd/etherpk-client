@@ -1,5 +1,5 @@
 /**
- * The shape of a [[Kanban Board]] (ADR 0113): five [[Lane]]s, one per [[Task Status]], each
+ * The shape of a [[Kanban Board]] (ADR 0113): six [[Lane]]s, one per [[Task Status]] but Archived, each
  * stacking one section per priority, and in each section the cards of the tasks that answer to
  * the board's concept.
  *
@@ -41,15 +41,20 @@ export interface BoardLaneSpec {
 
 /**
  * The lanes, in the order a task moves through them. Fixed and the same on every board: a
- * task's lane is read from its own line, so there is nothing per board to configure.
+ * task's lane is read from its own line, so there is nothing per board to configure. Archived has
+ * none: it is how a finished task leaves the board (ADR 0167).
  */
 export const BOARD_LANES: readonly BoardLaneSpec[] = [
     { status: 'open', label: 'Open' },
     { status: 'doing', label: 'Doing' },
     { status: 'waiting', label: 'Waiting' },
+    { status: 'test', label: 'Test' },
     { status: 'done', label: 'Done' },
     { status: 'cancelled', label: 'Cancelled' },
 ]
+
+/** Where a card can be sent from its menu or a lane's: every lane, then Archived, which takes it off the board. */
+export const MOVE_TARGETS: readonly BoardLaneSpec[] = [...BOARD_LANES, { status: 'archived', label: 'Archived' }]
 
 export interface BoardSectionSpec {
     /** `null` is the real "No priority" section, as it is a real filter in the Tasks View. */
@@ -234,10 +239,10 @@ export function unsettledMoves(board: BoardSnapshot, moves: readonly PendingMove
         if (move.writtenAt === null) return true
         if (now - move.writtenAt >= holdMs) return false
         const shown = cellOf(board, move.card)
-        // A lane that holds no cards cannot show the card arriving, so a move into one settles
-        // when the card has left every section the board does show.
+        // A lane that holds no cards, or no lane at all (Archived), cannot show the card arriving,
+        // so a move into one settles when the card has left every section the board does show.
         const target = board.lanes.find((lane) => lane.status === move.to.status)
-        if (target && !target.loaded) return shown !== undefined
+        if (!target || !target.loaded) return shown !== undefined
         return !(shown && shown.status === move.to.status && shown.priority === move.to.priority)
     })
 }

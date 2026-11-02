@@ -1,10 +1,13 @@
 /**
- * The two buttons after a document's text (ADR 0149, Editor Content Rules → End of document).
+ * The two buttons floating at the foot of a document (ADR 0149, ADR 0168, Editor Content Rules →
+ * End of document).
  *
- * Putting the caret at the end of a document to add something is fiddly, most of all on a phone,
- * and the end can sit under a code block or a map, where a caret at the last line's end is in the
- * fence's source. So each button always starts on a new line at the end: the text button an empty
- * line, the bullet button a new top-level bullet, with the caret on it (`startAtEnd`).
+ * Putting the caret where something new should go is fiddly, most of all on a phone, and a line can
+ * sit under a code block or a map, where a caret at its end is in the fence's source. So each button
+ * starts a new line with the caret on it: the text button an empty line, the bullet button a bullet.
+ * With the caret in the document, the line goes after the caret's block (`startAfterCaret`): the text
+ * button's after the caret's whole tree, which splits a list into two, the bullet button's as a
+ * sibling of the caret's bullet. Without it, the line goes at the end (`startAtEnd`).
  *
  * A line the button started and nobody wrote on is taken back out, with the blank line the button
  * added before it, when the caret leaves it. The press and the take-back are placements, not edits:
@@ -15,18 +18,14 @@
  */
 
 import { ChangeSet, type ChangeDesc, EditorSelection, EditorState, type Extension, Prec, StateEffect, StateField, type Text, Transaction, type TransactionSpec } from '@codemirror/state'
-import { type EditorView, ViewPlugin, type ViewUpdate } from '@codemirror/view'
+import { EditorView, ViewPlugin, type ViewUpdate } from '@codemirror/view'
 
 import { frontmatterLines } from '#lib/storage/fs/frontmatter-span.js'
 
-import { bulletContent, isBulletLine, lineIndent, ownerBulletIndex, taskDone } from '../outliner'
+import { type FencedBlockRange, fencedBlocks } from '../fenced-code'
+import { branchRange, bulletContent, isBulletLine, isHeadingLine, lineIndent, ownerBulletIndex, taskDone, treeRootIndex } from '../outliner'
 import { caretKeptOff } from './augmentations/interactive-fence'
 import { placementChange } from './cm-document'
-
-/** The buttons' row beneath `view`'s text while it is drawn (`data-end-of-document`, written out in EndOfDocument.svelte). */
-export function endButtonsOf(view: EditorView): HTMLElement | null {
-    return view.scrollDOM.querySelector<HTMLElement>(':scope > div > [data-end-of-document]')
-}
 
 /** Which button: an empty line, or a new top-level bullet. */
 export type EndKind = 'line' | 'bullet'
@@ -84,6 +83,98 @@ export function planAtEnd(doc: Text, kind: EndKind, held: ReadonlySet<number> = 
     return { change: { from: doc.length, to: doc.length, insert: breaks + content }, caret: doc.length + breaks.length + content.length }
 }
 
+/** The last line of the caret's block, and what the button's line holds and how far below it starts. */
+interface AfterBlock {
+    /** 0-based. */
+    end: number
+    content: string
+    /** Blank lines between the block and the new line. */
+    gap: number
+}
+
+/**
+ * Where the button's line goes after the block holding line `i`, by the rules in ADR 0168:
+ *
+ * - In a bullet, the bullet button adds a sibling at the bullet's depth after its branch, as Enter
+ *   at the end of the block would. The text button goes after the bullet's whole tree, the branch
+ *   of its top-level ancestor, as Mod+Enter leaves one: after the bullet's own branch, the nested
+ *   lines that follow would be cut off from their parent by the text.
+ * - Outside a list, after the code block, the heading or the paragraph (the lines up to a blank line,
+ *   a bullet, a heading or a fence) the line is in, with a blank line first.
+ * - A line at the margin never goes above indented lines that follow the block: a blank line or a
+ *   line of text between them would leave those lines with no parent above them (an orphan). It
+ *   goes after them, as far as the next line at the margin.
+ */
+function afterBlock(lines: string[], i: number, owner: number | null, kind: EndKind, blocks: FencedBlockRange[]): AfterBlock {
+    if (owner !== null && kind === 'bullet') return { end: branchRange(lines, owner, blocks).end, content: ' '.repeat(lineIndent(lines[owner])) + BULLET, gap: 0 }
+    const end = owner !== null ? branchRange(lines, treeRootIndex(lines, owner, blocks), blocks).end : blockEnd(lines, i, blocks)
+    return { end: pastIndentedLines(lines, end), content: kind === 'bullet' ? BULLET : '', gap: 1 }
+}
+
+/** The last line of the code block, heading or paragraph holding line `i`, outside any list. */
+function blockEnd(lines: string[], i: number, blocks: readonly FencedBlockRange[]): number {
+    const fence = blocks.find((block) => block.start <= i && i <= block.end)
+    if (fence) return fence.end
+    if (isHeadingLine(lines[i])) return i
+    const paragraphGoesOn = (j: number) =>
+        j < lines.length && lines[j].trim() !== '' && !isBulletLine(lines[j]) && !isHeadingLine(lines[j]) && !blocks.some((block) => block.start === j)
+    let end = i
+    while (paragraphGoesOn(end + 1)) end++
+    return end
+}
+
+/** `end`, or the last of the indented lines that follow it, blank lines between them included. */
+function pastIndentedLines(lines: readonly string[], end: number): number {
+    for (;;) {
+        let next = end + 1
+        while (next < lines.length && lines[next].trim() === '') next++
+        if (next >= lines.length || lineIndent(lines[next]) === 0) return end
+        end = next
+    }
+}
+
+/**
+ * The line a caret on line `i` stands for: the line itself; in a code block, the block's opening
+ * fence, since a bullet-shaped line there is code; or, on a blank line that belongs to no bullet,
+ * the text above it. Null in the frontmatter and above the body's first text.
+ */
+function caretTextLine(lines: string[], i: number, blocks: readonly FencedBlockRange[]): number | null {
+    const body = frontmatterLines(lines)
+    if (i < body) return null
+    // The outermost block around the line, from its opener on: its lines are code, never structure.
+    const fence = blocks.filter((block) => block.start < i && i <= block.end).sort((a, b) => a.start - b.start)[0]
+    if (fence && fence.start >= body) return fence.start
+    if (lines[i].trim() !== '' || ownerBulletIndex(lines, i, blocks as FencedBlockRange[]) !== null) return i
+    let text = i
+    while (text >= body && lines[text].trim() === '') text--
+    return text < body ? null : text
+}
+
+/**
+ * Where a press puts its new line or bullet in `doc` with the caret on line `caretLine` (0-based):
+ * after the caret's block ({@link afterBlock}). A caret on a blank line counts as on the text above
+ * it, and a caret in the frontmatter, or on a blank line with no text above it, as no caret at all
+ * ({@link planAtEnd}). A new text line, and a new bullet outside a list before text that is not a
+ * bullet, gets a blank line after it as well, so what is typed on it is not read as part of what follows. Blank
+ * lines already below the block stay where they are, below the new line.
+ */
+export function planAfterCaret(doc: Text, kind: EndKind, caretLine: number, held: ReadonlySet<number> = new Set()): EndPlan {
+    const lines = doc.toString().split('\n')
+    const blocks = fencedBlocks(lines)
+    const i = caretTextLine(lines, caretLine, blocks)
+    if (i === null) return planAtEnd(doc, kind, held)
+    const { end, content, gap } = afterBlock(lines, i, ownerBulletIndex(lines, i, blocks), kind, blocks)
+    let next = end + 1
+    while (next < lines.length && lines[next].trim() === '') next++
+    const blanks = next - end - 1
+    // A sibling bullet (no gap) sits in its list as Enter leaves one, with nothing after it: a line
+    // that follows is the list's own, such as a paragraph after a sublist (ADR 0089).
+    const after = next < lines.length && (kind === 'line' || (gap > 0 && !isBulletLine(lines[next]))) ? 1 : 0
+    const at = doc.line(end + 1).to
+    const insert = '\n'.repeat(gap + 1) + content + '\n'.repeat(Math.max(0, after - blanks))
+    return { change: { from: at, to: at, insert }, caret: at + gap + 1 + content.length }
+}
+
 /** A line the button started that nobody has written on yet, against the document now. */
 interface UntouchedLine {
     /** The line's start and end. */
@@ -93,6 +184,8 @@ interface UntouchedLine {
     addedFrom: number
     /** Takes what the button added back out, restoring any spaces a reused blank line held. */
     undo: ChangeSet
+    /** Which press started it: at the end, or after the caret. A press again while the caret is on it plans the same way. */
+    planner: Planner
     /**
      * An undo or redo put the person's own text at the line's end (`restoresAtLineEnd`): it is taken
      * back at once, wherever the caret is, so that text rejoins the line above.
@@ -111,6 +204,7 @@ function mapUntouched(line: UntouchedLine, changes: ChangeDesc, toAssoc: -1 | 1 
         to: changes.mapPos(line.to, toAssoc),
         addedFrom: changes.mapPos(line.addedFrom, 1),
         undo: line.undo.map(changes),
+        planner: line.planner,
         ...(line.displaced ? { displaced: true as const } : {}),
     }
 }
@@ -203,6 +297,16 @@ const takeBackFilter = Prec.high(
     }),
 )
 
+/**
+ * Room kept below a caret scrolled into view, in CSS pixels: the floating buttons' height and their
+ * 1rem inset, with a line to spare, so the line a press starts, and any caret moved near the foot of
+ * the pane, sits above the buttons (ADR 0168). The buttons are 2.75rem tall where a finger points.
+ */
+const FLOATING_BUTTON_ROOM_PX = 80
+
+/** Keeps a caret scrolled into view clear of the floating buttons. Given to a tab's editors, not an embedded one. */
+export const floatingButtonRoom: Extension = EditorView.scrollMargins.of(() => ({ bottom: FLOATING_BUTTON_ROOM_PX }))
+
 /** The untouched-line field and its take-back. Registered with the editor's feature stack. */
 export function endOfDocument(): Extension {
     return [untouchedLineField, takeBackFilter, takeBackAfterUpdate]
@@ -228,26 +332,56 @@ function heldLines(state: EditorState, base: Text, toBase: ChangeDesc | null): S
 }
 
 /**
- * Press a button: start the new line or bullet at the end with the caret on it, as a placement.
- * A press while the last press's line is still untouched starts afresh from the text without it,
- * so pressing twice, or the other button, never stacks lines.
+ * Press a button with no caret in the document: start the new line or bullet at the end with the
+ * caret on it, as a placement.
  */
 export function startAtEnd(target: EndTarget, kind: EndKind): void {
+    start(target, kind, 'end')
+}
+
+/** Press a button with the caret in the document: start the new line or bullet after the caret's block ({@link planAfterCaret}). */
+export function startAfterCaret(target: EndTarget, kind: EndKind): void {
+    start(target, kind, 'caret')
+}
+
+/** Which way a press plans its line: at the end, or after the caret's block. */
+type Planner = 'end' | 'caret'
+
+/** The press's plan against `base`, the text without the untouched line, with the caret mapped into it. */
+function planPress(state: EditorState, base: Text, untouched: UntouchedLine | null, kind: EndKind, planner: Planner): EndPlan {
+    const held = heldLines(state, base, untouched?.undo ?? null)
+    if (planner === 'end') return planAtEnd(base, kind, held)
+    const head = state.selection.main.head
+    const caret = untouched ? untouched.undo.mapPos(head, -1) : head
+    return planAfterCaret(base, kind, base.lineAt(caret).number - 1, held)
+}
+
+/** The line a press started, to take back if left untouched; null when the press wrote nothing. */
+function untouchedAfter(after: Text, caret: number, undo: ChangeSet, planner: Planner): UntouchedLine | null {
+    if (undo.empty) return null
+    const caretLine = after.lineAt(caret)
+    let addedFrom = caretLine.from
+    undo.iterChangedRanges((fromA) => (addedFrom = Math.min(addedFrom, fromA)))
+    return { from: caretLine.from, to: caretLine.to, addedFrom, undo, planner }
+}
+
+/**
+ * Make a press, planned against the text without any untouched line, with the lines a panel holds
+ * there and the caret mapped into it. A press while the last press's line is still untouched starts
+ * afresh from the text without it, so pressing twice, or the other button, never stacks lines. With
+ * the caret still on that line it plans as the press that started it did: the caret was put there,
+ * not placed after a block, and a line at the end stays at the end.
+ */
+function start(target: EndTarget, kind: EndKind, asked: Planner): void {
     const state = target.state
     const untouched = state.field(untouchedLineField, false) ?? null
     const base = untouched ? untouched.undo.apply(state.doc) : state.doc
-    const plan = planAtEnd(base, kind, heldLines(state, base, untouched?.undo ?? null))
+    const planner = untouched && selectionOn(state, untouched) ? untouched.planner : asked
+    const plan = planPress(state, base, untouched, kind, planner)
     const planned = ChangeSet.of(plan.change ? [plan.change] : [], base.length)
     const changes = untouched ? untouched.undo.compose(planned) : planned
     const after = changes.apply(state.doc)
-    const undo = planned.invert(base)
-    let line: UntouchedLine | null = null
-    if (!undo.empty) {
-        const caretLine = after.lineAt(plan.caret)
-        let addedFrom = caretLine.from
-        undo.iterChangedRanges((fromA) => (addedFrom = Math.min(addedFrom, fromA)))
-        line = { from: caretLine.from, to: caretLine.to, addedFrom, undo }
-    }
+    const line = untouchedAfter(after, plan.caret, planned.invert(base), planner)
     target.dispatch(
         state.update({
             // Pressing again over an untouched line can leave the text as it is: no change at all then.

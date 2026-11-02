@@ -28,8 +28,10 @@ export const STATUS_OPTIONS: ReadonlyArray<FilterOption<TaskStatus>> = [
     { value: 'open', label: 'Open' },
     { value: 'doing', label: 'Doing' },
     { value: 'waiting', label: 'Waiting' },
+    { value: 'test', label: 'Test' },
     { value: 'done', label: 'Done' },
     { value: 'cancelled', label: 'Cancelled' },
+    { value: 'archived', label: 'Archived' },
 ]
 
 /**
@@ -62,7 +64,7 @@ export function optionLabel<T>(options: ReadonlyArray<FilterOption<T>>, value: T
     return options.find((option) => option.value === value)?.label ?? ''
 }
 
-const FINISHED_TASK_STATUSES: readonly TaskStatus[] = ['done', 'cancelled']
+const FINISHED_TASK_STATUSES: readonly TaskStatus[] = ['done', 'cancelled', 'archived']
 const SET_PRIORITIES: readonly TaskPriorityFilter[] = [1, 2, 3]
 
 /**

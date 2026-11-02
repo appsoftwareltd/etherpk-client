@@ -242,7 +242,7 @@ export function createMcpServer(source: HeadlessGraph | Promise<HeadlessGraph> |
             description: `Tasks ("- [ ]" bullets) across the graph with their tags, and freeTags: the person's own #words anywhere in a task's text (#bug), which carry no status. Defaults to every unfinished task. A concept filter matches tasks written on that page or on a page named for it ("[[Concept]] Notes"), linking it, or nested under a block or heading that links it. At most ${TASK_PAGE_LIMIT} per call.`,
             inputSchema: {
                 concept: concept.optional(),
-                statuses: z.array(z.enum(['open', 'doing', 'waiting', 'done', 'cancelled'])).optional(),
+                statuses: z.array(z.enum(['open', 'doing', 'waiting', 'test', 'done', 'cancelled', 'archived'])).optional(),
                 priorities: z.array(z.union([z.literal(1), z.literal(2), z.literal(3), z.literal('none')])).optional(),
                 due: z.enum(['any', 'overdue', 'today', 'next7']).optional(),
                 offset,
@@ -279,13 +279,13 @@ export function createMcpServer(source: HeadlessGraph | Promise<HeadlessGraph> |
         'set_task',
         {
             title: 'Set a task',
-            description: 'Change one task, named by a task reference or by document and 0-based line (as tasks and read_document count lines): its status (open, doing, waiting, done, cancelled - exclusive), priority (1, 2, 3 or null), due and scheduled days (YYYY-MM-DD or null). By line, pass expect with the task\'s text from tasks - if the line no longer holds that task the change is refused with error "task_moved" and nothing is edited. A reference finds the task wherever it is now. As in the app, status done also ticks every task nested under it, and open, doing or waiting on a ticked task unticks them (a cancelled one stays ticked); nested in the result lists each line changed.',
+            description: 'Change one task, named by a task reference or by document and 0-based line (as tasks and read_document count lines): its status (open, doing, waiting, test, done, cancelled, archived - exclusive; done, cancelled and archived tick the task), priority (1, 2, 3 or null), due and scheduled days (YYYY-MM-DD or null). By line, pass expect with the task\'s text from tasks - if the line no longer holds that task the change is refused with error "task_moved" and nothing is edited. A reference finds the task wherever it is now. As in the app, status done also ticks every task nested under it, archived archives every task nested under it, and open, doing, waiting or test on a ticked task unticks them (a cancelled or archived one stays ticked); nested in the result lists each line changed.',
             inputSchema: {
                 reference: z.string().min(1).optional().describe('A task reference, in place of concept, line and expect.'),
                 concept: concept.optional(),
                 line: z.number().int().nonnegative().optional(),
                 changes: z.object({
-                    status: z.enum(['open', 'doing', 'waiting', 'done', 'cancelled']).optional(),
+                    status: z.enum(['open', 'doing', 'waiting', 'test', 'done', 'cancelled', 'archived']).optional(),
                     priority: z.union([z.literal(1), z.literal(2), z.literal(3), z.null()]).optional(),
                     due: z.string().nullable().optional(),
                     scheduled: z.string().nullable().optional(),

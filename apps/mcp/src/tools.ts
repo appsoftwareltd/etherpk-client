@@ -57,7 +57,7 @@ import { AssetRefusedError, assetIdFromRef } from '#lib/storage/synced/server-as
 
 import { readLocalFile, writeDownload } from './headless-assets'
 import { FolderRefused, folderUnder } from './local-folders'
-import { freeTagsIn, parseTaskLine, type TaskPriority } from '#lib/document/task-tags.js'
+import { freeTagsIn, parseTaskLine, type TaskPriority, taskStatus } from '#lib/document/task-tags.js'
 import {
     everyIndexedTask,
     parseTaskReference,
@@ -1217,7 +1217,7 @@ export async function setTask(graph: HeadlessGraph, args: SetTaskArgs) {
         await settle(graph)
     }
     const after = parseTaskLine(next)!
-    const status: TaskStatus = after.done ? (after.cancelled ? 'cancelled' : 'done') : after.waiting ? 'waiting' : after.doing ? 'doing' : 'open'
+    const status = taskStatus(after.done, after)
     return {
         concept: identity.concept,
         line,
@@ -1230,11 +1230,6 @@ export async function setTask(graph: HeadlessGraph, args: SetTaskArgs) {
         nested: nested.map((write) => ({ line: write.index, text: bulletLabel(write.after), done: parseTaskLine(write.after)!.done })),
         reference: await referenceFor(graph, identity.concept, line, bulletLabel(next)),
     }
-}
-
-/** A task's status from its parsed line, as the index derives it (`STATUS_SQL`). */
-function statusOf(task: { done: boolean; cancelled: boolean; waiting: boolean; doing: boolean }): TaskStatus {
-    return task.done ? (task.cancelled ? 'cancelled' : 'done') : task.waiting ? 'waiting' : task.doing ? 'doing' : 'open'
 }
 
 /** Where a Task Reference is resolved in this graph: its documents, read live, and its index. */
@@ -1316,7 +1311,7 @@ export async function readTask(graph: HeadlessGraph, args: ReadTaskArgs) {
         concept: found.document,
         line: found.line,
         text: task.text,
-        status: statusOf(task),
+        status: taskStatus(task.done, task),
         priority: task.priority,
         due: task.due,
         scheduled: task.scheduled,

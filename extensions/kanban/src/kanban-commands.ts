@@ -19,7 +19,7 @@ import { editorDocument } from '#lib/document/view/editor-document.js'
 import { parseViewKey } from '#lib/layout/view-ref.js'
 
 import { boardActions } from './board-actions'
-import { BOARD_LANES, BOARD_SECTIONS, KANBAN_VIEW_KIND, KANBAN_WHOLE } from './board-model'
+import { BOARD_SECTIONS, KANBAN_VIEW_KIND, KANBAN_WHOLE, laneAfter, MOVE_TARGETS } from './board-model'
 
 /** Open the board for a concept: a document tab's or a wikilink's row runs it with the tab or the link as its target. */
 export const KANBAN_OPEN_BOARD = 'kanban.openBoard'
@@ -42,6 +42,7 @@ export const KANBAN_OPEN_PAGE = 'kanban.openPage'
 export const KANBAN_CARD_OPEN = 'kanban.card.open'
 export const KANBAN_CARD_OPEN_IN_TAB = 'kanban.card.openInTab'
 export const KANBAN_CARD_COPY_REFERENCE = 'kanban.card.copyReference'
+export const KANBAN_LANE_MOVE_ALL = 'kanban.lane.moveAll'
 
 /**
  * A card on a board, the thing a card's Context Menu is raised on. The board that raised the menu
@@ -64,6 +65,23 @@ export type KanbanCardTarget = {
     priority: 1 | 2 | 3 | null
 }
 
+/** A lane's header on a board, the thing Move all to lane is raised on, acting through that board. */
+export type KanbanLaneTarget = {
+    kind: 'kanban.lane'
+    /** The board's own id, as it registered itself. */
+    board: string
+    status: TaskStatus
+    /** The lane's name. */
+    label: string
+    /** How many tasks the lane holds, every one of them, not only the cards loaded. */
+    count: number
+}
+
+/** Whether a menu was raised on a lane's header. Only the board raises one of this kind. */
+export function isLaneTarget(target: MenuTarget | undefined): target is MenuTarget & KanbanLaneTarget {
+    return target?.kind === 'kanban.lane'
+}
+
 /** Whether a menu was raised on a card. Only the board raises one of this kind. */
 export function isCardTarget(target: MenuTarget | undefined): target is MenuTarget & KanbanCardTarget {
     return target?.kind === 'kanban.card'
@@ -82,6 +100,12 @@ function boardConcept(target: MenuTarget | undefined): string | null {
  */
 function conceptTarget(target: MenuTarget | undefined): target is MenuTarget & { kind: 'document-tab' | 'wikilink'; concept: string; panelId?: string } {
     return target?.kind === 'document-tab' || target?.kind === 'wikilink'
+}
+
+/** Where Move all to lane starts: Archived from a finished lane, otherwise the next lane along. */
+function suggestedTarget(from: TaskStatus): TaskStatus {
+    if (from === 'done' || from === 'cancelled') return 'archived'
+    return laneAfter(from, 1) ?? 'archived'
 }
 
 /** The id a section's row and Command share: `none` for the No priority section. */
@@ -222,10 +246,10 @@ export function registerKanbanCommands(context: ExtensionContext): void {
     })
     contextMenu.register({ id: KANBAN_CARD_COPY_REFERENCE, label: 'Copy task reference', command: KANBAN_CARD_COPY_REFERENCE, order: 3, when: onCard })
 
-    // One row per lane, leaving out the card's own. The first row shown heads the group and
-    // carries its separator.
-    const firstOtherLane = (target: MenuTarget) => (isCardTarget(target) ? BOARD_LANES.find((lane) => lane.status !== target.status)?.status : undefined)
-    for (const [index, lane] of BOARD_LANES.entries()) {
+    // One row per lane, leaving out the card's own, then Archive, which takes the card off the
+    // board (ADR 0167). The first row shown heads the group and carries its separator.
+    const firstOtherLane = (target: MenuTarget) => (isCardTarget(target) ? MOVE_TARGETS.find((lane) => lane.status !== target.status)?.status : undefined)
+    for (const [index, lane] of MOVE_TARGETS.entries()) {
         const id = `kanban.card.moveTo.${lane.status}`
         commands.register(id, (arg) => {
             const found = reach(arg)
@@ -233,13 +257,39 @@ export function registerKanbanCommands(context: ExtensionContext): void {
         })
         contextMenu.register({
             id,
-            label: `Move to ${lane.label}`,
+            label: lane.status === 'archived' ? 'Archive' : `Move to ${lane.label}`,
             command: id,
             order: 10 + index,
             separatorBefore: (target) => firstOtherLane(target) === lane.status,
             when: (target) => onCard(target) && isCardTarget(target) && target.status !== lane.status,
         })
     }
+
+    // Move all to lane (ADR 0167): ask where, in the Client's dialog, then move the lane through
+    // the board that raised the menu. Offered on a lane with tasks in it: an empty one has nothing to move.
+    commands.register(KANBAN_LANE_MOVE_ALL, async (arg) => {
+        const target = arg as MenuTarget | undefined
+        if (!isLaneTarget(target)) return
+        const tasks = target.count === 1 ? '1 task' : `${target.count} tasks`
+        const to = await context.dialogs.choose({
+            title: 'Move all to lane',
+            message: `Every task in ${target.label} on this board, ${tasks}, moves to the status you choose. Archived takes them off the board, and the Tasks View still lists them.`,
+            label: 'Move to',
+            choices: MOVE_TARGETS.filter((lane) => lane.status !== target.status).map((lane) => ({ value: lane.status, label: lane.label })),
+            value: suggestedTarget(target.status),
+            submitLabel: (value) => (value === 'archived' ? `Archive ${tasks}` : `Move ${tasks} to ${MOVE_TARGETS.find((lane) => lane.status === value)?.label}`),
+        })
+        if (to === undefined) return
+        // The board may have closed while the question was open; then there is nothing to move through.
+        boardActions(target.board)?.moveAll(target.status, to as TaskStatus)
+    })
+    contextMenu.register({
+        id: KANBAN_LANE_MOVE_ALL,
+        label: 'Move all to lane…',
+        command: KANBAN_LANE_MOVE_ALL,
+        order: 1,
+        when: (target) => isLaneTarget(target) && target.count > 0 && layout.isDesktop(),
+    })
 
     // One row per priority, leaving out the card's own, grouped the same way.
     const firstOtherPriority = (target: MenuTarget) => (isCardTarget(target) ? BOARD_SECTIONS.find((section) => section.priority !== target.priority) : undefined)

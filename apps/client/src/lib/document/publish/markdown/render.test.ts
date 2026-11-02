@@ -126,6 +126,12 @@ describe('createDocumentRenderer', () => {
         expect(html).toContain('<li class="task done"><input type="checkbox" disabled checked> <span class="task-tag cancelled">Cancelled</span> done')
     })
 
+    it('renders the Test and Archived states as badges', () => {
+        const { html } = renderer().render('- [ ] #T Check the gate\n- [x] #A Water the beans\n')
+        expect(html).toContain('<li class="task"><input type="checkbox" disabled> <span class="task-tag test">Test</span> Check the gate')
+        expect(html).toContain('<li class="task done"><input type="checkbox" disabled checked> <span class="task-tag archived">Archived</span> Water the beans')
+    })
+
     it('a `#` mid-sentence is text, not a tag', () => {
         const { html } = renderer().render('- [ ] Ship #P1 later\n')
         expect(html).toContain('Ship #P1 later')

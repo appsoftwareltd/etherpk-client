@@ -26,9 +26,17 @@ export interface CaretTask {
  * analysis, so they are the ones every other feature sees.
  */
 export function caretTask(state: EditorState): CaretTask | null {
+    return taskOnLine(state, state.doc.lineAt(state.selection.main.head).number)
+}
+
+/**
+ * The task on line `number` (1-based, as the editor counts lines), on the same terms as
+ * {@link caretTask}: what the line menu's **Copy task reference** copies from a right-click.
+ */
+export function taskOnLine(state: EditorState, number: number): CaretTask | null {
     const shown = state.facet(editorDocument)
-    if (!shown || state.facet(isProtectedDocumentFacet)()) return null
-    const line = state.doc.lineAt(state.selection.main.head)
+    if (!shown || number < 1 || number > state.doc.lines || state.facet(isProtectedDocumentFacet)()) return null
+    const line = state.doc.line(number)
     if (parseTaskLine(line.text) === null) return null
     const analysis = analysisFor(state)
     if (analysis.frontmatterEnd >= 0 && line.from <= analysis.frontmatterEnd) return null

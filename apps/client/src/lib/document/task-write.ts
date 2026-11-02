@@ -10,28 +10,22 @@
  * write to a line that merely sits where the task used to be edits the wrong task.
  *
  * A status is exclusive and means what the index's derivation means (`STATUS_SQL`): Open is an
- * unticked task with no state tag, Doing `#D`, Waiting `#W`, Done a ticked one, Cancelled a
- * ticked one with `#C`. No completion date is written; the checkbox writes none either.
+ * unticked task with no state tag, Doing `#D`, Waiting `#W`, Test `#T`, Done a ticked one,
+ * Cancelled a ticked one with `#C` and Archived a ticked one with `#A`. No completion date is
+ * written; the checkbox writes none either.
  *
  * A write that makes a task Done, or unticks it, ticks or unticks the tasks nested under it in the
  * same document (`task-cascade.ts`), and reports each line it changed so an undo can put it back.
  */
-import type { TaskStatus } from './index-db'
 import { bulletLabel } from './index-derive'
 import { fencedBlocks, linesInFencedBlocks } from './fenced-code'
 import { frontmatterLineOffset } from './reveal'
 import { lineWriteChanges, type LineWrite, nestedTaskWrites } from './task-cascade'
-import { parseTaskLine, parseTaskTags, serialiseTags, type TaskPriority, type TaskTags } from './task-tags'
-import type { DocumentStore, EditorDocument } from './types'
+import { parseTaskLine, parseTaskTags, type TaskChanges, taskLineWith } from './task-tags'
 
-/** What to change about a task. Anything left out stays as it is. */
-export interface TaskChanges {
-    status?: TaskStatus
-    priority?: TaskPriority | null
-    /** `YYYY-MM-DD`, or null to remove the date. */
-    due?: string | null
-    scheduled?: string | null
-}
+// The line writer lives with the grammar it writes, where the cascade can reach it too.
+export { type TaskChanges, taskLineWith }
+import type { DocumentStore, EditorDocument } from './types'
 
 /** Where a task sits, as the index reported it. */
 export interface IndexedTask {
@@ -71,71 +65,6 @@ export type TaskWriteOutcome =
      * gone (renamed or deleted since the index read it). Nothing was written either way.
      */
     | { ok: false; reason: 'stale' | 'missing' }
-
-const MARKER = /^(\s*-\s+\[)[ xX](\])\s?/
-
-/**
- * `line` with `changes` made, or null when `line` is not a task.
- *
- * A changed tag run is written in the fixed order the `#` helper writes (`serialiseTags`), for
- * the reason `applyTaskTag` gives: the run is a set, and a predictable order is worth more than
- * one that carries no meaning. A task already as asked comes back untouched, so a move that
- * changes nothing reorders nothing either.
- */
-export function taskLineWith(line: string, changes: TaskChanges): string | null {
-    const parsed = parseTaskLine(line)
-    const marker = MARKER.exec(line)
-    if (!parsed || !marker) return null
-    const { done: wasDone, ...current } = parsed
-    const tags: TaskTags = { ...current }
-    let done = wasDone
-    switch (changes.status) {
-        case 'open':
-            done = false
-            tags.waiting = tags.doing = tags.cancelled = false
-            break
-        case 'doing':
-            done = false
-            tags.doing = true
-            tags.waiting = tags.cancelled = false
-            break
-        case 'waiting':
-            done = false
-            tags.waiting = true
-            tags.doing = tags.cancelled = false
-            break
-        case 'done':
-            done = true
-            tags.waiting = tags.doing = tags.cancelled = false
-            break
-        case 'cancelled':
-            done = true
-            tags.cancelled = true
-            tags.waiting = tags.doing = false
-            break
-        case undefined:
-            break
-    }
-    if (changes.priority !== undefined) tags.priority = changes.priority
-    if (changes.due !== undefined) tags.due = changes.due
-    if (changes.scheduled !== undefined) tags.scheduled = changes.scheduled
-    if (done === wasDone && sameTags(tags, current)) return line
-    // One space between the checkbox, each tag and the text, and none at the end when a task has
-    // tags but no text: the way the `#` helper writes a run.
-    return [`${marker[1]}${done ? 'x' : ' '}${marker[2]}`, ...serialiseTags(tags), tags.text].filter((part) => part !== '').join(' ')
-}
-
-function sameTags(a: TaskTags, b: TaskTags): boolean {
-    return (
-        a.priority === b.priority &&
-        a.waiting === b.waiting &&
-        a.doing === b.doing &&
-        a.cancelled === b.cancelled &&
-        a.due === b.due &&
-        a.scheduled === b.scheduled &&
-        a.completion === b.completion
-    )
-}
 
 /** A task's text with its tag run taken off: what identifies it while its tags change. */
 function taskText(label: string): string {

@@ -8,10 +8,11 @@
  * concept was renamed starts where the board it replaces left off.
  */
 import { conceptKey } from '#lib/document/backlinks/index.js'
+import type { TaskStatus } from '#lib/document/index-db.js'
 import type { BoardCell } from './board-model'
 import type { BoardState } from './board-state'
 
-/** What a menu row can ask of a board, about one of its cards, named by its key. */
+/** What a menu row can ask of a board: about one of its cards, named by its key, or one of its lanes. */
 export interface BoardActions {
     /** Show the card's task, as clicking the card does. */
     open(card: string): void
@@ -19,8 +20,10 @@ export interface BoardActions {
     openInTab(card: string): void
     /** Copy a [[Task Reference]] to the card's task, to hand it to an agent (ADR 0114). */
     copyReference(card: string): void
-    /** Move the card to another lane or section. */
+    /** Move the card to another lane or section, or to Archived, which takes it off the board. */
     move(card: string, to: BoardCell): void
+    /** Move every task in the lane `from` to `to` (ADR 0167). */
+    moveAll(from: TaskStatus, to: TaskStatus): void
 }
 
 /** What a rename or a removal of documents asks of a board. */

@@ -446,6 +446,7 @@ describe('convertAsNotes', () => {
                     src('kanban/website/todo/card_write_copy_def456.md', card('title: Write the copy\npriority: p4\nsortOrder: 1')),
                     src('kanban/website/doing/card_pricing_ghi789.md', card('title: Draft the pricing page\nwaiting: true')),
                     src('kanban/website/review/card_footer_jkl012.md', card('title: Check the footer')),
+                    src('kanban/website/test/card_gate_stu901.md', card('title: Check the gate')),
                     src('kanban/website/done/card_logo_mno345.md', card('title: Ship the logo')),
                     src('kanban/website/archive/card_old_pqr678.md', card('title: Old thing')),
                     src('kanban/website/assets/card_fix_login_abc123/trace.png', new Uint8Array([1, 2])),
@@ -469,7 +470,8 @@ describe('convertAsNotes', () => {
                     '- [ ] #W #D Draft the pricing page',
                     '- [ ] Check the footer',
                     '- [x] Ship the logo',
-                    '- [x] Old thing',
+                    '- [ ] #T Check the gate',
+                    '- [x] #A Old thing',
                     '',
                 ].join('\n'),
             )
@@ -480,7 +482,6 @@ describe('convertAsNotes', () => {
                 expect.arrayContaining([
                     'AS Notes kanban board "Website" became this page, one task per card',
                     'Lane "review" has no EtherPK task status, so its 1 card was imported as an open task',
-                    '1 archived card was imported as a done task',
                     'Priority p4 on "Write the copy" dropped (EtherPK has three priority levels)',
                     'Assignees and labels kept as text under each task: EtherPK tasks have neither',
                     'Dropped: card creation and update times, the card order within each lane, the board\'s list of users',
@@ -537,7 +538,7 @@ describe('convertAsNotes', () => {
                     '  Due: soon.',
                     '- [ ] #D Dig the bed',
                     '- [ ] #P3 #W Wait for rain',
-                    '- [x] Old beans',
+                    '- [x] #A Old beans',
                     '',
                 ].join('\n'),
             )

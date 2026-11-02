@@ -320,6 +320,9 @@ describe("an extension's editor, dialogs and frames", () => {
         const { context, client } = setUp()
         await context.dialogs.prompt({ title: 'New bed', label: 'Name' })
         expect(client.dialogs.prompt).toHaveBeenCalledWith({ title: 'New bed', label: 'Name' }, 'Graph View')
+        const choose = { title: 'Move beds', label: 'To', choices: [{ value: 'north', label: 'North' }] }
+        await context.dialogs.choose(choose)
+        expect(client.dialogs.choose).toHaveBeenCalledWith(choose, 'Graph View')
     })
 
     it('names the hosts a frame may show, and refuses any other', () => {

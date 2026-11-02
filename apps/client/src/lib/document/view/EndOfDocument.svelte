@@ -1,86 +1,88 @@
 <script lang="ts">
     /**
-     * The two buttons after a document's text (ADR 0149): one starts a new line at the end, the
-     * other a new top-level bullet, each with the caret on it. For when placing the caret at the
-     * bottom is fiddly, most of all on a phone. What a press writes, and taking an untouched line
-     * back out, are `end-of-document.ts`'s.
+     * The two buttons floating at the bottom left of a document's tab (ADR 0149, ADR 0168): one
+     * starts a new line of text, the other a new bullet, each with the caret on it, after the
+     * caret's block when the caret is in the document and at the end otherwise. For when placing the
+     * caret is fiddly, most of all on a phone. What a press writes, and taking an untouched line back
+     * out, are `end-of-document.ts`'s; DocumentView decides which editor a press goes to.
      *
-     * DocumentView mounts this inside the editor's scroller, after its content and before any
-     * Journal Panels and Backlinks, as it does the Backlinks (ADR 0135): not in the editable text,
-     * so a screen reader never reads it as the document's, and not in the editor's height map.
-     * Shown while the document can be written; DocumentView says when.
+     * Over the pane rather than in the editor's text, as the Lock button is on the right, so a screen
+     * reader never reads it as the document's. One pair per tab: a Journal Roll's older days take
+     * their presses from the tab's pair, through the caret.
      */
     import { iconSvg } from '#lib/surface/icons.js'
 
-    import { CONTENT_PAD_X } from './cm-document'
     import type { EndKind } from './end-of-document'
 
     let {
-        shown,
         onstart,
     }: {
-        /** Whether the buttons are drawn: the body takes edits and its content is in. */
-        shown: boolean
         /** A button was pressed. */
         onstart: (kind: EndKind) => void
     } = $props()
 
     const buttons: { kind: EndKind; icon: string; label: string }[] = [
-        { kind: 'line', icon: 'text-lines', label: 'Start a new line at the end' },
-        { kind: 'bullet', icon: 'bullet', label: 'Add a block at the end' },
+        { kind: 'line', icon: 'text-lines', label: 'Start a new line of text' },
+        { kind: 'bullet', icon: 'bullet', label: 'Add a block' },
     ]
 
-    /** Keep the keyboard in the editor: a press on a button would otherwise take the focus from it first. */
+    /**
+     * Keep the keyboard in the editor: a press on a button would otherwise take the focus from it
+     * first, and the press would then find no caret to start after.
+     */
     function keepEditorFocus(event: MouseEvent): void {
         event.preventDefault()
     }
 </script>
 
-{#if shown}
-    <div class="end-of-document" style:--content-pad-x={CONTENT_PAD_X} role="group" aria-label="End of document" data-end-of-document data-testid="end-of-document">
-        {#each buttons as button (button.kind)}
-            <button
-                type="button"
-                class="end-button"
-                aria-label={button.label}
-                title={button.label}
-                data-testid={`end-of-document-${button.kind}`}
-                onmousedown={keepEditorFocus}
-                onclick={() => onstart(button.kind)}
-            >
-                <!-- eslint-disable-next-line svelte/no-at-html-tags -- in-repo icon markup, made trusted by icons.ts (ADR 0130) -->
-                {@html iconSvg(button.icon, { size: 16 })}
-            </button>
-        {/each}
-    </div>
-{/if}
+<div class="end-buttons" role="group" aria-label="New line or block" data-end-of-document data-testid="end-of-document">
+    {#each buttons as button (button.kind)}
+        <button
+            type="button"
+            class="end-button"
+            aria-label={button.label}
+            title={button.label}
+            data-testid={`end-of-document-${button.kind}`}
+            onmousedown={keepEditorFocus}
+            onclick={() => onstart(button.kind)}
+        >
+            <!-- eslint-disable-next-line svelte/no-at-html-tags -- in-repo icon markup, made trusted by icons.ts (ADR 0130) -->
+            {@html iconSvg(button.icon, { size: 18 })}
+        </button>
+    {/each}
+</div>
 
 <style>
-    /* A row of its own in the editor's scroller, in the text's column, as the Backlinks below it
-       are (DocumentBacklinks.svelte): DocumentView wraps the scroller's flex row while this is
-       drawn. Small and quiet, so it reads as part of the page's chrome and not its text. */
-    .end-of-document {
-        flex: 0 0 calc(100% - 2 * var(--content-pad-x));
-        min-width: 0;
-        box-sizing: border-box;
-        margin: 0 var(--content-pad-x);
-        padding: 0 0 1rem;
+    /* Bottom left, mirroring the Lock button on the right: the same distance from the pane's edges,
+       above the Match List when it shows. Anchored to the pane, so on a phone it sits just above
+       the Command Bar. */
+    .end-buttons {
+        position: absolute;
+        left: 1rem;
+        bottom: calc(1rem + var(--gk-match-list-height, 0px));
+        z-index: 2;
         display: flex;
         gap: 0.25rem;
-        cursor: default;
+        padding: 0.25rem;
+        border: 1px solid var(--gk-border-strong);
+        border-radius: 0.75rem;
+        background: var(--gk-surface-1);
+        /* The Lock button's lift. */
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
     }
     .end-button {
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        width: 2rem;
-        height: 2rem;
+        width: 2.25rem;
+        height: 2.25rem;
         padding: 0;
-        border: 1px solid var(--gk-border-soft);
+        border: 0;
         border-radius: 0.5rem;
         background: transparent;
         color: var(--gk-text-muted);
         cursor: pointer;
+        touch-action: manipulation;
         transition:
             background-color 120ms ease-out,
             color 120ms ease-out;

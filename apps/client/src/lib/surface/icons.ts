@@ -169,7 +169,7 @@ const HEROICON_PATHS: Record<string, string> = {
         '<path d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244"/>',
     /**
      * heroicons/outline `bars-3-bottom-left`, lines of text: start a new line at the end of a
-     * document, the first of the two buttons after its text (EndOfDocument.svelte).
+     * document, the first of the two floating new line buttons (EndOfDocument.svelte).
      */
     'text-lines': '<path d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25H12"/>',
     /**

@@ -25,7 +25,7 @@
     } from "../backlinks";
     import ChoiceDropdown from "#lib/components/ChoiceDropdown.svelte";
     import type { ViewRef } from "#lib/layout/index.js";
-    import { tryGetActiveEventBus } from "#lib/surface/index.js";
+    import { attachContextMenu, openContextMenu, type TaskContextMenuTarget, tryGetActiveEventBus } from "#lib/surface/index.js";
     import { workspaceService } from "#lib/workspace/workspace-services.js";
 
     import { getActiveDocument } from "../active-document";
@@ -434,6 +434,19 @@
         openConceptAtLine(hit.concept, hit.line);
     }
 
+    /** What a row's context menu acts on: the task the row shows, which **Copy task reference** copies. */
+    function rowTarget(hit: TaskHit): TaskContextMenuTarget {
+        return { kind: "task", document: hit.concept, line: hit.line, label: hit.text };
+    }
+
+    /** The Menu key and Shift+F10 on a row open its menu at the row, as a right-click does. */
+    function onRowKeydown(event: KeyboardEvent, hit: TaskHit): void {
+        if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) return;
+        event.preventDefault();
+        const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+        openContextMenu(rowTarget(hit), rect.left + 12, rect.bottom - 4);
+    }
+
     /**
      * Tick a task where it lives. The write is refused rather than risked when the indexed
      * line has moved — see task-toggle.ts — and a refusal opens the document at the task so
@@ -782,7 +795,13 @@
                             {@const tags = parseTaskTags(hit.text)}
                             <!-- The words without the tag run or the Free Tags, which show as pills (ADR 0166). -->
                             {@const shown = taskDisplay(hit.text)}
-                            <li class="rounded-md py-1 hover:bg-(--gk-surface-2)" data-testid="tasks-row">
+                            <!-- A right-click, or a long press, opens the row's menu: Copy task reference.
+                                 touch-action and user-select keep the long press from a phone's own callout. -->
+                            <li
+                                class="touch-manipulation select-none rounded-md py-1 hover:bg-(--gk-surface-2)"
+                                data-testid="tasks-row"
+                                {@attach (node) => attachContextMenu(node, () => rowTarget(hit))}
+                            >
                                 <div class="flex items-start gap-2 px-1 pointer-coarse:gap-0 pointer-coarse:px-0">
                                     <!-- mt-1.5 rather than mt-1: the row is items-start, and at
                                          mt-1 the box's centre sat 2px above the first line of
@@ -804,6 +823,7 @@
                                         type="button"
                                         data-testid="tasks-row-open"
                                         onclick={() => open(hit)}
+                                        onkeydown={(event) => onRowKeydown(event, hit)}
                                         class="min-w-0 flex-1 text-left pointer-coarse:pt-3"
                                     >
                                         <!-- A finished task recedes by colour and the strike, never by
@@ -853,8 +873,14 @@
                                             {#if tags.doing}
                                                 <span class="rounded bg-(--gk-surface-2) px-1 text-sm font-semibold">Doing</span>
                                             {/if}
+                                            {#if tags.test}
+                                                <span class="rounded bg-(--gk-surface-2) px-1 text-sm font-semibold">Test</span>
+                                            {/if}
                                             {#if tags.cancelled}
                                                 <span class="rounded bg-(--gk-surface-2) px-1 text-sm font-semibold">Cancelled</span>
+                                            {/if}
+                                            {#if tags.archived}
+                                                <span class="rounded bg-(--gk-surface-2) px-1 text-sm font-semibold" data-testid="tasks-badge-archived">Archived</span>
                                             {/if}
                                             {#if tags.scheduled !== null}
                                                 <!-- Named rather than iconised: "start thinking about it then" and

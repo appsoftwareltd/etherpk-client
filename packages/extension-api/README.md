@@ -387,6 +387,10 @@ once a graph opens, so its sections are not drawn on the Graphs page.
 text kept. It resolves to the text, trimmed, or undefined when the person cancels. The dialog names
 the extension, and shows every string it is given as text.
 
+`context.dialogs.choose(options)` asks for one of a list of `choices`, picked from a dropdown and
+confirmed. `submitLabel` can be a function of the value picked, so the button says what confirming
+will do. It resolves to the picked choice's `value`, or undefined when the person cancels.
+
 ### Frames
 
 `context.embeds.frame({ src, title })` builds a frame showing a page from a host the Client allows,
