@@ -149,6 +149,11 @@ describe('convertLogseq', () => {
         expect(graph.report.some((r) => r.category === 'unsupported' && r.detail.includes('query'))).toBe(true)
     })
 
+    it('turns a tag on a task into a wikilink, as Logseq links it, rather than a free tag', async () => {
+        const graph = await convertLogseq([src('pages/garden.md', '- TODO water the beans #garden')])
+        expect(doc(graph, 'garden').text).toContain('- [ ] water the beans [[garden]]')
+    })
+
     it('rewrites the older ^^highlight^^ spelling to ==, outside code', async () => {
         const graph = await convertLogseq([
             src('pages/marks.md', '- a ^^marked^^ word and `^^literal^^` code\n- already ==done=='),

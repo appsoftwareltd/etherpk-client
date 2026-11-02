@@ -1,7 +1,7 @@
 import { parser } from '@lezer/markdown'
 import { describe, expect, it } from 'vitest'
 
-import { type LinkPiece, isOpenableUrl, linkPieces, parseInlineLink, safeHref } from './markdown-link-core'
+import { type LinkPiece, caretBesideLink, isOpenableUrl, linkPieces, parseInlineLink, safeHref } from './markdown-link-core'
 import { editorMarkdownExtensions } from './scheme-url-autolink'
 
 /** The same parser configuration the editor mounts (code-highlight.ts → markdownWithCodeHighlight). */
@@ -292,5 +292,40 @@ describe('file links', () => {
 
     it('leaves a file url with no path raw', () => {
         expect(scan('see [x](file://) now').filter((p) => p.kind !== 'hide')).toEqual([])
+    })
+})
+
+describe('caretBesideLink', () => {
+    /** Where a click the hit test put at `§` leaves the caret, as the document with `|` there. */
+    function click(fixture: string, caretLine?: number): string {
+        const at = fixture.indexOf('§')
+        const doc = fixture.replace('§', '')
+        const pos = caretBesideLink(scan(doc, caretLine), at)
+        return doc.slice(0, pos) + '|' + doc.slice(pos)
+    }
+
+    it('takes a click at the end of a link’s text past its hidden `](url)`', () => {
+        expect(click('- [Garden Club§](https://example.com)')).toBe('- [Garden Club](https://example.com)|')
+    })
+
+    it('takes a click at the start of a link’s text before its hidden `[`', () => {
+        expect(click('[§Garden](https://example.com) notes')).toBe('|[Garden](https://example.com) notes')
+    })
+
+    it('does the same for an autolink’s `<` and `>`', () => {
+        expect(click('see <https://example.com§>')).toBe('see <https://example.com>|')
+        expect(click('<§https://example.com> see')).toBe('|<https://example.com> see')
+    })
+
+    it('leaves a click inside the text where it was aimed', () => {
+        expect(click('[Gar§den](https://example.com)')).toBe('[Gar|den](https://example.com)')
+    })
+
+    it('leaves a click on a revealed line where it was aimed: nothing is hidden there', () => {
+        expect(click('- [Garden§](https://example.com)', 1)).toBe('- [Garden|](https://example.com)')
+    })
+
+    it('leaves a bare url alone: it hides no syntax', () => {
+        expect(click('see https://example.com§')).toBe('see https://example.com|')
     })
 })

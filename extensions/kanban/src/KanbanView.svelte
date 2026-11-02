@@ -33,6 +33,7 @@
     import { iconSvg } from "#lib/surface/icons.js";
     import { currentWorkspaceServices, workspaceService } from "#lib/workspace/workspace-services.js";
 
+    import { createAgentHint } from "./agent-hint";
     import { registerBoard, takeBoardHandover } from "./board-actions";
     import { createBoardStateStore, type TaskDetailState } from "./board-state";
 
@@ -91,6 +92,9 @@
     let slow = $state(false);
     /** Why the last move did not happen, shown until dismissed or the next move. */
     let notice = $state<string | null>(null);
+    // The line above the lanes saying an agent can work on these tasks, until it is dismissed.
+    const agentHint = createAgentHint();
+    let agentHintShown = $state(agentHint.shown());
     /** The last move, said once for screen readers; the board already shows it. */
     let announcement = $state("");
     /**
@@ -437,6 +441,16 @@
     }
 
     /** Open, or bring forward, the task's document in a tab of its own, at the task's line. */
+    /**
+     * Copy a Task Reference to the card's task, through the shared Command, which knows the graph,
+     * the clipboard and how to say so. The board's concept goes too, so the reference says which
+     * board it came from.
+     */
+    function copyReference(card: BoardCard): void {
+        const { document, line, text } = card;
+        void workspaceService("commands")?.execute(TASK_COPY_REFERENCE, { document, line, label: text, board: { concept: boardConceptOf(view) } });
+    }
+
     function openInTab(card: BoardCard): void {
         openConceptAtLine(card.document, card.line, panelId);
     }
@@ -577,6 +591,8 @@
             line: entry.write.line,
             text: bulletLabel(entry.write.after),
             label: entry.label,
+            freeTags: [],
+            freeTag: null,
             due: null,
             dueState: null,
             parent: null,
@@ -921,9 +937,7 @@
             // Through the shared Command, which knows the graph, the clipboard and how to say so.
             copyReference: (key) => {
                 const found = findCard(key);
-                if (!found) return;
-                const { document, line, text } = found.card;
-                void workspaceService("commands")?.execute(TASK_COPY_REFERENCE, { document, line, label: text });
+                if (found) copyReference(found.card);
             },
             move: (key, to) => {
                 const found = findCard(key);
@@ -1048,6 +1062,36 @@
                 </button>
             </div>
         {/if}
+        {#if agentHintShown}
+            <p class="mx-3 mt-3 mb-0 flex items-center gap-2 text-sm text-(--gk-text-muted)" data-testid="kanban-agent-hint">
+                <span class="min-w-0 flex-1">
+                    An AI agent on your computer can work on these tasks through the EtherPK MCP server. Copy a card's reference to hand it
+                    one.
+                    <a
+                        class="gk-link"
+                        href="https://docs.etherpk.com/using-ai-agents-with-your-notes"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        data-testid="kanban-agent-hint-link">Set up an agent</a
+                    >
+                </span>
+                <button
+                    type="button"
+                    onclick={() => {
+                        agentHint.dismiss();
+                        agentHintShown = false;
+                    }}
+                    class="gk-icon-button shrink-0"
+                    aria-label="Dismiss the tip about agents"
+                    title="Dismiss"
+                    data-testid="kanban-agent-hint-dismiss"
+                >
+                    <!-- In-repo constant markup from the icon table, never user content. -->
+                    <!-- eslint-disable-next-line svelte/no-at-html-tags -- iconSvg returns trusted markup from the Client's icon table or the sanitized manifest icons (ADR 0130) -->
+                    {@html iconSvg("close")}
+                </button>
+            </p>
+        {/if}
         <!-- The lanes scroll sideways when they are wider than the pane, and each lane scrolls
              on its own, so a long Done lane never stretches the others. -->
         <div bind:this={lanesEl} class="flex min-h-0 flex-1 gap-3 overflow-x-auto p-3" data-testid="kanban-lanes">
@@ -1166,7 +1210,7 @@
                                             {#each section.cards as card (card.key)}
                                                 {@const carried = drag?.started === true && drag.card.key === card.key}
                                                 {@const selected = isSelected(card)}
-                                                <li>
+                                                <li class="relative">
                                                     <button
                                                         type="button"
                                                         tabindex={card.key === tabKey ? 0 : -1}
@@ -1210,7 +1254,8 @@
                                                                 in: <KanbanCardText text={card.parent} />
                                                             </span>
                                                         {/if}
-                                                        <span class="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+                                                        <!-- Room on the right for the copy button, which sits over the card. -->
+                                                        <span class="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 pr-7 text-sm">
                                                             <span class="min-w-0 truncate text-(--gk-text-subtle)" data-testid="kanban-card-document">{card.document}</span>
                                                             {#if card.due !== null}
                                                                 <span
@@ -1221,8 +1266,30 @@
                                                                     {dueLabel(card)}
                                                                 </span>
                                                             {/if}
+                                                            <!-- The card's Free Tags, after its date, as the Tasks View draws them (ADR 0166). -->
+                                                            {#each card.freeTags as freeTag (freeTag)}
+                                                                <span class="rounded bg-(--gk-surface-2) px-1.5 font-medium text-(--gk-text-default)" data-testid="kanban-card-free-tag">{freeTag}</span>
+                                                            {/each}
                                                         </span>
                                                     </button>
+                                                    <!-- A sibling of the card, not inside it: a button cannot hold another. Out
+                                                         of the Tab order, which moves card to card with the arrow keys; from the
+                                                         keyboard, the card's menu (Shift+F10) has Copy task reference. -->
+                                                    {#if !carried}
+                                                        <button
+                                                            type="button"
+                                                            tabindex={-1}
+                                                            onclick={() => copyReference(card)}
+                                                            class="absolute right-1.5 bottom-1.5 inline-flex size-7 items-center justify-center rounded-md text-(--gk-text-subtle) hover:bg-(--gk-control-hover) hover:text-(--gk-text-default) focus-visible:outline-2 focus-visible:outline-(--gk-accent)"
+                                                            aria-label="Copy task reference"
+                                                            title="Copy task reference, to hand this task to an agent"
+                                                            data-testid="kanban-card-copy-reference"
+                                                        >
+                                                            <!-- In-repo constant markup from the icon table, never user content. -->
+                                                            <!-- eslint-disable-next-line svelte/no-at-html-tags -- iconSvg returns trusted markup from the Client's icon table or the sanitized manifest icons (ADR 0130) -->
+                                                            {@html iconSvg("task-reference")}
+                                                        </button>
+                                                    {/if}
                                                 </li>
                                             {/each}
                                         </ul>

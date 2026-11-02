@@ -19,13 +19,13 @@
  */
 
 import { syntaxTree } from '@codemirror/language'
-import { type Extension, type Range } from '@codemirror/state'
-import { Decoration, EditorView, WidgetType } from '@codemirror/view'
+import { EditorSelection, type EditorState, type Extension, type Range } from '@codemirror/state'
+import { Decoration, EditorView, type MouseSelectionStyle, WidgetType } from '@codemirror/view'
 
 import { fileLinkActions, LINK_COPY_PATH, runLinkCommand } from '../../link-affordances'
-import { hiddenSyntax, hiddenSyntaxPlugin, type HiddenSyntaxSpec } from './base-renderer'
+import { hiddenSyntax, hiddenSyntaxPieces, hiddenSyntaxPlugin, type HiddenSyntaxSpec } from './base-renderer'
 import { actionClusterTheme, buildActionCluster, confirmClusterAction } from './inline-actions'
-import { linkPieces } from './markdown-link-core'
+import { caretBesideLink, type LinkPiece, linkPieces } from './markdown-link-core'
 
 /** The clickable mark. One class for all three shapes — link-cursor.ts keys its cursor off it. */
 function linkMark(href: string): Decoration {
@@ -108,6 +108,64 @@ export const markdownLinkSpec: HiddenSyntaxSpec = {
 const linkSyntax = hiddenSyntaxPlugin(markdownLinkSpec)
 
 /**
+ * Where a click the hit test resolved to `pos`, off any link's text, puts the caret in `state`
+ * (the state the click was made over, whose line may still hide its links' syntax): outside the
+ * hidden syntax of a link it lands beside ({@link caretBesideLink}). The spans are the ones the
+ * editor draws ({@link hiddenSyntaxPieces}), so a link it shows raw (on a line of a code block)
+ * hides nothing here either.
+ */
+export function linkClickCaret(state: EditorState, pos: number): number {
+    const line = state.doc.lineAt(pos)
+    const drawn = hiddenSyntaxPieces(markdownLinkSpec, state, [{ from: line.from, to: line.to }])
+    const pieces = drawn.flatMap((d): Pick<LinkPiece, 'kind' | 'from' | 'to'>[] => {
+        if (d.value === hiddenSyntax) return [{ kind: 'hide', from: d.from, to: d.to }]
+        return d.from < d.to ? [{ kind: 'link', from: d.from, to: d.to }] : []
+    })
+    return caretBesideLink(pieces, pos)
+}
+
+/** How far (px) the pointer may wander during a click before it counts as a drag. */
+const CLICK_SLOP = 4
+
+/**
+ * The pointer gesture for a plain click beside a rendered link: CodeMirror's own, except that it
+ * starts from {@link linkClickCaret}. The press reveals the line, so the text under the pointer
+ * moves; a drag then extends from that start over the revealed markdown, and a small wander
+ * before release stays a click rather than a selection to wherever the reflow put the pointer.
+ */
+function besideLinkSelection(view: EditorView, start: MouseEvent, anchor: number): MouseSelectionStyle {
+    let from = anchor
+    return {
+        update(update) {
+            if (update.docChanged) from = update.changes.mapPos(from)
+        },
+        get(event) {
+            const moved = Math.max(Math.abs(event.clientX - start.clientX), Math.abs(event.clientY - start.clientY))
+            if (moved < CLICK_SLOP) return EditorSelection.single(from)
+            return EditorSelection.single(from, view.posAtCoords({ x: event.clientX, y: event.clientY }, false))
+        },
+    }
+}
+
+/** A primary-button single click with no modifier key: the only press {@link besideLink} takes. */
+function isPlainSingleClick(event: MouseEvent): boolean {
+    return event.button === 0 && event.detail <= 1 && !(event.shiftKey || event.altKey || event.metaKey || event.ctrlKey)
+}
+
+/**
+ * Takes a plain single click that lands beside a rendered link (the hit test at its label's edge)
+ * and starts it outside the link's hidden syntax. Every other press is left to CodeMirror: a click
+ * on the text opens the link (the handler below), a modified click places the caret where it is
+ * aimed, and a double or triple click selects a word or line.
+ */
+const besideLink = EditorView.mouseSelectionStyle.of((view, event) => {
+    if (!isPlainSingleClick(event) || (event.target as Element | null)?.closest?.('.cm-md-link')) return null
+    const hit = view.posAtCoords({ x: event.clientX, y: event.clientY }, false)
+    const anchor = linkClickCaret(view.state, hit)
+    return anchor === hit ? null : besideLinkSelection(view, event, anchor)
+})
+
+/**
  * The copy cluster that follows a file link's span. CodeMirror splits a mark into several spans
  * when another decoration straddles it, and on a revealed line the hidden-syntax spans sit between
  * the label and the cluster, so the walk continues past siblings that belong to the same link
@@ -157,5 +215,5 @@ export function markdownLinkAugmentation(): Extension {
         },
     })
 
-    return [linkSyntax, clickHandler, theme, actionClusterTheme('cm-file-link-actions', 'cm-file-link-action')]
+    return [linkSyntax, clickHandler, besideLink, theme, actionClusterTheme('cm-file-link-actions', 'cm-file-link-action')]
 }

@@ -194,8 +194,12 @@ since a browser page cannot open a local file - nothing checks that the file exi
 - state: `#W` (waiting), `#D` (doing), `#C` (cancelled)
 - dates: `#D-YYYY-MM-DD` (due), `#S-YYYY-MM-DD` (scheduled), `#C-YYYY-MM-DD` (completed)
 
-A bare letter is a state, a dated letter is a date. `#` text anywhere else in the line is plain text.
-Example: `- [ ] #P1 #D-2026-07-01 Ship the release [[Acme]]`. A task is *about* every
+A bare letter is a state, a dated letter is a date. A **free tag** is the user's own label, such as
+`#bug` or `#needs-review`: letters, digits and single hyphens with at least one letter, anywhere
+in a task's text but not in code or links. EtherPK shows free tags as labels and groups a Kanban
+board's cards by the first one; they carry no state. Write task tags first: a free tag in the run
+does not end it. Any other `#` text in the line is plain text.
+Example: `- [ ] #P1 #D-2026-07-01 Ship the release [[Acme]] #launch`. A task is *about* every
 concept linked on its own line, on any ancestor block or heading, and the document it is in,
 the scopes in that document's name included: the tasks on `[[Acme]] Website` are about Acme too.
 Ticking a task in EtherPK ticks every task nested under it, and unticking it unticks them except

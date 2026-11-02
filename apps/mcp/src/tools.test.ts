@@ -864,9 +864,40 @@ describe('task references', () => {
         return { g, reference }
     }
 
-    it('comes with every task listed, as an address naming its document, line and words', async () => {
+    it('comes with every task listed, as an etherpk: reference naming its document, line and words', async () => {
         const { g, reference } = await withTask('g-ref-list')
-        expect(reference).toMatch(new RegExp(`^/g/${g.graphId}/d/Plan#task=2-[0-9a-f]{12}$`))
+        expect(reference).toMatch(new RegExp(`^etherpk:/g/${g.graphId}/d/Plan#task=2-[0-9a-f]{12}$`))
+    })
+
+    it('is read from the text Copy task reference writes, and from the web address an earlier version wrote', async () => {
+        const { g, reference } = await withTask('g-ref-forms')
+        const copied = ['EtherPK task from the graph "Work" (g)', 'Task: Send the quote', `Reference: ${reference}`, 'This is not a web address.'].join('\n')
+        expect(await readTask(g, { reference: copied })).toMatchObject({ line: 2, text: 'Send the quote' })
+        expect(await readTask(g, { reference: `Send the quote\nhttps://app.example.com${reference.slice('etherpk:'.length)}` })).toMatchObject({ line: 2 })
+    })
+
+    it('lists the Free Tags of each task, wherever they are written, and leaves its text as written', async () => {
+        const g = await graph('g-free-tags')
+        await seed(g, 'Plan', '- [ ] #bug #P1 Fix the gate #needs-oil\n- [ ] Book the train')
+        await indexed(g, async () => (await tasks(g, { concept: 'Plan' })).total === 2)
+        const listed = await tasks(g, { concept: 'Plan' })
+        expect(listed.tasks.map((t) => [t.text, t.priority, t.freeTags])).toEqual([
+            ['#bug #P1 Fix the gate #needs-oil', 1, ['bug', 'needs-oil']],
+            ['Book the train', null, []],
+        ])
+        expect(await readTask(g, { reference: listed.tasks[0].reference })).toMatchObject({ text: '#bug Fix the gate #needs-oil', priority: 1, freeTags: ['bug', 'needs-oil'] })
+    })
+
+    it('lists the assets the task and its detail show, so an agent can look at them', async () => {
+        const g = await graph('g-ref-assets')
+        await seed(
+            g,
+            'Plan',
+            '- [ ] Paint the shed ![colour](../assets/colour.webp)\n  - before\n    ![shed|400](../assets/shed.webp)\n  - ![colour](../assets/colour.webp)\n- [ ] Book the train ![map](../assets/map.webp)',
+        )
+        await indexed(g, async () => (await tasks(g, { concept: 'Plan' })).total === 2)
+        const reference = (await tasks(g, { concept: 'Plan' })).tasks.find((t) => t.text.startsWith('Paint'))!.reference
+        expect((await readTask(g, { reference })).assets).toEqual(['../assets/colour.webp', '../assets/shed.webp'])
     })
 
     it('reads the task with what is above it and what is nested under it', async () => {

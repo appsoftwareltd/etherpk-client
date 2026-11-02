@@ -9,6 +9,24 @@ starts at 0.9.3.
 
 ### Client
 
+- **Task references name their graph and board.** **Copy task reference** now copies four lines:
+  the graph's name, and the Kanban board when you copy from one; the task's words; a reference that
+  starts `etherpk:` instead of a web address; and which Headless Client tools read it. An agent
+  with several EtherPK graphs connected can tell which one the task is in, and no longer needs
+  "use etherpk" in your message. References copied before still work.
+- **Free tags on tasks.** Write your own labels, such as `#bug` or `#needs-review`, anywhere in a
+  task's text. The Tasks view and Kanban cards show them as labels after the task's other tags and
+  dates, and a Kanban board groups the cards in each section by their first free tag, then orders
+  them by due date, then journal entries oldest first and pages A to Z. A task tag written after a
+  free tag, as in `#bug #P1 Fix the gate`, is now read. Adding or removing a free tag keeps a task
+  reference working. An AS Notes import reports a task tag written after a free tag, which AS Notes
+  reads as text.
+- **Copy button on Kanban cards.** Each card has a copy button at its bottom right that copies a
+  reference to its task.
+- **Agent line on Kanban boards.** A line above the lanes says that an AI agent on your computer
+  can work on the board's tasks, and links to how to set one up. Its close button hides it on every
+  board on this device.
+
 - **Bookmarks.** Mark a line to come back to it: right-click the line and choose **Bookmark
   line**, press **Ctrl+Alt+K** (**Control+Option+K** on a Mac), or click the faint bookmark to the
   left of the line. A bookmark shows to the left of its line and in a new **Bookmarks** section of
@@ -119,10 +137,29 @@ starts at 0.9.3.
   ended with a hyphen in place of the empty bullet.
 - **The Client does not start when `ORIGIN` is not an HTTP or HTTPS origin with no path**, such as
   `https://app.example.com`. Before, a value of another form was used as it was.
+- **A mouse click just past the end of a link puts the cursor after the link.** Before, the
+  cursor went inside the link's text, before its `]`, and what you typed next became part of the
+  link.
+- **A click on an image puts the cursor at the end of its markdown**, after the `)`. Before, it went
+  to the start. When the markdown of an image runs over more than one line, a click on a later line,
+  or in the space below the text, now puts the cursor there. Before, every click went to the first
+  line, so the end of the markdown could not be clicked.
+- **Resize an image by dragging.** Hover over an image and drag the handle in its bottom right
+  corner. The width shows as you drag, and is written into the image's size hint, such as `|320`,
+  when you let go. Press **Esc** to cancel, or double-click the handle to remove the hint. On a
+  phone the handle is always shown.
 - Updated dependencies.
 
 ### Headless Client
 
+- **`read_task` lists the task's images and files** in `assets`, and the instructions tell the agent
+  to look at them with `read_asset` before it starts, and to leave a task's status as it is unless
+  you ask it to change it.
+- **Free tags.** `tasks` and `read_task` list each task's free tags (`#bug`) in `freeTags`, and a
+  task tag after a free tag is read.
+- **Task references start `etherpk:`.** `tasks`, `read_task`, `set_task` and `add_task_note` return
+  references in the form **Copy task reference** writes. Every tool that takes a reference still
+  reads the web addresses copied before.
 - Updated dependencies.
 - **The `{{today}}` Template variable** gives the same date as `{{date}}`.
 - **The day Template variables give a link**, such as `[[2026-11-01]]`, in `create_page` and

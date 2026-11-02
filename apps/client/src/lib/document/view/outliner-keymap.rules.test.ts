@@ -29,7 +29,9 @@ import { type InteractiveFence, registerInteractiveFence } from './augmentations
 import { pasteAsFence } from './augmentations/paste-to-fence'
 import { markdownWithCodeHighlight } from './augmentations/code-highlight'
 import { markdownFormatSpec, RULE_LINE_CLASS } from './augmentations/markdown-format'
-import { markdownLinkSpec } from './augmentations/markdown-link'
+import { linkClickCaret, markdownLinkSpec } from './augmentations/markdown-link'
+import { imageClickCaret } from './augmentations/image-embed'
+import { imageWidthChange } from './augmentations/image-resize'
 import { markdownTableAugmentation } from './augmentations/markdown-table'
 import { guideThreadsFor } from './augmentations/outline-guides'
 import { wikilinkCompletion } from './augmentations/wikilink-complete'
@@ -1166,6 +1168,77 @@ table('Mod+Shift+Enter cycles the task state', [
     { rule: 'the heal below a new task goes on past an indented soft line, which moves with its bullet', precedent: 'EtherPK', before: '  te|xt\n    - c\n      \n    - d', key: 'Mod-Shift-Enter', after: '- [ ] te|xt\n  - c\n    \n  - d' },
     { rule: '…and a code block after it stays the new task’s', precedent: 'EtherPK', before: 'Sho|pping\n      - eggs\n  \n  ```py\n  if x:\n      y\n  ```', key: 'Mod-Shift-Enter', after: '- [ ] Sho|pping\n  - eggs\n  \n  ```py\n  if x:\n      y\n  ```' },
 ])
+
+// A plain click beside a rendered link, off its text, lands outside the link's hidden syntax
+// (augmentations/markdown-link.ts → linkClickCaret; Editor Content Rules → Selection). `§` is where
+// the browser's hit test put the click, on the state the click was made over (the caret elsewhere,
+// so the link's syntax is hidden); `|` is where the caret goes. Geometry: tests-client/markdown-link.test.ts.
+describe('a click beside a rendered link lands outside its syntax (Obsidian)', () => {
+    function click(fixture: string): string {
+        const options = { extensions: [markdownWithCodeHighlight()], caret: '¦' }
+        const hit = editorFixture(fixture, options).state.doc.toString().indexOf('§')
+        const { state } = editorFixture(fixture.replace('§', ''), options)
+        const pos = linkClickCaret(state, hit)
+        const doc = state.doc.toString()
+        return doc.slice(0, pos) + '|' + doc.slice(pos)
+    }
+
+    for (const row of [
+        { rule: 'past the end of a bullet’s link: after its )', before: '- [Garden Club§](https://example.com)\n- other¦', after: '- [Garden Club](https://example.com)|\n- other' },
+        { rule: 'past the end of a prose link: after its )', before: 'see [Garden§](https://example.com)\n\nother¦', after: 'see [Garden](https://example.com)|\n\nother' },
+        { rule: 'just before a bullet’s link: before its [', before: '- [§Garden](https://example.com)\n- other¦', after: '- |[Garden](https://example.com)\n- other' },
+        { rule: 'an autolink’s > likewise', before: '- <https://example.com§>\n- other¦', after: '- <https://example.com>|\n- other' },
+        { rule: 'on the caret’s own line the syntax shows, so the click lands where aimed', before: '- [Garden§](https://example.com)¦', after: '- [Garden|](https://example.com)' },
+        {
+            rule: 'a link on a line of a code block is shown raw, so the click lands where aimed',
+            before: '- a\n        - ```\n          see [Garden§](https://example.com)\n\n          more\n          ```\n- other¦',
+            after: '- a\n        - ```\n          see [Garden|](https://example.com)\n\n          more\n          ```\n- other',
+        },
+    ]) {
+        it(row.rule, () => {
+            expect(click(row.before)).toBe(row.after)
+        })
+    }
+})
+
+// A click on a rendered image reveals its markdown with the caret at the end of it, after the `)`
+// (augmentations/image-embed.ts → imageClickCaret). Geometry, and the wrapped line's later rows:
+// tests-client/image-caret.test.ts.
+describe('a click on a rendered image puts the caret at the end of its markdown (EtherPK)', () => {
+    // `§` is the caret here, the size hint's `|` being literal.
+    for (const row of [
+        { rule: 'a bullet’s image', before: '- ![Garden|300](../assets/garden.png)\n- other§', after: '- ![Garden|300](../assets/garden.png)§\n- other' },
+        { rule: 'a standalone image, before any trailing spaces', before: '![Garden|300](../assets/garden.png)  \n\nother§', after: '![Garden|300](../assets/garden.png)§  \n\nother' },
+    ]) {
+        it(row.rule, () => {
+            const { state } = editorFixture(row.before, { caret: '§' })
+            const pos = imageClickCaret(state, 0)
+            const doc = state.doc.toString()
+            expect(doc.slice(0, pos) + '§' + doc.slice(pos)).toBe(row.after)
+        })
+    }
+})
+
+// A drag of an image's resize handle writes the width into its size hint on release, and a double
+// click on the handle removes the hint (augmentations/image-resize.ts → imageWidthChange; the
+// pure rules are in image-resize.test.ts, the gesture in tests-client/image-resize.test.ts).
+describe('the resize handle writes an image’s width into its hint (Logseq)', () => {
+    // `§` is the caret here, the size hint's `|` being literal.
+    for (const row of [
+        { rule: 'a drag to 320px replaces the hint', width: 320, before: '- ![Garden|800](../assets/garden.png)\n- other§', after: '- ![Garden|320](../assets/garden.png)\n- other§' },
+        { rule: 'a drag adds a hint where there is none', width: 320, before: '![Garden](../assets/garden.png)\n\nother§', after: '![Garden|320](../assets/garden.png)\n\nother§' },
+        { rule: 'a width x height hint becomes the width', width: 320, before: '- ![Garden|640x480](../assets/garden.png)\n- other§', after: '- ![Garden|320](../assets/garden.png)\n- other§' },
+        { rule: 'a double click removes the hint', width: null, before: '- ![Garden|800](../assets/garden.png)\n- other§', after: '- ![Garden](../assets/garden.png)\n- other§' },
+    ]) {
+        it(row.rule, () => {
+            const editor = editorFixture(row.before, { caret: '§' })
+            editor.dispatch(editor.state.update(imageWidthChange(editor.state, 0, '../assets/garden.png', row.width)!))
+            const { doc, selection } = editor.state
+            const text = doc.toString()
+            expect(text.slice(0, selection.main.head) + '§' + text.slice(selection.main.head)).toBe(row.after)
+        })
+    }
+})
 
 // A click on a task's checkbox ticks or unticks it, never cycling it to a plain bullet
 // (augmentations/task-checkbox.ts), and brings the tasks nested under it along as the task toggle

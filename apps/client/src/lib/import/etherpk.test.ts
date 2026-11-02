@@ -22,14 +22,15 @@ describe('convertEtherpk', () => {
     it('copies journals, pages, and assets verbatim, carrying Graph Settings', async () => {
         const pageText = '---\ntitle: My Page\n---\nsee ![shot](../assets/shot.a1b2c3d4.png)'
         const graph = await convertEtherpk([
-            src('journals/2026-07-16.md', '- today'),
+            src('journals/2026-07-16.md', '- today\n- [ ] #bug #P1 fix the gate #paint'),
             src('pages/My Page.md', pageText),
             src('assets/shot.a1b2c3d4.png', new Uint8Array([1, 2])),
             src('etherpk/settings.json', '{"defaultCodeLanguage": "ts"}'),
         ])
         expect(graph.documents).toHaveLength(2)
         const journal = graph.documents.find((d) => d.kind === 'journal')
-        expect(journal).toMatchObject({ concept: '2026-07-16', fileName: '2026-07-16.md', text: '- today' })
+        // Free tags included, wherever they are written.
+        expect(journal).toMatchObject({ concept: '2026-07-16', fileName: '2026-07-16.md', text: '- today\n- [ ] #bug #P1 fix the gate #paint' })
         const page = graph.documents.find((d) => d.kind === 'page')
         expect(page).toMatchObject({ concept: 'My Page', fileName: 'My Page.md', text: pageText })
         expect(graph.assets).toHaveLength(1)

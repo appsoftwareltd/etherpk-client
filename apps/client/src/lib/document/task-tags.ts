@@ -6,6 +6,11 @@
  * first token that is not a tag - which is the whole point of the grammar: `#hashtags` in
  * prose stay prose, so a task can talk about `#P1 incidents` without claiming to be one.
  *
+ * A [[Free Tag]] (`#bug`) is a person's own word, written anywhere in the text, which carries no
+ * metadata (ADR 0166). One in the leading run is passed over rather than ending it, so
+ * `#bug #P1 Fix the gate` is still priority 1, and it stays in `text`, so rewriting the run never
+ * drops it. {@link freeTagsIn} and {@link withoutFreeTags} read them from the text.
+ *
  * Lives here rather than inside the index derivation because three consumers need the same
  * answer: the derivation (which stores the parsed values as columns), the [[Tasks View]]
  * (which strips the run for display), and - when they land - the editor's tag rendering and
@@ -30,7 +35,10 @@ export interface TaskTags {
     completion: string | null
     /** `#S-` — minted, from Logseq's SCHEDULED. */
     scheduled: string | null
-    /** The text with the leading tag run removed — what a task list displays. */
+    /**
+     * The text with the leading run's [[Task Tag]]s removed: any [[Free Tag]] in the run first,
+     * then what follows the run. A task list shows it without its Free Tags ({@link withoutFreeTags}).
+     */
     text: string
 }
 
@@ -77,6 +85,50 @@ function readTag(token: string): { kind: TagKind; value: string } | null {
     return null
 }
 
+/** The leading run of a label: its Task Tags, the Free Tags in it, and where the text after it starts. */
+interface LeadingRun {
+    tags: Omit<TaskTags, 'text'>
+    freeTags: string[]
+    /** The offset in the label where the run ends, before the whitespace that follows it. */
+    end: number
+}
+
+/** Record one tag in `tags`, the first of a kind winning (ADR 0032). */
+function recordTag(tags: Omit<TaskTags, 'text'>, tag: { kind: TagKind; value: string }): void {
+    switch (tag.kind) {
+        case 'priority':
+            tags.priority ??= Number(tag.value) as TaskPriority
+            break
+        case 'waiting':
+        case 'doing':
+        case 'cancelled':
+            tags[tag.kind] = true
+            break
+        default:
+            // The dated tags: due, completion and scheduled.
+            tags[tag.kind] ??= tag.value
+    }
+}
+
+function scanRun(label: string): LeadingRun {
+    const tags = { ...EMPTY }
+    const freeTags: string[] = []
+    // Tokens are whitespace-separated; `offset` tracks where the run ended in the ORIGINAL
+    // string so the returned text keeps its own spacing rather than a re-joined guess.
+    let offset = 0
+    for (;;) {
+        const match = /^(\s*)(\S+)/.exec(label.slice(offset))
+        if (!match) break
+        const tag = readTag(match[2])
+        if (tag) recordTag(tags, tag)
+        // A Free Tag is passed over, so a person's own tag written first costs no metadata.
+        else if (isFreeTagToken(match[2])) freeTags.push(match[2])
+        else break
+        offset += match[0].length
+    }
+    return { tags, freeTags, end: offset }
+}
+
 /**
  * Parse the leading tag run of a task's text — the label, i.e. the line with its `- [ ]`
  * marker already stripped. {@link parseTaskLine} handles a raw source line instead.
@@ -86,41 +138,101 @@ function readTag(token: string): { kind: TagKind; value: string } | null {
  * tag, never the rest of their metadata.
  */
 export function parseTaskTags(label: string): TaskTags {
-    const tags = { ...EMPTY }
-    // Tokens are whitespace-separated; `rest` tracks where the run ended in the ORIGINAL
-    // string so the returned text keeps its own spacing rather than a re-joined guess.
-    let rest = label
-    for (;;) {
-        const match = /^(\s*)(\S+)/.exec(rest)
-        if (!match) break
-        const tag = readTag(match[2])
-        if (!tag) break
-        switch (tag.kind) {
-            case 'priority':
-                if (tags.priority === null) tags.priority = Number(tag.value) as TaskPriority
-                break
-            case 'waiting':
-                tags.waiting = true
-                break
-            case 'doing':
-                tags.doing = true
-                break
-            case 'cancelled':
-                tags.cancelled = true
-                break
-            case 'due':
-                if (tags.due === null) tags.due = tag.value
-                break
-            case 'completion':
-                if (tags.completion === null) tags.completion = tag.value
-                break
-            case 'scheduled':
-                if (tags.scheduled === null) tags.scheduled = tag.value
-                break
-        }
-        rest = rest.slice(match[0].length)
+    const run = scanRun(label)
+    // A run of Task Tags alone keeps the text's own spacing; Free Tags in the run lead it.
+    const rest = label.slice(run.end).trimStart()
+    const text = [...run.freeTags, rest].filter((part) => part !== '').join(' ')
+    return { ...run.tags, text }
+}
+
+// ── Free Tags (ADR 0166) ──────────────────────────────────────────────────────────────────
+
+/** A Free Tag's word: letters and digits in words joined by single hyphens. */
+const FREE_TAG_WORD = /^[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*$/
+
+/**
+ * Anything a [[Task Tag]] is or could be, in any case: `#p1` and `#P4` are not Task Tags, but a
+ * person who wrote them meant one, so neither is a Free Tag either.
+ */
+const TASK_TAG_SHAPED = /^(?:P\d+|W|D|C|[DCS]-[\d-]*)$/i
+
+function isFreeTagWord(word: string): boolean {
+    return FREE_TAG_WORD.test(word) && /[A-Za-z]/.test(word) && !TASK_TAG_SHAPED.test(word)
+}
+
+/** True when a whitespace-separated token is exactly one Free Tag. */
+function isFreeTagToken(token: string): boolean {
+    return token.startsWith('#') && isFreeTagWord(token.slice(1))
+}
+
+/**
+ * What holds hash text that is not prose: code spans, wikilinks, markdown links and images, and
+ * autolinks. They are blanked out before looking for Free Tags, keeping every offset.
+ */
+const NOT_PROSE = /(`+)[\s\S]*?\1|\[\[[^\]]*\]\]|!?\[[^\]]*\]\([^)]*\)|<[^>\s]+>/g
+
+/**
+ * A Free Tag in prose: `#` at the start or after whitespace, the word, then the end, whitespace
+ * or punctuation. `#bug.` is `bug`; `#my_tag`, `#a/b` and `item#4` are not tags.
+ */
+const FREE_TAG = /(?<=^|\s)#([A-Za-z0-9]+(?:-[A-Za-z0-9]+)*)(?=$|[\s.,;:!?'")\]}])/g
+
+/** Each Free Tag in `text` with where it is, in the order written. */
+function freeTagMatches(text: string): { word: string; from: number; to: number }[] {
+    const prose = text.replace(NOT_PROSE, (span) => ' '.repeat(span.length))
+    const out: { word: string; from: number; to: number }[] = []
+    for (const match of prose.matchAll(FREE_TAG)) {
+        if (isFreeTagWord(match[1])) out.push({ word: match[1], from: match.index, to: match.index + match[0].length })
     }
-    return { ...tags, text: rest.trimStart() }
+    return out
+}
+
+/**
+ * The [[Free Tag]]s in a task's text, without their `#`, in the order written and once each:
+ * matched ignoring case, kept in the spelling first written.
+ */
+export function freeTagsIn(text: string): string[] {
+    const seen = new Set<string>()
+    const out: string[] = []
+    for (const { word } of freeTagMatches(text)) {
+        const key = word.toLowerCase()
+        if (seen.has(key)) continue
+        seen.add(key)
+        out.push(word)
+    }
+    return out
+}
+
+/**
+ * The text with its Free Tags taken out, each with the whitespace before it (after it, at the
+ * start), so `Fix the gate #bug.` reads `Fix the gate.`. Empty when the text is only Free Tags.
+ */
+export function withoutFreeTags(text: string): string {
+    let out = ''
+    let at = 0
+    for (const { from, to } of freeTagMatches(text)) {
+        const before = text.slice(at, from)
+        out += from === 0 ? '' : before.trimEnd()
+        at = to
+        if (out === '') at += /^\s*/.exec(text.slice(at))![0].length
+    }
+    return (out + text.slice(at)).trim()
+}
+
+/**
+ * What a task list shows for a task's label: its words, without the tag run or its Free Tags, and
+ * the Free Tags as written, for pills. A task whose text is only Free Tags shows them as its words
+ * with no pills, and one written as Task Tags alone shows its tags.
+ */
+export function taskDisplay(label: string): { text: string; freeTags: string[] } {
+    const text = parseTaskTags(label).text
+    const words = withoutFreeTags(text)
+    return words === '' ? { text: text || label, freeTags: [] } : { text: words, freeTags: freeTagsIn(text) }
+}
+
+/** The [[Task Tag]]s in a label's leading run, as written and in order, without the Free Tags in it. */
+export function taskTagTokens(label: string): string[] {
+    return label.slice(0, scanRun(label).end).split(/\s+/).filter((token) => readTag(token) !== null)
 }
 
 /** A raw source line's task state, or null when the line is not a [[Task]]. */
@@ -148,9 +260,7 @@ export function taskTagRun(line: string): { from: number; to: number } | null {
     const marker = CHECKBOX.exec(line)
     if (!marker) return null
     const label = line.slice(marker[0].length)
-    // `text` is what follows the run, trimmed at its start: the run ends before that whitespace.
-    const { text } = parseTaskTags(label)
-    const run = label.slice(0, label.length - text.length)
+    const run = label.slice(0, scanRun(label).end)
     const from = marker[0].length + (run.length - run.trimStart().length)
     const to = marker[0].length + run.trimEnd().length
     return to > from ? { from, to } : null

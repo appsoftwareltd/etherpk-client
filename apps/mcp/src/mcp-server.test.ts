@@ -114,6 +114,17 @@ describe('the MCP server', () => {
         expect(instructions).toContain('Never read, print, copy or search ~/.config/etherpk')
     })
 
+    // A task handed over by reference is the user's to move: an agent reads it whole, images included,
+    // and changes its status only when asked.
+    it('says how to read a task reference, to look at its images, and to leave its status alone unless asked', async () => {
+        const { client } = await connected()
+        const instructions = client.getInstructions() ?? ''
+        expect(instructions).toContain('etherpk:/g/<graph>/d/<document>#task=<line>-<fingerprint>')
+        expect(instructions).toContain('not a web address')
+        expect(instructions).toContain('read each with read_asset')
+        expect(instructions).toContain('Leave its status as it is unless the user asks')
+    })
+
     // XDG_CONFIG_HOME and ETHERPK_MCP_CONFIG move the login file, so the folder named is the real one.
     it('names the folder this process keeps its sign-in in, wherever that is', async () => {
         const { client } = await connected({ credentialsDir: '/srv/agent/cfg/etherpk' })

@@ -309,6 +309,39 @@ describe('ties the sort keys leave', () => {
     })
 })
 
+describe('ordering by Free Tag, as a Kanban Board section does (ADR 0166)', () => {
+    beforeEach(() => {
+        ingest(db, [
+            page('Shed', ['- [ ] Oil the hinge', '- [ ] Paint the door #paint', '- [ ] #D-2026-09-03 Fix the gate #bug'].join('\n')),
+            page('Garden', ['- [ ] Water the beans #Bug', '- [ ] Dig the bed', '- [ ] #bug #D-2026-09-02 Mend the fence #paint'].join('\n')),
+            page('2026-08-30', ['- [ ] Sweep the path #bug', '- [ ] Rake the leaves'].join('\n')),
+            page('2026-08-29', ['- [ ] Sharpen the saw #paint'].join('\n')),
+        ])
+    })
+
+    it('groups by the first Free Tag A–Z ignoring case, untagged last, then soonest due, then journals oldest first and pages A–Z', () => {
+        expect(texts(query({ groupBy: 'due', byFreeTag: true }))).toEqual([
+            // bug: due first, then undated by document (journals before pages)
+            '#bug #D-2026-09-02 Mend the fence #paint',
+            '#D-2026-09-03 Fix the gate #bug',
+            'Sweep the path #bug',
+            'Water the beans #Bug',
+            // paint
+            'Sharpen the saw #paint',
+            'Paint the door #paint',
+            // untagged
+            'Rake the leaves',
+            'Dig the bed',
+            'Oil the hinge',
+        ])
+    })
+
+    it('leaves the order alone when not asked', () => {
+        expect(texts(query({ groupBy: 'due' }))[0]).toBe('#bug #D-2026-09-02 Mend the fence #paint')
+        expect(texts(query({ groupBy: 'due' }))[2]).toBe('Sharpen the saw #paint')
+    })
+})
+
 describe('the task row', () => {
     it('carries the ancestry breadcrumb that explains why it matched', () => {
         ingest(db, [

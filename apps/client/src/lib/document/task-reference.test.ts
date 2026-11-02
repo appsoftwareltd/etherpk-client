@@ -7,6 +7,7 @@ import {
     type TaskReference,
     type TaskReferenceSources,
     taskFingerprint,
+    taskReferenceId,
     taskWords,
 } from './task-reference'
 
@@ -27,6 +28,17 @@ describe('the words and the fingerprint', () => {
         expect(await taskFingerprint('Send the quote today')).not.toBe(plain)
     })
 
+    it('leave out Free Tags wherever they are, so adding, moving or removing one keeps the fingerprint', async () => {
+        expect(taskWords('#P1 Fix the gate #bug')).toBe('Fix the gate')
+        const plain = await taskFingerprint('Fix the gate')
+        expect(await taskFingerprint('#bug #P1 Fix the gate')).toBe(plain)
+        expect(await taskFingerprint('#P1 Fix #bug the gate #paint')).toBe(plain)
+    })
+
+    it('are the Free Tags when there is nothing else', () => {
+        expect(taskWords('#P1 #bug #paint')).toBe('#bug #paint')
+    })
+
     it('read composed and decomposed accents as the same words', async () => {
         expect(await taskFingerprint(`Caf${String.fromCodePoint(0xe9)} visit`)).toBe(await taskFingerprint(`Cafe${String.fromCodePoint(0x301)} visit`))
     })
@@ -34,17 +46,51 @@ describe('the words and the fingerprint', () => {
 
 describe('the reference as copied', () => {
     const reference: TaskReference = { graphId: 'g-1', document: '[[Acme]] Launch/Plan', line: 14, fingerprint: '3fa9c1e07b2d' }
+    const id = 'etherpk:/g/g-1/d/%5B%5BAcme%5D%5D%20Launch/Plan#task=14-3fa9c1e07b2d'
 
-    it('is the words, then the Document URL with the task in its fragment', () => {
-        expect(formatTaskReference(reference, '#P1 Send the quote', 'https://app.example.com')).toBe(
-            'Send the quote\nhttps://app.example.com/g/g-1/d/%5B%5BAcme%5D%5D%20Launch/Plan#task=14-3fa9c1e07b2d',
+    it('is the etherpk: path of the Document URL with the task in its fragment, never a web address', () => {
+        expect(taskReferenceId(reference)).toBe(id)
+    })
+
+    it('names the board, the graph by name and id, the words, the reference and how an agent reads it', () => {
+        expect(formatTaskReference(reference, '#P1 Send the quote', { graphName: 'Work', source: { kind: 'board', concept: 'Acme' } })).toBe(
+            [
+                'EtherPK task from the Kanban board for "Acme" in the graph "Work" (g-1)',
+                'Task: Send the quote',
+                `Reference: ${id}`,
+                'This is not a web address. Use the EtherPK MCP server connected to "Work": read_task with this whole text to read the task and its detail, set_task if you are asked to change its status, add_task_note to record what you did.',
+            ].join('\n'),
         )
     })
 
-    it('reads back from the two lines, the address alone, or a path without an origin', () => {
-        const copied = formatTaskReference(reference, 'Send the quote', 'https://app.example.com')
+    it('names the Graph Kanban, or no board when copied in a document', () => {
+        const words = '#P1 Send the quote'
+        expect(formatTaskReference(reference, words, { graphName: 'Work', source: { kind: 'board', concept: null } }).split('\n')[0]).toBe(
+            'EtherPK task from the Graph Kanban in the graph "Work" (g-1)',
+        )
+        expect(formatTaskReference(reference, words, { graphName: 'Work', source: { kind: 'document' } }).split('\n')[0]).toBe('EtherPK task from the graph "Work" (g-1)')
+    })
+
+    it('names the graph by its id alone when it has no name', () => {
+        const copied = formatTaskReference(reference, 'Send the quote', { graphName: null, source: { kind: 'document' } }).split('\n')
+        expect(copied[0]).toBe('EtherPK task from the graph g-1')
+        expect(copied[3]).toContain('Use the EtherPK MCP server connected to that graph:')
+    })
+
+    it('reads back from the text as copied, the reference line alone, or the etherpk: form alone', () => {
+        const copied = formatTaskReference(reference, 'Send the quote', { graphName: 'Work', source: { kind: 'document' } })
         expect(parseTaskReference(copied)).toEqual(reference)
-        expect(parseTaskReference(copied.split('\n')[1])).toEqual(reference)
+        expect(parseTaskReference(copied.split('\n')[2])).toEqual(reference)
+        expect(parseTaskReference(id)).toEqual(reference)
+    })
+
+    it('reads the etherpk: reference before anything shaped like one in the task\'s words', () => {
+        const words = 'Compare /g/g-2/d/Other#task=1-aaaaaaaaaaaa with the plan'
+        expect(parseTaskReference(formatTaskReference(reference, words, { graphName: 'Work', source: { kind: 'document' } }))).toEqual(reference)
+    })
+
+    it('still reads the web address an earlier version copied, with any origin or none', () => {
+        expect(parseTaskReference('Send the quote\nhttps://app.example.com/g/g-1/d/%5B%5BAcme%5D%5D%20Launch/Plan#task=14-3fa9c1e07b2d')).toEqual(reference)
         expect(parseTaskReference('/g/g-1/d/%5B%5BAcme%5D%5D%20Launch/Plan?fs=opfs#task=14-3fa9c1e07b2d')).toEqual(reference)
     })
 
@@ -53,6 +99,7 @@ describe('the reference as copied', () => {
         expect(parseTaskReference('https://app.example.com/g/g-1/d/Acme')).toBeNull()
         expect(parseTaskReference('/g/g-1/d/Acme#task=14-3fa9')).toBeNull()
         expect(parseTaskReference('/g/g-1/d/%E0%A4%A#task=1-3fa9c1e07b2d')).toBeNull()
+        expect(parseTaskReference('etherpk:/g/g-1/d/%E0%A4%A#task=1-3fa9c1e07b2d')).toBeNull()
     })
 })
 

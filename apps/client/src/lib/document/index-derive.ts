@@ -15,7 +15,7 @@ import { extensionFences } from './extension-fence'
 import { codeLineText, fenceLineInfo, fencedBlocks, fencedBlockTree } from './fenced-code'
 import { MAP_FENCE_INFO, readMapBody } from './map-text'
 import { containsCipherFence } from './protection/fence-info'
-import { parseTaskTags, type TaskPriority } from './task-tags'
+import { freeTagsIn, parseTaskTags, type TaskPriority } from './task-tags'
 import { wikilinkOccurrencesInSource } from './wikilink'
 
 export interface BlockRow {
@@ -57,6 +57,8 @@ export interface TaskRow {
     due: string | null
     completion: string | null
     scheduled: string | null
+    /** The first [[Free Tag]] in the task's text, lower-cased, or null (ADR 0166). */
+    freeTag: string | null
 }
 
 /**
@@ -270,6 +272,7 @@ export function deriveDoc(text: string, options: DeriveOptions = {}): DerivedRow
             due: tags.due,
             completion: tags.completion,
             scheduled: tags.scheduled,
+            freeTag: freeTagsIn(tags.text)[0]?.toLowerCase() ?? null,
         }
     })
 

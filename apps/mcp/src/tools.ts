@@ -57,7 +57,7 @@ import { AssetRefusedError, assetIdFromRef } from '#lib/storage/synced/server-as
 
 import { readLocalFile, writeDownload } from './headless-assets'
 import { FolderRefused, folderUnder } from './local-folders'
-import { parseTaskLine, type TaskPriority } from '#lib/document/task-tags.js'
+import { freeTagsIn, parseTaskLine, type TaskPriority } from '#lib/document/task-tags.js'
 import {
     everyIndexedTask,
     parseTaskReference,
@@ -65,7 +65,7 @@ import {
     resolveTaskReference,
     type TaskReferenceSources,
     taskFingerprint,
-    taskReferenceUrl,
+    taskReferenceId,
 } from '#lib/document/task-reference.js'
 import { ancestorChain, bulletLabel, deriveDoc } from '#lib/document/index-derive.js'
 import { isTemplate, templateBody } from '#lib/document/templates/template-page.js'
@@ -681,7 +681,9 @@ export async function tasks(graph: HeadlessGraph, args: TasksArgs = {}) {
                 scheduled: hit.scheduled,
                 completion: hit.completion,
                 breadcrumb: hit.breadcrumb,
-                // So an agent can hand the task back to a person, who can open it.
+                // A person's own tags on the task, without their # (ADR 0166).
+                freeTags: freeTagsIn(hit.text),
+                // So an agent can hand the task back to a person, or to another agent.
                 reference: await referenceFor(graph, hit.concept, hit.line, hit.text),
             })),
         ),
@@ -1255,14 +1257,14 @@ function referenceSources(graph: HeadlessGraph): TaskReferenceSources {
 /** The Task Reference to the task at `line` of `concept`, whose label is `label`. */
 async function referenceFor(graph: HeadlessGraph, concept: string, line: number, label: string): Promise<string> {
     const fingerprint = await taskFingerprint(label)
-    return taskReferenceUrl({ graphId: graph.graphId, document: concept, line, fingerprint }, graph.clientUrl ?? '')
+    return taskReferenceId({ graphId: graph.graphId, document: concept, line, fingerprint })
 }
 
 /** The task a Task Reference names in this graph, or the error that says why there is none. */
 async function requireReferencedTask(graph: HeadlessGraph, reference: string): Promise<ResolvedTaskReference> {
     const parsed = parseTaskReference(reference)
     if (!parsed) {
-        throw new ToolError('invalid_argument', 'That is not a task reference: one ends in #task=<line>-<fingerprint>, as Copy task reference in EtherPK writes it.')
+        throw new ToolError('invalid_argument', 'That is not a task reference: one is etherpk:/g/<graph>/d/<document>#task=<line>-<fingerprint>, as Copy task reference in EtherPK writes it.')
     }
     await graph.store.refresh()
     const found = await resolveTaskReference(parsed, referenceSources(graph))
@@ -1318,10 +1320,14 @@ export async function readTask(graph: HeadlessGraph, args: ReadTaskArgs) {
         priority: task.priority,
         due: task.due,
         scheduled: task.scheduled,
+        freeTags: freeTagsIn(task.text),
         breadcrumb: block ? ancestorChain(blocks, block.parentId) : [],
         detail: lines.slice(found.line + 1, end + 1).join('\n'),
         foundBy: found.foundBy,
         reference: await referenceFor(graph, found.document, found.line, bulletLabel(line)),
+        // The images and files the task and its detail show, once each: part of what the task says,
+        // which an agent reads with read_asset.
+        assets: [...new Set(assetReferencesIn(lines.slice(found.line, end + 1).join('\n')))],
     }
 }
 

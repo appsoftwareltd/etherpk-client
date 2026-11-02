@@ -166,9 +166,10 @@ export interface SqlDb {
  * document's name among its tasks' `task_concepts` (ADR 0051, amended 2026-09-29). 16 adds
  * `map_items` and `map_concepts`, and reads a [[Map Block]]'s names instead of its coordinates
  * into `block_fts` and `passages` (ADR 0118). 17 adds `pages.template` and derives no tasks,
- * places or variable links for a [[Template]] (ADR 0144).
+ * places or variable links for a [[Template]] (ADR 0144). 18 adds `tasks.free_tag`, a task's first
+ * [[Free Tag]], and reads Task Tags past a Free Tag in the leading run (ADR 0166).
  */
-export const INDEX_SCHEMA_VERSION = 17
+export const INDEX_SCHEMA_VERSION = 18
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS index_metadata (
@@ -206,7 +207,10 @@ CREATE TABLE IF NOT EXISTS tasks (
   page_id INTEGER NOT NULL, block_local_id INTEGER NOT NULL, done INTEGER NOT NULL,
   text TEXT NOT NULL, line INTEGER NOT NULL,
   priority INTEGER, waiting INTEGER NOT NULL DEFAULT 0, doing INTEGER NOT NULL DEFAULT 0,
-  cancelled INTEGER NOT NULL DEFAULT 0, due TEXT, completion TEXT, scheduled TEXT);
+  cancelled INTEGER NOT NULL DEFAULT 0, due TEXT, completion TEXT, scheduled TEXT,
+  free_tag TEXT);
+-- free_tag is the task's first [[Free Tag]], lower-cased, or NULL: what a [[Kanban Board]] section
+-- orders by first (ADR 0166).
 -- [[Task Concept]] (ADR 0051): one row per (task, concept it answers to). Concepts are stored
 -- AS WRITTEN and pooled over [[Alias]]es at query time, exactly as backlinksFor does — baking
 -- the canonical name in would go stale the moment a page is renamed.
@@ -483,8 +487,8 @@ function insertDerived(db: SqlDb, pageId: number, doc: IndexDoc): string[] {
     for (const t of tasks) {
         db.run(
             `INSERT INTO tasks (page_id, block_local_id, done, text, line,
-                                priority, waiting, doing, cancelled, due, completion, scheduled)
-             VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+                                priority, waiting, doing, cancelled, due, completion, scheduled, free_tag)
+             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
             [
                 pageId,
                 t.blockLocalId,
@@ -498,6 +502,7 @@ function insertDerived(db: SqlDb, pageId: number, doc: IndexDoc): string[] {
                 t.due,
                 t.completion,
                 t.scheduled,
+                t.freeTag,
             ],
         )
     }
@@ -1977,6 +1982,12 @@ export interface TaskQuery {
     due: TaskDueWindow
     groupBy: TaskGroupBy
     /**
+     * Order by the task's first [[Free Tag]] before the grouping's own order, A–Z with untagged
+     * tasks last (ADR 0166): a [[Kanban Board]] section's order. The [[Tasks View]] never sets it,
+     * since it groups by walking rows ordered on its group key first.
+     */
+    byFreeTag?: boolean
+    /**
      * Today as `YYYY-MM-DD`, supplied by the caller rather than read from the clock here.
      * The query then stays a pure function of its inputs - which is what makes the date
      * windows testable, and what keeps the worker from having an opinion about the user's
@@ -2052,6 +2063,9 @@ const ORDER_SQL: Record<TaskGroupBy, string> = {
     priority: `(t.priority IS NULL), t.priority ASC, (t.due IS NULL), t.due ASC`,
     due: `(t.due IS NULL), t.due ASC, (t.priority IS NULL), t.priority ASC`,
 }
+
+/** The first Free Tag A–Z, untagged tasks last, as {@link TaskQuery.byFreeTag} asks. */
+const BY_FREE_TAG_SQL = '(t.free_tag IS NULL), t.free_tag ASC'
 
 /**
  * What decides a tie the grouping leaves: the document's name, then the task's line, which a
@@ -2179,7 +2193,7 @@ export function tasksMatching(db: SqlDb, query: TaskQuery, offset: number, limit
                 t.priority, t.waiting, t.doing, t.cancelled, t.due, t.completion, t.scheduled
          FROM tasks t JOIN pages p ON p.id = t.page_id
          WHERE ${predicate.where}
-         ORDER BY ${ORDER_SQL[query.groupBy]}, ${TIE_BREAK_SQL}
+         ORDER BY ${query.byFreeTag ? `${BY_FREE_TAG_SQL}, ` : ''}${ORDER_SQL[query.groupBy]}, ${TIE_BREAK_SQL}
          LIMIT ? OFFSET ?`,
         [...predicate.params, limit + 1, offset],
     )

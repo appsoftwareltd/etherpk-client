@@ -30,8 +30,8 @@ export interface ReadBoardOptions {
  * moment of asking: a board is left open for days).
  *
  * The sections are asked in parallel. The index answers each in its own worker round trip, and
- * a section ordered by due date is exactly the index's `due` ordering, whose ties fall to the
- * document's name and the task's line.
+ * a section ordered by its first [[Free Tag]] and then due date is exactly the index's `due`
+ * ordering with `byFreeTag`, whose ties fall to the document's name and the task's line.
  */
 export async function readBoard(source: TaskSource, concept: string | null, today: string, options: ReadBoardOptions = {}): Promise<BoardSnapshot> {
     const defaultLimit = options.sectionLimit ?? SECTION_PAGE_SIZE
@@ -59,5 +59,5 @@ export async function readBoard(source: TaskSource, concept: string | null, toda
 }
 
 function sectionQuery(concept: string | null, status: TaskStatus, priority: TaskPriorityFilter, today: string): TaskQuery {
-    return { concept, statuses: [status], priorities: [priority], due: 'any', groupBy: 'due', today }
+    return { concept, statuses: [status], priorities: [priority], due: 'any', groupBy: 'due', byFreeTag: true, today }
 }

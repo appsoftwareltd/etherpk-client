@@ -164,6 +164,14 @@ describe('convertObsidian', () => {
         expect(text).toContain('- [x] #C dropped idea')
     })
 
+    it('keeps a tag in a Tasks-plugin line where it is written, where it is a free tag', async () => {
+        const graph = await convertObsidian([src('todo.md', '- [ ] fix the gate #bug ⏫ 📅 2026-08-01\n- [ ] #bug paint the shed\n- [ ] sort the #a/b and #my_tag')])
+        const text = doc(graph, 'todo').text
+        expect(text).toContain('- [ ] #P2 #D-2026-08-01 fix the gate #bug')
+        expect(text).toContain('- [ ] #bug paint the shed')
+        expect(text).toContain('- [ ] sort the #a/b and #my_tag')
+    })
+
     it('leaves external links, tags and fences as they are', async () => {
         const graph = await convertObsidian([
             src('note.md', '[site](https://example.com/page.md)\n#hashtag stays\n```\n![[not-an-embed]]\n```'),

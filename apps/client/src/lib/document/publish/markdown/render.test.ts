@@ -110,6 +110,11 @@ describe('createDocumentRenderer', () => {
         expect(html).toContain('<code>[[Physics]]</code>')
     })
 
+    it('leaves a free tag as text where it is written, and badges the task tags after one', () => {
+        const { html } = renderer().render('- [ ] #bug #P1 Fix the gate #paint\n')
+        expect(html).toContain('<span class="task-tag priority-1">Priority 1</span> #bug Fix the gate #paint')
+    })
+
     it('renders a task as a disabled checkbox with badges for every tag the editor knows', () => {
         const { html } = renderer().render('- [ ] #P1 #D #D-2026-07-01 #S-2026-06-30 Ship it [[Physics]]\n- [x] #C done\n')
         expect(html).toContain('<li class="task"><input type="checkbox" disabled> ')

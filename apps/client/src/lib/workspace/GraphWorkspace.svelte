@@ -4679,7 +4679,8 @@
         // shows nothing of its own.
         detachTaskReferenceCommands = registerTaskReferenceCommands(commandRegistry, contributions, {
             graphId: () => graphId,
-            origin: () => location.origin,
+            // A synced graph's own name, as its export names it; a folder graph's display name.
+            graphName: () => serverGraph?.getMeta().name || graphDisplayName || null,
             writeClipboard: (text) => navigator.clipboard.writeText(text),
             notify: (text) => notify(text),
         });

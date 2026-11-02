@@ -112,6 +112,10 @@ describe('the image widget while its asset cannot be fetched', () => {
             this.children = children
         }
         addEventListener() {}
+        querySelector(selector: string): FakeElement | null {
+            const name = selector.replace(/^\./, '')
+            return descendants(this).find((node) => node.classList.contains(name)) ?? null
+        }
     }
 
     /** Every element under `root`, depth first. */
@@ -123,16 +127,18 @@ describe('the image widget while its asset cannot be fetched', () => {
         vi.unstubAllGlobals()
     })
 
-    function mount(resolveAsset: () => Promise<null>) {
+    function mount(resolveAsset: () => Promise<null>, doc = '![pic](../assets/pic.png)\n\nafter|') {
         vi.useFakeTimers()
         vi.stubGlobal('document', { createElement: (tag: string) => new FakeElement(tag) })
         vi.stubGlobal('window', { addEventListener: () => {}, removeEventListener: () => {} })
         vi.spyOn(console, 'warn').mockImplementation(() => {})
-        const editor = editorFixture('![pic](../assets/pic.png)\n\nafter|', {
+        const editor = editorFixture(doc, {
             extensions: [imageEmbedAugmentation({ resolveAsset })],
+            caret: doc.includes('§') ? '§' : '|',
         })
         const [widget] = imageWidgets(editor.state) as unknown as Array<{
             toDOM(view: EditorView): FakeElement
+            updateDOM(dom: FakeElement, view: EditorView): boolean
             destroy(dom: FakeElement): void
         }>
         const root = widget.toDOM(null as unknown as EditorView)
@@ -162,5 +168,23 @@ describe('the image widget while its asset cannot be fetched', () => {
         widget.destroy(root)
         await vi.advanceTimersByTimeAsync(10 * 60_000)
         expect(resolveAsset).toHaveBeenCalledOnce()
+    })
+
+    // A change to the size hint alone (the resize handle's write) updates a shown picture in place;
+    // the browser spec checks the same <img> survives (tests-client/image-resize.test.ts). A picture
+    // still loading has a placeholder sized for the old hint, so its widget is built again.
+    it('is built again when only the size hint changes while the picture is still loading', async () => {
+        const never = () => new Promise<null>(() => {})
+        const { root } = mount(never)
+        const { widget: resized } = mount(never, '![pic|300](../assets/pic.png)\n\nafter§')
+        const { widget: same } = mount(never)
+        expect(resized.updateDOM(root, null as unknown as EditorView)).toBe(false)
+        expect(same.updateDOM(root, null as unknown as EditorView)).toBe(true)
+    })
+
+    it('is not eq to the same picture with another size hint, so CodeMirror updates it', () => {
+        const { widget: plain } = mount(() => new Promise<null>(() => {}))
+        const { widget: hinted } = mount(() => new Promise<null>(() => {}), '![pic|300](../assets/pic.png)\n\nafter§')
+        expect((plain as unknown as ImageWidgetShape).eq(hinted as unknown as ImageWidgetShape)).toBe(false)
     })
 })

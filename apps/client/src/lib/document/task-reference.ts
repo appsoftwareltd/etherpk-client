@@ -1,12 +1,18 @@
 /**
- * A [[Task Reference]] (ADR 0114): what a person copies from a task to hand it to an agent. Two
- * lines, the task's words and then its [[Document URL]] with `#task=<line>-<fingerprint>` as the
- * fragment. The [[Headless Client]] and the Client both resolve it back to the task by its
- * position and its words, so nothing is written into the document, and a reference survives the
- * lines added above its task and the tags rewritten on it while an agent works.
+ * A [[Task Reference]] (ADR 0114, ADR 0165): what a person copies from a task to hand it to an
+ * agent. A few lines: where the task is from (the graph by name and id, and the board when it was
+ * copied from one), its words, the reference itself, and how an agent reads it. The reference is
+ * the path of the task's [[Document URL]] under an `etherpk:` scheme, with
+ * `#task=<line>-<fingerprint>` as the fragment: `etherpk:/g/<graph>/d/<document>#task=…`. It is not
+ * a web address, so an agent reads it with its [[Headless Client]] rather than trying to fetch it,
+ * and it keeps the `/g/…/d/…#task=…` shape that every Headless Client version parses. The Client
+ * and the Headless Client both resolve it back to the task by its position and its words, so
+ * nothing is written into the document, and a reference survives the lines added above its task
+ * and the tags rewritten on it while an agent works.
  *
  * The fingerprint is the first 12 hex characters (48 bits) of the SHA-256 of the task's words:
- * the text after the checkbox and the [[Task Tag]] run, whitespace collapsed, Unicode NFC. Two
+ * the text after the checkbox and the [[Task Tag]] run, without its [[Free Tag]]s (ADR 0166),
+ * whitespace collapsed, Unicode NFC. Two
  * unrelated tasks sharing one by chance is not a practical concern at that length; two tasks with
  * the same words share it by design, and are reported as ambiguous rather than guessed between.
  *
@@ -16,7 +22,7 @@ import { documentUrl } from '../navigation/document-url'
 import { fencedBlocks } from './fenced-code'
 import { TASK_PRIORITY_FILTERS, TASK_STATUSES, type TaskQuery } from './index-db'
 import { bulletLabel } from './index-derive'
-import { parseTaskLine, parseTaskTags } from './task-tags'
+import { parseTaskLine, parseTaskTags, withoutFreeTags } from './task-tags'
 
 /** The hex characters of the SHA-256 a reference keeps. */
 export const FINGERPRINT_LENGTH = 12
@@ -32,10 +38,12 @@ export interface TaskReference {
 
 /**
  * The words that identify a task while its tags change: the text after the checkbox and the tag
- * run, whitespace collapsed and Unicode NFC applied. A task written as tags alone is its tags.
+ * run, without its [[Free Tag]]s, whitespace collapsed and Unicode NFC applied. A task written as
+ * Free Tags alone is its Free Tags, and one written as Task Tags alone is its tags.
  */
 export function taskWords(label: string): string {
-    const text = parseTaskTags(label).text || label
+    const after = parseTaskTags(label).text
+    const text = withoutFreeTags(after) || after || label
     return text.normalize('NFC').replace(/\s+/g, ' ').trim()
 }
 
@@ -53,19 +61,59 @@ export function taskReferenceUrl(reference: TaskReference, origin = ''): string 
     return `${origin}${documentUrl(reference.graphId, reference.document)}#task=${reference.line}-${reference.fingerprint}`
 }
 
-/** The two lines a person copies: the task's words, then the address. */
-export function formatTaskReference(reference: TaskReference, label: string, origin = ''): string {
-    return `${taskWords(label)}\n${taskReferenceUrl(reference, origin)}`
+/** The scheme that marks a Task Reference as EtherPK's own, and not a web address to fetch. */
+const SCHEME = 'etherpk:'
+
+/** The reference as an agent is handed it: `etherpk:` and the address's path and fragment. */
+export function taskReferenceId(reference: TaskReference): string {
+    return `${SCHEME}${taskReferenceUrl(reference)}`
 }
 
-const REFERENCE = /\/g\/([^/?#\s]+)\/d\/([^?#\s]+?)(?:\?[^#\s]*)?#task=(\d+)-([0-9a-f]{12})(?![0-9a-f])/
+/**
+ * Where a reference was copied from, which its first line says: a [[Kanban Board]] (the board for
+ * a concept, or the Graph Kanban when `concept` is null), or a document.
+ */
+export type TaskReferenceSource = { kind: 'board'; concept: string | null } | { kind: 'document' }
+
+export interface TaskReferenceContext {
+    /** The graph's name, which tells an agent with several EtherPK servers which one to use; null when it has none. */
+    graphName: string | null
+    source: TaskReferenceSource
+}
 
 /**
- * The reference in `input`: the two lines as copied, the address alone, with any origin or none,
- * or null when `input` holds none.
+ * The text a person copies: where the task is from, its words, the reference, and how an agent
+ * reads it. An agent does not know the reference format, so the last line names the tools.
+ */
+export function formatTaskReference(reference: TaskReference, label: string, context: TaskReferenceContext): string {
+    const graph = context.graphName ? `the graph "${context.graphName}" (${reference.graphId})` : `the graph ${reference.graphId}`
+    const from =
+        context.source.kind === 'document'
+            ? ''
+            : context.source.concept === null
+              ? 'the Graph Kanban in '
+              : `the Kanban board for "${context.source.concept}" in `
+    const server = context.graphName ? `"${context.graphName}"` : 'that graph'
+    return [
+        `EtherPK task from ${from}${graph}`,
+        `Task: ${taskWords(label)}`,
+        `Reference: ${taskReferenceId(reference)}`,
+        `This is not a web address. Use the EtherPK MCP server connected to ${server}: read_task with this whole text to read the task and its detail, set_task if you are asked to change its status, add_task_note to record what you did.`,
+    ].join('\n')
+}
+
+const PATH = String.raw`\/g\/([^/?#\s]+)\/d\/([^?#\s]+?)(?:\?[^#\s]*)?#task=(\d+)-([0-9a-f]{12})(?![0-9a-f])`
+/** The `etherpk:` form, read first so that nothing shaped like a reference in a task's words wins. */
+const ETHERPK_REFERENCE = new RegExp(`${SCHEME}${PATH}`)
+/** The reference anywhere, with any origin or none: the web address an earlier version copied. */
+const ANY_REFERENCE = new RegExp(PATH)
+
+/**
+ * The reference in `input`: the text as copied, the `etherpk:` reference alone, or the web address
+ * an earlier version copied, with any origin or none; null when `input` holds none.
  */
 export function parseTaskReference(input: string): TaskReference | null {
-    const match = REFERENCE.exec(input)
+    const match = ETHERPK_REFERENCE.exec(input) ?? ANY_REFERENCE.exec(input)
     if (!match) return null
     const [, graph, path, line, fingerprint] = match
     try {

@@ -9,6 +9,7 @@ import {
     type PendingMove,
     sectionAfter,
     taskDetailCard,
+    toCard,
     unsettledMoves,
     withPendingMoves,
 } from './board-model'
@@ -17,8 +18,9 @@ import {
 // dropped card lands at once and holds its new place until the index agrees, or gives way to
 // the index after a while so a move the index never confirms cannot stand for ever.
 
-function card(label: string, document = 'Acme', line = 0, due: string | null = null): BoardCard {
-    return { key: `${document}:${line}`, document, line, text: label, label, due, dueState: due === null ? null : 'upcoming', parent: null }
+function card(label: string, document = 'Acme', line = 0, due: string | null = null, freeTags: string[] = []): BoardCard {
+    const freeTag = freeTags[0]?.toLowerCase() ?? null
+    return { key: `${document}:${line}`, document, line, text: label, label, due, dueState: due === null ? null : 'upcoming', parent: null, freeTags, freeTag }
 }
 
 /**
@@ -82,6 +84,16 @@ describe('withPendingMoves', () => {
         expect(labelsAt(shown, 'doing', null)).toEqual(['Earlier', 'Same day, earlier name', 'Send the quote', 'Undated'])
     })
 
+    it('slots the card by its first Free Tag before anything else, untagged cards last', () => {
+        const fence = card('Mend the fence', 'Garden', 3, null, ['paint', 'bug'])
+        const target: Array<[string, number | null, BoardCard[]]> = [
+            ['doing', null, [card('Fix the gate', 'Shed', 0, '2026-10-01', ['bug']), card('Sweep the path', 'Shed', 1, null, ['Paint']), card('Dig the bed', 'Garden', 0, '2026-09-01')]],
+            ['open', null, [fence]],
+        ]
+        const shown = withPendingMoves(board(target), [move(fence, 'doing', null)])
+        expect(labelsAt(shown, 'doing', null)).toEqual(['Fix the gate', 'Mend the fence', 'Sweep the path', 'Dig the bed'])
+    })
+
     it('counts a card dropped on a collapsed lane without drawing it there, since that lane holds no cards', () => {
         const quote = card('Send the quote')
         const shown = withPendingMoves(board([['open', null, [quote]]], { done: 40 }), [move(quote, 'done', null)])
@@ -96,6 +108,26 @@ describe('withPendingMoves', () => {
         const shown = withPendingMoves(snapshot, [move(quote, 'doing', 2)])
         expect(labelsAt(shown, 'doing', 2)).toEqual(['Send the quote'])
         expect(totalAt(shown, 'doing', 2)).toBe(1)
+    })
+})
+
+describe('toCard', () => {
+    const hit = (text: string) => ({ concept: 'Shed', line: 2, text, due: null, parentTask: '#bug Paint the shed #P1' }) as Parameters<typeof toCard>[0]
+
+    it('shows the words without the tag run or the Free Tags, and lists the Free Tags as written', () => {
+        const shown = toCard(hit('#bug #P1 Fix the gate #needs-oil'), '2026-11-02')
+        expect(shown.label).toBe('Fix the gate')
+        expect(shown.freeTags).toEqual(['bug', 'needs-oil'])
+        expect(shown.freeTag).toBe('bug')
+        expect(shown.parent).toBe('Paint the shed #P1')
+    })
+
+    it('shows a task that is only Free Tags as its tags, with no pills', () => {
+        const shown = toCard(hit('#P1 #bug'), '2026-11-02')
+        expect(shown.label).toBe('#bug')
+        expect(shown.freeTags).toEqual([])
+        // It still sorts with the other tasks tagged bug, as the index orders it.
+        expect(shown.freeTag).toBe('bug')
     })
 })
 

@@ -66,3 +66,13 @@ export function parseImageDisplaySizeHint(alt: string): ParsedAlt {
     }
     return parsed
 }
+
+/**
+ * `alt` with its display-size hint set to `width` px, or removed for `null`; the label is kept. A
+ * `WxH` hint becomes the width alone: what the resize handle writes (image-resize.ts), which sizes
+ * by width and keeps the aspect ratio.
+ */
+export function withDisplayWidth(alt: string, width: number | null): string {
+    const { cleanAlt } = parseImageDisplaySizeHint(alt)
+    return width === null ? cleanAlt : `${cleanAlt}|${width}`
+}

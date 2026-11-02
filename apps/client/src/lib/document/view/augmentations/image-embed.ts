@@ -18,8 +18,10 @@
  * See tests-client/block-widget-height-map.test.ts.
  *
  * Caret placement on a revealed image line uses the browser's own hit-test ({@link posFromPoint})
- * against the markdown's text row: the revealed line reserves the image's height, and a click in
- * the empty space below the text lands by its X. See tests-client/image-caret.test.ts.
+ * against the markdown's text rows ({@link textRowY}): the revealed line reserves the image's
+ * height, and a click in the empty space below the text lands on the last row by its X. A click on
+ * the rendered image puts the caret at the end of the markdown ({@link imageClickCaret}). See
+ * tests-client/image-caret.test.ts.
  *
  * The `src` comes from the injected `resolveAsset`: remote (`http(s):`/`data:`/`blob:`)
  * urls are used directly, asset references (`../assets/x.png`) are resolved to an object
@@ -48,6 +50,7 @@ import { BLOCK_WIDGET_SPACING, BULLET_BLOCK_DROP, blockWidgetIndent, proseTextIn
 import { displayMaxWidth, parseImageDisplaySizeHint } from './image-display-size'
 import { type ImageFootprint, activeImageFootprints, persistableImageUrl } from './image-footprints'
 import { isDirectImageUrl } from './image-target'
+import { HANDLE_INSIDE_MIN, attachResizeHandle, imageResizeTheme, imageWidthChange } from './image-resize'
 import { isProtectedDocumentFacet } from './protected-document'
 import { pinReveal, pinnedRevealField, pinnedRevealFrom, revealInputsChanged, revealedLines } from './reveal-policy'
 import { isBulletImageLine, isImageLine, parseImageLine } from '../../image-line'
@@ -89,11 +92,11 @@ const OVERLAY_INSET = 6
 
 /**
  * The document position under a screen point, via the browser's own hit-testing (real DOM
- * layout): the caller aims it at the markdown's text row inside a revealed image line, whose
+ * layout): the caller aims it at one of the markdown's text rows inside a revealed image line, whose
  * reserved height leaves empty space below the text, so a click anywhere in that space lands by
  * its X. The text row can be out of sight while the click is not: scrolled above the pane, or
  * under the app's own chrome. The hit test then lands outside `lineEl`, and the column is found
- * by X among the line's own characters instead ({@link domAtX}). Clamped to `[from, to]`; falls
+ * by X among the line's own characters instead ({@link domAtPoint}). Clamped to `[from, to]`; falls
  * back to `from` when neither finds a place.
  */
 function posFromPoint(view: EditorView, lineEl: Element, x: number, y: number, from: number, to: number): number {
@@ -115,7 +118,7 @@ function posFromPoint(view: EditorView, lineEl: Element, x: number, y: number, f
         }
     }
     if (!node || !lineEl.contains(node)) {
-        const located = domAtX(lineEl, x)
+        const located = domAtPoint(lineEl, x, y)
         if (!located) return from
         node = located.node
         offset = located.offset
@@ -129,14 +132,14 @@ function posFromPoint(view: EditorView, lineEl: Element, x: number, y: number, f
 }
 
 /**
- * The place between characters of `lineEl`'s first row nearest to the screen X `x`, measured from
- * the characters' own boxes, so it needs no hit test. Null when the line has no text.
+ * The place between characters of `lineEl` nearest to the screen point (`x`, `y`), measured from the
+ * characters' own boxes, so it needs no hit test: on the row nearest `y` (a wrapped line has
+ * several), the character edge nearest `x`. Null when the line has no text.
  */
-function domAtX(lineEl: Element, x: number): { node: Text; offset: number } | null {
+function domAtPoint(lineEl: Element, x: number, y: number): { node: Text; offset: number } | null {
     const walker = document.createTreeWalker(lineEl, NodeFilter.SHOW_TEXT)
     const range = document.createRange()
-    let firstRowBottom: number | null = null
-    let best: { node: Text; offset: number; distance: number } | null = null
+    let best: { node: Text; offset: number; rowDistance: number; distance: number } | null = null
     for (let text = walker.nextNode() as Text | null; text; text = walker.nextNode() as Text | null) {
         // By grapheme, as CodeMirror's own scan steps, so the caret never lands inside an emoji or
         // between a letter and its combining mark.
@@ -146,16 +149,42 @@ function domAtX(lineEl: Element, x: number): { node: Text; offset: number } | nu
             range.setEnd(text, next)
             const box = range.getBoundingClientRect()
             if (box.width === 0 && box.height === 0) continue
-            firstRowBottom ??= box.bottom
-            // A line that wraps: the caller aims at the first row, so later rows are not candidates.
-            if (box.top >= firstRowBottom) return best && { node: best.node, offset: best.offset }
+            // The row first, then the column: a character on the nearest row beats a nearer one above or below.
+            const rowDistance = Math.max(0, box.top - y, y - box.bottom)
             // Before this character when `x` is in its left half, after it when in its right half.
             const offset = x < (box.left + box.right) / 2 ? i : next
             const distance = Math.min(Math.abs(x - box.left), Math.abs(x - box.right))
-            if (!best || distance < best.distance) best = { node: text, offset, distance }
+            if (!best || rowDistance < best.rowDistance || (rowDistance === best.rowDistance && distance < best.distance)) {
+                best = { node: text, offset, rowDistance, distance }
+            }
         }
     }
     return best && { node: best.node, offset: best.offset }
+}
+
+/**
+ * The Y at which to hit-test a click on a revealed image line. The line holds the picture's height
+ * open, so its markdown is a few rows at the top (more than one when it wraps) and the rest is empty
+ * space: a click on the rows is tested where it is, and a click above or below them on the row
+ * nearest it, which for the space below is the last row. Aiming every click at the first row left
+ * the later rows of a wrapped line, and with them the end of the markdown, out of reach.
+ */
+function textRowY(view: EditorView, from: number, to: number, y: number): number {
+    const first = view.coordsAtPos(from, 1)
+    const last = view.coordsAtPos(to, -1)
+    if (!first || !last) return y
+    if (y < first.top) return (first.top + first.bottom) / 2
+    if (y > last.bottom) return (last.top + last.bottom) / 2
+    return y
+}
+
+/**
+ * Where a click on a rendered image puts the caret: the end of its line's markdown, after the `)`,
+ * so what is typed next follows the image and the size hint is a few keys to the left.
+ */
+export function imageClickCaret(state: EditorState, pos: number): number {
+    const line = state.doc.lineAt(pos)
+    return line.from + line.text.trimEnd().length
 }
 
 /**
@@ -196,6 +225,14 @@ export function markImageDecoded(key: string): void {
 
 /** How to stop asking for a widget's asset, by the widget's root: called when CodeMirror destroys it. */
 const pendingLoads = new WeakMap<HTMLElement, () => void>()
+
+/** The picture in a widget, by the widget's root, once it has decoded and entered the DOM. */
+const pictures = new WeakMap<HTMLElement, HTMLImageElement>()
+
+/** The positioned box the picture and its overlays share, in a widget's root. */
+function wrapOf(root: HTMLElement): HTMLElement {
+    return root.classList.contains('cm-md-image') ? root : (root.querySelector<HTMLElement>('.cm-md-image') ?? root)
+}
 
 class ImageWidget extends WidgetType {
     constructor(
@@ -241,23 +278,50 @@ class ImageWidget extends WidgetType {
         return activeImageFootprints().get(imageKey(this.url, this.maxWidth, this.maxHeight))?.height ?? -1
     }
 
-    /** The widget apart from its notice, stamped on the DOM so a notice change updates in place. */
+    /** The widget apart from its notice and its size hint, stamped on the DOM so either changes in place. */
     private identity(): string {
-        return [this.url, this.alt, this.maxWidth, this.maxHeight, this.indent, this.inline].join('\u0000')
+        return [this.url, this.alt, this.indent, this.inline].join('\u0000')
+    }
+
+    /** The size hint, stamped on the DOM beside the identity. */
+    private sizeStamp(): string {
+        return `${this.maxWidth ?? ''}x${this.maxHeight ?? ''}`
     }
 
     /**
-     * A notice appearing or clearing, or the decode generation moving on, is the only difference between
-     * two widgets of the same identity, and updating in place keeps the picture where it is; anything
-     * else rebuilds the widget, which would otherwise reload the picture through its placeholder.
+     * The hint is a *maximum*: cap with max-width/max-height and leave width/height auto, so the image
+     * scales down to fit (keeping its aspect ratio) but is never upscaled. Width is also capped to the
+     * editor (`displayMaxWidth`) so a large hint can't overflow; no hint leaves the theme's 100%.
      */
-    updateDOM(dom: HTMLElement): boolean {
+    private applySize(img: HTMLImageElement): void {
+        img.style.maxWidth = this.maxWidth !== undefined ? displayMaxWidth(this.maxWidth) : ''
+        img.style.maxHeight = this.maxHeight !== undefined ? `${this.maxHeight}px` : ''
+    }
+
+    /**
+     * A notice appearing or clearing, the decode generation moving on, or a shown picture's size hint
+     * changing (a drag of the resize handle) is the only difference between two widgets of the same
+     * identity, and updating in place keeps the picture where it is; anything else rebuilds the widget,
+     * which would otherwise reload the picture through its placeholder.
+     */
+    updateDOM(dom: HTMLElement, view: EditorView): boolean {
         if (dom.dataset.imageIdentity !== this.identity()) return false
+        const img = pictures.get(dom)
+        const resized = dom.dataset.imageSize !== this.sizeStamp()
+        // A picture still loading keeps its placeholder, sized for the hint it was built with: rebuild.
+        if (resized && !img) return false
         // The notice sits in the positioned box: the root itself for a bullet image, its child for a block image.
-        const wrap = dom.classList.contains('cm-md-image') ? dom : (dom.querySelector<HTMLElement>('.cm-md-image') ?? dom)
+        const wrap = wrapOf(dom)
         const notice = wrap.querySelector('.cm-md-image-uploading')
         if (this.uploading && !notice) wrap.appendChild(this.buildUploadingNotice())
         else if (!this.uploading && notice) notice.remove()
+        if (resized && img) {
+            this.applySize(img)
+            dom.dataset.imageSize = this.sizeStamp()
+            // The footprint at the new size, under the new hint's key, once it is laid out: what a
+            // reveal reserves and the next load's placeholder takes.
+            requestAnimationFrame(() => this.recordFootprint(view, dom, img))
+        }
         return true
     }
 
@@ -275,6 +339,7 @@ class ImageWidget extends WidgetType {
         }
         root.setAttribute('data-augmentation', 'image')
         root.dataset.imageIdentity = this.identity()
+        root.dataset.imageSize = this.sizeStamp()
         // Inline images sit right after the bullet marker (the marker stays real text); a block image
         // starts where its line's text would, under a bullet's text or a prose line's own spaces.
         if (!this.inline && this.indent) wrap.style.paddingLeft = this.indent
@@ -284,11 +349,7 @@ class ImageWidget extends WidgetType {
         // attached image with no usable source paints as the broken-image icon plus the alt text.
         const img = document.createElement('img')
         img.alt = this.alt
-        // The hint is a *maximum*: cap with max-width/max-height and leave width/height auto,
-        // so the image scales down to fit (keeping its aspect ratio) but is never upscaled.
-        // Width is also capped to the editor (`displayMaxWidth`) so a large hint can't overflow.
-        if (this.maxWidth !== undefined) img.style.maxWidth = displayMaxWidth(this.maxWidth)
-        if (this.maxHeight !== undefined) img.style.maxHeight = `${this.maxHeight}px`
+        this.applySize(img)
 
         const placeholder = wrap.appendChild(this.buildPlaceholder())
         // Over the placeholder and the picture alike: the notice is about the upload, not the decode.
@@ -297,10 +358,11 @@ class ImageWidget extends WidgetType {
         // `reveal` / `fail` are the only exits from the loading state; whichever fires first wins,
         // and the other becomes a no-op (decode() and the load/error events overlap in when they fire).
         let settled = false
-        const show = (canDownload: boolean) => {
+        const show = (canDownload: boolean, broken: boolean) => {
             placeholder.remove()
             wrap.appendChild(img)
-            this.addActions(view, wrap, img, canDownload)
+            pictures.set(root, img)
+            this.addOverlays(view, root, img, canDownload, broken)
             // The swap changed the widget's height behind CodeMirror's height map; redraw through the
             // state so CM measures again (see `decodeGenerations`). A widget torn down while the picture
             // was in flight (its line revealed, its pane closed) is not in the document and has nothing
@@ -313,7 +375,7 @@ class ImageWidget extends WidgetType {
         const reveal = () => {
             if (settled) return
             settled = true
-            show(true)
+            show(true, false)
             this.recordFootprint(view, root, img)
         }
         const fail = () => {
@@ -323,7 +385,7 @@ class ImageWidget extends WidgetType {
             // The image is still appended: with no usable source the browser renders its alt text,
             // which is the broken affordance's label (a bare dashed box says nothing). The overlay
             // still appears, minus download — a dead reference is exactly what trash is for.
-            show(false)
+            show(false, true)
         }
         img.addEventListener('error', fail)
 
@@ -465,36 +527,41 @@ class ImageWidget extends WidgetType {
     }
 
     /**
-     * The hover overlay: the same actions the trailing cluster on a link shows, pinned to the
-     * image's top-right corner. Only for an [[Asset Reference]] — a remote image (`https:`,
-     * `data:`, `blob:`) is not stored here, so there is nothing to delete and the browser's own
-     * "Save image as" already covers saving it; offering a trash for it would be a lie.
+     * What sits over a shown picture: the asset actions at its top-right corner ({@link addActions})
+     * and the resize handle at its bottom-right (image-resize.ts), both raised while the pointer is
+     * over the picture. A broken picture has no size to change, so it gets no handle.
      *
-     * The overlay is a **sibling of the image inside the wrap**, positioned from the image's
+     * The overlays are **siblings of the image inside the wrap**, positioned from the image's
      * measured box rather than by wrapping the image in a hugging element. A wrapper is the
      * obvious way to do this and it does not work here: the extra shrink-to-fit level makes the
      * image's `max-width: 100%` cyclic, and Chrome resolves that to zero — the picture vanishes
      * (measured; caught by image-bullet.test.ts). A block wrap spans the editor while a narrow
-     * image does not, so a `ResizeObserver` keeps `--gk-actions-right` at the gap between the
-     * image's right edge and the wrap's, and the overlay sits against that. The bullet variant's
-     * wrap already hugs its image, so the gap is simply zero there.
-     *
-     * The buttons stop their own `mousedown` from propagating, which is what keeps a click on one
-     * from also reaching the widget handler below and pinning the raw markdown open behind the
-     * dialog.
+     * image does not, so a `ResizeObserver` keeps `--gk-image-gap-right` and `--gk-image-gap-bottom`
+     * at the gaps between the image's corner and the wrap's, and the overlays sit against those. The
+     * bullet variant's wrap already hugs its image, so the right gap is simply zero there.
      */
-    private addActions(view: EditorView, wrap: HTMLElement, img: HTMLImageElement, canDownload: boolean): void {
-        if (assetNameFromRef(this.url) === null) return
-        const resolve = () => assetTargetAt(view, wrap, this.url, 'start')
-        const actions = buildAssetActions(view, this.url, resolve, {
-            className: 'cm-md-image-actions',
-            size: 18,
-            canDownload,
-        })
-        wrap.appendChild(actions)
+    private addOverlays(view: EditorView, root: HTMLElement, img: HTMLImageElement, canDownload: boolean, broken: boolean): void {
+        const wrap = wrapOf(root)
+        const actions = this.addActions(view, wrap, canDownload)
+        // A read-only editor (a theme preview) has nothing to write, so it offers no handle.
+        const handle =
+            broken || view.state.readOnly
+                ? null
+                : attachResizeHandle(view, wrap, img, {
+                      commit: (width) => {
+                          // Read the line live from the widget's DOM, as the click handler does: CM reuses
+                          // the DOM across edits above it, so an offset kept from building it goes stale.
+                          const spec = imageWidthChange(view.state, view.posAtDOM(root), this.url, width)
+                          if (spec) view.dispatch(spec)
+                      },
+                  })
 
         const trackImageBox = () => {
             const gap = Math.max(0, wrap.clientWidth - (img.offsetLeft + img.offsetWidth))
+            wrap.style.setProperty('--gk-image-gap-right', `${gap}px`)
+            wrap.style.setProperty('--gk-image-gap-bottom', `${Math.max(0, wrap.clientHeight - (img.offsetTop + img.offsetHeight))}px`)
+            wrap.classList.toggle('cm-md-image--small', Math.min(img.offsetWidth, img.offsetHeight) < HANDLE_INSIDE_MIN)
+            if (!actions) return
             // An overlay wider than its image would cover the picture completely - a 40px-wide
             // image against three icons - leaving nothing to hover, click or read. Put it just
             // BESIDE such an image instead, which a negative offset does (the wrap does not clip).
@@ -503,8 +570,8 @@ class ImageWidget extends WidgetType {
             wrap.style.setProperty('--gk-actions-right', `${right}px`)
         }
         trackImageBox()
-        // Fires once on observe and again whenever either box reflows, so the overlay never
-        // drifts off the picture. BOTH boxes: the gap is the difference between them, and a
+        // Fires once on observe and again whenever either box reflows, so the overlays never
+        // drift off the picture. BOTH boxes: the gap is the difference between them, and a
         // drawer or split-pane resize widens the block wrap (it spans the editor) while an image
         // narrower than the editor keeps its size - watching the image alone misses that entirely,
         // and the overlay slides off along with the wrap's edge.
@@ -514,28 +581,51 @@ class ImageWidget extends WidgetType {
             observer.observe(wrap)
         }
 
-        // Hover is tracked over the image and the overlay specifically, not over the wrap: a
-        // block wrap spans the editor, so keying off it would raise the overlay from anywhere on
+        // Hover is tracked over the image and the overlays specifically, not over the wrap: a
+        // block wrap spans the editor, so keying off it would raise the overlays from anywhere on
         // the row. `pointerover`/`pointerout` rather than enter/leave because these bubble, which
-        // is what lets a button - the only part of the overlay that takes pointer events - report
-        // for the overlay as a whole.
+        // is what lets a button - the only part of the actions overlay that takes pointer events -
+        // report for the overlay as a whole.
         const setHovered = (on: boolean) => wrap.classList.toggle('cm-md-image--hovered', on)
-        const within = (node: Node | null) => !!node && (img.contains(node) || actions.contains(node))
+        const within = (node: Node | null) => !!node && [img, actions, handle].some((part) => part?.contains(node))
         wrap.addEventListener('pointerover', (event) => {
             if (within(event.target as Node)) setHovered(true)
         })
         wrap.addEventListener('pointerout', (event) => {
-            // Moving between the image and the overlay must not flicker the overlay away.
+            // Moving between the image and an overlay must not flicker the overlays away.
             if (!within(event.relatedTarget as Node | null)) setHovered(false)
         })
+    }
 
+    /**
+     * The actions the trailing cluster on a link shows, pinned to the image's top-right corner, or
+     * null. Only for an [[Asset Reference]] — a remote image (`https:`, `data:`, `blob:`) is not
+     * stored here, so there is nothing to delete and the browser's own "Save image as" already
+     * covers saving it; offering a trash for it would be a lie.
+     *
+     * The buttons stop their own `mousedown` from propagating, which is what keeps a click on one
+     * from also reaching the widget handler below and pinning the raw markdown open behind the
+     * dialog.
+     */
+    private addActions(view: EditorView, wrap: HTMLElement, canDownload: boolean): HTMLElement | null {
+        if (assetNameFromRef(this.url) === null) return null
+        const resolve = () => assetTargetAt(view, wrap, this.url, 'start')
+        const actions = buildAssetActions(view, this.url, resolve, {
+            className: 'cm-md-image-actions',
+            size: 18,
+            canDownload,
+        })
+        wrap.appendChild(actions)
         // Touch has no hover, so the overlay never appears there; a long press on the image
         // raises the same actions through the [[Context Menu]]. Right-click does too on desktop.
         attachAssetContextMenu(view, wrap, resolve)
+        return actions
     }
 
-    ignoreEvent(): boolean {
-        return false // let mousedown reach the editor handler (to place the caret)
+    ignoreEvent(event: Event): boolean {
+        // The resize handle runs its own gesture; every other event reaches the editor handler
+        // (a mousedown places the caret).
+        return event.target instanceof Element && event.target.closest('.cm-md-image-resize') !== null
     }
 }
 
@@ -680,7 +770,7 @@ const theme = EditorView.baseTheme({
         position: 'absolute',
         top: `${OVERLAY_INSET}px`,
         // `--gk-actions-right` is the gap between the image's right edge and the wrap's, measured
-        // from the live image (see addActions). Zero is the right answer for a wrap that already
+        // from the live image (see addOverlays). Zero is the right answer for a wrap that already
         // hugs its image, which is what makes it a safe default.
         right: `calc(var(--gk-actions-right, 0px) + ${OVERLAY_INSET}px)`,
         display: 'flex',
@@ -792,9 +882,9 @@ export function imageEmbedAugmentation(options: ImageEmbedOptions): Extension {
             // the image would vanish and no menu would appear (caught by asset-actions.test.ts).
             if (event.button !== 0) return false
             const target = event.target as HTMLElement | null
-            // Clicking the rendered image: reveal + pin it, with the caret at the start of the line.
-            // (There is no character under the pointer to map the click onto: the picture stands in
-            // for the whole line. Clicking the revealed markdown below positions precisely.)
+            // Clicking the rendered image: reveal + pin it, with the caret at the end of the markdown
+            // ({@link imageClickCaret}). There is no character under the pointer to map the click onto:
+            // the picture stands in for the whole line. Clicking the revealed markdown positions precisely.
             //
             // Resolve the line LIVE from the widget's DOM position — never a stored offset. CM reuses a
             // widget's DOM across edits (its `eq` ignores position), so any offset baked into the element
@@ -804,7 +894,7 @@ export function imageEmbedAugmentation(options: ImageEmbedOptions): Extension {
             if (widget) {
                 event.preventDefault()
                 const lineFrom = view.state.doc.lineAt(view.posAtDOM(widget)).from
-                view.dispatch({ selection: { anchor: lineFrom }, effects: pinReveal.of(lineFrom) })
+                view.dispatch({ selection: { anchor: imageClickCaret(view.state, lineFrom) }, effects: pinReveal.of(lineFrom) })
                 view.focus()
                 return true
             }
@@ -836,11 +926,10 @@ export function imageEmbedAugmentation(options: ImageEmbedOptions): Extension {
                 // CM's hit-test actually disagrees with the browser's, or implement drag handling
                 // ourselves. See tests-client/image-caret.test.ts for the positioning regression.
                 event.preventDefault()
-                // Hit-test the markdown *text row*, not the raw click Y. The revealed line reserves the
+                // Hit-test the markdown's *text rows*, not the raw click Y. The revealed line reserves the
                 // image's height (so the page doesn't jump), leaving an empty gap below the text; a click
                 // in that gap should still place the caret in the markdown by its X, not fall to line-end.
-                const rowCoords = view.coordsAtPos(line.from)
-                const hitY = rowCoords ? (rowCoords.top + rowCoords.bottom) / 2 : event.clientY
+                const hitY = textRowY(view, line.from, imageClickCaret(view.state, line.from), event.clientY)
                 const pos = posFromPoint(view, lineEl, event.clientX, hitY, line.from, line.to)
                 view.dispatch({ selection: { anchor: pos }, effects })
                 view.focus()
@@ -852,5 +941,5 @@ export function imageEmbedAugmentation(options: ImageEmbedOptions): Extension {
     })
 
     // Field order matters: pinned → frozen-height (reads pinned) → uploading → imageField (reads all three).
-    return [pinnedRevealField, frozenHeightField, uploadingImagesField, imageField, pointer, theme]
+    return [pinnedRevealField, frozenHeightField, uploadingImagesField, imageField, pointer, theme, imageResizeTheme]
 }

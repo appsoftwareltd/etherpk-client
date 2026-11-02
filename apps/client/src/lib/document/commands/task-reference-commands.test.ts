@@ -14,7 +14,7 @@ function deps(options: { refuse?: boolean } = {}) {
     const notices: Array<[string, string]> = []
     const value: TaskReferenceCommandDeps = {
         graphId: () => 'g-1',
-        origin: () => 'https://app.example.com',
+        graphName: () => 'Work',
         writeClipboard: async (text) => {
             if (options.refuse) throw new Error('Clipboard access was denied')
             copied.push(text)
@@ -25,10 +25,15 @@ function deps(options: { refuse?: boolean } = {}) {
 }
 
 describe('copying a task reference', () => {
-    it('puts the words and the address on the clipboard, and says what it copied', async () => {
+    it('puts where the task is from, its words and its reference on the clipboard, and says what it copied', async () => {
         const { value, copied, notices } = deps()
         expect(await copyTaskReference({ document: 'Acme', line: 3, label: '#P1 Send the quote' }, value)).toBe(true)
-        expect(copied).toEqual([`Send the quote\nhttps://app.example.com/g/g-1/d/Acme#task=3-${await taskFingerprint('Send the quote')}`])
+        const lines = copied[0].split('\n')
+        expect(lines.slice(0, 3)).toEqual([
+            'EtherPK task from the graph "Work" (g-1)',
+            'Task: Send the quote',
+            `Reference: etherpk:/g/g-1/d/Acme#task=3-${await taskFingerprint('Send the quote')}`,
+        ])
         expect(parseTaskReference(copied[0])).toMatchObject({ graphId: 'g-1', document: 'Acme', line: 3 })
         expect(notices).toEqual([['info', 'Copied a reference to "Send the quote". Paste it to an agent connected to this graph.']])
     })
@@ -39,12 +44,16 @@ describe('copying a task reference', () => {
         expect(notices).toEqual([['error', 'Could not copy the task reference: Clipboard access was denied']])
     })
 
-    it('copies a task named in the Command, as a board card passes it', async () => {
+    it('copies a task named in the Command, naming the board a card was copied from', async () => {
         const commands = createCommandRegistry()
         const { value, copied } = deps()
         registerTaskReferenceCommands(commands, createContributionRegistry(), value)
-        await commands.execute(TASK_COPY_REFERENCE, { document: 'Acme', line: 0, label: 'Send the quote' })
-        expect(copied).toHaveLength(1)
+        await commands.execute(TASK_COPY_REFERENCE, { document: 'Acme', line: 0, label: 'Send the quote', board: { concept: 'Acme' } })
+        await commands.execute(TASK_COPY_REFERENCE, { document: 'Acme', line: 0, label: 'Send the quote', board: { concept: null } })
+        expect(copied.map((text) => text.split('\n')[0])).toEqual([
+            'EtherPK task from the Kanban board for "Acme" in the graph "Work" (g-1)',
+            'EtherPK task from the Graph Kanban in the graph "Work" (g-1)',
+        ])
     })
 
     it('is a Command Menu row only while the caret is on a task line', () => {

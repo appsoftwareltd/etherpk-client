@@ -195,3 +195,24 @@ export function linkPieces(scan: LinkScan): LinkPiece[] {
     })
     return pieces
 }
+
+/**
+ * Where a pointer click the hit test resolved to `pos` leaves the caret, given the link pieces of
+ * `pos`'s line: past the hidden syntax that meets a link's text at `pos`, or `pos` itself.
+ *
+ * Hidden syntax has no width, so the place just right of a rendered link's last character is both
+ * `labelTo` (before `](url)`) and the construct's end, and the browser's hit test gives the first:
+ * typing there went into the label. A click beside a link, off its text (a click on the text opens
+ * it), means "here, outside the link": after its `)` or `>` on the right, before its `[` or `<` on
+ * the left (Editor Content Rules → Selection). On a revealed line nothing is hidden, so the pieces
+ * hold no `hide` and the click lands where it was aimed.
+ */
+export function caretBesideLink(pieces: readonly Pick<LinkPiece, 'kind' | 'from' | 'to'>[], pos: number): number {
+    const meetsText = (at: number, side: 'from' | 'to') => pieces.some((p) => p.kind !== 'hide' && p[side] === at)
+    for (const piece of pieces) {
+        if (piece.kind !== 'hide') continue
+        if (piece.from === pos && meetsText(pos, 'to')) return piece.to
+        if (piece.to === pos && meetsText(pos, 'from')) return piece.from
+    }
+    return pos
+}

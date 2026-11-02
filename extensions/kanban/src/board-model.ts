@@ -9,7 +9,7 @@
  */
 import type { TaskHit, TaskPriorityFilter, TaskStatus } from '#lib/document/index-db.js'
 import { bulletLabel } from '#lib/document/index-derive.js'
-import { parseTaskLine, parseTaskTags } from '#lib/document/task-tags.js'
+import { freeTagsIn, parseTaskLine, parseTaskTags, taskDisplay } from '#lib/document/task-tags.js'
 
 /**
  * The View kind a board is registered under, which the manifest declares with its address
@@ -81,8 +81,12 @@ export interface BoardCard {
     line: number
     /** The text after the checkbox, tag run included, exactly as written. */
     text: string
-    /** What a person reads: the text with its [[Task Tag]] run taken off. */
+    /** What a person reads: the text with its [[Task Tag]] run and its [[Free Tag]]s taken off. */
     label: string
+    /** The Free Tags the card shows as pills, as written; none when they are all the task says. */
+    freeTags: string[]
+    /** The first Free Tag, lower-cased, or null: what orders the card in its section first (ADR 0166). */
+    freeTag: string | null
     due: string | null
     dueState: DueState | null
     /**
@@ -164,11 +168,17 @@ export function sameTask(a: BoardCard, b: BoardCard): boolean {
 }
 
 /**
- * The order a section's cards are in: due date first with undated last, then the document's
- * name, then the line. The index sorts a section the same way (`TIE_BREAK_SQL`), so a card a
- * move slots in sits where the next read will put it.
+ * The order a section's cards are in: the first [[Free Tag]] A–Z with untagged cards last, then
+ * due date with undated last, then the document's name, then the line. The index sorts a section
+ * the same way (`byFreeTag`, `TIE_BREAK_SQL`), so a card a move slots in sits where the next read
+ * will put it.
  */
 function compareCards(a: BoardCard, b: BoardCard): number {
+    if (a.freeTag !== b.freeTag) {
+        if (a.freeTag === null) return 1
+        if (b.freeTag === null) return -1
+        return a.freeTag < b.freeTag ? -1 : 1
+    }
     if (a.due !== b.due) {
         if (a.due === null) return 1
         if (b.due === null) return -1
@@ -241,11 +251,17 @@ export function dueState(due: string | null, today: string): DueState | null {
 }
 
 /**
- * What a card says for a task's text as the index records it: its words without the tag run. A
- * task written as nothing but tags still gets a card, and its tags are then its words.
+ * What a card says for a task's text as the index records it: its words without the tag run or
+ * its [[Free Tag]]s. A task written as nothing but tags still gets a card, and its tags are then
+ * its words.
  */
 function cardLabel(taskText: string): string {
-    return parseTaskTags(taskText).text || taskText
+    return taskDisplay(taskText).text
+}
+
+/** A card's Free Tags: the pills it shows, and the first one, which orders it as the index does. */
+function cardFreeTags(taskText: string): Pick<BoardCard, 'freeTags' | 'freeTag'> {
+    return { freeTags: taskDisplay(taskText).freeTags, freeTag: freeTagsIn(parseTaskTags(taskText).text)[0]?.toLowerCase() ?? null }
 }
 
 export function toCard(hit: TaskHit, today: string): BoardCard {
@@ -255,6 +271,7 @@ export function toCard(hit: TaskHit, today: string): BoardCard {
         line: hit.line,
         text: hit.text,
         label: cardLabel(hit.text),
+        ...cardFreeTags(hit.text),
         due: hit.due,
         dueState: dueState(hit.due, today),
         parent: hit.parentTask === null ? null : cardLabel(hit.parentTask),

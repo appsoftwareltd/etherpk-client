@@ -43,7 +43,7 @@
         statusFilterLabel,
     } from "../task-filter-labels";
     import { defaultTaskFilter, type TaskFilterState } from "../task-filter-store";
-    import { parseTaskTags } from "../task-tags";
+    import { parseTaskTags, taskDisplay } from "../task-tags";
     import { toggleIndexedTask } from "../task-toggle";
     import { showCascadeNotice } from "../task-cascade-notice";
     import { undoTaskWrite } from "../task-write";
@@ -426,7 +426,7 @@
      * Stripped the same way a row's own text is.
      */
     function crumbText(label: string): string {
-        return parseTaskTags(label).text || label;
+        return taskDisplay(label).text;
     }
 
     /** Open the document at the task's line: the same landing a reference makes in the Backlinks View. */
@@ -780,6 +780,8 @@
                     <ul class="m-0 list-none p-0">
                         {#each group.hits as hit (hitKey(hit))}
                             {@const tags = parseTaskTags(hit.text)}
+                            <!-- The words without the tag run or the Free Tags, which show as pills (ADR 0166). -->
+                            {@const shown = taskDisplay(hit.text)}
                             <li class="rounded-md py-1 hover:bg-(--gk-surface-2)" data-testid="tasks-row">
                                 <div class="flex items-start gap-2 px-1 pointer-coarse:gap-0 pointer-coarse:px-0">
                                     <!-- mt-1.5 rather than mt-1: the row is items-start, and at
@@ -793,7 +795,7 @@
                                             type="checkbox"
                                             data-testid="tasks-checkbox"
                                             checked={isDone(hit)}
-                                            aria-label="Toggle {tags.text}"
+                                            aria-label="Toggle {shown.text}"
                                             onchange={() => void toggle(hit)}
                                             class="mt-1.5 pointer-coarse:mt-0"
                                         />
@@ -813,7 +815,7 @@
                                                  Filter to that concept instead, which read as a link that
                                                  went nowhere; narrowing to a name is the box's job. A
                                                  concept with no page yet is dashed, as the editor draws it. -->
-                                            {#each linkParts(tags.text) as part, i (i)}
+                                            {#each linkParts(shown.text) as part, i (i)}
                                                 {#if part.concept !== null}
                                                     <span
                                                         role="button"
@@ -866,6 +868,9 @@
                                                     Due {tags.due}
                                                 </span>
                                             {/if}
+                                            {#each shown.freeTags as freeTag (freeTag)}
+                                                <span class="rounded bg-(--gk-surface-2) px-1 text-sm font-semibold" data-testid="tasks-badge-free-tag">{freeTag}</span>
+                                            {/each}
                                         </span>
                                         <!-- Why this row matched. Under ADR 0051 a task can answer to a
                                              concept through a distant ancestor, so without the chain a

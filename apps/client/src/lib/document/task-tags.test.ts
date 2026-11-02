@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { applyTaskTag, parseTaskLine, parseTaskTags, taskTagRun, toggleTaskLine } from './task-tags'
+import { applyTaskTag, freeTagsIn, parseTaskLine, parseTaskTags, taskDisplay, taskTagRun, taskTagTokens, toggleTaskLine, withoutFreeTags } from './task-tags'
 
 describe('parseTaskTags', () => {
     it('reads the full minted tag set from the leading run', () => {
@@ -66,6 +66,92 @@ describe('parseTaskTags', () => {
     })
 })
 
+describe('a Free Tag in the leading run', () => {
+    it('is passed over, so the known tags after it are still read', () => {
+        const tags = parseTaskTags('#bug #P1 #D Fix the gate')
+        expect(tags.priority).toBe(1)
+        expect(tags.doing).toBe(true)
+        expect(tags.text).toBe('#bug Fix the gate')
+    })
+
+    it('stays in the text, so rewriting the run never drops it', () => {
+        expect(applyTaskTag('- [ ] #bug #P1 Fix the gate', { kind: 'doing' })).toBe('- [ ] #P1 #D #bug Fix the gate')
+        expect(applyTaskTag('- [ ] #P1 Fix the gate #bug', { kind: 'doing' })).toBe('- [ ] #P1 #D Fix the gate #bug')
+    })
+
+    it('lists the Task Tags in the run as written, without the Free Tags', () => {
+        expect(taskTagTokens('#bug #P1 #D-2026-11-02 Fix the gate #W')).toEqual(['#P1', '#D-2026-11-02'])
+    })
+
+    it('does not make a hash word that is not a Free Tag part of the run', () => {
+        const tags = parseTaskTags('#my_tag #P1 Fix the gate')
+        expect(tags.priority).toBeNull()
+        expect(tags.text).toBe('#my_tag #P1 Fix the gate')
+    })
+})
+
+describe('freeTagsIn', () => {
+    it('finds the Free Tags anywhere in the text, in the order written', () => {
+        expect(freeTagsIn('Fix the gate #bug #needs-review')).toEqual(['bug', 'needs-review'])
+        expect(freeTagsIn('#garden water the #beans-2 today')).toEqual(['garden', 'beans-2'])
+    })
+
+    it('ends a tag at punctuation', () => {
+        expect(freeTagsIn('Fix the gate #bug. Then #paint, and #oil!')).toEqual(['bug', 'paint', 'oil'])
+    })
+
+    it('matches ignoring case, keeping the first spelling', () => {
+        expect(freeTagsIn('#Bug in the gate #bug #BUG')).toEqual(['Bug'])
+    })
+
+    it('needs a letter, single hyphens between words, and nothing else', () => {
+        expect(freeTagsIn('#123 #2026 #my_tag #a/b #-x #x- #x--y #é')).toEqual([])
+        expect(freeTagsIn('#v2 #2-step')).toEqual(['v2', '2-step'])
+    })
+
+    it('is a whole word, never the end of another one', () => {
+        expect(freeTagsIn('a#b see https://example.com/page#part and item#4')).toEqual([])
+    })
+
+    it('is never anything a Task Tag could be, whatever its case', () => {
+        expect(freeTagsIn('#P1 #p2 #P4 #W #w #D #d #C #c #D-2026-11-02 #S-2026-11-02 #c-2026-11-02 #s-1')).toEqual([])
+        expect(freeTagsIn('#Paint #Docs #Shed')).toEqual(['Paint', 'Docs', 'Shed'])
+    })
+
+    it('is not read inside code, a wikilink or a link', () => {
+        expect(freeTagsIn('Run `make #all` and read [[Garden #notes]], [the #plan](https://example.com) and <https://example.com/#x>')).toEqual([])
+        expect(freeTagsIn('![the #shed|400](../assets/shed.webp) #paint')).toEqual(['paint'])
+    })
+})
+
+describe('withoutFreeTags', () => {
+    it('takes the Free Tags out of the text, with the space before each', () => {
+        expect(withoutFreeTags('Fix the gate #bug')).toBe('Fix the gate')
+        expect(withoutFreeTags('Fix #bug the gate.')).toBe('Fix the gate.')
+        expect(withoutFreeTags('Fix the gate #bug.')).toBe('Fix the gate.')
+        expect(withoutFreeTags('#bug #paint Fix the gate')).toBe('Fix the gate')
+    })
+
+    it('leaves hash words that are not Free Tags', () => {
+        expect(withoutFreeTags('Fix item #4 in `#all` #my_tag')).toBe('Fix item #4 in `#all` #my_tag')
+    })
+
+    it('is empty for text that is only Free Tags', () => {
+        expect(withoutFreeTags('#bug #paint')).toBe('')
+    })
+})
+
+describe('taskDisplay', () => {
+    it('is the words without the tag run or the Free Tags, and the Free Tags as pills', () => {
+        expect(taskDisplay('#bug #P1 Fix the gate #needs-oil')).toEqual({ text: 'Fix the gate', freeTags: ['bug', 'needs-oil'] })
+    })
+
+    it('shows Free Tags that are all a task says as its text, with no pills', () => {
+        expect(taskDisplay('#P1 #bug')).toEqual({ text: '#bug', freeTags: [] })
+        expect(taskDisplay('#P1')).toEqual({ text: '#P1', freeTags: [] })
+    })
+})
+
 describe('parseTaskLine', () => {
     it('reads the checkbox and the tags off a raw source line', () => {
         expect(parseTaskLine('  - [x] #P2 #C Dropped')).toMatchObject({
@@ -123,6 +209,11 @@ describe('taskTagRun', () => {
     it('covers a run with no text after it', () => {
         expect(run('- [ ] #P2')).toBe('#P2')
         expect(run('- [ ] #P2 ')).toBe('#P2')
+    })
+
+    it('covers a Free Tag in the run, and stops at one after prose', () => {
+        expect(run('- [ ] #bug #P1 Fix the gate #paint')).toBe('#bug #P1')
+        expect(run('- [ ] #bug Fix the gate')).toBe('#bug')
     })
 
     it('is null for a task without tags, a hash word in prose, and a line that is not a task', () => {

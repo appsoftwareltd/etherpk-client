@@ -26,7 +26,7 @@
 import { MARKDOWN_LINK } from '#lib/document/markdown-link-target.js'
 import { normaliseAliases } from '#lib/document/frontmatter/identity.js'
 import { isJournalConcept } from '#lib/document/journal-concept.js'
-import { parseTaskTags } from '#lib/document/task-tags.js'
+import { taskTagTokens } from '#lib/document/task-tags.js'
 import { parseWikilinks } from '#lib/document/wikilink/index.js'
 
 import { type PlannedAsset, planAssets, tryDecode } from './assets'
@@ -348,13 +348,15 @@ export async function convertAsNotes(files: SourceFile[], control?: ImportContro
             const task = TASK.exec(line)
             if (task) {
                 // AS Notes stops its tag run at the first token it does not know, so `#D` or
-                // `#S-...` after its tags is text there and a tag here. The text is left alone,
-                // because rewriting it would guess at what the person meant.
-                const asNotesText = asNotesTaskText(task[1])
-                const etherpkText = parseTaskTags(task[1]).text
-                if (etherpkText.length < asNotesText.length) {
-                    const extra = asNotesText.slice(0, asNotesText.length - etherpkText.length).trim()
-                    const many = extra.includes(' ')
+                // `#S-...` after its tags, or any tag after a free tag such as `#bug`, is text there
+                // and a tag here. The text is left alone, because rewriting it would guess at what
+                // the person meant. AS Notes's run is a prefix of EtherPK's, so the tags EtherPK
+                // reads beyond its length are the ones AS Notes did not.
+                const asNotesRun = task[1].trimStart().slice(0, task[1].trimStart().length - asNotesTaskText(task[1]).length)
+                const extraTags = taskTagTokens(task[1]).slice(asNotesRun.split(/\s+/).filter(Boolean).length)
+                if (extraTags.length > 0) {
+                    const extra = extraTags.join(' ')
+                    const many = extraTags.length > 1
                     report.push({
                         category: 'degradation',
                         concept,

@@ -1033,7 +1033,6 @@ async function openSyncedGraph(syncServer: string, graphId: string, named: (name
         refreshKeyring,
         relayUrl: account.relayUrl,
         token: account.tokenFor(graphId),
-        clientUrl: account.clientUrl,
         presenceName: `Agent on ${hostname()}`,
         readyTimeoutMs: 20_000,
         // The cache and index survive between launches, so a restart catches up rather than

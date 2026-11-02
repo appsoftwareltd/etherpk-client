@@ -54,7 +54,14 @@ describe('deriveDoc', () => {
             due: '2026-09-15',
             completion: null,
             scheduled: null,
+            freeTag: null,
         })
+    })
+
+    it('keeps the first Free Tag, lower-cased, wherever it is written', () => {
+        expect(deriveDoc('- [ ] #Paint #P1 Fix the gate #bug').tasks[0]).toMatchObject({ priority: 1, freeTag: 'paint' })
+        expect(deriveDoc('- [ ] Fix the `#gate` #bug').tasks[0].freeTag).toBe('bug')
+        expect(deriveDoc('- [ ] Fix the gate').tasks[0].freeTag).toBeNull()
     })
 
     it('chains both outliner-block AND heading ancestors (user test case)', () => {

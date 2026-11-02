@@ -237,6 +237,12 @@ describe('convertAsNotes', () => {
             expect(details(graph, 'degradation')).toContain('2 tasks written with a * bullet now use -, which EtherPK needs to read them as tasks')
         })
 
+        it('reports a task tag after a free tag, which AS Notes reads as text and EtherPK reads past the free tag to', async () => {
+            const graph = await convertAsNotes(workspace(src('todo.md', '- [ ] #bug #P1 #W fix the gate #paint\n- [ ] #P1 fix the gate #bug')))
+            expect(doc(graph, 'todo').text).toBe('---\ntitle: todo\n---\n- [ ] #bug #P1 #W fix the gate #paint\n- [ ] #P1 fix the gate #bug')
+            expect(details(graph, 'degradation')).toEqual(['Task "#bug #P1 #W fix the gate #paint" - EtherPK reads #P1 #W as task tags, where AS Notes read them as text'])
+        })
+
         it('reports text that AS Notes read as prose and EtherPK reads as a task tag', async () => {
             const graph = await convertAsNotes(workspace(src('todo.md', '- [ ] #P2 #D fix the build\n- [ ] #S-2026-10-01 later')))
             expect(doc(graph, 'todo').text).toBe('---\ntitle: todo\n---\n- [ ] #P2 #D fix the build\n- [ ] #S-2026-10-01 later')

@@ -169,3 +169,16 @@ describe('subtasks', () => {
         expect(board.lanes[1].sections[0].cards[0].parent).toBeNull()
     })
 })
+
+describe('a section with Free Tags (ADR 0166)', () => {
+    it('orders its cards by their first Free Tag A–Z, untagged last, then due date, then journals oldest first and pages A–Z', async () => {
+        ingest(db, [
+            page('Shed', ['- [ ] #P1 Oil the hinge', '- [ ] #P1 Paint the door #paint', '- [ ] #P1 #D-2026-10-03 Fix the gate #bug']),
+            page('2026-09-28', ['- [ ] #bug #P1 Sweep the path', '- [ ] #P1 Rake the leaves']),
+            page('2026-09-27', ['- [ ] #P1 Sharpen the saw #Paint']),
+        ])
+        const board = await readBoard(source, null, TODAY)
+        expect(labels(board, 'open', 1)).toEqual(['Fix the gate', 'Sweep the path', 'Sharpen the saw', 'Paint the door', 'Rake the leaves', 'Oil the hinge'])
+        expect(board.lanes[0].sections[0].cards.map((card) => card.freeTags)).toEqual([['bug'], ['bug'], ['Paint'], ['paint'], [], []])
+    })
+})

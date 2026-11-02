@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { displayMaxWidth, normalizeDisplaySize, parseDisplaySize, parseImageDisplaySizeHint } from './image-display-size'
+import { displayMaxWidth, normalizeDisplaySize, parseDisplaySize, parseImageDisplaySizeHint, withDisplayWidth } from './image-display-size'
 
 describe('parseImageDisplaySizeHint', () => {
     it('returns the alt unchanged when there is no hint', () => {
@@ -54,5 +54,27 @@ describe('normalizeDisplaySize', () => {
 describe('displayMaxWidth', () => {
     it('caps at the hint and at the container, whichever is narrower', () => {
         expect(displayMaxWidth(1000)).toBe('min(1000px, 100%)')
+    })
+})
+
+describe('withDisplayWidth', () => {
+    it('adds a width hint to alt text that has none', () => {
+        expect(withDisplayWidth('Garden', 320)).toBe('Garden|320')
+        expect(withDisplayWidth('', 320)).toBe('|320')
+    })
+
+    it('replaces a width hint, and a width x height hint with the width alone', () => {
+        expect(withDisplayWidth('Garden|800', 320)).toBe('Garden|320')
+        expect(withDisplayWidth('Garden|640x480', 320)).toBe('Garden|320')
+        expect(withDisplayWidth('Garden|800 ', 320)).toBe('Garden|320')
+    })
+
+    it('removes the hint for null, keeping the label', () => {
+        expect(withDisplayWidth('Garden|800', null)).toBe('Garden')
+        expect(withDisplayWidth('Garden', null)).toBe('Garden')
+    })
+
+    it('keeps a pipe inside the label', () => {
+        expect(withDisplayWidth('Garden | Kitchen|800', 320)).toBe('Garden | Kitchen|320')
     })
 })
