@@ -4,20 +4,21 @@ import { describe, expect, it } from 'vitest'
 import {
     lineRevealed,
     linesAllHidden,
-    pinReveal,
-    pinnedRevealField,
-    pinnedRevealLine,
     rangeRevealed,
     rangeTouches,
     requestReveal,
     requestedRevealField,
     requestedRevealed,
+    revealFocus,
     revealInputsChanged,
+    revealOnlyWhileFocused,
+    revealUpdated,
     revealedLines,
+    selectionReveals,
 } from './reveal-policy'
 
 function state(doc: string, anchor: number, head = anchor): EditorState {
-    return EditorState.create({ doc, selection: EditorSelection.single(anchor, head), extensions: [pinnedRevealField, requestedRevealField] })
+    return EditorState.create({ doc, selection: EditorSelection.single(anchor, head), extensions: [requestedRevealField] })
 }
 
 describe('line-kind reveal', () => {
@@ -57,37 +58,6 @@ describe('range-kind reveal', () => {
     })
 })
 
-describe('pinned reveal', () => {
-    it('is empty until pinned, then reports the pinned line', () => {
-        let s = state('a\nb', 0)
-        expect(pinnedRevealLine(s)).toBeNull()
-        s = s.update({ effects: pinReveal.of(2) }).state
-        expect(pinnedRevealLine(s)).toBe(2)
-        expect(lineRevealed(s, 2)).toBe(true)
-    })
-
-    it('follows its line through edits above it and drops when the line is deleted', () => {
-        let s = state('a\nb', 0).update({ effects: pinReveal.of(2) }).state
-        s = s.update({ changes: { from: 0, insert: 'xx' } }).state
-        expect(pinnedRevealLine(s)).toBe(2)
-        s = s.update({ changes: { from: 3, to: 5 } }).state // delete "\nb"
-        expect(pinnedRevealLine(s)).toBeNull()
-    })
-
-    it('clears when the caret leaves the line by keyboard, but not by pointer', () => {
-        const pinned = state('a\nb', 2).update({ effects: pinReveal.of(2) }).state
-        const keyboard = pinned.update({ selection: { anchor: 0 }, userEvent: 'select' }).state
-        expect(pinnedRevealLine(keyboard)).toBeNull()
-        const pointer = pinned.update({ selection: { anchor: 0 }, userEvent: 'select.pointer' }).state
-        expect(pinnedRevealLine(pointer)).toBe(2)
-    })
-
-    it('clears on an explicit null', () => {
-        const s = state('a\nb', 0).update({ effects: pinReveal.of(2) }).state.update({ effects: pinReveal.of(null) }).state
-        expect(pinnedRevealLine(s)).toBeNull()
-    })
-})
-
 describe('requested reveal', () => {
     // A block from the start of its opener (6) to the end of its closer, between two lines of prose.
     const doc = 'Intro\n```plan\nbeans\npeas\nkale\n```\nAfter'
@@ -118,12 +88,53 @@ describe('requested reveal', () => {
 })
 
 describe('revealInputsChanged', () => {
-    it('is true for edits, selection changes, pin and request effects, false otherwise', () => {
+    it('is true for edits, selection changes and request effects, false otherwise', () => {
         const s = state('ab', 0)
         expect(revealInputsChanged(s.update({ changes: { from: 0, insert: 'x' } }))).toBe(true)
         expect(revealInputsChanged(s.update({ selection: { anchor: 1 } }))).toBe(true)
-        expect(revealInputsChanged(s.update({ effects: pinReveal.of(0) }))).toBe(true)
         expect(revealInputsChanged(s.update({ effects: requestReveal.of({ from: 0, to: 1 }) }))).toBe(true)
         expect(revealInputsChanged(s.update({}))).toBe(false)
+    })
+})
+
+// The Task Editor's part editors (ADR 0170): the caret is on a line shown from the start, so they
+// reveal only while they have the keyboard.
+describe('an editor that reveals only while focused', () => {
+    const doc = 'a\n```math\nx\n```\nb'
+    const span = { from: doc.indexOf('```math'), to: doc.lastIndexOf('```') + 3 }
+    function gated(anchor: number): EditorState {
+        return EditorState.create({ doc, selection: EditorSelection.single(anchor), extensions: [requestedRevealField, revealOnlyWhileFocused()] })
+    }
+    const focus = (s: EditorState, focused: boolean) => s.update({ effects: revealFocus.of(focused) }).state
+
+    it('reveals no kind until it has the keyboard, then each as an ordinary editor does', () => {
+        let s = gated(span.from)
+        expect(selectionReveals(s)).toBe(false)
+        expect([...revealedLines(s)]).toEqual([])
+        expect(rangeRevealed(s, span.from, span.to)).toBe(false)
+        s = focus(s, true)
+        expect([...revealedLines(s)]).toEqual([2])
+        expect(rangeRevealed(s, span.from, span.to)).toBe(true)
+        s = focus(s, false)
+        expect([...revealedLines(s)]).toEqual([])
+    })
+
+    it('an ordinary editor reveals whatever focus it is told of', () => {
+        const s = state('a\nb', 0).update({ effects: revealFocus.of(false) }).state
+        expect(selectionReveals(s)).toBe(true)
+        expect([...revealedLines(s)]).toEqual([1])
+    })
+
+    it('the keyboard coming or going is a reveal input, for a field and for a view plugin', () => {
+        const tr = gated(0).update({ effects: revealFocus.of(true) })
+        expect(revealInputsChanged(tr)).toBe(true)
+        expect(revealUpdated({ transactions: [tr] })).toBe(true)
+        expect(revealUpdated({ transactions: [gated(0).update({})] })).toBe(false)
+    })
+
+    it('a request is the person’s own, so it shows whether the editor has the keyboard or not', () => {
+        const s = gated(0).update({ selection: { anchor: span.from + 3 }, effects: requestReveal.of(span) }).state
+        expect(requestedRevealed(s, span.from, span.to)).toBe(true)
+        expect(requestedRevealed(focus(focus(s, true), false), span.from, span.to)).toBe(true)
     })
 })

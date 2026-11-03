@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { sanitizedIconMarkup, trustedIconMarkup } from '#lib/security/trusted-types.js'
-import { iconSvg, registerIcons } from './icons'
+import { clientIconNames, iconSvg, registerIcons } from './icons'
 
 // Spies on the two ways an icon becomes trusted markup, each still doing its real work.
 vi.mock('#lib/security/trusted-types.js', async (importOriginal) => {
@@ -48,6 +48,11 @@ describe('extension icons', () => {
 })
 
 describe('iconSvg', () => {
+    it('has a box with a lid for Archive, on the 16-unit grid', () => {
+        expect(clientIconNames()).toContain('archive')
+        expect(String(iconSvg('archive'))).toContain('viewBox="0 0 16 16"')
+    })
+
     it('draws the table’s own icons on its 16-unit grid', () => {
         const svg = iconSvg('task')
         expect(svg).toContain('viewBox="0 0 16 16"')

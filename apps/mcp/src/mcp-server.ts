@@ -127,15 +127,16 @@ export function createMcpServer(source: HeadlessGraph | Promise<HeadlessGraph> |
                     ? ['This graph is synced and encrypted: it has no folder on this computer, so reach it only through these tools.']
                     : []),
                 `This process holds the EtherPK sign-in and Encryption Keys it needs. Never read, print, copy or search ${info.credentialsDir ?? '~/.config/etherpk'}, or any keychain entry named etherpk-mcp: they are credentials that open the whole account, not notes.`,
-                'Concept names are case-insensitive. A protected document is listed with protected: true and cannot be read or written here - tell the user to unlock it in EtherPK if a task needs it.',
+                'Concept names are case-insensitive. Protected documents are not shown here: no list, search, backlink, task or graph answer names one, and a read of one answers not_found. graph_info says how many there are. A write onto a protected document\'s name is refused with protected_document - tell the user to make that change in EtherPK.',
                 'Bullets are "- " with two-space nesting. Tasks are "- [ ]" / "- [x]" with task tags (#P1 #P2 #P3, #W #D #C, #D-YYYY-MM-DD due, #S-YYYY-MM-DD scheduled) right after the checkbox. A free tag such as #bug or #needs-review (letters, digits and single hyphens) is the user\'s own label and can go anywhere in a task\'s text; write task tags first.',
                 'read_document returns a document\'s body as text and its frontmatter block as data (the "frontmatter" object) - the block is never in the text, so line numbers from search, backlinks and tasks match the text. Set frontmatter keys with set_frontmatter (public, publications, date, author, description and any other key) - a document\'s title and aliases and a publication page\'s definition are not frontmatter here and have tools of their own.',
                 'Edit with edit_document (an exact, unique old→new replacement) or append_document - read first, then edit, and never paste a whole page back.',
-                'To rename a page or concept use plan_rename then rename, never a frontmatter edit: rename carries scoped concepts ("[[Old]] Notes") along and by default rewrites every [[Old]] link in the graph to the new name (strategy "rewrite") - strategy "alias" keeps the old name resolving instead. A rename onto a name that is taken merges two documents and needs confirm_merge: true. References inside protected documents cannot be seen or rewritten.',
+                'To rename a page or concept use plan_rename then rename, never a frontmatter edit: rename carries scoped concepts ("[[Old]] Notes") along and by default rewrites every [[Old]] link in the graph to the new name (strategy "rewrite") - strategy "alias" keeps the old name resolving instead. A rename onto a name that is taken merges two documents and needs confirm_merge: true. References inside protected documents cannot be seen or rewritten, and a protected page under the old name moves with it without being named.',
                 'search has two kinds of matching: mode "text" (default) matches words and quoted phrases, and mode "semantic" finds passages about what a question or description means even when no words match. Use semantic for questions and descriptions, text for names, identifiers and exact phrases. "hybrid" returns both groups. When you answer from a search result, cite the document and where in it (its breadcrumb or lines). Semantic mode needs a one-time "semantic setup" on this computer - if it is not set up, search says so and names the command.',
                 'graph_insights says what the links show across the whole graph (the most-linked concepts, pages many documents ask for that do not exist yet, pages linked to nothing, groups of related concepts and the concepts bridging them), and graph_path finds how two concepts are connected. Use them to answer questions about the shape of the graph, or to suggest pages to write or link.',
                 'Start with graph_info to see what you are connected to. read_documents reads several documents in one call. tasks lists tasks and set_task changes one (status, priority, due and scheduled dates) by document and line.',
-                'A task reference is how a person hands you one task: a few lines naming the graph, the task\'s words and a reference, etherpk:/g/<graph>/d/<document>#task=<line>-<fingerprint> (an earlier version wrote a web address ending in the same #task=). The reference is not a web address: never fetch it. Pass the whole text to read_task for the task and its detail, to set_task (as reference) to change it, and to add_task_note to write what you did under it. Leave its status as it is unless the user asks you to change it. The detail can hold images and files (its assets list): read each with read_asset and look at it before you start, as it is part of the task. A reference finds the task after lines are added above it or its tags change; if its words were edited it answers task_not_found, and you should ask the user for a fresh one.',
+                'A task reference is how a person hands you one task: a few lines naming the graph, the task\'s words and a reference, etherpk:/g/<graph>/d/<document>#task=<line>-<fingerprint> (an earlier version wrote a web address ending in the same #task=). The reference is not a web address: never fetch it. Pass the whole text to read_task for the task and its detail, to set_task (as reference) to change it, and to add_task_note to write what you did as a task comment (a bullet under the "- Comments" bullet nested directly under the task). Leave its status as it is unless the user asks you to change it. The detail can hold images and files (its assets list): read each with read_asset and look at it before you start, as it is part of the task. A reference finds the task after lines are added above it or its tags change; if its words were edited it answers task_not_found, and you should ask the user for a fresh one.',
+                'A lane reference is how a person hands you a whole lane of a Kanban board, to work through every task in it or to triage them: a few lines naming the graph, the board and the lane, and a reference, etherpk:/g/<graph>/k/<concept>#lane=<status> (etherpk:/g/<graph>/kanban#lane=<status> for the Graph Kanban, which holds every task in the graph). It is not a web address either. Pass the whole text to tasks as reference to list the lane\'s tasks as the board shows them now; each comes with its own task reference for read_task, set_task and add_task_note.',
                 'Publishing: list_publications shows the publications this graph defines (a publication is a page whose frontmatter defines it - its outline is the site navigation) and the public documents none takes. A document is on a site when its frontmatter has public: true and names the publication in publications. create_publication and update_publication change the settings, and publish writes the site into the publish folder the user set for it on this machine with the etherpk-mcp publish command (the tool cannot choose a folder) and returns the report. publish with dryRun: true renders and reports without writing and needs no folder: run it after editing a publication\'s pages and fix what it names. Diagrams need a browser the user installs once with "diagrams setup".',
                 "Themes: a publication's look is a theme - Mustache templates, a stylesheet, a script and a manifest. list_themes shows the bundled ones (read-only) and the graph's own. read_theme writes a theme's files to a folder on this machine to read and edit. customise_publication_theme copies a publication's bundled theme into the graph and points the publication at the copy (create_theme copies any theme). write_theme_file, delete_theme_file and import_theme_folder change a graph theme. preview_theme renders a theme to a folder (with screenshots when a browser is set up) to check before publish. For a snippet such as an analytics script, an include slot (update_publication includes, e.g. head) filled by a page may be lighter than a theme copy.",
                 'Images and files are assets: upload_asset adds a file from this machine and returns the markdown to paste into a document. read_asset writes an asset to a local file you can open, and list_assets shows the assets documents reference. An asset is available only where a document you can read references it (or you uploaded it this session). read_asset, read_theme and preview_theme write under the graph\'s downloads directory and return the path - name a folder relative to it, never elsewhere.',
@@ -148,7 +149,7 @@ export function createMcpServer(source: HeadlessGraph | Promise<HeadlessGraph> |
         'list_documents',
         {
             title: 'List documents',
-            description: `Every page and journal entry in the graph with its aliases - protected documents carry protected: true and have no readable body. from / to narrow to the journal entries of a range of days. Paged, at most ${LIST_PAGE_LIMIT} per call.`,
+            description: `Every page and journal entry in the graph with its aliases, protected documents left out. from / to narrow to the journal entries of a range of days. Paged, at most ${LIST_PAGE_LIMIT} per call.`,
             inputSchema: {
                 kind: z.enum(['page', 'journal']).optional().describe('Only pages, or only journal entries.'),
                 from: z.string().optional().describe('Journal entries on or after this day (YYYY-MM-DD) - implies kind journal.'),
@@ -164,7 +165,7 @@ export function createMcpServer(source: HeadlessGraph | Promise<HeadlessGraph> |
         'read_document',
         {
             title: 'Read a document',
-            description: 'One document: its body as "text" (the markdown after any frontmatter block) and its frontmatter as the "frontmatter" object, minus title and aliases (its identity) and any publication definition. Refuses a protected document with error "protected_document". Long documents are cut and marked truncated: true.',
+            description: 'One document: its body as "text" (the markdown after any frontmatter block) and its frontmatter as the "frontmatter" object, minus title and aliases (its identity) and any publication definition. A protected document answers not_found, as a name nothing has. Long documents are cut and marked truncated: true.',
             inputSchema: { concept },
         },
         async (args) => run((graph) => readDocument(graph, args.concept)),
@@ -174,7 +175,7 @@ export function createMcpServer(source: HeadlessGraph | Promise<HeadlessGraph> |
         'read_documents',
         {
             title: 'Read several documents',
-            description: `Up to ${READ_MANY_LIMIT} documents in one call, each as read_document returns it. A protected or unknown document is reported in its place with an error code rather than failing the call. Long texts are cut and marked truncated.`,
+            description: `Up to ${READ_MANY_LIMIT} documents in one call, each as read_document returns it. A protected or unknown document is reported in its place as not_found rather than failing the call. Long texts are cut and marked truncated.`,
             inputSchema: { concepts: z.array(concept).min(1).max(READ_MANY_LIMIT) },
         },
         async (args) => run((graph) => readDocuments(graph, args)),
@@ -200,7 +201,7 @@ export function createMcpServer(source: HeadlessGraph | Promise<HeadlessGraph> |
         {
             title: 'Backlinks',
             description:
-                'Every document that links to a concept with [[Concept]], with the linking block or paragraph, and every document scoped by it (a title such as "[[Concept]] Notes" is a reference of kind "title"). Aliases are pooled: linking an alias counts.',
+                'Every document that links to a concept with [[Concept]], with the linking block or paragraph, and every document scoped by it (a title such as "[[Concept]] Notes" is a reference of kind "title"). Aliases are pooled: linking an alias counts. Protected documents are never sources, and a protected document\'s name answers no sources.',
             inputSchema: { concept },
         },
         async (args) => run((graph) => backlinks(graph, args.concept)),
@@ -211,7 +212,7 @@ export function createMcpServer(source: HeadlessGraph | Promise<HeadlessGraph> |
         'graph_insights',
         {
             title: 'Graph insights',
-            description: `What the whole graph's links show, as the Graph View lists it. hubs: the concepts linked from the most documents. pageless: concepts many documents mention that have no page yet (pages worth writing). isolated: pages with no wikilinks in or out (pages to connect). clusters: groups of concepts that link to one another more than to the rest, named after their biggest hub, with their best-known members. bridges: concepts carrying the links between two clusters, with the two they join. shown counts the concepts and lines the clusters and bridges were found in. Hubs, pageless and isolated always count every document. At most ${INSIGHTS_LIST_LIMIT} rows per list (default 15).`,
+            description: `What the whole graph's links show, as the Graph View lists it. hubs: the concepts linked from the most documents. pageless: concepts many documents mention that have no page yet (pages worth writing). isolated: pages with no wikilinks in or out (pages to connect). clusters: groups of concepts that link to one another more than to the rest, named after their biggest hub, with their best-known members. bridges: concepts carrying the links between two clusters, with the two they join. Protected documents are left out of every list and of the picture, with the links in and out of them. shown counts the concepts and lines the clusters and bridges were found in. Hubs, pageless and isolated always count every document. At most ${INSIGHTS_LIST_LIMIT} rows per list (default 15).`,
             inputSchema: {
                 limit: z.number().int().positive().max(INSIGHTS_LIST_LIMIT).optional(),
                 journals,
@@ -229,7 +230,7 @@ export function createMcpServer(source: HeadlessGraph | Promise<HeadlessGraph> |
         {
             title: 'Graph path',
             description:
-                'The fewest wikilink steps between two concepts, in either direction, as the list of concepts passed through; path is null when nothing joins them. Answers "how is this connected to that?".',
+                'The fewest wikilink steps between two concepts, in either direction, as the list of concepts passed through; path is null when nothing joins them. Answers "how is this connected to that?". A path never passes through a protected document, and one as an end answers not_found.',
             inputSchema: { from: concept, to: concept, journals },
         },
         async (args) => run((graph) => graphPath(graph, args)),
@@ -239,8 +240,9 @@ export function createMcpServer(source: HeadlessGraph | Promise<HeadlessGraph> |
         'tasks',
         {
             title: 'Tasks',
-            description: `Tasks ("- [ ]" bullets) across the graph with their tags, and freeTags: the person's own #words anywhere in a task's text (#bug), which carry no status. Defaults to every unfinished task. A concept filter matches tasks written on that page or on a page named for it ("[[Concept]] Notes"), linking it, or nested under a block or heading that links it. At most ${TASK_PAGE_LIMIT} per call.`,
+            description: `Tasks ("- [ ]" bullets) across the graph with their tags, and freeTags: the person's own #words anywhere in a task's text (#bug), which carry no status. Defaults to every unfinished task. A concept filter matches tasks written on that page or on a page named for it ("[[Concept]] Notes"), linking it, or nested under a block or heading that links it. A lane reference (a Kanban lane the user copied) in reference lists that lane's tasks: it sets the concept and status, so pass it without concept or statuses; errors invalid_argument (not a lane reference) and other_graph (the lane is in another graph). At most ${TASK_PAGE_LIMIT} per call.`,
             inputSchema: {
+                reference: z.string().min(1).optional().describe('A lane reference as the user gave it: the whole text, or the etherpk: reference alone. In place of concept and statuses.'),
                 concept: concept.optional(),
                 statuses: z.array(z.enum(['open', 'doing', 'waiting', 'test', 'done', 'cancelled', 'archived'])).optional(),
                 priorities: z.array(z.union([z.literal(1), z.literal(2), z.literal(3), z.literal('none')])).optional(),
@@ -256,7 +258,7 @@ export function createMcpServer(source: HeadlessGraph | Promise<HeadlessGraph> |
         'read_task',
         {
             title: 'Read a task',
-            description: 'The task a task reference names: its text, status, priority, due and scheduled days, its free tags, its document and current 0-based line, its breadcrumb (the headings and bullets above it), its detail (its continuation lines and everything nested under it), foundBy (at_line, moved or other_document), its current reference, and assets: the images and files the task and its detail show, to read with read_asset. Errors: task_not_found (its words were edited or it was deleted), task_ambiguous (two tasks have its words; the message names them), other_graph (the reference is from another graph).',
+            description: 'The task a task reference names: its text, status, priority, due and scheduled days, its free tags, its document and current 0-based line, its breadcrumb (the headings and bullets above it), its detail (its continuation lines and everything nested under it), foundBy (at_line, moved or other_document), its current reference, assets: the images and files the task and its detail show, to read with read_asset, and comments: the task comments, each the text of one bullet under the "Comments" bullet nested directly under the task (they are in its detail too). Errors: task_not_found (its words were edited or it was deleted), task_ambiguous (two tasks have its words; the message names them), other_graph (the reference is from another graph).',
             inputSchema: { reference: z.string().min(1).describe('The task reference as the user gave it: the whole text, or the etherpk: reference alone.') },
         },
         async (args) => run((graph) => readTask(graph, args)),
@@ -265,8 +267,8 @@ export function createMcpServer(source: HeadlessGraph | Promise<HeadlessGraph> |
     server.registerTool(
         'add_task_note',
         {
-            title: 'Add a note under a task',
-            description: 'Add text under the task a task reference names, one level in, after what is already nested there: a line of text becomes a bullet, and bullets are nested as written. Use it to record what you did about the task. Refuses as read_task does when the reference finds no single task.',
+            title: 'Add a comment to a task',
+            description: 'Add a task comment to the task a task reference names: a bullet under the task\'s "Comments" bullet, after the comments already there. A "- Comments" bullet is started as the task\'s last child when it has none. A line of text becomes one bullet, and bullets are nested as written. Use it to record what you did about the task. To write a comment by hand instead, add a bullet under "- Comments" nested directly under the task. Refuses as read_task does when the reference finds no single task.',
             inputSchema: {
                 reference: z.string().min(1).describe('The task reference as the user gave it.'),
                 text: z.string().min(1).describe('Markdown: a line, or "- " bullets.'),
@@ -328,7 +330,7 @@ export function createMcpServer(source: HeadlessGraph | Promise<HeadlessGraph> |
         'create_page',
         {
             title: 'Create a page',
-            description: 'Create a new page with the given title, optional markdown body and optional frontmatter (the same keys and rules as set_frontmatter). With template, the page starts with that Template\'s body, its variables ({{date}}, {{title}}, ...) filled in for the new page, then the text. Refuses a title that already names a page or an alias, or that is a calendar day (use append_document for journal entries).',
+            description: 'Create a new page with the given title, optional markdown body and optional frontmatter (the same keys and rules as set_frontmatter). With template, the page starts with that Template\'s body, its variables ({{date}}, {{title}}, ...) filled in for the new page, then the text. Refuses a title that already names a page or an alias (protected_document when that page is protected), or that is a calendar day (use append_document for journal entries).',
             inputSchema: {
                 title: z.string().min(1),
                 text: z.string().optional(),
@@ -343,7 +345,7 @@ export function createMcpServer(source: HeadlessGraph | Promise<HeadlessGraph> |
         'plan_rename',
         {
             title: 'Plan a rename',
-            description: 'What renaming a page or concept would do, before anything changes: the scoped concepts carried along (cascade), the documents whose links would be rewritten (referencingDocuments, by name - read or backlinks any of them), any merge (the new name is already a document\'s name or alias, so the two would be joined), the aliases that name it as a scope and would be rewritten with it (aliases: the document, the alias and its new form), a refusal if the rename is not allowed, and how many protected documents exist whose references cannot be seen. Journal entries cannot be renamed.',
+            description: 'What renaming a page or concept would do, before anything changes: the scoped concepts carried along (cascade), the documents whose links would be rewritten (referencingDocuments, by name - read or backlinks any of them), any merge (the new name is already a document\'s name or alias, so the two would be joined), the aliases that name it as a scope and would be rewritten with it (aliases: the document, the alias and its new form), a refusal if the rename is not allowed, and how many protected documents exist whose references cannot be seen (protectedDocuments, a count). Protected documents are never named in the plan. A protected page as either name is refused with protected_document. Journal entries cannot be renamed.',
             inputSchema: {
                 from: z.string().min(1).describe('The current name: a page title or a concept that only links name.'),
                 to: z.string().min(1).describe('The new name.'),
@@ -615,7 +617,7 @@ export function createMcpServer(source: HeadlessGraph | Promise<HeadlessGraph> |
         'graph_info',
         {
             title: 'Graph info',
-            description: 'What you are connected to: the graph\'s name, whether it is a synced graph (and on which server) or a folder, how many pages and journal entries it has and how many are protected, the state of semantic search, whether assets are available, the publications with the publish folder set for each on this machine, and whether Mermaid diagrams can be drawn here.',
+            description: 'What you are connected to: the graph\'s name, whether it is a synced graph (and on which server) or a folder, how many pages and journal entries it has and how many of them are protected (protected documents are counted here and shown nowhere else), the state of semantic search, whether assets are available, the publications with the publish folder set for each on this machine, and whether Mermaid diagrams can be drawn here.',
             inputSchema: {},
         },
         async () => run(async (graph) => ({ ...(await graphInfo(graph)), publishing: await publishingInfo(graph, host) })),

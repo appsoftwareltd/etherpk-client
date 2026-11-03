@@ -70,7 +70,7 @@ the renamed publication page, and every `publications:` list names the new id.
 ## 3. Read the format
 
 Read the folder's `AGENTS.md` in full before you write a file in it. Its EtherPK section is the
-format reference: page names and identity, frontmatter, outliner bullets, tasks, links, assets,
+format reference: page names and identity, frontmatter, outliner bullets, tasks and their comments, links, assets,
 protected documents, and the rules that keep a file readable by EtherPK. EtherPK rewrites that
 section to match the version the user runs, so where it and this skill differ, follow
 `AGENTS.md`.
@@ -104,6 +104,10 @@ section to match the version the user runs, so where it and this skill differ, f
   `/Template`, its `{{date}}`, `{{title}}` and other variables filled in on the copy. Keep it off
   the site by leaving out `public: true`. To write a page from one, copy its body and fill the
   variables in yourself, or pass `template` to the MCP `create_page` tool.
+- A task's comments are the bullets under a `- Comments` bullet nested directly under the task.
+  What is nested above that bullet is the task's description, and what is below the Comments block
+  is its additional context. Add a comment at the end of the Comments block, starting the
+  `- Comments` bullet as the task's last child when it has none (`AGENTS.md`, Task comments).
 - Put images in `assets/` and embed them as `![Alt text](../assets/<file>)`.
 - The publication's `theme:` sets the look. Left out, a docs site uses `etherpk-docs` and a blog
   `etherpk-blog`. The other bundled themes suit either kind: `etherpk-papermod`, `etherpk-stack`,

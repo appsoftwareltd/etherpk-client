@@ -318,6 +318,18 @@ export interface GraphSync {
      */
     removeBookmarksOn(concepts: readonly string[]): string[]
     /**
+     * Remove a document deleted on this Client from every member's lists, in one transaction (ADR
+     * 0036 §4, amended 2026-11-03): each document favourite in a `favourites:` array and each
+     * bookmark in a `bookmarks:` map whose concept is one of `names` (the document's title and its
+     * aliases), matched case-insensitively. A View favourite about the concept stays, since a board
+     * or Map View works without a page. The reach is a rename's (`renameConceptInMemberLists`): a
+     * Member whose devices never saw the document could not tell its favourite was dead. The shared
+     * Graph Settings `favourites` and each member's `sharedFavouritesSeen` lose it too, so a later
+     * seed does not copy it back. Returns the names of the types it changed (`meta` for the shared
+     * list), none when nothing matched.
+     */
+    forgetDocumentInMemberLists(names: readonly string[]): string[]
+    /**
      * The graph's [[Graph Dictionary]]: the root doc's `spellingDictionary` Y.Map of word ->
      * `true` (ADR 0095). A map of its own for the reason quick notes are an array of their own:
      * two devices adding words while apart both keep them. Encrypted like the rest of the root doc.
@@ -619,6 +631,68 @@ function renamedFavourite(entry: unknown, target: (concept: unknown) => string |
     const concept = (entry as { concept?: unknown }).concept
     const to = target(concept)
     return to === undefined || to === concept ? undefined : { ...(entry as Record<string, unknown>), concept: to }
+}
+
+/** The concept keys of `names`, trimmed and lower-cased, blanks left out. */
+function nameKeys(names: readonly string[]): Set<string> {
+    return new Set(names.map((name) => name.trim().toLowerCase()).filter((key) => key !== ''))
+}
+
+/**
+ * Whether a stored favourite is a document favourite for one of `keys`. A View object, whatever
+ * concept it is about, is not: it outlives the page (ADR 0036 §4, amended 2026-11-03).
+ */
+function documentFavouriteIn(entry: unknown, keys: ReadonlySet<string>): boolean {
+    return typeof entry === 'string' && keys.has(entry.trim().toLowerCase())
+}
+
+/** `list` without the document favourites for `keys`, or null when it is not a list or none was in it. */
+function withoutDocumentFavourites(list: unknown, keys: ReadonlySet<string>): unknown[] | null {
+    if (!Array.isArray(list)) return null
+    const kept = list.filter((entry) => !documentFavouriteIn(entry, keys))
+    return kept.length === list.length ? null : kept
+}
+
+/** Delete from one member's `bookmarks:` map each bookmark whose concept is one of `keys`. Whether any went. */
+function deleteBookmarksOn(map: Y.Map<unknown>, keys: ReadonlySet<string>): boolean {
+    let hit = false
+    for (const [id, value] of [...map.entries()]) {
+        const concept = storedBookmarkConcept(value)
+        if (typeof concept !== 'string' || !keys.has(concept.trim().toLowerCase())) continue
+        map.delete(id)
+        hit = true
+    }
+    return hit
+}
+
+/**
+ * Remove a deleted document from one member's top-level type `name`, when it is one of their
+ * lists: its document favourites from `favourites:`, the bookmarks into it from `bookmarks:`, and
+ * its name from the record of the shared list in `memberFlags:`. Whether anything went.
+ */
+function forgetDocumentInMemberType(doc: Y.Doc, name: string, keys: ReadonlySet<string>): boolean {
+    const kind = memberListName(name)?.kind
+    if (kind === 'favourites') {
+        const array = doc.getArray<unknown>(name)
+        const entries = array.toArray()
+        let hit = false
+        // From the end, so each index still names its entry after the deletes after it.
+        for (let i = entries.length - 1; i >= 0; i--) {
+            if (!documentFavouriteIn(entries[i], keys)) continue
+            array.delete(i, 1)
+            hit = true
+        }
+        return hit
+    }
+    if (kind === 'bookmarks') return deleteBookmarksOn(doc.getMap<unknown>(name), keys)
+    if (kind === 'memberFlags') {
+        const flags = doc.getMap<unknown>(name)
+        const seen = withoutDocumentFavourites(flags.get('sharedFavouritesSeen'), keys)
+        if (!seen) return false
+        flags.set('sharedFavouritesSeen', seen)
+        return true
+    }
+    return false
 }
 
 /**
@@ -2038,21 +2112,33 @@ export function createGraphSync(deps: GraphSyncDeps): GraphSync {
             return [...concepts.values()]
         },
         removeBookmarksOn(concepts) {
-            const keys = new Set(concepts.map((concept) => concept.trim().toLowerCase()).filter((key) => key !== ''))
+            const keys = nameKeys(concepts)
             const changed: string[] = []
             if (keys.size === 0) return changed
             root.doc.transact(() => {
                 for (const name of [...root.doc.share.keys()]) {
                     if (memberListName(name)?.kind !== 'bookmarks') continue
-                    const map = root.doc.getMap<unknown>(name)
-                    let hit = false
-                    for (const [id, value] of [...map.entries()]) {
-                        const concept = storedBookmarkConcept(value)
-                        if (typeof concept !== 'string' || !keys.has(concept.trim().toLowerCase())) continue
-                        map.delete(id)
-                        hit = true
+                    if (deleteBookmarksOn(root.doc.getMap<unknown>(name), keys)) changed.push(name)
+                }
+            })
+            return changed
+        },
+        forgetDocumentInMemberLists(names) {
+            const keys = nameKeys(names)
+            const changed: string[] = []
+            if (keys.size === 0) return changed
+            root.doc.transact(() => {
+                for (const name of [...root.doc.share.keys()]) {
+                    if (forgetDocumentInMemberType(root.doc, name, keys)) changed.push(name)
+                }
+                // The shared Graph Settings favourites: every other setting kept exactly as stored.
+                const settings = metaMap.get('settings')
+                if (typeof settings === 'object' && settings !== null && !Array.isArray(settings)) {
+                    const shared = withoutDocumentFavourites((settings as Record<string, unknown>).favourites, keys)
+                    if (shared) {
+                        metaMap.set('settings', { ...(settings as Record<string, unknown>), favourites: shared })
+                        changed.push('meta')
                     }
-                    if (hit) changed.push(name)
                 }
             })
             return changed

@@ -289,6 +289,9 @@ export function registerEditorCommands(
     // vocabulary is hide, not grey); Search stays, which is why the menu itself stays reachable.
     // Each row's `order` places it among the other modules' rows (the protection rows sit between
     // Date Picker and Bold); command-menu-order.test.ts writes the whole order down.
+    // `actsOnText` marks the rows that insert, format or edit the text at the caret: the only ones an
+    // editor showing part of a document offers (the Task Editor, ADR 0170). Search, Find and replace,
+    // Reset workspace and Spell check act on the graph, the tab, the workspace or a setting.
     const writable = (ctx: { bodyWritable: boolean }) => ctx.bodyWritable
     const inTable = (ctx: { inTable: boolean; bodyWritable: boolean }) => ctx.inTable && ctx.bodyWritable
     const insertable = (ctx: { tableInsertable: boolean; bodyWritable: boolean }) => ctx.tableInsertable && ctx.bodyWritable
@@ -304,27 +307,27 @@ export function registerEditorCommands(
     // writes to no document, so it stays on a locked Protected Document (where it has no effect).
     item({ id: 'editor.spellCheckOff', title: 'Spell check: turn off', detail: 'Stop underlining misspellings on this device', icon: 'spell-check', group: 'Editor', order: 180, keywords: ['spelling', 'spellcheck', 'dictionary'], when: () => isSpellCheckEnabled(), command: 'editor.toggleSpellCheck', args: { enabled: false } })
     item({ id: 'editor.spellCheckOn', title: 'Spell check: turn on', detail: 'Underline misspellings on this device', icon: 'spell-check', group: 'Editor', order: 180, keywords: ['spelling', 'spellcheck', 'dictionary'], when: () => !isSpellCheckEnabled(), command: 'editor.toggleSpellCheck', args: { enabled: true } })
-    item({ id: 'asset.upload', title: 'Upload asset', detail: 'Insert an image or file', icon: 'image', group: 'Asset', order: 30, keywords: ['image', 'file', 'attach', 'upload', 'photo'], when: writable, command: 'asset.upload' })
-    item({ id: 'date.today', title: 'Today', detail: 'Insert today as a wikilink', icon: 'today', group: 'Date', order: 20, keywords: ['now'], when: writable, command: 'date.today' })
-    item({ id: 'date.yesterday', title: 'Yesterday', detail: 'Insert yesterday as a wikilink', icon: 'yesterday', group: 'Date', order: 21, keywords: ['previous', 'last'], when: writable, command: 'date.yesterday' })
-    item({ id: 'date.tomorrow', title: 'Tomorrow', detail: 'Insert tomorrow as a wikilink', icon: 'tomorrow', group: 'Date', order: 22, keywords: ['next'], when: writable, command: 'date.tomorrow' })
-    item({ id: 'date.pick', title: 'Date Picker', detail: 'Pick a date to insert', icon: 'calendar', group: 'Date', order: 40, keywords: ['date', 'calendar'], when: writable, command: 'date.pick' })
+    item({ id: 'asset.upload', title: 'Upload asset', detail: 'Insert an image or file', icon: 'image', group: 'Asset', order: 30, keywords: ['image', 'file', 'attach', 'upload', 'photo'], when: writable, command: 'asset.upload', actsOnText: true })
+    item({ id: 'date.today', title: 'Today', detail: 'Insert today as a wikilink', icon: 'today', group: 'Date', order: 20, keywords: ['now'], when: writable, command: 'date.today', actsOnText: true })
+    item({ id: 'date.yesterday', title: 'Yesterday', detail: 'Insert yesterday as a wikilink', icon: 'yesterday', group: 'Date', order: 21, keywords: ['previous', 'last'], when: writable, command: 'date.yesterday', actsOnText: true })
+    item({ id: 'date.tomorrow', title: 'Tomorrow', detail: 'Insert tomorrow as a wikilink', icon: 'tomorrow', group: 'Date', order: 22, keywords: ['next'], when: writable, command: 'date.tomorrow', actsOnText: true })
+    item({ id: 'date.pick', title: 'Date Picker', detail: 'Pick a date to insert', icon: 'calendar', group: 'Date', order: 40, keywords: ['date', 'calendar'], when: writable, command: 'date.pick', actsOnText: true })
     // The menu's `/` has replaced any selection by the time a row runs, so from here a toggle
     // opens an empty pair with the caret inside; the wrap keys and chords are the selection path.
-    item({ id: 'editor.bold', title: 'Bold', detail: 'Wrap in **, or open an empty pair', icon: 'bold', group: 'Format', order: 70, keywords: ['strong', 'format'], when: writable, command: 'editor.bold' })
-    item({ id: 'editor.italic', title: 'Italic', detail: 'Wrap in *, or open an empty pair', icon: 'italic', group: 'Format', order: 80, keywords: ['emphasis', 'format'], when: writable, command: 'editor.italic' })
-    item({ id: 'editor.highlight', title: 'Highlight', detail: 'Wrap in ==, or open an empty pair', icon: 'highlight', group: 'Format', order: 90, keywords: ['mark', 'marker', 'format'], when: writable, command: 'editor.highlight' })
-    item({ id: 'editor.insertCodeBlock', title: 'Code block', detail: 'Insert a fenced code block', icon: 'code', group: 'Insert', order: 100, keywords: ['code', 'fence', 'snippet', 'pre'], when: writable, command: 'editor.insertCodeBlock' })
-    item({ id: 'table.insert', title: 'Table', detail: 'Insert a table (choose its size)', icon: 'table', group: 'Table', order: 110, keywords: ['grid'], when: insertable, command: 'table.insert' })
-    item({ id: 'table.addColumn', title: 'Table: Add column', detail: 'Add a column after this one', icon: 'table-add-column', group: 'Table', order: 120, when: inTable, command: 'table.addColumn' })
-    item({ id: 'table.addRow', title: 'Table: Add row', detail: 'Add a row below', icon: 'table-add-row', group: 'Table', order: 120, when: inTable, command: 'table.addRow' })
-    item({ id: 'table.format', title: 'Table: Format', detail: 'Normalise column widths', icon: 'table-format', group: 'Table', order: 120, when: inTable, command: 'table.format' })
-    item({ id: 'table.removeRow', title: 'Table: Remove row', detail: 'Remove the current row', icon: 'table-remove-row', group: 'Table', order: 120, when: inTable, command: 'table.removeRow' })
-    item({ id: 'table.removeColumn', title: 'Table: Remove column', detail: 'Remove the current column', icon: 'table-remove-column', group: 'Table', order: 120, when: inTable, command: 'table.removeColumn' })
-    item({ id: 'table.removeRowsAbove', title: 'Table: Remove rows above', detail: 'Remove rows above', icon: 'table-remove-row', group: 'Table', order: 120, when: inTable, command: 'table.removeRowsAbove' })
-    item({ id: 'table.removeRowsBelow', title: 'Table: Remove rows below', detail: 'Remove rows below', icon: 'table-remove-row', group: 'Table', order: 120, when: inTable, command: 'table.removeRowsBelow' })
-    item({ id: 'table.removeColumnsRight', title: 'Table: Remove columns right', detail: 'Remove columns to the right', icon: 'table-remove-column', group: 'Table', order: 120, when: inTable, command: 'table.removeColumnsRight' })
-    item({ id: 'table.removeColumnsLeft', title: 'Table: Remove columns left', detail: 'Remove columns to the left', icon: 'table-remove-column', group: 'Table', order: 120, when: inTable, command: 'table.removeColumnsLeft' })
+    item({ id: 'editor.bold', title: 'Bold', detail: 'Wrap in **, or open an empty pair', icon: 'bold', group: 'Format', order: 70, keywords: ['strong', 'format'], when: writable, command: 'editor.bold', actsOnText: true })
+    item({ id: 'editor.italic', title: 'Italic', detail: 'Wrap in *, or open an empty pair', icon: 'italic', group: 'Format', order: 80, keywords: ['emphasis', 'format'], when: writable, command: 'editor.italic', actsOnText: true })
+    item({ id: 'editor.highlight', title: 'Highlight', detail: 'Wrap in ==, or open an empty pair', icon: 'highlight', group: 'Format', order: 90, keywords: ['mark', 'marker', 'format'], when: writable, command: 'editor.highlight', actsOnText: true })
+    item({ id: 'editor.insertCodeBlock', title: 'Code block', detail: 'Insert a fenced code block', icon: 'code', group: 'Insert', order: 100, keywords: ['code', 'fence', 'snippet', 'pre'], when: writable, command: 'editor.insertCodeBlock', actsOnText: true })
+    item({ id: 'table.insert', title: 'Table', detail: 'Insert a table (choose its size)', icon: 'table', group: 'Table', order: 110, keywords: ['grid'], when: insertable, command: 'table.insert', actsOnText: true })
+    item({ id: 'table.addColumn', title: 'Table: Add column', detail: 'Add a column after this one', icon: 'table-add-column', group: 'Table', order: 120, when: inTable, command: 'table.addColumn', actsOnText: true })
+    item({ id: 'table.addRow', title: 'Table: Add row', detail: 'Add a row below', icon: 'table-add-row', group: 'Table', order: 120, when: inTable, command: 'table.addRow', actsOnText: true })
+    item({ id: 'table.format', title: 'Table: Format', detail: 'Normalise column widths', icon: 'table-format', group: 'Table', order: 120, when: inTable, command: 'table.format', actsOnText: true })
+    item({ id: 'table.removeRow', title: 'Table: Remove row', detail: 'Remove the current row', icon: 'table-remove-row', group: 'Table', order: 120, when: inTable, command: 'table.removeRow', actsOnText: true })
+    item({ id: 'table.removeColumn', title: 'Table: Remove column', detail: 'Remove the current column', icon: 'table-remove-column', group: 'Table', order: 120, when: inTable, command: 'table.removeColumn', actsOnText: true })
+    item({ id: 'table.removeRowsAbove', title: 'Table: Remove rows above', detail: 'Remove rows above', icon: 'table-remove-row', group: 'Table', order: 120, when: inTable, command: 'table.removeRowsAbove', actsOnText: true })
+    item({ id: 'table.removeRowsBelow', title: 'Table: Remove rows below', detail: 'Remove rows below', icon: 'table-remove-row', group: 'Table', order: 120, when: inTable, command: 'table.removeRowsBelow', actsOnText: true })
+    item({ id: 'table.removeColumnsRight', title: 'Table: Remove columns right', detail: 'Remove columns to the right', icon: 'table-remove-column', group: 'Table', order: 120, when: inTable, command: 'table.removeColumnsRight', actsOnText: true })
+    item({ id: 'table.removeColumnsLeft', title: 'Table: Remove columns left', detail: 'Remove columns to the left', icon: 'table-remove-column', group: 'Table', order: 120, when: inTable, command: 'table.removeColumnsLeft', actsOnText: true })
 
     return () => offs.forEach((off) => off())
 }

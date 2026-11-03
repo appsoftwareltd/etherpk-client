@@ -12,7 +12,8 @@
  *   editors, which shows an unlocked Protected Document's plaintext. Text holding an encrypted
  *   fence anywhere is refused too, so a document protected since the index last looked stays out.
  *
- * The caps and the shape of a search are the Headless Client's (`read-rules.ts`).
+ * The caps, the shape of a search and this rule on protected names are shared with the Headless
+ * Client (`read-rules.ts`).
  */
 import type {
     DocumentBacklink,
@@ -31,7 +32,17 @@ import { frontmatterSpan } from '#lib/storage/fs/frontmatter-span.js'
 import { conceptKey } from '#lib/storage/fs/identity.js'
 
 import { formatGuide } from './format-guide'
-import { backlinkSources, capText, holdsEncryptedText, LIST_PAGE_LIMIT, SEARCH_PAGE_LIMIT, searchText, TASK_PAGE_LIMIT, type TextSearchIndex } from './read-rules'
+import {
+    backlinkSources,
+    capText,
+    holdsEncryptedText,
+    LIST_PAGE_LIMIT,
+    protectedKeys as protectedKeysOf,
+    SEARCH_PAGE_LIMIT,
+    searchText,
+    TASK_PAGE_LIMIT,
+    type TextSearchIndex,
+} from './read-rules'
 
 /** The graph's documents and their text, from whichever store holds the graph. */
 export interface AgentReadSource {
@@ -70,13 +81,7 @@ export function createDocumentsReader(deps: DocumentsReaderDeps): ExtensionDocum
     }
 
     /** The keys of every protected name the index knows, aliases included. */
-    const protectedKeys = (): Set<string> =>
-        new Set(
-            index()
-                .allConcepts()
-                .filter((candidate) => candidate.protected)
-                .map((candidate) => candidate.key),
-        )
+    const protectedKeys = (): Set<string> => protectedKeysOf(index().allConcepts())
 
     /** The document a name or alias opens, or null for a name with no document or a protected one. */
     const resolve = (name: string): { concept: string; kind: 'page' | 'journal'; aliases: string[] } | null => {

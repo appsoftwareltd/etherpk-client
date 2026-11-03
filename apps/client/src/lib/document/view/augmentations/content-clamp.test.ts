@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest'
 
 import { analysisFor } from '../analysis/editor-analysis'
 import { editorFixture } from '../testing/editor-state-fixture'
-import { blockWidgetIndent, codeLineIndent, CONTENT_GUTTER, indentedLineReading, INDENT_STEP_PX, proseTextInset } from './content-clamp'
+import { EditorView } from '@codemirror/view'
+
+import { blockWidgetIndent, codeLineIndent, CONTENT_GUTTER, contentClampAugmentation, indentedLineReading, INDENT_STEP_PX, outlineBaseShift, proseTextInset } from './content-clamp'
+import { outlineBaseFacet } from './outline-base'
 import { CHECKBOX_SLOT } from './task-checkbox'
 
 /**
@@ -111,5 +114,31 @@ describe('blockWidgetIndent and proseTextInset', () => {
         expect(at('- ```mermaid', 0).widget).toBe(`calc(${DASH} + ${SPACE} + ${CONTENT_GUTTER})`)
         expect(at('- a\n  - ```mermaid', 1).widget).toBe(`calc(${INDENT_STEP_PX}px + 2 * ${SPACE} + ${DASH} + ${SPACE} + ${CONTENT_GUTTER})`)
         expect(at('- [ ] ```mermaid', 0).widget).toBe(`calc(${DASH} + ${SPACE} + ${CONTENT_GUTTER} + ${CHECKBOX_SLOT} + ${SPACE})`)
+    })
+})
+
+/**
+ * An editor drawing from a level other than column 0 (`outline-base.ts`: a part of a task in the
+ * Task Editor) moves its whole text area left by that level's width, the nesting steps and the
+ * indent's measured spaces, so the level's dots sit where a top-level bullet's do.
+ */
+describe('outlineBaseShift', () => {
+    it('is the base level’s nesting steps and indent, as the clamp lays a bullet out', () => {
+        expect(outlineBaseShift({ depth: 2, indent: 4, shown: { first: 2, last: 3 } })).toBe(`calc(-1 * (${2 * INDENT_STEP_PX}px + 4 * var(--gk-prose-space, 1ch)))`)
+    })
+
+    it('is nothing at column 0', () => {
+        expect(outlineBaseShift(null)).toBeNull()
+        expect(outlineBaseShift({ depth: 0, indent: 0, shown: { first: 0, last: 0 } })).toBeNull()
+    })
+
+    it('moves the text area of an editor given a base, and of no other', () => {
+        const style = (extensions: unknown[]) =>
+            editorFixture('- a|', { extensions: [contentClampAugmentation(), ...(extensions as never[])] })
+                .state.facet(EditorView.contentAttributes)
+                .map((attrs) => (typeof attrs === 'function' ? '' : (attrs.style ?? '')))
+                .join(';')
+        expect(style([outlineBaseFacet.of({ depth: 1, indent: 2, shown: { first: 1, last: 1 } })])).toContain(`margin-left:${outlineBaseShift({ depth: 1, indent: 2, shown: { first: 1, last: 1 } })}`)
+        expect(style([])).not.toContain('margin-left')
     })
 })

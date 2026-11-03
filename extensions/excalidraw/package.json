@@ -1,0 +1,30 @@
+{
+    "name": "@appsoftwareltd/etherpk-extension-excalidraw",
+    "version": "0.18.0",
+    "license": "Elastic-2.0",
+    "description": "Excalidraw drawings in EtherPK documents, kept as data in the document: edited in place, in a tab or filling the window, shown as a picture on phones and published sites.",
+    "private": true,
+    "type": "module",
+    "etherpk": {
+        "id": "excalidraw",
+        "displayName": "Excalidraw",
+        "publisher": "App Software",
+        "main": "./src/extension.ts",
+        "icons": {
+            "drawing": "<path d=\"M2.5 12.5c2-3 4-5.5 6.5-7.5 1.5-1.2 3.2-1.4 4-0.6.8.8.4 2.4-.9 3.6-2.4 2.2-5.4 3.5-9.6 4.5z\"/><path d=\"M2.5 13.5h11\"/>"
+        }
+    },
+    "dependencies": {
+        "@appsoftwareltd/etherpk-extension-api": "workspace:*",
+        "@excalidraw/excalidraw": "0.18.1",
+        "react": "19.2.5",
+        "react-dom": "19.2.5"
+    },
+    "devDependencies": {
+        "@types/react": "^19.2.0",
+        "@types/react-dom": "^19.2.0",
+        "postcss": "^8.5.23",
+        "vite": "^8.3.3",
+        "vitest": "^4.1.12"
+    }
+}

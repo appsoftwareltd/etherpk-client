@@ -2,7 +2,8 @@
  * Dialogs the Client draws for an extension, so every extension's questions look and behave like the
  * Client's own: the keyboard stays inside while one is open, Enter answers, Esc cancels, and the
  * keyboard returns where it was when one closes. Each dialog names the extension that asks, and
- * shows every string it is given as plain text, never as markup.
+ * shows every string it is given as plain text, never as markup. The calendar `pickDate` opens is
+ * drawn beside the extension's own element rather than over the page, so it names nobody.
  */
 
 /**
@@ -64,6 +65,25 @@ export interface ChooseOptions {
 }
 
 /**
+ * A day to pick from the Client's calendar, the one the document editor's Date Picker shows.
+ *
+ * @public
+ */
+export interface PickDateOptions {
+    /**
+     * The element the calendar opens beside: below it, or above it where there is no room below.
+     * The keyboard returns to it when a day is picked or the calendar is closed with Esc. The
+     * calendar closes when the element leaves the page. Asking again with the same element while
+     * its calendar is open closes the calendar, so a button that opens it also closes it.
+     */
+    anchor: HTMLElement
+    /** The day the calendar opens on, `YYYY-MM-DD`. Today when left out, or when it names no day. */
+    value?: string
+    /** What a screen reader announces for the calendar ("Due date"). "Choose a date" when left out. */
+    label?: string
+}
+
+/**
  * Dialogs.
  *
  * @public
@@ -73,4 +93,11 @@ export interface ExtensionDialogs {
     prompt(options: PromptOptions): Promise<string | undefined>
     /** Ask for one of a list of answers. Resolves to the value picked, or undefined when it was cancelled. */
     choose(options: ChooseOptions): Promise<string | undefined>
+    /**
+     * Ask for a day from the Client's calendar, opened beside `options.anchor`. Arrow keys move a
+     * day or a week, Page Up and Page Down a month, Enter or a click picks, and Esc, Tab or a click
+     * elsewhere closes it. Resolves to the day as `YYYY-MM-DD`, or undefined when it was closed
+     * without one. One calendar is open at a time: asking for another closes the first.
+     */
+    pickDate(options: PickDateOptions): Promise<string | undefined>
 }

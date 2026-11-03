@@ -2,7 +2,9 @@
  * The Client's service worker (ADR 0142). It does three things:
  *
  * 1. **Starts the app with no network.** Each version's files (the build's hashed files and the
- *    icons and manifest) are cached when the worker installs, and served from that cache. An app
+ *    icons and manifest) are cached when the worker installs, and served from that cache. A few
+ *    large files only some pages need (`isOnDemandAppFile`) are cached when first fetched instead,
+ *    and carried from one version to the next once held. An app
  *    page that cannot be fetched is answered with the shell (`app-shell.ts`), which hands the
  *    address to the router, so a reload or a cold start offline opens the app, and the graph
  *    then opens from this device (ADR 0141).
@@ -34,6 +36,7 @@ import {
     isWorkerScript,
     referencedAppFiles,
     shellMatchesBuild,
+    splitAppFiles,
 } from '#lib/offline/app-shell.js'
 
 // SvelteKit documents `immutable` as empty in development. `import.meta.env.DEV` is not usable
@@ -49,11 +52,13 @@ const SHELL_FILES = new Set(['/favicon.ico', '/favicon.svg', '/apple-touch-icon.
  * base path, and the Client has none.
  */
 const fromRoot = (path: string) => `/${path}`
-/** Every file this version caches, by path. */
+/** Every file this version answers for from its cache, by path. */
 const APP_FILES = new Set([
     ...immutable.map((file) => fromRoot(file.path)),
     ...assets.map((file) => fromRoot(file.path)).filter((path) => SHELL_FILES.has(path)),
 ])
+/** The files cached when this version installs, and those cached only once a page fetches them. */
+const { atInstall: INSTALL_FILES, onDemand: ON_DEMAND_FILES } = splitAppFiles(APP_FILES)
 
 sw.addEventListener('install', (event) => {
     event.waitUntil(
@@ -79,11 +84,13 @@ sw.addEventListener('activate', (event) => {
  * Cache this version's files, then its shell. A file an earlier version cached already has the
  * same contents, because its name carries its hash, so only new files are downloaded. One file
  * that cannot be fetched fails the install, and the worker before stays in charge: a version that
- * could not start offline must not replace one that can.
+ * could not start offline must not replace one that can. The files fetched on demand are not
+ * downloaded here; those an earlier version holds are kept.
  */
 async function cacheAppFiles(): Promise<void> {
     const cache = await caches.open(APP_CACHE)
-    await cacheFiles(cache, [...APP_FILES, ...(await builtInExtensionFiles())])
+    await cacheFiles(cache, [...INSTALL_FILES, ...(await builtInExtensionFiles())])
+    await keepHeldFiles(cache, ON_DEMAND_FILES)
     // The files web workers load are not on the build's list, but each worker's script names them.
     const workerFiles = new Set<string>()
     for (const script of [...APP_FILES].filter(isWorkerScript)) {
@@ -115,6 +122,19 @@ async function cacheFiles(cache: Cache, files: string[]): Promise<void> {
         }
     }
     await Promise.all(Array.from({ length: 6 }, worker))
+}
+
+/**
+ * Copy into `cache` each of `files` an earlier version's cache holds, fetching none: a file fetched
+ * on demand stays on the device across versions while its address (and so its contents) is the
+ * same, and one a version no longer ships goes with the last cache that held it.
+ */
+async function keepHeldFiles(cache: Cache, files: string[]): Promise<void> {
+    for (const file of files) {
+        if (await cache.match(file)) continue
+        const earlier = await caches.match(file)
+        if (earlier) await cache.put(file, earlier)
+    }
 }
 
 /** The files this version ships for its loaded Built-in Extensions, from the list its build wrote. */
@@ -156,7 +176,8 @@ async function appPage(event: FetchEvent): Promise<Response> {
 
 /**
  * An app file from this version's cache, else an older one's, else the network. A hashed file
- * the install did not find is kept when it is first fetched here.
+ * the install did not cache (a file fetched on demand, or one the install did not find) is kept
+ * when it is first fetched here.
  */
 async function appFile(request: Request): Promise<Response> {
     const cached = (await caches.match(request, { cacheName: APP_CACHE })) ?? (await caches.match(request))

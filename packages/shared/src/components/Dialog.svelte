@@ -13,6 +13,7 @@
      * a busy dialog refuses dismissal and says why.
      */
     import type { Snippet } from "svelte";
+    import { dialogLayer, dialogStack, type OpenDialog } from "../ui/dialog-stack";
     import { dialogFocus } from "../ui/index.svelte";
 
     let {
@@ -29,6 +30,7 @@
         body,
         footer,
         tools,
+        fillPhone = false,
     }: {
         /**
          * Visibility is owned by the caller. Deliberately not `$bindable`: half the original
@@ -43,9 +45,11 @@
          * sections, which at the narrower width wrapped its tabs and stacked its rows; `xl`
          * (56rem) is for one whose tabs hold tables, commands to copy and paragraphs of help,
          * which at 42rem read cramped on a desktop. Below the panel's own maximum all three are
-         * the full width of the viewport, so a phone sees no difference.
+         * the full width of the viewport, so a phone sees no difference. `screen` (90% of the
+         * viewport's width) is for a dialog that shows one thing as large as it will go: an image
+         * in the Task Editor's lightbox.
          */
-        size?: "md" | "lg" | "xl";
+        size?: "md" | "lg" | "xl" | "screen";
         /**
          * Where the panel sits in the viewport. `centre` suits a prompt: its height is fixed,
          * so centring it is stable. `top` is for any dialog whose height changes while it is
@@ -90,9 +94,16 @@
          * something Save applies (Graph Settings' index rebuild and orphan scan).
          */
         tools?: Snippet;
+        /**
+         * At phone width the panel fills the screen, with no margin or rounded corners: for a dialog
+         * that is a whole editing surface rather than a question (the Task Editor). From the `sm`
+         * breakpoint up it is the panel `size` gives.
+         */
+        fillPhone?: boolean;
     } = $props();
 
     const dismissible = $derived(closeOnBackdrop && !busy);
+    const sizeClass = $derived({ md: "max-w-md", lg: "max-w-2xl", xl: "max-w-4xl", screen: "max-w-[90vw]" }[size]);
     const uid = $props.id();
     const titleId = `${uid}-title`;
     const busyId = `${uid}-busy`;
@@ -101,8 +112,33 @@
         onclose?.();
     }
 
+    /**
+     * This dialog's place among the dialogs open (`../ui/dialog-stack.ts`): the one opened last takes
+     * Escape and is drawn over the others, wherever each is mounted. Taken in a pre-effect, so the
+     * depth is known before the layers first render and the panel never flashes under the dialog it
+     * opened over.
+     */
+    let place = $state.raw<OpenDialog | null>(null);
+    $effect.pre(() => {
+        if (!open) return;
+        const opened = dialogStack.open();
+        place = opened;
+        return () => {
+            opened.close();
+            place = null;
+        };
+    });
+    const depth = $derived(place?.depth ?? 0);
+
+    // An Escape something inside the dialog already took (an editor's completion list closing, a
+    // field clearing) is not a dismissal, and only the dialog on top is dismissed. The one on top
+    // takes the key, busy or not: closing it takes it off the stack before the dialog below hears
+    // the same key (Svelte flushes between two listeners of one event), which would then be on top
+    // and close as well.
     function onKeydown(e: KeyboardEvent) {
-        if (e.key === "Escape" && dismissible) close();
+        if (e.key !== "Escape" || e.defaultPrevented || !place?.isTop()) return;
+        e.preventDefault();
+        if (dismissible) close();
     }
 
     // A `click` fires on the common ancestor of mousedown and mouseup. The backdrop is a
@@ -129,9 +165,18 @@
         up), and under the panel, so a toast never covers the dialog's own fields or buttons.
         The layers are `--z-backdrop` and `--z-dialog`, with `--z-toast` between them
         (`../ui/layers.css`). A single fixed wrapper would be one stacking context, which
-        nothing outside it can slot into.
+        nothing outside it can slot into. A dialog opened over another steps both layers up by
+        its depth (`dialogLayer`), so its backdrop covers the dialog below and its panel is on
+        top; toasts stay in their slot under the first panel.
     -->
-    <div class="fixed inset-0 z-(--z-backdrop) bg-gray-950/25 dark:bg-black/50" aria-hidden="true" data-dialog-backdrop onclick={onBackdropClick}></div>
+    <div
+        class="fixed inset-0 bg-gray-950/25 dark:bg-black/50"
+        style:z-index={dialogLayer("backdrop", depth)}
+        aria-hidden="true"
+        data-dialog-backdrop
+        data-dialog-depth={depth}
+        onclick={onBackdropClick}
+    ></div>
 
     <!--
         `--dialog-top` is the panel's distance from the top of the viewport, and the panel's
@@ -143,11 +188,12 @@
         to the backdrop and anything above it; the panel takes the pointer back.
     -->
     <div
-        class="pointer-events-none fixed inset-0 z-(--z-dialog) flex justify-center px-4 pb-4 {placement === 'top' ? 'items-start pt-[var(--dialog-top)]' : 'items-center pt-4'}"
+        class="pointer-events-none fixed inset-0 flex justify-center {fillPhone ? 'max-sm:p-0 sm:px-4 sm:pb-4' : 'px-4 pb-4'} {placement === 'top' ? 'items-start pt-[var(--dialog-top)]' : 'items-center pt-4'}"
         style:--dialog-top={placement === "top" ? "max(1rem, 8vh)" : "1rem"}
+        style:z-index={dialogLayer("panel", depth)}
     >
         <div
-            class="pointer-events-auto relative flex max-h-[calc(100dvh-var(--dialog-top)-1rem)] w-full flex-col rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-[var(--gk-surface-0)] shadow-xl {size === 'xl' ? 'max-w-4xl' : size === 'lg' ? 'max-w-2xl' : 'max-w-md'}"
+            class="pointer-events-auto relative flex max-h-[calc(100dvh-var(--dialog-top)-1rem)] w-full flex-col rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-[var(--gk-surface-0)] shadow-xl {sizeClass} {fillPhone ? 'max-sm:h-dvh max-sm:max-h-dvh max-sm:max-w-none max-sm:rounded-none max-sm:border-0' : ''}"
             role="dialog"
             aria-modal="true"
             aria-labelledby={titleId}

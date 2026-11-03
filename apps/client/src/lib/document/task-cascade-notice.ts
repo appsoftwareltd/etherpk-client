@@ -7,6 +7,9 @@
  * with no way back. In the editor the same cascade is one undo step and shows in place, so the
  * editor shows no notice. A write that changed no nested task shows nothing either: the tick or
  * move itself is visible where it was made.
+ *
+ * A status or priority set from a Tasks View row's menu (`commands/task-status-commands.ts`) always
+ * shows one, under the same id: the row only shows the change once the index catches up.
  */
 
 import { showNotice } from '#lib/activity/notices.js'
@@ -29,17 +32,38 @@ function tasks(count: number): string {
 export function showCascadeNotice(label: string, write: TaskWrite, undo: () => Promise<TaskWriteOutcome>): boolean {
     const count = write.nested.length
     if (count === 0) return false
-    const verb = parseTaskLine(write.after)?.done ? 'Ticked' : 'Unticked'
     showNotice({
         id: TASK_CASCADE_NOTICE,
         tone: 'info',
-        text: `${verb} ${tasks(count)} nested under "${label}".`,
-        actions: [{ label: 'Undo', id: 'task-cascade-undo', run: async () => reportUndo(label, await undo()) }],
+        text: `${cascadeVerb(write)} ${tasks(count)} nested under "${label}".`,
+        actions: [{ label: 'Undo', id: 'task-cascade-undo', run: async () => reportUndo(label, await undo(), true) }],
     })
     return true
 }
 
-function reportUndo(label: string, outcome: TaskWriteOutcome): void {
+/**
+ * Say what a status or priority set from a task's menu did (`said`), with the nested tasks it
+ * brought along, and offer Undo. Shown for every such write, nested tasks or not: it is made from a
+ * list, into a document that may not be on screen, and outside any editor's undo.
+ */
+export function showTaskChangeNotice(label: string, said: string, write: TaskWrite, undo: () => Promise<TaskWriteOutcome>): void {
+    const count = write.nested.length
+    showNotice({
+        id: TASK_CASCADE_NOTICE,
+        tone: 'info',
+        text: count === 0 ? said : `${said} ${cascadeVerb(write)} ${tasks(count)} nested under it.`,
+        actions: [{ label: 'Undo', id: 'task-cascade-undo', run: async () => reportUndo(label, await undo(), count > 0) }],
+    })
+}
+
+/** What the cascade did to the nested tasks, read off what the write left the task's own line. */
+function cascadeVerb(write: TaskWrite): string {
+    const task = parseTaskLine(write.after)
+    return task?.archived ? 'Archived' : task?.done ? 'Ticked' : 'Unticked'
+}
+
+/** `nested`: whether the write being undone brought nested tasks with it. */
+function reportUndo(label: string, outcome: TaskWriteOutcome, nested: boolean): void {
     if (!outcome.ok) {
         const text =
             outcome.reason === 'missing'
@@ -49,8 +73,9 @@ function reportUndo(label: string, outcome: TaskWriteOutcome): void {
         return
     }
     const { skipped } = outcome
-    const text =
-        skipped === 0
+    const text = !nested
+        ? `Undone: "${label}" is as it was.`
+        : skipped === 0
             ? `Undone: "${label}" and the tasks nested under it are as they were.`
             : skipped === 1
               ? 'Undone, except 1 nested task that changed since. It was left as it is.'

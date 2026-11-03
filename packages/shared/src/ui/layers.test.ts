@@ -3,6 +3,8 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
+import { MAX_DIALOG_DEPTH } from './dialog-stack'
+
 // The stacking order of the layers drawn over a page (layers.css). Toasts sit between a dialog's
 // backdrop and its panel, which only works while the numbers keep that order and every surface
 // takes its layer from the sheet rather than from a number of its own.
@@ -30,6 +32,14 @@ describe('layers.css', () => {
         expect(new Set(values).size).toBe(values.length)
     })
 
+    // A dialog opened over another steps up by `--z-dialog-step` (dialog-stack.ts).
+    it('steps a nested dialog over the panel below it, and keeps the deepest under the menu', () => {
+        const at = (name: string) => layers().get(name)!
+        const step = at('--z-dialog-step')
+        expect(at('--z-backdrop') + step, 'a nested backdrop covers the panel below it').toBeGreaterThan(at('--z-dialog'))
+        expect(at('--z-dialog') + MAX_DIALOG_DEPTH * step, 'the deepest panel').toBeLessThan(at('--z-menu'))
+    })
+
     // `it.for` rather than `it.each`: it passes the test context, which `ctx.skip()` needs.
     it.for(['client', 'sync', 'corporate'])('is imported by the %s app stylesheet', (app, ctx) => {
         if (!hasApp(app)) return ctx.skip()
@@ -39,7 +49,8 @@ describe('layers.css', () => {
 
     // A number written into one of these instead of its token is how the order drifts apart.
     it.for<[string, string[]]>([
-        ['packages/shared/src/components/Dialog.svelte', ['--z-backdrop', '--z-dialog']],
+        ['packages/shared/src/components/Dialog.svelte', []],
+        ['packages/shared/src/ui/dialog-stack.ts', ['--z-backdrop', '--z-dialog', '--z-dialog-step']],
         ['apps/client/src/lib/activity/ui/ActivityToastHost.svelte', ['--z-toast']],
         ['apps/client/src/lib/surface/ui/ContextMenu.svelte', ['--z-menu']],
         ['apps/client/src/lib/document/view/SearchModal.svelte', ['--z-search']],

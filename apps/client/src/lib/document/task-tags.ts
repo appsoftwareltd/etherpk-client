@@ -5,6 +5,9 @@
  * checkbox**, and nothing else on the line is metadata. Parsing therefore stops dead at the
  * first token that is not a tag - which is the whole point of the grammar: `#hashtags` in
  * prose stay prose, so a task can talk about `#P1 incidents` without claiming to be one.
+ * The editor does not leave a Task Tag typed later in a task as prose, though: tidy on leave moves
+ * it into the run when the caret leaves the task ({@link applyStrayTaskTags}, ADR 0032 amended
+ * 2026-11-03), so such words go in backticks there.
  *
  * A [[Free Tag]] (`#bug`) is a person's own word, written anywhere in the text, which carries no
  * metadata (ADR 0166). One in the leading run is passed over rather than ending it, so
@@ -65,6 +68,11 @@ const EMPTY: Omit<TaskTags, 'text'> = {
  * user's to see and fix, not ours to silently drop.
  */
 const DATE = /^(\d{4}-\d{2}-\d{2})$/
+
+/** Whether `value` is a date as a dated task tag writes one: `YYYY-MM-DD`. */
+export function isTaskDate(value: string): boolean {
+    return DATE.test(value)
+}
 
 /** Where the checkbox ends on a raw task line, or -1 when the line is not a task. */
 const CHECKBOX = /^\s*-\s+\[([ xX])\]\s?/
@@ -178,7 +186,8 @@ const FREE_TAG_WORD = /^[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*$/
  */
 const TASK_TAG_SHAPED = /^(?:P\d+|W|D|T|C|A|[DCS]-[\d-]*)$/i
 
-function isFreeTagWord(word: string): boolean {
+/** Whether `word` (without its `#`) can be a [[Free Tag]]: what the Task Editor checks a new tag by. */
+export function isFreeTagWord(word: string): boolean {
     return FREE_TAG_WORD.test(word) && /[A-Za-z]/.test(word) && !TASK_TAG_SHAPED.test(word)
 }
 
@@ -228,11 +237,13 @@ export function freeTagsIn(text: string): string[] {
 /**
  * The text with its Free Tags taken out, each with the whitespace before it (after it, at the
  * start), so `Fix the gate #bug.` reads `Fix the gate.`. Empty when the text is only Free Tags.
+ * `which` keeps the tags it says no to: the Task Editor takes out one tag and leaves the rest.
  */
-export function withoutFreeTags(text: string): string {
+export function withoutFreeTags(text: string, which: (word: string) => boolean = () => true): string {
     let out = ''
     let at = 0
-    for (const { from, to } of freeTagMatches(text)) {
+    for (const { word, from, to } of freeTagMatches(text)) {
+        if (!which(word)) continue
         const before = text.slice(at, from)
         out += from === 0 ? '' : before.trimEnd()
         at = to
@@ -448,4 +459,116 @@ function sameTags(a: TaskTags, b: TaskTags): boolean {
         a.scheduled === b.scheduled &&
         a.completion === b.completion
     )
+}
+
+// ── Stray Task Tags (Editor Content Rules → Tidy on leave) ────────────────────────────────
+
+/** A word of a line: whitespace or the line's edge on both sides. */
+const WORD = /(?<=^|\s)\S+(?=\s|$)/g
+
+/** Columns of a line that hold no prose, such as inline maths, which the caller finds. */
+export interface LineSpan {
+    from: number
+    to: number
+}
+
+/** The `#` helper's command for a Task Tag read off the text. */
+function commandFor(tag: { kind: TagKind; value: string }): TaskTagCommand {
+    switch (tag.kind) {
+        case 'priority':
+            return { kind: 'priority', value: Number(tag.value) as TaskPriority }
+        case 'due':
+        case 'scheduled':
+        case 'completion':
+            return { kind: tag.kind, value: tag.value }
+        default:
+            return { kind: tag.kind }
+    }
+}
+
+/**
+ * `line` with one stray tag set. A state tag sets the [[Task Status]] it names, as a [[Kanban Board]]
+ * move to that lane writes it ({@link taskLineWith}): its one state tag, and the checkbox ticked for
+ * `#C` and `#A` and unticked for `#W`, `#D` and `#T`, because a state the checkbox contradicts counts
+ * for nothing and the person who typed `#C` meant the task cancelled. A priority or a date is set as
+ * the `#` helper sets it ({@link applyTaskTag}), except that a priority the run already carries is
+ * kept rather than cleared by the helper's toggle; a date always replaces, so it is already a set.
+ */
+function withStrayTag(line: string, command: TaskTagCommand): string {
+    if (isStateCommand(command)) return taskLineWith(line, { status: command.kind }) ?? line
+    if (command.kind === 'priority' && parseTaskLine(line)?.priority === command.value) return line
+    return applyTaskTag(line, command) ?? line
+}
+
+const STATE_KINDS = new Set<string>(STATE_TAGS.map(([kind]) => kind))
+
+/** Whether `command` sets a bare-letter state, whose kind is also the [[Task Status]] it names. */
+function isStateCommand(command: TaskTagCommand): command is { kind: StateKind } {
+    return STATE_KINDS.has(command.kind)
+}
+
+/** `text` with the columns of `span` (clamped to it) blanked to spaces, every offset kept. */
+function blanked(text: string, span: LineSpan): string {
+    const from = Math.max(0, span.from)
+    const to = Math.min(text.length, span.to)
+    return to <= from ? text : text.slice(0, from) + ' '.repeat(to - from) + text.slice(to)
+}
+
+/**
+ * The Task Tags in a label written after its leading run, each as its own word and in prose: a tag
+ * in a code span, a link or an autolink is part of that (blanked as for Free Tags), as is one in a
+ * `skip` span (label columns), and one joined to other characters (`#P1,`, `item#P1`, a URL's
+ * `/#P1`) is not a word of its own.
+ */
+function strayTagsIn(label: string, skip: readonly LineSpan[]): { from: number; to: number; command: TaskTagCommand }[] {
+    const runEnd = scanRun(label).end
+    const prose = skip.reduce(
+        (text, span) => blanked(text, span),
+        label.replace(NOT_PROSE, (span) => ' '.repeat(span.length)),
+    )
+    const out: { from: number; to: number; command: TaskTagCommand }[] = []
+    for (const match of label.matchAll(WORD)) {
+        const from = match.index
+        const to = from + match[0].length
+        if (from < runEnd || prose.slice(from, to) !== match[0]) continue
+        const tag = readTag(match[0])
+        if (tag) out.push({ from, to, command: commandFor(tag) })
+    }
+    return out
+}
+
+/**
+ * A task line with its stray [[Task Tag]]s moved into the leading run, or null when the line is not
+ * a task or has none. A person who types `#P1` at the end of a task means it as metadata, but the
+ * grammar reads only the leading run (ADR 0032), so the tag would sit there as prose.
+ *
+ * Each stray word is taken out with the whitespace before it, and its tag set in the order written
+ * ({@link withStrayTag}): a later `#P2` replaces a leading `#P1`, a date replaces the date of its
+ * kind, and a state tag sets the task's [[Task Status]], ticking or unticking the checkbox to match,
+ * so of several state tags the last written wins. A stray tag never clears: a priority the run
+ * already carries stays set, because a typed tag says what the person wants and no menu showed them
+ * it was set. [[Free Tag]]s stay where they are written. `skip` holds the line's columns that are not
+ * prose beyond what this module can see (inline maths). Tidy on leave (`view/leave-tidy.ts`) calls
+ * this as the caret leaves the task, never while it is being typed in, and brings the nested tasks
+ * along when the status it sets ticks, archives or unticks the task (`task-cascade.ts`).
+ */
+export function applyStrayTaskTags(line: string, skip: readonly LineSpan[] = []): string | null {
+    const marker = CHECKBOX.exec(line)
+    if (!marker) return null
+    const start = marker[0].length
+    const label = line.slice(start)
+    const strays = strayTagsIn(
+        label,
+        skip.map(({ from, to }) => ({ from: from - start, to: to - start })),
+    )
+    if (strays.length === 0) return null
+    let rest = ''
+    let at = 0
+    for (const { from, to } of strays) {
+        rest += label.slice(at, from).trimEnd()
+        at = to
+    }
+    let out = line.slice(0, start) + rest + label.slice(at)
+    for (const { command } of strays) out = withStrayTag(out, command)
+    return out === line ? null : out
 }

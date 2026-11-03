@@ -91,7 +91,9 @@ These are the Stable parts of the context.
 (`hello.greet`). `context.commandMenu.register(item)` adds a row to the `/` menu that runs a Command.
 A row can have a `detail` line, an `icon`, `keywords` that find it, a `group` and an `order`. Its
 `when(menu)` says whether it is offered at the caret, from what `menu` reports: `bodyWritable`,
-`inTable` and `protectedDocument`.
+`inTable` and `protectedDocument`. A row that only acts on the text at the caret, inserting or
+formatting it, sets `actsOnText: true`; only such rows are offered in an editor that shows part of a
+document, such as a Kanban task's description in its dialog.
 
 `context.commands.execute(id, arg)` runs a Command, and `context.commands.has(id)` says whether there
 is one. An extension may run three kinds of Command, by `execute` or as the Command of a row or a
@@ -107,7 +109,15 @@ added as extensions need them.
 
 ### Notices
 
-`context.notify(text)` shows a short notice, as the Client's own notices do.
+`context.notify(text)` shows a short notice, as the Client's own notices do. A notice can carry one
+button, for what a person may want to do about what it says:
+
+```ts
+context.notify('Deleted "Build the shed".', { action: { label: 'Undo', run: () => putItBack() } })
+```
+
+The button is greyed while a promise `run` returns is pending. The notice is replaced by the next one,
+so say what the action did with a notice of its own, which also takes the button away.
 
 ### Settings
 
@@ -309,6 +319,25 @@ be added, and when the Client stops raising a menu on one, the rows for it are n
 `when` answers false for any kind it does not check. A row that deletes or removes something for good
 sets `danger: true`, and is drawn in the danger colour.
 
+A menu is also raised on a task: a row of the Tasks View, and a task's line in an editor (a
+right-click on its checkbox or its words). `context.contextMenu.taskOf(target)` answers the task a
+target stands on, as `{ document, line, label }` (`line` counted in the document's body from 0, as a
+task reference counts it), or null for any other target, a task in a Protected Document included. A
+row offered on every task asks it in its `when`, and its Command asks it of the target it is given:
+
+```ts
+context.contextMenu.register({
+    id: 'hello.taskWords',
+    label: 'Show the words',
+    command: 'hello.taskWords',
+    when: (target) => context.contextMenu.taskOf(target) !== null,
+})
+context.commands.register('hello.taskWords', (target) => {
+    const task = context.contextMenu.taskOf(target as MenuTarget)
+    if (task) context.notify(task.label)
+})
+```
+
 `context.commandBar.register({ id, title, icon, command, pinned })` adds a button to the row of
 buttons across the bottom of a phone's screen: after the editing buttons that scroll, or with
 `pinned`, at the bar's right end, where it never scrolls away.
@@ -357,10 +386,32 @@ that shows it, such as `![photo](assets/photo.3f9a1c2e.webp)`. The file's name e
 bytes, so two images never take the same name, and the same image kept twice is one file. An asset
 is part of the graph: it syncs, and every member of a shared graph can see it.
 
+`context.assets.describe(ref)` names the asset a document's reference points at, such as
+`../assets/plan.3f9a1c2e.png`: `name` is the file's name as a person reads it (`plan.png`),
+`fileName` the whole name, and `image` says whether a document shows it as an image. It answers null
+for a reference that names no asset. `context.assets.imageUrl(ref)` answers an address an `<img>`
+shows that image at, read from the graph as the editor reads the images it draws, and decrypted in a
+synced graph. The address lasts while the graph is open. It answers null for a file that is not an
+image, and for an image that cannot be read just now.
+
+`context.assets.viewImages({ refs, start })` shows the images that `refs` name in the Client's
+Lightbox, the dialog a picture's **View larger** opens in a document. Each image is shown as large
+as the window allows, under the name `describe` gives it, over whatever is open, a dialog of the
+extension's own included. With more than one image, Previous and Next (and the arrow keys) step
+through them in the order of `refs` and stop at either end. The Lightbox opens on `start`, or on the
+first image when `start` is left out or is not among them. A reference that names no image is left
+out, and nothing opens when none does. Esc, the close button or a click outside the picture closes
+it, and the keyboard returns to the element that had it. It resolves once the Lightbox closes. One
+Lightbox is open at a time.
+
+```ts
+thumbnail.addEventListener('click', () => void context.assets.viewImages({ refs: taskAssets, start: ref }))
+```
+
 ### Icons
 
 `context.icons.svg(name)` draws one of the extension's own icons or one of the Client's, as markup the
-Client trusts. The Client's icons, which every `icon` field may name too, are `alias`, `backlinks`, `bold`, `bookmark`, `bullet`, `calendar`, `check`, `clock`, `close`, `code`, `copy`, `download`, `fit`, `flag`, `fold`, `frontmatter`, `globe`, `graph`, `grip`, `headless-client`, `highlight`, `image`, `import`, `indent`, `italic`, `list`, `lock`, `lock-open`, `more`, `move`, `move-down`, `move-up`, `new-page`, `open-external`, `outdent`, `page`, `pageless`, `pane-right`, `pin`, `redo`, `rename`, `reset`, `search`, `slash`, `spell-check`, `table`, `table-add-column`, `table-add-row`, `table-format`, `table-remove-column`, `table-remove-row`, `task`, `task-reference`, `template`, `text-lines`, `today`, `todays-journal`, `tomorrow`, `trash`, `undo`, `wikilink-close`, `wikilink-open`, `yesterday`, `zoom-in`, `zoom-out`. An
+Client trusts. The Client's icons, which every `icon` field may name too, are `alias`, `archive`, `backlinks`, `bold`, `bookmark`, `bullet`, `calendar`, `check`, `clock`, `close`, `code`, `copy`, `download`, `fit`, `flag`, `fold`, `frontmatter`, `globe`, `graph`, `grip`, `headless-client`, `highlight`, `image`, `import`, `indent`, `italic`, `list`, `lock`, `lock-open`, `more`, `move`, `move-down`, `move-up`, `new-page`, `open-external`, `outdent`, `page`, `pageless`, `pane-right`, `pin`, `redo`, `rename`, `reset`, `search`, `slash`, `spell-check`, `table`, `table-add-column`, `table-add-row`, `table-format`, `table-remove-column`, `table-remove-row`, `task`, `task-reference`, `template`, `text-lines`, `today`, `todays-journal`, `tomorrow`, `trash`, `undo`, `view-larger`, `wikilink-close`, `wikilink-open`, `yesterday`, `zoom-in`, `zoom-out`. An
 icon may be added in a later release, never taken away. An unknown name draws a small dot.
 
 ### Settings sections
@@ -390,6 +441,21 @@ the extension, and shows every string it is given as text.
 `context.dialogs.choose(options)` asks for one of a list of `choices`, picked from a dropdown and
 confirmed. `submitLabel` can be a function of the value picked, so the button says what confirming
 will do. It resolves to the picked choice's `value`, or undefined when the person cancels.
+
+`context.dialogs.pickDate({ anchor, value, label })` opens the calendar the document editor's Date
+Picker shows, beside the element `anchor`, on the day `value` names (`YYYY-MM-DD`) or on today.
+Arrow keys move a day or a week and Page Up and Page Down a month. Enter or a click picks a day.
+Esc, Tab or a click elsewhere closes the calendar. It resolves to the day as `YYYY-MM-DD`, or
+undefined when it was closed without one, and the keyboard returns to `anchor` after Enter or Esc.
+`label` is what a screen reader announces for the calendar. One calendar is open at a time, and
+asking again with the same `anchor` closes it, so the button that opens it also closes it.
+
+```ts
+button.addEventListener('click', async () => {
+    const day = await context.dialogs.pickDate({ anchor: button, value: sowing, label: 'Sowing date' })
+    if (day) sowing = day
+})
+```
 
 ### Frames
 

@@ -86,6 +86,21 @@ export function shiftYear(date: Date, years: number): Date {
     return shiftMonth(date, years * 12)
 }
 
+/**
+ * The keys that move a Date Picker's focused day, and where each moves it: a day sideways, a week
+ * up or down, a month a page. One table for both pickers, the editor's (driven from a CodeMirror
+ * keymap, since focus stays in the document) and the one the Client draws for an extension (driven
+ * from the grid's own keydown), so the two cannot drift apart.
+ */
+export const DATE_PICKER_MOVES: Readonly<Record<string, (date: Date) => Date>> = Object.freeze({
+    ArrowRight: (d: Date) => shiftDate(d, 1),
+    ArrowLeft: (d: Date) => shiftDate(d, -1),
+    ArrowDown: (d: Date) => shiftDate(d, 7),
+    ArrowUp: (d: Date) => shiftDate(d, -7),
+    PageDown: (d: Date) => shiftMonth(d, 1),
+    PageUp: (d: Date) => shiftMonth(d, -1),
+})
+
 /** Day-of-week with **Monday = 0** … Sunday = 6 (British week start). */
 function mondayIndex(date: Date): number {
     return (date.getDay() + 6) % 7

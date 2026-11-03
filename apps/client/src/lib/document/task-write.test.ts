@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import type { TaskStatus } from './index-db'
 import { createInMemoryDocumentStore } from './in-memory-store'
-import { isTaskLine, locateTask, taskLineWith, undoTaskWrite, writeTaskChanges } from './task-write'
+import { isTaskLine, locateTask, rewriteTaskLine, taskLineWith, undoTaskWrite, writeTaskChanges } from './task-write'
 import type { DocumentStore } from './types'
 import { DocumentNotFoundError } from './types'
 
@@ -280,5 +280,28 @@ describe('a write that ticks or unticks a task brings the tasks nested under it'
         store.open('Garden').applyChange({ from: at, to: at + 4, insert: 'weed the beds' })
         expect(await undoTaskWrite(store, 'Garden', moved)).toMatchObject({ ok: true, skipped: 1, nested: [{ line: 2 }] })
         expect(store.open('Garden').getText()).toBe('- [ ] Garden\n  - [x] weed the beds\n  - [ ] dig')
+    })
+})
+
+describe('rewriteTaskLine: a write that holds only while the line reads as it did', () => {
+    const doc = '- [[Garden]]\n  - [ ] #P1 Build the shed\n    - measure'
+
+    it('rewrites the task line, found by its words when lines were added above it', async () => {
+        const store = createInMemoryDocumentStore({ Garden: `- weed\n${doc}` })
+        const outcome = await rewriteTaskLine(store, { concept: 'Garden', line: 1, expected: '  - [ ] #P1 Build the shed' }, (line) => taskLineWith(line, { status: 'doing' }))
+        expect(outcome).toMatchObject({ ok: true, line: 2, after: '  - [ ] #P1 #D Build the shed' })
+        expect(store.open('Garden').getText()).toBe('- weed\n- [[Garden]]\n  - [ ] #P1 #D Build the shed\n    - measure')
+    })
+
+    it('refuses when the line changed since it was read, and writes nothing', async () => {
+        const store = createInMemoryDocumentStore({ Garden: doc.replace("#P1", "#P2") })
+        const outcome = await rewriteTaskLine(store, { concept: 'Garden', line: 1, expected: '  - [ ] #P1 Build the shed' }, (line) => taskLineWith(line, { status: 'doing' }))
+        expect(outcome).toEqual({ ok: false, reason: 'stale' })
+        expect(store.open('Garden').getText()).toBe(doc.replace('#P1', '#P2'))
+    })
+
+    it('refuses a rewrite that declines the line', async () => {
+        const store = createInMemoryDocumentStore({ Garden: doc })
+        expect(await rewriteTaskLine(store, { concept: 'Garden', line: 1, expected: '  - [ ] #P1 Build the shed' }, () => null)).toEqual({ ok: false, reason: 'stale' })
     })
 })

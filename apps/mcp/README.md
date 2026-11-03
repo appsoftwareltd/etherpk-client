@@ -9,7 +9,7 @@ read and edit documents without breaking EtherPK's format.
 
 This package is EtherPK's **Headless Client**, EtherPK without an editor. It serves a graph folder
 on your computer or a graph synced through a Sync Server, with the same tools for both. Protected
-documents are listed by name only and never served.
+documents are never shown to the agent, not even by name; `graph_info` only counts them.
 
 Needs Node.js 24 or later.
 
@@ -55,7 +55,8 @@ equivalent:
 ## What the agent can do
 
 Thirty-six tools, the same for a synced graph and a folder. Each `serve` serves one graph, and
-every tool refuses a protected document.
+no tool shows a protected document: a read answers as if there were no such document, and a write
+onto its name is refused.
 
 | Group | Tools | Notes |
 | --- | --- | --- |

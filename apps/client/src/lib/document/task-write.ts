@@ -218,3 +218,28 @@ function applyWrites(found: FoundTask, next: string, nested: LineWrite[]): Omit<
         nested: nested.map(({ index, before, after }) => ({ line: index - found.bodyStart, before, after })),
     }
 }
+
+/** A task as the [[Task Editor]] last read it: where, and its whole line as it read then. */
+export interface ReadTask {
+    concept: string
+    /** 0-based and body-relative. */
+    line: number
+    /** The task's whole line when it was read. */
+    expected: string
+}
+
+/**
+ * Rewrite the task's line with `rewrite`, but only while it still reads `expected`: a peer, an agent
+ * or the board may have changed it since the Task Editor read it, and a write over that change would
+ * lose it. The task is found as any write finds it (`findIndexedTask`), so lines added above it are
+ * no reason to refuse. A rewrite that makes the task Done, Archived or unticked brings its nested
+ * tasks along (`writeFoundTask`). `stale` when the line reads otherwise now, or `rewrite` refuses it.
+ */
+export async function rewriteTaskLine(store: DocumentStore, task: ReadTask, rewrite: (line: string) => string | null): Promise<TaskWriteOutcome> {
+    const found = await findIndexedTask(store, { concept: task.concept, line: task.line, text: bulletLabel(task.expected) })
+    if ('reason' in found) return { ok: false, reason: found.reason }
+    if (found.lines[found.index] !== task.expected) return { ok: false, reason: 'stale' }
+    const next = rewrite(task.expected)
+    if (next === null) return { ok: false, reason: 'stale' }
+    return writeFoundTask(found, next)
+}

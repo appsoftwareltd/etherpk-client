@@ -89,6 +89,8 @@ export function registerMapCommands(context: Pick<ExtensionContext, 'commands' |
         order: 115,
         keywords: ['place', 'location', 'route', 'gpx', 'pin', 'coordinates'],
         when: (ctx) => ctx.bodyWritable && !ctx.inTable && !ctx.protectedDocument,
+        // It inserts a block at the caret, so a Kanban task's description offers it too.
+        actsOnText: true,
         command: MAPS_INSERT,
     })
 }

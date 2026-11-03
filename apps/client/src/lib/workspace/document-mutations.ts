@@ -3,7 +3,9 @@
  *
  * Both storage backends expose the same mutation seam. Keeping the orchestration here makes the
  * Svelte workspace responsible for dialog state while this framework-free controller owns the
- * cross-service consequences: favourites, recents and open Views follow the document mutation.
+ * cross-service consequences: favourites, bookmarks, recents and open Views follow the document
+ * mutation. A rename moves them to the new name; a delete removes the document's own entries
+ * (ADR 0036 §4, amended 2026-11-03), and leaves the Views about its concept, which need no page.
  *
  * Views about a concept follow a rename of it too: any kind registered with `conceptTarget`, such
  * as a [[Kanban Board]] (ADR 0113) or a [[Map View]] (ADR 0118). State an extension keeps under a
@@ -21,6 +23,11 @@ interface DocumentMutationStore {
     planRename(from: string, to: string, referencingDocuments?: number): Promise<RenamePlan>
     renamePage(from: string, to: string, options: RenameOptions): Promise<RenameResult>
     deleteDocument(concept: string): Promise<void>
+    /**
+     * The registry: each document's title and aliases, for the names a delete forgets. Both
+     * backends have it; absent (a test's stand-in), a delete forgets only the name it was given.
+     */
+    listDocuments?(): readonly { concept: string; aliases: readonly string[] }[]
 }
 
 interface DocumentMutationIndex {
@@ -128,8 +135,11 @@ interface DocumentMutationRecents {
     rename(from: string, to: string): void
 }
 
-/** The person's lists that follow a rename through their own writes. */
+/** The person's lists that follow a rename or a delete through their own writes. */
 export type RenamedList = 'favourites' | 'bookmarks'
+
+/** What a list was following when its write was refused. */
+export type ListMutation = 'rename' | 'delete'
 
 export interface DocumentMutationDependencies {
     store(): DocumentMutationStore | undefined
@@ -140,11 +150,19 @@ export interface DocumentMutationDependencies {
     /** A [[Bookmark]] follows its document through a rename, as a favourite does (ADR 0159). */
     renameBookmarks?(from: string, to: string): Promise<void>
     /**
-     * One of the person's lists could not follow a rename: its write was refused (a folder graph's
-     * file could not be written, say). Told once per list per rename. Everything else the rename
-     * does still happens, since the document itself has already moved. Absent, it is logged.
+     * A deleted document leaves the person's [[Favourite]]s, by any of `names` (its title and its
+     * aliases); the Views about its concept stay (ADR 0036 §4, amended 2026-11-03).
      */
-    listUpdateFailed?(list: RenamedList, error: unknown): void
+    forgetFavourites?(names: readonly string[]): Promise<void>
+    /** A deleted document's [[Bookmark]]s go with it, by any of `names`. */
+    forgetBookmarks?(names: readonly string[]): Promise<void>
+    /**
+     * One of the person's lists could not follow a rename or a delete: its write was refused (a
+     * folder graph's file could not be written, say). Told once per list per mutation. Everything
+     * else the mutation does still happens, since the document itself has already moved or gone.
+     * Absent, it is logged.
+     */
+    listUpdateFailed?(list: RenamedList, error: unknown, mutation: ListMutation): void
     /**
      * A rename made on this Client: rewrite the moved concepts in every Member's own lists on a
      * synced graph (ADR 0159), in the order given. Not called when following a rename made
@@ -152,6 +170,12 @@ export interface DocumentMutationDependencies {
      * rename for its own list.
      */
     renameInMemberLists?(moves: readonly { from: string; to: string }[]): void
+    /**
+     * A delete made on this Client: remove the document, by any of `names`, from every Member's own
+     * lists on a synced graph, as a rename moves it in them (ADR 0159). Not called for a delete
+     * made elsewhere: the Client that made it did this.
+     */
+    forgetInMemberLists?(names: readonly string[]): void
     /**
      * Whether an open View of `kind` is about a concept and follows it through a rename: a kind
      * registered with `conceptTarget`, a Kanban Board or a Map View.
@@ -282,22 +306,45 @@ export function createDocumentMutationController(dependencies: DocumentMutationD
      * the rest of the rename (open tabs, recents, other Members' lists, extensions) undone.
      */
     async function moveLists(moves: readonly { from: string; to: string }[]): Promise<void> {
+        await writeLists('rename', async (write) => {
+            for (const { from, to } of moves) {
+                await write('favourites', () => dependencies.renameFavourite(from, to))
+                await write('bookmarks', () => dependencies.renameBookmarks?.(from, to))
+            }
+        })
+    }
+
+    /**
+     * Run `writes`, each list's through `write`, which keeps the first refusal per list and goes
+     * on: a list that could not follow must not leave the other list, or the rest of the mutation,
+     * undone. Each refused list is then reported once (`listUpdateFailed`).
+     */
+    async function writeLists(
+        mutation: ListMutation,
+        writes: (write: (list: RenamedList, run: () => Promise<void> | undefined) => Promise<void>) => Promise<void>,
+    ): Promise<void> {
         const failed = new Map<RenamedList, unknown>()
-        const write = async (list: RenamedList, run: () => Promise<void> | undefined) => {
+        await writes(async (list, run) => {
             try {
                 await run()
             } catch (error) {
                 if (!failed.has(list)) failed.set(list, error)
             }
-        }
-        for (const { from, to } of moves) {
-            await write('favourites', () => dependencies.renameFavourite(from, to))
-            await write('bookmarks', () => dependencies.renameBookmarks?.(from, to))
-        }
+        })
         for (const [list, error] of failed) {
-            if (dependencies.listUpdateFailed) dependencies.listUpdateFailed(list, error)
-            else console.warn(`[rename] the ${list} did not follow the rename`, error)
+            if (dependencies.listUpdateFailed) dependencies.listUpdateFailed(list, error, mutation)
+            else console.warn(`[${mutation}] the ${list} did not follow the ${mutation}`, error)
         }
+    }
+
+    /**
+     * Every name `concept`'s document answers to, its title first and then its aliases, read from
+     * the registry. Just `concept` when the registry does not list it (or cannot be read).
+     */
+    function namesOf(store: DocumentMutationStore, concept: string): string[] {
+        const key = conceptKey(concept)
+        const entry = store.listDocuments?.().find((candidate) => conceptKey(candidate.concept) === key)
+        return entry ? [entry.concept, ...entry.aliases] : [concept]
     }
 
     /**
@@ -325,12 +372,27 @@ export function createDocumentMutationController(dependencies: DocumentMutationD
             return store.planRename(concept, candidate, await referenceCount(concept))
         },
 
+        /**
+         * Delete a document: the store first, then what is keyed by its name on this Client. The
+         * document's favourites and the bookmarks into it go, by its title and every alias, from
+         * this person's lists and every Member's (ADR 0036 §4, amended 2026-11-03): a favourite left
+         * behind would open a [[Draft]] over a name nothing answers to. Views about its concept, a
+         * Kanban board or a Map View, stay open and favourited: they work without a page. Delete
+         * has no undo (ADR 0039), so nothing is kept to restore.
+         */
         async delete(concept: string): Promise<boolean> {
             const store = dependencies.store()
             if (!store) return false
+            // Read before the delete, which takes the document out of the registry.
+            const names = namesOf(store, concept)
             await store.deleteDocument(concept)
             dependencies.layout()?.closeView({ kind: 'document', target: concept })
             dependencies.recents()?.forget(concept)
+            await writeLists('delete', async (write) => {
+                await write('favourites', () => dependencies.forgetFavourites?.(names))
+                await write('bookmarks', () => dependencies.forgetBookmarks?.(names))
+            })
+            dependencies.forgetInMemberLists?.(names)
             return true
         },
 

@@ -5,7 +5,7 @@
 
 import { describe, expect, it } from 'vitest'
 
-import { collaborative } from './cm-document'
+import { collaborative, EXTERNAL } from './cm-document'
 import { tidiedAfterChildren, tidiedBlock, tidiedProse, tidyTargetAt } from './leave-tidy'
 import { editorFixture } from './testing/editor-state-fixture'
 import { placeSelection } from './view-position'
@@ -194,5 +194,41 @@ describe('leave-tidy filter', () => {
         expect(editor.fixture()).toBe('- a  \n- |b  ')
         editor.dispatch(editor.state.update(placeSelection(0, 3)))
         expect(editor.text()).toBe('- a  \n- b  ')
+    })
+
+    it('tidies nothing while a selection is being made: a drag or Shift+arrow across blocks is not leaving', () => {
+        // A selection made to copy would otherwise copy rewritten text, and a shrinking Shift+arrow over
+        // a block selection would edit (Editor Content Rules → Selection).
+        const editor = editorFixture('- [ ] water #P1  |\n- b')
+        editor.select(editor.head(), editor.text().length)
+        expect(editor.text()).toBe('- [ ] water #P1  \n- b')
+    })
+
+    it('keeps a caret that lands inside the block’s unchanged lines where the move put it', () => {
+        // A bare blank line inside the block's fence is nobody's line, so moving onto it leaves the task
+        // line; the tidy rewrites the task line alone and the caret stays on the code line.
+        const editor = editorFixture('- [ ] water #P1|\n  ```\n\n  ```')
+        editor.select(editor.state.doc.line(3).from)
+        expect(editor.fixture()).toBe('- [ ] #P1 water\n  ```\n|\n  ```')
+    })
+
+    it('moves a task’s stray Task Tag only when the user leaves it: never for a remote, external or placed caret', () => {
+        // Another member's edit in a synced editor: the caret clamp gives it a selection, but nobody left the task.
+        const synced = editorFixture('- [ ] water #P1\n  cont|\n- c', { extensions: [collaborative.of(true)] })
+        const from = synced.text().indexOf('  cont')
+        synced.dispatch(synced.state.update({ changes: { from, to: from + '  cont\n'.length } }))
+        expect(synced.text()).toBe('- [ ] water #P1\n- c')
+        // An external write that moves the caret off the task.
+        const external = editorFixture('- [ ] water #P1|\n- c')
+        external.dispatch(external.state.update({ changes: { from: 0, insert: '- a\n' }, selection: { anchor: 0 }, annotations: EXTERNAL.of(true) }))
+        expect(external.text()).toBe('- a\n- [ ] water #P1\n- c')
+        // A caret the app places.
+        const placed = editorFixture('- [ ] water #P1|\n- c')
+        placed.dispatch(placed.state.update(placeSelection(placed.text().length)))
+        expect(placed.text()).toBe('- [ ] water #P1\n- c')
+        // The user's own move in a synced editor still moves it.
+        const own = editorFixture('- [ ] water #P1|\n- c', { extensions: [collaborative.of(true)] })
+        own.select(own.text().length)
+        expect(own.text()).toBe('- [ ] #P1 water\n- c')
     })
 })

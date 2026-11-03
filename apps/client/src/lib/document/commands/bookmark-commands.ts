@@ -57,7 +57,7 @@ function bookmarkOnTargetLine(line: EditorLine): string | null {
     return view && line.line <= view.state.doc.lines ? bookmarkOnLine(view.state, line.line) : null
 }
 
-const isLineTarget = (target: ContextMenuTarget) => editorLineOf(target) !== null
+const standsOnEditorLine = (target: ContextMenuTarget) => editorLineOf(target) !== null
 
 /** The bookmark id a target stands for: a Sidebar row's, or the one on an editor line. */
 function bookmarkIdOf(arg: unknown): string | null {
@@ -146,7 +146,7 @@ export function registerBookmarkCommands(
         icon: 'bookmark',
         order: 90,
         separatorBefore: true,
-        when: (target) => isLineTarget(target) && !onBookmarkedLine(target),
+        when: (target) => standsOnEditorLine(target) && !onBookmarkedLine(target),
     })
     item({
         id: `${BOOKMARK_TOGGLE}.remove`,
@@ -155,7 +155,7 @@ export function registerBookmarkCommands(
         icon: 'bookmark',
         order: 90,
         separatorBefore: true,
-        when: (target) => isLineTarget(target) && onBookmarkedLine(target),
+        when: (target) => standsOnEditorLine(target) && onBookmarkedLine(target),
     })
     item({
         id: BOOKMARK_EDIT_LABEL,

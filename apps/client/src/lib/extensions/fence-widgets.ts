@@ -11,27 +11,36 @@
  *   transaction, so a widget that throws as it mounts shows a short note in its place instead, and
  *   one that throws later is logged. Its other callbacks (`identify`, `fromPaste`) are guarded where
  *   the editor calls them.
+ * - **The editor frame**, for a registration with `frame: 'editor'` (`fence-frame.ts`): drawn in the
+ *   page round wherever the widget mounts.
  */
 import type { FenceOptions, FenceWidget, MountedFence } from '@appsoftwareltd/etherpk-extension-api'
 
 import type { InteractiveFence, InteractiveFenceContext, InteractiveFenceView } from '#lib/document/view/augmentations/interactive-fence-contract.js'
 
+import { framedFence } from './fence-frame'
 import { clientShadowSheets, extensionStyleSheets } from './styles'
 
 /** How an extension's widgets mount: in a shadow root holding these stylesheets, or in the page (null). */
 export type FenceIsolation = { styles: readonly string[] } | null
 
-/**
- * @param settingsChanged hears when the extension's own settings change, which can change what its
- *   `quote` answers (a video's thumbnail), so a quote kept from before is asked for again.
- */
-export function toInteractiveFence(
-    extensionName: string,
-    widget: FenceWidget,
-    options: FenceOptions,
-    isolation: FenceIsolation,
-    settingsChanged?: (listener: () => void) => () => void,
-): InteractiveFence {
+/** What the Client gives a fence registration beyond the widget itself. */
+export interface FenceServices {
+    /**
+     * Hears when the extension's own settings change, which can change what its `quote` answers (a
+     * video's thumbnail), so a quote kept from before is asked for again.
+     */
+    settingsChanged?: (listener: () => void) => () => void
+    /** Tell the person what the page does not show, such as how to undo the editor frame's Delete. */
+    notify?: (text: string) => void
+}
+
+export function toInteractiveFence(extensionName: string, widget: FenceWidget, options: FenceOptions, isolation: FenceIsolation, services: FenceServices = {}): InteractiveFence {
+    const fence = adaptedFence(extensionName, widget, options, isolation, services.settingsChanged)
+    return options.frame === 'editor' ? framedFence(fence, services.notify ?? (() => {})) : fence
+}
+
+function adaptedFence(extensionName: string, widget: FenceWidget, options: FenceOptions, isolation: FenceIsolation, settingsChanged: FenceServices['settingsChanged']): InteractiveFence {
     return {
         height: (info) => widget.height(info),
         mount: (host, context) => (isolation ? mountInShadow(extensionName, widget, host, context, isolation.styles) : mountGuarded(extensionName, widget, host, context)),
@@ -57,6 +66,20 @@ function failedNote(host: HTMLElement | ShadowRoot, extensionName: string): void
 
 function guardedView(extensionName: string, mounted: MountedFence): InteractiveFenceView {
     return {
+        flush() {
+            try {
+                mounted.flush?.()
+            } catch (error) {
+                console.error(`[extensions] ${extensionName}: a fence widget's flush threw`, error)
+            }
+        },
+        owns(node) {
+            try {
+                return mounted.owns?.(node) ?? false
+            } catch {
+                return false
+            }
+        },
         update(context) {
             try {
                 mounted.update(context)
@@ -115,6 +138,8 @@ function mountInShadow(extensionName: string, widget: FenceWidget, host: HTMLEle
             latest = next
             view?.update(next)
         },
+        flush: () => view?.flush?.(),
+        owns: (node) => view?.owns?.(node) ?? false,
         destroy() {
             destroyed = true
             view?.destroy()

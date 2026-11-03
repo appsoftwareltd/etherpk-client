@@ -24,7 +24,22 @@ function widget() {
     return { fence, contexts, latest: () => contexts[contexts.length - 1] }
 }
 
-function open(seed = text, id = 'k1', protectedDocument = false) {
+/** A host that keeps its key listener, so a test can press Mod+Z in the tab. */
+function keyHost() {
+    let listener: ((event: KeyboardEvent) => void) | null = null
+    const host = {
+        addEventListener: (_type: string, given: (event: KeyboardEvent) => void) => void (listener = given),
+        removeEventListener: () => void (listener = null),
+    } as unknown as HTMLElement
+    const press = (key: string, options: { shift?: boolean } = {}) => {
+        const event = { key, ctrlKey: true, metaKey: false, altKey: false, shiftKey: options.shift === true, target: null, composedPath: () => [], preventDefault: vi.fn() }
+        listener?.(event as unknown as KeyboardEvent)
+        return event.preventDefault.mock.calls.length > 0
+    }
+    return { host, press, listening: () => listener !== null }
+}
+
+function open(seed = text, id = 'k1', protectedDocument = false, host: HTMLElement = {} as HTMLElement) {
     const store = createInMemoryDocumentStore({ Garden: seed })
     const doc = store.open('Garden')
     // An unlocked Protected Document's editor document says so, and its text is the plaintext.
@@ -36,7 +51,7 @@ function open(seed = text, id = 'k1', protectedDocument = false) {
         ref: { document: 'Garden', info: 'garden.plan', id },
         fence,
         presentation: 'tab',
-        host: {} as HTMLElement,
+        host,
         dark: () => false,
         onScreen: () => true,
         onGone,
@@ -121,5 +136,53 @@ describe('a widget outside its editor', () => {
         expect(onGone).toHaveBeenCalledWith('protected')
         expect(latest().edit({ kind: 'insert', line: 2, text: '{"e":2}' })).toBe(false)
         expect(doc.getText()).toContain('{"e":1}\n  ```')
+    })
+})
+
+// No editor's history holds a tab's or a window's edits, so the host keeps the widget's own there:
+// Undo and Redo in the widget, and Mod+Z and Mod+Y in the tab, for a widget with no history of its own.
+describe('undoing in a tab or a window', () => {
+    it("takes back the widget's last edit, and puts it back", () => {
+        const { doc, latest } = open()
+        const before = doc.getText()
+        latest().edit([{ kind: 'insert', line: 2, text: '{"e":2}' }])
+        const after = doc.getText()
+        expect(latest().undo?.()).toBe(true)
+        expect(doc.getText()).toBe(before)
+        expect(latest().body).toEqual(['{"id":"k1"}', '{"e":1}'])
+        expect(latest().redo?.()).toBe(true)
+        expect(doc.getText()).toBe(after)
+        expect(latest().redo?.()).toBe(false)
+    })
+
+    it('undoes edits made together as one step, and a new edit ends what could be redone', () => {
+        const { doc, latest } = open()
+        const before = doc.getText()
+        latest().edit([{ kind: 'replace', line: 1, expect: '{"e":1}', text: '{"e":1,"v":2}' }, { kind: 'insert', line: 2, text: '{"e":2}' }])
+        latest().undo?.()
+        expect(doc.getText()).toBe(before)
+        latest().edit([{ kind: 'insert', line: 2, text: '{"e":3}' }])
+        expect(latest().redo?.()).toBe(false)
+    })
+
+    it('refuses to undo over a change another editor made to the same lines since', () => {
+        const { store, doc, latest } = open()
+        latest().edit([{ kind: 'insert', line: 2, text: '{"e":2}' }])
+        store.setText('Garden', doc.getText().replace('{"e":2}', '{"e":5}'))
+        const changed = doc.getText()
+        expect(latest().undo?.()).toBe(false)
+        expect(doc.getText()).toBe(changed)
+    })
+
+    it('answers Mod+Z and Mod+Y in the tab', () => {
+        const keys = keyHost()
+        const { doc, latest } = open(text, 'k1', false, keys.host)
+        const before = doc.getText()
+        latest().edit([{ kind: 'insert', line: 2, text: '{"e":2}' }])
+        expect(keys.press('z')).toBe(true)
+        expect(doc.getText()).toBe(before)
+        expect(keys.press('y')).toBe(true)
+        expect(keys.press('z', { shift: true })).toBe(false)
+        expect(doc.getText()).not.toBe(before)
     })
 })

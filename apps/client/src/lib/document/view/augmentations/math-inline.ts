@@ -13,7 +13,7 @@ import { Decoration, type DecorationSet, EditorView, WidgetType } from '@codemir
 
 import { visibleFencedBlocks } from '../outliner-context'
 import { scanInlineMath } from './math-inline-core'
-import { rangeRevealed } from './reveal-policy'
+import { rangeRevealed, revealInputsChanged } from './reveal-policy'
 import {
     hasRenderFailed,
     isDark,
@@ -92,7 +92,7 @@ export function mathInlineAugmentation(): Extension {
         create: (state) => buildDecorations(state),
         update(deco, tr) {
             const ticked = tr.effects.some((e) => e.is(themeTick) || e.is(renderFailed))
-            if (tr.docChanged || tr.selection || ticked) return buildDecorations(tr.state)
+            if (revealInputsChanged(tr) || ticked) return buildDecorations(tr.state)
             return deco
         },
         provide: (f) => EditorView.decorations.from(f),

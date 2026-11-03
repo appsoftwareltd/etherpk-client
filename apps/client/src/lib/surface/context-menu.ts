@@ -56,6 +56,11 @@ export interface EditorLine {
     panelId?: string
     /** 1-based. */
     line: number
+    /**
+     * The line's text when the menu opened, so a row that rewrites the line (a task's status) can
+     * tell it still holds the same line: a peer's edit or a reload may move another one there.
+     */
+    text: string
 }
 
 export interface LineContextMenuTarget extends EditorLine {
@@ -71,6 +76,13 @@ export interface TaskContextMenuTarget {
     line: number
     /** The text after the checkbox, tag run included. */
     label: string
+    /** Whether its checkbox is ticked, which with the label's tags gives its [[Task Status]]. */
+    done: boolean
+    /**
+     * Called once a row has written the task, with whether it is now ticked, so the list showing
+     * it can hold the row in that state until the index catches up, as it holds a tick.
+     */
+    written?: (done: boolean) => void
 }
 
 /** A [[Bookmark]]'s row in the Sidebar. */
@@ -216,8 +228,8 @@ export function isDocumentTarget(target: ContextMenuTarget): target is DocumentC
 /** The editor line a target stands on: a line target itself, or the line under a link or word. */
 export function editorLineOf(target: ContextMenuTarget): EditorLine | null {
     if (isLineTarget(target)) {
-        const { concept, panelId, line } = target
-        return { concept, panelId, line }
+        const { concept, panelId, line, text } = target
+        return { concept, panelId, line, text }
     }
     if (isWikilinkTarget(target) || isMisspellingTarget(target)) return target.line ?? null
     return null

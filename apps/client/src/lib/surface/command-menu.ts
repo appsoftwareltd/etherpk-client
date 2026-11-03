@@ -40,6 +40,12 @@ export interface CommandMenuContext {
      * Worked out only when a row reads it. Absent reads as none.
      */
     readonly conceptsAtCaret?: readonly string[]
+    /**
+     * The editor shows one part of a document rather than the whole: the [[Task Editor]]'s
+     * description and comments (ADR 0170). Only rows that act on the text are offered there
+     * ({@link CommandMenuItem.actsOnText}). Absent reads as false.
+     */
+    partOfDocument?: boolean
 }
 
 /** One Command Menu row. `command` is the Command id selecting the row executes. */
@@ -68,6 +74,14 @@ export interface CommandMenuItem {
     keywords?: string[]
     /** Applicability predicate; absent ⇒ always shown. */
     when?: (ctx: CommandMenuContext) => boolean
+    /**
+     * The row acts on the text at the caret and nothing else: it inserts or formats text, edits a
+     * table, or copies what the caret's line holds. Only such rows are offered in an editor that
+     * shows part of a document ({@link CommandMenuContext.partOfDocument}), where a row acting on the
+     * tab, the document as a whole, a View or the graph would act on whatever is behind the dialog.
+     * Absent reads as false, so a row is left out there until it says otherwise.
+     */
+    actsOnText?: boolean
     /** The Command id to execute on accept. */
     command: string
     /** Optional argument forwarded to the Command (merged with the editor context). */
@@ -105,5 +119,5 @@ export function commandMenuDetail(item: CommandMenuItem, ctx: CommandMenuContext
 
 /** Every registered item in menu order, filtered to those applicable in `ctx`. */
 export function listCommandMenuItems(registry: ContributionRegistry, ctx: CommandMenuContext): CommandMenuItem[] {
-    return commandMenuItemsInOrder(registry).filter((item) => !item.when || item.when(ctx))
+    return commandMenuItemsInOrder(registry).filter((item) => (!ctx.partOfDocument || item.actsOnText === true) && (!item.when || item.when(ctx)))
 }

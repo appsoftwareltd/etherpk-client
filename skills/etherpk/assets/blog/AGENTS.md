@@ -208,6 +208,21 @@ Ticking a task in EtherPK ticks every task nested under it, archiving it archive
 unticking it unticks them except a cancelled (`#C`) or archived (`#A`) one. When you mark a parent task done by editing the file, tick its nested
 tasks too, so the file reads as EtherPK would leave it.
 
+**Task comments.** A bullet whose words are exactly `Comments`, nested directly under a task, holds
+the task's comments: each bullet under it is one comment, in the order written, and carries no
+author or date unless its words do. The lines nested under the task above the `- Comments` bullet
+are its description, and any below the Comments block are its additional context. A task with no
+`- Comments` bullet is all description. EtherPK's task editor shows the three apart. To comment on
+a task, add a bullet at the end of its Comments block, or start a `- Comments` bullet as the task's
+last child when it has none:
+
+```markdown
+- [ ] #P2 Build the shed
+  - measure the floor
+  - Comments
+    - ordered the timber
+```
+
 **Fenced code.** Three or more backticks (tildes are not recognised), closed by a bare fence of
 **the same length at the same column**. Inside a bullet the fence and every line of it sit at
 the bullet's content column. The info-string picks the rendering: any language name is

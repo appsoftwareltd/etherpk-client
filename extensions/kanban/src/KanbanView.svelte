@@ -24,7 +24,7 @@
     import { bulletLabel } from "#lib/document/index-derive.js";
     import { findIndexedTask, isTaskLine, type TaskChanges, type TaskWrite, type TaskWriteOutcome, undoTaskWrite, writeTaskChanges } from "#lib/document/task-write.js";
     import type { DocumentStore } from "#lib/document/types.js";
-    import { TASK_COPY_REFERENCE } from "#lib/document/commands/task-reference-commands.js";
+    import { TASK_COPY_LANE_REFERENCE, TASK_COPY_REFERENCE } from "#lib/document/commands/task-reference-commands.js";
     import DocumentView from "#lib/document/view/DocumentView.svelte";
     import type { ViewRef, ViewVisibility } from "#lib/layout/index.js";
     import { DESKTOP_MEDIA_QUERY } from "#lib/layout/breakpoint.js";
@@ -34,7 +34,7 @@
     import { currentWorkspaceServices, workspaceService } from "#lib/workspace/workspace-services.js";
 
     import { createAgentHint } from "./agent-hint";
-    import { registerBoard, takeBoardHandover } from "./board-actions";
+    import { type MoveSource, registerBoard, takeBoardHandover } from "./board-actions";
     import { createBoardStateStore, type TaskDetailState } from "./board-state";
 
     import {
@@ -58,9 +58,14 @@
     } from "./board-model";
     import { laneTasks, readBoard, SECTION_PAGE_SIZE } from "./board-queries";
     import KanbanCardText from "./KanbanCardText.svelte";
+    import TaskEditor from "./TaskEditor.svelte";
+    import type { ArchivedTask, TaskEditorStart } from "./task-editor-model";
+    import { type RemovedTask, restoreTask } from "./task-editor-writes";
     import type { KanbanCardTarget, KanbanLaneTarget } from "./kanban-commands";
     import { type MovedTask, moveTasks, revertMoves } from "./lane-move";
+    import { centreWithin, movedOutOfViewText } from "./move-follow";
     import { edgeStep, pastThreshold } from "./pointer-drag";
+    import { dragSeparator, separatorKeyValue } from "./separator";
 
     // `visibility` reaches the Task Detail's editor, so a map in it lets go behind another tab.
     const { view, panelId, visibility }: { view: ViewRef; panelId?: string; visibility?: ViewVisibility } = $props();
@@ -107,6 +112,10 @@
      */
     // Raw, so `entry` stays the history entry itself, not a proxy of it: an undo finds it by identity.
     let cascade = $state.raw<{ text: string; entry: BoardHistory | null } | null>(null);
+    /** What the [[Task Editor]] is open on (ADR 0170), or null while it is closed. */
+    let taskEditor = $state.raw<TaskEditorStart | null>(null);
+    /** A task the Task Editor deleted, which the board offers to put back. */
+    let deleted = $state.raw<{ text: string; removed: RemovedTask | null } | null>(null);
     /** The card the keyboard is on, the one card in the tab order. */
     let activeKey = $state<string | null>(null);
     let lanesEl = $state<HTMLElement>();
@@ -220,9 +229,13 @@
         void focusLaneButton(status, collapsing ? "kanban-lane-expand" : "kanban-lane-collapse");
     }
 
-    async function focusLaneButton(status: TaskStatus, testid: "kanban-lane-expand" | "kanban-lane-collapse"): Promise<void> {
+    async function focusLaneButton(
+        status: TaskStatus,
+        testid: "kanban-lane-expand" | "kanban-lane-collapse",
+        options?: { preventScroll: boolean },
+    ): Promise<void> {
         await tick();
-        lanesEl?.querySelector<HTMLElement>(`[data-testid="kanban-lane"][data-status="${status}"] [data-testid="${testid}"]`)?.focus();
+        lanesEl?.querySelector<HTMLElement>(`[data-testid="kanban-lane"][data-status="${status}"] [data-testid="${testid}"]`)?.focus(options);
     }
 
     /**
@@ -242,14 +255,38 @@
     }
 
     /** Bring the keyboard to a collapsed lane's strip, where a card it moved has gone. */
-    function focusStrip(status: TaskStatus): Promise<void> {
-        return focusLaneButton(status, "kanban-lane-expand");
+    function focusStrip(status: TaskStatus, options?: { preventScroll: boolean }): Promise<void> {
+        return focusLaneButton(status, "kanban-lane-expand", options);
     }
 
-    /** After a move, keep the keyboard with the card, or on the strip of the collapsed lane it went into. */
-    function followMovedCard(key: string, to: BoardCell): void {
-        if (collapsed.includes(to.status)) void focusStrip(to.status);
-        else void focusCard(key);
+    /**
+     * After a move, keep the keyboard with the card, or on the strip of the collapsed lane it went
+     * into. A keyboard move scrolls to it, since the keyboard goes where the card went; a pointer
+     * move leaves the lanes' scroll where it was (`move-follow.ts`), and the focus still moves, so a
+     * key pressed next acts on the card.
+     */
+    function followMovedCard(key: string, to: BoardCell, source: MoveSource = "keyboard"): void {
+        const options = { preventScroll: source === "pointer" };
+        if (collapsed.includes(to.status)) void focusStrip(to.status, options);
+        else void focusCard(key, options);
+    }
+
+    /**
+     * Whether a moved card shows where it landed: its middle inside the lanes and inside its lane's
+     * body, both of which scroll. In a collapsed lane, whether the lane's strip shows. A card the
+     * board does not draw at all (past a section's Show more) is not in view. Measured once the
+     * board has drawn the card where it went.
+     */
+    async function landedInView(key: string, status: TaskStatus): Promise<boolean> {
+        await tick();
+        const laneEl = lanesEl?.querySelector<HTMLElement>(`[data-testid="kanban-lane"][data-status="${status}"]`);
+        if (!lanesEl || !laneEl) return false;
+        const clips = [lanesEl.getBoundingClientRect()];
+        if (laneEl.dataset.collapsed === "true") return centreWithin(laneEl.getBoundingClientRect(), clips);
+        const cardEl = laneEl.querySelector<HTMLElement>(`[data-testid="kanban-card"][data-key="${CSS.escape(key)}"]`);
+        const body = laneEl.querySelector<HTMLElement>("[data-kanban-lane-body]");
+        if (!cardEl || !body) return false;
+        return centreWithin(cardEl.getBoundingClientRect(), [...clips, body.getBoundingClientRect()]);
     }
 
     /**
@@ -267,8 +304,9 @@
 
     /**
      * Show the card's task in the Task Detail, with its line at the top, and leave the keyboard on
-     * the board so the arrows keep walking the cards. Opening the card the Task Detail already
-     * shows puts the caret at the end of the task's line instead, to write there.
+     * the board so the arrows keep walking the cards: the card menu's Open below (a click opens the
+     * Task Editor, ADR 0170). Opening the card the Task Detail already shows puts the caret at the
+     * end of the task's line instead, to write there.
      */
     function open(card: BoardCard): void {
         if (isSelected(card)) {
@@ -400,7 +438,6 @@
 
     /** How far one arrow press moves the divider, as a share of the board's height. */
     const DIVIDER_STEP = 0.05;
-    let dividerDrag: { pointerId: number } | null = null;
 
     function setDetailHeight(share: number): void {
         boardState.set({ ...boardState.get(), detailHeight: share });
@@ -408,35 +445,20 @@
         detailHeight = boardState.get().detailHeight;
     }
 
+    /** A drag on the divider sets the Task Detail's share from where the pointer is (`separator.ts`). */
     function onDividerPointerDown(event: PointerEvent): void {
-        if (event.button !== 0) return;
-        (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
-        dividerDrag = { pointerId: event.pointerId };
-        event.preventDefault();
+        dragSeparator(event, (move) => {
+            const rect = boardEl?.getBoundingClientRect();
+            if (rect && rect.height > 0) setDetailHeight((rect.bottom - move.clientY) / rect.height);
+        });
     }
 
-    function onDividerPointerMove(event: PointerEvent): void {
-        if (!dividerDrag || event.pointerId !== dividerDrag.pointerId || !boardEl) return;
-        const rect = boardEl.getBoundingClientRect();
-        if (rect.height > 0) setDetailHeight((rect.bottom - event.clientY) / rect.height);
-    }
-
-    function onDividerPointerUp(event: PointerEvent): void {
-        if (dividerDrag?.pointerId === event.pointerId) dividerDrag = null;
-    }
-
-    /** The arrow keys move the divider; Home and End take it to either end (the splitter pattern). */
+    /**
+     * The arrow keys move the divider; Home and End take it to either end (the splitter pattern). The
+     * Task Detail is below the divider, so moving it up makes the Task Detail taller.
+     */
     function onDividerKeydown(event: KeyboardEvent): void {
-        const next =
-            event.key === "ArrowUp"
-                ? detailHeight + DIVIDER_STEP
-                : event.key === "ArrowDown"
-                  ? detailHeight - DIVIDER_STEP
-                  : event.key === "Home"
-                    ? 1
-                    : event.key === "End"
-                      ? 0
-                      : null;
+        const next = separatorKeyValue(event.key, detailHeight, { min: 0, max: 1, step: DIVIDER_STEP, growsDownward: false });
         if (next === null) return;
         event.preventDefault();
         setDetailHeight(next);
@@ -449,6 +471,17 @@
     function copyReference(card: BoardCard): void {
         const { document, line, text } = card;
         void workspaceService("commands")?.execute(TASK_COPY_REFERENCE, { document, line, label: text });
+    }
+
+    /**
+     * Copy a [[Lane Reference]] to one of the board's lanes, through the shared Command, which knows
+     * the graph, the clipboard and how to say so. The count is every task the lane holds, as its
+     * header shows, not only the cards loaded.
+     */
+    function copyLaneReference(status: TaskStatus): void {
+        const lane = lanes.find((shown) => shown.status === status);
+        if (!lane) return;
+        void workspaceService("commands")?.execute(TASK_COPY_LANE_REFERENCE, { concept, status, label: lane.label, count: lane.total });
     }
 
     /** Open, or bring forward, the task's document in a tab of its own, at the task's line. */
@@ -475,7 +508,7 @@
     /** The card's menu from the keyboard, placed at the card rather than at a pointer. */
     function openCardMenu(card: BoardCard, cell: BoardCell, element: HTMLElement): void {
         const rect = element.getBoundingClientRect();
-        openContextMenu(cardTarget(card, cell), rect.left + 12, rect.bottom - 4);
+        openContextMenu({ ...cardTarget(card, cell), fromKeyboard: true }, rect.left + 12, rect.bottom - 4);
     }
 
     function describeCell(cell: BoardCell): string {
@@ -529,8 +562,12 @@
         return outcome;
     }
 
-    /** Move a card to another lane or section, writing its new status or priority into its line. */
-    async function moveCard(card: BoardCard, from: BoardCell, to: BoardCell): Promise<void> {
+    /**
+     * Move a card to another lane or section, writing its new status or priority into its line. A
+     * card moved with the pointer to where the board does not show it is said in the board's status
+     * line, with Undo, since the board does not scroll after it.
+     */
+    async function moveCard(card: BoardCard, from: BoardCell, to: BoardCell, source: MoveSource = "keyboard"): Promise<void> {
         if (from.status === to.status && from.priority === to.priority) return;
         cascade = null;
         const changes: TaskChanges = {};
@@ -550,11 +587,19 @@
             const entry: HistoryEntry = { document: card.document, label: card.label, from, to, write: writtenPart(outcome) };
             undoStack = [...undoStack, entry];
             redoStack = [];
+            // An archived card leaves the board, which is what Archive is for: nothing to point to.
+            const unseen = source === "pointer" && to.status !== "archived" && !(await landedInView(card.key, to.status));
             const count = outcome.nested.length;
             if (count > 0) {
                 const verb = to.status === "done" ? "Ticked" : to.status === "archived" ? "Archived" : "Unticked";
-                cascade = { text: `${verb} ${count === 1 ? "1 task" : `${count} tasks`} nested under "${card.label}".`, entry };
+                const nested = `${verb} ${count === 1 ? "1 task" : `${count} tasks`} nested under`;
+                cascade = {
+                    text: unseen ? `${movedOutOfViewText(card.label, from, to)} ${nested} it.` : `${nested} "${card.label}".`,
+                    entry,
+                };
                 announcement = `${announcement}. ${cascade.text}`;
+            } else if (unseen) {
+                cascade = { text: movedOutOfViewText(card.label, from, to), entry };
             }
         }
     }
@@ -647,11 +692,13 @@
         cascade = {
             entry: null,
             text:
-                skipped === 0
-                    ? `Undone: "${entry.label}" and the tasks nested under it are as they were.`
-                    : skipped === 1
-                      ? "Undone, except 1 nested task that changed since. It was left as it is."
-                      : `Undone, except ${skipped} nested tasks that changed since. They were left as they are.`,
+                entry.write.nested.length === 0
+                    ? `Undone: "${entry.label}" is back in ${describeCell(entry.from)}.`
+                    : skipped === 0
+                      ? `Undone: "${entry.label}" and the tasks nested under it are as they were.`
+                      : skipped === 1
+                        ? "Undone, except 1 nested task that changed since. It was left as it is."
+                        : `Undone, except ${skipped} nested tasks that changed since. They were left as they are.`,
         };
     }
 
@@ -800,9 +847,74 @@
         openContextMenu(laneTarget(lane), rect.left + 12, rect.bottom - 4);
     }
 
-    async function focusCard(key: string): Promise<void> {
+    // ── The Task Editor (ADR 0170) ──────────────────────────────────────────
+
+    /**
+     * Move an element to the page's body for as long as it is mounted. Moving an element drops the
+     * focus from inside it, and the dialog has put the focus in its title by now, so it is put back.
+     */
+    function onBody(node: HTMLElement): () => void {
+        const focused = document.activeElement;
+        document.body.appendChild(node);
+        if (focused instanceof HTMLElement && node.contains(focused)) focused.focus();
+        return () => node.remove();
+    }
+
+    /** Open the card's task in the Task Editor: what clicking a card, or Enter on it, does. */
+    function editCard(card: BoardCard): void {
+        taskEditor = { kind: "edit", document: card.document, line: card.line, text: card.text };
+    }
+
+    /** Open the Task Editor on a new task in `status`, written into today's journal entry. */
+    function newTask(status: TaskStatus): void {
+        taskEditor = { kind: "new", status };
+    }
+
+    /** The Task Editor closed: the board reads again, for whatever it wrote. */
+    function taskEditorClosed(): void {
+        taskEditor = null;
+        retry();
+    }
+
+    /** A task archived from the Task Editor, kept as a board move so Undo and Mod+Z take it back. */
+    function taskArchived(archived: ArchivedTask): void {
+        const from: BoardCell = { status: archived.status, priority: archived.priority };
+        const entry: HistoryEntry = { document: archived.document, label: archived.label, from, to: { status: "archived", priority: archived.priority }, write: writtenPart(archived.outcome) };
+        undoStack = [...undoStack, entry];
+        redoStack = [];
+        deleted = null;
+        cascade = { text: `Archived "${archived.label}". The Tasks view still lists it.`, entry };
+        announcement = cascade.text;
+    }
+
+    /** A task deleted from the Task Editor, with everything nested under it: said, with Undo. */
+    function taskDeleted(removed: RemovedTask, label: string): void {
+        cascade = null;
+        deleted = { text: `Deleted "${label}" and everything nested under it.`, removed };
+        announcement = deleted.text;
+    }
+
+    /** Put back the task the Task Editor deleted, unless the text around it changed since. */
+    async function undoDelete(): Promise<void> {
+        const removed = deleted?.removed;
+        const store = workspaceService("store");
+        if (!removed || !store) return;
+        deleted = { text: "Putting the task back…", removed: null };
+        const outcome = await restoreTask(store, removed);
+        deleted = outcome.ok ? { text: "Undone: the task is back where it was.", removed: null } : null;
+        if (!outcome.ok) {
+            notice =
+                outcome.reason === "missing"
+                    ? `"${removed.concept}" was renamed or deleted, so the task was not put back.`
+                    : `The lines around the deleted task changed since, so it was not put back. Its text is still in the document's history.`;
+        }
+        announcement = deleted?.text ?? notice ?? "";
+        retry();
+    }
+
+    async function focusCard(key: string, options?: { preventScroll: boolean }): Promise<void> {
         await tick();
-        lanesEl?.querySelector<HTMLElement>(`[data-testid="kanban-card"][data-key="${CSS.escape(key)}"]`)?.focus();
+        lanesEl?.querySelector<HTMLElement>(`[data-testid="kanban-card"][data-key="${CSS.escape(key)}"]`)?.focus(options);
     }
 
     /**
@@ -968,8 +1080,8 @@
         if (!started) return;
         suppressClick = true;
         if (over && !sameCell(over, from)) {
-            void moveCard(card, from, over);
-            followMovedCard(card.key, over);
+            void moveCard(card, from, over, "pointer");
+            followMovedCard(card.key, over, "pointer");
         }
     }
 
@@ -1048,6 +1160,10 @@
         const unregisterBoard = registerBoard(uid, {
             open: (key) => {
                 const found = findCard(key);
+                if (found) editCard(found.card);
+            },
+            openBelow: (key) => {
+                const found = findCard(key);
                 if (found) open(found.card);
             },
             openInTab: (key) => {
@@ -1059,15 +1175,17 @@
                 const found = findCard(key);
                 if (found) copyReference(found.card);
             },
-            move: (key, to) => {
+            move: (key, to, source) => {
                 const found = findCard(key);
                 if (!found) return;
-                void moveCard(found.card, found.cell, to);
-                // The card is drawn anew in its new section, so the keyboard follows it there. An
-                // archived card has left the board, and the keyboard stays where it was.
-                if (activeKey === key && to.status !== "archived") followMovedCard(key, to);
+                void moveCard(found.card, found.cell, to, source);
+                // The card is drawn anew in its new section, so the keyboard follows it there, and
+                // the view with it only from a menu the keyboard opened. An archived card has left
+                // the board, and the keyboard stays where it was.
+                if (activeKey === key && to.status !== "archived") followMovedCard(key, to, source);
             },
             moveAll: (from, to) => void moveLane(from, to),
+            copyLaneReference,
         }, {
             concept: boardConceptOf(view),
             documentRenamed: followDocumentRename,
@@ -1118,8 +1236,8 @@
         aria-busy={loading}
     >
         <p id="{uid}-card-hint" class="sr-only">
-            Arrow keys move between cards. Alt with an arrow key moves the card to another lane or priority. Shift+F10 opens the
-            card's menu.
+            Arrow keys move between cards. Enter opens the task in the task editor. Alt with an arrow key moves the card to another
+            lane or priority. Shift+F10 opens the card's menu.
         </p>
         <p class="sr-only" role="status" data-testid="kanban-announcement">{announcement}</p>
         {#if failed}
@@ -1141,9 +1259,14 @@
             </div>
         {/if}
         {#if cascade}
+            <!-- What the last move did, with Undo. It floats over the foot of the lanes, above the
+                 Task Detail when that is open, rather than taking a row above them, so appearing
+                 never pushes the cards down under the pointer. Its tint is translucent, so it has
+                 the board's surface under it and the cards it covers do not show through. -->
             <div
                 role="status"
-                class="mx-3 mt-3 flex items-center gap-3 rounded-lg bg-(--gk-info-surface) px-3 py-2 text-sm text-(--gk-text-default)"
+                class="absolute inset-x-3 z-10 mx-auto flex w-fit items-center gap-3 rounded-lg border border-(--gk-border-soft) bg-(--gk-surface-0) bg-linear-to-r from-(--gk-info-surface) to-(--gk-info-surface) px-3 py-2 text-sm text-(--gk-text-default) shadow-lg"
+                style:bottom={detail === null ? "0.75rem" : `calc(${detailHeight * 100}% + 0.5rem + 0.75rem)`}
                 data-testid="kanban-cascade"
             >
                 <span class="min-w-0 flex-1">{cascade.text}</span>
@@ -1162,6 +1285,35 @@
                     onclick={() => (cascade = null)}
                     class="shrink-0 rounded-md border border-(--gk-control-border) px-2 py-1 font-medium hover:bg-(--gk-surface-0)"
                     data-testid="kanban-cascade-dismiss"
+                >
+                    Dismiss
+                </button>
+            </div>
+        {:else if deleted}
+            <!-- A task the Task Editor deleted, with Undo: where the last move's line floats, so a
+                 move's line, when there is one, is the one shown. -->
+            <div
+                role="status"
+                class="absolute inset-x-3 z-10 mx-auto flex w-fit items-center gap-3 rounded-lg border border-(--gk-border-soft) bg-(--gk-surface-0) bg-linear-to-r from-(--gk-info-surface) to-(--gk-info-surface) px-3 py-2 text-sm text-(--gk-text-default) shadow-lg"
+                style:bottom={detail === null ? "0.75rem" : `calc(${detailHeight * 100}% + 0.5rem + 0.75rem)`}
+                data-testid="kanban-deleted"
+            >
+                <span class="min-w-0 flex-1">{deleted.text}</span>
+                {#if deleted.removed}
+                    <button
+                        type="button"
+                        onclick={() => void undoDelete()}
+                        class="shrink-0 rounded-md border border-(--gk-control-border) px-2 py-1 font-medium hover:bg-(--gk-surface-0)"
+                        data-testid="kanban-deleted-undo"
+                    >
+                        Undo
+                    </button>
+                {/if}
+                <button
+                    type="button"
+                    onclick={() => (deleted = null)}
+                    class="shrink-0 rounded-md border border-(--gk-control-border) px-2 py-1 font-medium hover:bg-(--gk-surface-0)"
+                    data-testid="kanban-deleted-dismiss"
                 >
                     Dismiss
                 </button>
@@ -1265,7 +1417,7 @@
                         aria-labelledby="{uid}-{lane.status}"
                     >
                         <!-- py-1 around EtherPK's 32px icon button keeps the header the height it was. -->
-                        <!-- A right-click on the header, or Shift+F10 on its button, offers Move all to lane. -->
+                        <!-- A right-click on the header, or Shift+F10 on its button, offers Copy lane reference and Move all to lane. -->
                         <header
                             class="flex items-center justify-between gap-2 border-b border-(--gk-border-soft) py-1 pl-3 pr-1.5"
                             data-testid="kanban-lane-header"
@@ -1278,6 +1430,19 @@
                                 {#if shown !== null}
                                     <span class="text-sm text-(--gk-text-subtle)" data-testid="kanban-lane-count">{lane.total}</span>
                                 {/if}
+                                <!-- A new task in this lane, through the Task Editor (ADR 0170). -->
+                                <button
+                                    type="button"
+                                    onclick={() => newTask(lane.status)}
+                                    class="gk-icon-button"
+                                    aria-label="Add a task to {lane.label}"
+                                    title="Add a task to {lane.label}, in today's journal"
+                                    data-testid="kanban-lane-add"
+                                >
+                                    <!-- In-repo constant markup from the icon table, never user content. -->
+                                    <!-- eslint-disable-next-line svelte/no-at-html-tags -- iconSvg returns trusted markup from the Client's icon table or the sanitized manifest icons (ADR 0130) -->
+                                    {@html iconSvg("kanban.add-task")}
+                                </button>
                                 <button
                                     type="button"
                                     onclick={() => toggleCollapsed(lane.status)}
@@ -1351,7 +1516,7 @@
                                                                 suppressClick = false;
                                                                 return;
                                                             }
-                                                            open(card);
+                                                            editCard(card);
                                                         }}
                                                         onfocus={() => (activeKey = card.key)}
                                                         onkeydown={(event) => onCardKeydown(event, card, cell)}
@@ -1458,9 +1623,6 @@
                 tabindex="0"
                 class="group relative h-2 shrink-0 cursor-row-resize touch-none focus-visible:outline-2 focus-visible:outline-(--gk-accent)"
                 onpointerdown={onDividerPointerDown}
-                onpointermove={onDividerPointerMove}
-                onpointerup={onDividerPointerUp}
-                onpointercancel={onDividerPointerUp}
                 onkeydown={onDividerKeydown}
                 data-testid="kanban-detail-divider"
             >
@@ -1521,6 +1683,21 @@
                     {/key}
                 </div>
             </section>
+        {/if}
+        {#if taskEditor}
+            <!-- On the page's body, not in the board: the board sits in a transformed pane, and a
+                 fixed dialog inside one is placed, and clipped, by the pane. -->
+            <div {@attach onBody}>
+                <TaskEditor
+                    {concept}
+                    start={taskEditor}
+                    {panelId}
+                    {visibility}
+                    onclose={taskEditorClosed}
+                    onarchived={taskArchived}
+                    ondeleted={taskDeleted}
+                />
+            </div>
         {/if}
         {#if drag?.started && boardEl}
             <!-- The carried copy, placed inside the board rather than fixed to the window, since a

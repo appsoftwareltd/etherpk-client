@@ -70,7 +70,7 @@ export function buildActionCluster<T>(view: EditorView, options: ActionClusterOp
         setTrustedMarkup(button, iconSvg(action.icon, { size: options.size }))
         painted.set(button, { action, name: options.name, size: options.size, buttonClass: options.buttonClass })
         // mousedown, not click: the editor's own handlers act on mousedown, and letting one
-        // through would place the caret (or pin the image open) behind the dialog.
+        // through would place the caret (or reveal the image's markdown) behind the dialog.
         button.addEventListener('mousedown', (event) => {
             event.preventDefault()
             event.stopPropagation()

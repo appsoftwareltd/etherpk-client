@@ -1,20 +1,21 @@
 /**
  * The Date Picker calendar (Dual Mode Editor.md → *Command Menu*, "Date Picker"). The shared
- * month grid (`../../calendar/month-grid.ts`) shown in a CM `showTooltip` popover, opened by the
+ * Date Picker panel (`../../calendar/date-picker.ts`) shown in a CM `showTooltip` popover, opened by the
  * `date.pick` Command from the Command Menu. Arrow keys move the focused day, PageUp/PageDown
  * page the month, Enter inserts `[[YYYY-MM-DD]]` at the stored position, Esc cancels. Focus
  * defaults to today, and days that already have a [[Document]] behind them are bold.
  *
  * A sibling of the list popover (the grid does not fit the `popoverMenu` list primitive). The
  * grid never takes DOM focus here — the caret has to stay where it is — so this file owns the
- * whole keyboard model, as a CM keymap; the [[Journal Calendar]] in the Sidebar owns its own.
+ * keyboard, as a CM keymap over the moves every Date Picker shares (`DATE_PICKER_MOVES`); the
+ * [[Journal Calendar]] in the Sidebar owns its own.
  */
 
 import { type Extension, Prec, StateEffect, StateField } from '@codemirror/state'
 import { EditorView, keymap, showTooltip, type Tooltip, type TooltipView } from '@codemirror/view'
 
-import { createMonthGrid } from '../../calendar/month-grid'
-import { formatISODate, shiftDate, shiftMonth } from '../../calendar/month-grid-core'
+import { createDatePicker } from '../../calendar/date-picker'
+import { DATE_PICKER_MOVES, formatISODate, shiftMonth } from '../../calendar/month-grid-core'
 import { applyTaskTag } from '../../task-tags'
 
 /**
@@ -128,12 +129,11 @@ export function dateCalendar(options: DateCalendarOptions = {}): Extension {
         const dom = document.createElement('div')
         dom.className = P
 
-        const grid = createMonthGrid({
+        const grid = createDatePicker({
             hasEntry: options.hasEntry,
             // Never focusable: a focused cell would pull the caret out of the document, and the
             // keymap below is already driving the grid from wherever the caret is.
             focusable: false,
-            testId: 'command-menu-calendar',
             onPick: (iso) => void accept(view, iso),
             onPage: (delta) => void shiftFocus(view, (d) => shiftMonth(d, delta)),
         })
@@ -158,12 +158,7 @@ export function dateCalendar(options: DateCalendarOptions = {}): Extension {
 
     const calendarKeymap = Prec.highest(
         keymap.of([
-            { key: 'ArrowRight', run: (v) => shiftFocus(v, (d) => shiftDate(d, 1)) },
-            { key: 'ArrowLeft', run: (v) => shiftFocus(v, (d) => shiftDate(d, -1)) },
-            { key: 'ArrowDown', run: (v) => shiftFocus(v, (d) => shiftDate(d, 7)) },
-            { key: 'ArrowUp', run: (v) => shiftFocus(v, (d) => shiftDate(d, -7)) },
-            { key: 'PageDown', run: (v) => shiftFocus(v, (d) => shiftMonth(d, 1)) },
-            { key: 'PageUp', run: (v) => shiftFocus(v, (d) => shiftMonth(d, -1)) },
+            ...Object.entries(DATE_PICKER_MOVES).map(([key, move]) => ({ key, run: (v: EditorView) => shiftFocus(v, move) })),
             {
                 key: 'Enter',
                 run: (v) => {
@@ -175,10 +170,9 @@ export function dateCalendar(options: DateCalendarOptions = {}): Extension {
         ]),
     )
 
+    // The panel brings its own border, surface and shadow; the tooltip adds nothing around it.
     const theme = EditorView.baseTheme({
         [`.cm-tooltip.${P}`]: { background: 'transparent', border: 'none', padding: '0' },
-        // The grid brings its own border and surface; the popover adds the elevation.
-        [`.cm-tooltip.${P} .gk-cal`]: { boxShadow: 'var(--gk-shadow)' },
     })
 
     return [field, calendarKeymap, theme]

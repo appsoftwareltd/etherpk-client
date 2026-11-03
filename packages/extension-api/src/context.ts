@@ -17,7 +17,7 @@ import type { ExtensionEmbeds } from './embeds'
 import type { ExtensionEvents } from './events'
 import type { ExtensionIndex } from './graph-index'
 import type { ExtensionJournalPanels } from './journal'
-import type { CommandBarButton, CommandMenuItem, ContextMenuItem, GraphSidebarButton } from './menus'
+import type { CommandBarButton, CommandMenuItem, ContextMenuItem, GraphSidebarButton, MenuTarget, MenuTask } from './menus'
 import type { ExtensionGraphRecords } from './records'
 import type { SettingsSection } from './settings-sections'
 import type { ViewContribution, ViewRef } from './views'
@@ -68,6 +68,40 @@ export interface ExtensionViews {
 export interface ExtensionContextMenu {
     /** Add a row, its id under the extension's id. */
     register(item: ContextMenuItem): () => void
+    /**
+     * The task a menu was raised on, or null when it was raised on anything else: a row of the Tasks
+     * View, or a task's line in an editor (a right-click on its checkbox or its words, but not on a
+     * link or a misspelt word in them, whose menus are about the link or the word). A task in a
+     * Protected Document is none. What a row offered on every task asks in its `when`, and its
+     * Command asks of the target it is given.
+     */
+    taskOf(target: MenuTarget): MenuTask | null
+}
+
+/**
+ * A button on a notice, such as Undo.
+ *
+ * @public
+ */
+export interface NoticeAction {
+    /** The button's text: a word or two. */
+    label: string
+    /** What pressing it does. The button is greyed while a promise it returns is pending. */
+    run(): void | Promise<void>
+}
+
+/**
+ * What a notice carries besides its text.
+ *
+ * @public
+ */
+export interface NoticeOptions {
+    /**
+     * One button on the notice, for what a person may want to do about what it says: Undo, say. The
+     * notice stays until it is read or the next notice replaces it, as the Client's own do, so the
+     * action's own outcome is said with a notice of its own.
+     */
+    action?: NoticeAction
 }
 
 /**
@@ -424,8 +458,11 @@ export interface ExtensionContext {
     readonly dialogs: ExtensionDialogs
     /** Frames showing content from the hosts the Client allows. */
     readonly embeds: ExtensionEmbeds
-    /** Say something in passing, as the Client's own notices do: "Coordinates copied." */
-    notify(text: string): void
+    /**
+     * Say something in passing, as the Client's own notices do: "Coordinates copied." With
+     * `options.action`, the notice carries a button, such as Undo.
+     */
+    notify(text: string, options?: NoticeOptions): void
 }
 
 /**

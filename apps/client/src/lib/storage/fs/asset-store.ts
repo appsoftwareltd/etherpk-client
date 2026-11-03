@@ -230,6 +230,12 @@ export function assetNameFromRef(ref: string): string | null {
     return isSafeAssetName(name) ? name : null
 }
 
+/** True when `ref` names an asset whose file name says it is an image the Client draws. */
+export function isImageAssetRef(ref: string): boolean {
+    const name = assetNameFromRef(ref)
+    return name !== null && isImageExt(splitNameExt(name).ext)
+}
+
 /**
  * What to call a reference in text a person reads or hears: the file's own name, hash-free. Every
  * surface that labels an [[Asset Reference]] asks this — the action buttons' accessible names in

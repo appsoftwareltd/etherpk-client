@@ -37,7 +37,10 @@ export interface ExtensionDirectory {
     installRelease(extension: DirectoryExtension, release: DirectoryRelease): Promise<void>
     /** Fetch and check a newer release of an installed extension, to run from the Client's next start. */
     stageRelease(extension: DirectoryExtension, release: DirectoryRelease): Promise<void>
-    /** Stop an extension and take it off this device, and with `clearStorage` what it kept here. */
+    /**
+     * Stop an extension and take it off this device, and with `clearStorage` what it kept here. A
+     * release under the id of one of the Client's own extensions is only forgotten.
+     */
     removeFromDevice(id: string, options: { clearStorage: boolean }): void
 }
 
@@ -141,8 +144,13 @@ export function createExtensionDirectory(options: ExtensionDirectoryOptions): Ex
             installed.stage(extension.id, { version: record.version, integrity: record.integrity, packageJson: record.packageJson })
         },
         removeFromDevice(id, { clearStorage }) {
-            host.remove(id)
             installed.remove(id)
+            // A release whose id is now one of the Client's own extensions (one the Directory once
+            // listed, since built in) is only forgotten: the built-in under that id keeps running,
+            // and what is kept under the id is now the built-in's.
+            const running = host.catalogue.extensions.find((entry) => entry.id === id)
+            if (running && !running.installed) return
+            host.remove(id)
             if (clearStorage) clearStorageOf(id)
         },
     }

@@ -5,6 +5,91 @@ What changed in each release of the EtherPK Client and the Headless Client
 They are released together, under the version number they share with the Sync Server. This log
 starts at 0.9.3.
 
+## 0.18.0 - 2026-11-03
+
+### Client
+
+- **Excalidraw drawings come with EtherPK.** There is nothing to install. The slash command is now
+  **Excalidraw (drawing)**, and `/draw` still finds it. Existing drawings keep working, and a
+  device that installed Excalidraw from the Extension Directory switches to the built-in one by
+  itself. Drawings are light in both themes, drawn in the colours they store. The font for Chinese
+  and Japanese handwriting downloads the first time a drawing needs it.
+- **Ink drawings.** `/ink` adds a drawing for a pen or stylus, on every device. Press it to draw on
+  an endless sheet of white paper: a pen that follows the pen's pressure, a highlighter, an eraser
+  that takes out whole strokes (a pen's eraser end works too), a lasso to select and drag strokes,
+  and a Hand to move the sheet, on plain, dotted or lined paper. Once a pen has touched the
+  drawing, a finger only scrolls and zooms, so a resting hand leaves no marks. Each stroke is a line
+  of text in the document, and **Undo** in the palette or **Ctrl+Z** takes it back, in a tab or the
+  full window too.
+- **Drawings share one toolbar.** While a drawing is edited in the document, **Done**,
+  **Full window**, **Open in tab**, **Edit as text** and **Delete** sit above it, and the **…**
+  menu over its picture offers **Edit as text** and **Delete**. One drawing is edited at a time, and
+  a press outside it puts its picture back.
+- **View a picture larger.** Point at a picture in a document and select **View larger**, the first
+  of its icons, or choose it from the menu a right-click or a long press opens. The picture opens
+  as large as the window allows, over the page or the task editor, and **Esc** closes it.
+- **Set a task's status and priority from its menu.** Right-click a task in the editor, or its row
+  in the Tasks view, and choose **Mark as Doing**, **Mark as Done**, **Archive**, **Priority P1**,
+  **No priority** and so on, as on a Kanban card. In the editor **Ctrl+Z** undoes the change; in
+  the Tasks view a notice offers **Undo**.
+- **Task tags typed later in a task move to the front.** Type `#P1`, `#W` or a dated tag such as
+  `#D-2026-07-01` anywhere in a task line, and when the cursor leaves the task the tag moves to
+  after the checkbox. A priority or a date counts as if chosen in the tag menu. A state tag sets the
+  task's status and ticks or unticks it to match, so `#C` cancels the task and `#W` makes it
+  Waiting. Tags in backticks, links and web addresses stay where they are, and so do free tags.
+  **Ctrl+Z** puts the tag back.
+- **The task editor.** **Open in task editor**, the first row of the right-click menu on a Kanban
+  card, a task in the editor or a row of the Tasks view, opens a task in a dialog, and so does a
+  click on a card. Change its title, lane, priority, due and scheduled dates (from the editor's
+  **Date Picker** calendar) and tags, edit its description and its comments (bullets under a
+  `- Comments` bullet nested under the task), add assets, archive it or delete it with **Undo**.
+  Each change is saved into the task's text as you make it, and a task changed elsewhere while it
+  is open is never overwritten: the editor offers to reload. Lines nested under the task below its
+  comments show as **Additional context**. The assets list shows every picture and file in the
+  task, with a preview of each picture that opens larger. Drag the handle under a part to make it
+  taller, and the editor remembers that height on this device. In these parts, `/` offers only the
+  commands that add or format text. To edit a card's document as text below the board, as a click
+  did before, right-click the card and choose **Open below**.
+- **Add a task from a Kanban lane.** The **+** in a lane's header opens the task editor on a new
+  task in that lane. **Create task** (or **Ctrl+Enter**) writes it into today's journal, under a
+  bullet linking the board's page, or on its own on the Graph Kanban.
+- **Copy a reference to a Kanban lane.** Right-click a lane's header or folded strip and choose
+  **Copy lane reference** to hand an agent every task in the lane, to work through or triage. In
+  the Headless Client, `tasks` takes the copied text as `reference` and lists the lane's tasks.
+- **Extension API.**
+  - A Command Menu row that only adds or formats text at the cursor can set `actsOnText: true`.
+    Only such rows are offered in the task editor's description, comments and additional context.
+  - `context.assets.viewImages({ refs, start })` shows a list of the graph's pictures in the
+    Lightbox that **View larger** opens, and `view-larger` is one of the Client's icons.
+  - `context.dialogs.pickDate({ anchor, value, label })` opens the editor's Date Picker calendar
+    beside an element and resolves to the day picked, as `YYYY-MM-DD`.
+  - `context.notify(text, { action })` puts a button such as **Undo** on the notice.
+    `context.contextMenu.taskOf(target)` names the task a menu was raised on, a task's line in the
+    editor or a Tasks view row. `context.assets.describe(ref)` and `context.assets.imageUrl(ref)`
+    name an asset a document refers to and show its image.
+- **Fixes.**
+  - Deleting a page removes it from Favourites, by its title or an alias, and removes its
+    bookmarks, for every member of a shared graph. A favourite board or map of the page stays.
+  - A Kanban card moved with the mouse, by dragging it or from its menu, no longer scrolls the
+    board to the card's new lane. When that lane is out of sight, a line at the foot of the board
+    says where the card went and offers **Undo**. Keyboard moves still follow the card.
+  - A clicked image is drawn again as soon as the cursor leaves its line, also after **Enter** or a
+    click below the document, instead of showing its markdown over an empty grey box.
+  - **Delete** on a drawing that sits on a bullet's line removes it again, from the drawing's
+    **…** menu and from its toolbar. The bullet stays, empty.
+
+### Headless Client
+
+- **Protected documents are no longer shown to an agent, not even by name.** `list_documents`,
+  `search`, `backlinks`, `tasks`, `graph_insights` and `graph_path` leave them out, and reading one
+  answers `not_found`, as for a name nothing has. `graph_info` still counts them. A write onto a
+  protected document's name, such as `create_page` or a rename to it, is still refused with
+  `protected_document`. A document with an encrypted block beside plain text is left out the same
+  way, as Agent Chat already did.
+- **`add_task_note` writes a task comment.** The note goes under a `- Comments` bullet nested
+  directly under the task, which is started as the task's last child when there is none, and
+  `read_task` lists the task's comments. Notes added before this change stay where they are.
+
 ## 0.17.1 - 2026-11-03
 
 No changes to the Client or the Headless Client. 0.17.0's images, GitHub Release and npm

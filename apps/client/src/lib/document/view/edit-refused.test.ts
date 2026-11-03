@@ -6,7 +6,7 @@ import { EditorState, type Extension } from '@codemirror/state'
 import { describe, expect, it } from 'vitest'
 
 import { protectedFenceAugmentation } from './augmentations/protected-fence'
-import { EDIT_REFUSAL_MESSAGE, type EditRefusal, editRefused, refusalIn, refuseEdit } from './edit-refused'
+import { EDIT_REFUSAL_MESSAGE, EDIT_REFUSAL_TITLE, type EditRefusal, editRefused, refusalIn, refuseEdit } from './edit-refused'
 import { editorFixture } from './testing/editor-state-fixture'
 
 const FM = '---\ntitle: K\n---\n'
@@ -73,12 +73,12 @@ describe('a refused edit', () => {
         expect(result).toEqual({ refusal: 'frontmatter-vanish', text: '---\ntitle: K\n---\nbody' })
     })
 
-    it('has one message per reason, each naming the --- line', () => {
-        const reasons: EditRefusal[] = ['frontmatter-seam', 'frontmatter-join', 'frontmatter-remove', 'frontmatter-grow', 'frontmatter-vanish']
+    it('has one title and message per reason, each frontmatter message naming the --- line', () => {
+        const frontmatter: EditRefusal[] = ['frontmatter-seam', 'frontmatter-join', 'frontmatter-remove', 'frontmatter-grow', 'frontmatter-vanish']
+        const reasons: EditRefusal[] = [...frontmatter, 'shown-range']
         expect(Object.keys(EDIT_REFUSAL_MESSAGE).sort()).toEqual([...reasons].sort())
-        for (const reason of reasons) {
-            expect(EDIT_REFUSAL_MESSAGE[reason]).toContain('---')
-            expect(EDIT_REFUSAL_MESSAGE[reason].length).toBeLessThan(220)
-        }
+        expect(Object.keys(EDIT_REFUSAL_TITLE).sort()).toEqual([...reasons].sort())
+        for (const reason of reasons) expect(EDIT_REFUSAL_MESSAGE[reason].length).toBeLessThan(220)
+        for (const reason of frontmatter) expect(EDIT_REFUSAL_MESSAGE[reason]).toContain('---')
     })
 })

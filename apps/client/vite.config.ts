@@ -14,6 +14,7 @@ import { PLAYER_FRAME_HOSTS } from '../../packages/shared/src/security/frame-hos
 import { demoGraphPlugin } from './demo-graph-plugin.ts'
 import { devDictionariesPlugin } from './dev-dictionaries-plugin.ts'
 import { devPostcodesPlugin } from './dev-postcodes-plugin.ts'
+import { compiledInBuildPlugins } from './compiled-in-extensions.ts'
 import { extensionsPlugin } from './extensions-plugin.ts'
 import { CLIENT_TRUSTED_TYPES_POLICIES } from './src/lib/security/trusted-types-policies.ts'
 
@@ -96,6 +97,9 @@ export default defineConfig({
         devPostcodesPlugin(),
         // The loaded Built-in Extensions, served and shipped from the Client's origin (ADR 0121).
         extensionsPlugin(),
+        // What the compiled-in Built-in Extensions change in the libraries they bundle, such as
+        // Excalidraw's code and stylesheet (ADR 0121).
+        ...(await compiledInBuildPlugins()),
     ],
     server: {
         port: 5173,

@@ -24,7 +24,7 @@ import { isBulletLine } from '../../outliner'
 import { visibleFencedBlocks } from '../outliner-context'
 import { CODE_TOKEN_STYLES } from './code-token-styles'
 import { collapsedFenceStarts, collapseMayHaveChanged } from './rendered-common'
-import { rangeRevealed } from './reveal-policy'
+import { rangeRevealed, revealUpdated } from './reveal-policy'
 import { editorMarkdownExtensions } from './scheme-url-autolink'
 
 /** Code renders slightly smaller than prose: 14px at the default 16px zoom, the app's floor for
@@ -330,7 +330,7 @@ const codeBlockPlugin = ViewPlugin.fromClass(
             // blocks are collapsed without a doc or selection change, and the panel suppression must
             // follow (rendered-common.ts).
             const ticked = update.transactions.some(collapseMayHaveChanged)
-            if (update.docChanged || update.viewportChanged || update.selectionSet || ticked) {
+            if (update.viewportChanged || revealUpdated(update) || ticked) {
                 this.decorations = buildCodeBlockDecorations(update.view)
             }
         }

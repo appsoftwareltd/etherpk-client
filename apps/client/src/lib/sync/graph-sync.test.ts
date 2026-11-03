@@ -1252,6 +1252,58 @@ describe('graph-sync', () => {
         b.dispose()
     })
 
+    it('forgetDocumentInMemberLists: a deleted document leaves every member’s favourites and bookmarks, Views about it stay', async () => {
+        // ADR 0036 §4, amended 2026-11-03: a delete made here removes the document from every
+        // member's lists, as a rename moves it in them, by its title or any alias. A board or Map
+        // View about the concept still works without a page, so it stays.
+        const keyring = createGraphKeyring('g1')
+        const relay = createLoopbackRelay()
+        const a = await client(relay, keyring)
+        const b = await client(relay, keyring)
+        const board = { kind: 'kanban.board', concept: 'Garden' }
+        a.favourites('m1').replace(['Garden', 'Kitchen', board])
+        a.favourites('m2').replace([' YARD ', 'Pantry'])
+        a.bookmarks('m2').apply({
+            put: [
+                { id: 'b1', concept: 'garden', line: 0, text: 'water the beans', createdAt: 1 },
+                { id: 'b2', concept: 'Kitchen', line: 1, text: 'buy flour', createdAt: 2 },
+            ],
+            remove: [],
+        })
+        // Device b has only received the types, never asked for them by name.
+        await vi.waitFor(() => expect(b.docSync(ROOT).doc.share.has('bookmarks:m2')).toBe(true), { timeout: 2000 })
+        await vi.waitFor(() => expect(b.docSync(ROOT).doc.share.has('favourites:m2')).toBe(true), { timeout: 2000 })
+
+        expect([...b.forgetDocumentInMemberLists(['Garden', 'Yard'])].sort()).toEqual(['bookmarks:m2', 'favourites:m1', 'favourites:m2'])
+
+        await vi.waitFor(() => expect(a.favourites('m2').list()).toEqual(['Pantry']), { timeout: 2000 })
+        expect(a.favourites('m1').list()).toEqual(['Kitchen', board])
+        expect(a.bookmarks('m2').list().map((x) => x.id)).toEqual(['b2'])
+        // Nothing left that names it, and nothing named: nothing changes.
+        expect(b.forgetDocumentInMemberLists(['garden'])).toEqual([])
+        expect(b.forgetDocumentInMemberLists(['', ' '])).toEqual([])
+
+        a.dispose()
+        b.dispose()
+    })
+
+    it('forgetDocumentInMemberLists: the shared favourites and each member’s record of them lose the document too, so a later seed does not copy it back', async () => {
+        const a = await client(createLoopbackRelay())
+        const map = { kind: 'maps.map', concept: 'garden' }
+        a.setMetaSettings({ favourites: ['Garden', 'Kitchen', map], toolbarColor: '#336699' })
+        a.favourites('m1').seedOnce(['Garden', 'Kitchen', map])
+
+        expect([...a.forgetDocumentInMemberLists(['Garden'])].sort()).toEqual(['favourites:m1', 'memberFlags:m1', 'meta'])
+        expect(a.getMeta().settings).toEqual({ favourites: ['Kitchen', map], toolbarColor: '#336699' })
+        expect(a.docSync(ROOT).doc.getMap('memberFlags:m1').get('sharedFavouritesSeen')).toEqual(['Kitchen', map])
+        expect(a.favourites('m1').followShared(['Kitchen', map])).toBe(false)
+        expect(a.favourites('m1').list()).toEqual(['Kitchen', map])
+        // A member who seeds now copies only what is left.
+        a.favourites('m2').seedOnce(a.getMeta().settings!.favourites as string[])
+        expect(a.favourites('m2').list()).toEqual(['Kitchen', map])
+        a.dispose()
+    })
+
     it('collects the root document’s cache row after a bookmark is removed, here or on another device, so its line text does not stay at rest', async () => {
         // The row is merged from every saved state, which never drops deleted content, so a removed
         // bookmark's text would otherwise stay in the unencrypted row on every device.

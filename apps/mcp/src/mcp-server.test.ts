@@ -125,6 +125,15 @@ describe('the MCP server', () => {
         expect(instructions).toContain('Leave its status as it is unless the user asks')
     })
 
+    // A whole lane of a Kanban board, handed over to work through or triage: the tasks tool lists it.
+    it('says how to list the tasks of a lane reference, and that the tasks tool takes one', async () => {
+        const { client } = await connected()
+        expect(client.getInstructions()).toContain('etherpk:/g/<graph>/k/<concept>#lane=<status>')
+        const tool = (await client.listTools()).tools.find((t) => t.name === 'tasks')
+        expect(tool?.description).toContain('lane reference')
+        expect(tool?.inputSchema.properties).toHaveProperty('reference')
+    })
+
     // XDG_CONFIG_HOME and ETHERPK_MCP_CONFIG move the login file, so the folder named is the real one.
     it('names the folder this process keeps its sign-in in, wherever that is', async () => {
         const { client } = await connected({ credentialsDir: '/srv/agent/cfg/etherpk' })

@@ -58,6 +58,7 @@ import { type ContributionRegistry, tryGetActiveContributionRegistry } from '#li
 
 import { analysisFor } from '../analysis/editor-analysis'
 import { editorDocument } from '../editor-document'
+import { editorHistory } from '../editor-history'
 import { editorIsOnScreen, setEditorOnScreen } from '../editor-on-screen'
 import { bodyWritable } from '../body-writable'
 import { clampedCaret } from '../caret-clamp'
@@ -81,11 +82,12 @@ import {
     fenceById,
     fenceIdAt,
     fenceIdentity,
+    fenceInstance,
     type InteractiveFenceRange,
     interactiveFences,
 } from './interactive-fence-state'
 import { arrowIntoCollapsedFence, isDark, pressBesideFormOne, themeTick } from './rendered-common'
-import { rangeTouches, requestedRevealField, requestReveal } from './reveal-policy'
+import { rangeTouches, requestedRevealField, requestReveal, revealInputsChanged } from './reveal-policy'
 
 /** Dispatched when a widget's height changed, so the block is measured again. */
 const fenceResized = StateEffect.define<null>()
@@ -124,7 +126,7 @@ export function historyChord(event: KeyboardEvent): boolean {
 
 /** Whether a key goes to a field the person is typing in, which keeps its own undo. */
 export function typingField(target: EventTarget | null): boolean {
-    return target instanceof HTMLElement && (target.isContentEditable || target.tagName === 'TEXTAREA' || (target.tagName === 'INPUT' && !['button', 'checkbox', 'radio', 'file'].includes((target as HTMLInputElement).type)))
+    return typeof HTMLElement !== 'undefined' && target instanceof HTMLElement && (target.isContentEditable || target.tagName === 'TEXTAREA' || (target.tagName === 'INPUT' && !['button', 'checkbox', 'radio', 'file'].includes((target as HTMLInputElement).type)))
 }
 
 /**
@@ -178,8 +180,8 @@ export function widgetEditsChanges(state: EditorState, id: number, edits: readon
     return composed
 }
 
-function infoOf(fence: InteractiveFenceRange, state: EditorState): InteractiveFenceInfo {
-    return { info: fence.info, body: fence.body, document: state.facet(editorDocument)?.concept ?? null, ordinal: fence.ordinal }
+function infoOf(fence: InteractiveFenceRange, state: EditorState, id: number): InteractiveFenceInfo {
+    return { info: fence.info, body: fence.body, document: state.facet(editorDocument)?.concept ?? null, ordinal: fence.ordinal, instance: fenceInstance(state, id) }
 }
 
 function sameInfo(a: InteractiveFenceInfo, b: InteractiveFenceInfo): boolean {
@@ -306,6 +308,8 @@ class InteractiveFenceWidget extends WidgetType {
             openInTab: () => hostElsewhere(view, id, 'tab'),
             openWindow: () => hostElsewhere(view, id, 'window'),
             closeWindow: () => {},
+            undo: () => view.state.facet(editorHistory).undo(view),
+            redo: () => view.state.facet(editorHistory).redo(view),
             resized: () => {
                 // Out of the update cycle: a widget may say so while CodeMirror is drawing it.
                 queueMicrotask(() => {
@@ -501,7 +505,7 @@ function buildDecorations(state: EditorState): DecorationSet {
     for (const f of fences) {
         const id = fenceIdAt(state, f.blockFrom)
         if (id === null) continue
-        const info = infoOf(f, state)
+        const info = infoOf(f, state, id)
         const height = declaredHeight(f.fence, info)
         if (f.bulletOpener) {
             // Form 1: from the fence column, so the bullet's marker stays text and its dot, thread and
@@ -530,8 +534,9 @@ const interactiveFenceField = StateField.define<DecorationSet>({
     update(deco, tr) {
         const redraw = tr.effects.some((e) => e.is(fenceResized) || e.is(themeTick) || e.is(fenceRegistrationsChanged) || e.is(setEditorOnScreen))
         if (tr.docChanged || tr.reconfigured || redraw) return buildDecorations(tr.state)
-        // A caret move redraws only when it shows a fence's text or leaves one, drawing it again.
-        if (tr.selection && !sameDrawn(collapsedInteractiveFences(tr.startState), collapsedInteractiveFences(tr.state))) return buildDecorations(tr.state)
+        // A caret move, or the keyboard coming or going in a part editor (reveal-policy.ts), redraws
+        // only when it shows a fence's text or leaves one, drawing it again.
+        if (revealInputsChanged(tr) && !sameDrawn(collapsedInteractiveFences(tr.startState), collapsedInteractiveFences(tr.state))) return buildDecorations(tr.state)
         return deco
     },
     provide: (f) => EditorView.decorations.from(f),
@@ -740,6 +745,12 @@ function movedOffFence(tr: Transaction, fence: InteractiveFenceRange): Transacti
     return null
 }
 
+/** Whether a change is a person's typing, deletion or drop, rather than a widget's own edit or removal. */
+function personsEdit(tr: Transaction): boolean {
+    if (tr.isUserEvent('input.fence') || tr.isUserEvent('delete.fence')) return false
+    return tr.isUserEvent('input') || tr.isUserEvent('delete') || tr.isUserEvent('move')
+}
+
 /**
  * The last guard of an [[Extension Fence]]'s data (ADR 0138): a person's typing, paste, deletion
  * or drop never breaks a drawn one. The caret rules keep the caret off its lines, and this keeps the
@@ -748,13 +759,14 @@ function movedOffFence(tr: Transaction, fence: InteractiveFenceRange): Transacti
  * (a block selection indented with Tab). Text typed or pasted at its edge goes on a line of its own,
  * and any other change that would break it is refused, the keystroke doing nothing.
  *
- * A widget's own edits (`input.fence`), a remote or undo change, and Edit as text's empty line
- * (which carries the request to show the text) are not a person's typing, and pass.
+ * A widget's own edits (`input.fence`) and its own removal (`delete.fence`, which on a bullet's
+ * line starts at the fence column and so reaches into the fence without taking all of it), a
+ * remote or undo change, and Edit as text's empty line (which carries the request to show the
+ * text) are not a person's typing, and pass.
  */
 export function extensionFenceEdits(): Extension {
     return EditorState.transactionFilter.of((tr) => {
-        if (!tr.docChanged) return tr
-        if (!(tr.isUserEvent('input') || tr.isUserEvent('delete') || tr.isUserEvent('move')) || tr.isUserEvent('input.fence')) return tr
+        if (!tr.docChanged || !personsEdit(tr)) return tr
         if (tr.effects.some((effect) => effect.is(requestReveal))) return tr
         const reached = collapsedExtensionFences(tr.startState).filter((fence) => changesReach(tr.changes, fence))
         if (reached.length === 0) return tr

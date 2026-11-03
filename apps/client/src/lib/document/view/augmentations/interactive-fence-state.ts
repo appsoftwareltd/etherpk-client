@@ -106,6 +106,9 @@ interface FenceIdentity {
     readonly next: number
 }
 
+/** Numbers for the editors, each taken as its state is created (`fenceInstance`). */
+let editors = 0
+
 /** A fence an edit removed, with what it said, whose id a fence with the same text may take. */
 interface RemovedFence {
     id: number
@@ -161,8 +164,8 @@ function identify(ids: ReadonlyMap<number, number>, next: number, fences: readon
  * dropped, so a deleted fence's id never passes to the fence that slides into its place. A fence
  * the same edit writes again with exactly the removed one's text takes its id (`identify`).
  */
-export const fenceIdentity = StateField.define<FenceIdentity>({
-    create: (state) => identify(new Map(), 1, interactiveFences(state)),
+export const fenceIdentity = StateField.define<FenceIdentity & { readonly editor: number }>({
+    create: (state) => ({ ...identify(new Map(), 1, interactiveFences(state)), editor: ++editors }),
     update(value, tr) {
         // A widget registered or withdrawn adds or takes away fences with no edit (ADR 0121).
         if (!tr.docChanged && !tr.reconfigured && !tr.effects.some((e) => e.is(fenceRegistrationsChanged))) return value
@@ -179,9 +182,18 @@ export const fenceIdentity = StateField.define<FenceIdentity>({
             }
             ids = mapped
         }
-        return identify(ids, value.next, interactiveFences(tr.state), removed)
+        return { ...identify(ids, value.next, interactiveFences(tr.state), removed), editor: value.editor }
     },
 })
+
+/**
+ * Where a fence is drawn: its editor and its id there, kept across edits. The same document open in
+ * two editors draws each fence twice, and each place is its own, so the editor frame edits a
+ * drawing in the editor it was pressed in and leaves the other picture alone (`fence-frame.ts`).
+ */
+export function fenceInstance(state: EditorState, id: number): string {
+    return `${state.field(fenceIdentity, false)?.editor ?? 0}:${id}`
+}
 
 /** A fence's id, or null for a position that opens no interactive fence. */
 export function fenceIdAt(state: EditorState, blockFrom: number): number | null {

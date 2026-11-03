@@ -12,11 +12,15 @@ import { createContributionRegistry, setActiveContributionRegistry } from '#lib/
 
 import { editorAnalysis } from './analysis/editor-analysis'
 import { registerInteractiveFence } from './augmentations/interactive-fence-contract'
+import { revealFocus, revealedLines } from './augmentations/reveal-policy'
 import { editorDocument } from './editor-document'
 import { editorIsOnScreen, setEditorOnScreen } from './editor-on-screen'
 import { localHistoryExtension } from './editor-history'
 import { editorExtensions, editorFeatures, type EditorExtensionServices } from './editor-extensions'
 import { startAtEnd } from './end-of-document'
+import { anchorLine } from './line-anchor'
+import { shownRangeIn } from './shown-range'
+import { taskPartRange } from './task-part-range'
 
 const services: EditorExtensionServices = {
     assetStore: () => null,
@@ -43,6 +47,7 @@ describe('editor feature stack', () => {
         const order = names()
         expect(new Set(order).size).toBe(order.length)
         expect(order).toEqual([
+            'shown-range',
             'block-selection',
             'caret-clamp',
             'fence-pad',
@@ -95,6 +100,35 @@ describe('editor feature stack', () => {
             'keep-caret-visible',
             'view-hooks',
         ])
+    })
+
+    it('shows part of the document only when the host gives the part (the Task Editor, ADR 0170)', () => {
+        const shown = (extra: Partial<typeof services>) => editorFeatures({ ...services, ...extra }).find((f) => f.name === 'shown-range')!.extension
+        expect(shown({})).toEqual([])
+        expect(shown({ shownRange: () => null })).not.toEqual([])
+        // First, so its Prec.highest filter runs after the Extension Fence's and its hidden lines are
+        // drawn over every widget a later feature puts on a hidden line.
+        before('shown-range', 'interactive-fence')
+        before('shown-range', 'image-embed')
+        before('shown-range', 'fence-render')
+    })
+
+    it('a part of a document shows the caret’s line as markdown only while it has the keyboard; a tab always does', () => {
+        const doc = '- [ ] Build the shed\n  - **Garden**'
+        const from = doc.indexOf('  - ')
+        const description = () => ({ from, to: doc.length, nestedUnder: 1 })
+        /** The lines revealed with the caret on the description's line, before focus or after `focused`. */
+        const revealed = (host: EditorExtensionServices, focused?: boolean) => {
+            let state = EditorState.create({ doc, selection: { anchor: doc.length - 2 }, extensions: [editorAnalysis(), ...editorExtensions(host)] })
+            if (focused !== undefined) state = state.update({ effects: revealFocus.of(focused) }).state
+            return [...revealedLines(state)]
+        }
+        expect(revealed(services)).toEqual([2])
+        expect(revealed(services, false)).toEqual([2])
+        expect(revealed({ ...services, partOfDocument: true })).toEqual([])
+        expect(revealed({ ...services, partOfDocument: true }, true)).toEqual([2])
+        expect(revealed({ ...services, shownRange: description })).toEqual([])
+        expect(revealed({ ...services, shownRange: description }, true)).toEqual([2])
     })
 
     it('names the document the editor shows, when the host says which', () => {
@@ -252,6 +286,27 @@ describe('editor feature stack', () => {
             const state = EditorState.create({ doc, selection: { anchor: wall }, extensions: [editorAnalysis(), ...editorExtensions(services)] })
             const moved = state.update({ selection: { anchor: wall - 1 }, userEvent: 'select' }).state
             expect(moved.selection.main.head).toBe('- Intro'.length)
+        } finally {
+            setActiveContributionRegistry(null)
+        }
+    })
+
+    it("keeps a caret in a part shown when the Extension Fence's caret would move it onto a hidden line", () => {
+        // The description ends in an Extension Fence; a move onto the fence is moved off it, onto the
+        // line below, the hidden Comments bullet. The shown range's filter runs after, and keeps the
+        // caret in the description (ADR 0170).
+        const registry = createContributionRegistry()
+        registerInteractiveFence(registry, 'garden.plan', { height: () => 100, mount: () => ({ update: () => {}, destroy: () => {} }) })
+        setActiveContributionRegistry(registry)
+        try {
+            const doc = '- [ ] Build the shed\n  - measure\n  - ```garden.plan\n    {"id":"k1"}\n    ```\n  - Comments\n    - level'
+            const measure = doc.indexOf('measure')
+            const extensions = [editorAnalysis(), ...editorExtensions({ ...services, shownRange: taskPartRange('description') })]
+            const state = EditorState.create({ doc, selection: { anchor: measure }, extensions }).update({ effects: anchorLine.of(0) }).state
+            const moved = state.update({ selection: { anchor: doc.indexOf('{"id"') }, userEvent: 'select' }).state
+            const range = shownRangeIn(moved)!
+            expect(moved.selection.main.head).toBeGreaterThanOrEqual(range.from)
+            expect(moved.selection.main.head).toBeLessThanOrEqual(range.to)
         } finally {
             setActiveContributionRegistry(null)
         }

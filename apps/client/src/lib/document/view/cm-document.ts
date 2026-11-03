@@ -41,7 +41,7 @@ export const EXTERNAL = Annotation.define<boolean>()
  * Marks a change the editor makes as a placement, not an edit, where the transaction is no `select`
  * event to say so: an untouched line the end-of-document buttons started, taken back out
  * (end-of-document.ts). Without a user event of its own, the transaction moves nothing else that
- * listens for one (a held reveal, spell check's first edit, a pinned reveal).
+ * listens for one (a held reveal, spell check's first edit).
  */
 export const placementChange = Annotation.define<boolean>()
 

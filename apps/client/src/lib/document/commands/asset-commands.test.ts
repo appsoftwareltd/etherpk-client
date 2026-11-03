@@ -9,6 +9,7 @@ import {
     ASSET_DELETE,
     ASSET_DOWNLOAD,
     ASSET_OPEN,
+    ASSET_VIEW_IMAGE,
     type AssetCommandDeps,
     type AssetDeleteChoice,
     assetViewTarget,
@@ -43,6 +44,7 @@ function harness(overrides: Partial<AssetCommandDeps> = {}, choice: AssetDeleteC
         openAsset: vi.fn(),
         canOpen: () => true,
         canCopyImage: (ref: string) => ref.endsWith('.png'),
+        viewImage: vi.fn(),
         onNotice: vi.fn(),
         applyToEditor: vi.fn(() => true),
         promptDelete: vi.fn(async () => choice),
@@ -156,6 +158,42 @@ describe('asset.open', () => {
 
         // The filesystem identity is already the file name, extension and all.
         expect(h.deps.openAsset).toHaveBeenCalledWith(ASSET_ID, REF)
+    })
+})
+
+describe('asset.view-image', () => {
+    it('opens the Lightbox on the image, named as its actions name it, read only when it is shown', async () => {
+        const resolve = vi.fn(async () => ({ url: 'blob:chart', name: 'chart.png', type: 'image/png' }))
+        const viewImage = vi.fn()
+        const h = harness({ store: () => ({ resolve }), viewImage } as never)
+
+        expect(await h.commands.execute(ASSET_VIEW_IMAGE, imageTarget)).toBe(true)
+
+        expect(viewImage).toHaveBeenCalledTimes(1)
+        const image = viewImage.mock.calls[0][0] as { name: string; load: () => Promise<string | null> }
+        expect(image.name).toBe('chart.png')
+        expect(resolve).not.toHaveBeenCalled()
+        expect(await image.load()).toBe('blob:chart')
+        expect(resolve).toHaveBeenCalledWith(IMAGE_REF)
+    })
+
+    it('shows an image the graph no longer holds as one that could not be loaded', async () => {
+        const viewImage = vi.fn()
+        const h = harness({ store: () => ({ resolve: async () => null }), viewImage } as never)
+
+        await h.commands.execute(ASSET_VIEW_IMAGE, imageTarget)
+
+        const image = viewImage.mock.calls[0][0] as { load: () => Promise<string | null> }
+        await expect(image.load()).rejects.toThrow('That file is no longer in this graph.')
+    })
+
+    it('ignores a file that is not an image, and a target that is not an asset', async () => {
+        const h = harness()
+
+        await h.commands.execute(ASSET_VIEW_IMAGE, target)
+        await h.commands.execute(ASSET_VIEW_IMAGE, { kind: 'favourite', concept: 'Physics' })
+
+        expect(h.deps.viewImage).not.toHaveBeenCalled()
     })
 })
 
@@ -374,16 +412,18 @@ describe('the context menu rows', () => {
         expect(rows[2].separatorBefore).toBe(true)
     })
 
-    it('leads with copy on an image, and only on an image', () => {
+    it('leads with copy on an image and offers View larger just before open, only on an image', () => {
         const h = harness()
 
         expect(listContextMenuItems(h.contributions, imageTarget).map((r) => r.label)).toEqual([
             'Copy image',
             'Download',
+            'View larger',
             'Open in a new tab',
             'Delete…',
         ])
         expect(listContextMenuItems(h.contributions, target).map((r) => r.label)).not.toContain('Copy image')
+        expect(listContextMenuItems(h.contributions, target).map((r) => r.label)).not.toContain('View larger')
     })
 
     it('hides open-in-a-tab when nothing can show the type', () => {

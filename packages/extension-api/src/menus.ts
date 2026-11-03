@@ -71,6 +71,21 @@ export interface ExtensionMenuTarget {
 export type MenuTarget = DocumentMenuTarget | TabMenuTarget | WikilinkMenuTarget | ExtensionMenuTarget
 
 /**
+ * A task a Context Menu was raised on, as {@link ExtensionContextMenu.taskOf} names it: where it is,
+ * as a task reference names a task.
+ *
+ * @public
+ */
+export interface MenuTask {
+    /** The concept of the document the task is in. */
+    document: string
+    /** Its line in the document's body, from 0, frontmatter left out: as the index counts lines. */
+    line: number
+    /** The task line's text after the checkbox, its tags included. */
+    label: string
+}
+
+/**
  * One Context Menu row.
  *
  * @public
@@ -147,6 +162,14 @@ export interface CommandMenuItem {
     keywords?: string[]
     /** Whether the row is offered here. Absent means everywhere. */
     when?: (context: CommandMenuContext) => boolean
+    /**
+     * The row acts on the text at the cursor and nothing else: it inserts or formats text, or copies
+     * what the cursor's line holds. Only such rows are offered in an editor that shows part of a
+     * document, such as a Kanban task's description, where a row that acts on the tab, the document as
+     * a whole, a View or the graph would act on whatever is behind the dialog. Absent means the row
+     * is not offered there.
+     */
+    actsOnText?: boolean
     /** The Command the row runs. */
     command: string
     /**

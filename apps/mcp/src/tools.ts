@@ -8,10 +8,14 @@
  *
  * The rules (ADR 0072, [[2026-09-15 Headless Client And MCP]]):
  *
- * - A [[Protected Document]] is listed by name and nothing else. Reading refuses; every write
- *   refuses, frontmatter included. The Headless Client never holds a Protection Key, so this is
- *   a courtesy to the agent rather than the guarantee - the guarantee is that there is nothing
- *   here to serve.
+ * - A [[Protected Document]] is never shown, its name as well as its content (ADR 0072, amended
+ *   2026-11-03): no listing, search, backlink, task or graph answer names one, and a read of one
+ *   answers as a read of a name nothing has. A name can say what the page was protected to hide,
+ *   and what an agent reads goes to its model provider; [[Agent Chat]] keeps the same rule
+ *   (`read-rules.ts`). A write that would land on one still refuses with `protected_document`,
+ *   since writing as if the name were free would make a second document under it - and that
+ *   tells the agent only that a name it already holds is taken. The Headless Client never holds
+ *   a Protection Key, so the content was never here to serve; the names are what this hides.
  * - Edits are anchored: `edit_document` replaces one exact, unique occurrence and lands as one
  *   `applyChange` range, which the sync engine carries as one `Y.Text` change that merges with
  *   whoever is typing elsewhere in the page. There is no whole-page replace.
@@ -28,8 +32,10 @@
 import {
     backlinkSources,
     capText,
-    isProtectedDocumentText,
+    holdsEncryptedText,
     LIST_PAGE_LIMIT,
+    linkGraphWithoutProtected,
+    protectedKeys,
     READ_MANY_LIMIT,
     READ_MANY_TEXT_CAP,
     READ_TEXT_CAP,
@@ -51,7 +57,7 @@ import { parseFrontmatter } from '#lib/storage/fs/frontmatter.js'
 import { frontmatterSpan } from '#lib/storage/fs/frontmatter-span.js'
 import { conceptKey } from '#lib/storage/fs/identity.js'
 import { OPEN_TASK_STATUSES, TASK_PRIORITY_FILTERS, TASK_STATUSES, type TaskDueWindow, type TaskPriorityFilter, type TaskStatus, referencedInBody } from '#lib/document/index-db.js'
-import { type RenameLinkStrategy, RenameUnconfirmedError, mergeCount, renameSteps } from '#lib/storage/rename.js'
+import { landedName, type RenameLinkStrategy, type RenamePlan, RenameUnconfirmedError, mergeCount, renameSteps } from '#lib/storage/rename.js'
 import { buildAssetMarkdown, displayAssetName, mimeTypeForExt, splitNameExt } from '#lib/storage/fs/asset-store.js'
 import { AssetRefusedError, assetIdFromRef } from '#lib/storage/synced/server-asset-store.js'
 
@@ -68,12 +74,14 @@ import {
     taskReferenceId,
 } from '#lib/document/task-reference.js'
 import { ancestorChain, bulletLabel, deriveDoc } from '#lib/document/index-derive.js'
+import { parseLaneReference } from '#lib/document/lane-reference.js'
 import { isTemplate, templateBody } from '#lib/document/templates/template-page.js'
 import { renderTemplate, templateContextFor } from '#lib/document/templates/template-variables.js'
 import { type ConceptFacts, createGraphModel, type GraphFilter, shortestPath, visibleGraph } from '@appsoftwareltd/etherpk-extension-graph-view/model'
 import { bridges, findClusters, hubs, isolatedDocuments, pagelessByDocuments, type RankedConcept } from '@appsoftwareltd/etherpk-extension-graph-view/model'
 import { lineWriteChanges, nestedTaskWrites } from '#lib/document/task-cascade.js'
 import { taskLineWith } from '#lib/document/task-write.js'
+import { asCommentBullet, assetReferencesIn, commentChange, readTaskStructure, taskComments } from '#lib/document/task-structure.js'
 
 import type { HeadlessDocument } from './headless-documents'
 import type { HeadlessGraph } from './headless-graph'
@@ -168,8 +176,6 @@ export interface DocumentSummary {
     concept: string
     kind: 'page' | 'journal'
     aliases: string[]
-    /** Present only when true, so an ordinary document's shape is unchanged. */
-    protected?: true
 }
 
 export interface ListDocumentsArgs {
@@ -244,6 +250,11 @@ export interface SemanticSearchOutput {
 }
 
 export interface TasksArgs {
+    /**
+     * A [[Lane Reference]], the whole copied text or its `etherpk:` address: one lane of a Kanban
+     * board, in place of `concept` and `statuses`.
+     */
+    reference?: string
     /** Tasks about this concept (its own line, an ancestor block, or the document), or every task. */
     concept?: string
     /** Default: every unfinished state. */
@@ -414,13 +425,64 @@ async function liveText(graph: HeadlessGraph, identity: HeadlessDocument): Promi
     return graph.store.open(identity.concept).getText()
 }
 
-function refuseIfProtected(concept: string, text: string): void {
-    if (isProtectedDocumentText(text)) {
-        throw new ToolError(
-            'protected_document',
-            `"${concept}" is a protected document. Its content is encrypted under a key this client never holds, so it cannot be read or changed here - the user can unlock it in EtherPK.`,
-        )
+/**
+ * The keys of every name an agent is never shown: those the index flags protected (a document whose
+ * text holds an encrypted fence, and each of its aliases), and the aliases the store lists for such
+ * a document, in case the index has not seen an alias yet. Read once per tool call.
+ */
+function hiddenKeys(graph: HeadlessGraph): Set<string> {
+    const keys = protectedKeys(graph.index.allConcepts())
+    for (const doc of graph.store.listDocuments()) {
+        if (keys.has(doc.key)) for (const alias of doc.aliases) keys.add(conceptKey(alias))
     }
+    return keys
+}
+
+/** Whether a document answers to a hidden name, by its title or any of its aliases. */
+function isHidden(keys: ReadonlySet<string>, identity: HeadlessDocument): boolean {
+    return keys.has(identity.key) || identity.aliases.some((alias) => keys.has(conceptKey(alias)))
+}
+
+/**
+ * A document's live text when an agent may see it, or null when the document is hidden: flagged
+ * by the index, or holding encrypted text the index has not caught up with yet.
+ */
+async function visibleText(graph: HeadlessGraph, identity: HeadlessDocument, keys = hiddenKeys(graph)): Promise<string | null> {
+    if (isHidden(keys, identity)) return null
+    const text = await liveText(graph, identity)
+    return holdsEncryptedText(text) ? null : text
+}
+
+/** The refusal for a name nothing in the graph has: also what a hidden document's name answers. */
+function notFound(asked: string): ToolError {
+    return new ToolError('not_found', `No document is named "${asked}".`)
+}
+
+/** The document an agent asked to read, with its text, or `not_found` for a hidden one too. */
+async function requireReadable(graph: HeadlessGraph, asked: string): Promise<{ identity: HeadlessDocument; text: string }> {
+    const identity = resolveIdentity(graph, asked)
+    const text = identity ? await visibleText(graph, identity) : null
+    if (!identity || text === null) throw notFound(asked)
+    return { identity, text }
+}
+
+/**
+ * The refusal for a write onto a hidden document. It names the document by the name the agent
+ * gave, never by a title or alias it did not, so it says only that a name it holds is taken.
+ */
+function protectedDocument(asked: string): ToolError {
+    return new ToolError(
+        'protected_document',
+        `"${asked}" is a protected document. Its content is encrypted under a key this client never holds, so it cannot be changed here - the user can unlock it in EtherPK.`,
+    )
+}
+
+/** The document an agent asked to change, with its text, refusing a hidden one as protected. */
+async function requireWritable(graph: HeadlessGraph, asked: string): Promise<{ identity: HeadlessDocument; text: string }> {
+    const identity = requireIdentity(graph, asked)
+    const text = await liveText(graph, identity)
+    if (isHidden(hiddenKeys(graph), identity) || holdsEncryptedText(text)) throw protectedDocument(asked)
+    return { identity, text }
 }
 
 function page<T>(items: readonly T[], offset: number, limit: number): { items: T[]; hasMore: boolean } {
@@ -450,32 +512,21 @@ export async function listDocuments(graph: HeadlessGraph, args: ListDocumentsArg
         if (day !== undefined && !isJournalConcept(day)) throw new ToolError('invalid_argument', `"${day}" is not a day: from and to are YYYY-MM-DD.`)
     }
     const kind = args.from !== undefined || args.to !== undefined ? 'journal' : args.kind
-    const protectedKeys = new Set(
-        graph.index
-            .allConcepts()
-            .filter((candidate) => candidate.protected && (candidate.kind === 'page' || candidate.kind === 'journal'))
-            .map((candidate) => candidate.key),
-    )
+    const hidden = hiddenKeys(graph)
     const all: DocumentSummary[] = graph.store
         .listDocuments()
+        .filter((doc) => !isHidden(hidden, doc))
         .filter((doc) => !kind || doc.kind === kind)
         // A journal entry's concept is its day, and days as YYYY-MM-DD order as strings.
         .filter((doc) => doc.kind !== 'journal' || ((args.from === undefined || doc.concept >= args.from) && (args.to === undefined || doc.concept <= args.to)))
-        .map((doc) => ({
-            concept: doc.concept,
-            kind: doc.kind,
-            aliases: doc.aliases,
-            ...(protectedKeys.has(doc.key) ? { protected: true as const } : {}),
-        }))
+        .map((doc) => ({ concept: doc.concept, kind: doc.kind, aliases: doc.aliases }))
     const paged = page(all, offset, limit)
     return { documents: paged.items, total: all.length, hasMore: paged.hasMore }
 }
 
 export async function readDocument(graph: HeadlessGraph, concept: string): Promise<ReadDocumentResult> {
     await graph.store.refresh()
-    const identity = requireIdentity(graph, concept)
-    const text = await liveText(graph, identity)
-    refuseIfProtected(identity.concept, text)
+    const { identity, text } = await requireReadable(graph, concept)
     const capped = capText(text, READ_TEXT_CAP)
     return {
         concept: identity.concept,
@@ -518,19 +569,24 @@ async function searchSemantic(graph: HeadlessGraph, query: string, offset: numbe
         throw new ToolError('semantic_unavailable', error instanceof Error ? error.message : String(error))
     }
     const result = await semantic.search(query, offset, limit)
+    const hidden = hiddenKeys(graph)
     return {
-        results: result.groups.map((group) => ({
-            concept: group.concept,
-            kind: group.kind,
-            similarity: round(group.similarity),
-            passages: group.hits.map((hit) => ({
-                line: hit.line,
-                endLine: hit.endLine,
-                breadcrumb: hit.breadcrumb,
-                text: hit.text,
-                similarity: round(hit.similarity),
+        // A Protected Document yields no passage, but the plain text beside a fence does, so a
+        // flagged document's passages are dropped here.
+        results: result.groups
+            .filter((group) => !hidden.has(conceptKey(group.concept)))
+            .map((group) => ({
+                concept: group.concept,
+                kind: group.kind,
+                similarity: round(group.similarity),
+                passages: group.hits.map((hit) => ({
+                    line: hit.line,
+                    endLine: hit.endLine,
+                    breadcrumb: hit.breadcrumb,
+                    text: hit.text,
+                    similarity: round(hit.similarity),
+                })),
             })),
-        })),
         hasMore: result.hasMore,
         embedded: result.status.embedded,
         total: result.status.total,
@@ -542,19 +598,31 @@ function round(similarity: number): number {
     return Math.round(similarity * 1000) / 1000
 }
 
-/** The index's text group, read as Search reads it (shared with the browser's Agent Chat). */
-function searchText(graph: HeadlessGraph, query: string, offset: number, limit: number): Promise<TextSearchOutput> {
-    return searchIndexText(graph.index, query, offset, limit)
+/**
+ * The index's text group, read as Search reads it (shared with the browser's Agent Chat). The index
+ * holds no protected text, but a document holding a fence beside plain text is flagged and its
+ * plain text indexed, so flagged names are taken out here, as Agent Chat does.
+ */
+async function searchText(graph: HeadlessGraph, query: string, offset: number, limit: number): Promise<TextSearchOutput> {
+    const found = await searchIndexText(graph.index, query, offset, limit)
+    const hidden = hiddenKeys(graph)
+    return { ...found, results: found.results.filter((result) => !hidden.has(conceptKey(result.concept))) }
 }
 
 export async function backlinks(graph: HeadlessGraph, concept: string) {
     const target = concept.trim() === 'today' ? todayISO() : concept.trim()
     if (target === '') throw new ToolError('invalid_argument', 'concept must not be empty.')
     await graph.store.refresh()
+    // A hidden name answers as a name nothing links to. The text of a plain document that links
+    // to one is that document's own, so it stays in the answers for other concepts.
+    const hidden = hiddenKeys(graph)
+    if (hidden.has(conceptKey(target))) return { concept: target, sources: [] }
     // `kind` says what each reference's text quotes: a block and its subtree, the prose around the
     // link, or - for a document scoped by the concept (ADR 0083) - the source's own title. A
-    // Template's body is a pattern, not a reference (ADR 0144): only its name is reported.
-    return { concept: target, sources: backlinkSources(await graph.index.backlinks(target)) }
+    // Template's body is a pattern, not a reference (ADR 0144): only its name is reported. A
+    // protected page scoped by the concept is a title reference too, and is left out.
+    const sources = backlinkSources(await graph.index.backlinks(target)).filter((source) => !hidden.has(conceptKey(source.concept)))
+    return { concept: target, sources }
 }
 
 /** The most rows any one list of graph_insights returns. */
@@ -577,7 +645,7 @@ export interface GraphInsightsArgs {
 export async function graphInsights(graph: HeadlessGraph, args: GraphInsightsArgs = {}) {
     const limit = Math.max(1, bounded(args.limit, 15, INSIGHTS_LIST_LIMIT))
     await graph.store.refresh()
-    const model = createGraphModel(await graph.index.linkGraph())
+    const model = await visibleGraphModel(graph)
     const shown = visibleGraph(model, { journals: args.journals ?? true, pageless: args.pageless ?? 'mentioned-twice' })
     const clustered = findClusters(shown)
     const isolated = isolatedDocuments(model)
@@ -612,10 +680,22 @@ export interface GraphPathArgs {
     journals?: boolean
 }
 
-/** The fewest wikilink steps from one concept to another, through every concept, or null when nothing joins them. */
+/**
+ * The Graph View's model of every concept an agent may see: the index's link graph without the
+ * protected documents, so no Hub, Pageless Concept, Cluster, Bridge or path can name one.
+ */
+async function visibleGraphModel(graph: HeadlessGraph) {
+    return createGraphModel(linkGraphWithoutProtected(await graph.index.linkGraph(), hiddenKeys(graph)))
+}
+
+/**
+ * The fewest wikilink steps from one concept to another, through every concept an agent may see,
+ * or null when nothing joins them. A protected document is neither an end (`not_found`, as a name
+ * nothing has) nor a step: a route only through one is no route.
+ */
 export async function graphPath(graph: HeadlessGraph, args: GraphPathArgs) {
     await graph.store.refresh()
-    const model = createGraphModel(await graph.index.linkGraph())
+    const model = await visibleGraphModel(graph)
     const resolve = (asked: string): string => {
         const name = asked.trim() === 'today' ? todayISO() : asked.trim()
         if (name === '') throw new ToolError('invalid_argument', 'from and to must not be empty.')
@@ -642,20 +722,49 @@ export async function graphPath(graph: HeadlessGraph, args: GraphPathArgs) {
     return { from: nameOf(from), to: nameOf(to), path: path?.map(nameOf) ?? null, steps: path ? path.length - 1 : null }
 }
 
-export async function tasks(graph: HeadlessGraph, args: TasksArgs = {}) {
-    const offset = bounded(args.offset, 0, Number.MAX_SAFE_INTEGER)
-    const limit = bounded(args.limit, 100, TASK_PAGE_LIMIT)
+/**
+ * The concept and statuses `tasks` lists: a lane reference's, or the arguments'. A lane reference
+ * names the board's concept exactly as the board queries it (no `today` shorthand: a board's
+ * concept is a name), and its one status; a concept or statuses given beside it are refused rather
+ * than one silently winning.
+ */
+function taskSelection(graph: HeadlessGraph, args: TasksArgs): { concept: string | null; statuses: readonly TaskStatus[] } {
+    if (args.reference !== undefined) {
+        const lane = parseLaneReference(args.reference)
+        if (!lane) {
+            throw new ToolError('invalid_argument', 'reference is not a lane reference. Pass the text Copy lane reference wrote, or its etherpk:/g/…#lane= address; for one task, use read_task.')
+        }
+        if (args.concept !== undefined || args.statuses !== undefined) {
+            throw new ToolError('invalid_argument', 'A lane reference names the concept and status itself: pass reference without concept or statuses.')
+        }
+        // A folder graph's id is local to each app that opened it, so only a synced graph is checked.
+        if (graph.backend.kind === 'synced' && lane.graphId !== graph.graphId) {
+            throw new ToolError('other_graph', `That lane reference is for another graph. This server serves "${graph.name}" (${graph.graphId}); ask the user to connect the graph the reference is from.`)
+        }
+        return { concept: lane.concept, statuses: [lane.status] }
+    }
     const statuses = args.statuses ?? OPEN_TASK_STATUSES
     for (const status of statuses) {
         if (!TASK_STATUSES.includes(status)) throw new ToolError('invalid_argument', `Unknown task status "${status}".`)
     }
+    const concept = args.concept?.trim() ? (args.concept.trim() === 'today' ? todayISO() : args.concept.trim()) : null
+    return { concept, statuses }
+}
+
+export async function tasks(graph: HeadlessGraph, args: TasksArgs = {}) {
+    const offset = bounded(args.offset, 0, Number.MAX_SAFE_INTEGER)
+    const limit = bounded(args.limit, 100, TASK_PAGE_LIMIT)
+    const { concept, statuses } = taskSelection(graph, args)
     const priorities: TaskPriorityFilter[] = args.priorities
         ? args.priorities.map((priority) => (priority === 'none' ? null : priority))
         : [...TASK_PRIORITY_FILTERS]
     await graph.store.refresh()
+    const hidden = hiddenKeys(graph)
+    // A hidden name has no tasks to show, as Agent Chat answers it.
+    if (concept !== null && hidden.has(conceptKey(concept))) return { tasks: [], total: 0, hasMore: false }
     const result = await graph.index.tasks(
         {
-            concept: args.concept?.trim() ? (args.concept.trim() === 'today' ? todayISO() : args.concept.trim()) : null,
+            concept,
             statuses,
             priorities,
             due: args.due ?? 'any',
@@ -665,9 +774,12 @@ export async function tasks(graph: HeadlessGraph, args: TasksArgs = {}) {
         offset,
         limit,
     )
+    // The index holds no task of a Protected Document; a plain task above a fence in a flagged
+    // document is indexed, and is left out here (the total may still count it).
+    const shown = result.hits.filter((hit) => !hidden.has(conceptKey(hit.concept)))
     return {
         tasks: await Promise.all(
-            result.hits.map(async (hit) => ({
+            shown.map(async (hit) => ({
                 concept: hit.concept,
                 kind: hit.kind,
                 line: hit.line,
@@ -709,14 +821,16 @@ async function withTemplate(graph: HeadlessGraph, template: string | undefined, 
 
 /** The body a copy of the Template named `name` takes, or a refusal that says how to find one. */
 async function templateBodyFor(graph: HeadlessGraph, name: string): Promise<string> {
-    const identity = resolveIdentity(graph, name.trim())
+    const found = resolveIdentity(graph, name.trim())
+    // A hidden document is never a Template here, and answers as any other page that is not one.
+    const identity = found && (await visibleText(graph, found)) !== null ? found : null
     let raw = ''
     if (identity) {
         await graph.store.whenReady(identity.concept)
         raw = graph.store.openRaw(identity.concept).getText()
     }
-    const { data, body } = parseFrontmatter(raw)
-    if (!identity || !isTemplate(data, identity.kind) || isProtectedDocumentText(body)) {
+    const { data } = parseFrontmatter(raw)
+    if (!identity || !isTemplate(data, identity.kind)) {
         throw new ToolError(
             'invalid_argument',
             `"${name}" is not a Template. A page is a Template when its frontmatter says template: true; search for template:true to list them.`,
@@ -778,9 +892,7 @@ function changeAsWritten(text: string, from: number, to: number, replacement: st
 export async function editDocument(graph: HeadlessGraph, args: EditDocumentArgs) {
     if (args.old === '') throw new ToolError('invalid_argument', 'old must not be empty.')
     await graph.store.refresh()
-    const identity = requireIdentity(graph, args.concept)
-    const text = await liveText(graph, identity)
-    refuseIfProtected(identity.concept, text)
+    const { identity, text } = await requireWritable(graph, args.concept)
     const first = text.indexOf(args.old)
     if (first === -1) {
         throw new ToolError('no_match', `"${identity.concept}" does not contain the text to replace. Read the document again - it may have changed.`)
@@ -810,8 +922,7 @@ export async function appendDocument(graph: HeadlessGraph, args: AppendDocumentA
         await settle(graph)
         return { concept: target, created: true }
     }
-    const current = await liveText(graph, existing)
-    refuseIfProtected(existing.concept, current)
+    const { text: current } = await requireWritable(graph, target)
     const separator = current === '' || current.endsWith('\n') ? '' : '\n'
     const appended = `${separator}${text}${text.endsWith('\n') ? '' : '\n'}`
     graph.store.open(existing.concept).applyChange(changeAsWritten(current, current.length, current.length, appended), 'external')
@@ -826,7 +937,11 @@ export async function createPage(graph: HeadlessGraph, args: CreatePageArgs) {
         throw new ToolError('invalid_argument', `"${title}" is a calendar day, so it names a journal entry - use append_document to write to it.`)
     }
     await graph.store.refresh()
-    if (resolveIdentity(graph, title)) {
+    const taken = resolveIdentity(graph, title)
+    if (taken) {
+        // Refused either way, since a second page under the name would split it in two; a hidden
+        // one is said to be protected, so the agent does not try to edit what it cannot.
+        if ((await visibleText(graph, taken)) === null) throw protectedDocument(title)
         throw new ToolError('already_exists', `A document already answers to "${title}". Use edit_document or append_document instead.`)
     }
     // No frontmatter block: on a Server Backend identity is the encrypted registry (ADR 0024),
@@ -852,9 +967,7 @@ export async function setFrontmatter(graph: HeadlessGraph, args: SetFrontmatterA
         throw new ToolError('invalid_argument', 'patch must be an object of frontmatter keys.')
     }
     await graph.store.refresh()
-    const identity = requireIdentity(graph, args.concept)
-    const body = await liveText(graph, identity)
-    refuseIfProtected(identity.concept, body)
+    const { identity } = await requireWritable(graph, args.concept)
     const raw = graph.store.openRaw(identity.concept).getText()
     // A block added here carries the page's aliases: on a synced graph they live in the registry,
     // and a block without an `aliases:` line would claim none (ADR 0061).
@@ -883,9 +996,46 @@ async function referencingDocuments(graph: HeadlessGraph, concept: string): Prom
     return groups.filter((group) => referencedInBody(group, concept)).map((group) => group.sourceConcept)
 }
 
-/** Protected documents in the graph: their references can be neither seen nor rewritten. */
-function protectedDocumentCount(graph: HeadlessGraph): number {
-    return graph.index.allConcepts().filter((c) => c.protected && (c.kind === 'page' || c.kind === 'journal')).length
+/** How many documents are hidden from the agent: a count, never their names. */
+function protectedDocumentCount(graph: HeadlessGraph, keys = hiddenKeys(graph)): number {
+    return graph.store.listDocuments().filter((doc) => isHidden(keys, doc)).length
+}
+
+/**
+ * What a rename may tell an agent. A rename carries a protected page scoped by the old name along,
+ * as a person's rename does, but the plan and the result name each document they touch, so every
+ * hidden document's names - before the rename and after it - are taken out of them. A refusal that
+ * names one (a protected document never merges, ADR 0062) is replaced by one that does not.
+ */
+function renameDisclosure(graph: HeadlessGraph, plan: RenamePlan) {
+    const keys = hiddenKeys(graph)
+    const names: string[] = []
+    for (const doc of graph.store.listDocuments()) {
+        if (isHidden(keys, doc)) names.push(doc.concept, ...doc.aliases, landedName(plan, doc.concept))
+    }
+    const hiddenNames = new Set(names.map(conceptKey))
+    const hides = (name: string) => hiddenNames.has(conceptKey(name))
+    return {
+        hides,
+        refusal(refusal: string | null): string | null {
+            if (refusal === null) return null
+            const lower = refusal.toLowerCase()
+            if (!names.some((name) => lower.includes(name.toLowerCase()))) return refusal
+            return 'The rename would merge a protected document, and a protected document never merges. Choose a different name.'
+        },
+    }
+}
+
+/**
+ * The document a rename starts from, if the name is a document's, refusing a hidden one; and a
+ * refusal when the new name is a hidden document's other than that one, which a rename would merge.
+ */
+async function renameEnds(graph: HeadlessGraph, from: string, to: string): Promise<HeadlessDocument | null> {
+    const identity = resolveIdentity(graph, from)
+    if (identity && (await visibleText(graph, identity)) === null) throw protectedDocument(from)
+    const onto = to === '' ? null : resolveIdentity(graph, to)
+    if (onto && onto.key !== identity?.key && (await visibleText(graph, onto)) === null) throw protectedDocument(to)
+    return identity
 }
 
 function renameStepView(step: { from: string; to: string; into: string; hasDocument: boolean; merges: boolean; redirects: boolean }) {
@@ -903,23 +1053,24 @@ export async function planRename(graph: HeadlessGraph, args: PlanRenameArgs) {
     if (from === '') throw new ToolError('invalid_argument', 'from must not be empty.')
     await graph.store.refresh()
     if (!conceptExists(graph, from)) throw new ToolError('not_found', `Nothing in the graph is named "${from}".`)
-    const identity = resolveIdentity(graph, from)
-    if (identity) refuseIfProtected(identity.concept, await liveText(graph, identity))
+    const identity = await renameEnds(graph, from, to)
     // A page is renamed by its title, whichever of its names the agent gave, as `rename` does.
     const subject = identity?.concept ?? from
     const referencing = await referencingDocuments(graph, subject)
     const plan = await graph.store.planRename(subject, to, referencing.length)
     const steps = renameSteps(plan)
+    const { hides, refusal } = renameDisclosure(graph, plan)
     return {
         from: subject,
         to,
-        refusal: plan.refusal,
+        refusal: refusal(plan.refusal),
         direct: renameStepView(plan.direct),
-        cascade: plan.cascade.map(renameStepView),
-        referencingDocuments: referencing,
-        merges: steps.filter((step) => step.merges).map((step) => ({ from: step.from, into: step.into })),
+        cascade: plan.cascade.filter((step) => !hides(step.from)).map(renameStepView),
+        referencingDocuments: referencing.filter((name) => !hides(name)),
+        merges: steps.filter((step) => step.merges && !hides(step.from) && !hides(step.into)).map((step) => ({ from: step.from, into: step.into })),
         // Aliases that name it as a scope move with it (ADR 0038, amended 2026-10-03).
-        aliases: plan.aliases.map((alias) => ({ document: alias.holder, from: alias.from, to: alias.to })),
+        aliases: plan.aliases.filter((alias) => !hides(alias.holder)).map((alias) => ({ document: alias.holder, from: alias.from, to: alias.to })),
+        // Counted, never named: what this rename cannot see or rewrite.
         protectedDocuments: protectedDocumentCount(graph),
     }
 }
@@ -940,12 +1091,12 @@ export async function rename(graph: HeadlessGraph, args: RenameArgs) {
     if (strategy !== 'rewrite' && strategy !== 'alias') throw new ToolError('invalid_argument', 'strategy must be "rewrite" or "alias".')
     await graph.store.refresh()
     if (!conceptExists(graph, from)) throw new ToolError('not_found', `Nothing in the graph is named "${from}".`)
-    const identity = resolveIdentity(graph, from)
-    if (identity) refuseIfProtected(identity.concept, await liveText(graph, identity))
+    const identity = await renameEnds(graph, from, to)
     const subject = identity?.concept ?? from
     const referencing = await referencingDocuments(graph, subject)
     const plan = await graph.store.planRename(subject, to, referencing.length)
-    if (plan.refusal) throw new ToolError('invalid_argument', plan.refusal)
+    const { hides, refusal } = renameDisclosure(graph, plan)
+    if (plan.refusal) throw new ToolError('invalid_argument', refusal(plan.refusal)!)
     const merges = mergeCount(plan)
     if (merges > 0 && !args.confirm_merge) {
         const joins = renameSteps(plan)
@@ -973,10 +1124,10 @@ export async function rename(graph: HeadlessGraph, args: RenameArgs) {
     return {
         concept: result.concept,
         strategy,
-        rewrittenDocuments: result.rewrittenDocuments,
-        cascaded: plan.cascade.map((step) => ({ from: step.from, to: step.into })),
+        rewrittenDocuments: result.rewrittenDocuments.filter((name) => !hides(name)),
+        cascaded: plan.cascade.filter((step) => !hides(step.from)).map((step) => ({ from: step.from, to: step.into })),
         merged: result.merged,
-        aliasesRewritten: result.aliasesRewritten,
+        aliasesRewritten: result.aliasesRewritten.filter((name) => !hides(name)),
     }
 }
 
@@ -990,13 +1141,14 @@ export async function setAliases(graph: HeadlessGraph, args: SetAliasesArgs) {
         throw new ToolError('invalid_argument', 'aliases must be a list of names.')
     }
     await graph.store.refresh()
-    const identity = requireIdentity(graph, args.concept)
-    refuseIfProtected(identity.concept, await liveText(graph, identity))
+    const { identity } = await requireWritable(graph, args.concept)
     const aliases: string[] = []
     for (const raw of args.aliases) {
         const alias = raw.trim()
         if (alias === '' || conceptKey(alias) === identity.key || aliases.some((a) => conceptKey(a) === conceptKey(alias))) continue
         const holder = resolveIdentity(graph, alias)
+        // A hidden holder is refused without its title, which the agent did not give.
+        if (holder && holder.key !== identity.key && (await visibleText(graph, holder)) === null) throw protectedDocument(alias)
         if (holder && holder.key !== identity.key) {
             throw new ToolError('name_taken', `"${alias}" is already a name of "${holder.concept}", so it cannot be an alias of "${identity.concept}".`)
         }
@@ -1015,14 +1167,8 @@ export async function setAliases(graph: HeadlessGraph, args: SetAliasesArgs) {
 
 // ── Assets (ADR 0085) ─────────────────────────────────────────────────────────────────────
 
-/** Every asset reference in a body: `../assets/<name>` at any depth, as markdown or HTML writes it. */
-const ASSET_REFS = /(?:\.\.\/)+assets\/[^\s)"'<>\]]+/g
-
-export function assetReferencesIn(body: string): string[] {
-    const refs: string[] = []
-    for (const match of body.matchAll(ASSET_REFS)) refs.push(match[0])
-    return refs
-}
+// Every asset reference in a body, as the Task Editor lists a task's assets: one rule for both.
+export { assetReferencesIn }
 
 function requireAssets(graph: HeadlessGraph) {
     if (!graph.assets) throw new ToolError('assets_unavailable', 'This process has no asset storage for the graph, so assets cannot be read or added here.')
@@ -1052,7 +1198,9 @@ function displayNameOf(ref: string): string {
 async function reachable(graph: HeadlessGraph, identity: string): Promise<{ concept: string; kind: 'page' | 'journal' }[] | null> {
     const assets = requireAssets(graph)
     const usage = await graph.index.assetUsage([identity])
-    if (usage.documents.length > 0) return usage.documents.map((d) => ({ concept: d.concept, kind: d.kind }))
+    const hidden = hiddenKeys(graph)
+    const documents = usage.documents.filter((d) => !hidden.has(conceptKey(d.concept)))
+    if (documents.length > 0) return documents.map((d) => ({ concept: d.concept, kind: d.kind }))
     if (assets.uploaded.has(identity)) return []
     return null
 }
@@ -1134,12 +1282,14 @@ export async function listAssets(graph: HeadlessGraph, args: ListAssetsArgs = {}
     let bodies: Map<string, string>
     let unconfirmed: string[] = []
     if (args.concept !== undefined && args.concept.trim() !== '') {
-        const identity = requireIdentity(graph, args.concept)
-        const text = await liveText(graph, identity)
-        refuseIfProtected(identity.concept, text)
+        const { identity, text } = await requireReadable(graph, args.concept)
         bodies = new Map([[identity.concept, text]])
     } else {
         ;({ bodies, unconfirmed } = await graph.store.readBodies())
+        // `readBodies` leaves a Protected Document out; a document flagged for a fence beside plain
+        // text is left out too, so no reference names it.
+        const hidden = hiddenKeys(graph)
+        for (const [concept, body] of bodies) if (hidden.has(conceptKey(concept)) || holdsEncryptedText(body)) bodies.delete(concept)
     }
     const found = new Map<string, { ref: string; name: string; type: string; documents: Set<string> }>()
     for (const [concept, body] of bodies) {
@@ -1181,16 +1331,14 @@ export async function readDocuments(graph: HeadlessGraph, args: { concepts: stri
     if (args.concepts.length > READ_MANY_LIMIT) throw new ToolError('too_many', `At most ${READ_MANY_LIMIT} documents per call - ask again for the rest.`)
     await graph.store.refresh()
     let budget = READ_MANY_TEXT_CAP
+    const hidden = hiddenKeys(graph)
     const documents: Array<ReadDocumentResult | { concept: string; error: ToolErrorCode; message: string }> = []
     for (const wanted of args.concepts) {
         const identity = resolveIdentity(graph, wanted)
-        if (!identity) {
-            documents.push({ concept: wanted, error: 'not_found', message: `No document is named "${wanted}".` })
-            continue
-        }
-        const text = await liveText(graph, identity)
-        if (isProtectedDocumentText(text)) {
-            documents.push({ concept: identity.concept, error: 'protected_document', message: `"${identity.concept}" is a protected document and cannot be read here.` })
+        const text = identity ? await visibleText(graph, identity, hidden) : null
+        // A hidden document is reported as a name nothing has, by the name the agent gave.
+        if (!identity || text === null) {
+            documents.push({ concept: wanted, error: 'not_found', message: notFound(wanted).message })
             continue
         }
         const cap = Math.max(0, Math.min(READ_TEXT_CAP, budget))
@@ -1220,7 +1368,7 @@ export async function readDocuments(graph: HeadlessGraph, args: { concepts: stri
 export async function setTask(graph: HeadlessGraph, args: SetTaskArgs) {
     if (args.reference !== undefined) {
         // Found by position and words, so the line and the expected text come from the reference.
-        const found = await requireReferencedTask(graph, args.reference)
+        const found = await requireReferencedTask(graph, args.reference, 'write')
         return setTask(graph, { concept: found.document, line: found.line, changes: args.changes })
     }
     if (args.concept === undefined) throw new ToolError('invalid_argument', 'Name the task by reference, or by concept and line.')
@@ -1233,9 +1381,7 @@ export async function setTask(graph: HeadlessGraph, args: SetTaskArgs) {
         if (value !== undefined && value !== null && !isJournalConcept(value)) throw new ToolError('invalid_argument', `${key} must be a day as YYYY-MM-DD, or null.`)
     }
     await graph.store.refresh()
-    const identity = requireIdentity(graph, args.concept)
-    const text = await liveText(graph, identity)
-    refuseIfProtected(identity.concept, text)
+    const { identity, text } = await requireWritable(graph, args.concept)
     const lines = text.split('\n')
     const current = lines[line]
     const parsed = current === undefined ? null : parseTaskLine(current)
@@ -1277,18 +1423,20 @@ export async function setTask(graph: HeadlessGraph, args: SetTaskArgs) {
 
 /** Where a Task Reference is resolved in this graph: its documents, read live, and its index. */
 function referenceSources(graph: HeadlessGraph): TaskReferenceSources {
+    const hidden = hiddenKeys(graph)
     return {
         // A folder graph's id is its own on each computer, so a reference is not checked against it.
         graphId: graph.backend.kind === 'synced' ? graph.graphId : null,
-        resolveDocument: (name) => resolveIdentity(graph, name)?.concept ?? null,
+        // A hidden document answers to no name and holds no task to find, as for every other read.
+        resolveDocument: (name) => {
+            const identity = resolveIdentity(graph, name)
+            return identity && !isHidden(hidden, identity) ? identity.concept : null
+        },
         async readBody(document) {
             const identity = resolveIdentity(graph, document)
-            if (!identity) return null
-            const text = await liveText(graph, identity)
-            // A protected document's tasks cannot be read here, so it holds none to find.
-            return isProtectedDocumentText(text) ? null : text
+            return identity ? visibleText(graph, identity, hidden) : null
         },
-        allTasks: () => everyIndexedTask(graph.index, todayISO()),
+        allTasks: async () => (await everyIndexedTask(graph.index, todayISO())).filter((task) => !hidden.has(conceptKey(task.document))),
     }
 }
 
@@ -1298,8 +1446,12 @@ async function referenceFor(graph: HeadlessGraph, concept: string, line: number,
     return taskReferenceId({ graphId: graph.graphId, document: concept, line, fingerprint })
 }
 
-/** The task a Task Reference names in this graph, or the error that says why there is none. */
-async function requireReferencedTask(graph: HeadlessGraph, reference: string): Promise<ResolvedTaskReference> {
+/**
+ * The task a Task Reference names in this graph, or the error that says why there is none. A
+ * reference into a hidden document finds nothing; to `write` there it refuses as protected, as a
+ * write by the document's name does, since the reference already names the document.
+ */
+async function requireReferencedTask(graph: HeadlessGraph, reference: string, purpose: 'read' | 'write' = 'read'): Promise<ResolvedTaskReference> {
     const parsed = parseTaskReference(reference)
     if (!parsed) {
         throw new ToolError('invalid_argument', 'That is not a task reference: one is etherpk:/g/<graph>/d/<document>#task=<line>-<fingerprint>, as Copy task reference in EtherPK writes it.')
@@ -1314,6 +1466,8 @@ async function requireReferencedTask(graph: HeadlessGraph, reference: string): P
         const where = found.candidates.map((candidate) => `"${candidate.document}" line ${candidate.line}`).join(', ')
         throw new ToolError('task_ambiguous', `More than one task has those words (${where}), so none was chosen. Ask the user which one, or name it by concept and line.`)
     }
+    const named = resolveIdentity(graph, parsed.document)
+    if (purpose === 'write' && named && (await visibleText(graph, named)) === null) throw protectedDocument(parsed.document)
     throw new ToolError('task_not_found', 'No task in the graph has those words now: it was edited or deleted. Ask the user for a fresh reference.')
 }
 
@@ -1350,6 +1504,7 @@ export async function readTask(graph: HeadlessGraph, args: ReadTaskArgs) {
     const { blocks } = deriveDoc(found.body)
     const block = blocks.find((candidate) => candidate.startLine === found.line)
     const end = block ? subtreeEnd(blocks, block.localId) : found.line
+    const structure = readTaskStructure(lines, found.line)
     return {
         concept: found.document,
         line: found.line,
@@ -1363,9 +1518,12 @@ export async function readTask(graph: HeadlessGraph, args: ReadTaskArgs) {
         detail: lines.slice(found.line + 1, end + 1).join('\n'),
         foundBy: found.foundBy,
         reference: await referenceFor(graph, found.document, found.line, bulletLabel(line)),
-        // The images and files the task and its detail show, once each: part of what the task says,
-        // which an agent reads with read_asset.
-        assets: [...new Set(assetReferencesIn(lines.slice(found.line, end + 1).join('\n')))],
+        // The images and files the task and its detail show, once each, as the Task Editor lists
+        // them: part of what the task says, which an agent reads with read_asset.
+        assets: structure?.assets ?? [...new Set(assetReferencesIn(lines.slice(found.line, end + 1).join('\n')))],
+        // The Task Comments under the task's Comments bullet (ADR 0170), oldest first. They are in
+        // `detail` too, as the text they are.
+        comments: structure ? taskComments(lines, structure) : [],
     }
 }
 
@@ -1376,33 +1534,26 @@ export interface AddTaskNoteArgs {
 }
 
 /**
- * Add a note under the task a Task Reference names: the text as a bullet one level under the
- * task, after its existing detail, so a Kanban Board's Task Detail shows it with the task. Text
- * that is already bullets is nested as it is.
+ * Add a note to the task a Task Reference names as a [[Task Comment]] (ADR 0170): a bullet under the
+ * task's `Comments` bullet, after the comments already there, the Comments bullet started as the
+ * task's last child when it has none. A line of prose becomes one bullet whose later lines continue
+ * it; text that is already bullets is nested as it is. A note written under the task before Comments
+ * existed stays where it is, in the task's description. The Task Editor shows the comment with the
+ * task's others.
  */
 export async function addTaskNote(graph: HeadlessGraph, args: AddTaskNoteArgs) {
     if (typeof args.text !== 'string' || args.text.trim() === '') throw new ToolError('invalid_argument', 'text must not be empty.')
-    const found = await requireReferencedTask(graph, args.reference)
-    const lines = found.body.split('\n')
-    const { blocks } = deriveDoc(found.body)
-    const block = blocks.find((candidate) => candidate.startLine === found.line)
-    const end = block ? subtreeEnd(blocks, block.localId) : found.line
-    const childIndent = `${/^\s*/.exec(lines[found.line])![0]}  `
-    const written = asWritten(args.text.trim())
-    // A line of prose becomes a bullet whose later lines continue it; bullets are nested as they are.
-    const note = written.startsWith('- ') ? written : `- ${written.replace(/\n/g, '\n  ')}`
-    const insert = note
-        .split('\n')
-        .map((noteLine) => (noteLine === '' ? noteLine : childIndent + noteLine))
-        .join('\n')
-    const at = lines.slice(0, end + 1).reduce((n, l) => n + l.length + 1, 0) - 1
-    graph.store.open(found.document).applyChange({ from: at, to: at, insert: `\n${insert}` }, 'external')
+    const found = await requireReferencedTask(graph, args.reference, 'write')
+    const change = commentChange(found.body, found.line, asCommentBullet(asWritten(args.text.trim())))
+    // The reference found a task on that line a moment ago, so this holds one.
+    if (!change) throw new ToolError('task_not_found', 'The task moved while the note was being written. Ask the user for a fresh reference.')
+    graph.store.open(found.document).applyChange({ from: change.from, to: change.to, insert: change.insert }, 'external')
     await settle(graph)
     return {
         concept: found.document,
         line: found.line,
-        noteLine: end + 1,
-        reference: await referenceFor(graph, found.document, found.line, bulletLabel(lines[found.line])),
+        noteLine: change.line,
+        reference: await referenceFor(graph, found.document, found.line, bulletLabel(found.body.split('\n')[found.line])),
     }
 }
 
@@ -1410,16 +1561,18 @@ export async function addTaskNote(graph: HeadlessGraph, args: AddTaskNoteArgs) {
 export async function graphInfo(graph: HeadlessGraph) {
     await graph.store.refresh()
     const documents = graph.store.listDocuments()
-    const protectedKeys = new Set(graph.index.allConcepts().filter((c) => c.protected && (c.kind === 'page' || c.kind === 'journal')).map((c) => c.key))
+    const hidden = hiddenKeys(graph)
     const semantic = await graph.semanticOpened()
     const status = semantic ? await semantic.status() : undefined
     return {
         name: graph.name,
         backend: graph.backend,
+        // Every document, protected ones included, and how many of them are protected: a count
+        // lets an agent say some documents are not visible to it, without naming any.
         documents: {
             pages: documents.filter((d) => d.kind === 'page').length,
             journals: documents.filter((d) => d.kind === 'journal').length,
-            protected: documents.filter((d) => protectedKeys.has(d.key)).length,
+            protected: protectedDocumentCount(graph, hidden),
         },
         semantic: status
             ? { state: 'open' as const, embedded: status.embedded, total: status.total, complete: status.embedded >= status.total }

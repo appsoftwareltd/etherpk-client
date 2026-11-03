@@ -53,6 +53,7 @@ export function fakeGraphServices(graphId = 'g1') {
             },
         },
         notify: vi.fn(),
+        menuTask: () => null,
         documents: {
             list: vi.fn(async () => ({ documents: [], total: 0, hasMore: false })),
             read: vi.fn(async () => null),
@@ -72,7 +73,13 @@ export function fakeGraphServices(graphId = 'g1') {
                 keys: async () => [...kept.keys()].map((key) => key.slice(extensionId.length + 1)).sort(),
             }
         },
-        assets: { prepareImage: vi.fn(async (image: Blob) => image), saveImage: vi.fn(async () => '![image](assets/image.webp)') },
+        assets: {
+            prepareImage: vi.fn(async (image: Blob) => image),
+            saveImage: vi.fn(async () => '![image](assets/image.webp)'),
+            describe: vi.fn(() => null),
+            imageUrl: vi.fn(async () => null),
+            viewImages: vi.fn(async () => {}),
+        },
         editor: { insertBlock: vi.fn(() => true), openPanel: vi.fn(() => null) },
     }
     return { services, bindings, indexListeners }
@@ -88,7 +95,7 @@ export function fakeClientServices(storage: Storage = memoryStorage(), settings:
         iconSvg: (name) => `<svg data-icon="${name}"/>` as unknown as TrustedMarkup,
         storage,
         settings,
-        dialogs: { prompt: vi.fn(async () => undefined), choose: vi.fn(async () => undefined) },
+        dialogs: { prompt: vi.fn(async () => undefined), choose: vi.fn(async () => undefined), pickDate: vi.fn(async () => undefined) },
         // A sign-in that the service answers at once, with a code and the state it was given.
         signIn: {
             redirectUri: 'https://client.example/extension-sign-in',

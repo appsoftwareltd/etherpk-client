@@ -53,7 +53,9 @@ import { fencedBlockAtIn, insideFencedBlockIn, visibleFencedBlocks } from '../ou
 import { treeChanged } from './base-renderer'
 import { blockquoteLines } from './blockquote-core'
 import { CODE_FONT_SCALE, CODE_PANEL_PAD_LEFT } from './code-highlight'
+import { type OutlineBase, outlineBaseFacet } from './outline-base'
 import { collapsedFenceStarts, collapseMayHaveChanged } from './rendered-common'
+import { revealUpdated } from './reveal-policy'
 import { CHECKBOX_SLOT } from './task-checkbox'
 import { analysisFor } from '../analysis/editor-analysis'
 
@@ -334,6 +336,28 @@ const PUBLISHED_UNITS: ProseUnits = { space: 'var(--gk-prose-space, 1ch)', dash:
 const proseMetricsAttributes = EditorView.editorAttributes.compute([proseMetricsField], (state): Record<string, string> => {
     const metrics = state.field(proseMetricsField)
     return metrics ? { style: `--gk-prose-space:${metrics.space.toFixed(2)}px;--gk-prose-dash:${metrics.dash.toFixed(2)}px` } : {}
+})
+
+/**
+ * How far an editor drawing from `base` (`outline-base.ts`) moves its text area left, as a CSS
+ * length, or null at column 0: the width the clamp gives the base level before its dot, its nesting
+ * steps and its indent's measured spaces ({@link bulletDotOffset} less the dash), so the base
+ * level's dots land where a top-level bullet's do. Written against the published space width, so it
+ * follows a zoom without a rebuild.
+ *
+ * One shift of the whole text area rather than a smaller margin per line: every alignment the clamp
+ * and the block widgets make inside the text area (code panels, quote panels, a form-1 opener, an
+ * image's hang) is kept as it is, and the guides, measured off the rendered dots, follow it.
+ */
+export function outlineBaseShift(base: OutlineBase | null): string | null {
+    if (!base || (base.depth === 0 && base.indent === 0)) return null
+    return `calc(-1 * (${base.depth * INDENT_STEP_PX}px + ${base.indent} * ${PUBLISHED_UNITS.space}))`
+}
+
+/** The text area moved left by the editor's outline base, when it has one. */
+const outlineBaseAttributes = EditorView.contentAttributes.compute([outlineBaseFacet], (state): Record<string, string> => {
+    const shift = outlineBaseShift(state.facet(outlineBaseFacet))
+    return shift ? { style: `margin-left:${shift}` } : {}
 })
 
 /** The terms of the width of `indentCols` spaces, and of a `- ` marker after them when `marker`. */
@@ -663,9 +687,8 @@ export function contentClampAugmentation(): Extension {
                 // The quote inset reads the syntax tree, which the parser can advance in a transaction that
                 // changes nothing else (base-renderer.ts → hiddenSyntaxPlugin).
                 if (
-                    update.docChanged ||
                     update.viewportChanged ||
-                    update.selectionSet ||
+                    revealUpdated(update) ||
                     shiftsChanged ||
                     ticked ||
                     treeChanged(update)
@@ -719,5 +742,5 @@ export function contentClampAugmentation(): Extension {
         },
     )
 
-    return [codeShiftsField, proseMetricsField, proseMetricsAttributes, plugin, measurer, theme]
+    return [codeShiftsField, proseMetricsField, proseMetricsAttributes, outlineBaseAttributes, plugin, measurer, theme]
 }

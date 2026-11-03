@@ -50,6 +50,7 @@ import {
     wheelHorizontalDelta,
 } from './code-scroll-core'
 import { collapsedFenceStarts, collapseMayHaveChanged } from './rendered-common'
+import { revealInputsChanged, revealUpdated } from './reveal-policy'
 
 /** The thumb never shrinks below this, so a very long line still leaves something to grab. */
 const MIN_THUMB_PX = 24
@@ -260,7 +261,7 @@ const barsField = StateField.define<DecorationSet>({
         // collapsed to a widget, and the block scan is caret-aware (a half-typed fence), so a
         // selection change can move a bar.
         const ticked = collapseMayHaveChanged(tr)
-        if (tr.docChanged || tr.selection || overflowChanged || ticked) return buildBars(tr.state)
+        if (revealInputsChanged(tr) || overflowChanged || ticked) return buildBars(tr.state)
         return decos
     },
     provide: (f) => EditorView.decorations.from(f),
@@ -433,7 +434,7 @@ const containersPlugin = ViewPlugin.fromClass(
         }
         update(update: ViewUpdate) {
             const ticked = update.transactions.some(collapseMayHaveChanged)
-            if (update.docChanged || update.viewportChanged || update.selectionSet || ticked) {
+            if (update.viewportChanged || revealUpdated(update) || ticked) {
                 this.decorations = buildContainers(update.view)
             }
         }

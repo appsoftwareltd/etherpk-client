@@ -124,6 +124,11 @@ export const ICON_PATHS: Record<string, string> = {
     // Asset Reference actions
     /** Arrow into a tray: save this file. */
     download: '<path d="M8 2.5v7.5M5 7l3 3 3-3M3 12.5h10"/>',
+    /**
+     * A box with its lid on: put this away. Archive, on a task's menus and the Task Editor's button:
+     * the task is kept, out of sight, where a bin would say it is gone.
+     */
+    archive: '<rect x="2" y="3" width="12" height="3" rx="0.8"/><path d="M3 6v6.5a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V6M6.5 8.75h3"/>',
     /** A bin with a lid: destroy this. */
     trash: '<path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.2a1 1 0 0 0 1 .8h3.8a1 1 0 0 0 1-.8l.6-8.2M6.8 7v4M9.2 7v4"/>',
     /** A cross: close this. */
@@ -188,6 +193,12 @@ const HEROICON_PATHS: Record<string, string> = {
      */
     'task-reference':
         '<path d="M8.25 7.5V6.108c0-1.135.845-2.098 1.976-2.192.373-.03.748-.057 1.123-.08M15.75 18H18a2.25 2.25 0 0 0 2.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 0 0-1.123-.08M15.75 18.75v-1.875a3.375 3.375 0 0 0-3.375-3.375h-1.5a1.125 1.125 0 0 1-1.125-1.125v-1.5A3.375 3.375 0 0 0 6.375 7.5H5.25m11.9-3.664A2.251 2.251 0 0 0 15 2.25h-1.5a2.251 2.251 0 0 0-2.15 1.586m5.8 0c.065.21.1.433.1.664v.75h-6V4.5c0-.231.035-.454.1-.664M6.75 7.5H4.875c-.621 0-1.125.504-1.125 1.125v12c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V16.5a9 9 0 0 0-9-9Z"/>',
+    /**
+     * heroicons/outline `arrows-pointing-out`: show an image larger, in the [[Lightbox]]. First
+     * among an image asset's actions (the hover toolbar, the trailing cluster, the Context Menu).
+     */
+    'view-larger':
+        '<path d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15"/>',
     'todays-journal':
         '<path d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0V11.25A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5"/>',
 }

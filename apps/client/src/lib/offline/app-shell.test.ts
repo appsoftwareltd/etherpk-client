@@ -5,10 +5,12 @@ import {
     extensionFileStatus,
     isAppPagePath,
     isImmutableAppFile,
+    isOnDemandAppFile,
     isWorkerScript,
     referencedAppFiles,
     SHELL_PATH,
     shellMatchesBuild,
+    splitAppFiles,
 } from './app-shell'
 
 describe('isAppPagePath', () => {
@@ -39,6 +41,34 @@ describe('isImmutableAppFile and isWorkerScript', () => {
         expect(isWorkerScript('/_app/immutable/chunks/DnDT9Xmr.js')).toBe(false)
         const script = 'e?c(`sqlite3.wasm`):new URL(`/_app/immutable/workers/assets/sqlite3-BVKGSWc-.wasm`,``+self.location.href)'
         expect(referencedAppFiles(script)).toEqual(['/_app/immutable/workers/assets/sqlite3-BVKGSWc-.wasm'])
+    })
+})
+
+describe('isOnDemandAppFile and splitAppFiles', () => {
+    const xiaolai = '/_app/immutable/assets/Xiaolai-Regular-09850c4077f3fffe707905872e0e2460.Cq3xY1_b.woff2'
+
+    it("leaves Excalidraw's handwriting font for Chinese, Japanese and Korean to be fetched when a drawing needs it", () => {
+        expect(isOnDemandAppFile(xiaolai)).toBe(true)
+    })
+
+    it("precaches every other build file, Excalidraw's other fonts included", () => {
+        for (const path of [
+            '/_app/immutable/assets/Excalifont-Regular-a88b72a24fb54c9f94e3b5fdaa7481c9.D2kz0aQe.woff2',
+            '/_app/immutable/assets/Virgil-Regular.BmT9w1lK.woff2',
+            '/_app/immutable/assets/Assistant-Regular.C0f4uX2p.woff2',
+            '/_app/immutable/chunks/DnDT9Xmr.js',
+            // A name that only contains the font's, or the font outside the build's assets.
+            '/_app/immutable/assets/NotXiaolai-Regular-1.woff2',
+            '/_app/immutable/chunks/Xiaolai-Regular-1.js',
+            '/fonts/Xiaolai-Regular-1.woff2',
+        ]) {
+            expect(isOnDemandAppFile(path), path).toBe(false)
+        }
+    })
+
+    it('splits a version\'s files into those cached at install and those fetched on demand', () => {
+        const chunk = '/_app/immutable/chunks/DnDT9Xmr.js'
+        expect(splitAppFiles([chunk, xiaolai, '/favicon.ico'])).toEqual({ atInstall: [chunk, '/favicon.ico'], onDemand: [xiaolai] })
     })
 })
 

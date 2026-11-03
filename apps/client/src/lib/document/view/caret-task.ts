@@ -34,8 +34,17 @@ export function caretTask(state: EditorState): CaretTask | null {
  * {@link caretTask}: what the line menu's **Copy task reference** copies from a right-click.
  */
 export function taskOnLine(state: EditorState, number: number): CaretTask | null {
+    return state.facet(isProtectedDocumentFacet)() ? null : bodyTaskOnLine(state, number)
+}
+
+/**
+ * The task on line `number` (1-based) as the index reads one, a [[Protected Document]]'s included:
+ * what a row that edits the task (setting its status from the line menu) acts on, where whether the
+ * body takes the edit is `bodyWritable`'s question, not this one's.
+ */
+export function bodyTaskOnLine(state: EditorState, number: number): CaretTask | null {
     const shown = state.facet(editorDocument)
-    if (!shown || number < 1 || number > state.doc.lines || state.facet(isProtectedDocumentFacet)()) return null
+    if (!shown || number < 1 || number > state.doc.lines) return null
     const line = state.doc.line(number)
     if (parseTaskLine(line.text) === null) return null
     const analysis = analysisFor(state)

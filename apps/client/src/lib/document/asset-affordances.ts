@@ -1,6 +1,6 @@
 /**
- * What an [[Asset Reference]] lets you do, and how a surface asks for it done: **copy** it to the
- * clipboard when it is an image, **download** it, **open** it in a tab where a viewer is
+ * What an [[Asset Reference]] lets you do, and how a surface asks for it done: **view** it larger
+ * in the [[Lightbox]] and **copy** it to the clipboard when it is an image, **download** it, **open** it in a tab where a viewer is
  * registered, and **delete** it.
  *
  * Three surfaces show this set — the trailing icon cluster on a link and the hover overlay on a
@@ -15,10 +15,10 @@
  * No DOM, no CodeMirror — a surface builds its own buttons from this.
  */
 
-import { assetNameFromRef, isImageExt, splitNameExt } from '#lib/storage/fs/asset-store.js'
+import { isImageAssetRef } from '#lib/storage/fs/asset-store.js'
 import { type AssetContextMenuTarget, canViewAsset, tryGetActiveCommandRegistry, tryGetActiveContributionRegistry } from '#lib/surface/index.js'
 
-import { ASSET_COPY_IMAGE, ASSET_DELETE, ASSET_DOWNLOAD, ASSET_OPEN } from './commands/asset-commands'
+import { ASSET_COPY_IMAGE, ASSET_DELETE, ASSET_DOWNLOAD, ASSET_OPEN, ASSET_VIEW_IMAGE } from './commands/asset-commands'
 import type { InlineAction } from './inline-action'
 // A browser-capability probe, not DOM: the one thing this module asks of the platform.
 import { canCopyImages } from './view/clipboard-image'
@@ -40,8 +40,7 @@ export function canOpenAsset(ref: string): boolean {
  * none; here a missing extension means an unknown type, and nothing to promise a PNG from.
  */
 export function canCopyImageAsset(ref: string): boolean {
-    const name = assetNameFromRef(ref)
-    return name !== null && isImageExt(splitNameExt(name).ext) && canCopyImages()
+    return isImageAssetRef(ref) && canCopyImages()
 }
 
 export interface AssetActionOptions {
@@ -57,8 +56,10 @@ export interface AssetActionOptions {
 }
 
 /**
- * The actions, in order. Copy leads, and only on an image; open is absent when nothing can show
- * the type; copy and download are both absent when there are no bytes to hand over — an asset
+ * The actions, in order. Copy leads, only on an image; View larger, also only on an image, sits
+ * just before open, the other way of seeing it bigger; open is absent when nothing can show the
+ * type; copy, download and View larger are all absent when there are no bytes to show or hand
+ * over — an asset
  * whose bytes have gone still offers delete, because clearing a dead reference is exactly what a
  * user wants from one.
  */
@@ -69,6 +70,7 @@ export function assetActions(ref: string, options: AssetActionOptions = {}): Ass
             ? [{ command: ASSET_COPY_IMAGE, icon: 'copy', label: 'Copy image', confirm: { icon: 'check', label: 'Copied' } }]
             : []),
         ...(hasBytes ? [{ command: ASSET_DOWNLOAD, icon: 'download', label: 'Download' }] : []),
+        ...(hasBytes && isImageAssetRef(ref) ? [{ command: ASSET_VIEW_IMAGE, icon: 'view-larger', label: 'View larger' }] : []),
         ...(canOpenAsset(ref) ? [{ command: ASSET_OPEN, icon: 'open-external', label: 'Open in a new tab' }] : []),
         ...(options.canDelete === false ? [] : [{ command: ASSET_DELETE, icon: 'trash', label: 'Delete' }]),
     ]

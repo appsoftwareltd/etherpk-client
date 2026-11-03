@@ -1,6 +1,7 @@
 /**
  * The [[Command]]s an [[Asset Reference]] offers: **download** it, **delete** it, **open** it in
- * its own tab, and - for an image - **copy** it to the clipboard.
+ * its own tab, and - for an image - **view** it larger in the [[Lightbox]] and **copy** it to the
+ * clipboard.
  *
  * Commands rather than inline click handlers, for the reason the document Commands are: the
  * three surfaces that offer them — the hover overlay on a rendered image, the trailing icon
@@ -26,7 +27,8 @@ import {
     isEditableAssetTarget,
     registerContextMenuItem,
 } from '#lib/surface/index.js'
-import type { AssetStore, ResolvedAsset } from '#lib/storage/fs/asset-store.js'
+import type { LightboxImage } from '#lib/components/lightbox/lightbox-image.js'
+import { type AssetStore, displayNameForRef, isImageAssetRef, type ResolvedAsset } from '#lib/storage/fs/asset-store.js'
 import type { GraphAssetTools } from '#lib/storage/fs/asset-orphans.js'
 
 import { type AssetDeletePlan, type ProtectedAssetUsage, assetUsageNeedles, planAssetDelete } from '../asset-delete'
@@ -37,6 +39,7 @@ export const ASSET_DOWNLOAD = 'asset.download'
 export const ASSET_DELETE = 'asset.delete'
 export const ASSET_OPEN = 'asset.open'
 export const ASSET_COPY_IMAGE = 'asset.copy-image'
+export const ASSET_VIEW_IMAGE = 'asset.view-image'
 
 /** What the delete dialog was asked about, and what it may offer. */
 export interface AssetDeletePrompt {
@@ -69,6 +72,8 @@ export interface AssetCommandDeps {
      * later than that on a synced graph.
      */
     copyImage: (asset: Promise<ResolvedAsset>) => Promise<void>
+    /** Show the image in the [[Lightbox]], over whatever is open. */
+    viewImage: (image: LightboxImage) => void
     /** Open the asset's own tab. */
     openAsset: (assetId: string, ref: string) => void
     /** Whether anything registered can show this file in a tab (surface/asset-viewer.ts). */
@@ -162,6 +167,17 @@ export function registerAssetCommands(
         deps.onNotice?.('Image copied.')
     }
 
+    /**
+     * The image is read when the Lightbox shows it, not before: the dialog opens at once and says it
+     * is loading, rather than the click seeming to do nothing while a synced graph fetches and
+     * decrypts the bytes. A missing asset rejects with the same words as download, and the Lightbox
+     * shows it as an image that could not be loaded.
+     */
+    function viewImage(target: AssetContextMenuTarget): Promise<void> {
+        deps.viewImage({ name: displayNameForRef(target.ref), load: async () => (await resolveOrExplain(target)).url })
+        return Promise.resolve()
+    }
+
     async function open(target: AssetContextMenuTarget): Promise<void> {
         const assetId = deps.tools()?.identify(target.ref)
         if (!assetId) return
@@ -206,6 +222,10 @@ export function registerAssetCommands(
             const target = targetOf(arg)
             return target ? guard(open(target)) : undefined
         }),
+        commands.register(ASSET_VIEW_IMAGE, (arg) => {
+            const target = targetOf(arg)
+            return target && isImageAssetRef(target.ref) ? guard(viewImage(target)) : undefined
+        }),
         commands.register(ASSET_COPY_IMAGE, (arg) => {
             const target = targetOf(arg)
             return target ? guard(copyImage(target)) : undefined
@@ -217,6 +237,15 @@ export function registerAssetCommands(
     )
 
     disposers.push(
+        registerContextMenuItem(contributions, {
+            id: ASSET_VIEW_IMAGE,
+            label: 'View larger',
+            command: ASSET_VIEW_IMAGE,
+            // Just before Open in a new tab, the other way of seeing a picture bigger, so the two
+            // ways of looking at it sit together, in the same order as the button clusters.
+            order: 15,
+            when: (target) => isAssetTarget(target) && isImageAssetRef(target.ref),
+        }),
         registerContextMenuItem(contributions, {
             id: ASSET_COPY_IMAGE,
             label: 'Copy image',

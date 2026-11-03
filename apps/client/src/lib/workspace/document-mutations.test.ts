@@ -368,7 +368,7 @@ describe('workspace document mutations', () => {
         ])
         expect(renameBookmarks).toHaveBeenCalledTimes(2)
         expect(listUpdateFailed).toHaveBeenCalledTimes(1)
-        expect(listUpdateFailed).toHaveBeenCalledWith('bookmarks', refused)
+        expect(listUpdateFailed).toHaveBeenCalledWith('bookmarks', refused, 'rename')
         // The rest of the rename happened.
         expect(renameInMemberLists).toHaveBeenCalledWith([
             { from: '[[Old]] Child', to: '[[New]] Child' },
@@ -398,7 +398,7 @@ describe('workspace document mutations', () => {
         await expect(controller.followRename('Kanban', 'Kanban 2')).resolves.toBeUndefined()
         expect(renameBookmarks).toHaveBeenCalledWith('Kanban', 'Kanban 2')
         expect(recents.rename).toHaveBeenCalledWith('Kanban', 'Kanban 2')
-        expect(listUpdateFailed).toHaveBeenCalledWith('favourites', refused)
+        expect(listUpdateFailed).toHaveBeenCalledWith('favourites', refused, 'rename')
 
         await expect(controller.followConceptMove('Kitchen', 'Pantry')).resolves.toBeUndefined()
         expect(renameBookmarks).toHaveBeenLastCalledWith('Kitchen', 'Pantry')
@@ -574,6 +574,81 @@ describe('boards follow their concept', () => {
         await controllerOver(layout).delete('Old')
         expect(layout.closeView).toHaveBeenCalledTimes(1)
         expect(layout.closeView).toHaveBeenCalledWith({ kind: 'document', target: 'Old' })
+    })
+})
+
+// A delete takes the document out of the person's lists, and every Member's on a synced graph
+// (ADR 0036 §4, amended 2026-11-03): its favourites and the bookmarks into it, by any of its names.
+describe('a delete forgets the document in the lists', () => {
+    function deleting(options: { forgetFavourites?: () => Promise<void>; forgetBookmarks?: () => Promise<void> } = {}) {
+        const order: string[] = []
+        const store = {
+            planRename: vi.fn(),
+            renamePage: vi.fn(),
+            deleteDocument: vi.fn(async (concept: string) => void order.push(`delete ${concept}`)),
+            listDocuments: vi.fn(() => {
+                order.push('names')
+                return [
+                    { concept: 'Kitchen', aliases: [] },
+                    { concept: 'Garden', aliases: ['Yard', 'Allotment'] },
+                ]
+            }),
+        }
+        const forgetFavourites = vi.fn(options.forgetFavourites ?? (async (names: readonly string[]) => void order.push(`favourites ${names.join(', ')}`)))
+        const forgetBookmarks = vi.fn(options.forgetBookmarks ?? (async (names: readonly string[]) => void order.push(`bookmarks ${names.join(', ')}`)))
+        const forgetInMemberLists = vi.fn((names: readonly string[]) => void order.push(`members ${names.join(', ')}`))
+        const listUpdateFailed = vi.fn()
+        const controller = createDocumentMutationController({
+            store: () => store,
+            index: () => undefined,
+            layout: () => layoutWith(['Garden'], 'Garden'),
+            recents: () => ({ forget: vi.fn(), rename: vi.fn() }),
+            renameFavourite: vi.fn(),
+            forgetFavourites,
+            forgetBookmarks,
+            forgetInMemberLists,
+            listUpdateFailed,
+        })
+        return { controller, order, store, forgetFavourites, forgetBookmarks, forgetInMemberLists, listUpdateFailed }
+    }
+
+    it('reads its names before the delete, then forgets it by its title and every alias, in this person’s lists and every Member’s', async () => {
+        const { controller, order } = deleting()
+        await expect(controller.delete('garden')).resolves.toBe(true)
+        // The names come from the registry, which no longer holds the document after the delete.
+        expect(order).toEqual([
+            'names',
+            'delete garden',
+            'favourites Garden, Yard, Allotment',
+            'bookmarks Garden, Yard, Allotment',
+            'members Garden, Yard, Allotment',
+        ])
+    })
+
+    it('forgets the name it was given when the store does not know the document', async () => {
+        const { controller, forgetFavourites, store } = deleting()
+        store.listDocuments.mockReturnValue([])
+        await controller.delete('Shed')
+        expect(forgetFavourites).toHaveBeenCalledWith(['Shed'])
+    })
+
+    it('still deletes, and says which list kept the name, when a list cannot be written', async () => {
+        const refused = new Error('read-only folder')
+        const { controller, forgetBookmarks, forgetInMemberLists, listUpdateFailed } = deleting({ forgetFavourites: () => Promise.reject(refused) })
+        await expect(controller.delete('Garden')).resolves.toBe(true)
+        expect(listUpdateFailed).toHaveBeenCalledTimes(1)
+        expect(listUpdateFailed).toHaveBeenCalledWith('favourites', refused, 'delete')
+        // The other lists still lose it: the document has gone either way.
+        expect(forgetBookmarks).toHaveBeenCalled()
+        expect(forgetInMemberLists).toHaveBeenCalled()
+    })
+
+    it('touches no list when the delete itself fails', async () => {
+        const { controller, store, forgetFavourites, forgetInMemberLists } = deleting()
+        store.deleteDocument.mockRejectedValue(new Error('offline'))
+        await expect(controller.delete('Garden')).rejects.toThrow('offline')
+        expect(forgetFavourites).not.toHaveBeenCalled()
+        expect(forgetInMemberLists).not.toHaveBeenCalled()
     })
 })
 

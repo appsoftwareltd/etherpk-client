@@ -75,8 +75,8 @@ export const WRITE_BACK_DELAY_MS = 2000
 const FLASH_MS = 1200
 
 export interface BookmarkOptions {
-    /** Open the line Context Menu for 1-based `line` at viewport `x`/`y`. */
-    lineMenu?: (line: number, x: number, y: number) => void
+    /** Open the line Context Menu for `line` (its 1-based number and its text) at viewport `x`/`y`. */
+    lineMenu?: (line: { number: number; text: string }, x: number, y: number) => void
     /** Whether the editor shows a [[Draft]], which has no document to bookmark yet. */
     draft?: boolean
     /**
@@ -468,11 +468,18 @@ const hoverField = StateField.define<number | null>({
 const ICON_WIDTH = 10
 const ICON_HEIGHT = 14
 
-/** The padding's horizontal extent in client coordinates. */
+/**
+ * The padding's horizontal extent in client coordinates. An editor drawing one part of a document
+ * from the part's own level moves its text area left with a negative margin (`outline-base.ts`); the
+ * band stays where the padding sits on screen, at the editor's edge, so it is measured from where the
+ * box would start without the margin.
+ */
 function paddingBand(view: EditorView): { left: number; right: number } {
     const rect = view.contentDOM.getBoundingClientRect()
-    const padding = parseFloat(getComputedStyle(view.contentDOM).paddingLeft) || 0
-    return { left: rect.left, right: rect.left + padding }
+    const style = getComputedStyle(view.contentDOM)
+    const padding = parseFloat(style.paddingLeft) || 0
+    const left = rect.left - Math.min(0, parseFloat(style.marginLeft) || 0)
+    return { left, right: left + padding }
 }
 
 /** The 1-based line beside the pointer, when the pointer is in the padding. */
@@ -533,7 +540,7 @@ function lineMenuAtCaret(view: EditorView): boolean {
     const head = view.state.selection.main.head
     const coords = view.coordsAtPos(head)
     if (!coords) return false
-    options.lineMenu(view.state.doc.lineAt(head).number, coords.left, coords.bottom)
+    options.lineMenu(view.state.doc.lineAt(head), coords.left, coords.bottom)
     return true
 }
 
@@ -580,7 +587,7 @@ const handlers = EditorView.domEventHandlers({
         // As a browser does on a right-click in text: the caret goes where the pointer is, so Paste
         // lands there.
         view.dispatch({ selection: { anchor: pos }, userEvent: 'select.pointer' })
-        options.lineMenu(view.state.doc.lineAt(pos).number, event.clientX, event.clientY)
+        options.lineMenu(view.state.doc.lineAt(pos), event.clientX, event.clientY)
         return true
     },
 })

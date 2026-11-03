@@ -1,8 +1,9 @@
 /**
  * Ticking a [[Task]] ticks every Task nested under it, archiving one archives them, and unticking
  * one unticks them, except a Cancelled or Archived one (CONTEXT.md → Task). The one statement of that rule: the checkbox click, the task
- * toggle, the [[Tasks View]]'s tick, a [[Kanban Board]] move and the [[Headless Client]]'s
- * `set_task` all ask this module which lines a write to a task brings with it.
+ * toggle, the [[Tasks View]]'s tick, a [[Kanban Board]] move, the line menu's status rows, a state
+ * tag that tidy on leave sets and the [[Headless Client]]'s `set_task` all ask this module which
+ * lines a write to a task brings with it.
  *
  * The rule reads the [[Task Status]] either side of the write rather than the key that made it,
  * so every route agrees without knowing about the others:
@@ -19,7 +20,9 @@
  *
  * Only those writes cascade, never typing: an edit to the line's text, the `#` [[Task Tag]] helper
  * included, changes that line alone, so taking `#C` off a ticked task by hand leaves the tasks under
- * it as they are, as untyping a checkbox's `x` does.
+ * it as they are, as untyping a checkbox's `x` does. A state tag typed later in the line is the one
+ * exception: when the caret leaves the task, tidy on leave sets the status it names, as a status
+ * write (`view/leave-tidy.ts`), and that write brings the nested tasks along like any other.
  *
  * Fenced code is read as the [[Derived Index]] reads it (`fencedBlocks`), so a line the index counts
  * as a task is one the cascade ticks, even where the editor's own parse draws it as code (under an
@@ -80,11 +83,13 @@ function moves(way: Direction, checkbox: Checkbox | null): boolean {
  * makes each line Archived. Empty when the write neither makes the task Done or Archived nor
  * unticks it, and when no nested task needs changing.
  */
-export function nestedTaskWrites(lines: readonly string[], index: number, next: string, blocks: readonly FencedBlockRange[] = fencedBlocks(lines)): LineWrite[] {
+export function nestedTaskWrites(lines: readonly string[], index: number, next: string, blocks?: readonly FencedBlockRange[]): LineWrite[] {
     const way = direction(checkboxOf(lines[index]), checkboxOf(next))
     if (way === null) return []
-    const inFence = linesInFencedBlocks(blocks)
-    const { end } = branchRange(lines as string[], index, blocks as FencedBlockRange[])
+    // Read the fences only once a write moves something: tidy on leave asks after every tidy.
+    const fences = blocks ?? fencedBlocks(lines)
+    const inFence = linesInFencedBlocks(fences)
+    const { end } = branchRange(lines as string[], index, fences as FencedBlockRange[])
     const writes: LineWrite[] = []
     for (let i = index + 1; i <= end; i++) {
         if (inFence.has(i) || !moves(way, checkboxOf(lines[i]))) continue

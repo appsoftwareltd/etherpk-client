@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
     addFavourite,
     adoptFavourites,
+    forgetDocumentFavourites,
     getFavourites,
     isFavourite,
     moveFavourite,
@@ -112,6 +113,38 @@ describe('favourites', () => {
         setFavourites(['Physics', 'Recipes'], async () => {})
         await renameFavourite('Physics', 'Physical Science')
         expect(getFavourites()).toEqual(['Physical Science', 'Recipes'])
+    })
+
+    it('forgets a deleted document by any of its names, in any case, and keeps the Views about it', async () => {
+        // A delete removes the document's favourite (ADR 0036 §4, amended 2026-11-03), whether it
+        // was favourited by its title or by an alias. A board or Map View for the concept works
+        // without a page, so it stays.
+        const persist = vi.fn().mockResolvedValue(undefined)
+        const board = { kind: 'kanban.board', concept: 'Garden' }
+        setFavourites(['garden', 'Kitchen', board, ' YARD ', 'Shed'], persist)
+
+        await forgetDocumentFavourites(['Garden', 'Yard'])
+
+        expect(getFavourites()).toEqual(['Kitchen', board, 'Shed'])
+        expect(persist).toHaveBeenCalledTimes(1)
+        expect(persist).toHaveBeenCalledWith(['Kitchen', board, 'Shed'])
+    })
+
+    it('writes nothing when no favourite names the deleted document', async () => {
+        const persist = vi.fn().mockResolvedValue(undefined)
+        setFavourites(['Kitchen', { kind: 'kanban.board', concept: 'Garden' }], persist)
+
+        await forgetDocumentFavourites(['Garden'])
+        await forgetDocumentFavourites([' ', ''])
+
+        expect(persist).not.toHaveBeenCalled()
+        expect(getFavourites()).toEqual(['Kitchen', { kind: 'kanban.board', concept: 'Garden' }])
+    })
+
+    it('puts the favourites back when forgetting them cannot be saved', async () => {
+        setFavourites(['Garden', 'Kitchen'], () => Promise.reject(new Error('read-only folder')))
+        await expect(forgetDocumentFavourites(['Garden'])).rejects.toThrow('read-only folder')
+        expect(getFavourites()).toEqual(['Garden', 'Kitchen'])
     })
 
     it('never drops an entry on its own', async () => {

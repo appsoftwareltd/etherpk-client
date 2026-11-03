@@ -13,10 +13,11 @@
  * An entry is a document (its concept's name) or a View, a Kanban board or a Map View, compared
  * by `favouriteKey` (favourite-entry.ts, ADR 0169).
  *
- * Nothing here prunes. A favourite whose [[Concept]] does not currently resolve stays put and
- * renders inert - on a Server Backend graph the registry hydrates asynchronously, so
+ * Nothing here prunes on its own. A favourite whose [[Concept]] does not currently resolve stays
+ * put and renders inert - on a Server Backend graph the registry hydrates asynchronously, so
  * "unresolvable" and "gone" are indistinguishable for the first seconds, and pruning would
- * sync a silent deletion to every device and Member (ADR 0036 §4).
+ * sync a silent deletion to every device and Member (ADR 0036 §4). The one removal it makes for
+ * the person is {@link forgetDocumentFavourites}, when they delete the document here.
  */
 
 import { type Favourite, favouriteConcept, favouriteKey, withFavouriteConcept } from './favourite-entry'
@@ -171,6 +172,20 @@ export async function renameFavourite(from: string, to: string): Promise<void> {
     const renamed = (entry: Favourite) => favouriteConcept(entry)?.trim().toLowerCase() === key
     if (!list.some(renamed)) return
     await commit(list.map((entry) => (renamed(entry) ? withFavouriteConcept(entry, to.trim()) : entry)))
+}
+
+/**
+ * A document deleted on this Client leaves the list (ADR 0036 §4, amended 2026-11-03): each
+ * document favourite naming one of `names`, its title and its aliases, compared case-insensitively.
+ * Without this the row stays and opens a [[Draft]] over a name nothing answers to any more. A View
+ * about the concept (its Kanban board, its Map View) stays: it works without a page. One write, and
+ * none when nothing matches.
+ */
+export async function forgetDocumentFavourites(names: readonly string[]): Promise<void> {
+    const gone = new Set(names.map((name) => favouriteKey(name)).filter((key) => key !== 'd:'))
+    const kept = list.filter((entry) => !gone.has(favouriteKey(entry)))
+    if (kept.length === list.length) return
+    await commit(kept)
 }
 
 /**

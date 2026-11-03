@@ -99,6 +99,22 @@ describe('an extension context', () => {
         expect(() => context.contextMenu.register({ id: 'show', label: 'Show', command: 'graph-view.showConcept' })).toThrow('Context Menu row "show" must start with "graph-view."')
     })
 
+    it('names the task a menu was raised on as the Client finds it, and nothing for any other target', () => {
+        const { context, services } = setUp()
+        services.menuTask = (target) => ((target as { kind?: string }).kind === 'task' ? { document: 'Garden', line: 2, label: 'water the beans' } : null)
+        expect(context.contextMenu.taskOf({ kind: 'task', document: 'Garden', line: 2, label: 'water the beans', done: false } as never)).toEqual({ document: 'Garden', line: 2, label: 'water the beans' })
+        expect(context.contextMenu.taskOf({ kind: 'document-tab', concept: 'Garden' })).toBeNull()
+    })
+
+    it("hands a notice and its one action to the Client's notices", async () => {
+        const { context, services } = setUp()
+        const run = vi.fn()
+        context.notify('Deleted "Build the shed".', { action: { label: 'Undo', run } })
+        context.notify('Saved.')
+        expect(services.notify).toHaveBeenNthCalledWith(1, 'Deleted "Build the shed".', { action: { label: 'Undo', run } })
+        expect(services.notify).toHaveBeenNthCalledWith(2, 'Saved.', undefined)
+    })
+
     it('adds Graph Sidebar buttons under its id, with its own icons named under it, and takes them back when disposed', () => {
         const { scoped, context, contributions } = setUp()
         context.graphSidebar.register({ id: 'graph-view.openWhole', title: 'Graph View', command: 'graph-view.openWhole', icon: 'graph-view' })
@@ -325,6 +341,13 @@ describe("an extension's editor, dialogs and frames", () => {
         expect(client.dialogs.choose).toHaveBeenCalledWith(choose, 'Graph View')
     })
 
+    it('asks for a date in the calendar the Client draws beside the element it names', async () => {
+        const { context, client } = setUp()
+        const anchor = {} as HTMLElement
+        await context.dialogs.pickDate({ anchor, value: '2026-11-09', label: 'Sowing date' })
+        expect(client.dialogs.pickDate).toHaveBeenCalledWith({ anchor, value: '2026-11-09', label: 'Sowing date' })
+    })
+
     it('names the hosts a frame may show, and refuses any other', () => {
         const { context } = setUp()
         expect(context.embeds.frameHosts).toEqual(['https://www.youtube-nocookie.com', 'https://player.vimeo.com'])
@@ -385,6 +408,19 @@ describe('an extension from the Extension Directory', () => {
         const { context, contributions } = setUp({ installed: true })
         expect(() => use(context)).toThrow(`context.${member} is in the Proposed part of the Extension API, which only the extensions that come with EtherPK may use.`)
         expect(contributions.has('interactive-fence', 'map')).toBe(false)
+    })
+
+    it("draws a fence in the editor frame only for an extension that comes with EtherPK, which is Proposed", () => {
+        const widget = { height: () => 200, mount: () => ({ update: () => {}, destroy: () => {} }) }
+        const installed = setUp({ installed: true })
+        expect(() => installed.context.editor.registerFence('graph-view.plan', widget, { frame: 'editor' })).toThrow("A fence's frame is in the Proposed part of the Extension API")
+        expect(installed.contributions.has('interactive-fence', 'graph-view.plan')).toBe(false)
+
+        const builtIn = setUp()
+        builtIn.context.editor.registerFence('graph-view.plan', widget, { frame: 'editor', identify: () => 'k1' })
+        const framed = builtIn.contributions.get('interactive-fence', 'graph-view.plan') as { height(info: object): number }
+        // Not edited: the widget's own height; the toolbar's is added only while it is.
+        expect(framed.height({ info: 'graph-view.plan', body: [], document: 'Garden', ordinal: 0 })).toBe(200)
     })
 
     it("cannot read the text of an inline panel's line, which is Proposed, and keeps every Stable part of the panel", () => {

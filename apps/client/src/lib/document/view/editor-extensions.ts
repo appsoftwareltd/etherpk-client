@@ -69,6 +69,7 @@ import { type EditorDocumentInfo, editorDocument } from './editor-document'
 import { endOfDocument } from './end-of-document'
 import { keepCaretVisible } from './keep-caret-visible'
 import { lineAnchor } from './line-anchor'
+import { shownRange, type ShownRangeOf, showsPart } from './shown-range'
 import { editorOnScreen } from './editor-on-screen'
 import { wrapSelectionInput } from './wrap-selection'
 
@@ -131,6 +132,17 @@ export interface EditorExtensionServices {
      * which it then keeps up to date with `setEditorOnScreen`. Absent, the editor is on screen.
      */
     onScreen?: () => boolean
+    /**
+     * Show only the lines this finds, and keep the person's edits inside them (`shown-range.ts`): the
+     * [[Task Editor]]'s description and comments (ADR 0170). Absent, the editor shows everything.
+     */
+    shownRange?: ShownRangeOf
+    /**
+     * The editor shows one part of a document without a `shownRange`: a new task's description, held
+     * in memory until the task is written (ADR 0170). The Command Menu then offers only the rows that
+     * act on the text, as in an editor with a `shownRange`.
+     */
+    partOfDocument?: boolean
 }
 
 /** One named feature of the stack: the name is what the order test asserts on. */
@@ -166,6 +178,10 @@ export function editorFeatures(services: EditorExtensionServices): EditorFeature
     }
 
     return [
+        // An editor showing part of its document (the Task Editor, ADR 0170) first of all: its filter
+        // and its hidden lines are `Prec.highest`, and first in that bucket its filter runs after every
+        // other (the Extension Fence's caret among them) and its hidden lines draw over any widget.
+        { name: 'shown-range', extension: services.shownRange ? shownRange(services.shownRange) : services.partOfDocument ? showsPart() : [] },
         // Transaction filters first: a multi-line selection in a bullet region snaps to whole blocks,
         // and an empty-selection caret can never rest left of a line's content column (ADR 0021).
         { name: 'block-selection', extension: blockSelection() },

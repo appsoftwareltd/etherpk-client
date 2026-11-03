@@ -35,6 +35,7 @@ import { EditorView, ViewPlugin, type ViewUpdate } from '@codemirror/view'
 
 import { lineIndent } from '../../outliner'
 import { analysisFor } from '../analysis/editor-analysis'
+import { outlineBaseIn } from './outline-base'
 import { quoteEndsAt } from './blockquote-core'
 import { bulletDotOffset, proseMetricsField } from './content-clamp'
 import { quotePanelBottom } from './markdown-format'
@@ -77,11 +78,19 @@ function measureMarker(view: EditorView, line: { from: number; text: string }): 
  * The guide threads for `state`, as the overlay draws them: the analysis's branches, and the syntax
  * tree for where a quote ends. `within` is the 0-based line range to keep threads for. The rule
  * tables call this too, so the rows and the overlay cannot be wired differently.
+ *
+ * In an editor that draws one part of its document from the part's own level (`outline-base.ts`,
+ * the Task Editor's description and comments), a thread hangs only from a line the part shows. The
+ * task's thread, and the Comments bullet's, would otherwise run down beside every line shown, left of
+ * the part's first level, which is drawn at the left edge. A shown parent's branch never reaches past
+ * the part, so nothing else is cut.
  */
 export function guideThreadsFor(state: EditorState, within?: { from: number; to: number }): GuideThread[] {
     const analysis = analysisFor(state)
     const tree = syntaxTree(state)
-    return guideThreads(analysis.lines, analysis.branchEnds, analysis.outline, (line) => quoteEndsAt(tree, state.doc, line), within)
+    const threads = guideThreads(analysis.lines, analysis.branchEnds, analysis.outline, (line) => quoteEndsAt(tree, state.doc, line), within)
+    const shown = outlineBaseIn(state)?.shown
+    return shown ? threads.filter((thread) => thread.parent >= shown.first && thread.parent <= shown.last) : threads
 }
 
 /** The bottom (viewport px) of the quote panel on the rendered line starting at `lineFrom`, or null. */

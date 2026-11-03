@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { appendFenceLine, applyFenceBodyEdit, removeFenceLine, replaceFenceLine, safeFenceLine } from './fence-body'
+import { appendFenceLine, applyFenceBodyEdit, removeFenceLine, replaceFenceLine, safeFenceLine, undoingFenceBodyEdits } from './fence-body'
 
 // What an interactive fence's widget asks the editor to do to its text, line by line: a Map
 // Block adds, moves, renames and removes its places this way (ADR 0118). A change names the text
@@ -51,5 +51,31 @@ describe('a line that may sit in a fence', () => {
         expect(safeFenceLine('Pub ``` @ 1, 2')).toBe('Pub ``` @ 1, 2')
         expect(safeFenceLine('```Pub @ 50.1, -1.2')).toBe('```Pub @ 50.1, -1.2')
         expect(safeFenceLine('~~~')).toBe('~~~')
+    })
+})
+
+// A widget drawn in a tab or the window has no editor history, so the host keeps the undo of the
+// widget's own edits there: the edits that take the body back, checked like any other.
+describe('undoing a widget’s edits', () => {
+    const apply = (body: string[], edits: Parameters<typeof undoingFenceBodyEdits>[1]) => edits.reduce<string[] | null>((b, e) => (b ? applyFenceBodyEdit(b, e) : null), body)
+
+    it('takes the body back from inserts, replacements and removals made together', () => {
+        const body = ['{"id":"k1"}', 'Garden', 'Kitchen']
+        const edits = [appendFenceLine(body, 'Shed'), replaceFenceLine(1, 'Garden', 'Orchard'), removeFenceLine(2, 'Kitchen')]
+        const after = apply(body, edits)!
+        expect(after).toEqual(['{"id":"k1"}', 'Orchard', 'Shed'])
+        const undo = undoingFenceBodyEdits(body, edits)!
+        expect(apply(after, undo)).toEqual(body)
+    })
+
+    it('expects each line as it was written, a fence line among them', () => {
+        const undo = undoingFenceBodyEdits([], [appendFenceLine([], '```')])!
+        expect(undo).toEqual([removeFenceLine(0, safeFenceLine('```'))])
+    })
+
+    it('is nothing for edits that would not apply, and refuses once the lines have changed since', () => {
+        expect(undoingFenceBodyEdits(['Garden'], [removeFenceLine(0, 'Kitchen')])).toBeNull()
+        const undo = undoingFenceBodyEdits(['Garden'], [replaceFenceLine(0, 'Garden', 'Orchard')])!
+        expect(apply(['Kitchen'], undo)).toBeNull()
     })
 })

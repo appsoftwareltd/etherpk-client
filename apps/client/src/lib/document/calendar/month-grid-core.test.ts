@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+    DATE_PICKER_MOVES,
     formatISODate,
     isCalendarDay,
     monthGridDays,
@@ -124,5 +125,28 @@ describe('yearGridMonths', () => {
         expect(months[0]).toMatchObject({ year: 2026, month: 0 })
         expect(months[11]).toMatchObject({ year: 2026, month: 11 })
         expect(months.every((m) => m.label.length > 0)).toBe(true)
+    })
+})
+
+describe('DATE_PICKER_MOVES', () => {
+    // One key table for every Date Picker: the editor's, driven from a CodeMirror keymap, and the
+    // one the Client draws for an extension, driven from the grid's own keydown.
+    const from = new Date(2026, 0, 31)
+    const moved = (key: string) => formatISODate(DATE_PICKER_MOVES[key](from))
+
+    it('moves a day sideways and a week up or down', () => {
+        expect(moved('ArrowRight')).toBe('2026-02-01')
+        expect(moved('ArrowLeft')).toBe('2026-01-30')
+        expect(moved('ArrowDown')).toBe('2026-02-07')
+        expect(moved('ArrowUp')).toBe('2026-01-24')
+    })
+
+    it('pages a month, keeping the day where the month has it', () => {
+        expect(moved('PageDown')).toBe('2026-02-28')
+        expect(moved('PageUp')).toBe('2025-12-31')
+    })
+
+    it('binds no other key', () => {
+        expect(Object.keys(DATE_PICKER_MOVES).sort()).toEqual(['ArrowDown', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'PageDown', 'PageUp'])
     })
 })

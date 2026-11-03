@@ -97,7 +97,8 @@
     import { type LinkRenameChoice, type LinkRenameRow, previewPlans, runInOrder, type RunStatus, scopeRenamesInTypedName, usesScopeBeyondPage } from "#lib/document/view/link-renames.js";
     import SearchModal from "#lib/document/view/SearchModal.svelte";
     import TasksView from "#lib/document/view/TasksView.svelte";
-    import { registerTaskReferenceCommands } from "#lib/document/commands/task-reference-commands.js";
+    import { menuTargetTask, registerTaskReferenceCommands } from "#lib/document/commands/task-reference-commands.js";
+    import { registerTaskStatusCommands } from "#lib/document/commands/task-status-commands.js";
     import { everyIndexedTask, parseTaskReference, resolveTaskReference, type TaskReference } from "#lib/document/task-reference.js";
     import { taskDateKey } from "#lib/document/index-db.js";
     import QuickNotesView from "#lib/document/view/QuickNotesView.svelte";
@@ -316,6 +317,7 @@
     import DeleteAssetDialog from "#lib/document/ui/DeleteAssetDialog.svelte";
     import {
         adoptFavourites,
+        forgetDocumentFavourites,
         resetFavourites,
         setFavourites,
         renameFavourite,
@@ -323,6 +325,7 @@
     import {
         getBookmarks,
         removeBookmarks,
+        removeBookmarksOnConcepts,
         renameBookmarkConcept,
         setBookmarks,
         subscribeBookmarks,
@@ -349,6 +352,7 @@
     import ContextMenu from "#lib/surface/ui/ContextMenu.svelte";
     import {
         type CommandRegistry,
+        type ContextMenuTarget,
         type EventBus,
         attachKeybindings,
         createCommandRegistry,
@@ -379,6 +383,7 @@
     import { filesystemReadSource, serverReadSource } from "#lib/agent-read/read-sources.js";
     import { tryGetActiveAssetStore } from "#lib/document/active-asset-store.js";
     import { createExtensionAssets } from "#lib/extensions/extension-assets.js";
+    import { closeLightbox, openLightbox } from "#lib/components/lightbox/lightbox.js";
     import { closeExtensionWindow, openExtensionWindow } from "#lib/extensions/extension-window.js";
     import { graphRecords } from "#lib/extensions/graph-records.js";
     import { openExtensionPanel } from "#lib/extensions/inline-panel.js";
@@ -660,6 +665,7 @@
         publishWorkspaceServices,
         updateWorkspaceServices,
         type WorkspaceGeneration,
+        workspaceService,
     } from "./workspace-services";
     import {
         clearGraphAccent,
@@ -880,13 +886,15 @@
 
     /**
      * Show the status, replacing whatever was showing. A "Could not …" stays until closed;
-     * anything else goes by itself after the rail's shared delay.
+     * anything else goes by itself after the rail's shared delay. An extension's notice may carry
+     * one button (`context.notify(text, { action })`), such as the Task Editor's Undo.
      */
-    function notify(text: string) {
+    function notify(text: string, action?: { label: string; run: () => void | Promise<void> }) {
         showNotice({
             id: STATUS_NOTICE,
             text,
             tone: text.startsWith("Could not") ? "error" : "info",
+            ...(action ? { actions: [{ label: action.label, run: action.run, id: "workspace-notice-action" }] } : {}),
         });
     }
     /** What a tab that followed a rename made outside this tab says happened. */
@@ -1442,7 +1450,8 @@
     let detachEditorCommands: (() => void) | undefined;
     let detachLinkCommands: (() => void) | undefined;
     let detachDocumentCommands: (() => void) | undefined;
-    let detachTaskReferenceCommands: (() => void) | undefined;
+    /** Copy task reference, and a task's status and priority rows: the Commands a task's menus run. */
+    let detachTaskCommands: (() => void) | undefined;
     let detachQuickNotesCommands: (() => void) | undefined;
     let detachBookmarkCommands: (() => void) | undefined;
     let detachPasteCommands: (() => void) | undefined;
@@ -1476,14 +1485,19 @@
         recents: () => recents,
         renameFavourite,
         renameBookmarks: renameBookmarkConcept,
-        // The name has moved when a list's write is refused (a folder graph's file that cannot be
-        // written): the rest of the rename goes ahead, and this says which list kept the old name.
-        // Worded for a page renamed and for a concept moved by its link alike.
-        listUpdateFailed: (list, error) => {
+        // A delete takes the document's favourites and the bookmarks into it along (ADR 0036 §4,
+        // amended 2026-11-03); Views about its concept stay.
+        forgetFavourites: forgetDocumentFavourites,
+        forgetBookmarks: removeBookmarksOnConcepts,
+        // The name has moved, or the document has gone, when a list's write is refused (a folder
+        // graph's file that cannot be written): the rest of the mutation goes ahead, and this says
+        // which list still holds the old name. The rename wording covers a page renamed and a
+        // concept moved by its link alike.
+        listUpdateFailed: (list, error, mutation) => {
             showNotice({
-                id: `rename-${list}`,
+                id: `${mutation}-${list}`,
                 tone: "error",
-                text: `Your ${list} were not updated to the new name. ${sentenceOf(error)}`.trim(),
+                text: `${mutation === "delete" ? `Your ${list} still include the deleted page.` : `Your ${list} were not updated to the new name.`} ${sentenceOf(error)}`.trim(),
             });
         },
         // On a synced graph a rename made here also moves the concept in every Member's own
@@ -1494,6 +1508,14 @@
             if (!isServerStore || !serverGraph) return;
             if (serverGraph.renameConceptInMemberLists(moves).length > 0) {
                 serverGraph.flushAll().catch((error: unknown) => console.warn("[rename] could not send the renamed lists", error));
+            }
+        },
+        // A delete made here takes the document out of every Member's own lists on a synced graph
+        // too, as a rename moves it in them, and leaves the debounce at once for the same reason.
+        forgetInMemberLists: (names) => {
+            if (!isServerStore || !serverGraph) return;
+            if (serverGraph.forgetDocumentInMemberLists(names).length > 0) {
+                serverGraph.flushAll().catch((error: unknown) => console.warn("[delete] could not send the updated lists", error));
             }
         },
         // A kind registered as being about a concept (a board, a Map View) follows a rename.
@@ -4662,7 +4684,9 @@
             },
             concepts: { key: conceptKey, canonicalName: canonicalConceptName },
             keybindings: keybindingTable,
-            notify: (text) => notify(text),
+            notify: (text, options) => notify(text, options?.action),
+            // The task a menu was raised on, for an extension's row offered on every task.
+            menuTask: (target) => (target && typeof target === "object" && "kind" in target ? menuTargetTask(target as ContextMenuTarget) : null),
             // What an Agent Chat reads for a language model (ADR 0147): the store's own copy, never
             // the protected projection the editors are given, so an unlocked Protected Document's
             // plaintext cannot reach an extension, and every protected name left out.
@@ -4672,7 +4696,7 @@
                 today: () => todayISO(),
             }),
             records: (extensionId) => graphRecords(graphId, extensionId),
-            assets: createExtensionAssets({ store: () => tryGetActiveAssetStore() }),
+            assets: createExtensionAssets({ store: () => tryGetActiveAssetStore(), view: openLightbox }),
             editor: {
                 insertBlock(text, options) {
                     const view = getActiveEditorView();
@@ -4697,13 +4721,22 @@
         // Copy task reference (ADR 0114): the task on the caret's line, or a card's, on the
         // clipboard as its words and an address, to hand to an agent. Said, since a clipboard
         // shows nothing of its own.
-        detachTaskReferenceCommands = registerTaskReferenceCommands(commandRegistry, contributions, {
+        const detachTaskReferences = registerTaskReferenceCommands(commandRegistry, contributions, {
             graphId: () => graphId,
             // A synced graph's own name, as its export names it; a folder graph's display name.
             graphName: () => serverGraph?.getMeta().name || graphDisplayName || null,
             writeClipboard: (text) => navigator.clipboard.writeText(text),
             notify: (text) => notify(text),
         });
+        // A task's status and priority from its menu, on its editor line and a Tasks View row, as
+        // a Kanban card's menu sets them. The published store, the one the Tasks View ticks through.
+        const detachTaskStatuses = registerTaskStatusCommands(commandRegistry, contributions, {
+            store: () => workspaceService("store") ?? null,
+        });
+        detachTaskCommands = () => {
+            detachTaskReferences();
+            detachTaskStatuses();
+        };
         // The Quick Notes move and its Command Menu row (ADR 0078). The raw store, not the
         // protection decorator: a journal cannot be protected, and a bare open through the
         // decorator would leave a wrapper retained for nothing.
@@ -4748,6 +4781,7 @@
                 copyImage: copyImageToClipboard,
                 openAsset: (assetId) =>
                     controller?.openView({ kind: "asset", target: assetId }),
+                viewImage: (image) => void openLightbox([image]),
                 canOpen: canOpenAsset,
                 canCopyImage: canCopyImageAsset,
                 applyToEditor: (command) => {
@@ -7332,8 +7366,8 @@
         setFenceHosting(null);
         detachThemeEvents?.();
         detachThemeEvents = undefined;
-        detachTaskReferenceCommands?.();
-        detachTaskReferenceCommands = undefined;
+        detachTaskCommands?.();
+        detachTaskCommands = undefined;
         detachQuickNotesCommands?.();
         detachQuickNotesCommands = undefined;
         detachBookmarkCommands?.();
@@ -7366,6 +7400,8 @@
         protectionPasskeyBound = false;
         detachAssetCommands?.();
         detachAssetCommands = undefined;
+        // The Lightbox shows this graph's images, whose addresses go with it.
+        closeLightbox();
         detachTabCommands?.();
         detachTabCommands = undefined;
         detachAssetViewers?.();

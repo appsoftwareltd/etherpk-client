@@ -26,6 +26,10 @@ describe('/map', () => {
         expect(titles()).toContain('Map')
     })
 
+    it('is offered in a Kanban task’s description too: it inserts a block at the caret', () => {
+        expect(titles({ partOfDocument: true })).toContain('Map')
+    })
+
     it('is not offered in a Protected Document, unlocked or not, where no map is drawn', () => {
         expect(titles({ protectedDocument: true })).not.toContain('Map')
     })

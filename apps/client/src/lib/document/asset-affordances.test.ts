@@ -63,13 +63,14 @@ describe('canCopyImageAsset', () => {
 })
 
 describe('assetActions', () => {
-    it('leads with copy on an image, ahead of the three every asset has', () => {
+    it('leads with copy on an image and puts View larger just before open, among the three every asset has', () => {
         withImageClipboard()
         withPdfViewer()
 
         expect(assetActions(PNG).map((a) => a.command)).toEqual([
             'asset.copy-image',
             'asset.download',
+            'asset.view-image',
             'asset.delete',
         ])
     })
@@ -81,7 +82,12 @@ describe('assetActions', () => {
         expect(assetActions(PDF).map((a) => a.command)).not.toContain('asset.copy-image')
     })
 
-    it('drops copy with download when the bytes are gone: there is nothing to put on the clipboard', () => {
+    it('offers View larger on an image even where the clipboard takes none, and never on another file', () => {
+        expect(assetActions(PNG).map((a) => a.command)).toEqual(['asset.download', 'asset.view-image', 'asset.delete'])
+        expect(assetActions(PDF).map((a) => a.command)).not.toContain('asset.view-image')
+    })
+
+    it('drops copy and View larger with download when the bytes are gone: there is nothing to show or hand over', () => {
         withImageClipboard()
 
         expect(assetActions(PNG, { canDownload: false }).map((a) => a.command)).toEqual(['asset.delete'])
@@ -90,7 +96,7 @@ describe('assetActions', () => {
     it('gives copy a confirmation to show, since a copy leaves nothing visible behind', () => {
         withImageClipboard()
 
-        expect(assetActions(PNG)[0].confirm).toEqual({ icon: 'check', label: 'Copied' })
+        expect(assetActions(PNG).find((a) => a.command === 'asset.copy-image')?.confirm).toEqual({ icon: 'check', label: 'Copied' })
     })
 
     it('offers all three where the type can be shown', () => {

@@ -10,6 +10,7 @@ import {
     removeAllBookmarks,
     removeBookmarks,
     removeBookmarksForUndo,
+    removeBookmarksOnConcepts,
     renameBookmarkConcept,
     resetBookmarks,
     restoreBookmarks,
@@ -100,6 +101,22 @@ describe('the bookmark list', () => {
         setBookmarks([bookmark('a', 'Garden'), bookmark('b', 'Kitchen')], null)
         await renameBookmarkConcept('garden', 'Allotment')
         expect(getBookmarks().map((b) => b.concept)).toEqual(['Allotment', 'Kitchen'])
+    })
+
+    it('removes the bookmarks into a deleted document, by any of its names, and nothing else', async () => {
+        const persist = vi.fn<BookmarksPersist>().mockResolvedValue()
+        setBookmarks([bookmark('a', 'garden'), bookmark('b', 'Kitchen'), bookmark('c', 'YARD')], persist)
+        await removeBookmarksOnConcepts(['Garden', ' Yard '])
+        expect(getBookmarks().map((b) => b.id)).toEqual(['b'])
+        expect(persist).toHaveBeenCalledTimes(1)
+        expect(persist.mock.calls[0][0]).toEqual({ put: [], remove: ['a', 'c'] })
+    })
+
+    it('writes nothing when no bookmark is in the deleted document', async () => {
+        const persist = vi.fn<BookmarksPersist>().mockResolvedValue()
+        setBookmarks([bookmark('b', 'Kitchen')], persist)
+        await removeBookmarksOnConcepts(['Garden'])
+        expect(persist).not.toHaveBeenCalled()
     })
 
     it('adopts a list that arrived from elsewhere without persisting it', () => {

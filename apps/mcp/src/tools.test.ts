@@ -12,6 +12,7 @@ import { createMemoryDirectoryAdapter } from '#lib/storage/fs/memory-adapter.js'
 import { assetNameFromRef, createAssetStore } from '#lib/storage/fs/asset-store.js'
 
 import { fakeEmbeddingModel } from '#lib/document/semantic/embedding-model.js'
+import { taskFingerprint, taskReferenceId } from '#lib/document/task-reference.js'
 
 import { openHeadlessFolder } from './headless-folder'
 import { openHeadlessGraph, type HeadlessGraph, type HeadlessGraphDeps } from './headless-graph'
@@ -163,7 +164,7 @@ async function rejectsWith(promise: Promise<unknown>, code: ToolError['code']): 
 }
 
 describe('list_documents', () => {
-    it('lists pages and journals with aliases, and marks a protected page by name only', async () => {
+    it('lists pages and journals with aliases, and leaves a protected page out, its name included', async () => {
         const g = await graph('g-list')
         await seed(g, 'Kanban', '- board')
         await g.store.setAliases('Kanban', ['Board'])
@@ -172,12 +173,12 @@ describe('list_documents', () => {
         await indexed(g, () => g.index.allConcepts().some((c) => c.key === 'bank' && c.protected))
 
         const result = await listDocuments(g)
-        expect(result.total).toBe(3)
+        expect(result.total).toBe(2)
         expect(result.documents).toEqual([
             { concept: '2026-06-02', kind: 'journal', aliases: [] },
-            { concept: 'Bank', kind: 'page', aliases: [], protected: true },
             { concept: 'Kanban', kind: 'page', aliases: ['Board'] },
         ])
+        expect((await listDocuments(g, { kind: 'page' })).documents.map((d) => d.concept)).toEqual(['Kanban'])
         expect((await listDocuments(g, { kind: 'journal' })).documents.map((d) => d.concept)).toEqual(['2026-06-02'])
     })
 
@@ -205,12 +206,25 @@ describe('read_document', () => {
         expect(await readDocument(g, 'today')).toMatchObject({ concept: todayISO(), kind: 'journal', text: '- morning' })
     })
 
-    it('refuses a protected page with a typed error, and an unknown name with not_found', async () => {
+    it('answers a protected page, by its name or an alias, exactly as it answers a name nothing has', async () => {
         const g = await graph('g-read-protected')
         await seed(g, 'Bank', PROTECTED)
-        const refused = await rejectsWith(readDocument(g, 'Bank'), 'protected_document')
-        expect(refused.message).toContain('unlock it in EtherPK')
-        await rejectsWith(readDocument(g, 'Nope'), 'not_found')
+        await g.store.setAliases('Bank', ['Vault'])
+        await g.settle()
+        const missing = await rejectsWith(readDocument(g, 'Nope'), 'not_found')
+        expect(missing.message).toBe('No document is named "Nope".')
+        expect((await rejectsWith(readDocument(g, 'Bank'), 'not_found')).message).toBe('No document is named "Bank".')
+        expect((await rejectsWith(readDocument(g, 'vault'), 'not_found')).message).toBe('No document is named "vault".')
+    })
+
+    it('leaves out a document holding encrypted text beside plain text, as the index does', async () => {
+        // Not a Protected Document (protection is whole-document), but the index flags it and
+        // Agent Chat leaves it out, so the Headless Client does too: the safer side.
+        const g = await graph('g-read-fenced')
+        await seed(g, 'Cellar', `- water the beans\n${PROTECTED_BODY}`)
+        await indexed(g, () => g.index.allConcepts().some((c) => c.key === 'cellar' && c.protected))
+        await rejectsWith(readDocument(g, 'Cellar'), 'not_found')
+        expect((await listDocuments(g)).documents).toEqual([])
     })
 })
 
@@ -246,6 +260,36 @@ describe('search and backlinks', () => {
                 references: [{ kind: 'title', line: 0, breadcrumb: [], text: '[[Maths]] Proofs' }],
             },
         ])
+    })
+
+    it('answers backlinks to a protected page as to a name nothing links, and never names one as a source', async () => {
+        const g = await graph('g-backlinks-protected')
+        await seed(g, 'Bank', PROTECTED)
+        // A protected page scoped by Maths references it by its name alone (ADR 0083).
+        await seed(g, '[[Maths]] Secret', PROTECTED)
+        await seed(g, 'Ledger', '- pay the [[Bank]] and read [[Maths]]')
+        await indexed(g, async () => (await g.index.backlinks('Maths')).length === 2 && (await g.index.backlinks('Bank')).length === 1)
+
+        expect(await backlinks(g, 'Bank')).toEqual({ concept: 'Bank', sources: [] })
+        expect(await backlinks(g, 'Nope')).toEqual({ concept: 'Nope', sources: [] })
+        // A plain document's text that names a protected page is that document's, so it stays.
+        const maths = await backlinks(g, 'Maths')
+        expect(maths.sources.map((s) => s.concept)).toEqual(['Ledger'])
+        expect(maths.sources[0].references[0].text).toBe('pay the [[Bank]] and read [[Maths]]')
+    })
+
+    it('never answers with a document holding encrypted text, by words or by meaning', async () => {
+        const g = await graph('g-search-fenced', { embeddingModel: () => Promise.resolve(fakeEmbeddingModel()) })
+        await seed(g, 'Cellar', `- water the beans\n${PROTECTED_BODY}`)
+        await seed(g, 'Garden', '- water the beans daily')
+        await indexed(g, () => g.index.allConcepts().some((c) => c.key === 'cellar' && c.protected) && g.index.conceptExists('Garden'))
+        const semantic = await g.semantic()
+        await semantic.build()
+
+        expect((await search(g, { query: 'water beans' })).results.map((r) => r.concept)).toEqual(['Garden'])
+        expect((await search(g, { query: 'water the beans', mode: 'semantic' })).results.map((r) => r.concept)).toEqual(['Garden'])
+        const hybrid = await search(g, { query: 'water the beans', mode: 'hybrid' })
+        expect(JSON.stringify(hybrid)).not.toContain('Cellar')
     })
 
     it('refuses an empty query', async () => {
@@ -290,6 +334,54 @@ describe('tasks', () => {
         expect(acme.tasks[0]).toMatchObject({ concept: 'Acme', priority: 1, due: '2026-07-01', done: false })
         const done = await tasks(g, { statuses: ['done'] })
         expect(done.tasks.map((t) => t.text)).toEqual(['Done already'])
+    })
+
+    it('lists no task of a document holding encrypted text, and none for a protected name', async () => {
+        const g = await graph('g-tasks-protected')
+        await seed(g, 'Bank', PROTECTED)
+        await seed(g, 'Cellar', `- [ ] water the beans\n${PROTECTED_BODY}`)
+        await seed(g, 'Garden', '- [ ] water the [[Bank]] plants')
+        await indexed(g, () => g.index.allConcepts().some((c) => c.key === 'cellar' && c.protected) && g.index.conceptExists('Garden'))
+        await indexed(g, async () => (await g.index.tasks({ concept: null, statuses: ['open'], priorities: [1, 2, 3, null], due: 'any', groupBy: 'document', today: todayISO() }, 0, 10)).total >= 1)
+
+        expect((await tasks(g)).tasks.map((t) => t.concept)).toEqual(['Garden'])
+        expect(await tasks(g, { concept: 'Bank' })).toEqual({ tasks: [], total: 0, hasMore: false })
+        expect(await tasks(g, { concept: 'Cellar' })).toEqual({ tasks: [], total: 0, hasMore: false })
+    })
+
+    // A Lane Reference: one lane of a Kanban board, handed to an agent to work through. It lists
+    // what the board's lane shows: the board's concept (or every task) and the lane's status, every
+    // priority and every due date.
+    it("lists a Kanban lane's tasks from a lane reference, the whole copied text or its etherpk: address", async () => {
+        const g = await graph('g-lane')
+        await seed(g, 'Kitchen Garden', '- [ ] #D #P1 water the beans\n- [ ] #D #D-2026-07-01 weed the rows\n- [ ] dig the bed')
+        await seed(g, 'Shed', '- [ ] #D oil the hinge\n- Notes on [[Kitchen Garden]]\n  - [ ] #D sharpen the hoe')
+        await indexed(g, async () => (await tasks(g, { statuses: ['doing'] })).total === 4)
+
+        const copied = [
+            `EtherPK Kanban lane from the graph "Home" (${g.graphId})`,
+            'Board: Kitchen Garden',
+            'Lane: Doing (3 tasks)',
+            `Reference: etherpk:/g/${g.graphId}/k/Kitchen%20Garden#lane=doing`,
+            'This is not a web address.',
+        ].join('\n')
+        const lane = await tasks(g, { reference: copied })
+        expect(lane.tasks.map((t) => t.text).sort()).toEqual(['#D #D-2026-07-01 weed the rows', '#D #P1 water the beans', '#D sharpen the hoe'])
+
+        const whole = await tasks(g, { reference: `etherpk:/g/${g.graphId}/kanban#lane=doing` })
+        expect(whole.total).toBe(4)
+        // The rest of the filter still narrows it.
+        expect((await tasks(g, { reference: copied, priorities: [1] })).tasks.map((t) => t.text)).toEqual(['#D #P1 water the beans'])
+    })
+
+    it("refuses a lane reference that is no reference, that conflicts with the filter, or is another graph's", async () => {
+        const g = await graph('g-lane-refused')
+        await rejectsWith(tasks(g, { reference: 'the Doing lane' }), 'invalid_argument')
+        await rejectsWith(tasks(g, { reference: `etherpk:/g/${g.graphId}/k/Garden#lane=doing`, statuses: ['open'] }), 'invalid_argument')
+        await rejectsWith(tasks(g, { reference: `etherpk:/g/${g.graphId}/k/Garden#lane=doing`, concept: 'Shed' }), 'invalid_argument')
+        const elsewhere = 'etherpk:/g/another-graph/k/Garden#lane=doing'
+        if (g.backend.kind === 'synced') await rejectsWith(tasks(g, { reference: elsewhere }), 'other_graph')
+        else expect((await tasks(g, { reference: elsewhere })).total).toBe(0)
     })
 })
 
@@ -397,6 +489,16 @@ describe('create_page', () => {
         await rejectsWith(createPage(g, { title: 'Roadmap' }), 'already_exists')
         await rejectsWith(createPage(g, { title: '2026-06-02' }), 'invalid_argument')
         await rejectsWith(createPage(g, { title: '  ' }), 'invalid_argument')
+    })
+
+    it('refuses the name of a protected page as protected_document, so no second page takes it', async () => {
+        const g = await graph('g-create-protected')
+        await seed(g, 'Bank', PROTECTED)
+        await g.store.setAliases('Bank', ['Vault'])
+        await g.settle()
+        await rejectsWith(createPage(g, { title: 'bank' }), 'protected_document')
+        await rejectsWith(createPage(g, { title: 'Vault' }), 'protected_document')
+        expect(await text(g, 'Bank')).toBe(PROTECTED_TEXT)
     })
 })
 
@@ -667,6 +769,33 @@ describe('plan_rename and rename', () => {
         await rejectsWith(rename(g, { from: 'Plain', to: 'Other', strategy: 'merge' as never }), 'invalid_argument')
         await rejectsWith(rename(g, { from: 'Nope', to: 'Other' }), 'not_found')
     })
+
+    it('refuses a protected page as the new name, as protected_document', async () => {
+        const g = await graph('g-rename-onto-protected')
+        await seed(g, 'Bank', PROTECTED)
+        await seed(g, 'Plain', '- p')
+        await g.settle()
+        await rejectsWith(planRename(g, { from: 'Plain', to: 'bank' }), 'protected_document')
+        await rejectsWith(rename(g, { from: 'Plain', to: 'Bank', confirm_merge: true }), 'protected_document')
+        expect(await text(g, 'Plain')).toBe('- p')
+    })
+
+    it('carries a protected scoped page along without naming it, and counts it instead', async () => {
+        const g = await physics('g-rename-protected-cascade')
+        await seed(g, '[[Physics]] Secret', PROTECTED)
+        await indexed(g, () => g.index.allConcepts().some((c) => c.key === '[[physics]] secret' && c.protected))
+
+        const plan = await planRename(g, { from: 'Physics', to: 'Physical Science' })
+        expect(plan.cascade.map((s) => s.from)).toEqual(['[[Physics]] Quantum'])
+        expect(plan.protectedDocuments).toBe(1)
+        expect(JSON.stringify(plan)).not.toContain('Secret')
+
+        const result = await rename(g, { from: 'Physics', to: 'Physical Science' })
+        expect(result.cascaded).toEqual([{ from: '[[Physics]] Quantum', to: '[[Physical Science]] Quantum' }])
+        expect(JSON.stringify(result)).not.toContain('Secret')
+        // The rename still moved it, as a person's rename would.
+        expect(g.store.listDocuments().map((d) => d.concept)).toContain('[[Physical Science]] Secret')
+    })
 })
 
 describe('set_aliases', () => {
@@ -694,6 +823,16 @@ describe('set_aliases', () => {
         const g = await graph('g-aliases-protected')
         await seed(g, 'Bank', PROTECTED)
         await rejectsWith(setAliases(g, { concept: 'Bank', aliases: ['Vault'] }), 'protected_document')
+    })
+
+    it('refuses a protected page\'s alias as an alias elsewhere, without naming the page', async () => {
+        const g = await graph('g-aliases-protected-holder')
+        await seed(g, 'Bank', PROTECTED)
+        await g.store.setAliases('Bank', ['Vault'])
+        await seed(g, 'Kanban', '- board')
+        await g.settle()
+        const refused = await rejectsWith(setAliases(g, { concept: 'Kanban', aliases: ['vault'] }), 'protected_document')
+        expect(refused.message).not.toContain('Bank')
     })
 })
 
@@ -792,6 +931,13 @@ describe('assets', () => {
         await rejectsWith(readAsset(g, { ref: 'https://example.com/x.png' }), 'invalid_argument')
         await rejectsWith(listAssets(g, { concept: 'Nope' }), 'not_found')
     })
+
+    it('answers a protected page\'s assets as a name nothing has', async () => {
+        const g = await graph('g-assets-protected')
+        await seed(g, 'Bank', PROTECTED)
+        const refused = await rejectsWith(listAssets(g, { concept: 'Bank' }), 'not_found')
+        expect(refused.message).toBe('No document is named "Bank".')
+    })
 })
 
 describe('read_documents and journal ranges', () => {
@@ -807,7 +953,7 @@ describe('read_documents and journal ranges', () => {
         expect(result.documents).toEqual([
             expect.objectContaining({ concept: 'Alpha', text: '- a', frontmatter: {}, truncated: false }),
             expect.objectContaining({ concept: 'Beta', text: '- b' }),
-            { concept: 'Bank', error: 'protected_document', message: expect.stringContaining('protected') },
+            { concept: 'Bank', error: 'not_found', message: 'No document is named "Bank".' },
             { concept: 'Nope', error: 'not_found', message: expect.stringContaining('Nope') },
         ])
         await rejectsWith(readDocuments(g, { concepts: [] }), 'invalid_argument')
@@ -973,20 +1119,31 @@ describe('task references', () => {
         expect(await readTask(g, { reference })).toMatchObject({ line: 3, status: 'doing', foundBy: 'moved' })
     })
 
-    it('writes a note under the task, after what is already nested there', async () => {
+    it("writes a note as a Task Comment under the task's Comments bullet, starting one as its last child", async () => {
         const { g, reference } = await withTask('g-ref-note')
-        await addTaskNote(g, { reference, text: 'Sent it by email' })
-        await addTaskNote(g, { reference, text: '- Attached the price list\n  - v2' })
+        expect(await addTaskNote(g, { reference, text: 'Sent it by email' })).toMatchObject({ line: 2, noteLine: 5 })
+        expect(await addTaskNote(g, { reference, text: '- Attached the price list\n  - v2' })).toMatchObject({ noteLine: 6 })
         expect((await readDocument(g, 'Plan')).text.split('\n')).toEqual([
             '# Launch',
             '- Call with [[Acme]]',
             '  - [ ] #P1 Send the quote',
             '    - pricing from March',
-            '    - Sent it by email',
-            '    - Attached the price list',
-            '      - v2',
+            '    - Comments',
+            '      - Sent it by email',
+            '      - Attached the price list',
+            '        - v2',
             '- [ ] Book the train',
         ])
+        expect(await readTask(g, { reference })).toMatchObject({ comments: ['Sent it by email', 'Attached the price list\n  - v2'] })
+    })
+
+    it('adds to a Comments bullet that is not the last child, and leaves a note written before Comments existed where it is', async () => {
+        const g = await graph('g-ref-note-existing')
+        await seed(g, 'Plan', '- [ ] Paint the shed\n  - Sent the colour earlier\n  - Comments\n    - asked for blue\n  - buy brushes')
+        await indexed(g, async () => (await tasks(g, { concept: 'Plan' })).total === 1)
+        const reference = (await tasks(g, { concept: 'Plan' })).tasks[0].reference
+        await addTaskNote(g, { reference, text: 'Bought the paint' })
+        expect((await readDocument(g, 'Plan')).text).toBe('- [ ] Paint the shed\n  - Sent the colour earlier\n  - Comments\n    - asked for blue\n    - Bought the paint\n  - buy brushes')
     })
 
     it('refuses once the words are edited, and refuses what is not a reference', async () => {
@@ -996,6 +1153,17 @@ describe('task references', () => {
         await rejectsWith(setTask(g, { reference, changes: { status: 'done' } }), 'task_not_found')
         expect((await readDocument(g, 'Plan')).text).toContain('- [ ] #P1 Send the new quote')
         await rejectsWith(readTask(g, { reference: 'Send the quote' }), 'invalid_argument')
+    })
+
+    it('reads a reference into a protected page as not found, and refuses a write there as protected_document', async () => {
+        const g = await graph('g-ref-protected')
+        await seed(g, 'Bank', PROTECTED)
+        await g.settle()
+        const reference = taskReferenceId({ graphId: g.graphId, document: 'Bank', line: 0, fingerprint: await taskFingerprint('pay the bill') })
+        await rejectsWith(readTask(g, { reference }), 'task_not_found')
+        await rejectsWith(setTask(g, { reference, changes: { status: 'done' } }), 'protected_document')
+        await rejectsWith(addTaskNote(g, { reference, text: 'paid' }), 'protected_document')
+        expect(await text(g, 'Bank')).toBe(PROTECTED_TEXT)
     })
 
     it("checks a synced graph's reference against the graph served, and a folder's not at all", async () => {
@@ -1174,6 +1342,29 @@ describe('the Graph View tools', () => {
         expect(await graphPath(g, { from: 'water', to: 'Soil' })).toEqual({ from: 'Water', to: 'Soil', path: ['Water', 'Monstera', 'Plants', 'Soil'], steps: 3 })
         expect(await graphPath(g, { from: 'Alone', to: 'Plants' })).toEqual({ from: 'Alone', to: 'Plants', path: null, steps: null })
         await rejectsWith(graphPath(g, { from: 'Nowhere', to: 'Plants' }), 'not_found')
+    })
+
+    it('leaves a protected page out of the picture: no Hub, no page asked for, no end or step of a path', async () => {
+        const g = await garden('g-graph-protected')
+        // Two documents link Bank, which would make it a Hub; were it dropped as a name only, it
+        // would read as a page worth writing. Bank is the only thing joining Shed to the garden.
+        await seed(g, 'Bank', PROTECTED)
+        await seed(g, '[[Plants]] Secret', PROTECTED)
+        await seed(g, 'Ledger', '- pay the [[Bank]]')
+        await seed(g, 'Shed', '- the [[Bank]] and the [[Soil]]')
+        await indexed(g, async () => (await g.index.linkGraph()).concepts.filter((c) => c.protected).length === 2 && (await g.index.linkGraph()).links.length === 12)
+
+        for (const options of [{}, { pageless: 'all' as const, limit: 50 }]) {
+            const insights = await graphInsights(g, options)
+            expect(JSON.stringify(insights)).not.toMatch(/Bank|Secret/)
+            expect(insights.pageless.map((row) => row.concept)).not.toContain('Bank')
+        }
+        expect((await graphInsights(g, {})).isolated.concepts).toEqual(['Alone', 'Ledger'])
+
+        await rejectsWith(graphPath(g, { from: 'Bank', to: 'Plants' }), 'not_found')
+        await rejectsWith(graphPath(g, { from: 'Ledger', to: '[[Plants]] Secret' }), 'not_found')
+        expect(await graphPath(g, { from: 'Ledger', to: 'Shed' })).toEqual({ from: 'Ledger', to: 'Shed', path: null, steps: null })
+        expect((await graphPath(g, { from: 'Shed', to: 'Plants' })).path).toEqual(['Shed', 'Soil', 'Plants'])
     })
 
     it('graph_path says so when an end is a journal entry and journal entries are left out', async () => {

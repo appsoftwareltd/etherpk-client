@@ -8,13 +8,20 @@
  * - `saveImage` keeps an image as one of the graph's assets through the store a paste saves into,
  *   optimised as a paste is, and answers the markdown that shows it, with the graph's default
  *   display size as a pasted image carries it.
+ * - `describe` names the asset a reference points at as a person reads it, and `imageUrl` reads an
+ *   image through the same store the editor draws one from, so a list of a task's assets (the
+ *   Kanban Task Editor's) shows the pictures the document does.
+ * - `viewImages` shows the images among a list of references in the [[Lightbox]], named as
+ *   `describe` names them, so a thumbnail opens the picture larger as View larger does in a document.
  */
-import type { ExtensionAssets } from '@appsoftwareltd/etherpk-extension-api'
+import type { AssetDescription, ExtensionAssets } from '@appsoftwareltd/etherpk-extension-api'
+
+import { assetLightboxImage, type LightboxImage } from '#lib/components/lightbox/lightbox-image.js'
 
 import { defaultMaxImageDisplaySize } from '#lib/document/view/asset-upload.js'
 import { canvasToBlob, drawImageToCanvas } from '#lib/document/view/image-canvas.js'
 import { canvasEncoder, optimizeImage } from '#lib/document/view/image-optimize.js'
-import { type AssetStore, buildAssetMarkdown } from '#lib/storage/fs/asset-store.js'
+import { assetNameFromRef, type AssetStore, buildAssetMarkdown, displayAssetName, isImageExt, splitNameExt } from '#lib/storage/fs/asset-store.js'
 
 /** The longest side an image is sent at, in pixels: what the large models read without scaling it again. */
 export const MAX_PREPARED_EDGE = 2048
@@ -34,7 +41,26 @@ function named(name: string, type: string): string {
     return ext ? `${stem}.${ext}` : name
 }
 
-export function createExtensionAssets(deps: { store: () => AssetStore | null }): ExtensionAssets {
+/**
+ * The id a synced graph writes into an asset's name to keep names apart (`plan.<uuid>.png`), as a
+ * Filesystem graph writes a content hash; the hash is taken out by `displayAssetName`.
+ */
+const ASSET_ID_SEGMENT = /\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?=\.[^.]+$|$)/
+
+/** What `ref` names, or null when it names no asset. */
+function describeAsset(ref: string): AssetDescription | null {
+    const fileName = assetNameFromRef(ref)
+    if (fileName === null) return null
+    return { name: displayAssetName(fileName).replace(ASSET_ID_SEGMENT, ''), fileName, image: isImageExt(splitNameExt(fileName).ext) }
+}
+
+export interface ExtensionAssetsDeps {
+    store: () => AssetStore | null
+    /** Show images in the Lightbox (`openLightbox`), handed in so this module loads without Svelte. */
+    view: (images: readonly LightboxImage[], start: number) => Promise<void>
+}
+
+export function createExtensionAssets(deps: ExtensionAssetsDeps): ExtensionAssets {
     return {
         async prepareImage(image) {
             const url = URL.createObjectURL(image)
@@ -71,6 +97,31 @@ export function createExtensionAssets(deps: { store: () => AssetStore | null }):
                 console.warn('[extensions] an image could not be kept as an asset', error)
                 return null
             }
+        },
+
+        describe: describeAsset,
+
+        async imageUrl(ref) {
+            const store = deps.store()
+            if (!store || !describeAsset(ref)?.image) return null
+            try {
+                return (await store.resolve(ref))?.url ?? null
+            } catch {
+                // Not to be read just now (a synced graph offline): the caller shows the file's name instead.
+                return null
+            }
+        },
+
+        async viewImages({ refs, start }) {
+            const shown = refs.flatMap((ref) => {
+                const described = describeAsset(ref)
+                return described?.image ? [{ ref, image: assetLightboxImage(deps.store, ref, described.name) }] : []
+            })
+            if (shown.length === 0) return
+            await deps.view(
+                shown.map((entry) => entry.image),
+                Math.max(0, shown.findIndex((entry) => entry.ref === start)),
+            )
         },
     }
 }

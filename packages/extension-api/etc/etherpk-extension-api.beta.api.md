@@ -5,6 +5,13 @@
 ```ts
 
 // @public
+export interface AssetDescription {
+    fileName: string;
+    image: boolean;
+    name: string;
+}
+
+// @public
 export interface AuthorizeOptions {
     signal?: AbortSignal;
 }
@@ -52,6 +59,7 @@ export interface CommandMenuContext {
 
 // @public
 export interface CommandMenuItem {
+    actsOnText?: boolean;
     args?: unknown;
     command: string;
     detail?: string | ((context: CommandMenuContext) => string | undefined);
@@ -144,8 +152,11 @@ export interface DocumentText extends DocumentSummary {
 
 // @public
 export interface ExtensionAssets {
+    describe(ref: string): AssetDescription | null;
+    imageUrl(ref: string): Promise<string | null>;
     prepareImage(image: Blob): Promise<Blob>;
     saveImage(image: Blob, name: string): Promise<string | null>;
+    viewImages(options: ViewImagesOptions): Promise<void>;
 }
 
 // @public
@@ -203,7 +214,7 @@ export interface ExtensionContext {
     readonly journalPanels: ExtensionJournalPanels;
     readonly keybindings: ExtensionKeybindings;
     readonly layout: ExtensionLayout;
-    notify(text: string): void;
+    notify(text: string, options?: NoticeOptions): void;
     readonly personStorage: ExtensionPersonStorage;
     readonly records: ExtensionGraphRecords;
     readonly settings: ExtensionSettings;
@@ -215,6 +226,7 @@ export interface ExtensionContext {
 // @public
 export interface ExtensionContextMenu {
     register(item: ContextMenuItem): () => void;
+    taskOf(target: MenuTarget): MenuTask | null;
 }
 
 // @beta
@@ -232,6 +244,7 @@ export interface ExtensionContributions {
 // @public
 export interface ExtensionDialogs {
     choose(options: ChooseOptions): Promise<string | undefined>;
+    pickDate(options: PickDateOptions): Promise<string | undefined>;
     prompt(options: PromptOptions): Promise<string | undefined>;
 }
 
@@ -465,9 +478,15 @@ export interface FenceContext extends FenceInfo {
     openInTab(): void;
     openWindow(): void;
     readonly presentation: FencePresentation;
+    // @beta
+    redo?(): boolean;
     remove(): boolean;
     resized(): void;
+    // @beta
+    setEditing?(editing: boolean): void;
     takeFocus(): boolean;
+    // @beta
+    undo?(): boolean;
     readonly writable: boolean;
 }
 
@@ -491,12 +510,16 @@ export type FenceEdit = {
 export interface FenceInfo {
     readonly body: readonly string[];
     readonly document: string | null;
+    // @beta
+    readonly editing?: boolean;
     readonly info: string;
     readonly ordinal: number;
 }
 
 // @public
 export interface FenceOptions {
+    // @beta
+    frame?: 'editor';
     fromPaste?(text: string): readonly string[] | null;
     identify?(body: readonly string[]): string | null;
     keepsHistory?: boolean;
@@ -615,8 +638,19 @@ export interface LinkGraphLink {
 export type MenuTarget = DocumentMenuTarget | TabMenuTarget | WikilinkMenuTarget | ExtensionMenuTarget;
 
 // @public
+export interface MenuTask {
+    document: string;
+    label: string;
+    line: number;
+}
+
+// @public
 export interface MountedFence {
     destroy(): void;
+    // @beta
+    flush?(): void;
+    // @beta
+    owns?(node: Node): boolean;
     update(context: FenceContext): void;
 }
 
@@ -634,6 +668,24 @@ export interface MountedSettingsSection {
 export interface MountedView {
     destroy(): void;
     update?(props: ViewMountProps): void;
+}
+
+// @public
+export interface NoticeAction {
+    label: string;
+    run(): void | Promise<void>;
+}
+
+// @public
+export interface NoticeOptions {
+    action?: NoticeAction;
+}
+
+// @public
+export interface PickDateOptions {
+    anchor: HTMLElement;
+    label?: string;
+    value?: string;
 }
 
 // @public
@@ -755,6 +807,12 @@ export interface ViewDeclaration {
     };
     target?: string;
     title: string;
+}
+
+// @public
+export interface ViewImagesOptions {
+    refs: readonly string[];
+    start?: string;
 }
 
 // @public

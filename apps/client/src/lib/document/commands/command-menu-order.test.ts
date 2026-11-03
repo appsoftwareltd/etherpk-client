@@ -16,6 +16,24 @@ import { registerTemplateCommands } from './template-commands'
 /** Dependencies no registration reads: only the rows' `when` and the Commands call them. */
 const unused = {} as never
 
+/** Every first-party row, registered in an order that is not the menu's. */
+function firstPartyRows() {
+    const commands = createCommandRegistry()
+    const contributions = createContributionRegistry()
+    registerSpellingCommands(commands, contributions)
+    registerEditorCommands(commands, contributions)
+    registerLinkCommands(commands, contributions)
+    registerTaskReferenceCommands(commands, contributions, unused)
+    registerQuickNotesCommands(commands, contributions, unused)
+    registerProtectionCommands(commands, contributions, unused)
+    registerFrontmatterCommands(commands, contributions, unused)
+    registerBacklinksCommands(commands, contributions, unused)
+    registerJournalCommands(commands, contributions)
+    registerTemplateCommands(commands, contributions, unused)
+    registerBookmarkCommands(commands, contributions, unused)
+    return commandMenuItemsInOrder(contributions)
+}
+
 /**
  * The Command Menu's first-party rows in the order a bare `/` lists them (CONTEXT.md → Command
  * Menu). Each row carries its own `order`, so this is the one place the whole order is written down:
@@ -27,21 +45,7 @@ const unused = {} as never
  */
 describe('the Command Menu order', () => {
     it('lists every first-party row in its order, whatever order the modules register in', () => {
-        const commands = createCommandRegistry()
-        const contributions = createContributionRegistry()
-        registerSpellingCommands(commands, contributions)
-        registerEditorCommands(commands, contributions)
-        registerLinkCommands(commands, contributions)
-        registerTaskReferenceCommands(commands, contributions, unused)
-        registerQuickNotesCommands(commands, contributions, unused)
-        registerProtectionCommands(commands, contributions, unused)
-        registerFrontmatterCommands(commands, contributions, unused)
-        registerBacklinksCommands(commands, contributions, unused)
-        registerJournalCommands(commands, contributions)
-        registerTemplateCommands(commands, contributions, unused)
-        registerBookmarkCommands(commands, contributions, unused)
-
-        expect(commandMenuItemsInOrder(contributions).map((item) => item.title)).toEqual([
+        expect(firstPartyRows().map((item) => item.title)).toEqual([
             'Search',
             'Find and replace',
             'Go to backlinks',
@@ -81,6 +85,37 @@ describe('the Command Menu order', () => {
             'Spell check: turn on',
             'Spelling languages',
             'Reset workspace',
+        ])
+    })
+
+    // The Task Editor's description and comments (ADR 0170) offer only the rows that act on the text:
+    // inserting, formatting, editing a table, and copying what the caret's line holds. The others act
+    // on the tab, the document as a whole, a View, the graph or a setting, which from inside the
+    // dialog would be whatever is behind it.
+    it('offers these rows in an editor showing part of a document', () => {
+        expect(firstPartyRows().filter((item) => item.actsOnText).map((item) => item.title)).toEqual([
+            'Today',
+            'Yesterday',
+            'Tomorrow',
+            'Upload asset',
+            'Date Picker',
+            'Bold',
+            'Italic',
+            'Highlight',
+            'Code block',
+            'Template',
+            'Table',
+            'Table: Add column',
+            'Table: Add row',
+            'Table: Format',
+            'Table: Remove row',
+            'Table: Remove column',
+            'Table: Remove rows above',
+            'Table: Remove rows below',
+            'Table: Remove columns right',
+            'Table: Remove columns left',
+            'Copy file path',
+            'Copy task reference',
         ])
     })
 })

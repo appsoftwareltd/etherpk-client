@@ -434,9 +434,14 @@
         openConceptAtLine(hit.concept, hit.line);
     }
 
-    /** What a row's context menu acts on: the task the row shows, which **Copy task reference** copies. */
+    /**
+     * What a row's context menu acts on: the task the row shows, which **Copy task reference**
+     * copies and the status and priority rows write to. Ticked as the row shows it, a tick still
+     * waiting on the index included, so the status rows leave out the one on screen; and a row's
+     * write is held as a tick is, so the checkbox shows it before the index does.
+     */
     function rowTarget(hit: TaskHit): TaskContextMenuTarget {
-        return { kind: "task", document: hit.concept, line: hit.line, label: hit.text };
+        return { kind: "task", document: hit.concept, line: hit.line, label: hit.text, done: isDone(hit), written: (done) => hold(hit, done) };
     }
 
     /** The Menu key and Shift+F10 on a row open its menu at the row, as a right-click does. */

@@ -37,10 +37,12 @@ export type {
     ExtensionViews,
     IconMarkup,
     Keybinding,
+    NoticeAction,
+    NoticeOptions,
 } from './context'
-export type { ExtensionAssets } from './assets'
+export type { AssetDescription, ExtensionAssets, ViewImagesOptions } from './assets'
 export type { AuthorizeOptions, ExtensionAuth } from './auth'
-export type { ChooseChoice, ChooseOptions, ExtensionDialogs, PromptOptions } from './dialogs'
+export type { ChooseChoice, ChooseOptions, ExtensionDialogs, PickDateOptions, PromptOptions } from './dialogs'
 export type { DocumentBacklink, DocumentSearchResult, DocumentSummary, DocumentTask, DocumentText, ExtensionDocuments } from './documents'
 export type {
     ExtensionEditor,
@@ -81,6 +83,7 @@ export type {
     ExtensionMenuTarget,
     GraphSidebarButton,
     MenuTarget,
+    MenuTask,
     TabMenuTarget,
     WikilinkMenuTarget,
 } from './menus'

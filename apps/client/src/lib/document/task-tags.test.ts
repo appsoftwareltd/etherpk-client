@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { applyTaskTag, freeTagsIn, parseTaskLine, parseTaskTags, taskDisplay, taskStatus, taskTagRun, taskTagTokens, toggleTaskLine, withoutFreeTags } from './task-tags'
+import { applyStrayTaskTags, applyTaskTag, freeTagsIn, parseTaskLine, parseTaskTags, taskDisplay, taskStatus, taskTagRun, taskTagTokens, toggleTaskLine, withoutFreeTags } from './task-tags'
 
 describe('parseTaskTags', () => {
     it('reads the full minted tag set from the leading run', () => {
@@ -284,6 +284,77 @@ describe('applyTaskTag', () => {
 
     it('refuses a line that is not a task', () => {
         expect(applyTaskTag('- a plain bullet', { kind: 'waiting' })).toBeNull()
+    })
+})
+
+describe('applyStrayTaskTags', () => {
+    it('moves a Task Tag written later in the line into the run, as the # helper writes it', () => {
+        expect(applyStrayTaskTags('- [ ] water the beans #P1')).toBe('- [ ] #P1 water the beans')
+        expect(applyStrayTaskTags('- [ ] water #W the beans')).toBe('- [ ] #W water the beans')
+        expect(applyStrayTaskTags('  - [x] water the beans #P2')).toBe('  - [x] #P2 water the beans')
+    })
+
+    it('applies each stray tag as the # helper does: a later priority replaces the run’s', () => {
+        expect(applyStrayTaskTags('- [ ] #P1 water the beans #P2')).toBe('- [ ] #P2 water the beans')
+        expect(applyStrayTaskTags('- [ ] #P3 #W water #D-2026-09-15 the beans')).toBe('- [ ] #P3 #W #D-2026-09-15 water the beans')
+        expect(applyStrayTaskTags('- [ ] #D-2026-01-01 water the beans #D-2026-09-15')).toBe('- [ ] #D-2026-09-15 water the beans')
+        expect(applyStrayTaskTags('- [ ] water #S-2026-09-10 the beans #C-2026-09-20')).toBe('- [ ] #S-2026-09-10 #C-2026-09-20 water the beans')
+    })
+
+    it('sets the status a state tag names, ticking or unticking the checkbox to match, as a Kanban move does', () => {
+        expect(applyStrayTaskTags('- [ ] water the beans #C')).toBe('- [x] #C water the beans')
+        expect(applyStrayTaskTags('- [ ] water the beans #A')).toBe('- [x] #A water the beans')
+        expect(applyStrayTaskTags('- [x] water the beans #A')).toBe('- [x] #A water the beans')
+        expect(applyStrayTaskTags('- [x] #C water the beans #A')).toBe('- [x] #A water the beans')
+        expect(applyStrayTaskTags('- [x] water the beans #W')).toBe('- [ ] #W water the beans')
+        expect(applyStrayTaskTags('  - [x] water the beans #T')).toBe('  - [ ] #T water the beans')
+        expect(applyStrayTaskTags('- [ ] water the beans #D')).toBe('- [ ] #D water the beans')
+        expect(applyStrayTaskTags('- [ ] #T water the beans #D')).toBe('- [ ] #D water the beans')
+    })
+
+    it('lets the last state tag written win, and keeps the priority, dates and Free Tags', () => {
+        expect(applyStrayTaskTags('- [ ] water #C the beans #W')).toBe('- [ ] #W water the beans')
+        expect(applyStrayTaskTags('- [ ] water #W the beans #C')).toBe('- [x] #C water the beans')
+        expect(applyStrayTaskTags('- [ ] #P1 #S-2026-09-10 water #garden the beans #D-2026-09-15 #C')).toBe('- [x] #P1 #C #S-2026-09-10 #D-2026-09-15 water #garden the beans')
+        // The status writer writes no completion date, and keeps one the run carries.
+        expect(applyStrayTaskTags('- [x] #C-2026-09-20 water the beans #W')).toBe('- [ ] #W #C-2026-09-20 water the beans')
+    })
+
+    it('only ever sets: a tag the run already carries is not cleared, and the stray word goes', () => {
+        // The helper's row clears a tag the menu shows is set. A typed tag says what the person wants,
+        // so a repeat of one the run carries, or of another stray, keeps it set.
+        expect(applyStrayTaskTags('- [ ] #W water the beans #W')).toBe('- [ ] #W water the beans')
+        expect(applyStrayTaskTags('- [ ] #P1 water the beans #P1')).toBe('- [ ] #P1 water the beans')
+        expect(applyStrayTaskTags('- [ ] water #P1 the beans #P1')).toBe('- [ ] #P1 water the beans')
+        expect(applyStrayTaskTags('- [ ] #W water #W and #P2')).toBe('- [ ] #P2 #W water and')
+    })
+
+    it('applies several stray tags in the order written, and keeps the Free Tags where they are', () => {
+        expect(applyStrayTaskTags('- [ ] water #garden the #P2 beans #W')).toBe('- [ ] #P2 #W water #garden the beans')
+        expect(applyStrayTaskTags('- [ ] #kitchen water the beans #P1')).toBe('- [ ] #P1 #kitchen water the beans')
+    })
+
+    it('leaves a tag in code, a link or a URL, and one that is not its own word', () => {
+        expect(applyStrayTaskTags('- [ ] read `#P1` notes')).toBeNull()
+        expect(applyStrayTaskTags('- [ ] read [[Garden #P1]] notes')).toBeNull()
+        expect(applyStrayTaskTags('- [ ] read [the #P1 notes](https://example.com) now')).toBeNull()
+        expect(applyStrayTaskTags('- [ ] read <https://example.com/#P1> now')).toBeNull()
+        expect(applyStrayTaskTags('- [ ] read https://example.com/#P1 now')).toBeNull()
+        expect(applyStrayTaskTags('- [ ] read #P1, then water')).toBeNull()
+        expect(applyStrayTaskTags('- [ ] read item#P1 now')).toBeNull()
+        expect(applyStrayTaskTags('- [ ] read #p1 and #P4 now')).toBeNull()
+        // Columns the caller knows are not prose (inline maths) are skipped too.
+        expect(applyStrayTaskTags('- [ ] read $a #P1 b$ now', [{ from: 11, to: 20 }])).toBeNull()
+        expect(applyStrayTaskTags('- [ ] read $a #P1 b$ now #P2', [{ from: 11, to: 20 }])).toBe('- [ ] #P2 read $a #P1 b$ now')
+        // The code span stays as written while a stray tag beside it moves.
+        expect(applyStrayTaskTags('- [ ] read `#P1` notes #P2')).toBe('- [ ] #P2 read `#P1` notes')
+    })
+
+    it('is null for a task with no stray tag, and for a line that is not a task', () => {
+        expect(applyStrayTaskTags('- [ ] #P1 #W water the beans')).toBeNull()
+        expect(applyStrayTaskTags('- [ ] water the beans')).toBeNull()
+        expect(applyStrayTaskTags('- water the beans #P1')).toBeNull()
+        expect(applyStrayTaskTags('water the beans #P1')).toBeNull()
     })
 })
 

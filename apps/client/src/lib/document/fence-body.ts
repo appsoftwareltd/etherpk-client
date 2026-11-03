@@ -53,6 +53,27 @@ export function fenceBodyEditApplies(body: readonly string[], edit: FenceBodyEdi
 }
 
 /**
+ * The edits that undo `edits` once they are applied to `body`, to be applied to the body they leave,
+ * or null when `edits` do not apply. Each names the line as it was written (`safeFenceLine`), so
+ * undoing applies only while every line it touches still says what the widget wrote there, and
+ * refuses rather than overwrite a later change from another editor or device.
+ */
+export function undoingFenceBodyEdits(body: readonly string[], edits: readonly FenceBodyEdit[]): FenceBodyEdit[] | null {
+    const undoing: FenceBodyEdit[] = []
+    let current: readonly string[] = body
+    for (const edit of edits) {
+        const written: FenceBodyEdit = edit.kind === 'remove' ? edit : { ...edit, text: safeFenceLine(edit.text) }
+        const next = applyFenceBodyEdit(current, written)
+        if (!next) return null
+        if (edit.kind === 'insert') undoing.unshift(removeFenceLine(edit.line, next[edit.line]))
+        else if (edit.kind === 'replace') undoing.unshift(replaceFenceLine(edit.line, next[edit.line], current[edit.line]))
+        else undoing.unshift({ kind: 'insert', line: edit.line, text: current[edit.line] })
+        current = next
+    }
+    return undoing
+}
+
+/**
  * A line of text that may sit in a fence's body: one line, and never one the fence analysis reads
  * as a fence line (`fenceLineInfo`). A closer would end the block early, an opener with an info word
  * takes over from the block's own opener, and a longer run starts a block of its own, so any of them

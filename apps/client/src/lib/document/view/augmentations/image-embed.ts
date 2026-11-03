@@ -2,11 +2,12 @@
  * Augmentation: render a **standalone image** — a line whose only content is
  * `![alt](url)` — as an inline `<img>`. The alt-text display-size hint (`![alt|300](url)`;
  * see {@link parseImageDisplaySizeHint}) is a **maximum**: the image scales down to fit within it
- * (preserving aspect ratio) but a smaller image is never enlarged. Clicking the image
- * reveals its raw markdown and **pins it open** for editing — it stays revealed (judged by
- * the line you *click*, via the DOM) so repositioning the caret with the mouse can't collapse
- * it; it collapses again when you click another line or navigate away with the keyboard. A
- * pure decoration over unaltered markdown (ADR 0001).
+ * (preserving aspect ratio) but a smaller image is never enlarged. Clicking the image puts the
+ * caret on its line, which reveals its raw markdown for editing (the line kind of reveal-policy.ts);
+ * a click anywhere on that line places the caret on it too (judged by the line you *click*, via the
+ * DOM), so repositioning the caret with the mouse cannot collapse it. It collapses again as soon as
+ * the caret is on another line, however it got there. A pure decoration over unaltered markdown
+ * (ADR 0001).
  *
  * The widget keeps CodeMirror's height map true (ADR 0022's height-integrity rule): its vertical
  * spacing is **padding, never margin**, because CM measures a block widget by its border box and
@@ -39,7 +40,7 @@
  * asks again (`asset-load-retry.ts`); any other failure shows the broken state.
  */
 
-import { type EditorState, type Extension, findClusterBreak, type Range, StateEffect, StateField } from '@codemirror/state'
+import { type EditorState, type Extension, findClusterBreak, type Range, StateEffect, StateField, type TransactionSpec } from '@codemirror/state'
 import { Decoration, type DecorationSet, EditorView, WidgetType } from '@codemirror/view'
 
 import { AssetUnavailableError, type ResolvedAsset, assetNameFromRef } from '#lib/storage/fs/asset-store.js'
@@ -52,7 +53,7 @@ import { type ImageFootprint, activeImageFootprints, persistableImageUrl } from 
 import { isDirectImageUrl } from './image-target'
 import { HANDLE_INSIDE_MIN, attachResizeHandle, imageResizeTheme, imageWidthChange } from './image-resize'
 import { isProtectedDocumentFacet } from './protected-document'
-import { pinReveal, pinnedRevealField, pinnedRevealFrom, revealInputsChanged, revealedLines } from './reveal-policy'
+import { lineRevealed, revealInputsChanged, revealedLines } from './reveal-policy'
 import { isBulletImageLine, isImageLine, parseImageLine } from '../../image-line'
 import { analysisFor } from '../analysis/editor-analysis'
 import { uploadingImagesField } from '../uploading-images'
@@ -73,12 +74,16 @@ const frozenHeightField = StateField.define<{ line: number; size: ImageSize | nu
     },
 })
 
-/** The 1-based line number of the image line currently revealed for editing (pinned, else the caret line). */
+/**
+ * The 1-based line number of the image line currently revealed for editing: the caret's, if it is one
+ * and the reveal policy shows it. A part editor without the keyboard has its caret on a line it does
+ * not reveal (reveal-policy.ts); no snapshot is taken then, so the one taken when it is revealed holds
+ * the picture's height as drawn, not whatever was known before the picture had drawn at all.
+ */
 function revealedImageLine(state: EditorState): number | null {
-    const pinned = pinnedRevealFrom(state) // pinned-kind reveal (reveal-policy.ts)
-    const n = pinned !== null ? state.doc.lineAt(pinned).number : state.doc.lineAt(state.selection.main.head).number
+    const n = state.doc.lineAt(state.selection.main.head).number
     const text = state.doc.line(n).text
-    return isImageLine(text) ? n : null
+    return isImageLine(text) && lineRevealed(state, n) ? n : null
 }
 
 export interface ImageEmbedOptions {
@@ -176,6 +181,15 @@ function textRowY(view: EditorView, from: number, to: number, y: number): number
     if (y < first.top) return (first.top + first.bottom) / 2
     if (y > last.bottom) return (last.top + last.bottom) / 2
     return y
+}
+
+/**
+ * What a click on the rendered image at the line starting `lineFrom` dispatches: the caret at the end
+ * of its markdown ({@link imageClickCaret}), which reveals the line. Shared with the rule rows, so
+ * they drive the same transaction the pointer handler does.
+ */
+export function imageClickSpec(state: EditorState, lineFrom: number): TransactionSpec {
+    return { selection: { anchor: imageClickCaret(state, lineFrom) } }
 }
 
 /**
@@ -604,7 +618,7 @@ class ImageWidget extends WidgetType {
      * covers saving it; offering a trash for it would be a lie.
      *
      * The buttons stop their own `mousedown` from propagating, which is what keeps a click on one
-     * from also reaching the widget handler below and pinning the raw markdown open behind the
+     * from also reaching the widget handler below and revealing the raw markdown behind the
      * dialog.
      */
     private addActions(view: EditorView, wrap: HTMLElement, canDownload: boolean): HTMLElement | null {
@@ -659,15 +673,13 @@ export function forgetImageFootprintsIn(text: string): void {
 function buildDecorations(state: EditorState, options: ImageEmbedOptions): DecorationSet {
     const uploading = state.field(uploadingImagesField)
     const active = revealedLines(state) // line-kind reveal (reveal-policy.ts)
-    const pinned = pinnedRevealFrom(state)
-    const pinnedLine = pinned !== null ? state.doc.lineAt(pinned).number : -1
     const decos: Range<Decoration>[] = []
     for (const imageLine of analysisFor(state).imageLines) {
         const n = imageLine.line
         const line = state.doc.line(n)
-        // Reveal raw source while the caret is on the line, or while the image is pinned open — but
-        // reserve the image's last rendered height so the line doesn't collapse (no page jump).
-        if (active.has(n) || n === pinnedLine) {
+        // Reveal raw source while the caret is on the line, but reserve the image's last rendered
+        // height so the line doesn't collapse (no page jump).
+        if (active.has(n)) {
             // Hold the frozen snapshot for the line being edited; fall back to the text-derived size
             // for any other revealed image line.
             const frozen = state.field(frozenHeightField)
@@ -877,41 +889,39 @@ export function imageEmbedAugmentation(options: ImageEmbedOptions): Extension {
 
     const pointer = EditorView.domEventHandlers({
         mousedown(event, view) {
-            // Primary button only. A right-click is asking for the [[Context Menu]], and pinning
-            // the raw markdown open would destroy the very widget the menu is being raised on -
+            // Primary button only. A right-click is asking for the [[Context Menu]], and revealing
+            // the raw markdown would destroy the very widget the menu is being raised on -
             // the image would vanish and no menu would appear (caught by asset-actions.test.ts).
             if (event.button !== 0) return false
             const target = event.target as HTMLElement | null
-            // Clicking the rendered image: reveal + pin it, with the caret at the end of the markdown
+            // Clicking the rendered image: reveal it, with the caret at the end of the markdown
             // ({@link imageClickCaret}). There is no character under the pointer to map the click onto:
             // the picture stands in for the whole line. Clicking the revealed markdown positions precisely.
             //
             // Resolve the line LIVE from the widget's DOM position — never a stored offset. CM reuses a
             // widget's DOM across edits (its `eq` ignores position), so any offset baked into the element
-            // when it was created goes stale the moment text above it changes; reading it back then pins
+            // when it was created goes stale the moment text above it changes; reading it back then reveals
             // the wrong line and the image appears unclickable. `posAtDOM` always reflects the current doc.
             const widget = target?.closest('[data-augmentation="image"]')
             if (widget) {
                 event.preventDefault()
                 const lineFrom = view.state.doc.lineAt(view.posAtDOM(widget)).from
-                view.dispatch({ selection: { anchor: imageClickCaret(view.state, lineFrom) }, effects: pinReveal.of(lineFrom) })
+                view.dispatch(imageClickSpec(view.state, lineFrom))
                 view.focus()
                 return true
             }
-            // Clicking the revealed markdown (or anywhere else): keep the pin in step — pin the image
-            // line you click into so repositioning within it can't collapse it, clear it when you
-            // click onto a different line. A gap click (no line element) leaves the pin untouched.
+            // Clicking the revealed markdown, or beside a rendered bullet image: place the caret on the
+            // line clicked, so repositioning within it can't collapse it. Every other click (another
+            // line, a gap with no line element, below the document) is CodeMirror's to place, and the
+            // reveal follows wherever the caret lands.
             const lineEl = target?.closest('.cm-line')
             if (!lineEl) return false
             const line = view.state.doc.lineAt(view.posAtDOM(lineEl, 0))
             // A line that renders an image — standalone OR a bullet's inline image (`- ![…]`). For a
             // bullet-image the line box is as tall as the image, so a click *beside* the image must NOT
             // fall through to CodeMirror's coordinate mapping, which has no text row under the pointer to
-            // land on — we pin + hit-test the text row instead.
-            const isImage = isImageLine(line.text)
-            const nextPin = isImage ? line.from : null
-            const effects = nextPin !== pinnedRevealFrom(view.state) ? [pinReveal.of(nextPin)] : []
-            if (isImage) {
+            // land on — we hit-test the text row instead.
+            if (isImageLine(line.text)) {
                 // Place the caret via the browser's hit-test at the markdown's text row, not CodeMirror's
                 // coord model over the click's own Y, which may lie in the reserved space below the text.
                 // Clicking anywhere on the revealed markdown lands the caret under the pointer. When the
@@ -931,15 +941,14 @@ export function imageEmbedAugmentation(options: ImageEmbedOptions): Extension {
                 // in that gap should still place the caret in the markdown by its X, not fall to line-end.
                 const hitY = textRowY(view, line.from, imageClickCaret(view.state, line.from), event.clientY)
                 const pos = posFromPoint(view, lineEl, event.clientX, hitY, line.from, line.to)
-                view.dispatch({ selection: { anchor: pos }, effects })
+                view.dispatch({ selection: { anchor: pos } })
                 view.focus()
                 return true
             }
-            if (effects.length) view.dispatch({ effects })
             return false // let CodeMirror place the caret normally
         },
     })
 
-    // Field order matters: pinned → frozen-height (reads pinned) → uploading → imageField (reads all three).
-    return [pinnedRevealField, frozenHeightField, uploadingImagesField, imageField, pointer, theme, imageResizeTheme]
+    // Field order matters: frozen-height → uploading → imageField (reads both).
+    return [frozenHeightField, uploadingImagesField, imageField, pointer, theme, imageResizeTheme]
 }

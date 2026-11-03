@@ -50,16 +50,17 @@
     import { conceptIsMissing, openConcept } from '../open-concept'
     import { documentBody } from '../protection/cipher-fence'
     import { frontmatterLineOffset, type RevealRequest, subscribeReveal, takeReveal } from '../reveal'
-    import { DocumentNotFoundError, type EditorDocument } from '../types'
+    import { DocumentNotFoundError, type DocumentStore, type EditorDocument } from '../types'
     import { currentWorkspaceServices, type ProtectionControls } from '#lib/workspace/workspace-services.js'
     import { createDocumentEditor, type DocumentEditor } from './cm-document'
+    import type { ShownRangeOf } from './shown-range'
     import { caretBesideFence } from './augmentations/interactive-fence'
     import { commandMenuOpen } from './augmentations/slash-complete'
     import { frontmatterIdentityTick } from './augmentations/frontmatter'
     import { carrySpellCheck, spellCheckChanged } from './augmentations/spell-check'
     import { analysisFor } from './analysis/editor-analysis'
     import { anchoredLine, anchorLine } from './line-anchor'
-    import { editorExtensions } from './editor-extensions'
+    import { type EditorExtensionServices, editorExtensions } from './editor-extensions'
     import { EDIT_REFUSAL_MESSAGE, EDIT_REFUSAL_TITLE, type EditRefusal } from './edit-refused'
     import { applyEditorPosition, editorPosition, placeSelection, type RevealAlign, revealEditorPosition } from './view-position'
     import { templateAsNewText } from './template-insert'
@@ -98,6 +99,8 @@
         rolled: rolledProp = false,
         revealAt,
         visibility: visibilityProp,
+        shownRange: shownRangeProp,
+        source: sourceProp,
     }: {
         view: ViewRef
         ytext?: Y.Text
@@ -119,6 +122,19 @@
         /** Embedded only: the body line (0-based) put at the top when it opens. */
         revealAt?: number
         /**
+         * Embedded only: show just the lines this finds, and keep the person's edits inside them
+         * (`shown-range.ts`): the [[Task Editor]]'s description and comments (ADR 0170). It may read
+         * the line `revealAt` names, which the editor anchors and follows through edits instead of
+         * revealing it.
+         */
+        shownRange?: ShownRangeOf
+        /**
+         * Embedded only: the document to edit, in place of the one the store opens for the View's
+         * target. The Task Editor writes a new task's description in one held in memory until the
+         * task is created (ADR 0170). It has no content to wait for, and is never a Draft.
+         */
+        source?: EditorDocument
+        /**
          * Whether this View is on screen (view-visibility.ts), which every presenter passes, and a
          * Kanban Board passes on to its Task Detail. The editor is told (editor-on-screen.ts), so a
          * map in it lets its WebGL context go while the tab is behind another. Absent, the editor
@@ -138,6 +154,9 @@
     const ownsTab = !embedded && !rolled
     /** Fixed for the View's life: a presenter hands a View one visibility object. */
     const visibility = untrack(() => visibilityProp)
+    /** Fixed for the View's life: the part shown, and the document held in place of the store's. */
+    const shownRangeOf = untrack(() => (embeddedProp ? shownRangeProp : undefined))
+    const source = untrack(() => (embeddedProp ? sourceProp : undefined))
     /** Embedded: the line last shown, which a remount (protection changing) shows again. */
     let embeddedLine = untrack(() => revealAt)
 
@@ -359,7 +378,8 @@
         const cm = editor?.view
         const pos = cm?.posAtCoords({ x, y })
         if (!cm || pos === null || pos === undefined) return undefined
-        return { concept: view.target, panelId, line: cm.state.doc.lineAt(pos).number }
+        const line = cm.state.doc.lineAt(pos)
+        return { concept: view.target, panelId, line: line.number, text: line.text }
     }
 
     /**
@@ -672,7 +692,7 @@
      * still building, "gone" and "not indexed yet" look alike, so this waits.
      */
     function embeddedDocumentGone(): boolean {
-        if (ownsTab) return false
+        if (ownsTab || source) return false
         const index = getActiveGraphIndex()
         if (!index || index.isBuilding() || index.conceptExists(view.target)) return false
         mountError = rolled
@@ -813,7 +833,14 @@
     export function showLine(line: number): void {
         embeddedLine = line
         anchorShownLine()
-        heldReveal.hold(line, { align: 'start', focus: false })
+        // An editor showing part of the document follows the line without showing it: the line is
+        // what the part is read from, and it is hidden.
+        if (!shownRangeOf) heldReveal.hold(line, { align: 'start', focus: false })
+    }
+
+    /** The CodeMirror editor, while one is mounted: what a host places a caret in, or uploads into. */
+    export function editorView(): EditorView | null {
+        return editor?.view ?? null
     }
 
     /**
@@ -1036,7 +1063,7 @@
      */
     /** The store's id for the document a name opens: a plain read, where the store has one. */
     function documentIdOf(target: string): string | undefined {
-        const store = getActiveDocumentStore() as { documentIdOf?: (t: string) => string | undefined }
+        const store = storeForView() as { documentIdOf?: (t: string) => string | undefined }
         return store.documentIdOf?.(target)
     }
 
@@ -1126,8 +1153,42 @@
     }
 
     /** Open the document and build the editor over it. Throws if the concept is unknown. */
+    /**
+     * The store this View's document comes from: the graph's, or, with a held `source`, a store of that
+     * one document, which has no content to wait for, no shared buffer and no id to follow.
+     */
+    function storeForView(): DocumentStore {
+        return source ? { open: () => source } : getActiveDocumentStore()
+    }
+
+    /**
+     * The services that name this View's document by its target: which document the editor shows,
+     * its [[Bookmark]]s, and the link renames its edits propose. None for a held `source`, which is
+     * not the target's document.
+     */
+    function targetServices(): Pick<EditorExtensionServices, 'document' | 'bookmarks' | 'wikilinksEdited'> {
+        if (source) return {}
+        return {
+            // An edited link is a rename proposal (ADR 0065); the workspace owns the question.
+            wikilinksEdited: (edits) => currentWorkspaceServices()?.wikilinkRename?.edited(view.target, edits),
+            // Which document this editor shows, and where, for a Command holding only the view.
+            document: { concept: view.target, panelId },
+            bookmarks: {
+                lineMenu: (line, x, y) =>
+                    openContextMenu({ kind: 'line', concept: view.target, panelId, line: line.number, text: line.text }, x, y),
+                draft: draft !== undefined,
+                // A bookmark's line is held as a Search result's is, so the tab's activation or
+                // the text arriving does not put back the line the open first asked for.
+                reveal: (to) =>
+                    to === 'top'
+                        ? heldReveal.hold('top', { align: 'start' })
+                        : heldReveal.hold({ documentLine: to.line - 1 }),
+            },
+        }
+    }
+
     function mountDocument(): void {
-        const activeStore = getActiveDocumentStore()
+        const activeStore = storeForView()
         const retained = (
             activeStore as { retainDocument?: (target: string) => () => void }
         ).retainDocument?.(view.target)
@@ -1288,10 +1349,7 @@
                         void commands.execute(DOCUMENT_OPEN_TO_THE_RIGHT, { kind: 'wikilink', concept, panelId })
                     } else void openConcept(concept, panelId)
                 },
-                // An edited link is a rename proposal (ADR 0065); the workspace owns the
-                // question. A right-click or long-press on one raises its Context Menu.
-                wikilinksEdited: (edits) =>
-                    currentWorkspaceServices()?.wikilinkRename?.edited(view.target, edits),
+                // A right-click or long-press on a link raises its Context Menu.
                 // The link's menu carries the line it is on, so its rows include the line's
                 // [[Bookmark]] rows (ADR 0159).
                 wikilinkContextMenu: (concept, x, y) =>
@@ -1337,21 +1395,12 @@
                         if (contentArriving) anchorShownLine()
                     }
                 },
-                // Which document this editor shows, and where, for a Command holding only the view.
-                document: { concept: view.target, panelId },
-                bookmarks: {
-                    lineMenu: (line, x, y) =>
-                        openContextMenu({ kind: 'line', concept: view.target, panelId, line }, x, y),
-                    draft: draft !== undefined,
-                    // A bookmark's line is held as a Search result's is, so the tab's activation or
-                    // the text arriving does not put back the line the open first asked for.
-                    reveal: (to) =>
-                        to === 'top'
-                            ? heldReveal.hold('top', { align: 'start' })
-                            : heldReveal.hold({ documentLine: to.line - 1 }),
-                },
+                ...targetServices(),
                 // A tab restored behind another starts out of sight, so a map in it never draws.
                 onScreen: () => visibility?.onScreen ?? true,
+                shownRange: shownRangeOf,
+                // A new task's description in the Task Editor: part of a task, not yet in a document.
+                partOfDocument: source !== undefined,
             })],
         })
         // Command Menu handlers reach this editor through the active-view accessor. An embedded
@@ -1606,7 +1655,7 @@
              message is about does not jump under the caret. `role="status"`: announced, not
              focus-stealing, so the next keystroke still lands in the editor. -->
         <div class="document-view__refusal" data-testid="edit-refused" role="status">
-            <p><strong>{EDIT_REFUSAL_TITLE}.</strong> {EDIT_REFUSAL_MESSAGE[editRefusal]}</p>
+            <p><strong>{EDIT_REFUSAL_TITLE[editRefusal]}.</strong> {EDIT_REFUSAL_MESSAGE[editRefusal]}</p>
             <button type="button" data-testid="edit-refused-dismiss" onclick={clearRefusal}>Dismiss</button>
         </div>
     {/if}

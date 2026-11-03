@@ -24,7 +24,7 @@ import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate
 import { contentStart } from '../../outliner'
 import { visibleFencedBlocks } from '../outliner-context'
 import { quoteMarkersLength } from './blockquote-core'
-import { lineRevealed, linesAllHidden, rangeRevealed, revealInputsChanged, revealedLines } from './reveal-policy'
+import { lineRevealed, linesAllHidden, rangeRevealed, revealInputsChanged, revealedLines, revealUpdated } from './reveal-policy'
 
 /** The reveal questions an augmentation may ask while building, already answered for this state. */
 export interface RevealState {
@@ -146,11 +146,11 @@ export function hiddenSyntaxPieces(
 }
 
 /**
- * A ViewPlugin that rebuilds `spec.pieces` over the visible ranges whenever the document, the
- * viewport or the selection changes — the three inputs an inline reveal depends on — or the syntax
- * tree does: the markdown parser finishes a large document asynchronously, in a transaction that
- * changes none of the three, and pieces built over the partial tree would otherwise stay until the
- * next keystroke or scroll.
+ * A ViewPlugin that rebuilds `spec.pieces` over the visible ranges whenever the viewport or a reveal
+ * input changes (the document, the selection, a request, or focus in a part editor:
+ * `revealUpdated`, reveal-policy.ts) or the syntax tree does: the markdown parser finishes a large
+ * document asynchronously, in a transaction that changes none of the others, and pieces built over
+ * the partial tree would otherwise stay until the next keystroke or scroll.
  */
 export function hiddenSyntaxPlugin(spec: HiddenSyntaxSpec): Extension {
     const build = (view: EditorView): DecorationSet => Decoration.set(hiddenSyntaxPieces(spec, view.state, view.visibleRanges), true)
@@ -161,7 +161,7 @@ export function hiddenSyntaxPlugin(spec: HiddenSyntaxSpec): Extension {
                 this.decorations = build(view)
             }
             update(update: ViewUpdate) {
-                if (update.docChanged || update.viewportChanged || update.selectionSet || treeChanged(update)) {
+                if (update.viewportChanged || revealUpdated(update) || treeChanged(update)) {
                     this.decorations = build(update.view)
                 }
             }

@@ -43,6 +43,7 @@ export function fakeContext(options: { desktop?: boolean } = {}) {
                 rows.push(item)
                 return () => rows.splice(rows.indexOf(item), 1)
             },
+            taskOf: () => null,
         },
         commandMenu: { register: () => () => {} },
         graphSidebar: { register: () => () => {} },
@@ -68,7 +69,7 @@ export function fakeContext(options: { desktop?: boolean } = {}) {
             tasks: async () => ({ tasks: [], total: 0, hasMore: false }),
         },
         records: { get: async () => undefined, set: async () => {}, remove: async () => {}, keys: async () => [] },
-        assets: { prepareImage: async (image) => image, saveImage: async () => null },
+        assets: { prepareImage: async (image) => image, saveImage: async () => null, describe: () => null, imageUrl: async () => null, viewImages: async () => {} },
         layout,
         concepts: { key: (name) => name.toLowerCase(), canonicalName: (name) => name },
         storage: { get: () => undefined, set: () => {}, remove: () => {} },
@@ -86,7 +87,7 @@ export function fakeContext(options: { desktop?: boolean } = {}) {
         notify: vi.fn(),
         // The Graph View draws no fences or panels, asks nothing and shows no frames.
         editor: { registerFence: () => () => {}, insertBlock: () => false, openPanel: () => null },
-        dialogs: { prompt: async () => undefined, choose: async () => undefined },
+        dialogs: { prompt: async () => undefined, choose: async () => undefined, pickDate: async () => undefined },
         embeds: {
             frameHosts: [],
             frame: () => {

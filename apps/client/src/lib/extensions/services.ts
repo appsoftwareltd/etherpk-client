@@ -14,6 +14,8 @@ import type {
     InlinePanel,
     InlinePanelOptions,
     Keybinding,
+    MenuTask,
+    NoticeOptions,
 } from '@appsoftwareltd/etherpk-extension-api'
 
 import type { CommandRegistry, ContributionRegistry, EventBus } from '#lib/surface/index.js'
@@ -37,7 +39,13 @@ export interface GraphServices {
     layout: ExtensionLayout
     concepts: ExtensionConcepts
     keybindings: KeybindingTable
-    notify(text: string): void
+    /** Show a notice in the Client's rail, with one button when `options.action` names one. */
+    notify(text: string, options?: NoticeOptions): void
+    /**
+     * The task a Context Menu target stands on (`menuTargetTask` in `task-reference-commands.ts`), or
+     * null: what `context.contextMenu.taskOf` answers.
+     */
+    menuTask(target: unknown): MenuTask | null
     /** The graph's documents as a language model may read them, protected ones left out (`agent-read`). */
     documents: ExtensionDocuments
     /** One extension's records for this graph on this device (`graph-records.ts`). */

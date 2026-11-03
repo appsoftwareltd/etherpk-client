@@ -61,10 +61,16 @@ interface Bullet {
 
 const word = fc.stringMatching(/^[a-z]{1,6}$/)
 
+/**
+ * A bullet's text: a word, or a word with a Task Tag after it, which tidy on leave moves into the
+ * run of a task the caret leaves (Editor Content Rules → Tidy on leave), so the keys meet that rewrite too.
+ */
+const bulletText = fc.oneof(word, fc.tuple(word, fc.constantFrom('#P1', '#W', '#D-2026-01-01')).map(([w, tag]) => `${w} ${tag}`))
+
 const bulletArb: fc.Arbitrary<Omit<Bullet, 'level'> & { step: -2 | -1 | 0 | 1 }> = fc.record({
     step: fc.constantFrom(-2, -1, 0, 1) as fc.Arbitrary<-2 | -1 | 0 | 1>,
     task: fc.constantFrom('none', 'open', 'done') as fc.Arbitrary<Bullet['task']>,
-    text: word,
+    text: bulletText,
     continuation: fc.option(word, { nil: null }),
     // Code that looks like structure (a comment, a list, a blank) must stay opaque inside the fence.
     fence: fc.option(fc.array(fc.oneof(word, fc.constantFrom('# c', '- x', '', '  - y')), { minLength: 0, maxLength: 3 }), { nil: null }),

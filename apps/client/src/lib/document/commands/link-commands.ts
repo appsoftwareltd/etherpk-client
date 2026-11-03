@@ -65,6 +65,8 @@ export function registerLinkCommands(
             order: 130,
             keywords: ['file', 'path', 'clipboard', 'link', 'copy'],
             when: (ctx) => ctx.fileLinkOnLine === true,
+            // It reads the caret's line, so it is offered in a part of a document too (ADR 0170).
+            actsOnText: true,
             command: LINK_COPY_PATH,
         }),
     )

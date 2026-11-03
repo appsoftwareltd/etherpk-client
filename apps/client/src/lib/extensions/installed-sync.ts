@@ -70,6 +70,11 @@ export interface InstalledPlan {
     waiting: WaitingRelease[]
     /** Installed by the person, and not in the list at all. */
     unlisted: string[]
+    /**
+     * Installed by the person, and now one of the Client's own extensions (ADR 0171): clear the
+     * person's setting, which the Client would otherwise ignore for good.
+     */
+    retire: string[]
 }
 
 export interface PlanInput {
@@ -89,14 +94,22 @@ function newestListed(extension: DirectoryExtension): DirectoryRelease | null {
     return [...extension.releases].sort((a, b) => compareVersions(b.version, a.version))[0] ?? null
 }
 
+/**
+ * What goes whether or not the list can be read: a release on the device the person no longer has,
+ * and the person's record of an extension that now comes with the Client.
+ */
+function leaving(input: PlanInput, intended: ReadonlySet<string>): Pick<InstalledPlan, 'remove' | 'retire'> {
+    return {
+        remove: input.device.map((release) => release.id).filter((id) => !intended.has(id)),
+        retire: input.intended.filter((id) => input.builtIns.includes(id)),
+    }
+}
+
 /** What this device does about the person's extensions, given the list as it is now. */
 export function planInstalled(input: PlanInput): InstalledPlan {
-    const plan: InstalledPlan = { install: [], replace: [], stage: [], withdraw: [], remove: [], waiting: [], unlisted: [] }
     const intended = new Set(input.intended.filter((id) => !input.builtIns.includes(id)))
     const device = new Map(input.device.map((release) => [release.id, release]))
-
-    // What the person no longer has goes, whether or not the list can be read.
-    for (const id of device.keys()) if (!intended.has(id)) plan.remove.push(id)
+    const plan: InstalledPlan = { install: [], replace: [], stage: [], withdraw: [], waiting: [], unlisted: [], ...leaving(input, intended) }
     if (!input.listing) return plan
 
     for (const id of intended) {
@@ -165,7 +178,7 @@ export interface InstalledSync {
 export interface InstalledSyncOptions {
     directory: Pick<ExtensionDirectory, 'load' | 'installRelease' | 'stageRelease' | 'removeFromDevice'>
     installed: Pick<InstalledExtensions, 'list'>
-    settings: Pick<PersonSettings, 'keys' | 'subscribe'>
+    settings: Pick<PersonSettings, 'keys' | 'subscribe' | 'set'>
     clientVersion: string
     builtIns: readonly string[]
     /** Say, once, which extensions were installed from the person's account. */
@@ -191,6 +204,16 @@ export function createInstalledSync(options: InstalledSyncOptions): InstalledSyn
     let running: Promise<void> | null = null
     let again = false
 
+    /** Take off the device, and out of the person's settings, what the plan says goes. */
+    function takeOff(plan: InstalledPlan, report: (id: string, entry: InstalledReport) => void): void {
+        for (const id of plan.remove) directory.removeFromDevice(id, { clearStorage: true })
+        for (const id of plan.retire) settings.set(installedSettingKey(id), null)
+        for (const id of plan.withdraw) {
+            directory.removeFromDevice(id, { clearStorage: false })
+            report(id, { withdrawn: true })
+        }
+    }
+
     async function once(): Promise<void> {
         let state: Awaited<ReturnType<typeof directory.load>>
         try {
@@ -203,11 +226,7 @@ export function createInstalledSync(options: InstalledSyncOptions): InstalledSyn
         const next: Record<string, InstalledReport> = {}
         const report = (id: string, entry: InstalledReport) => (next[id] = { ...next[id], ...entry })
 
-        for (const id of plan.remove) directory.removeFromDevice(id, { clearStorage: true })
-        for (const id of plan.withdraw) {
-            directory.removeFromDevice(id, { clearStorage: false })
-            report(id, { withdrawn: true })
-        }
+        takeOff(plan, report)
         for (const id of plan.unlisted) report(id, { unlisted: true })
         for (const waiting of plan.waiting) report(waiting.id, { waiting: { version: waiting.version, needs: waiting.needs } })
 

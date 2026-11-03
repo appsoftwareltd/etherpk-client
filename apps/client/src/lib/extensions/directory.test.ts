@@ -159,4 +159,18 @@ describe('the Extension Directory in the browser', () => {
         // Still the person's: it comes back when a release this Client can run is listed.
         expect(installedIds(settings)).toEqual(['orchard'])
     })
+
+    it('only forgets a release whose id is now one of the Client’s own extensions, which keeps running with what it holds', async () => {
+        // An extension the Directory listed that later came with EtherPK: the device still holds
+        // the release it installed, and taking that off the device must not stop the built-in.
+        const builtIn: CatalogueEntry = { id: 'orchard', source: 'compiled-in', module: { activate: () => {} }, package: { name: 'orchard', version: '0.9.6', manifest: { id: 'orchard', displayName: 'Orchard', publisher: 'App Software', main: './src/extension.ts' } } }
+        const { host, installed, directory, storage } = setUp({}, [builtIn])
+        await host.start(fakeGraphServices().services)
+        installed.put({ id: 'orchard', version: '1.0.0', integrity: integrity('A'), packageJson: packageJson('1.0.0') })
+        storage.setItem('etherpk-orchard:trees', '12')
+        directory.removeFromDevice('orchard', { clearStorage: true })
+        expect(installed.list()).toEqual([])
+        expect(host.catalogue.extensions).toEqual([builtIn])
+        expect(storage.getItem('etherpk-orchard:trees')).toBe('12')
+    })
 })

@@ -11,12 +11,12 @@ import { registerKanban } from './register'
 import { kanbanContext } from './testing'
 
 const board: ViewContribution = { mount: () => ({ destroy: () => {} }) }
-const actions: BoardActions = { open: () => {}, openInTab: () => {}, copyReference: () => {}, move: () => {}, moveAll: () => {} }
+const actions: BoardActions = { open: () => {}, openBelow: () => {}, openInTab: () => {}, copyReference: () => {}, copyLaneReference: () => {}, move: () => {}, moveAll: () => {} }
 
 describe('the Kanban Board extension', () => {
     it("supplies the board View for both kinds its manifest declares, a concept's board and the Graph Kanban", () => {
         const { context, views } = kanbanContext()
-        registerKanban(context, board)
+        registerKanban(context, board, { openTaskEditor: () => {} })
         expect([...views.keys()]).toEqual(['kanban.board', 'kanban.whole'])
         expect(views.get('kanban.board')).toBe(board)
         expect(views.get('kanban.whole')).toBe(board)
@@ -24,7 +24,7 @@ describe('the Kanban Board extension', () => {
 
     it('hands nothing to or from the Graph Kanban when a concept is renamed', () => {
         const { context, services } = kanbanContext()
-        registerKanban(context, board)
+        registerKanban(context, board, { openTaskEditor: () => {} })
         const heard: string[] = []
         const unregister = registerBoard('board-whole', actions, {
             concept: null,
@@ -44,7 +44,7 @@ describe('the Kanban Board extension', () => {
 
     it('moves a Task Detail and hands a board over when the Client reports a rename', () => {
         const { context, services } = kanbanContext()
-        registerKanban(context, board)
+        registerKanban(context, board, { openTaskEditor: () => {} })
         const heard: string[] = []
         const unregister = registerBoard('board-acme', actions, {
             concept: 'Acme',
@@ -64,7 +64,7 @@ describe('the Kanban Board extension', () => {
 
     it('hears nothing once the extension is stopped', () => {
         const { context, services, dispose } = kanbanContext()
-        registerKanban(context, board)
+        registerKanban(context, board, { openTaskEditor: () => {} })
         const heard: string[] = []
         const unregister = registerBoard('board-acme', actions, {
             concept: 'Acme',

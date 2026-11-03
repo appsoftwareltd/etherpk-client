@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
-import { MAX_PREPARED_EDGE, preparedSize } from './extension-assets'
+import type { AssetStore } from '#lib/storage/fs/asset-store.js'
+
+import { createExtensionAssets, MAX_PREPARED_EDGE, preparedSize } from './extension-assets'
 
 describe('the size an image is sent to a model at (ADR 0147)', () => {
     it('leaves an image whose long side fits as it is', () => {
@@ -15,5 +17,90 @@ describe('the size an image is sent to a model at (ADR 0147)', () => {
 
     it('never scales a side below one pixel', () => {
         expect(preparedSize(100_000, 1)).toEqual({ width: 2048, height: 1 })
+    })
+})
+
+describe('an asset a document refers to, as an extension sees it', () => {
+    const resolved: string[] = []
+    const store = {
+        resolve: async (ref: string) => {
+            resolved.push(ref)
+            return ref.includes('missing') ? null : { url: `blob:${ref}`, name: 'plan.png', type: 'image/png' }
+        },
+    } as unknown as AssetStore
+    const assets = createExtensionAssets({ store: () => store, view: async () => {} })
+
+    it('is named without the content hash or the id the graph added, with its whole name kept', () => {
+        expect(assets.describe('../assets/plan.3f9a1c2e.png')).toEqual({ name: 'plan.png', fileName: 'plan.3f9a1c2e.png', image: true })
+        expect(assets.describe('../assets/quote.0b1c2d3e-4f50-4a6b-8c7d-9e0f1a2b3c4d.pdf')).toEqual({
+            name: 'quote.pdf',
+            fileName: 'quote.0b1c2d3e-4f50-4a6b-8c7d-9e0f1a2b3c4d.pdf',
+            image: false,
+        })
+        expect(assets.describe('../assets/garden%20notes.txt')).toEqual({ name: 'garden notes.txt', fileName: 'garden notes.txt', image: false })
+    })
+
+    it('is nothing for a reference that names no asset', () => {
+        expect(assets.describe('https://example.com/plan.png')).toBeNull()
+        expect(assets.describe('../assets/..%2Fpages%2FGarden.md')).toBeNull()
+    })
+
+    it('is shown at the address the store reads an image at, and only an image', async () => {
+        expect(await assets.imageUrl('../assets/plan.3f9a1c2e.png')).toBe('blob:../assets/plan.3f9a1c2e.png')
+        expect(await assets.imageUrl('../assets/missing.3f9a1c2e.png')).toBeNull()
+        resolved.length = 0
+        expect(await assets.imageUrl('../assets/quote.3f9a1c2e.pdf')).toBeNull()
+        expect(resolved).toEqual([])
+    })
+
+    it('has no address where the graph keeps no assets, or the image cannot be read just now', async () => {
+        expect(await createExtensionAssets({ store: () => null, view: async () => {} }).imageUrl('../assets/plan.3f9a1c2e.png')).toBeNull()
+        const failing = { resolve: async () => Promise.reject(new Error('offline')) } as unknown as AssetStore
+        expect(await createExtensionAssets({ store: () => failing, view: async () => {} }).imageUrl('../assets/plan.3f9a1c2e.png')).toBeNull()
+    })
+})
+
+describe('images an extension shows in the Lightbox', () => {
+    function viewing(store: AssetStore | null = { resolve: async (ref: string) => ({ url: `blob:${ref}`, name: 'plan.png', type: 'image/png' }) } as unknown as AssetStore) {
+        const shown: { images: { name: string; load(): Promise<string | null> }[]; start: number }[] = []
+        const assets = createExtensionAssets({
+            store: () => store,
+            view: async (images, start) => {
+                shown.push({ images: [...images], start })
+            },
+        })
+        return { assets, shown }
+    }
+
+    it('are the images among the references, named as describe names them, opened on the one asked for', async () => {
+        const { assets, shown } = viewing()
+        await assets.viewImages({
+            refs: ['../assets/plan.3f9a1c2e.png', '../assets/quote.3f9a1c2e.pdf', '../assets/sketch.0b1c2d3e-4f50-4a6b-8c7d-9e0f1a2b3c4d.png'],
+            start: '../assets/sketch.0b1c2d3e-4f50-4a6b-8c7d-9e0f1a2b3c4d.png',
+        })
+        expect(shown).toHaveLength(1)
+        expect(shown[0].images.map((image) => image.name)).toEqual(['plan.png', 'sketch.png'])
+        expect(shown[0].start).toBe(1)
+        expect(await shown[0].images[0].load()).toBe('blob:../assets/plan.3f9a1c2e.png')
+    })
+
+    it('open on the first image when the one asked for is not among them', async () => {
+        const { assets, shown } = viewing()
+        await assets.viewImages({ refs: ['../assets/plan.3f9a1c2e.png', '../assets/garden.3f9a1c2e.png'], start: '../assets/quote.3f9a1c2e.pdf' })
+        expect(shown[0].start).toBe(0)
+        await assets.viewImages({ refs: ['../assets/plan.3f9a1c2e.png'] })
+        expect(shown[1].start).toBe(0)
+    })
+
+    it('open nothing when no reference names an image', async () => {
+        const { assets, shown } = viewing()
+        await assets.viewImages({ refs: ['../assets/quote.3f9a1c2e.pdf', 'https://example.com/plan.png'] })
+        expect(shown).toEqual([])
+    })
+
+    it('show as images that could not be loaded where the graph keeps no assets', async () => {
+        const { assets, shown } = viewing(null)
+        await assets.viewImages({ refs: ['../assets/plan.3f9a1c2e.png'] })
+        expect(await shown[0].images[0].load()).toBeNull()
     })
 })

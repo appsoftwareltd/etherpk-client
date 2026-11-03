@@ -16,8 +16,10 @@
     --z-toast: 51;
     /* A dialog's panel (Dialog.svelte). */
     --z-dialog: 52;
+    /* How far a dialog opened over another steps up, backdrop and panel (dialog-stack.ts). */
+    --z-dialog-step: 3;
     /* The Context Menu: opened on purpose and gone on the next click, so nothing covers it. */
-    --z-menu: 53;
+    --z-menu: 70;
     /* Search, with its own backdrop, over everything else. */
-    --z-search: 60;
+    --z-search: 80;
 }

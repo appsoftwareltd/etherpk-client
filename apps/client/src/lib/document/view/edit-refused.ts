@@ -15,7 +15,7 @@ import { type Extension, StateEffect, type Transaction, type TransactionSpec } f
 import { EditorView } from '@codemirror/view'
 
 /** Why an edit was refused - one per rule that refuses. */
-export type EditRefusal = 'frontmatter-seam' | 'frontmatter-join' | 'frontmatter-remove' | 'frontmatter-grow' | 'frontmatter-vanish'
+export type EditRefusal = 'frontmatter-seam' | 'frontmatter-join' | 'frontmatter-remove' | 'frontmatter-grow' | 'frontmatter-vanish' | 'shown-range'
 
 /** Carried by the transaction a filter returns in place of the edit it refused. */
 export const editRefused = StateEffect.define<EditRefusal>()
@@ -31,8 +31,15 @@ export function refusalIn(tr: Transaction): EditRefusal | null {
     return null
 }
 
-/** The notice's lead-in: what the editor did, not what the user did wrong. */
-export const EDIT_REFUSAL_TITLE = 'Frontmatter kept'
+/** The notice's lead-in, per reason: what the editor did, not what the user did wrong. */
+export const EDIT_REFUSAL_TITLE: Record<EditRefusal, string> = {
+    'frontmatter-seam': 'Frontmatter kept',
+    'frontmatter-join': 'Frontmatter kept',
+    'frontmatter-remove': 'Frontmatter kept',
+    'frontmatter-grow': 'Frontmatter kept',
+    'frontmatter-vanish': 'Frontmatter kept',
+    'shown-range': 'Kept to what is shown',
+}
 
 /**
  * One short paragraph per reason: what the edit would have done, then what to do instead. The
@@ -55,6 +62,10 @@ export const EDIT_REFUSAL_MESSAGE: Record<EditRefusal, string> = {
     'frontmatter-vanish':
         'A protected document keeps its frontmatter: without the block, its title would be sealed into the encrypted body. ' +
         'Edit the values, but leave both --- lines.',
+    // An editor showing part of a document (`shown-range.ts`): the Task Editor's description and comments.
+    'shown-range':
+        'That edit would reach text outside what this editor shows, or move text out of it. ' +
+        'Open the document to edit around it.',
 }
 
 /** Reports each refusal in an update to `onRefused`, once per refused transaction. */

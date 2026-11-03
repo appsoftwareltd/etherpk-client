@@ -9,7 +9,7 @@ import { editorAnalysis } from '../analysis/editor-analysis'
 import { editorFixture, type HeadlessEditor } from '../testing/editor-state-fixture'
 import { caretBesideFence, dispatchWidgetChange, editAsTextSpec, fenceEditChanges, fenceRemoval, interactiveFenceAugmentation, widgetEditChanges } from './interactive-fence'
 import { type InteractiveFence, registerInteractiveFence } from './interactive-fence-contract'
-import { collapsedInteractiveFences, fenceById, fenceIdAt, interactiveFences } from './interactive-fence-state'
+import { collapsedInteractiveFences, fenceById, fenceIdAt, fenceInstance, interactiveFences } from './interactive-fence-state'
 import { isProtectedDocumentFacet } from './protected-document'
 import { EXTERNAL } from '../cm-document'
 import { editorOnScreen, setEditorOnScreen } from '../editor-on-screen'
@@ -28,6 +28,7 @@ const widget: InteractiveFence = {
 beforeEach(() => {
     const registry = createContributionRegistry()
     registerInteractiveFence(registry, 'map', widget)
+    registerInteractiveFence(registry, 'garden.plan', widget)
     setActiveContributionRegistry(registry)
 })
 
@@ -196,6 +197,39 @@ describe('deleting the whole block from the widget', () => {
         const removal = fenceRemoval(e.state, fence)
         expect(dispatchWidgetChange(e, { changes: removal, selection: { anchor: removal.from }, userEvent: 'delete.fence' })).toBe(true)
         expect(e.fixture()).toBe(['- Trip', '- |', '  - Day one'].join('\n'))
+    })
+
+    it('empties the bullet an Extension Fence was opened on, which the guard on its data lets through', () => {
+        // The removal starts at the fence column, not the line's start, so it reaches into the fence
+        // without taking all of it: the guard against a person's keystrokes (extensionFenceEdits)
+        // refused it, and Delete in a drawing's menu did nothing.
+        const e = editor(['- Trip|', '- ```garden.plan', '  {"id":"k1"}', '  ```', '  - Day one'].join('\n'))
+        const [fence] = interactiveFences(e.state)
+        const removal = fenceRemoval(e.state, fence)
+        expect(dispatchWidgetChange(e, { changes: removal, selection: { anchor: removal.from }, userEvent: 'delete.fence' })).toBe(true)
+        expect(e.fixture()).toBe(['- Trip', '- |', '  - Day one'].join('\n'))
+    })
+
+    it('deletes an Extension Fence on lines of its own', () => {
+        const e = editor(['Intro|', '```garden.plan', '{"id":"k1"}', '```', 'After'].join('\n'))
+        const [fence] = interactiveFences(e.state)
+        expect(dispatchWidgetChange(e, { changes: fenceRemoval(e.state, fence), userEvent: 'delete.fence' })).toBe(true)
+        expect(e.text()).toBe('Intro\nAfter')
+    })
+})
+
+// The editor frame keeps which drawing is edited by where it is drawn: one editor's fence, across
+// edits. The same document open in two editors draws the fence twice, and each is its own.
+describe('where a fence is drawn', () => {
+    it('is its editor and its id: kept across edits, and different in another editor of the same text', () => {
+        const doc = ['Intro|', map('A @ 1, 2'), 'After'].join('\n')
+        const one = editor(doc)
+        const other = editor(doc)
+        const at = (e: HeadlessEditor) => fenceInstance(e.state, fenceIdAt(e.state, interactiveFences(e.state)[0].blockFrom)!)
+        const before = at(one)
+        expect(at(other)).not.toBe(before)
+        one.type(' more')
+        expect(at(one)).toBe(before)
     })
 })
 

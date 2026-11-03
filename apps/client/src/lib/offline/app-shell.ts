@@ -47,6 +47,29 @@ export function isImmutableAppFile(pathname: string): boolean {
 }
 
 /**
+ * A build file the worker does not cache when it installs, but only once the page first fetches
+ * it: Excalidraw's handwriting font for Chinese, Japanese and Korean (Xiaolai), about 13 MB in over
+ * two hundred files, of which a drawing loads only those its text needs. Every other build file,
+ * Excalidraw's other fonts included, is cached at install.
+ *
+ * Such a file, once fetched, is kept with the version's own files (`appFile` in the worker), and a
+ * later version keeps the ones already held when it installs, so each is downloaded once and then
+ * works offline. Its name carries its hash, as every build file's does, so a font that did not
+ * change between releases keeps its address and is never fetched again.
+ */
+export function isOnDemandAppFile(pathname: string): boolean {
+    return /^\/_app\/immutable\/assets\/Xiaolai-Regular-[^/]+\.woff2$/.test(pathname)
+}
+
+/** A version's files: those cached when the worker installs, and those fetched when first needed. */
+export function splitAppFiles(files: Iterable<string>): { atInstall: string[]; onDemand: string[] } {
+    const atInstall: string[] = []
+    const onDemand: string[] = []
+    for (const file of files) (isOnDemandAppFile(file) ? onDemand : atInstall).push(file)
+    return { atInstall, onDemand }
+}
+
+/**
  * A web worker's script. The files a worker loads itself (the index's SQLite wasm and its OPFS
  * proxy, the spell checker's wasm) are not on SvelteKit's list of build files, but each worker
  * script names them by their full path, so the service worker reads them out of the scripts

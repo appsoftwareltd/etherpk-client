@@ -1,7 +1,40 @@
 /**
  * Images an extension hands to the open graph (ADR 0147): made smaller the way a pasted image is,
- * and kept as one of the graph's assets, so a document can show it.
+ * and kept as one of the graph's assets, so a document can show it. And the assets a document
+ * refers to, named and shown as the document's own editor names and shows them.
  */
+
+/**
+ * What a document's reference to an asset names.
+ *
+ * @public
+ */
+export interface AssetDescription {
+    /**
+     * The file's name as a person reads it, without the hash or id the graph adds to keep names
+     * apart: `plan.png` for `plan.3f9a1c2e.png`.
+     */
+    name: string
+    /** The file's whole name, as the reference writes it: for a tooltip, or where two names read alike. */
+    fileName: string
+    /** A document shows the asset as an image. */
+    image: boolean
+}
+
+/**
+ * Images to show in the Client's Lightbox, the dialog a picture's View larger opens.
+ *
+ * @public
+ */
+export interface ViewImagesOptions {
+    /**
+     * The images, as a document's references write them (`../assets/plan.3f9a1c2e.png`), in the
+     * order Previous and Next step through them. A reference that names no image asset is left out.
+     */
+    refs: readonly string[]
+    /** The reference the Lightbox opens on. The first image when left out, or when it is not among them. */
+    start?: string
+}
 
 /**
  * The open graph's assets, as far as an extension may add to them.
@@ -24,4 +57,24 @@ export interface ExtensionAssets {
      * where the graph keeps no assets here, or the image was refused.
      */
     saveImage(image: Blob, name: string): Promise<string | null>
+    /**
+     * What the asset reference `ref` names, as a document writes it (`../assets/plan.3f9a1c2e.png`),
+     * or null when `ref` names no asset.
+     */
+    describe(ref: string): AssetDescription | null
+    /**
+     * An address an `<img>` shows the image `ref` names at, read from the graph as the editor reads
+     * an image it draws: decrypted, in a synced graph. It lasts while the graph is open. Null when
+     * `ref` names no image, the graph keeps no assets here, or the image cannot be read just now.
+     */
+    imageUrl(ref: string): Promise<string | null>
+    /**
+     * Show the images `options.refs` name in the Client's Lightbox, over whatever is open, a dialog
+     * of the extension's own included: each as large as the window allows, under its name, with
+     * Previous and Next (and ← and →) when there is more than one. Esc, its close button or a
+     * click outside the picture closes it, and the keyboard returns to the element that had it.
+     * Resolves once it closes. One Lightbox is open at a time: showing others closes the first.
+     * Nothing opens when no reference names an image.
+     */
+    viewImages(options: ViewImagesOptions): Promise<void>
 }

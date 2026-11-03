@@ -16,13 +16,13 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { undoDepth } from '@codemirror/commands'
-import { type Transaction, type TransactionSpec } from '@codemirror/state'
+import { type EditorState, type Transaction, type TransactionSpec } from '@codemirror/state'
 import { EditorView, keymap, showTooltip, type WidgetType } from '@codemirror/view'
 
 import { createContributionRegistry, setActiveContributionRegistry } from '#lib/surface/index.js'
 
 import { hiddenSyntax, type HiddenSyntaxSpec, hiddenSyntaxPieces } from './augmentations/base-renderer'
-import { followFenceRegistrations, interactiveFenceAugmentation } from './augmentations/interactive-fence'
+import { editAsTextSpec, followFenceRegistrations, interactiveFenceAugmentation } from './augmentations/interactive-fence'
 import { addInlinePanel, inlinePanelsField, panelCaretBlocks, planPanelInsert, removeInlinePanel } from './augmentations/inline-panels'
 import { endOfDocument, type EndKind, startAfterCaret, startAtEnd, takeBackIfLeft } from './end-of-document'
 import { type InteractiveFence, registerInteractiveFence } from './augmentations/interactive-fence-contract'
@@ -30,10 +30,11 @@ import { pasteAsFence } from './augmentations/paste-to-fence'
 import { markdownWithCodeHighlight } from './augmentations/code-highlight'
 import { markdownFormatSpec, RULE_LINE_CLASS } from './augmentations/markdown-format'
 import { linkClickCaret, markdownLinkSpec } from './augmentations/markdown-link'
-import { imageClickCaret } from './augmentations/image-embed'
+import { imageClickCaret, imageClickSpec, imageEmbedAugmentation } from './augmentations/image-embed'
 import { imageWidthChange } from './augmentations/image-resize'
 import { markdownTableAugmentation } from './augmentations/markdown-table'
 import { guideThreadsFor } from './augmentations/outline-guides'
+import { outlineBaseIn } from './augmentations/outline-base'
 import { wikilinkCompletion } from './augmentations/wikilink-complete'
 import { refreshWikilinks, wikilinkAugmentation } from './augmentations/wikilink'
 import { displayNameForRef } from '../../storage/fs/asset-store'
@@ -45,8 +46,14 @@ import { PLAIN_PASTE_USER_EVENT } from './paste-clamp'
 import { analysisFor } from './analysis/editor-analysis'
 import { bulletToggleable, taskToggleable } from './task-toggleable'
 import { checkboxClick } from './augmentations/task-checkbox'
+import { taskChangeSpec } from './task-change'
+import { anchorLine, lineAnchor } from './line-anchor'
+import { shownRange, showsPart } from './shown-range'
+import { requestReveal, revealFocus, revealOnlyWhileFocused } from './augmentations/reveal-policy'
+import { collapsedExtensionFences } from './augmentations/interactive-fence-state'
+import { type TaskPart, taskPartRange } from './task-part-range'
 import { lineIndent } from '../outliner'
-import { editorFixture, type FixtureOptions, press } from './testing/editor-state-fixture'
+import { editorFixture, type FixtureOptions, type HeadlessEditor, press } from './testing/editor-state-fixture'
 import { FIND_REPLACE_EVENT, FIND_SELECT_EVENT } from '../find/find-edit'
 import { wikilinkButtonSpec } from './wrap-selection'
 import { insertTemplate } from './template-insert'
@@ -1219,6 +1226,55 @@ describe('a click on a rendered image puts the caret at the end of its markdown 
     }
 })
 
+// A clicked image shows its markdown only while the caret is on its line: however the caret leaves
+// (a key, a new line under it, a click CodeMirror places, a jump from elsewhere), the picture is
+// drawn again (augmentations/image-embed.ts, reveal-policy.ts). The clicks themselves, with real
+// layout: tests-client/image-reveal-leave.test.ts.
+describe('a clicked image shows its picture again once the caret leaves its line (EtherPK)', () => {
+    const IMAGE = '- ![Garden|800](../assets/garden.png)'
+    const imageAugmentation = imageEmbedAugmentation({ resolveAsset: async () => null })
+
+    /** Whether line `n` is drawn as its picture: a widget replaces the image's markdown. */
+    function pictureShown(state: EditorState, n: number): boolean {
+        const line = state.doc.line(n)
+        let shown = false
+        for (const source of state.facet(EditorView.decorations)) {
+            if (typeof source === 'function') continue
+            source.between(line.from, line.to, (_from, _to, deco) => {
+                if (deco.spec.widget) shown = true
+            })
+        }
+        return shown
+    }
+
+    /** The image on line 2 clicked: its markdown revealed, the caret at the end of it. */
+    function clicked(): HeadlessEditor {
+        const editor = editorFixture(`- Garden¦\n${IMAGE}\n- Kitchen`, { caret: '¦', extensions: [imageAugmentation] })
+        expect(pictureShown(editor.state, 2)).toBe(true)
+        editor.dispatch(editor.state.update(imageClickSpec(editor.state, editor.state.doc.line(2).from)))
+        expect(pictureShown(editor.state, 2)).toBe(false)
+        return editor
+    }
+
+    for (const row of [
+        { rule: 'Enter at the end of its markdown, onto the new bullet', leave: (e: HeadlessEditor) => e.key('Enter') },
+        {
+            // A click CodeMirror places itself: below the last line, or beside a line in the content's padding.
+            rule: 'a click that lands on another line',
+            leave: (e: HeadlessEditor) => e.dispatch(e.state.update({ selection: { anchor: e.state.doc.line(3).to }, userEvent: 'select.pointer' })),
+        },
+        { rule: 'a move from elsewhere (Find, a link jump)', leave: (e: HeadlessEditor) => e.dispatch(e.state.update({ selection: { anchor: 0 } })) },
+        { rule: 'a keyboard selection move', leave: (e: HeadlessEditor) => e.select(e.state.doc.line(3).to) },
+    ]) {
+        it(row.rule, () => {
+            const editor = clicked()
+            row.leave(editor)
+            expect(editor.state.doc.lineAt(editor.head()).number).not.toBe(2)
+            expect(pictureShown(editor.state, 2)).toBe(true)
+        })
+    }
+})
+
 // A drag of an image's resize handle writes the width into its size hint on release, and a double
 // click on the handle removes the hint (augmentations/image-resize.ts → imageWidthChange; the
 // pure rules are in image-resize.test.ts, the gesture in tests-client/image-resize.test.ts).
@@ -1268,6 +1324,140 @@ describe('a click on a task’s checkbox (EtherPK)', () => {
         editor.dispatch(editor.state.update(checkboxClick(editor.state, 3)!))
         editor.key('Mod-z')
         expect(editor.fixture()).toBe('- [ ] a|\n  - [ ] b')
+    })
+})
+
+// The line menu's status and priority rows (commands/task-status-commands.ts) write a task as a
+// Kanban card's menu does (ADR 0113), with the nested tasks a Done, Archive or untick brings along
+// (Editor Content Rules → Tasks nested under a task).
+describe('the line menu sets a task’s status and priority, as a Kanban card’s menu does (EtherPK)', () => {
+    function set(before: string, line: number, changes: Parameters<typeof taskChangeSpec>[3]): string {
+        const editor = editorFixture(before)
+        const spec = taskChangeSpec(editor.state, line, editor.state.doc.line(line).text, changes)
+        if (spec) editor.dispatch(editor.state.update(spec))
+        return editor.fixture()
+    }
+
+    it('writes a status as its one state tag, the caret staying on its word', () => {
+        expect(set('- [ ] #P1 #W water the be|ans', 1, { status: 'doing' })).toBe('- [ ] #P1 #D water the be|ans')
+    })
+
+    it('moves a caret in the rewritten tag run past it, never into the checkbox', () => {
+        expect(set('- [ ] #D| water', 1, { status: 'done' })).toBe('- [x] |water')
+    })
+
+    it('ticks the nested tasks with a task marked Done, through a plain bullet', () => {
+        expect(set('- [ ] a|\n  - b\n    - [ ] c\n- [ ] d', 1, { status: 'done' })).toBe('- [x] a|\n  - b\n    - [x] c\n- [ ] d')
+    })
+
+    it('unticks the nested Done tasks of a Done task marked Doing, but a Cancelled one', () => {
+        expect(set('- [x] a|\n  - [x] #C b\n  - [x] c', 1, { status: 'doing' })).toBe('- [ ] #D a|\n  - [x] #C b\n  - [ ] c')
+    })
+
+    it('sets and removes a priority on its own line alone', () => {
+        expect(set('- [x] a|\n  - [x] b', 1, { priority: 2 })).toBe('- [x] #P2 a|\n  - [x] b')
+        expect(set('- [ ] #P2 #W a|', 1, { priority: null })).toBe('- [ ] #W a|')
+    })
+
+    it('is one undo step, apart from the edit before it', () => {
+        const editor = editorFixture('- [ ] a|\n  - [ ] b')
+        editor.type('x')
+        editor.dispatch(editor.state.update(taskChangeSpec(editor.state, 1, '- [ ] ax', { status: 'done' })!))
+        editor.key('Mod-z')
+        expect(editor.fixture()).toBe('- [ ] ax|\n  - [ ] b')
+    })
+
+    it('writes nothing to a line that changed after the menu opened', () => {
+        const editor = editorFixture('- [ ] new line|\n- [ ] a')
+        expect(taskChangeSpec(editor.state, 1, '- [ ] a', { status: 'done' })).toBeNull()
+    })
+})
+
+// Tidy on leave also moves a Task Tag written later in a task into its leading run, applied as the
+// `#` helper applies the tag it is asked for (Editor Content Rules → Tidy on leave).
+describe('a Task Tag written later in a task moves into its run as the caret leaves (EtherPK)', () => {
+    type Leave = 'down' | 'up' | 'within'
+    /**
+     * Leave the caret's line as a headless editor can: `down` and `up` put the caret on the same
+     * column of the next or previous line (ArrowDown and ArrowUp without a view's goal column),
+     * `within` moves it to the start of the line's text, staying on the line.
+     */
+    function leave(before: string, way: Leave): ReturnType<typeof editorFixture> {
+        const editor = editorFixture(before)
+        const line = editor.state.doc.lineAt(editor.head())
+        const column = editor.head() - line.from
+        if (way === 'within') editor.select(line.from + 6)
+        else {
+            const to = editor.state.doc.line(line.number + (way === 'down' ? 1 : -1))
+            editor.select(to.from + Math.min(column, to.length))
+        }
+        return editor
+    }
+
+    const rows: (Omit<Rule, 'key'> & { leave: Leave })[] = [
+        { rule: 'a priority at the end of a task moves to the front', precedent: 'EtherPK', before: '- [ ] water the beans #P1|\n- [ ] weed the garden bed', leave: 'down', after: '- [ ] #P1 water the beans\n- [ ] weed the garden bed|' },
+        { rule: 'a later priority replaces the one in the run, the caret below keeping its column', precedent: 'EtherPK', before: '- [ ] #P1 wa|ter #P2\n- Kitchen sink', leave: 'down', after: '- [ ] #P2 water\n- Kitchen si|nk' },
+        { rule: 'a due date moves into the run', precedent: 'EtherPK', before: '- [ ] water #D-2026-09-15 the beans|\n- b', leave: 'down', after: '- [ ] #D-2026-09-15 water the beans\n- b|' },
+        // A state tag sets the task's status, as a Kanban move to that lane does: one state tag, and the checkbox to match.
+        { rule: 'a state tag #C cancels the task, ticking it', precedent: 'EtherPK', before: '- [ ] water the beans #C|\n- b', leave: 'down', after: '- [x] #C water the beans\n- b|' },
+        { rule: 'a state tag #A archives the task, ticking it', precedent: 'EtherPK', before: '- [ ] water the beans #A|\n- b', leave: 'down', after: '- [x] #A water the beans\n- b|' },
+        { rule: 'a state tag #W on a ticked task makes it Waiting, unticking it', precedent: 'EtherPK', before: '- [x] water the beans #W|\n- b', leave: 'down', after: '- [ ] #W water the beans\n- b|' },
+        { rule: 'a state tag #D on an open task makes it Doing', precedent: 'EtherPK', before: '- [ ] water the beans #D|\n- b', leave: 'down', after: '- [ ] #D water the beans\n- b|' },
+        { rule: 'a state tag #T replaces the state in the run, the task becoming Test', precedent: 'EtherPK', before: '- [ ] #W water the beans #T|\n- b', leave: 'down', after: '- [ ] #T water the beans\n- b|' },
+        { rule: 'of several state tags the last written wins', precedent: 'EtherPK', before: '- [ ] water #C the beans #W|\n- b', leave: 'down', after: '- [ ] #W water the beans\n- b|' },
+        { rule: 'a state tag keeps the priority and dates in the run', precedent: 'EtherPK', before: '- [ ] #P1 #D-2026-09-15 water the beans #C|\n- b', leave: 'down', after: '- [x] #P1 #C #D-2026-09-15 water the beans\n- b|' },
+        // The tasks nested under it come along as a status menu or Kanban move brings them (task-cascade.ts).
+        { rule: 'a state tag #A archives the nested tasks too', precedent: 'EtherPK', before: '- [ ] water the beans #A|\n  - [ ] weed the bed\n  - [x] dig\n- b', leave: 'down', after: '- [x] #A water the beans\n  - [x] #A weed the bed|\n  - [x] #A dig\n- b' },
+        { rule: 'a state tag that unticks a task unticks the nested tasks, a cancelled one excepted', precedent: 'EtherPK', before: '- [x] water the beans #W|\n  - [x] weed the bed\n  - [x] #C dig\n- b', leave: 'down', after: '- [ ] #W water the beans\n  - [ ] weed the bed|\n  - [x] #C dig\n- b' },
+        { rule: 'a state tag #C leaves the nested tasks as they are, as Mark as Cancelled does', precedent: 'EtherPK', before: '- [ ] water the beans #C|\n  - [ ] weed the bed\n- b', leave: 'down', after: '- [x] #C water the beans\n  - [ ] weed the bed|\n- b' },
+        { rule: 'a state tag rewrites the run in its fixed order, a Free Tag in it after the Task Tags, as a Kanban move does', precedent: 'EtherPK', before: '- [ ] #garden #P1 water #W|\n- b', leave: 'down', after: '- [ ] #P1 #W #garden water\n- b|' },
+        { rule: 'a Free Tag stays where it is written', precedent: 'EtherPK', before: '- [ ] water #garden the beans #P1|\n- b', leave: 'down', after: '- [ ] #P1 water #garden the beans\n- b|' },
+        { rule: 'leaving upward moves it too, the caret where the move put it', precedent: 'EtherPK', before: '- Kitchen sink\n- [ ] water #P1 the bea|ns', leave: 'up', after: '- Kitchen sink|\n- [ ] #P1 water the beans' },
+        { rule: 'a nested task’s tag moves within its own line', precedent: 'EtherPK', before: '- a\n  - [ ] water #P2 the beans|\n- b', leave: 'down', after: '- a\n  - [ ] #P2 water the beans\n- b|' },
+        { rule: 'the tag moves after the whitespace is trimmed, content pulled up onto an empty task line', precedent: 'EtherPK', before: '- [ ]   \n  water the beans #P1  |\n- b', leave: 'down', after: '- [ ] #P1 water the beans\n- b|' },
+        { rule: 'a tag in a code span stays', precedent: 'EtherPK', before: '- [ ] read `#P1` notes|\n- b', leave: 'down', after: '- [ ] read `#P1` notes\n- b|' },
+        { rule: 'a tag in a wikilink stays', precedent: 'EtherPK', before: '- [ ] read [[Garden #P1]]|\n- b', leave: 'down', after: '- [ ] read [[Garden #P1]]\n- b|' },
+        { rule: 'a tag in a URL or a markdown link stays', precedent: 'EtherPK', before: '- [ ] read https://example.com/#P1 [the #P2 notes](https://example.com)|\n- b', leave: 'down', after: '- [ ] read https://example.com/#P1 [the #P2 notes](https://example.com)\n- b|' },
+        { rule: 'a tag in inline maths stays', precedent: 'EtherPK', before: '- [ ] solve $a #P1 b$|\n- b', leave: 'down', after: '- [ ] solve $a #P1 b$\n- b|' },
+        { rule: 'a tag the run already carries stays set, the repeat removed', precedent: 'EtherPK', before: '- [ ] #P1 water the beans #P1|\n- b', leave: 'down', after: '- [ ] #P1 water the beans\n- b|' },
+        { rule: 'a plain bullet is not a task: its tag stays', precedent: 'EtherPK', before: '- water the beans #P1|\n- b', leave: 'down', after: '- water the beans #P1\n- b|' },
+        { rule: 'a caret that stays on the task changes nothing', precedent: 'EtherPK', before: '- [ ] water the beans #P1|\n- b', leave: 'within', after: '- [ ] |water the beans #P1\n- b' },
+    ]
+    for (const row of rows) {
+        it(`${row.leave}: ${row.rule} (${row.precedent})`, () => {
+            expect(leave(row.before, row.leave).fixture()).toBe(row.after)
+        })
+    }
+
+    it('moves nothing while the caret goes onto the task’s own soft line', () => {
+        const editor = editorFixture('- [ ] water the beans #P1|\n  a note\n- b')
+        editor.select(editor.text().indexOf('a note'))
+        expect(editor.fixture()).toBe('- [ ] water the beans #P1\n  |a note\n- b')
+    })
+
+    it('moves the tag of the task Enter splits, the new task below it', () => {
+        expect(press('- [ ] water the beans #P1|', 'Enter')).toBe('- [ ] #P1 water the beans\n- [ ] |')
+    })
+
+    it('leaves the new task Enter makes open when the state tag archives the tasks nested under the one left', () => {
+        // The new first child is the block being typed in, not one the person archived: the cascade
+        // skips the lines the leaving transaction itself wrote.
+        expect(press('- [ ] water the beans #A|\n  - [ ] weed the bed', 'Enter')).toBe('- [x] #A water the beans\n  - [ ] |\n  - [x] #A weed the bed')
+        expect(press('- [ ] water the beans #A\n  a note|\n  - [ ] weed the bed', 'Enter')).toBe('- [x] #A water the beans\n  a note\n  - [ ] |\n  - [x] #A weed the bed')
+    })
+
+    it('is undone with the move in one step', () => {
+        const editor = leave('- [ ] water the beans #P1|\n- b', 'down')
+        expect(editor.text()).toBe('- [ ] #P1 water the beans\n- b')
+        editor.key('Mod-z')
+        expect(editor.fixture()).toBe('- [ ] water the beans #P1|\n- b')
+    })
+
+    it('is undone in one step with the status it set and the nested tasks it brought along', () => {
+        const editor = leave('- [x] water the beans #W|\n  - [x] weed the bed\n- b', 'down')
+        expect(editor.text()).toBe('- [ ] #W water the beans\n  - [ ] weed the bed\n- b')
+        editor.key('Mod-z')
+        expect(editor.fixture()).toBe('- [x] water the beans #W|\n  - [x] weed the bed\n- b')
     })
 })
 
@@ -2120,6 +2310,42 @@ describe('the caret at an Extension Fence', () => {
         })
     }
 
+    // In a part of a task (the Task Editor, ADR 0170), which shows markdown only while it has the
+    // keyboard (reveal-policy.ts → revealOnlyWhileFocused), Edit as text is still a request the
+    // person made: it shows the text however the keyboard comes and goes. The button is pressed
+    // before the editor has the keyboard back (interactive-fence.ts → showText).
+    describe('in a part that shows markdown only while it has the keyboard (EtherPK)', () => {
+        const part = () => editorFixture(`Int|ro\n${plan}\nAfter`, { extensions: [interactiveFenceAugmentation(), revealOnlyWhileFocused()] })
+        const focus = (editor: HeadlessEditor, focused: boolean) => editor.dispatch(editor.state.update({ effects: revealFocus.of(focused) }))
+        function editAsText(editor: HeadlessEditor): void {
+            const fence = collapsedExtensionFences(editor.state)[0]
+            editor.dispatch(editor.state.update({ ...editAsTextSpec(editor.state, fence), effects: requestReveal.of({ from: fence.blockFrom, to: fence.blockTo }) }))
+        }
+        const shownAt = `Intro\n\`\`\`garden.plan\n|{"id":"k1"}\n{"type":"rectangle"}\n\`\`\`\nAfter`
+
+        it('Edit as text pressed before the part has the keyboard shows the text, and the keyboard arriving keeps it', () => {
+            const editor = part()
+            editAsText(editor)
+            expect(editor.fixture()).toBe(shownAt)
+            expect(drawn(editor)).toEqual([])
+            focus(editor, true)
+            expect(editor.fixture()).toBe(shownAt)
+            expect(drawn(editor)).toEqual([])
+        })
+
+        it('the keyboard leaving and coming back leaves the caret in the text, and the text shown', () => {
+            const editor = part()
+            focus(editor, true)
+            editAsText(editor)
+            focus(editor, false)
+            expect(editor.fixture()).toBe(shownAt)
+            expect(drawn(editor)).toEqual([])
+            focus(editor, true)
+            expect(editor.fixture()).toBe(shownAt)
+            expect(drawn(editor)).toEqual([])
+        })
+    })
+
     // Where a caret placed on its lines comes to rest. The arrow keys reach these places through
     // the editor's atomic ranges, which need a view (tests-client/extension-api.test.ts); every
     // other placement (a press, an undo, a command's selection) passes the caret filter, checked here
@@ -2959,4 +3185,218 @@ describe('a bookmark follows its line (ADR 0160)', () => {
             expect(bookmarkedLines(editor.state)).toEqual([])
         })
     }
+})
+
+// An editor showing one part of a task, the Task Editor's description, comments or additional
+// context (ADR 0170, `shown-range.ts`): the keys work as anywhere, inside the lines shown, and an edit reaching past them
+// is refused, leaving the document as it was.
+describe('an editor showing part of a task (ADR 0170)', () => {
+    /** `key` pressed in an editor showing `part` of the task on the fixture's second line. */
+    function pressShown(part: TaskPart, before: string, key: string): string {
+        const editor = editorFixture(before, { extensions: [lineAnchor(), shownRange(taskPartRange(part))] })
+        editor.dispatch(editor.state.update({ effects: anchorLine.of(editor.state.doc.line(2).from) }))
+        for (const each of key.split(' ')) editor.key(each)
+        return editor.fixture()
+    }
+    const task = (description: string, comments = '    - Comments\n      - level') => `- [[Garden]]\n  - [ ] Build the shed\n${description}\n${comments}\n- Kitchen`
+    /** A task whose `additional` lines follow its Comments block: its additional context. */
+    const context = (additional: string) => task('    - measure', `    - Comments\n      - level\n${additional}`)
+    const rows: Array<Rule & { part: TaskPart }> = [
+        { part: 'description', rule: 'Enter at the end of the last line shown starts a line that is shown too', precedent: 'EtherPK', before: task('    - measure|'), key: 'Enter', after: task('    - measure\n    - |') },
+        { part: 'description', rule: 'Backspace at the start of the first line shown never joins it onto the task', precedent: 'EtherPK', before: task('    - |measure'), key: 'Backspace', after: task('    - |measure') },
+        { part: 'description', rule: 'Delete at the end of the last line shown never joins the Comments bullet onto it', precedent: 'EtherPK', before: task('    - measure|'), key: 'Delete', after: task('    - measure|') },
+        { part: 'description', rule: 'Shift+Tab that would take a line out from under the task is refused', precedent: 'EtherPK', before: task('    - measure|'), key: 'Shift-Tab', after: task('    - measure|') },
+        { part: 'description', rule: 'Alt+Up on the first line shown never moves it above the task', precedent: 'EtherPK', before: task('    - measure|'), key: 'Alt-ArrowUp', after: task('    - measure|') },
+        { part: 'description', rule: 'Tab nests a line under the one above it, as anywhere', precedent: 'Logseq', before: task('    - measure\n    - cut|'), key: 'Tab', after: task('    - measure\n      - cut|') },
+        { part: 'description', rule: 'Mod+A then Backspace deletes everything shown, and the line break with it', precedent: 'EtherPK', before: task('    - measure|\n    - cut'), key: 'Mod-a Backspace', after: task('').replace('shed\n\n', 'shed|\n') },
+        { part: 'description', rule: 'Backspace on a sole empty bullet takes it out', precedent: 'EtherPK', before: task('    - |'), key: 'Backspace', after: task('').replace('shed\n\n', 'shed|\n') },
+        { part: 'comments', rule: 'Enter at the end of the last comment starts another comment', precedent: 'EtherPK', before: task('    - measure', '    - Comments\n      - level|'), key: 'Enter', after: task('    - measure', '    - Comments\n      - level\n      - |') },
+        { part: 'comments', rule: 'Backspace at the start of the first comment never joins it onto the Comments bullet', precedent: 'EtherPK', before: task('    - measure', '    - Comments\n      - |level'), key: 'Backspace', after: task('    - measure', '    - Comments\n      - |level') },
+        { part: 'additionalContext', rule: 'Enter at the end of the last line shown starts a line that is shown too', precedent: 'EtherPK', before: context('    - paint it|'), key: 'Enter', after: context('    - paint it\n    - |') },
+        { part: 'additionalContext', rule: 'Backspace at the start of the first line shown never joins it onto the last comment', precedent: 'EtherPK', before: context('    - |paint it'), key: 'Backspace', after: context('    - |paint it') },
+        { part: 'additionalContext', rule: 'Tab on the first line shown never nests it under the Comments bullet', precedent: 'EtherPK', before: context('    - paint it|'), key: 'Tab', after: context('    - paint it|') },
+        { part: 'additionalContext', rule: 'Alt+Up on the first line shown never moves it above the Comments block', precedent: 'EtherPK', before: context('    - paint it|'), key: 'Alt-ArrowUp', after: context('    - paint it|') },
+        { part: 'additionalContext', rule: 'Shift+Tab that would take a line out from under the task is refused', precedent: 'EtherPK', before: context('    - paint it|'), key: 'Shift-Tab', after: context('    - paint it|') },
+        { part: 'additionalContext', rule: 'Mod+A then Backspace deletes everything shown, and the line break with it', precedent: 'EtherPK', before: context('    - paint it|\n    - two coats'), key: 'Mod-a Backspace', after: task('    - measure', '    - Comments|\n      - level') },
+        { part: 'additionalContext', rule: 'Backspace on a sole empty bullet takes it out', precedent: 'EtherPK', before: context('    - |'), key: 'Backspace', after: task('    - measure', '    - Comments\n      - level|') },
+    ]
+    /** A part's name as a test's title reads it. */
+    const partName = (part: TaskPart) => (part === 'additionalContext' ? 'additional context' : part)
+    for (const row of rows) {
+        it(`${row.key} in the ${partName(row.part)}: ${row.rule} (${row.precedent})`, () => {
+            expect(pressShown(row.part, row.before, row.key)).toBe(row.after)
+        })
+    }
+
+    // Drawn from the part's own first level, as Logseq draws a block zoomed into: the first-level
+    // bullets of the description and the additional context, and each comment, sit at the left edge as a top-level bullet does in a tab,
+    // and a guide hangs only from a line the editor shows. The level is the one below the bullet the
+    // part is nested under, whatever the part holds, so it never moves while typing. The text keeps its
+    // real indentation; only the drawing moves (`outline-base.ts`).
+    type Base = { depth: number; indent: number; shown: { first: number; last: number } }
+    const description = (last: number): Base => ({ depth: 2, indent: 4, shown: { first: 2, last } })
+    const drawRows: Array<{ part: TaskPart; rule: string; precedent: Rule['precedent']; before: string; threads: string[]; base: Base }> = [
+        { part: 'description', rule: 'a first-level bullet with a child: one thread, from that bullet, none from the task above', precedent: 'Logseq', before: task('    - measure|\n      - twice'), threads: ['2→3'], base: description(3) },
+        { part: 'description', rule: 'first-level bullets alone: no thread at all', precedent: 'Logseq', before: task('    - measure|\n    - cut'), threads: [], base: description(3) },
+        { part: 'description', rule: 'a level below a child: a thread from each shown parent', precedent: 'Logseq', before: task('    - measure|\n      - twice\n        - again'), threads: ['2→4', '3→4'], base: description(4) },
+        { part: 'description', rule: 'prose alone under the task: drawn from the same level, so typing a first bullet moves nothing', precedent: 'Logseq', before: task('    measure the floor|'), threads: [], base: description(2) },
+        { part: 'description', rule: 'a `- item` inside a code block is code, and changes nothing', precedent: 'CommonMark', before: task('    ```yaml\n    - a\n    ```\n    - measure|'), threads: [], base: description(5) },
+        { part: 'comments', rule: 'comments: none from the Comments bullet, one from a comment with a reply', precedent: 'Logseq', before: task('    - measure', '    - Comments\n      - level|\n        - deeper'), threads: ['4→5'], base: { depth: 3, indent: 6, shown: { first: 4, last: 5 } } },
+        { part: 'additionalContext', rule: 'from the level below the task, as the description is: one thread, from a line with a child', precedent: 'Logseq', before: context('    - paint it|\n      - green'), threads: ['5→6'], base: { depth: 2, indent: 4, shown: { first: 5, last: 6 } } },
+    ]
+    for (const row of drawRows) {
+        it(`the ${partName(row.part)} is drawn from its first level: ${row.rule} (${row.precedent})`, () => {
+            const editor = editorFixture(row.before, { extensions: [markdownWithCodeHighlight(), lineAnchor(), shownRange(taskPartRange(row.part))] })
+            editor.dispatch(editor.state.update({ effects: anchorLine.of(editor.state.doc.line(2).from) }))
+            expect(guideThreadsFor(editor.state).map((thread) => `${thread.parent}→${thread.last}`)).toEqual(row.threads)
+            expect(outlineBaseIn(editor.state)).toEqual(row.base)
+        })
+    }
+
+    it('the description keeps its level when its prose becomes a bullet (Logseq)', () => {
+        const editor = editorFixture(task('    |measure the floor'), { extensions: [lineAnchor(), shownRange(taskPartRange('description'))] })
+        editor.dispatch(editor.state.update({ effects: anchorLine.of(editor.state.doc.line(2).from) }))
+        const before = outlineBaseIn(editor.state)
+        editor.type('- ')
+        expect(editor.text()).toContain('    - measure the floor')
+        expect(outlineBaseIn(editor.state)).toEqual(before)
+    })
+
+    it('a document shown whole is drawn from column 0 (EtherPK)', () => {
+        const editor = editorFixture(task('    - measure|\n      - twice'), { extensions: [markdownWithCodeHighlight()] })
+        expect(outlineBaseIn(editor.state)).toBeNull()
+        expect(guideThreadsFor(editor.state).map((thread) => `${thread.parent}→${thread.last}`)).toEqual(['0→5', '1→5', '2→3', '4→5'])
+    })
+
+    it('Tab and Shift+Tab in the description still write the real indentation (Logseq)', () => {
+        const editor = editorFixture(task('    - measure\n      - twice|'), { extensions: [lineAnchor(), shownRange(taskPartRange('description'))] })
+        editor.dispatch(editor.state.update({ effects: anchorLine.of(editor.state.doc.line(2).from) }))
+        editor.key('Enter')
+        editor.key('Tab')
+        expect(editor.fixture()).toBe(task('    - measure\n      - twice\n        - |'))
+        editor.key('Shift-Tab')
+        editor.key('Shift-Tab')
+        expect(editor.fixture()).toBe(task('    - measure\n      - twice\n    - |'))
+    })
+
+    it('ArrowUp onto the hidden task line keeps the caret at the content column of the first line shown (EtherPK)', () => {
+        const editor = editorFixture(task('    - mea|sure'), { extensions: [lineAnchor(), shownRange(taskPartRange('description'))] })
+        editor.dispatch(editor.state.update({ effects: anchorLine.of(editor.state.doc.line(2).from) }))
+        editor.select(editor.text().indexOf('Build'))
+        expect(editor.fixture()).toBe(task('    - |measure'))
+    })
+})
+
+// A part of a task, the Task Editor's description, comments or additional context (ADR 0170), shows
+// the caret's line as markdown only while it has the keyboard. The part opens with its caret on the
+// first line shown (`shown-range.ts` keeps it there), so a picture or bold text on that line would
+// otherwise open as markdown before the person has gone into the part. An editor showing the whole
+// document reveals the caret's line whether it has focus or not, as it always has
+// (`reveal-policy.ts` → `revealOnlyWhileFocused`). Real focus, clicks and Tab:
+// tests-client/kanban-task-editor.test.ts.
+describe('a part of a task shows its markdown only while it has the keyboard (EtherPK)', () => {
+    const IMAGE = '![Garden|800](../assets/garden.png)'
+    const imageAugmentation = imageEmbedAugmentation({ resolveAsset: async () => null })
+    const task = (description: string, comments = '    - Comments\n      - level') => `- [[Garden]]\n  - [ ] Build the shed\n${description}\n${comments}\n- Kitchen`
+
+    /** Whether line `n` is drawn as its picture: a widget replaces the image's markdown. */
+    function pictureShown(state: EditorState, n: number): boolean {
+        const line = state.doc.line(n)
+        let shown = false
+        for (const source of state.facet(EditorView.decorations)) {
+            if (typeof source === 'function') continue
+            source.between(line.from, line.to, (_from, _to, deco) => {
+                if (deco.spec.widget) shown = true
+            })
+        }
+        return shown
+    }
+
+    /** Whether the inline formatting hides any syntax on line `n`. */
+    function marksHidden(state: EditorState, n: number): boolean {
+        const line = state.doc.line(n)
+        return hiddenSyntaxPieces(markdownFormatSpec, state, [{ from: line.from, to: line.to }]).some((d) => d.value === hiddenSyntax)
+    }
+
+    /** An editor showing `part` of the task on line 2, the caret where the fixture's `¦` is. */
+    function partEditor(part: TaskPart, fixture: string): HeadlessEditor {
+        const editor = editorFixture(fixture, { caret: '¦', extensions: [markdownWithCodeHighlight(), imageAugmentation, lineAnchor(), shownRange(taskPartRange(part))] })
+        editor.dispatch(editor.state.update({ effects: anchorLine.of(editor.state.doc.line(2).from) }))
+        return editor
+    }
+    const focus = (editor: HeadlessEditor, focused: boolean) => editor.dispatch(editor.state.update({ effects: revealFocus.of(focused) }))
+
+    it('an image on the line with the caret is drawn as its picture before the part has the keyboard', () => {
+        const editor = partEditor('description', task(`    - ${IMAGE}¦`))
+        expect(pictureShown(editor.state, 3)).toBe(true)
+    })
+
+    it('given the keyboard, the part shows the markdown of the image line the caret is on', () => {
+        const editor = partEditor('description', task(`    - ${IMAGE}¦`))
+        focus(editor, true)
+        expect(pictureShown(editor.state, 3)).toBe(false)
+    })
+
+    it('once the part loses the keyboard, the image is drawn again with the caret where it was', () => {
+        const editor = partEditor('description', task(`    - ${IMAGE}¦`))
+        focus(editor, true)
+        const head = editor.head()
+        focus(editor, false)
+        expect(editor.head()).toBe(head)
+        expect(pictureShown(editor.state, 3)).toBe(true)
+    })
+
+    it('the first comment and the additional context follow the same rule', () => {
+        const comments = partEditor('comments', task('    - measure', `    - Comments\n      - ${IMAGE}¦`))
+        expect(pictureShown(comments.state, 5)).toBe(true)
+        focus(comments, true)
+        expect(pictureShown(comments.state, 5)).toBe(false)
+        const context = partEditor('additionalContext', task('    - measure', `    - Comments\n      - level\n    - ${IMAGE}¦`))
+        expect(pictureShown(context.state, 6)).toBe(true)
+        focus(context, true)
+        expect(pictureShown(context.state, 6)).toBe(false)
+    })
+
+    it('bold text on the line with the caret keeps its marks hidden until the part has the keyboard', () => {
+        const editor = partEditor('description', task('    - **measure**¦ the floor'))
+        expect(marksHidden(editor.state, 3)).toBe(true)
+        focus(editor, true)
+        expect(marksHidden(editor.state, 3)).toBe(false)
+        focus(editor, false)
+        expect(marksHidden(editor.state, 3)).toBe(true)
+    })
+
+    it('a map with the caret in it is drawn until the part has the keyboard, and again once it leaves', () => {
+        const registry = createContributionRegistry()
+        registerInteractiveFence(registry, 'map', { height: () => 320, mount: () => ({ update: () => {}, destroy: () => {} }) })
+        setActiveContributionRegistry(registry)
+        try {
+            const editor = editorFixture(task('    - ```map\n      Garden @ 50.7, -1.0¦\n      ```'), {
+                caret: '¦',
+                extensions: [markdownWithCodeHighlight(), interactiveFenceAugmentation(), lineAnchor(), shownRange(taskPartRange('description'))],
+            })
+            editor.dispatch(editor.state.update({ effects: anchorLine.of(editor.state.doc.line(2).from) }))
+            expect(pictureShown(editor.state, 4)).toBe(true)
+            focus(editor, true)
+            expect(pictureShown(editor.state, 4)).toBe(false)
+            focus(editor, false)
+            expect(pictureShown(editor.state, 4)).toBe(true)
+        } finally {
+            setActiveContributionRegistry(null)
+        }
+    })
+
+    it('a new task’s description, held in memory, follows the same rule', () => {
+        const editor = editorFixture(`- ${IMAGE}¦`, { caret: '¦', extensions: [markdownWithCodeHighlight(), imageAugmentation, showsPart()] })
+        expect(pictureShown(editor.state, 1)).toBe(true)
+        focus(editor, true)
+        expect(pictureShown(editor.state, 1)).toBe(false)
+    })
+
+    it('an editor showing the whole document shows the markdown of the caret’s image line, focused or not', () => {
+        const editor = editorFixture(`- Garden\n- ${IMAGE}¦`, { caret: '¦', extensions: [markdownWithCodeHighlight(), imageAugmentation] })
+        expect(pictureShown(editor.state, 2)).toBe(false)
+        focus(editor, false)
+        expect(pictureShown(editor.state, 2)).toBe(false)
+    })
 })

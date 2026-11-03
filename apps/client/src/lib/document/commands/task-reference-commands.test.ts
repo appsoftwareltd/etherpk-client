@@ -11,7 +11,16 @@ import { BookmarkSync, bookmarksAugmentation } from '../view/augmentations/bookm
 import { isProtectedDocumentFacet } from '../view/augmentations/protected-document'
 import { editorDocument } from '../view/editor-document'
 import { parseTaskReference, taskFingerprint } from '../task-reference'
-import { copyTaskReference, registerTaskReferenceCommands, TASK_COPY_REFERENCE, type TaskReferenceCommandDeps } from './task-reference-commands'
+import { parseLaneReference } from '../lane-reference'
+import {
+    copyLaneReference,
+    copyTaskReference,
+    menuTargetTask,
+    registerTaskReferenceCommands,
+    TASK_COPY_LANE_REFERENCE,
+    TASK_COPY_REFERENCE,
+    type TaskReferenceCommandDeps,
+} from './task-reference-commands'
 
 // Copy task reference (ADR 0114): a task's words and address on the clipboard, for a person to
 // hand to an agent, said in a notice because the clipboard shows nothing of its own.
@@ -68,6 +77,45 @@ describe('copying a task reference', () => {
     })
 })
 
+// Copy lane reference: a Kanban board's lane named for an agent, to work through every task in it.
+// The board names the lane in the Command; the graph, the clipboard and the notice are the Client's.
+describe('copying a lane reference', () => {
+    it('puts the graph, the board, the lane and its reference on the clipboard, and says what it copied', async () => {
+        const { value, copied, notices } = deps()
+        expect(await copyLaneReference({ concept: 'Garden', status: 'doing', label: 'Doing', count: 2 }, value)).toBe(true)
+        expect(copied[0].split('\n').slice(0, 4)).toEqual([
+            'EtherPK Kanban lane from the graph "Work" (g-1)',
+            'Board: Garden',
+            'Lane: Doing (2 tasks)',
+            'Reference: etherpk:/g/g-1/k/Garden#lane=doing',
+        ])
+        expect(parseLaneReference(copied[0])).toEqual({ graphId: 'g-1', concept: 'Garden', status: 'doing' })
+        expect(notices).toEqual([['info', 'Copied a reference to the Doing lane of Garden. Paste it to an agent connected to this graph.']])
+    })
+
+    it('names the Graph Kanban as the board when the lane is on it', async () => {
+        const { value, notices } = deps()
+        await copyLaneReference({ concept: null, status: 'open', label: 'Open', count: 0 }, value)
+        expect(notices).toEqual([['info', 'Copied a reference to the Open lane of the Graph Kanban. Paste it to an agent connected to this graph.']])
+    })
+
+    it('says why when the clipboard refuses', async () => {
+        const { value, notices } = deps({ refuse: true })
+        expect(await copyLaneReference({ concept: 'Garden', status: 'doing', label: 'Doing', count: 2 }, value)).toBe(false)
+        expect(notices).toEqual([['error', 'Could not copy the lane reference: Clipboard access was denied']])
+    })
+
+    it('copies the lane a Kanban board names in the Command, and nothing for anything else', async () => {
+        const commands = createCommandRegistry()
+        const { value, copied } = deps()
+        registerTaskReferenceCommands(commands, createContributionRegistry(), value)
+        await commands.execute(TASK_COPY_LANE_REFERENCE, { concept: 'Garden', status: 'test', label: 'Test', count: 1 })
+        await commands.execute(TASK_COPY_LANE_REFERENCE, { concept: 'Garden', status: 'later', label: 'Later', count: 1 })
+        await commands.execute(TASK_COPY_LANE_REFERENCE, undefined)
+        expect(copied.map((text) => text.split('\n')[3])).toEqual(['Reference: etherpk:/g/g-1/k/Garden#lane=test'])
+    })
+})
+
 /** Editors open for a test, each as the line menu finds one. */
 const open: BookmarkSync[] = []
 
@@ -120,9 +168,34 @@ describe('Copy task reference on a menu', () => {
 
     it("is the row of a Tasks View row's menu, copying the task the row shows", async () => {
         const { commands, rows, copied } = setUp()
-        const task = { kind: 'task', document: 'Garden', line: 2, label: '#W water the beans' }
+        const task = { kind: 'task', document: 'Garden', line: 2, label: '#W water the beans', done: false }
         expect(rows(task)).toEqual(['Copy task reference'])
         await commands.execute(TASK_COPY_REFERENCE, task)
         expect(copied[0].split('\n')[1]).toBe('Task: water the beans')
+    })
+})
+
+describe('the task a menu was raised on', () => {
+    it("is the task on an editor line's menu, its line counted from the body", () => {
+        editorOver('Garden', '---\ntitle: Garden\n---\n- [ ] #P1 water the beans\n- weed')
+        expect(menuTargetTask({ kind: 'line', concept: 'Garden', panelId: 'left', line: 4, text: '- [ ] #P1 water the beans' })).toEqual({
+            document: 'Garden',
+            line: 0,
+            label: '#P1 water the beans',
+        })
+        expect(menuTargetTask({ kind: 'line', concept: 'Garden', panelId: 'left', line: 5, text: '- weed' })).toBeNull()
+    })
+
+    it("is the task a Tasks View row shows, and none for a task target missing its fields", () => {
+        expect(menuTargetTask({ kind: 'task', document: 'Garden', line: 2, label: '#W water the beans', done: false })).toEqual({ document: 'Garden', line: 2, label: '#W water the beans' })
+        expect(menuTargetTask({ kind: 'task' } as never)).toBeNull()
+    })
+
+    it('is none for a link or a word in a task line, whose menus are about the link or the word, nor for a Protected Document', () => {
+        editorOver('Garden', '- [ ] water the [[Beans]]')
+        editorOver('Vault', '- [ ] secret', 'right', [isProtectedDocumentFacet.of(() => true)])
+        expect(menuTargetTask({ kind: 'wikilink', concept: 'Beans', line: { concept: 'Garden', panelId: 'left', line: 1, text: '- [ ] water the [[Beans]]' } })).toBeNull()
+        expect(menuTargetTask({ kind: 'line', concept: 'Vault', panelId: 'right', line: 1, text: '- [ ] secret' })).toBeNull()
+        expect(menuTargetTask({ kind: 'document-tab', concept: 'Garden' })).toBeNull()
     })
 })

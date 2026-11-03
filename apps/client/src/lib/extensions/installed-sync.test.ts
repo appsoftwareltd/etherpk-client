@@ -5,7 +5,7 @@ import { createPersonSettings } from '#lib/person-settings/person-settings.js'
 import type { DirectoryState } from './directory'
 import type { DirectoryExtension, DirectoryListing, DirectoryRelease } from './directory-format'
 import type { InstalledRelease } from './installed'
-import { createInstalledSync, installedSettingKey, planInstalled } from './installed-sync'
+import { createInstalledSync, installedIds, installedSettingKey, planInstalled } from './installed-sync'
 import { memoryStorage } from './testing'
 
 // What a device does with the extensions a person installed (ADR 0123, amended 2026-10-12): the
@@ -110,13 +110,25 @@ describe('what a device cannot know or do', () => {
         const kanban = extension('kanban', [release('1.0.0', 'K')])
         expect(plan({ intended: ['kanban'], listing: listing(kanban), builtIns: ['kanban'] }).install).toEqual([])
     })
+
+    it('takes a release off the device once its id comes with the Client, whether or not the person still has it', () => {
+        // The directory only forgets it (removeFromDevice), leaving the built-in running.
+        const device = [onDevice('kanban', '1.0.0', 'K')]
+        expect(plan({ intended: ['kanban'], device, builtIns: ['kanban'] }).remove).toEqual(['kanban'])
+        expect(plan({ intended: [], device, builtIns: ['kanban'] }).remove).toEqual(['kanban'])
+    })
+
+    it('retires the person’s record of one whose id now comes with the Client, whether or not the list can be read', () => {
+        expect(plan({ intended: ['kanban', 'orchard'], builtIns: ['kanban'] }).retire).toEqual(['kanban'])
+        expect(plan({ intended: ['orchard'], builtIns: ['kanban'] }).retire).toEqual([])
+    })
 })
 
 describe('keeping a device in step', () => {
     const orchard = extension('orchard', [release('1.1.0', 'B'), release('1.0.0', 'A')])
     const pear = extension('pear', [release('2.0.0', 'P')])
 
-    function setUp(options: { state?: DirectoryState; device?: InstalledRelease[]; installs?: string[]; failing?: string } = {}) {
+    function setUp(options: { state?: DirectoryState; device?: InstalledRelease[]; installs?: string[]; failing?: string; builtIns?: string[] } = {}) {
         const storage = memoryStorage()
         const settings = createPersonSettings(() => storage)
         for (const id of options.installs ?? []) settings.set(installedSettingKey(id), 'installed')
@@ -140,7 +152,7 @@ describe('keeping a device in step', () => {
             installed: { list: () => device },
             settings,
             clientVersion: '0.9.7',
-            builtIns: [],
+            builtIns: options.builtIns ?? [],
             notify,
             setInterval: (run) => timers.push(run),
             clearInterval: () => {},
@@ -162,6 +174,15 @@ describe('keeping a device in step', () => {
         expect(calls).toEqual(['remove orchard', 'stop pear'])
         expect(sync.reports()).toEqual({ pear: { withdrawn: true, waiting: { version: '2.0.0', needs: '0.9.9' } } })
         expect(notify).not.toHaveBeenCalled()
+    })
+
+    it('clears the person’s setting for one that now comes with the Client, and forgets its release here', async () => {
+        // A tidy-up: the setting is ignored once the id is built in, and would otherwise stay in the
+        // person's Settings Vault for good.
+        const { sync, settings, calls } = setUp({ installs: ['orchard', 'kanban'], device: [onDevice('kanban', '1.0.0', 'K')], builtIns: ['kanban'] })
+        await sync.run()
+        expect(installedIds(settings)).toEqual(['orchard'])
+        expect(calls).toEqual(['remove kanban', 'install orchard@1.1.0'])
     })
 
     it('replaces a withdrawn release and stages a newer one, announcing neither', async () => {

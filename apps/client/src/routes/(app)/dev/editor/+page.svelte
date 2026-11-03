@@ -330,6 +330,8 @@
             concepts: { key: conceptKey, canonicalName: (name) => name },
             keybindings: { add: () => () => {} },
             notify: (text) => console.debug(text),
+            // The harness raises no menus on tasks.
+            menuTask: () => null,
             // The harness's documents are its index fixtures (ADR 0147).
             documents: createDocumentsReader({
                 source: {
@@ -340,7 +342,7 @@
                 today: () => todayISO(),
             }),
             records: (extensionId) => graphRecords('dev-editor', extensionId),
-            assets: createExtensionAssets({ store: () => null }),
+            assets: createExtensionAssets({ store: () => null, view: async () => {} }),
             editor: {
                 insertBlock(text, options) {
                     const view = getActiveEditorView()

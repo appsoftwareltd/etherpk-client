@@ -29,7 +29,8 @@ export async function openSpellingMenu(view: EditorView, hit: WordRange, x: numb
     menuView = view
     // The line the word is on, so the menu also carries the line's [[Bookmark]] rows (ADR 0159).
     const doc = view.state.facet(editorDocument)
-    const line = doc ? { concept: doc.concept, panelId: doc.panelId, line: view.state.doc.lineAt(hit.from).number } : undefined
+    const at = view.state.doc.lineAt(hit.from)
+    const line = doc ? { concept: doc.concept, panelId: doc.panelId, line: at.number, text: at.text } : undefined
     const target: MisspellingContextMenuTarget = { kind: 'misspelling', ...hit, suggestions, line }
     openContextMenu(target, x, y)
 }

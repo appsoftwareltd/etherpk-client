@@ -153,7 +153,7 @@ describe('render ownership across panes', () => {
 
         // A's fence is deleted; every transaction in A used to delete B's entries too.
         a.dispatch(a.state.update({ changes: { from: 0, to: a.state.doc.length, insert: 'plain' } }))
-        coordinatorA.update({ docChanged: true, selectionSet: false, transactions: [] })
+        coordinatorA.update({ docChanged: true, transactions: [] })
 
         expect(fenceRenderResults.size).toBe(1)
         expect(fenceRenderResults.get(keyB)?.source).toBe('graph B')
@@ -195,7 +195,7 @@ describe('clearing the caches', () => {
         const stale = fenceRenderResults.get(key)
 
         a.dispatch(a.state.update({ changes: { from: 0, to: a.state.doc.length, insert: 'cipher' } }))
-        coordinatorA.update({ docChanged: true, selectionSet: false, transactions: [] })
+        coordinatorA.update({ docChanged: true, transactions: [] })
         clearRenderCaches()
         finishRenders()
         await vi.runAllTimersAsync()

@@ -1,0 +1,102 @@
+/*
+ * The editor frame (fence-frame.ts): the toolbar and menu the Client draws round a fence that is a
+ * picture until it is edited in the document, such as a drawing. The buttons and the menu are the
+ * Client's controls (controls.css, ADR 0151); this holds only where they sit. Text is at least 14px
+ * and recedes by colour, never by opacity.
+ */
+
+.gk-fence-frame {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    box-sizing: border-box;
+}
+
+/* The widget's own room: what the frame's height leaves under the toolbar. */
+.gk-fence-frame-body {
+    position: relative;
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
+.gk-fence-frame-toolbar {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 0.5rem;
+    height: 44px;
+    box-sizing: border-box;
+    padding: 0 0 0.375rem;
+}
+
+.gk-fence-frame-toolbar[hidden] {
+    display: none;
+}
+
+/* On a touch screen the Client's buttons are 44px tall, the toolbar's whole height, so the space
+   under them goes rather than the buttons spilling onto the widget. */
+@media (pointer: coarse) {
+    .gk-fence-frame-toolbar {
+        padding-bottom: 0;
+    }
+}
+
+/* Edit as text and Delete, apart from the buttons that move the fence. */
+.gk-fence-frame-toolbar-apart {
+    display: flex;
+    gap: 0.5rem;
+    margin-left: auto;
+}
+
+/*
+ * The picture's menu: in its top right corner, shown while the pointer is over the fence or the
+ * keyboard is in it, and always where there is no hover (a touch screen). Tab reaches the button
+ * while it is faded, and reaching it shows it.
+ */
+.gk-fence-frame-menu {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+    z-index: 2;
+    opacity: 0;
+    transition: opacity 120ms ease-out;
+}
+
+.gk-fence-frame:hover .gk-fence-frame-menu,
+.gk-fence-frame:focus-within .gk-fence-frame-menu,
+.gk-fence-frame-menu:has([aria-expanded='true']) {
+    opacity: 1;
+}
+
+@media (hover: none) {
+    .gk-fence-frame-menu {
+        opacity: 1;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .gk-fence-frame-menu {
+        transition: none;
+    }
+}
+
+/* While its menu is open, the raised button stays lit as it is on hover. */
+.gk-fence-frame-menu-button[aria-expanded='true'] {
+    background: linear-gradient(var(--gk-menu-hover), var(--gk-menu-hover)), var(--gk-surface-0);
+    color: var(--gk-text-strong);
+}
+
+.gk-fence-frame-menu-icon {
+    width: 1rem;
+    height: 1rem;
+    fill: currentColor;
+}
+
+/* The menu beside its button rather than below it: the editor clips a widget to its height, and the
+   smallest picture is just tall enough for the menu this way. */
+.gk-fence-frame-menu-list {
+    position: absolute;
+    top: 0;
+    right: calc(100% + 0.25rem);
+}

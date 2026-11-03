@@ -61,6 +61,7 @@ import {
     themeTick,
     trackRenderCoordinator,
 } from './rendered-common'
+import { revealInputsChanged, revealUpdated } from './reveal-policy'
 
 /** Debounce for the live preview re-render while the source is edited. */
 const PREVIEW_DEBOUNCE_MS = 200
@@ -237,7 +238,7 @@ export interface RenderCoordinatorHost {
 }
 
 /** The parts of a `ViewUpdate` the coordinator reads. */
-export type RenderCoordinatorUpdate = Pick<ViewUpdate, 'docChanged' | 'selectionSet' | 'transactions'>
+export type RenderCoordinatorUpdate = Pick<ViewUpdate, 'docChanged' | 'transactions'>
 
 /**
  * The render coordinator: keeps its editor's entries in {@link fenceRenderResults} in step with
@@ -262,7 +263,7 @@ export class FenceRenderCoordinator {
 
     update(update: RenderCoordinatorUpdate): void {
         const ticked = update.transactions.some((tr) => tr.effects.some((e) => e.is(themeTick)))
-        if (update.docChanged || ticked || update.selectionSet) this.reconcile()
+        if (update.docChanged || ticked || revealUpdated(update)) this.reconcile()
     }
 
     reconcile(): void {
@@ -464,7 +465,7 @@ export function fenceRenderAugmentation(): Extension {
         create: (state) => buildDecorations(state),
         update(deco, tr) {
             const ticked = tr.effects.some((e) => e.is(themeTick) || e.is(renderCompleted))
-            if (tr.docChanged || tr.selection || ticked) return buildDecorations(tr.state)
+            if (revealInputsChanged(tr) || ticked) return buildDecorations(tr.state)
             return deco
         },
         provide: (f) => EditorView.decorations.from(f),

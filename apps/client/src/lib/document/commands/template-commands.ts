@@ -124,6 +124,8 @@ export function registerTemplateCommands(commands: CommandRegistry, contribution
             order: 105,
             keywords: ['template', 'snippet', 'boilerplate', 'pattern'],
             when: (ctx) => ctx.bodyWritable,
+            // It inserts at the caret, so it is offered in a part of a document too (ADR 0170).
+            actsOnText: true,
             command: TEMPLATE_PICK,
         }),
     ]

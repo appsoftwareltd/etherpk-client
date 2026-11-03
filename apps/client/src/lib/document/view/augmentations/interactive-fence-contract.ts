@@ -42,6 +42,10 @@ export interface InteractiveFenceInfo {
      * widget takes the keyboard. Nothing is written into the document to name a fence.
      */
     readonly ordinal: number
+    /** For a fence drawn in the editor frame (`fence-frame.ts`): whether it is edited in the document now. */
+    readonly editing?: boolean
+    /** Where the fence is drawn in the document: its editor and its id there (`fenceInstance`). */
+    readonly instance?: string
 }
 
 /** What a mounted widget can see and ask of the editor. */
@@ -89,6 +93,12 @@ export interface InteractiveFenceContext extends InteractiveFenceInfo {
     openWindow(): void
     /** Close the window this widget fills; nothing for a widget drawn elsewhere. */
     closeWindow(): void
+    /** For a fence drawn in the editor frame (`fence-frame.ts`): start or stop editing it in the document. */
+    setEditing?(editing: boolean): void
+    /** Undo as Mod+Z does where the widget is drawn: the editor's history, or the widget's own edits in a tab or window. */
+    undo?(): boolean
+    /** Redo what `undo` took back. */
+    redo?(): boolean
 }
 
 /** A mounted widget, as the host drives it. */
@@ -97,6 +107,10 @@ export interface InteractiveFenceView {
     update(context: InteractiveFenceContext): void
     /** The widget leaves the document (scrolled far away, the fence deleted, the editor closed). */
     destroy(): void
+    /** Write what the widget holds that is not in the fence yet, before the editor frame acts. */
+    flush?(): void
+    /** Whether a press on `node`, outside the widget's host, is the widget's own (a dialog in the page's body). */
+    owns?(node: Node): boolean
 }
 
 /** What an extension registers for one info word. */

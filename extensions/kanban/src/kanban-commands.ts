@@ -2,8 +2,10 @@
  * The Commands, [[Context Menu]] rows and [[Command Menu]] rows of a [[Kanban Board]] (ADR 0113):
  * Open Kanban Board on a document tab or a wikilink, `/kanban` in the editor, the Graph Kanban's
  * Command Menu row and Graph Sidebar button, Open page on a board's own tab, and the rows of a
- * card's own menu. Desktop only, but for Open page: under the phone layout a board cannot show,
- * and its tab's one row opens the page it is about.
+ * card's own menu and of a lane's. Desktop only, but for Open page: under the phone layout a board cannot show,
+ * and its tab's one row opens the page it is about. And Open in task editor on any task the Client
+ * raises a menu on, a task's line in an editor or a Tasks View row, on a phone too: the [[Task
+ * Editor]] (ADR 0170) opens over whatever is on screen, and fills a phone's.
  *
  * All of it goes through the extension's context (ADR 0121), which takes it back as the graph
  * closes. A card's rows act through the board that raised the menu (`board-actions.ts`), which
@@ -18,8 +20,9 @@ import { showConceptPicker } from '#lib/document/view/augmentations/concept-pick
 import { editorDocument } from '#lib/document/view/editor-document.js'
 import { parseViewKey } from '#lib/layout/view-ref.js'
 
-import { boardActions } from './board-actions'
+import { boardActions, type MoveSource } from './board-actions'
 import { BOARD_SECTIONS, KANBAN_VIEW_KIND, KANBAN_WHOLE, laneAfter, MOVE_TARGETS } from './board-model'
+import type { TaskEditorEdit } from './task-editor-model'
 
 /** Open the board for a concept: a document tab's or a wikilink's row runs it with the tab or the link as its target. */
 export const KANBAN_OPEN_BOARD = 'kanban.openBoard'
@@ -39,10 +42,18 @@ export const KANBAN_OPEN_WHOLE = 'kanban.openWhole'
 const GRAPH_KANBAN = 'Graph Kanban'
 /** Open the document of the concept a board is about, from the board's tab. */
 export const KANBAN_OPEN_PAGE = 'kanban.openPage'
+/** Open the card's task in the [[Task Editor]], as clicking the card does (ADR 0170). */
 export const KANBAN_CARD_OPEN = 'kanban.card.open'
+/** Open the task a menu was raised on outside a board (its line in an editor, a Tasks View row) in the [[Task Editor]]. */
+export const KANBAN_OPEN_IN_TASK_EDITOR = 'kanban.task.openInEditor'
+/** What every row that opens the Task Editor says, on a card and on any other task. */
+const OPEN_IN_TASK_EDITOR = 'Open in task editor'
+/** Show the card's document in the [[Task Detail]] below the board, at the task. */
+export const KANBAN_CARD_OPEN_BELOW = 'kanban.card.openBelow'
 export const KANBAN_CARD_OPEN_IN_TAB = 'kanban.card.openInTab'
 export const KANBAN_CARD_COPY_REFERENCE = 'kanban.card.copyReference'
 export const KANBAN_LANE_MOVE_ALL = 'kanban.lane.moveAll'
+export const KANBAN_LANE_COPY_REFERENCE = 'kanban.lane.copyReference'
 
 /**
  * A card on a board, the thing a card's Context Menu is raised on. The board that raised the menu
@@ -63,9 +74,14 @@ export type KanbanCardTarget = {
     /** The lane and section the card is in, so the rows leave out where it already is. */
     status: TaskStatus
     priority: 1 | 2 | 3 | null
+    /**
+     * The menu was opened from the keyboard (Shift+F10 or the Menu key), so a move from it keeps
+     * the keyboard with the card and scrolls to it. Absent for a right-click.
+     */
+    fromKeyboard?: true
 }
 
-/** A lane's header on a board, the thing Move all to lane is raised on, acting through that board. */
+/** A lane's header or folded strip on a board, the thing its menu (Copy lane reference, Move all to lane) is raised on, acting through that board. */
 export type KanbanLaneTarget = {
     kind: 'kanban.lane'
     /** The board's own id, as it registered itself. */
@@ -108,12 +124,23 @@ function suggestedTarget(from: TaskStatus): TaskStatus {
     return laneAfter(from, 1) ?? 'archived'
 }
 
+/** Whether a move from a card's menu came from the keyboard or the pointer, by how the menu was opened. */
+function moveSource(target: KanbanCardTarget): MoveSource {
+    return target.fromKeyboard ? 'keyboard' : 'pointer'
+}
+
 /** The id a section's row and Command share: `none` for the No priority section. */
 function priorityId(priority: 1 | 2 | 3 | null): string {
     return priority === null ? 'none' : String(priority)
 }
 
-export function registerKanbanCommands(context: ExtensionContext): void {
+/** What the Commands reach that is not in the context: drawing the Task Editor outside a board. */
+export interface KanbanCommandDeps {
+    /** Open the Task Editor over the page on an existing task (`open-task-editor.ts`). */
+    openTaskEditor(start: TaskEditorEdit): void
+}
+
+export function registerKanbanCommands(context: ExtensionContext, deps: KanbanCommandDeps): void {
     const { commands, contextMenu, commandMenu, graphSidebar, layout } = context
     const onCard = (target: MenuTarget) => isCardTarget(target) && layout.isDesktop()
     /** The board and card a row acts on, or nothing when the board has since closed. */
@@ -234,17 +261,30 @@ export function registerKanbanCommands(context: ExtensionContext): void {
         const found = reach(arg)
         found?.actions.open(found.target.card)
     })
-    contextMenu.register({ id: KANBAN_CARD_OPEN, label: 'Open', command: KANBAN_CARD_OPEN, order: 1, when: onCard })
+    contextMenu.register({ id: KANBAN_CARD_OPEN, label: OPEN_IN_TASK_EDITOR, command: KANBAN_CARD_OPEN, order: 1, when: onCard })
+    // The same on any task the Client raises a menu on, first, ahead of the Client's own task rows
+    // (Copy task reference from 85). Not gated on the desktop: the Task Editor fills a phone's screen.
+    commands.register(KANBAN_OPEN_IN_TASK_EDITOR, (arg) => {
+        const task = contextMenu.taskOf(arg as MenuTarget)
+        if (task) deps.openTaskEditor({ kind: 'edit', document: task.document, line: task.line, text: task.label })
+    })
+    contextMenu.register({ id: KANBAN_OPEN_IN_TASK_EDITOR, label: OPEN_IN_TASK_EDITOR, command: KANBAN_OPEN_IN_TASK_EDITOR, order: 0, when: (target) => contextMenu.taskOf(target) !== null })
+    // The document as text below the board, where everything around the task is edited (ADR 0170).
+    commands.register(KANBAN_CARD_OPEN_BELOW, (arg) => {
+        const found = reach(arg)
+        found?.actions.openBelow(found.target.card)
+    })
+    contextMenu.register({ id: KANBAN_CARD_OPEN_BELOW, label: 'Open below', command: KANBAN_CARD_OPEN_BELOW, order: 2, when: onCard })
     commands.register(KANBAN_CARD_OPEN_IN_TAB, (arg) => {
         const found = reach(arg)
         found?.actions.openInTab(found.target.card)
     })
-    contextMenu.register({ id: KANBAN_CARD_OPEN_IN_TAB, label: 'Open in tab', command: KANBAN_CARD_OPEN_IN_TAB, order: 2, when: onCard })
+    contextMenu.register({ id: KANBAN_CARD_OPEN_IN_TAB, label: 'Open in tab', command: KANBAN_CARD_OPEN_IN_TAB, order: 3, when: onCard })
     commands.register(KANBAN_CARD_COPY_REFERENCE, (arg) => {
         const found = reach(arg)
         found?.actions.copyReference(found.target.card)
     })
-    contextMenu.register({ id: KANBAN_CARD_COPY_REFERENCE, label: 'Copy task reference', command: KANBAN_CARD_COPY_REFERENCE, order: 3, when: onCard })
+    contextMenu.register({ id: KANBAN_CARD_COPY_REFERENCE, label: 'Copy task reference', command: KANBAN_CARD_COPY_REFERENCE, order: 4, when: onCard })
 
     // One row per lane, leaving out the card's own, then Archive, which takes the card off the
     // board (ADR 0167). The first row shown heads the group and carries its separator.
@@ -253,17 +293,36 @@ export function registerKanbanCommands(context: ExtensionContext): void {
         const id = `kanban.card.moveTo.${lane.status}`
         commands.register(id, (arg) => {
             const found = reach(arg)
-            found?.actions.move(found.target.card, { status: lane.status, priority: found.target.priority })
+            found?.actions.move(found.target.card, { status: lane.status, priority: found.target.priority }, moveSource(found.target))
         })
         contextMenu.register({
             id,
             label: lane.status === 'archived' ? 'Archive' : `Move to ${lane.label}`,
+            // The Client's box with a lid, as on the Task Editor's Archive button and the editor's own row.
+            ...(lane.status === 'archived' ? { icon: 'archive' } : {}),
             command: id,
             order: 10 + index,
             separatorBefore: (target) => firstOtherLane(target) === lane.status,
             when: (target) => onCard(target) && isCardTarget(target) && target.status !== lane.status,
         })
     }
+
+    // Copy lane reference: the lane named for an agent to work through, copied by the board that
+    // raised the menu, which knows its concept. Offered on an empty lane too: an agent can be asked
+    // to watch a lane, or to fill it, and the reference stays good as tasks come and go.
+    commands.register(KANBAN_LANE_COPY_REFERENCE, (arg) => {
+        const target = arg as MenuTarget | undefined
+        if (isLaneTarget(target)) boardActions(target.board)?.copyLaneReference(target.status)
+    })
+    contextMenu.register({
+        id: KANBAN_LANE_COPY_REFERENCE,
+        label: 'Copy lane reference',
+        command: KANBAN_LANE_COPY_REFERENCE,
+        // The icon of the Client's Copy task reference row, so the two read as one family.
+        icon: 'task-reference',
+        order: 1,
+        when: (target) => isLaneTarget(target) && layout.isDesktop(),
+    })
 
     // Move all to lane (ADR 0167): ask where, in the Client's dialog, then move the lane through
     // the board that raised the menu. Offered on a lane with tasks in it: an empty one has nothing to move.
@@ -287,7 +346,9 @@ export function registerKanbanCommands(context: ExtensionContext): void {
         id: KANBAN_LANE_MOVE_ALL,
         label: 'Move all to lane…',
         command: KANBAN_LANE_MOVE_ALL,
-        order: 1,
+        order: 2,
+        // Apart from Copy lane reference above it: this one writes.
+        separatorBefore: true,
         when: (target) => isLaneTarget(target) && target.count > 0 && layout.isDesktop(),
     })
 
@@ -297,7 +358,7 @@ export function registerKanbanCommands(context: ExtensionContext): void {
         const id = `kanban.card.priority.${priorityId(section.priority)}`
         commands.register(id, (arg) => {
             const found = reach(arg)
-            found?.actions.move(found.target.card, { status: found.target.status, priority: section.priority })
+            found?.actions.move(found.target.card, { status: found.target.status, priority: section.priority }, moveSource(found.target))
         })
         contextMenu.register({
             id,

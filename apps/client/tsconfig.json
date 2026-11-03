@@ -13,6 +13,9 @@
         "src",
         "vite.config.ts",
         "../../extensions/agent-chat/src",
+        "../../extensions/excalidraw/src",
+        "../../extensions/excalidraw/build-plugins",
+        "../../extensions/ink/src",
         "../../extensions/kanban/src",
         "../../extensions/maps/src"
     ],

@@ -11,14 +11,19 @@
  *   and told to the document's other editors, so an open tab of the document shows it at once.
  * - **Other changes.** An editor's or another device's change reaches the widget as an `update` with
  *   the new body. When the fence is gone (deleted, or the document is gone) the host is told.
+ * - **Undo.** No editor's history holds these edits, so the host keeps the widget's own: each `edit`
+ *   is one step, undone and redone through the context's `undo` and `redo` and with Mod+Z and Mod+Y
+ *   in the host, unless the widget keeps a history of its own (`keepsHistory`). A step whose lines
+ *   another editor or device has changed since is refused and dropped (`undoingFenceBodyEdits`).
  *
  * Nothing is written to a document holding a Protected Document's cipher fence, where no widget is
  * drawn at all. Pure TypeScript over an {@link EditorDocument}, so it is tested in Node.
  */
-import { type FenceBodyEdit, applyFenceBodyEdit, safeFenceLine } from '../fence-body'
+import { type FenceBodyEdit, applyFenceBodyEdit, safeFenceLine, undoingFenceBodyEdits } from '../fence-body'
 import { containsCipherFence } from '../protection/fence-info'
 import type { EditorDocument, TextChange } from '../types'
 import { renderableFences } from './augmentations/fence-render-core'
+import { historyChord, typingField } from './augmentations/interactive-fence'
 import type { InteractiveFence, InteractiveFenceContext, InteractiveFenceView } from './augmentations/interactive-fence-contract'
 import type { FenceRef } from './fence-hosting'
 
@@ -158,7 +163,9 @@ export function mountDetachedFence(options: DetachedFenceOptions): DetachedFence
         dark: options.dark(),
         onScreen: options.onScreen(),
         presentation: options.presentation,
-        edit: (change) => edit(Array.isArray(change) ? change : [change as FenceBodyEdit]),
+        edit: (change) => record(Array.isArray(change) ? change : [change as FenceBodyEdit]),
+        undo: () => step(undone, redone, 'undo'),
+        redo: () => step(redone, undone, 'redo'),
         editAsText: () => options.editAsText?.(),
         remove: () => remove(),
         resized: () => {},
@@ -224,6 +231,33 @@ export function mountDetachedFence(options: DetachedFenceOptions): DetachedFence
         return true
     }
 
+    /** The widget's own steps here: the edits that take each back, and the edits that make it again. */
+    interface Step {
+        undo: FenceBodyEdit[]
+        redo: FenceBodyEdit[]
+    }
+    const undone: Step[] = []
+    const redone: Step[] = []
+
+    /** A widget's edit, kept as a step to undo; a new step ends what could be redone. */
+    function record(edits: readonly FenceBodyEdit[]): boolean {
+        const undoing = found ? undoingFenceBodyEdits(found.body, edits) : null
+        if (!edit(edits)) return false
+        if (undoing && edits.length > 0) {
+            undone.push({ undo: undoing, redo: [...edits] })
+            redone.length = 0
+        }
+        return true
+    }
+
+    /** Undo or redo the last step on `from`, moving it to `to`. A step that no longer applies is dropped. */
+    function step(from: Step[], to: Step[], which: 'undo' | 'redo'): boolean {
+        const last = from.pop()
+        if (!last || !edit(last[which])) return false
+        to.push(last)
+        return true
+    }
+
     function remove(): boolean {
         if (destroyed || !found || !writable()) return false
         // As the editor removes one (`fenceRemoval`): its lines and the break after them, or for a
@@ -237,9 +271,20 @@ export function mountDetachedFence(options: DetachedFenceOptions): DetachedFence
         text = applyText(text, change)
         doc.applyChange(change, 'editor', listener)
         found = null
+        undone.length = 0
+        redone.length = 0
         options.onGone('gone')
         return true
     }
+
+    // Mod+Z and Mod+Y in the tab or window, outside a field the person is typing in, are the
+    // widget's steps here, as in the document they are the editor's undo and redo.
+    const keys = (event: KeyboardEvent) => {
+        if (fence.keepsHistory || !historyChord(event) || typingField(event.composedPath()[0] ?? event.target)) return
+        const redo = event.key.toLowerCase() === 'y' || event.shiftKey
+        if (redo ? step(redone, undone, 'redo') : step(undone, redone, 'undo')) event.preventDefault()
+    }
+    options.host.addEventListener?.('keydown', keys)
 
     const unsubscribe = doc.subscribe(listener)
     let view: InteractiveFenceView
@@ -257,6 +302,7 @@ export function mountDetachedFence(options: DetachedFenceOptions): DetachedFence
             if (destroyed) return
             destroyed = true
             unsubscribe()
+            options.host.removeEventListener?.('keydown', keys)
             view.destroy()
         },
     }

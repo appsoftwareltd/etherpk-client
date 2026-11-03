@@ -206,6 +206,7 @@ export function createScopedContext(
                 const row = { ...item, icon: icon(item.icon) } as unknown as ClientContextMenuItem
                 return keep(registerContextMenuItem(graph.contributions, row))
             },
+            taskOf: (target) => graph.menuTask(target),
         },
         commandMenu: {
             register(item: CommandMenuItem) {
@@ -343,7 +344,7 @@ export function createScopedContext(
         // The Client's trusted markup is the API's `IconMarkup`: both are opaque, so it reaches the
         // extension's `{@html}` still trusted and is not sanitized a second time.
         icons: { svg: (name, options) => client.iconSvg(icon(name) ?? name, options) as unknown as IconMarkup },
-        notify: (text) => graph.notify(text),
+        notify: (text, options) => graph.notify(text, options),
         editor: {
             registerFence(info, widget, options = {}) {
                 // The extension's id, an ordinary fence, or a name under it, an Extension Fence
@@ -352,7 +353,9 @@ export function createScopedContext(
                 const owned = dot === -1 ? info === id : info.slice(0, dot) === id && FENCE_NAME.test(info.slice(dot + 1))
                 if (!owned) throw new Error(`A fence's info word must be "${id}" or "${id}.<name>", not "${info}".`)
                 if (disposed) return noop
-                const fence = toInteractiveFence(manifest.displayName, widget, options, fenceIsolation, ownSettingsChanged)
+                // The editor frame is Proposed: only the extensions that come with EtherPK draw in it.
+                if (options.frame !== undefined && !builtIn) throw new Error("A fence's frame is in the Proposed part of the Extension API, which only the extensions that come with EtherPK may use.")
+                const fence = toInteractiveFence(manifest.displayName, widget, options, fenceIsolation, { settingsChanged: ownSettingsChanged, notify: (text) => graph.notify(text) })
                 return keep(graph.contributions.register(INTERACTIVE_FENCE_KIND, info, fence))
             },
             insertBlock: (text, options) => (disposed ? false : graph.editor.insertBlock(text, options)),
@@ -368,6 +371,8 @@ export function createScopedContext(
         dialogs: {
             prompt: (options) => client.dialogs.prompt(options, manifest.displayName),
             choose: (options) => client.dialogs.choose(options, manifest.displayName),
+            // Drawn beside the extension's own element, so it needs no name to say whose it is.
+            pickDate: (options) => client.dialogs.pickDate(options),
         },
         embeds: {
             frameHosts: PLAYER_FRAME_HOSTS,

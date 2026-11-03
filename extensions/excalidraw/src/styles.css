@@ -1,0 +1,134 @@
+/*
+ * A drawing in a document. Every class here starts with `excalidraw`, so nothing here styles the
+ * Client. Colours come from the Client's --gk-* tokens. Text is at least 14px and recedes by colour,
+ * never by opacity.
+ *
+ * The toolbar and the menu round a drawing are the Client's editor frame (`frame: 'editor'`), styled
+ * by the Client. The import card's button and link are EtherPK's own controls (`gk-button`,
+ * `gk-link`); this file holds only where they sit.
+ */
+
+.excalidraw-drawing {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    box-sizing: border-box;
+}
+
+.excalidraw-drawing-picture {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    width: 100%;
+    height: 100%;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: 0.5rem;
+    background: transparent;
+    cursor: pointer;
+    overflow: hidden;
+}
+
+.excalidraw-drawing-picture:hover {
+    border-color: var(--gk-border-soft, #e5e7eb);
+}
+
+.excalidraw-drawing-picture:focus-visible {
+    outline: 2px solid var(--gk-accent, #2563eb);
+    outline-offset: 2px;
+}
+
+.excalidraw-drawing-svg {
+    display: block;
+    max-width: 100%;
+    max-height: 100%;
+    width: auto;
+    height: auto;
+    border-radius: 0.5rem;
+}
+
+.excalidraw-drawing-zoom {
+    width: 100%;
+    height: 100%;
+    overflow: auto;
+    touch-action: pan-x pan-y pinch-zoom;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+}
+
+.excalidraw-drawing-svg--zoomable {
+    max-height: none;
+    width: 100%;
+    height: auto;
+}
+
+.excalidraw-drawing-empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    box-sizing: border-box;
+    border: 1px dashed var(--gk-border-strong, #9ca3af);
+    border-radius: 0.5rem;
+    font-size: 0.875rem;
+    color: var(--gk-text-muted, #6b7280);
+}
+
+/* A share link from excalidraw.com, not yet imported. */
+.excalidraw-drawing-import {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 0.5rem;
+    height: 100%;
+    box-sizing: border-box;
+    padding: 0.75rem 3rem 0.75rem 1rem;
+    border: 1px dashed var(--gk-border-strong, #9ca3af);
+    border-radius: 0.5rem;
+}
+
+.excalidraw-drawing-import-title {
+    margin: 0;
+    font-size: 0.9375rem;
+    font-weight: 600;
+    color: var(--gk-text-default, inherit);
+}
+
+.excalidraw-drawing-import-note {
+    margin: 0;
+    font-size: 0.875rem;
+    color: var(--gk-text-muted, #6b7280);
+}
+
+.excalidraw-drawing-import-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem;
+    /* The link takes its text size from here, at 14px beside the button, not the document's size. */
+    font-size: 0.875rem;
+}
+
+/* The import button, while it waits on excalidraw.com. */
+.excalidraw-drawing-import-actions > [aria-busy='true'] {
+    cursor: progress;
+}
+
+.excalidraw-drawing-editor {
+    position: relative;
+    flex: 1 1 auto;
+    min-height: 0;
+    border: 1px solid var(--gk-border-soft, #e5e7eb);
+    border-radius: 0.5rem;
+    overflow: hidden;
+}
+
+.excalidraw-drawing[data-presentation='tab'] .excalidraw-drawing-editor,
+.excalidraw-drawing[data-presentation='window'] .excalidraw-drawing-editor {
+    border: 0;
+    border-radius: 0;
+}

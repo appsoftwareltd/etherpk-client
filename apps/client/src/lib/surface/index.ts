@@ -73,6 +73,7 @@ export {
     type BookmarkGroupContextMenuTarget,
     editorLineOf,
     isTaskTarget,
+    isLineTarget,
     isBookmarkTarget,
     isBookmarkGroupTarget,
     CONTEXT_MENU_KIND,

@@ -4,12 +4,15 @@
  * in the browser (`documents-reader.ts`, ADR 0147). Kept in one place so the size caps, the test for
  * protected text and the shape of a search or backlinks answer cannot drift between the two.
  *
- * The two differ in one rule, which each reader states for itself: the Headless Client lists a
- * [[Protected Document]] by name, while an Agent Chat leaves it out entirely, because what it reads
- * may be sent to a model provider.
+ * Both leave a [[Protected Document]] out entirely, its name as well as its content, because what
+ * either reads goes to a model provider and a name alone can say what it was protected to hide
+ * (ADR 0072, amended 2026-11-03). "Protected" is the index's own flag here: a document whose text
+ * holds an encrypted fence anywhere, which is the safer side of whole-document protection.
  */
+import type { LinkGraph } from '@appsoftwareltd/etherpk-extension-api'
+
 import { withoutTemplateContent } from '#lib/document/backlinks/shown-backlinks.js'
-import type { DbBacklinkGroup, PropertyKeyInfo, PropertyMatch } from '#lib/document/index-db.js'
+import type { ConceptCandidate, DbBacklinkGroup, PropertyKeyInfo, PropertyMatch } from '#lib/document/index-db.js'
 import type { SearchCountResult, SearchTextResult } from '#lib/document/index-worker/client.js'
 import { documentProtection } from '#lib/document/protection/cipher-fence.js'
 import { containsCipherFence } from '#lib/document/protection/fence-info.js'
@@ -45,6 +48,44 @@ export function isProtectedDocumentText(text: string): boolean {
  */
 export function holdsEncryptedText(text: string): boolean {
     return containsCipherFence(text)
+}
+
+/**
+ * The keys of every name an agent is never shown: each the index flags protected, a page's own
+ * name and each of its aliases, since the index sets the flag on both.
+ */
+export function protectedKeys(candidates: readonly ConceptCandidate[]): Set<string> {
+    return new Set(candidates.filter((candidate) => candidate.protected).map((candidate) => candidate.key))
+}
+
+/**
+ * The [[Graph View]]'s link graph with every protected document taken out: its dot, every line in
+ * or out of it, and any [[Pageless Concept]] it alone named (a protected page's title scopes), so
+ * no ranking, path or list built on the answer can name one. The lines in go with the dot rather
+ * than staying as lines to a name, which would make the page read as a Pageless Concept and invite
+ * an agent to write a page that already exists. A route through a protected document is no route:
+ * two concepts joined only through one are not shown joined. `hidden` adds keys the caller knows
+ * to be protected that the answer has not flagged (an alias, a document flagged since).
+ */
+export function linkGraphWithoutProtected(graph: LinkGraph, hidden: ReadonlySet<string> = new Set()): LinkGraph {
+    const isHidden = (index: number) => {
+        const concept = graph.concepts[index]
+        return concept === undefined || concept.protected === true || hidden.has(concept.key)
+    }
+    const links = graph.links.filter((link) => !isHidden(link.source) && !isHidden(link.target))
+    const linked = new Set(links.flatMap((link) => [link.source, link.target]))
+    // A Pageless Concept exists only through the links naming it, so one left with none goes too.
+    const kept = graph.concepts.map((concept, index) => !isHidden(index) && (concept.kind !== 'pageless' || linked.has(index)))
+    const position = new Map<number, number>()
+    const concepts = graph.concepts.filter((_concept, index) => {
+        if (!kept[index]) return false
+        position.set(index, position.size)
+        return true
+    })
+    return {
+        concepts,
+        links: links.map((link) => ({ ...link, source: position.get(link.source)!, target: position.get(link.target)! })),
+    }
 }
 
 /** What a text search needs of the graph's index. */

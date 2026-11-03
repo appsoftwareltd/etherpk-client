@@ -16,8 +16,9 @@
  * the person switches graphs is saved to the graph it was made in and never to the next one, and a
  * write made when no graph is open is refused rather than kept nowhere.
  *
- * Nothing here prunes. A bookmark whose document is gone, or whose line is not found, stays until the
- * person removes it (ADR 0036 §4, ADR 0160).
+ * Nothing here prunes on its own. A bookmark whose document is gone, or whose line is not found,
+ * stays until the person removes it (ADR 0036 §4, ADR 0160), with one exception: deleting the
+ * document on this Client removes the bookmarks into it ({@link removeBookmarksOnConcepts}).
  */
 
 import { reachedWithin } from '#lib/reached-within.js'
@@ -252,6 +253,17 @@ export async function removeBookmarks(ids: readonly string[]): Promise<void> {
     const session = openSession()
     const gone = new Set(ids)
     const remove = list.filter((b) => gone.has(b.id)).map((b) => b.id)
+    await commit({ put: [], remove }, session)
+}
+
+/**
+ * Remove every bookmark into a document deleted on this Client (ADR 0036 §4, amended 2026-11-03),
+ * by any of `names`, its title and its aliases. One write, and none when nothing matches.
+ */
+export async function removeBookmarksOnConcepts(names: readonly string[]): Promise<void> {
+    const session = openSession()
+    const gone = new Set(names.map(conceptKeyOf).filter((key) => key !== ''))
+    const remove = list.filter((b) => gone.has(conceptKeyOf(b.concept))).map((b) => b.id)
     await commit({ put: [], remove }, session)
 }
 

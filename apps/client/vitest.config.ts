@@ -50,7 +50,7 @@ export default defineConfig({
         globals: true,
         // The compiled-in Built-in Extensions' tests too (ADR 0121): they are compiled with the Client
         // and import its modules, so they run with its aliases and settings.
-        include: ['src/**/*.test.ts', ...compiledInExtensionFolders().map((folder) => `../../extensions/${folder}/src/**/*.test.ts`)],
+        include: ['src/**/*.test.ts', ...compiledInExtensionFolders().map((folder) => `../../extensions/${folder}/{src,build-plugins}/**/*.test.ts`)],
         // Records each test's declaration line so the generated report can point at
         // file:line rather than just the file.
         includeTaskLocation: true,

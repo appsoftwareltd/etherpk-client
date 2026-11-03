@@ -28,6 +28,7 @@ import { analysisFor } from '../analysis/editor-analysis'
 import { bodyWritable } from '../body-writable'
 import { caretTask } from '../caret-task'
 import { editorDocument } from '../editor-document'
+import { showsPartOfDocument } from '../shown-range'
 import { isProtectedDocumentFacet } from './protected-document'
 import { tableAtCaret, tableInsertable } from '../table-context'
 import { type PopoverBase, type PopoverRow, popoverMenu } from './popover-menu'
@@ -84,6 +85,8 @@ export function slashCompletion(): Extension {
             fileLinkOnLine: fileLinkForCaret(state) !== null,
             taskOnLine: caretTask(state) !== null,
             protectedDocument: state.facet(isProtectedDocumentFacet)(),
+            // The Task Editor's description and comments: only rows that act on the text (ADR 0170).
+            partOfDocument: showsPartOfDocument(state),
             get conceptsAtCaret() {
                 concepts ??= caretConcepts(state.doc.toString(), line.number - 1, state.facet(editorDocument)?.concept ?? null).map((found) => found.concept)
                 return concepts

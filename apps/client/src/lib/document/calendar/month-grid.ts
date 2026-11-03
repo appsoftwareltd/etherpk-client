@@ -1,17 +1,18 @@
 /**
- * The month grid both calendars paint, as plain DOM.
+ * The month grid every calendar paints, as plain DOM.
  *
- * Two callers with nothing else in common: the Command Menu's pick-a-date popover, which lives
- * inside a CodeMirror `showTooltip` and must never take focus off the editor, and the
- * [[Journal Calendar]] in the [[Sidebar]], which is an ordinary focusable control in a Svelte
- * component. Framework-free because of the first of those — no augmentation imports Svelte, and
- * this is not the file to start with — and mounted in the second through `{@attach}`, the same
+ * Two kinds of caller: the Date Picker panel (`date-picker.ts`), shown in the editor's CodeMirror
+ * `showTooltip`, where it must never take focus off the editor, and beside an extension's element
+ * (`date-picker-popover.ts`), where it takes focus; and the [[Journal Calendar]] in the [[Sidebar]],
+ * an ordinary focusable control in a Svelte component. Framework-free because of the first of
+ * those (no augmentation imports Svelte), and mounted in the Sidebar through `{@attach}`, the same
  * way the context menu attaches itself.
  *
  * **Presentational.** It paints a state and reports intents; it owns no keyboard. The editor
- * drives it from a CM keymap (which must keep focus in the editor), the Sidebar from a roving
- * tabindex (which must move focus into the grid). Those two cannot be one handler, and both are
- * thin over `shiftDate`/`shiftMonth` in `month-grid-core.ts`.
+ * drives it from a CM keymap (which must keep focus in the editor), the popover and the Sidebar from
+ * a roving tabindex (which must move focus into the grid). Those cannot be one handler. The
+ * pickers share their key table, `DATE_PICKER_MOVES`, and every handler is thin over
+ * `shiftDate`/`shiftMonth` in `month-grid-core.ts`.
  *
  * The pure date logic is in `month-grid-core.ts`; the CM binding in
  * `../view/augmentations/date-calendar.ts`; the Sidebar's in `../view/JournalCalendar.svelte`.

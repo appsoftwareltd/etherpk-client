@@ -13,7 +13,8 @@ import { type EditorState, type Extension, type Line, StateEffect, StateField, t
 /** Anchor the line starting at this position, or none (null). */
 export const anchorLine = StateEffect.define<number | null>()
 
-const lineAnchorField = StateField.define<number | null>({
+/** The anchored line's start, mapped through edits; exported so a value worked out from it can name it as a dependency. */
+export const lineAnchorField = StateField.define<number | null>({
     create: () => null,
     update(value, tr) {
         let next = value === null || !tr.docChanged ? value : followLine(value, tr)

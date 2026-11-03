@@ -36,6 +36,14 @@ export interface FenceInfo {
      * is added or removed above, so it keys only what lasts a moment.
      */
     readonly ordinal: number
+    /**
+     * For a fence registered with `frame: 'editor'`: whether it is being edited in the document,
+     * where the widget draws its editor rather than its picture. The Client adds its toolbar's height
+     * to the widget's own. Absent for any other fence.
+     *
+     * @beta
+     */
+    readonly editing?: boolean
 }
 
 /**
@@ -91,6 +99,32 @@ export interface FenceContext extends FenceInfo {
     openWindow(): void
     /** Close the window this widget fills. Does nothing for a widget drawn elsewhere. */
     closeWindow(): void
+    /**
+     * For a fence registered with `frame: 'editor'`: start or stop editing it in the document. The
+     * widget starts when the person asks to edit (a press on its picture, or `takeFocus`); the
+     * Client stops it from its toolbar, when the person presses outside the widget, and when another
+     * framed fence starts. The widget hears the change in an `update`, as `editing`, and draws its
+     * editor or its picture. Does nothing where the fence cannot be written or outside the document.
+     * Absent for any other fence.
+     *
+     * @beta
+     */
+    setEditing?(editing: boolean): void
+    /**
+     * Undo, as Mod+Z does where the widget is drawn: in the document, the document's last change;
+     * in a tab or a window, the widget's own last `edit` made there. False when there was nothing
+     * to undo, or its lines have changed since, and then nothing changed. For an Undo button in a
+     * widget that does not keep its own history.
+     *
+     * @beta
+     */
+    undo?(): boolean
+    /**
+     * Redo what `undo` took back, as Mod+Y does. False when there was nothing to redo.
+     *
+     * @beta
+     */
+    redo?(): boolean
 }
 
 /**
@@ -103,6 +137,22 @@ export interface MountedFence {
     update(context: FenceContext): void
     /** The widget leaves: scrolled far away, its fence deleted, its tab or the editor closed. */
     destroy(): void
+    /**
+     * Write to the fence whatever the widget holds that is not in it yet, such as strokes a drawing
+     * keeps until a pause. The Client calls it before it stops editing a framed fence and before each
+     * toolbar action, so Edit as text shows, and Mod+Z after Delete brings back, what was drawn.
+     *
+     * @beta
+     */
+    flush?(): void
+    /**
+     * Whether a press on `node`, outside the widget's host, is the widget's own: a dialog or menu its
+     * library put in the page's body. The Client then keeps editing rather than stopping. Only asked
+     * for a fence registered with `frame: 'editor'`.
+     *
+     * @beta
+     */
+    owns?(node: Node): boolean
 }
 
 /**
@@ -232,6 +282,19 @@ export interface FenceOptions {
      * than the editor's.
      */
     keepsHistory?: boolean
+    /**
+     * `'editor'` asks the Client to draw the frame a drawing has in the document, so every fence
+     * edited this way looks and behaves the same. While the fence is not being edited, a "…" menu
+     * over the widget offers Edit as text and Delete. While it is (`setEditing`), a toolbar above it
+     * offers Done, Full window, Open in tab, Edit as text and Delete. Full window and Open in tab
+     * need `identify`. Delete removes the fence as one change and says how to undo it, naming the
+     * fence by `title`. Only one framed fence is edited at a time, in all the documents open, and a
+     * press outside it stops editing it. In a tab or a window the Client draws no frame. The menu
+     * and toolbar show only where the document can be written.
+     *
+     * @beta
+     */
+    frame?: 'editor'
 }
 
 /**
