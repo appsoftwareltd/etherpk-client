@@ -7,8 +7,8 @@ whenever you like.
 
 ## What it does
 
-- **`/drawing`** in a document, on a desktop (**Excalidraw (drawing)** in the menu), puts a new
-  drawing at the caret, ready to draw on.
+- **`/drawing`** in a document (**Excalidraw (drawing)** in the menu), puts a new drawing at the
+  caret, ready to draw on. On a phone it opens over the whole window.
 - **Draw in place.** A drawing shows as a picture. Click it to draw, and click outside it, or press
   Done, to go back to the picture. What you draw is saved as you draw.
 - **Open in tab** opens the drawing in a tab of its own, with more room.
@@ -23,8 +23,9 @@ whenever you like.
   it. The drawing then lives in your document, and the link and its key are gone from it. You can
   also copy shapes on excalidraw.com and paste them on an empty line. Images aren't brought across,
   since a drawing in EtherPK holds none.
-- **Phones and tablets under 1024 pixels wide** show drawings as pictures. Tap one to see it bigger.
-  Drawing is for a desktop.
+- **Phones and tablets under 1024 pixels wide** show drawings as pictures. Tap one to draw on it
+  over the whole window, in Excalidraw's phone layout. A pen turns on Excalidraw's pen mode, where a
+  finger no longer draws.
 - **Published sites.** On a site you publish from EtherPK, a drawing is a picture of it, an SVG file
   with its fonts inside. The drawing's data is never on the site.
 - **Backlinks.** Where a block that links to a page holds a drawing, the page's backlinks show the

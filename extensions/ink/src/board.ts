@@ -17,7 +17,7 @@
 import { type Camera, fitTo, HOME, panBy, screenToWorld, visibleBounds, zoomAbout } from './camera'
 import { HIGHLIGHTER_OPACITY, type InkDrawing, type InkPaper, type InkStroke, type InkTool, newStrokeId } from './format'
 import { type Bounds, containsPoint, drawingBounds, eraserTouches, lassoTakes, padded, type Point, simplifiedPoints, strokeBounds, unionBounds } from './geometry'
-import { type BoardTool, pointerIntent, pointPressure } from './input'
+import { type BoardTool, newTrail, type PointerSample, pointerIntent, pointPressure, type SampleTrail, takeSamples } from './input'
 import { DOT_COLOUR, DOT_RADIUS, DOT_SPACING, LINE_COLOUR, LINE_SPACING, PAPER_COLOUR, strokePath } from './outline'
 
 /** The eraser's reach, in screen pixels. */
@@ -44,7 +44,7 @@ export interface BoardHost {
 }
 
 type Gesture =
-    | { kind: 'stroke'; pointerId: number; pointerType: string; stroke: InkStroke }
+    | { kind: 'stroke'; pointerId: number; pointerType: string; stroke: InkStroke; trail: SampleTrail }
     | { kind: 'erase'; pointerId: number; pointerType: string; last: Point; ids: Set<string> }
     | { kind: 'lasso'; pointerId: number; pointerType: string; polygon: Point[] }
     | { kind: 'move'; pointerId: number; pointerType: string; start: Point; dx: number; dy: number }
@@ -279,8 +279,8 @@ export class InkBoardCanvas {
         } else {
             const tool = this.host.tool() === 'highlighter' ? 'highlighter' : 'pen'
             const brush = this.host.brush(tool)
-            this.gesture = { ...base, kind: 'stroke', stroke: { id: newStrokeId(), tool, colour: brush.colour, size: brush.size, pts: [] } }
-            this.addPoint(this.gesture.stroke, event)
+            this.gesture = { ...base, kind: 'stroke', stroke: { id: newStrokeId(), tool, colour: brush.colour, size: brush.size, pts: [] }, trail: newTrail() }
+            this.addSamples(this.gesture, [event])
         }
         this.requestDraw()
     }
@@ -302,7 +302,7 @@ export class InkBoardCanvas {
         // Every point the pointer passed through since the last event, where the browser keeps them.
         const coalesced = typeof event.getCoalescedEvents === 'function' ? event.getCoalescedEvents() : []
         const events = coalesced.length > 0 ? coalesced : [event]
-        if (gesture.kind === 'stroke') for (const one of events) this.addPoint(gesture.stroke, one)
+        if (gesture.kind === 'stroke') this.addSamples(gesture, events)
         else if (gesture.kind === 'erase') for (const one of events) this.eraseAlong(gesture, this.worldPoint(one))
         else if (gesture.kind === 'lasso') gesture.polygon.push(this.worldPoint(event))
         else if (gesture.kind === 'move') {
@@ -391,13 +391,18 @@ export class InkBoardCanvas {
         event.preventDefault()
     }
 
-    private addPoint(stroke: InkStroke, event: PointerEvent): void {
-        const world = this.worldPoint(event)
-        const pts = stroke.pts
-        const n = pts.length
-        // A point on top of the last adds nothing but weight.
-        if (n >= 3 && Math.hypot(world.x - pts[n - 3], world.y - pts[n - 2]) < 0.25 / this.camera.zoom) return
-        pts.push(world.x, world.y, pointPressure(event.pointerType, event.pressure))
+    /** The positions an event brings to the stroke being drawn, less any the browser repeats (`takeSamples`). */
+    private addSamples(gesture: Extract<Gesture, { kind: 'stroke' }>, events: readonly PointerEvent[]): void {
+        const rect = this.canvas.getBoundingClientRect()
+        const samples = events.map((e): PointerSample => ({ x: e.clientX, y: e.clientY, pressure: pointPressure(e.pointerType, e.pressure), time: e.timeStamp }))
+        const pts = gesture.stroke.pts
+        for (const sample of takeSamples(gesture.trail, samples)) {
+            const world = screenToWorld(this.camera, { x: sample.x - rect.left, y: sample.y - rect.top })
+            const n = pts.length
+            // A point on top of the last adds nothing but weight.
+            if (n >= 3 && Math.hypot(world.x - pts[n - 3], world.y - pts[n - 2]) < 0.25 / this.camera.zoom) continue
+            pts.push(world.x, world.y, sample.pressure)
+        }
     }
 
     private eraseAlong(gesture: Extract<Gesture, { kind: 'erase' }>, to: Point): void {
@@ -524,7 +529,8 @@ export class InkBoardCanvas {
             for (const stroke of pending) {
                 if (!stroke || stroke.tool !== tool || stroke.pts.length === 0) continue
                 ctx.fillStyle = stroke.colour
-                ctx.fill(new Path2D(strokePath(stroke, stroke !== this.awaiting.stroke)))
+                // Outlined as a finished stroke, as it will be once written, so it keeps its shape when the pen lifts.
+                ctx.fill(new Path2D(strokePath(stroke)))
             }
         }
         ctx.globalAlpha = 1

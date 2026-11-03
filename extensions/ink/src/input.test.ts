@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { boardKey, isPenEraser, pointerIntent, pointPressure, type PointerFacts } from './input'
+import { boardKey, isPenEraser, newTrail, pointerIntent, pointPressure, type PointerFacts, type PointerSample, takeSamples } from './input'
 
 const facts = (over: Partial<PointerFacts> = {}): PointerFacts => ({
     pointerType: 'mouse',
@@ -84,5 +84,42 @@ describe('pressure', () => {
         expect(pointPressure('pen', 0)).toBe(0.05)
         expect(pointPressure('mouse', 0.5)).toBe(0.5)
         expect(pointPressure('touch', 1)).toBe(0.5)
+    })
+})
+
+describe('the samples a stroke takes', () => {
+    const at = (x: number, time: number, pressure = 0.4): PointerSample => ({ x, y: 10, pressure, time })
+
+    it('takes every new sample, in order', () => {
+        const trail = newTrail()
+        expect(takeSamples(trail, [at(0, 0)]).map((s) => s.x)).toEqual([0])
+        expect(takeSamples(trail, [at(4, 4, 0.3), at(8, 8, 0.5)]).map((s) => s.x)).toEqual([4, 8])
+    })
+
+    it('leaves out samples a batch repeats from an earlier one, as Safari on an iPad sends them', () => {
+        const trail = newTrail()
+        takeSamples(trail, [at(0, 0), at(4, 4, 0.5)])
+        // The batch starts again from a sample already taken, with its own time and with a later one.
+        expect(takeSamples(trail, [at(4, 4, 0.5), at(8, 8, 0.4), at(12, 12, 0.6)]).map((s) => s.x)).toEqual([8, 12])
+        expect(takeSamples(trail, [at(8, 16, 0.4), at(16, 16, 0.5)]).map((s) => s.x)).toEqual([16])
+    })
+
+    it('leaves out a sample older than the last one taken', () => {
+        const trail = newTrail()
+        takeSamples(trail, [at(0, 0), at(10, 10)])
+        expect(takeSamples(trail, [at(5, 5), at(20, 20)]).map((s) => s.x)).toEqual([20])
+    })
+
+    it('runs a batch that shares one pressure evenly from the last pressure taken', () => {
+        const trail = newTrail()
+        takeSamples(trail, [at(0, 0, 0.2)])
+        const taken = takeSamples(trail, [at(1, 1, 0.6), at(2, 2, 0.6), at(3, 3, 0.6), at(4, 4, 0.6)])
+        expect(taken.map((s) => s.pressure)).toEqual([0.3, 0.4, 0.5, 0.6].map((p) => expect.closeTo(p, 6)))
+    })
+
+    it('keeps the pressures of a batch whose samples differ', () => {
+        const trail = newTrail()
+        takeSamples(trail, [at(0, 0, 0.2)])
+        expect(takeSamples(trail, [at(1, 1, 0.3), at(2, 2, 0.7)]).map((s) => s.pressure)).toEqual([0.3, 0.7])
     })
 })

@@ -1,6 +1,6 @@
 {
     "name": "@appsoftwareltd/etherpk-extension-ink",
-    "version": "0.18.0",
+    "version": "0.18.1",
     "license": "Elastic-2.0",
     "description": "Freehand drawings for a pen or stylus on an endless sheet of white paper, kept in the document as one line of text per stroke.",
     "private": true,

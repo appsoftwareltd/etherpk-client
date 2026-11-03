@@ -7,12 +7,13 @@
  * Extension API the extension adds:
  *
  * - a widget over each drawing fence (`context.editor.registerFence`), a picture that turns into a
- *   live Excalidraw editor when clicked, on a desktop (`widget.ts`), saving as the person draws, in
+ *   live Excalidraw editor when pressed, in its place on a desktop and over the window on a phone
+ *   (`widget.ts`), saving as the person draws, in
  *   the Client's editor frame (`frame: 'editor'`), whose toolbar and menu offer Done, Full window,
  *   Open in tab, Edit as text and Delete;
  * - Open in tab and Full window, where the Client draws the same widget bigger (the fence's
  *   `identify` lets the Client find the drawing again by its own id);
- * - `/drawing`, on a desktop, which puts a new drawing at the caret (`context.editor.insertBlock`);
+ * - `/drawing`, on every layout, which puts a new drawing at the caret (`context.editor.insertBlock`);
  * - pasted on a line of its own, an excalidraw.com share link becomes a drawing to import, and shapes
  *   copied on excalidraw.com become a drawing of them (the fence's `fromPaste`, `share-link.ts`);
  * - on a published site, a picture of the drawing (the fence's `publish`);
@@ -73,7 +74,6 @@ export function activate(context: ExtensionContext): void {
     })
 
     context.commands.register(INSERT_COMMAND, () => {
-        if (!context.layout.isDesktop()) return
         if (!context.editor.insertBlock(newDrawingText(), { focus: true })) {
             context.notify("The drawing couldn't go there. Put the caret on a line of its own and try again.")
         }
@@ -88,8 +88,8 @@ export function activate(context: ExtensionContext): void {
         // After Map (115) and Video (116).
         order: 117,
         keywords: ['excalidraw', 'draw', 'drawing', 'sketch', 'diagram', 'whiteboard', 'canvas'],
-        // Drawings are edited on a desktop only, and never in a Protected Document, which draws none.
-        when: (menu) => menu.bodyWritable && !menu.inTable && !menu.protectedDocument && context.layout.isDesktop(),
+        // On every layout, a phone's included, and never in a Protected Document, which draws none.
+        when: (menu) => menu.bodyWritable && !menu.inTable && !menu.protectedDocument,
         command: INSERT_COMMAND,
     })
 }

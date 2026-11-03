@@ -5,6 +5,16 @@ What changed in each release of the EtherPK Client and the Headless Client
 They are released together, under the version number they share with the Sync Server. This log
 starts at 0.9.3.
 
+## 0.18.1 - 2026-11-03
+
+### Client
+
+- **Excalidraw drawings on a phone.** Tap a drawing to draw on it over the whole window, in
+  Excalidraw's phone layout, and `/drawing` is offered on a phone too. A pen turns on Excalidraw's
+  pen mode, where a finger no longer draws.
+- **Fixes.**
+  - Ink strokes drawn fast with an Apple Pencil in Safari on an iPad no longer break into dashes.
+
 ## 0.18.0 - 2026-11-03
 
 ### Client
