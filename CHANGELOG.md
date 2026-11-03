@@ -5,6 +5,11 @@ What changed in each release of the EtherPK Client and the Headless Client
 They are released together, under the version number they share with the Sync Server. This log
 starts at 0.9.3.
 
+## 0.17.1 - 2026-11-03
+
+No changes to the Client or the Headless Client. 0.17.0's images, GitHub Release and npm
+package were not published, and 0.17.1 publishes the same code under a new number.
+
 ## 0.17.0 - 2026-11-03
 
 ### Client
