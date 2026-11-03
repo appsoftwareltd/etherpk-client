@@ -44,6 +44,7 @@ export {
 } from './view-ref'
 export { createLayoutController, type LayoutControllerOptions } from './controller'
 export { createViewRegistry } from './registry'
+export { createViewFavourites, type ViewFavouriteAvailability, type ViewFavouriteRow, type ViewFavourites } from './view-favourites'
 export {
     LAYOUT_VERSION,
     type DefaultLayoutOptions,

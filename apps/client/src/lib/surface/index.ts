@@ -63,6 +63,7 @@ export {
     type DocumentContextMenuTarget,
     type EditableAssetTarget,
     type TabContextMenuTarget,
+    type ViewFavouriteContextMenuTarget,
     type WikilinkContextMenuTarget,
     type MisspellingContextMenuTarget,
     type EditorLine,

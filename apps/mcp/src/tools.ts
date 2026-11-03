@@ -694,14 +694,16 @@ export async function tasks(graph: HeadlessGraph, args: TasksArgs = {}) {
 
 /**
  * What a tool writes from `template` and `text`: the named [[Template]]'s body with its variables
- * filled in for the document called `into`, then the text, each in the form EtherPK writes
- * (ADR 0144). `{{cursor}}` marks where a person's caret would go, so here it is only removed.
- * The Journal Template is never applied on its own: an agent's write holds what it asked for.
+ * filled in for the document called `into`, then the text (ADR 0144), with line feeds only. The
+ * caller puts it on the Indent Unit grid where it lands: a new page reads it whole, an append
+ * reads it under the lines already there. `{{cursor}}` marks where a person's caret would go, so
+ * here it is only removed. The Journal Template is never applied on its own: an agent's write
+ * holds what it asked for.
  */
 async function withTemplate(graph: HeadlessGraph, template: string | undefined, into: string, text: string | undefined): Promise<string> {
     const parts: string[] = []
-    if (template !== undefined) parts.push(asWritten(renderTemplate(await templateBodyFor(graph, template), templateContextFor(into)).text))
-    if (text !== undefined && text !== '') parts.push(asWritten(text))
+    if (template !== undefined) parts.push(lineFeedsOnly(renderTemplate(await templateBodyFor(graph, template), templateContextFor(into)).text))
+    if (text !== undefined && text !== '') parts.push(lineFeedsOnly(text))
     return parts.join('\n')
 }
 
@@ -731,6 +733,48 @@ function asWritten(text: string): string {
     return normaliseIndentUnit(lineFeedsOnly(text))
 }
 
+/**
+ * The change that writes `replacement` over `text.slice(from, to)` in the form EtherPK writes:
+ * line feeds only (ADR 0112), on the two-space Indent Unit (ADR 0067).
+ *
+ * The normaliser reads a whole document. A fragment read on its own has no parents, so a
+ * replacement that starts on an indented bullet would move to column 0 and take every line
+ * under it along. So the edited page is normalised and only the replacement's own lines are
+ * written: the rest of the page is someone else's to keep, and writing it back would be a
+ * whole-page write in disguise. Reading the whole page also keeps a fenced block's closer below
+ * the replacement in view, so lines written inside code stay as they are.
+ *
+ * The lines above the replacement are the grid it is placed on. When they are off the grid
+ * themselves (a four-space page edited in another tool), re-gridding the replacement alone would
+ * nest it differently from the page it was written for, so it is written as sent.
+ */
+function changeAsWritten(text: string, from: number, to: number, replacement: string): { from: number; to: number; insert: string } {
+    const written = lineFeedsOnly(replacement)
+    const edited = text.slice(0, from) + written + text.slice(to)
+    const normalised = normaliseIndentUnit(edited)
+    // An unchanged page comes back as the same string (normaliseIndentUnit's contract).
+    if (normalised === edited) return { from, to, insert: written }
+    // The normaliser rewrites a whole line's leading whitespace, so the lines the replacement
+    // touches run from the start of the line it begins on to the end of the line it ends on.
+    const lineStart = text.lastIndexOf('\n', from - 1) + 1
+    const newlineAfter = text.indexOf('\n', to)
+    const lineEnd = newlineAfter === -1 ? text.length : newlineAfter
+    if (!normalised.startsWith(text.slice(0, lineStart))) return { from, to, insert: written }
+    const lead = text.slice(lineStart, from)
+    const trail = text.slice(to, lineEnd)
+    const lineCount = `${lead}${written}${trail}`.split('\n').length
+    const own = normalised.slice(lineStart).split('\n').slice(0, lineCount).join('\n')
+    // Leave the touched lines' existing starts and ends out of the change where the normaliser
+    // kept them, so typing beside the replacement on a synced page is not written over.
+    const keepsLead = own.startsWith(lead)
+    const keepsTrail = own.endsWith(trail) && own.length - trail.length >= (keepsLead ? lead.length : 0)
+    return {
+        from: keepsLead ? from : lineStart,
+        to: keepsTrail ? to : lineEnd,
+        insert: own.slice(keepsLead ? lead.length : 0, keepsTrail ? own.length - trail.length : own.length),
+    }
+}
+
 export async function editDocument(graph: HeadlessGraph, args: EditDocumentArgs) {
     if (args.old === '') throw new ToolError('invalid_argument', 'old must not be empty.')
     await graph.store.refresh()
@@ -744,12 +788,10 @@ export async function editDocument(graph: HeadlessGraph, args: EditDocumentArgs)
     if (text.indexOf(args.old, first + 1) !== -1) {
         throw new ToolError('ambiguous_match', `The text to replace occurs more than once in "${identity.concept}". Include more surrounding text so it matches exactly once.`)
     }
-    // Only the replacement is normalised: the surrounding document is someone else's to keep,
-    // and a normaliser pass over the whole text would be a whole-page write in disguise.
-    const insert = asWritten(args.new)
-    graph.store.open(identity.concept).applyChange({ from: first, to: first + args.old.length, insert }, 'external')
+    const change = changeAsWritten(text, first, first + args.old.length, args.new)
+    graph.store.open(identity.concept).applyChange(change, 'external')
     await settle(graph)
-    return { concept: identity.concept, replaced: args.old.length, inserted: insert.length }
+    return { concept: identity.concept, replaced: change.to - change.from, inserted: change.insert.length }
 }
 
 export async function appendDocument(graph: HeadlessGraph, args: AppendDocumentArgs) {
@@ -763,15 +805,16 @@ export async function appendDocument(graph: HeadlessGraph, args: AppendDocumentA
             throw new ToolError('not_found', `No document is named "${target}". Use create_page to start a new page.`)
         }
         // A journal entry is created by its first content, exactly as the first keystroke does.
-        await graph.store.createJournal(target, text.endsWith('\n') ? text : `${text}\n`)
+        const body = asWritten(text)
+        await graph.store.createJournal(target, body.endsWith('\n') ? body : `${body}\n`)
         await settle(graph)
         return { concept: target, created: true }
     }
     const current = await liveText(graph, existing)
     refuseIfProtected(existing.concept, current)
     const separator = current === '' || current.endsWith('\n') ? '' : '\n'
-    const insert = `${separator}${text}${text.endsWith('\n') ? '' : '\n'}`
-    graph.store.open(existing.concept).applyChange({ from: current.length, to: current.length, insert }, 'external')
+    const appended = `${separator}${text}${text.endsWith('\n') ? '' : '\n'}`
+    graph.store.open(existing.concept).applyChange(changeAsWritten(current, current.length, current.length, appended), 'external')
     await settle(graph)
     return { concept: existing.concept, created: false }
 }
@@ -790,7 +833,7 @@ export async function createPage(graph: HeadlessGraph, args: CreatePageArgs) {
     // and the app seeds a new page with its body alone - a block the text carries is a mirror the
     // store writes back when the registry changes, and adds once the page has aliases (ADR 0061),
     // never the source of the name.
-    await graph.store.createPage(title, await withTemplate(graph, args.template, title, args.text))
+    await graph.store.createPage(title, asWritten(await withTemplate(graph, args.template, title, args.text)))
     if (args.frontmatter && Object.keys(args.frontmatter).length > 0) {
         await graph.store.whenReady(title)
         const raw = graph.store.openRaw(title).getText()

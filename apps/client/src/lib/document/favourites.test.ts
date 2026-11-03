@@ -14,6 +14,7 @@ import {
     subscribeFavourites,
     toggleFavourite,
 } from './favourites'
+import type { Favourite } from './favourite-entry'
 
 beforeEach(() => resetFavourites())
 
@@ -63,7 +64,7 @@ describe('favourites', () => {
     })
 
     it('notifies subscribers on every change, immediately on subscribe', async () => {
-        const seen: string[][] = []
+        const seen: Favourite[][] = []
         setFavourites(['Physics'], async () => {})
         const unsubscribe = subscribeFavourites((list) => seen.push(list))
 
@@ -89,7 +90,7 @@ describe('favourites', () => {
     })
 
     it('adopting an identical list is a no-op', () => {
-        const seen: string[][] = []
+        const seen: Favourite[][] = []
         setFavourites(['Physics'], async () => {})
         subscribeFavourites((list) => seen.push(list))
         const before = seen.length
@@ -175,7 +176,7 @@ describe('moveFavourite', () => {
 describe('removeFavourite', () => {
     it('answers the entry as the list held it and where it stood, so an Undo can put it back exactly', async () => {
         setFavourites(['Gamma', 'Beta', 'Alpha'], async () => {})
-        expect(await removeFavourite('beta')).toEqual({ concept: 'Beta', index: 1 })
+        expect(await removeFavourite('beta')).toEqual({ favourite: 'Beta', index: 1 })
         expect(getFavourites()).toEqual(['Gamma', 'Alpha'])
     })
 
@@ -221,5 +222,52 @@ describe('restoreFavourite', () => {
         })
         await expect(restoreFavourite('Beta', 0)).rejects.toThrow('offline')
         expect(getFavourites()).toEqual(['Gamma'])
+    })
+})
+
+describe('View favourites (ADR 0169)', () => {
+    const board = { kind: 'kanban.board', concept: 'Garden' }
+    const graphMap = { kind: 'maps.whole' }
+
+    it('adds a View beside the documents, apart from the document it is about', async () => {
+        const persist = vi.fn().mockResolvedValue(undefined)
+        setFavourites(['Garden'], persist)
+
+        await addFavourite(board)
+        await addFavourite(graphMap)
+
+        expect(getFavourites()).toEqual(['Garden', board, graphMap])
+        expect(isFavourite('Garden')).toBe(true)
+        expect(isFavourite({ kind: 'kanban.board', concept: 'garden' })).toBe(true)
+        expect(isFavourite({ kind: 'maps.map', concept: 'Garden' })).toBe(false)
+    })
+
+    it('does not add the same View twice', async () => {
+        const persist = vi.fn().mockResolvedValue(undefined)
+        setFavourites([board], persist)
+        await addFavourite({ kind: 'kanban.board', concept: 'GARDEN' })
+        expect(getFavourites()).toEqual([board])
+        expect(persist).not.toHaveBeenCalled()
+    })
+
+    it('removes, restores and moves a View by its identity', async () => {
+        const persist = vi.fn().mockResolvedValue(undefined)
+        setFavourites(['Garden', board, graphMap], persist)
+
+        expect(await removeFavourite({ kind: 'kanban.board', concept: 'garden' })).toEqual({ favourite: board, index: 1 })
+        expect(getFavourites()).toEqual(['Garden', graphMap])
+
+        await restoreFavourite(board, 1)
+        expect(getFavourites()).toEqual(['Garden', board, graphMap])
+
+        await moveFavourite(graphMap, 0)
+        expect(getFavourites()).toEqual([graphMap, 'Garden', board])
+        expect(persist).toHaveBeenLastCalledWith([graphMap, 'Garden', board], { moved: graphMap })
+    })
+
+    it('moves a View about a concept along with a rename of that concept', async () => {
+        setFavourites(['Garden', board, graphMap], async () => {})
+        await renameFavourite('garden', 'Kitchen')
+        expect(getFavourites()).toEqual(['Kitchen', { kind: 'kanban.board', concept: 'Kitchen' }, graphMap])
     })
 })

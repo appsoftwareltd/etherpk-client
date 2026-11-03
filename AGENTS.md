@@ -1,7 +1,7 @@
 # Agent instructions
 
-This repository holds the EtherPK Client (`apps/client`, SvelteKit 2 with Svelte 5 runes), the
-Headless Client (`apps/mcp`, a Node MCP server that bundles `apps/client/src/lib` through a `$lib`
+This repository holds the EtherPK Client (`apps/client`, SvelteKit 3 with Svelte 5 runes), the
+Headless Client (`apps/mcp`, a Node MCP server that bundles `apps/client/src/lib` through a `#lib`
 alias), the packages both use (`packages/shared`, `packages/themes`), the Extension API
 (`packages/extension-api`), the extensions that come with the Client (`extensions/`) and the
 agent skill (`skills/etherpk`), whose starter folders' `AGENTS.md` and `CLAUDE.md` are generated

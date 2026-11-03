@@ -10,6 +10,8 @@
  * defaults — settings are convenience, never load-bearing for identity or content.
  */
 
+import { type Favourite, favouriteKey, sanitizeFavourite } from '#lib/document/favourite-entry.js'
+
 import type { DirectoryAdapter } from './directory-adapter'
 
 /** The settings file under the graph's `etherpk/` folder. */
@@ -38,14 +40,15 @@ export interface GraphSettings {
     recentDocumentCount?: number
     /**
      * The graph's [[Favourite]]s, in the order the Sidebar shows them: whatever the user
-     * dragged them into, with a newly favourited concept appended at the end.
+     * dragged them into, with a newly favourited concept appended at the end. A document is its
+     * concept's name; a View (a Kanban board, a Map View) is an object (ADR 0169, favourite-entry.ts).
      *
      * Graph content, not per-device state (ADR 0036): they travel in an [[Export]]. On a
      * folder graph this is the person's list (the folder belongs to one browser). On a synced
      * graph each [[Member]] has their own list in the root doc instead (ADR 0159), and this
      * field is the old shared list, read once to seed each person's own and never written again.
      */
-    favourites?: string[]
+    favourites?: Favourite[]
     /**
      * Background colour of the workspace's top bar: on a desktop the toolbar holding the Sidebar
      * toggles, Docs, Keyboard Shortcuts, Settings and Tasks; on a phone the strip holding the
@@ -96,25 +99,25 @@ export function normalizeHexColor(raw: string): string | null {
 }
 
 /**
- * A clean [[Favourite]]s list from whatever was stored: strings only, trimmed, deduped
- * case-insensitively, capped. Shared by Graph Settings and each member's own list on a synced
- * graph (ADR 0159), so both read a stored list the same way. Not an array reads as empty.
+ * A clean [[Favourite]]s list from whatever was stored: documents (strings) and Views (ADR 0169),
+ * each entry cleaned by `sanitizeFavourite`, deduped by `favouriteKey`, capped. Shared by Graph
+ * Settings and each member's own list on a synced graph (ADR 0159), so both read a stored list the
+ * same way. Not an array reads as empty.
  */
-export function sanitizeFavourites(raw: unknown): string[] {
+export function sanitizeFavourites(raw: unknown): Favourite[] {
     if (!Array.isArray(raw)) return []
     // Deduped case-insensitively, matching Concept identity (CONTEXT.md: `[[Physics]]`
     // and `[[physics]]` are one concept), keeping the FIRST spelling seen: the entry
     // already on the list keeps its place and its casing, as re-favouriting it does.
     const seen = new Set<string>()
-    const clean: string[] = []
+    const clean: Favourite[] = []
     for (const entry of raw) {
-        if (typeof entry !== 'string') continue
-        const trimmed = entry.trim()
-        if (trimmed === '') continue
-        const key = trimmed.toLowerCase()
+        const favourite = sanitizeFavourite(entry)
+        if (favourite === null) continue
+        const key = favouriteKey(favourite)
         if (seen.has(key)) continue
         seen.add(key)
-        clean.push(trimmed)
+        clean.push(favourite)
     }
     // Over the cap the OLDEST go. New favourites are appended, so cutting the tail would
     // silently swallow the one just added the next time the list is read.

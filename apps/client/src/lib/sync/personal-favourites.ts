@@ -14,6 +14,7 @@
  * - **After the seed**: the person's own list. An older Client still writes the shared list, so
  *   each shared entry not seen before joins the person's list once (`followShared`).
  */
+import type { Favourite } from '#lib/document/favourite-entry.js'
 import type { FavouritesPersist } from '#lib/document/favourites.js'
 import { type GraphSettings, sanitizeFavourites, sanitizeGraphSettings } from '#lib/storage/fs/graph-settings.js'
 
@@ -23,7 +24,7 @@ export type PersonalFavouritesGraph = Pick<GraphSync, 'favourites' | 'getMeta' |
 
 export interface PersonalFavourites {
     /** The list the person sees now. */
-    list(): string[]
+    list(): Favourite[]
     /** Writes the person's change. Wired as the `favourites.ts` persist. */
     persist: FavouritesPersist
     /** Fires whenever {@link list} may have changed (local or remote). Returns an unsubscribe. */
@@ -37,7 +38,7 @@ export interface PersonalFavourites {
 }
 
 /** The shared Graph Settings favourites, as stored in the root doc's `meta` map. */
-function sharedFavourites(graph: Pick<GraphSync, 'getMeta'>): string[] {
+function sharedFavourites(graph: Pick<GraphSync, 'getMeta'>): Favourite[] {
     return sanitizeGraphSettings(graph.getMeta().settings ?? {}).favourites ?? []
 }
 

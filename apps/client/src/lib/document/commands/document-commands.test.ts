@@ -275,7 +275,7 @@ describe('favourites.move', () => {
         const { commands } = setup({ onError })
         setFavourites(['Gamma', 'Beta', 'Alpha'], async () => {})
 
-        await commands.execute(FAVOURITE_MOVE, { concept: 'Alpha', toIndex: 0 })
+        await commands.execute(FAVOURITE_MOVE, { favourite: 'Alpha', toIndex: 0 })
 
         expect(getFavourites()).toEqual(['Alpha', 'Gamma', 'Beta'])
         expect(onError).not.toHaveBeenCalled()
@@ -288,7 +288,7 @@ describe('favourites.move', () => {
             throw new Error('offline')
         })
 
-        await commands.execute(FAVOURITE_MOVE, { concept: 'Beta', toIndex: 0 })
+        await commands.execute(FAVOURITE_MOVE, { favourite: 'Beta', toIndex: 0 })
 
         expect(getFavourites()).toEqual(['Gamma', 'Beta'])
         expect(onError).toHaveBeenCalledWith('offline')
@@ -432,5 +432,69 @@ describe('Add to favourites and Remove from favourites', () => {
         const { commands } = setup()
         await commands.execute(FAVOURITE_REMOVE, link('Garden'))
         expect(favouritesNotice()).toBeUndefined()
+    })
+})
+
+describe('View favourites from a tab (ADR 0169)', () => {
+    const ADD = 'Add to favourites'
+    const REMOVE = 'Remove from favourites'
+    const board = { kind: 'kanban.board', concept: 'Garden' }
+    /** A Kanban board's tab, and a tab of a View that cannot be a favourite. */
+    const boardTab: ContextMenuTarget = { kind: 'tab', panelId: 'kanban.board:Garden', view: { kind: 'kanban.board', target: 'Garden' } }
+    const otherTab: ContextMenuTarget = { kind: 'tab', panelId: 'all-documents:all-documents', view: { kind: 'all-documents', target: 'all-documents' } }
+    const viewFavourites = {
+        favouriteOf: (view: { kind: string; target: string }) => (view.kind === 'kanban.board' ? { kind: view.kind, concept: view.target } : null),
+        describe: (favourite: { kind: string; concept?: string }) => ({ title: `Kanban: ${favourite.concept}`, view: null }),
+    }
+
+    afterEach(() => {
+        resetFavourites()
+        resetNotices()
+    })
+
+    const favouritesNotice = () => getNotices().find((n) => n.id === FAVOURITES_NOTICE)
+
+    it('offers Add on the tab of a View that can be a favourite, and nothing on any other tab', () => {
+        setFavourites([], async () => {})
+        const { labels } = setup({ viewFavourites })
+        expect(labels(boardTab)).toContain(ADD)
+        expect(labels(otherTab)).not.toContain(ADD)
+        expect(labels(otherTab)).not.toContain(REMOVE)
+        // Where the workspace names no View favourites (a harness), no tab offers either.
+        expect(setup().labels(boardTab)).not.toContain(ADD)
+    })
+
+    it('adds the View, apart from the document of the same name, and says so by its title', async () => {
+        setFavourites(['Garden'], async () => {})
+        const { commands, labels } = setup({ viewFavourites })
+
+        await commands.execute(FAVOURITE_ADD, boardTab)
+
+        expect(getFavourites()).toEqual(['Garden', board])
+        expect(favouritesNotice()).toMatchObject({ text: 'Added "Kanban: Garden" to favourites' })
+        expect(labels(boardTab)).toContain(REMOVE)
+        expect(labels(boardTab)).not.toContain(ADD)
+    })
+
+    it('removes a View favourite from its Sidebar row, and Undo puts it back where it stood', async () => {
+        setFavourites(['Kitchen', board, 'Hallway'], async () => {})
+        const { commands, labels } = setup({ viewFavourites })
+        const row: ContextMenuTarget = { kind: 'view-favourite', favourite: board }
+        expect(labels(row)).toEqual([REMOVE])
+
+        await commands.execute(FAVOURITE_REMOVE, row)
+        expect(getFavourites()).toEqual(['Kitchen', 'Hallway'])
+        const notice = favouritesNotice()
+        expect(notice).toMatchObject({ text: 'Removed "Kanban: Garden" from favourites' })
+
+        await notice?.actions?.[0].run()
+        expect(getFavourites()).toEqual(['Kitchen', board, 'Hallway'])
+    })
+
+    it('moves a View favourite by its identity', async () => {
+        setFavourites(['Kitchen', board], async () => {})
+        const { commands } = setup({ viewFavourites })
+        await commands.execute(FAVOURITE_MOVE, { favourite: { kind: 'kanban.board', concept: 'garden' }, toIndex: 0 })
+        expect(getFavourites()).toEqual([board, 'Kitchen'])
     })
 })

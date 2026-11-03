@@ -118,6 +118,29 @@ describe('graph settings', () => {
         expect(kept?.at(-1)).toBe('Page 204')
     })
 
+    it('round-trips View favourites among document ones, deduped and in order', async () => {
+        // ADR 0169: a Kanban board, a Map View or a whole-graph View is stored as an object in
+        // the same hand-ordered list, so it keeps its place among the documents.
+        const adapter = createMemoryDirectoryAdapter({ now: clock() })
+        await adapter.write(
+            'etherpk',
+            'settings.json',
+            JSON.stringify({
+                favourites: [
+                    'Garden',
+                    { kind: 'kanban.board', concept: 'Garden' },
+                    { kind: 'kanban.board', concept: 'garden' },
+                    { kind: 'maps.whole' },
+                    { kind: '' },
+                    'Kitchen',
+                ],
+            }),
+        )
+        expect(await readGraphSettings(adapter)).toEqual({
+            favourites: ['Garden', { kind: 'kanban.board', concept: 'Garden' }, { kind: 'maps.whole' }, 'Kitchen'],
+        })
+    })
+
     it('drops a non-array favourites field rather than throwing', async () => {
         const adapter = createMemoryDirectoryAdapter({ now: clock() })
         await adapter.write('etherpk', 'settings.json', JSON.stringify({ favourites: 'Physics' }))

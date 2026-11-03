@@ -128,6 +128,43 @@ describe('readExtensionPackage', () => {
         ).toEqual(['"etherpk.views[1]".address.segment "graph" is declared twice.', '"etherpk.views[1]".address.target may only be "concept".'])
     })
 
+    it('reads a View kind that can be a Favourite: one View per concept, or the one View of its kind', () => {
+        const result = readExtensionPackage(
+            graphView({
+                views: [
+                    { kind: 'graph-view.whole', target: 'whole', title: 'Whole graph', region: 'main', address: { segment: 'graph-view' }, favourite: true },
+                    { kind: 'graph-view.focus', title: 'Focus: {target}', region: 'main', address: { segment: 'f', target: 'concept' }, favourite: true },
+                ],
+            }),
+        )
+        expect(result.ok).toBe(true)
+        if (!result.ok) return
+        expect(result.extension.manifest.views?.map((view) => view.favourite)).toEqual([true, true])
+    })
+
+    it('refuses a favourite View kind that could not be opened again from the Favourites list', () => {
+        expect(
+            errorsOf(
+                graphView({
+                    views: [
+                        // No address: nothing but its own extension knows how to reach it.
+                        { kind: 'graph-view.a', target: 'whole', title: 'A', region: 'main', favourite: true },
+                        // A Sidebar resident is always there already.
+                        { kind: 'graph-view.b', target: 'whole', title: 'B', region: 'right-sidebar', address: { segment: 'b' }, favourite: true },
+                        // Neither one View per concept nor a fixed target: which View would it open?
+                        { kind: 'graph-view.c', title: 'C', region: 'main', address: { segment: 'c' }, favourite: true },
+                        { kind: 'graph-view.d', target: 'whole', title: 'D', region: 'main', address: { segment: 'd' }, favourite: 'yes' },
+                    ],
+                }),
+            ),
+        ).toEqual([
+            '"etherpk.views[0]".favourite needs an address, so the Favourites list can open the View.',
+            '"etherpk.views[1]".favourite is only for a View that opens in the main region.',
+            '"etherpk.views[2]".favourite needs a target, or an address whose target is "concept".',
+            '"etherpk.views[3]".favourite must be true or false.',
+        ])
+    })
+
     it('reports every problem at once rather than the first', () => {
         expect(errorsOf(graphView({ displayName: '', publisher: '', main: '' })).length).toBe(3)
     })

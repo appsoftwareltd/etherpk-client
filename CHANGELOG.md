@@ -5,189 +5,118 @@ What changed in each release of the EtherPK Client and the Headless Client
 They are released together, under the version number they share with the Sync Server. This log
 starts at 0.9.3.
 
-## Unreleased
+## 0.17.0 - 2026-11-03
 
 ### Client
 
-- **Task references name their graph.** **Copy task reference** now copies four lines: the
-  graph's name; the task's words; a reference that
-  starts `etherpk:` instead of a web address; and which Headless Client tools read it. An agent
-  with several EtherPK graphs connected can tell which one the task is in, and no longer needs
-  "use etherpk" in your message. References copied before still work.
+- **Bookmarks.** Mark a line to come back to it: right-click the line and choose **Bookmark
+  line**, press **Ctrl+Alt+K** (**Control+Option+K** on a Mac), or click in the padding to the left
+  of the line. Bookmarks are listed in a **Bookmarks** section of the graph sidebar, below
+  Favourites, and a click opens the document at the line. A bookmark stays with its line as the
+  text around it changes and follows its document through a rename. You can give one a label, and
+  **Remove all** has **Undo**. On a local graph bookmarks are kept in `etherpk/bookmarks.json`.
+  Protected pages have no bookmarks.
+- **Favourites, quick notes and bookmarks are your own on a synced graph.** Each member of a shared
+  graph has their own, and EtherPK does not show them to the other members. The first time you open the graph,
+  its favourites are copied to your list. Quick notes added before this change move to the graph's
+  owner. When a member leaves, their favourites, quick notes and bookmarks are deleted the next time
+  the owner opens the graph.
+- **A menu on right-click in the editor.** Right-click a line for the bookmark rows and **Paste**,
+  or a link for **Add to favourites** and **Remove from favourites**. **Shift+F10** or the **Menu**
+  key opens it at the cursor. Right-click inside a selection, on a picture, or with **Shift** held,
+  for the browser's own menu.
+- **Boards and maps can be favourites.** Right-click the tab of a Kanban board, the Graph Kanban, a
+  map view, the Graph Map or the whole-graph Graph View and choose **Add to favourites**. The view
+  joins your favourites in the graph sidebar with its tab's title and icon, and selecting it opens
+  the view again. A board or map of a page follows the page when it is renamed. Older versions of
+  EtherPK do not show these favourites, and remove them from your list if they change it.
+- **Extension API:** a view declaration can set `"favourite": true` to let a person add the view to
+  their favourites from its tab.
 - **New line buttons float at the bottom left.** The two buttons that start a new line of text or
   a new bullet float at the bottom left of a document, as the lock button does at the right, so
   they are always in reach. With the cursor in the document, the line goes after the cursor's
   block: the text button breaks out of a list to a line of text, splitting the list, and the
   bullet button adds a bullet beside the cursor's. With no cursor, the line goes at the end.
-- **Copy task reference from a right-click.** Right-click a task's checkbox or words in the
-  editor, or a row of the Tasks view, and choose **Copy task reference**. **Shift+F10** opens the
-  same menu from the keyboard. The copied text is the same wherever you copy it from.
 - **Test and Archived task states.** `#T` marks a task under test, and Kanban boards show it in a
   new **Test** lane between Waiting and Done. `#A` on a ticked task archives it: it leaves every
   Kanban board and stays in its document, and the Tasks view lists it under **Archived**. A card's
-  menu has **Archive**, and archiving a task archives the tasks nested under it. The Headless
-  Client's `tasks` and `set_task` take both states.
+  menu has **Archive**, and archiving a task archives the tasks nested under it.
 - **Move all to lane.** Right-click a Kanban lane's header, or its folded strip, and choose **Move
   all to lane…** to move every task in the lane to another state, Archived included. One **Undo**
   puts the whole move back. Extensions can ask the same kind of question with
   `context.dialogs.choose`.
 - **Free tags on tasks.** Write your own labels, such as `#bug` or `#needs-review`, anywhere in a
-  task's text. The Tasks view and Kanban cards show them as labels after the task's other tags and
-  dates, and a Kanban board groups the cards in each section by their first free tag, then orders
-  them by due date, then journal entries oldest first and pages A to Z. A task tag written after a
-  free tag, as in `#bug #P1 Fix the gate`, is now read. Adding or removing a free tag keeps a task
-  reference working. An AS Notes import reports a task tag written after a free tag, which AS Notes
-  reads as text.
-- **Copy button on Kanban cards.** Each card has a copy button at its bottom right that copies a
-  reference to its task.
-- **Agent line on Kanban boards.** A line above the lanes says that an AI agent on your computer
-  can work on the board's tasks, and links to how to set one up. Its close button hides it on every
-  board on this device.
-
-- **Bookmarks.** Mark a line to come back to it: right-click the line and choose **Bookmark
-  line**, press **Ctrl+Alt+K** (**Control+Option+K** on a Mac), or click the faint bookmark to the
-  left of the line. A bookmark shows to the left of its line and in a new **Bookmarks** section of
-  the graph sidebar, below Favourites, in groups by document. Click a bookmark to open its document
-  at the line. A bookmark stays on its line when the text around it changes, follows its document
-  when you rename it, and goes with the line when you delete the line, until you undo. You can give
-  a bookmark a label, and **Remove all** has **Undo**. Bookmarks are yours: on a synced graph
-  EtherPK does not show them to the other members. On a local graph they are kept in
-  `etherpk/bookmarks.json`. When that file cannot be read, a notice names it and EtherPK does not
-  write to it. A protected page keeps no bookmarks, also when it was protected on another device.
-  A click in the left padding beside a line now adds or removes its bookmark, and no longer puts
-  the cursor at the start of the line.
-- **Favourites and quick notes are yours on a synced graph.** Each member of a shared graph has
-  their own favourites and quick notes, and EtherPK does not show them to the other members. The
-  first time you open the graph, its favourites are copied to your list, and favourites that
-  members on an older version add later join your list too. Quick notes added before this change
-  no longer show to the member who added them. They show to the graph's owner, and moving one puts
-  it in the owner's journal. When you rename a page, the favourites and bookmarks of every member
-  follow the new name. When a member leaves or is removed, their favourites, quick notes and
-  bookmarks are deleted the next time the owner opens the graph.
-- **Right-click on a line of text opens EtherPK's menu,** with the bookmark rows and **Paste**.
-  **Shift+F10** or the **Menu** key opens it at the cursor. Right-click inside a selection, on a
-  picture, or with **Shift** held, for the browser's own menu.
-- **Add a link's page to your favourites from the link.** Right-click a link in the editor
-  (long-press on a phone, or **Shift+F10** with the cursor in it) and choose **Add to favourites**
-  or **Remove from favourites**. A link written with an alias favourites the page the alias names.
-  Each add and remove shows a message, and the message after a removal has **Undo**, which puts the
-  favourite back where it was in the list.
-- **A copied line pastes above the cursor's line.** With nothing selected, **Ctrl+C** (**Cmd+C**
-  on a Mac) or **Ctrl+X** takes the whole line, and **Ctrl+V** now puts it on a line of its own
-  above the line the cursor is on, as in VS Code. In a list it becomes a block above the cursor's
-  block, at the same depth. Before, in a list, the copied text went in at the start of the line,
-  ahead of the bullet.
-- **Text pasted after a code block's closing ` ``` ` starts on a new line,** so the code block stays
-  closed. Text of more than one line pasted after the opening ` ``` ` becomes the first lines of
-  code, and one line there is still the code's language. Text pasted after either `---` line around
-  the frontmatter also starts on a new line.
-- **Pasted text loses the spaces at the end of its lines.** Text copied from a terminal or another
-  editor often has spaces after the end of each line. A paste now removes them, except in code
-  blocks and the frontmatter.
-- **The outline's guide lines run beside a new soft line.** After **Shift+Enter** at the end of a
-  block, the guide lines now continue down beside the new line, as it is still part of the block.
-  Before, the gap looked the same as the break that **Ctrl+Enter** makes between two lists.
-- **Ctrl+Enter keeps its new line when spaces follow the cursor.** The new line under the list
-  stayed only until the cursor moved off it if the line had spaces after the cursor. Now those
-  spaces are removed, and text after the cursor starts the new line at the margin.
-- **Cutting or deleting blocks leaves the text after a blank line as it was.** When the blocks you
-  cut or delete end at an empty line, the paragraphs and lists after that line keep their indents.
-  Before, they could move under the block above the cut, out of the outline. A blank line inside a
-  block no longer stops EtherPK from tidying the blocks below a cut, so a block's blank lines move
-  with it.
-- **A synced graph reconnects after a request that gets no answer.** When a request for the
-  relay's sign-in got no answer and no error, the graph did not sync again until the page was
-  reloaded. Now the request stops after 15 seconds and the graph tries again. This could occur
-  when EtherPK started with no network.
-- **The sync status no longer says Offline while the graph syncs.** In a tab that started with no
-  network, the status could stay at Offline after the network came back.
-- **Typing works in a new page while a protected graph is unlocked, in Firefox.** The first
-  character typed into a new page was lost, so the page was not created.
-- **The Command Bar keeps the keyboard open in Firefox.** A tap on a Command Bar button took the
-  focus from the editor, which closed the on-screen keyboard on a phone.
-- **Graph View says when the browser cannot draw it.** In a browser without WebGL, Graph View
-  showed "Reading the graph…" and never finished. It now says that this browser cannot draw the
-  picture, and its lists still name every concept.
-- **The page no longer jumps back to the top when you type straight after opening it.** For about
-  a second after a page opened or was created, EtherPK kept scrolling back to where it had put the
-  cursor. Text typed or pasted in that second could scroll out of sight. Now it stops as soon as
-  you type, click, scroll or paste.
-- **Search keeps the keyboard when you open it straight after opening a page.** A moment after a
-  page came to the front, EtherPK put the cursor in it, even when Search had opened in that moment.
-  What you typed then went into the page behind Search.
-- **A click on a revealed image's markdown puts the cursor under the pointer.** When the text of
-  the line was scrolled out of the pane, a click lower in the line put the cursor at its start.
-- **A protected page you keep typing in is saved at least once a minute.** It was saved only
-  after you stopped typing for 20 seconds.
-- **The notice that the write allowance was reached goes once no refused change is waiting.** When
-  a refused change was dropped because the page had been deleted and started again elsewhere, the
-  notice stayed while another page's change was still being sent.
-- **Code block on a line of only spaces leaves no spaces behind.** The spaces used to stay after the
-  closing fence.
-- **The table removal rows of the Command Menu show their icons.** Remove rows above, Remove rows
-  below, Remove columns right and Remove columns left drew a dot.
-- **Notifications stay in front while a dialog is open.** On a wide screen, a notification in the
-  bottom-right corner is no longer dimmed behind an open dialog such as Settings. You can read it,
-  dismiss it and use its buttons without closing the dialog. Where a notification and a dialog
-  overlap, the dialog stays on top, so its buttons are never covered.
-- **An extension's question shows over its full window.** When an extension asks a question while
-  its window, or a fence opened over the window, is showing, the question now opens in front of the
-  window. Before, it opened behind it, out of sight. Notifications also show over a full window now.
-- **The External change prompt works like every other dialog.** When a file changes on disk under
-  unsaved edits, the prompt now takes the keyboard. Escape does not close it, because you must choose
-  a version. When your choice cannot be saved, the prompt stays open and says why.
-- **Ticking a task ticks the tasks nested under it.** Tick a task and every task under it is
-  ticked too, at any depth. Untick it and they are unticked, but a cancelled task (`#C`) stays
-  ticked. This applies to a click on the checkbox, to **Ctrl+Shift+Enter** when it makes a task
-  done, to a tick in the Tasks view and to a Kanban move into or out of Done. In the editor, one
-  **Ctrl+Z** undoes all of it. In the Tasks view and on a Kanban board, a notice says how many
-  nested tasks changed and has **Undo**.
-- **Yesterday and Tomorrow in the `/` menu.** They insert the day before and the day after today
-  as a link, `[[2026-10-30]]`, as **Today** does for today.
-- **The `{{today}}` Template variable.** It gives the same date as `{{date}}`.
-- **The day Template variables give a link.** `{{date}}`, `{{today}}`, `{{yesterday}}` and
-  `{{tomorrow}}` now give a link to the day's journal entry, such as `[[2026-11-01]]`. A variable
-  that is already inside a link, such as `[[{{date}}]]`, still gives only the day, so your
-  Templates copy as before. For the day as plain text, use `{{date:YYYY-MM-DD}}`. The Obsidian and
-  AS Notes imports write a template's `{{date}}` as `{{date:YYYY-MM-DD}}`, to keep the plain day.
-- **A Template that ends with an empty bullet keeps the bullet.** Before, the inserted Template
-  ended with a hyphen in place of the empty bullet.
-- **The Client does not start when `ORIGIN` is not an HTTP or HTTPS origin with no path**, such as
-  `https://app.example.com`. Before, a value of another form was used as it was.
-- **A mouse click just past the end of a link puts the cursor after the link.** Before, the
-  cursor went inside the link's text, before its `]`, and what you typed next became part of the
-  link.
-- **A click on an image puts the cursor at the end of its markdown**, after the `)`. Before, it went
-  to the start. When the markdown of an image runs over more than one line, a click on a later line,
-  or in the space below the text, now puts the cursor there. Before, every click went to the first
-  line, so the end of the markdown could not be clicked.
-- **Resize an image by dragging.** Hover over an image and drag the handle in its bottom right
-  corner. The width shows as you drag, and is written into the image's size hint, such as `|320`,
-  when you let go. Press **Esc** to cancel, or double-click the handle to remove the hint. On a
-  phone the handle is always shown.
+  task's text. The Tasks view and Kanban cards show them as labels, and a Kanban board groups the
+  cards in each section by their first free tag. A task tag written after a free tag, as in
+  `#bug #P1 Fix the gate`, is now read.
+- **Task references for AI agents.** **Copy task reference** copies the graph's name, the task's
+  words, a reference that starts `etherpk:`, and which Headless Client tools read it, so an agent
+  with several EtherPK graphs connected can tell which one the task is in. Copy it from a Kanban
+  card's copy button, or right-click a task's checkbox or words in the editor, or a row of the
+  Tasks view (**Shift+F10** from the keyboard). A line above a Kanban board's lanes links to how to
+  set up an agent, and can be dismissed. References copied before still work.
+- **Ticking a task ticks the tasks nested under it,** at any depth, and unticking it unticks them,
+  except cancelled tasks (`#C`). This applies in the editor, the Tasks view and on a Kanban board,
+  and one **Undo** reverses it.
+- **Resize an image by dragging** the handle at its bottom right corner. The width is written into
+  the image's size hint, such as `|320`. **Esc** cancels, and a double-click on the handle removes
+  the hint.
+- **A copied line pastes above the cursor's line.** With nothing selected, **Ctrl+C** or **Ctrl+X**
+  takes the whole line, and **Ctrl+V** puts it on its own line above the cursor's line, as in VS
+  Code. In a list it becomes a block at the same depth.
+- **Templates and days.** **Yesterday** and **Tomorrow** in the `/` menu insert a link to that
+  day. The `{{date}}`, `{{today}}`, `{{yesterday}}` and `{{tomorrow}}` Template variables give a
+  link to the day's journal entry, such as `[[2026-11-01]]`, except inside a link, so
+  `[[{{date}}]]` copies as before. `{{date:YYYY-MM-DD}}` gives the plain day.
+- **Self-hosting: the Client does not start when `ORIGIN` is not an HTTP or HTTPS origin with no
+  path,** such as `https://app.example.com`.
+- **Fixes.**
+  - A click just past the end of a link puts the cursor after it, and a click on an image puts the
+    cursor at the end of its markdown, on whichever line was clicked.
+  - Text pasted after a code block's closing ` ``` ` or the frontmatter's `---` starts on a new
+    line, and pasted text loses the spaces at the end of its lines, outside code.
+  - Cutting or deleting blocks that end at an empty line leaves the text after it where it was.
+  - **Ctrl+Enter** keeps its new line when spaces follow the cursor, and the outline's guide lines
+    continue beside a soft line made with **Shift+Enter**.
+  - A page no longer scrolls back while you type straight after opening it, and Search keeps the
+    keyboard when opened in that moment.
+  - A synced graph reconnects after a sign-in request that gets no answer, and the sync status no
+    longer says Offline after the network comes back.
+  - A page deleted and created again on another device shows its first edits without a reload.
+  - The address bar keeps the page you went to after connecting a server.
+  - A protected page you keep typing in is saved at least once a minute.
+  - In Firefox, the first character typed into a new page of an unlocked protected graph is kept,
+    and a Command Bar button no longer closes the phone's keyboard.
+  - Graph View says when the browser cannot draw it, instead of reading for ever.
+  - Notifications stay in front of an open dialog, and an extension's question opens in front of
+    its full window.
+  - The External change prompt takes the keyboard and stays open with a reason when your choice
+    cannot be saved.
+  - The write allowance notice goes once no refused change is waiting.
+  - A Template that ends with an empty bullet keeps the bullet.
+  - **Code block** on a line of spaces leaves no spaces behind, and the table removal rows of the
+    Command Menu show their icons.
 - Updated dependencies.
 
 ### Headless Client
 
-- **`read_task` lists the task's images and files** in `assets`, and the instructions tell the agent
-  to look at them with `read_asset` before it starts, and to leave a task's status as it is unless
-  you ask it to change it.
-- **Free tags.** `tasks` and `read_task` list each task's free tags (`#bug`) in `freeTags`, and a
-  task tag after a free tag is read.
-- **Task references start `etherpk:`.** `tasks`, `read_task`, `set_task` and `add_task_note` return
-  references in the form **Copy task reference** writes. Every tool that takes a reference still
-  reads the web addresses copied before.
+- **`read_task` lists the task's images and files** in `assets`, and the instructions tell the
+  agent to look at them with `read_asset`, and to leave a task's status alone unless you ask.
+- **Free tags.** `tasks` and `read_task` list a task's free tags in `freeTags`.
+- **Task references start `etherpk:`.** The tools return references in the form **Copy task
+  reference** writes, and still read the web addresses copied before.
+- **`set_task` changes the tasks nested under a task,** as the Client does. The result lists each
+  changed line in `nested`.
+- **Test and Archived task states.** `tasks` and `set_task` take the `test` and `archived`
+  statuses.
+- **Templates:** the day variables give a link and `{{today}}` works, in `create_page` and
+  `append_document`, and a Template's last empty bullet is kept.
+- **Renaming a page moves everyone's favourites and bookmarks** to the new name on a synced graph.
+- **Fixes.**
+  - `edit_document` and `append_document` keep the nesting of text that starts on an indented
+    line. Before, its first bullet moved to the top level and the lines under it moved with it.
+    Lines written inside a code block are left as they are.
 - Updated dependencies.
-- **The `{{today}}` Template variable** gives the same date as `{{date}}`.
-- **The day Template variables give a link**, such as `[[2026-11-01]]`, in `create_page` and
-  `append_document`, as they do in the Client.
-- **A Template that ends with an empty bullet keeps the bullet** in `create_page` and
-  `append_document`.
-- **Renaming a page moves everyone's favourites and bookmarks to the new name** on a synced graph,
-  as renaming it in the Client does.
-- **`set_task` changes the tasks nested under a task, as the Client does.** Status `done` ticks
-  every task nested under the task, and `open`, `doing` or `waiting` on a ticked task unticks them,
-  except a cancelled one. The result lists each changed line in `nested`.
 
 ## 0.16.0 - 2026-10-29
 

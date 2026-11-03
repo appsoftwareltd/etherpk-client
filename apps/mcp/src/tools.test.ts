@@ -309,6 +309,36 @@ describe('edit_document', () => {
         expect(await text(g, 'Kanban')).toBe('- board\n  - four-space child')
     })
 
+    it('keeps the nesting of a replacement that starts on an indented line', async () => {
+        const g = await graph('g-edit-nested')
+        await seed(g, 'Garden', '- Beds\n  - [ ] water the beans\n  - [ ] weed\n- Kitchen')
+        const replacement = '  - [x] #A weed\n    - done in the rain'
+        const result = await editDocument(g, { concept: 'Garden', old: '  - [ ] weed', new: replacement })
+        expect(result.inserted).toBe(replacement.length)
+        expect(await text(g, 'Garden')).toBe('- Beds\n  - [ ] water the beans\n  - [x] #A weed\n    - done in the rain\n- Kitchen')
+    })
+
+    it('puts an over-nested line one level under its parent in the page', async () => {
+        const g = await graph('g-edit-nested-grid')
+        await seed(g, 'Garden', '- Beds\n  - weed')
+        await editDocument(g, { concept: 'Garden', old: 'weed', new: 'weed\n        - by hand' })
+        expect(await text(g, 'Garden')).toBe('- Beds\n  - weed\n    - by hand')
+    })
+
+    it('leaves lines written inside a fenced block as they are', async () => {
+        const g = await graph('g-edit-fence')
+        await seed(g, 'Garden', '- Beds\n  ```\n  plan\n  ```')
+        await editDocument(g, { concept: 'Garden', old: '  plan', new: '  plan\n      - not a bullet' })
+        expect(await text(g, 'Garden')).toBe('- Beds\n  ```\n  plan\n      - not a bullet\n  ```')
+    })
+
+    it('writes the replacement as sent under lines that are off the grid', async () => {
+        const g = await graph('g-edit-off-grid')
+        await seed(g, 'Garden', '- Beds\n    - weed\n    - water')
+        await editDocument(g, { concept: 'Garden', old: '    - water', new: '    - water\n        - the beans' })
+        expect(await text(g, 'Garden')).toBe('- Beds\n    - weed\n    - water\n        - the beans')
+    })
+
     it('refuses an absent or ambiguous anchor, and a protected page', async () => {
         const g = await graph('g-edit-refuse')
         await seed(g, 'Kanban', '- a\n- a')
@@ -332,6 +362,13 @@ describe('append_document', () => {
         expect(await appendDocument(g, { concept: 'today', text: '- from the agent' })).toEqual({ concept: todayISO(), created: true })
         expect(await text(g, todayISO())).toBe('- from the agent\n')
         expect(await appendDocument(g, { concept: '2026-06-02', text: '- past' })).toEqual({ concept: '2026-06-02', created: true })
+    })
+
+    it('keeps the nesting of appended text that starts on an indented line', async () => {
+        const g = await graph('g-append-nested')
+        await seed(g, 'Garden', '- Beds\n  - water the beans\n')
+        await appendDocument(g, { concept: 'Garden', text: '  - weed\n      - by hand' })
+        expect(await text(g, 'Garden')).toBe('- Beds\n  - water the beans\n  - weed\n    - by hand\n')
     })
 
     it('does not invent a page: an unknown name that is not a day is not_found', async () => {

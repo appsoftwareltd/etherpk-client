@@ -15,6 +15,8 @@
  * favourites" without two near-identical entries fighting over the same slot.
  */
 
+import type { ViewFavourite } from '#lib/document/favourite-entry.js'
+
 import type { ContributionRegistry } from './contribution-registry'
 
 /** The point kind under which Context Menu rows are registered. */
@@ -39,6 +41,7 @@ export type ContextMenuTarget =
     | TaskContextMenuTarget
     | BookmarkContextMenuTarget
     | BookmarkGroupContextMenuTarget
+    | ViewFavouriteContextMenuTarget
     | ExtensionContextMenuTarget
 
 /**
@@ -148,11 +151,22 @@ export interface DocumentContextMenuTarget {
 export interface TabContextMenuTarget {
     kind: 'tab'
     panelId: string
+    /** The View the tab shows: what "Add to favourites" names when its kind can be a [[Favourite]] (ADR 0169). */
+    view?: { kind: string; target: string }
     /**
      * The tab is drawn as a row of a vertical list, as the phone draws its open documents, rather
      * than in a strip: the rows that close tabs by position say below and above, not right and left.
      */
     vertical?: boolean
+}
+
+/**
+ * A View [[Favourite]]'s row in the Graph Sidebar: a Kanban board, a Map View (ADR 0169). Not a
+ * document, so the document rows do not apply; the favourite pair does.
+ */
+export interface ViewFavouriteContextMenuTarget {
+    kind: 'view-favourite'
+    favourite: ViewFavourite
 }
 
 /** The panel a tab-management row acts on, or `null` when the target is not a tab. */

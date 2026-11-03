@@ -1,6 +1,6 @@
 {
     "name": "@appsoftwareltd/etherpk-extension-maps",
-    "version": "0.16.0",
+    "version": "0.17.0",
     "license": "Elastic-2.0",
     "description": "Maps in any document: places and routes kept as lines of text, and a map of every place that belongs to a concept, or to the whole graph.",
     "private": true,
@@ -32,7 +32,8 @@
                 "address": {
                     "segment": "m",
                     "target": "concept"
-                }
+                },
+                "favourite": true
             },
             {
                 "kind": "maps.whole",
@@ -42,7 +43,8 @@
                 "region": "main",
                 "address": {
                     "segment": "map"
-                }
+                },
+                "favourite": true
             }
         ],
         "settings": [

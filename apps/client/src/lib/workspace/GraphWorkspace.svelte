@@ -45,6 +45,7 @@
         type ViewRef,
         createLayoutController,
         createLocalLayoutStore,
+        createViewFavourites,
         createViewRegistry,
         defaultLayout,
         prefersMobileLayout,
@@ -3044,10 +3045,28 @@
                 ...(declared.titlePrefix === undefined ? {} : { titlePrefix: declared.titlePrefix }),
                 ...(declared.icon === undefined ? {} : { icon: declared.icon }),
                 conceptTarget: declared.conceptTarget,
+                ...(declared.declaration.target === undefined ? {} : { soleTarget: declared.declaration.target }),
+                favourite: declared.declaration.favourite === true,
                 props: { slot: declared.slot, host: extensionHost },
             });
         }
     }
+    /**
+     * Views as Favourites (ADR 0169): the kinds the manifests mark, titled as their tabs are, and
+     * whether each one's extension is on, off, or no longer on this device (removed from it, or
+     * never installed here). The extension behind a kind is the one that declared it.
+     */
+    const viewFavourites = createViewFavourites({
+        registry,
+        availability(kind) {
+            const declared = extensionHost.views().find((view) => view.declaration.kind === kind);
+            if (!declared || !extensionHost.catalogue.extensions.some((entry) => entry.id === declared.extensionId)) {
+                return { state: "missing" };
+            }
+            return extensionHost.isOn(declared.extensionId) ? { state: "on" } : { state: "off", name: declared.slot.displayName };
+        },
+        subscribe: (listener) => extensionHost.subscribe(listener),
+    });
     registerExtensionViews(extensionHost.views());
     // An extension installed from the Extension Directory while the Client runs declares its View
     // kinds and icons then, and they are registered as the first ones were.
@@ -4560,6 +4579,7 @@
                 promptRename: (concept) => startRename(concept),
                 promptDelete: (concept) => startDelete(concept),
                 promptPublish: (concept) => void startPublishDocument(concept),
+                viewFavourites,
                 // Show Backlinks: tell the store what to show (the pin is left as it is, ADR
                 // 0088), then reveal the View. The store first, so a View the reveal mounts (a
                 // phone's drawer) reads it at mount; one already mounted hears it.
@@ -4972,6 +4992,7 @@
             contributions,
             keybindings: keybindingTable,
             readingPositions,
+            viewFavourites,
             // Getters over the session's runes, so a template reading them re-renders on a lock
             // transition. Actions only: no key, no record, nothing to leak.
             protection: {

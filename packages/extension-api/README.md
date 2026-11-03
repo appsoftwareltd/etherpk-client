@@ -422,6 +422,12 @@ An `address` gives the View a URL. For an extension from the Extension Directory
 to it opens the View. On a device without the extension, it opens a page that names the extension
 and offers to install it, if the directory lists it.
 
+`"favourite": true` lets a person add the View to their Favourites from its tab's menu, and open it
+again from the graph sidebar, where its row shows the tab's title and icon. It needs `region`
+`main`, an `address`, and either a fixed `target` or an address whose `target` is `concept`. A
+favourite of a View about a concept follows the concept when it is renamed. An older Client ignores
+the key.
+
 `context.layout.openView({ kind, target })` opens a View. `context.layout.isDesktop()` says whether
 the desktop layout is showing, which it is at 1024 pixels wide and more.
 

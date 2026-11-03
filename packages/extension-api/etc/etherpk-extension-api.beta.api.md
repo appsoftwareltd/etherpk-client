@@ -745,6 +745,7 @@ export interface ViewDeclaration {
         segment: string;
         target?: 'concept';
     };
+    favourite?: boolean;
     icon?: string;
     kind: string;
     region: ViewRegion;

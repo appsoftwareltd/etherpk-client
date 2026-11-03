@@ -873,7 +873,7 @@ describe('graph-sync', () => {
         expect(() => b.favourites('')).toThrow(/member key/)
 
         // A move and a remove: the order follows, and peers see one change.
-        const seen: string[][] = []
+        const seen: unknown[][] = []
         const stop = b.favourites('m1').observe(() => seen.push(b.favourites('m1').list()))
         a.favourites('m1').replace(['Pantry', 'Garden'])
         await vi.waitFor(() => expect(b.favourites('m1').list()).toEqual(['Pantry', 'Garden']), { timeout: 2000 })
@@ -1131,6 +1131,30 @@ describe('graph-sync', () => {
         expect(b.clearDepartedMembers([])).toEqual([])
         expect(a.favourites('stays').list()).toEqual(['Garden'])
 
+        a.dispose()
+        b.dispose()
+    })
+
+    it('favourites: View entries are stored as objects, kept by identity on a replace, and moved by their hint (ADR 0169)', async () => {
+        const keyring = createGraphKeyring('g1')
+        const a = await client(createLoopbackRelay(), keyring)
+        const b = await client(createLoopbackRelay(), keyring)
+        const board = { kind: 'kanban.board', concept: 'Garden' }
+        const graphMap = { kind: 'maps.whole' }
+        a.favourites('m1').replace(['Garden', board, graphMap])
+        expect(a.docSync(ROOT).doc.getArray('favourites:m1').toArray()).toEqual(['Garden', board, graphMap])
+        exchangeRoots(a, b)
+
+        // A replace that only appends keeps the View entries' items, so a removal of one on the
+        // other device is not undone by the merge.
+        a.favourites('m1').replace(['Garden', board, graphMap, 'Kitchen'])
+        b.favourites('m1').replace(['Garden', graphMap])
+        exchangeRoots(a, b)
+        for (const c of [a, b]) expect(c.favourites('m1').list()).toEqual(['Garden', graphMap, 'Kitchen'])
+
+        // A named move re-inserts only that entry.
+        a.favourites('m1').replace([graphMap, 'Garden', 'Kitchen'], { moved: { kind: 'maps.whole' } })
+        expect(a.docSync(ROOT).doc.getArray('favourites:m1').toArray()).toEqual([graphMap, 'Garden', 'Kitchen'])
         a.dispose()
         b.dispose()
     })
@@ -3081,6 +3105,19 @@ describe('graph-sync member lists, item by item', () => {
         expect(a.renameConceptInMemberLists([{ from: 'Garden', to: 'Allotment' }])).toEqual(['bookmarks:m1'])
         expect(a.bookmarks('m1').list().map((bookmark) => bookmark.concept)).toEqual(['Allotment', 'Allotment'])
         expect(map.get('bm-1')).toBeInstanceOf(Y.Map)
+        a.dispose()
+    })
+
+    it('renameConceptInMemberLists moves a View favourite about the concept and leaves a whole-graph View alone', async () => {
+        const a = await client(createLoopbackRelay())
+        a.favourites('m1').replace([{ kind: 'kanban.board', concept: 'Garden' }, { kind: 'kanban.whole' }, 'Kitchen'])
+        a.setMetaSettings({ favourites: [{ kind: 'maps.map', concept: 'garden' }] })
+
+        expect([...a.renameConceptInMemberLists([{ from: 'Garden', to: 'Allotment' }])].sort()).toEqual(['favourites:m1', 'meta'])
+        expect(a.favourites('m1').list()).toEqual([{ kind: 'kanban.board', concept: 'Allotment' }, { kind: 'kanban.whole' }, 'Kitchen'])
+        expect(a.getMeta().settings).toEqual({ favourites: [{ kind: 'maps.map', concept: 'Allotment' }] })
+        // Already the new name: nothing to report.
+        expect(a.renameConceptInMemberLists([{ from: 'allotment', to: 'Allotment' }])).toEqual([])
         a.dispose()
     })
 

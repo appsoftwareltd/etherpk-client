@@ -20,8 +20,13 @@ import {
     isDocumentTarget,
     isWikilinkTarget,
     registerContextMenuItem,
+    type TabContextMenuTarget,
+    type ViewFavouriteContextMenuTarget,
 } from '#lib/surface/index.js'
 
+import type { ViewFavourites } from '#lib/layout/view-favourites.js'
+
+import { type Favourite, sanitizeFavourite, type ViewFavourite } from '../favourite-entry'
 import { addFavourite, isFavourite, moveFavourite, removeFavourite, restoreFavourite } from '../favourites'
 import { isJournalConcept } from '../journal-concept'
 import { copyFailureMessage, writeClipboardText } from './clipboard-text'
@@ -74,22 +79,17 @@ function conceptOf(arg: unknown): string {
         : ''
 }
 
-/** A document, or a [[Wikilink]] naming one: what the favourite pair applies to (ADR 0158). */
-function isFavouriteTarget(target: ContextMenuTarget): boolean {
-    return isDocumentTarget(target) || isWikilinkTarget(target)
-}
-
-/** `favourites.move`'s argument: where a favourite should sit in the list, 0-based. */
+/** `favourites.move`'s argument: where a favourite, a document or a View, should sit in the list, 0-based. */
 export interface FavouriteMoveArg {
-    concept: string
+    favourite: Favourite
     toIndex: number
 }
 
 function moveArgOf(arg: unknown): FavouriteMoveArg | null {
     const move = arg as Partial<FavouriteMoveArg> | undefined
-    return move && typeof move.concept === 'string' && typeof move.toIndex === 'number'
-        ? { concept: move.concept, toIndex: move.toIndex }
-        : null
+    if (!move || typeof move.toIndex !== 'number') return null
+    const favourite = sanitizeFavourite(move.favourite)
+    return favourite === null ? null : { favourite, toIndex: move.toIndex }
 }
 
 export interface DocumentCommandDeps {
@@ -128,6 +128,11 @@ export interface DocumentCommandDeps {
      * opens. Absent ⇒ every concept names itself (a harness with no index).
      */
     canonicalName?: (concept: string) => string
+    /**
+     * Which Views can be favourites, and their titles (ADR 0169): a Kanban board's or a Map View's
+     * tab then offers the favourite pair too. Absent ⇒ only documents can be favourited.
+     */
+    viewFavourites?: Pick<ViewFavourites, 'favouriteOf' | 'describe'>
     /** Surfaces a failure to the user (the workspace's status line). */
     onError?: (message: string) => void
     /**
@@ -173,13 +178,27 @@ export function registerDocumentCommands(
     }
 
     /**
-     * The concept a favourite row acts on: the target's, by the name the graph knows it by. A tab
-     * already carries that name; a link carries what its author typed, which may be an alias.
+     * The favourite a favourite row acts on, or null for a target that is none. A document or a
+     * link: its concept, by the name the graph knows it by - a tab already carries that name, a link
+     * carries what its author typed, which may be an alias. The tab of a View that can be a
+     * favourite: that View (ADR 0169). A View favourite's Sidebar row: its entry.
      */
-    const favouriteConceptOf = (target: unknown): string => {
+    const favouriteOf = (arg: unknown): Favourite | null => {
+        const target = arg as ContextMenuTarget | undefined
+        if (target?.kind === 'view-favourite' || target?.kind === 'tab') return viewFavouriteOf(target)
         const concept = conceptOf(target)
-        return concept === '' ? '' : (deps.canonicalName?.(concept) ?? concept)
+        return concept === '' ? null : (deps.canonicalName?.(concept) ?? concept)
     }
+
+    /** A View favourite's row names its entry; a tab, the View it shows when that View can be one. */
+    const viewFavouriteOf = (target: TabContextMenuTarget | ViewFavouriteContextMenuTarget): ViewFavourite | null => {
+        if (target.kind === 'view-favourite') return target.favourite
+        return target.view ? (deps.viewFavourites?.favouriteOf(target.view) ?? null) : null
+    }
+
+    /** What a notice calls a favourite: a document by its name, a View by its tab's title. */
+    const nameOf = (favourite: Favourite): string =>
+        typeof favourite === 'string' ? favourite : (deps.viewFavourites?.describe(favourite).title ?? favourite.kind)
 
     const announce = (text: string, actions?: NoticeAction[]) =>
         showNotice({ id: FAVOURITES_NOTICE, tone: 'info', text, actions })
@@ -187,39 +206,40 @@ export function registerDocumentCommands(
     // Every add and remove says so in a notice, whichever surface it came from (a tab, a link,
     // a Sidebar row): from a link or on a phone the Favourites list is usually out of sight, and
     // one behaviour everywhere reads better than a notice that comes and goes with the surface.
-    const add = async (concept: string) => {
-        if (concept === '' || isFavourite(concept)) return
-        await addFavourite(concept)
-        announce(`Added "${concept}" to favourites`)
+    const add = async (favourite: Favourite | null) => {
+        if (favourite === null || isFavourite(favourite)) return
+        await addFavourite(favourite)
+        announce(`Added "${nameOf(favourite)}" to favourites`)
     }
 
     // A remove offers Undo, which puts the favourite back where it stood: the list is ordered by
     // hand, and adding it again would land it at the bottom. A refused Undo leaves the card as it
     // was, so its Undo can be tried again.
-    const remove = async (concept: string) => {
-        if (concept === '') return
-        const removed = await removeFavourite(concept)
+    const remove = async (favourite: Favourite | null) => {
+        if (favourite === null) return
+        const removed = await removeFavourite(favourite)
         if (!removed) return
+        const name = nameOf(removed.favourite)
         const undo = async () => {
             try {
-                await restoreFavourite(removed.concept, removed.index)
+                await restoreFavourite(removed.favourite, removed.index)
             } catch (err) {
                 deps.onError?.((err as Error).message)
                 return
             }
-            announce(`"${removed.concept}" is back in favourites`)
+            announce(`"${name}" is back in favourites`)
         }
-        announce(`Removed "${removed.concept}" from favourites`, [{ id: 'favourite-undo', label: 'Undo', primary: true, run: undo }])
+        announce(`Removed "${name}" from favourites`, [{ id: 'favourite-undo', label: 'Undo', primary: true, run: undo }])
     }
 
     disposers.push(
-        commands.register(FAVOURITE_ADD, (arg) => guard(add(favouriteConceptOf(arg)))),
-        commands.register(FAVOURITE_REMOVE, (arg) => guard(remove(favouriteConceptOf(arg)))),
+        commands.register(FAVOURITE_ADD, (arg) => guard(add(favouriteOf(arg)))),
+        commands.register(FAVOURITE_REMOVE, (arg) => guard(remove(favouriteOf(arg)))),
         // Not a Context Menu row: this is how the Sidebar's drag handle and its arrow keys write
         // the order, so a refused write reaches the user the same way a refused add does.
         commands.register(FAVOURITE_MOVE, (arg) => {
             const move = moveArgOf(arg)
-            return move ? guard(moveFavourite(move.concept, move.toIndex)) : undefined
+            return move ? guard(moveFavourite(move.favourite, move.toIndex)) : undefined
         }),
         commands.register(DOCUMENT_RENAME, (arg) => {
             const concept = conceptOf(arg)
@@ -331,16 +351,23 @@ export function registerDocumentCommands(
             command: FAVOURITE_ADD,
             // After the rows that show something, before Rename…, on a link as on a tab. On every
             // link (ADR 0158): one to a concept with no page yet as well, whose favourite opens it
-            // as a Draft tab's does, and a journal day's.
+            // as a Draft tab's does, and a journal day's. On the tab of a View that can be a
+            // favourite too, a Kanban board's or a Map View's (ADR 0169).
             order: 10,
-            when: (target) => isFavouriteTarget(target) && !isFavourite(favouriteConceptOf(target)),
+            when: (target) => {
+                const favourite = favouriteOf(target)
+                return favourite !== null && !isFavourite(favourite)
+            },
         }),
         registerContextMenuItem(contributions, {
             id: FAVOURITE_REMOVE,
             label: 'Remove from favourites',
             command: FAVOURITE_REMOVE,
             order: 10,
-            when: (target) => isFavouriteTarget(target) && isFavourite(favouriteConceptOf(target)),
+            when: (target) => {
+                const favourite = favouriteOf(target)
+                return favourite !== null && isFavourite(favourite)
+            },
         }),
         registerContextMenuItem(contributions, {
             id: DOCUMENT_RENAME,

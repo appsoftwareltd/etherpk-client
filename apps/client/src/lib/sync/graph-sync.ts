@@ -25,6 +25,7 @@ import { type QuickNote, sanitizeQuickNotes } from '#lib/document/quick-notes.js
 import { sanitizeDictionaryWords } from '#lib/document/spelling/graph-dictionary.js'
 import { type Bookmark, type BookmarksChange, sanitizeBookmarks } from '#lib/document/bookmarks/bookmarks.js'
 import { type GraphTheme, isThemeFilePath, sanitizeGraphTheme } from '#lib/document/publish/theme/graph-theme.js'
+import { type Favourite, favouriteKey, sanitizeFavourite } from '#lib/document/favourite-entry.js'
 import { sanitizeFavourites } from '#lib/storage/fs/graph-settings.js'
 
 /** Why a socket closed: the WebSocket close code and reason, when the transport knows them. */
@@ -182,14 +183,14 @@ export interface FavouritesReplaceChange {
      * The one favourite a move put somewhere else. Only that entry is deleted and re-inserted,
      * so a concurrent removal of any other entry on another device stays removed.
      */
-    moved?: string
+    moved?: Favourite
     /**
      * The shared Graph Settings favourites the person's list was shown joined with, when it is
      * not seeded yet (ADR 0159). The write then marks the list seeded, with this as the shared
      * list it saw, in the same transaction, so the seed never runs again over a list the person
      * has already changed. Ignored once the list is seeded.
      */
-    seedFrom?: readonly string[]
+    seedFrom?: readonly Favourite[]
 }
 
 /** A list of [[Quick Note]]s held in one root-doc Y.Array (ADR 0078, ADR 0159). */
@@ -242,11 +243,12 @@ export interface GraphSync {
     quickNotesOf(memberKey: string): QuickNotesList
     /**
      * One member's [[Favourite]]s: the root doc's top-level `favourites:<memberKey>` Y.Array of
-     * concept names, in Sidebar order (ADR 0159). Top-level for the reason bookmarks are.
+     * concept names and View entries (ADR 0169), in Sidebar order (ADR 0159). Top-level for the
+     * reason bookmarks are.
      */
     favourites(memberKey: string): {
         /** The list deduped case-insensitively (first spelling kept) and capped, as Graph Settings reads it. */
-        list(): string[]
+        list(): Favourite[]
         /**
          * Make the array hold `next`, writing only the difference in one transaction: entries no
          * longer present are deleted and new ones inserted at their positions, a move being a
@@ -254,7 +256,7 @@ export interface GraphSync {
          * another device of the same person. With `change.moved`, and when that move is the whole
          * difference, only the moved entry is deleted and re-inserted.
          */
-        replace(next: readonly string[], change?: FavouritesReplaceChange): void
+        replace(next: readonly Favourite[], change?: FavouritesReplaceChange): void
         /**
          * The first-open copy (ADR 0159 decision 4): unless this member's `memberFlags:<memberKey>`
          * map says it already ran, append every `shared` favourite the list does not hold and
@@ -262,7 +264,7 @@ export interface GraphSync {
          * was copied, so a list the person empties later is never refilled. Records `shared` as
          * the shared list it saw, for {@link followShared}.
          */
-        seedOnce(shared: readonly string[]): boolean
+        seedOnce(shared: readonly Favourite[]): boolean
         /** True once the first-open copy ran, on this device or on another of the person's. */
         seeded(): boolean
         /**
@@ -273,7 +275,7 @@ export interface GraphSync {
          * list is theirs. A list seeded with no record of what it saw takes `shared` as seen and
          * adds nothing. False, with nothing written, before the seed or when nothing changed.
          */
-        followShared(shared: readonly string[]): boolean
+        followShared(shared: readonly Favourite[]): boolean
         /**
          * Fires on any change to this member's array or flags (local or remote): the seed flag
          * decides which list the person sees. Returns an unsubscribe.
@@ -587,19 +589,51 @@ function removedBookmark(doc: Y.Doc, transaction: Y.Transaction): boolean {
 }
 
 /**
- * `list` with each name that `target` moves replaced, or null when it is not a list or nothing in
- * it moved. Entries that are not names are kept as they are.
+ * `list` with each favourite whose concept `target` moves renamed, or null when it is not a list or
+ * nothing in it moved: a document's name, or the concept of a View about one (ADR 0169). Entries
+ * that are neither are kept as they are.
  */
 function renamedNames(list: unknown, target: (concept: unknown) => string | undefined): unknown[] | null {
     if (!Array.isArray(list)) return null
     let moved = false
     const next = list.map((entry) => {
-        const to = target(entry)
-        if (to === undefined || to === entry) return entry
+        const to = renamedFavourite(entry, target)
+        if (to === undefined) return entry
         moved = true
         return to
     })
     return moved ? next : null
+}
+
+/**
+ * One stored favourite with its concept moved, or undefined when `target` does not move it or it
+ * already has the new name: a string becomes the new name, and a View object keeps every field it
+ * holds, the new concept apart.
+ */
+function renamedFavourite(entry: unknown, target: (concept: unknown) => string | undefined): unknown {
+    if (typeof entry === 'string') {
+        const to = target(entry)
+        return to === undefined || to === entry ? undefined : to
+    }
+    if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) return undefined
+    const concept = (entry as { concept?: unknown }).concept
+    const to = target(concept)
+    return to === undefined || to === concept ? undefined : { ...(entry as Record<string, unknown>), concept: to }
+}
+
+/**
+ * What a stored favourite is compared by when the array is rewritten: the exact entry, a name in
+ * its own case, so a rename that only changes the case is written, and an entry that cannot be
+ * read matches nothing, so it is deleted.
+ */
+function storedFavouriteIdentity(entry: unknown): string | null {
+    if (typeof entry === 'string') return `d:${entry}`
+    const favourite = sanitizeFavourite(entry)
+    return favourite === null ? null : exactFavouriteIdentity(favourite)
+}
+
+function exactFavouriteIdentity(favourite: Favourite): string {
+    return typeof favourite === 'string' ? `d:${favourite}` : `v:${JSON.stringify([favourite.kind, favourite.concept ?? null])}`
 }
 
 /**
@@ -611,7 +645,7 @@ function renamedNames(list: unknown, target: (concept: unknown) => string | unde
  * one is a new item that a concurrent removal on another device does not reach. An entry that
  * did not move is the least surprising one to keep.
  */
-function keptPairs(current: readonly unknown[], next: readonly string[]): { keptCurrent: Set<number>; keptNext: Set<number> } {
+function keptPairs(current: readonly (string | null)[], next: readonly string[]): { keptCurrent: Set<number>; keptNext: Set<number> } {
     const n = current.length
     const m = next.length
     // lengths[i][j]: the LCS length of current[i..] and next[j..]. inPlace[i][j]: of the LCSs
@@ -659,10 +693,12 @@ function keptPairs(current: readonly unknown[], next: readonly string[]): { kept
  * Make `array` hold exactly `next` with the fewest deletes and inserts, in one transaction. The
  * entries both share in order stay put, so a concurrent insert on another device keeps a
  * neighbour to merge against and survives. A clear-and-refill would delete it with the rest.
+ * Entries are compared by their exact identity (`storedFavouriteIdentity`), since a View entry is
+ * an object that no two reads give as the same value.
  */
-function replaceStrings(doc: Y.Doc, array: Y.Array<unknown>, next: readonly string[]): void {
-    const current = array.toArray()
-    const { keptCurrent, keptNext } = keptPairs(current, next)
+function replaceFavourites(doc: Y.Doc, array: Y.Array<unknown>, next: readonly Favourite[]): void {
+    const current = array.toArray().map(storedFavouriteIdentity)
+    const { keptCurrent, keptNext } = keptPairs(current, next.map(exactFavouriteIdentity))
     if (keptCurrent.size === current.length && keptNext.size === next.length) return
     doc.transact(() => {
         // Highest index first, so earlier deletions do not shift the later ones.
@@ -680,14 +716,18 @@ function replaceStrings(doc: Y.Doc, array: Y.Array<unknown>, next: readonly stri
  * removal of it made on another device. False, with nothing written, when the lists differ in
  * any other way.
  */
-function moveString(doc: Y.Doc, array: Y.Array<unknown>, next: readonly string[], moved: string): boolean {
-    const key = moved.trim().toLowerCase()
-    const current = array.toArray()
-    const from = current.findIndex((entry) => typeof entry === 'string' && entry.trim().toLowerCase() === key)
-    const to = next.findIndex((entry) => entry.toLowerCase() === key)
+function moveFavourite(doc: Y.Doc, array: Y.Array<unknown>, next: readonly Favourite[], moved: Favourite): boolean {
+    const key = favouriteKey(moved)
+    const stored = array.toArray()
+    const current = stored.map(storedFavouriteIdentity)
+    const from = stored.findIndex((entry) => {
+        const favourite = sanitizeFavourite(entry)
+        return favourite !== null && favouriteKey(favourite) === key
+    })
+    const to = next.findIndex((entry) => favouriteKey(entry) === key)
     if (from === -1 || to === -1) return false
     const rest = current.filter((_, i) => i !== from)
-    const nextRest = next.filter((_, i) => i !== to)
+    const nextRest = next.filter((_, i) => i !== to).map(exactFavouriteIdentity)
     if (rest.length !== nextRest.length || rest.some((entry, i) => entry !== nextRest[i])) return false
     if (from === to) return true
     doc.transact(() => {
@@ -1826,18 +1866,18 @@ export function createGraphSync(deps: GraphSyncDeps): GraphSync {
             const flags = root.doc.getMap<unknown>(`memberFlags:${memberKey}`)
             const seeded = () => flags.get('favouritesSeeded') === true
             // The shared list as last seen, or null when the seed ran on a build that kept none.
-            const seen = (): string[] | null => {
+            const seen = (): Favourite[] | null => {
                 const raw = flags.get('sharedFavouritesSeen')
                 return Array.isArray(raw) ? sanitizeFavourites(raw) : null
             }
-            const markSeeded = (shared: readonly string[]) => {
+            const markSeeded = (shared: readonly Favourite[]) => {
                 flags.set('favouritesSeeded', true)
                 flags.set('sharedFavouritesSeen', sanitizeFavourites(shared))
             }
-            /** Append the entries of `incoming` the list does not hold, case-insensitively. */
-            const appendMissing = (incoming: readonly string[]) => {
-                const held = new Set(sanitizeFavourites(array.toArray()).map((c) => c.toLowerCase()))
-                const missing = sanitizeFavourites(incoming).filter((c) => !held.has(c.toLowerCase()))
+            /** Append the entries of `incoming` the list does not hold, by identity (case-insensitively). */
+            const appendMissing = (incoming: readonly Favourite[]) => {
+                const held = new Set(sanitizeFavourites(array.toArray()).map(favouriteKey))
+                const missing = sanitizeFavourites(incoming).filter((favourite) => !held.has(favouriteKey(favourite)))
                 if (missing.length > 0) array.push(missing)
             }
             return {
@@ -1846,8 +1886,8 @@ export function createGraphSync(deps: GraphSyncDeps): GraphSync {
                     const clean = sanitizeFavourites(next)
                     root.doc.transact(() => {
                         if (change?.seedFrom && !seeded()) markSeeded(change.seedFrom)
-                        if (change?.moved !== undefined && moveString(root.doc, array, clean, change.moved)) return
-                        replaceStrings(root.doc, array, clean)
+                        if (change?.moved !== undefined && moveFavourite(root.doc, array, clean, change.moved)) return
+                        replaceFavourites(root.doc, array, clean)
                     })
                 },
                 seedOnce(shared) {
@@ -1865,12 +1905,15 @@ export function createGraphSync(deps: GraphSyncDeps): GraphSync {
                     if (!seeded()) return false
                     const current = sanitizeFavourites(shared)
                     const before = seen()
-                    const unchanged = before !== null && before.length === current.length && before.every((c, i) => c === current[i])
+                    const unchanged =
+                        before !== null &&
+                        before.length === current.length &&
+                        before.every((favourite, i) => exactFavouriteIdentity(favourite) === exactFavouriteIdentity(current[i]))
                     if (unchanged) return false
                     root.doc.transact(() => {
                         if (before !== null) {
-                            const known = new Set(before.map((c) => c.toLowerCase()))
-                            appendMissing(current.filter((c) => !known.has(c.toLowerCase())))
+                            const known = new Set(before.map(favouriteKey))
+                            appendMissing(current.filter((favourite) => !known.has(favouriteKey(favourite))))
                         }
                         flags.set('sharedFavouritesSeen', current)
                     })
@@ -1929,10 +1972,11 @@ export function createGraphSync(deps: GraphSyncDeps): GraphSync {
                         const array = root.doc.getArray<unknown>(name)
                         const entries = array.toArray()
                         let hit = false
-                        // Delete and insert at the same index, so the favourite keeps its place.
+                        // Delete and insert at the same index, so the favourite keeps its place. A
+                        // View about the concept moves with it (ADR 0169).
                         entries.forEach((entry, i) => {
-                            const to = target(entry)
-                            if (to === undefined || to === entry) return
+                            const to = renamedFavourite(entry, target)
+                            if (to === undefined) return
                             array.delete(i, 1)
                             array.insert(i, [to])
                             hit = true

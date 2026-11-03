@@ -330,7 +330,7 @@ export function createDockviewRenderer(options: DockviewRendererOptions): Dockvi
         const view = parseViewKey(panel.id)
         return view.kind === 'document' && view.target === label
             ? { kind: 'document-tab', concept: view.target, panelId: panel.id }
-            : { kind: 'tab', panelId: panel.id }
+            : { kind: 'tab', panelId: panel.id, view }
     })
 
     // Persist geometry on user-driven layout changes (sash resize, tab drag/move).

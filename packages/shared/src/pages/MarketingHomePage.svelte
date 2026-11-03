@@ -134,7 +134,7 @@
 
     // Each entry restates a bullet from the docs' "Features" list in fewer words. Backticks mark
     // code, rendered by the `inline` snippet below; keep them balanced.
-    const allFeatureGroups: FeatureGroup[] = [
+    const featureGroups: FeatureGroup[] = [
         {
             id: "writing",
             label: "Writing",
@@ -229,10 +229,6 @@
             ],
             docs: [
                 { title: "Images and Files", slug: "images-and-files" },
-                {
-                    title: "Links to Websites and Files",
-                    slug: "links-to-websites-and-files",
-                },
             ],
         },
         {
@@ -373,7 +369,6 @@
             ],
             docs: [
                 { title: "Synced Graphs", slug: "synced-graphs" },
-                { title: "Managed Sync", slug: "managed-sync" },
             ],
         },
         {
@@ -480,16 +475,6 @@
     const usageNotes = $derived([
         `End-to-end encryption protects your data and privacy. An unlocked device or your Recovery Code is needed to decrypt your synced notes. ${managed ? "We cannot" : "Your Sync Server cannot"} decrypt or recover your notes for you. Keep a copy of your code safe and backed up.`,
     ]);
-
-    /** A self-hosted Client's copy leaves out the links to the managed service's page. */
-    const featureGroups = $derived(
-        managed
-            ? allFeatureGroups
-            : allFeatureGroups.map((group) => ({
-                  ...group,
-                  docs: group.docs.filter((doc) => doc.slug !== "managed-sync"),
-              })),
-    );
 
     /**
      * "Ways to run EtherPK": the app in a browser, the Node bundle and the Docker image, then

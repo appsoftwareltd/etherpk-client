@@ -300,7 +300,7 @@ export function createMcpServer(source: HeadlessGraph | Promise<HeadlessGraph> |
         'edit_document',
         {
             title: 'Edit a document',
-            description: 'Replace one exact occurrence of "old" with "new" in a document. "old" must appear exactly once (include surrounding lines to disambiguate). The change is applied as one edit, so on a synced graph it merges with anyone typing elsewhere in the page, and on a folder it is in the file when this returns. Refused on a protected document.',
+            description: 'Replace one exact occurrence of "old" with "new" in a document. "old" must appear exactly once (include surrounding lines to disambiguate). Write "new" indented as it should stand in the page: its bullets are put on the two-space grid under the lines above it. The change is applied as one edit, so on a synced graph it merges with anyone typing elsewhere in the page, and on a folder it is in the file when this returns. Refused on a protected document.',
             inputSchema: {
                 concept,
                 old: z.string().min(1).describe('The exact text to replace, as read_document returned it.'),

@@ -20,6 +20,11 @@
      * as Search's row for a [[Pageless Concept]] does (ADR 0050). Nothing here asks the
      * store whether a concept resolves before letting it be clicked.
      *
+     * A Favourite can be a View as well as a document (ADR 0169): a Kanban board, a Map View, the
+     * whole-graph Graph View. Its row reads as its tab does, title and icon, and opens the View.
+     * A View whose extension is off still opens (its tab offers to switch it on) and says so under
+     * its title; one whose extension is not on this device stays, inert, saying that.
+     *
      * A [[Protected Document]]'s Favourite row wears the tab strip's padlock, minus its state;
      * a protected document is left out of Recents altogether. The flag comes from the
      * [[Derived Index]]'s concept snapshot - the same synchronous read Search ranks names over -
@@ -38,6 +43,11 @@
     import JournalCalendar from "./JournalCalendar.svelte";
     import { FAVOURITE_MOVE } from "#lib/document/commands/document-commands.js";
     import { subscribeFavourites } from "#lib/document/favourites.js";
+    import {
+        type Favourite,
+        favouriteKey,
+        type ViewFavourite,
+    } from "#lib/document/favourite-entry.js";
     import BookmarksSection from "./BookmarksSection.svelte";
     import { getActiveLayoutController, type ViewRef } from "#lib/layout/index.js";
     import { prefersMobileLayout } from "#lib/layout/breakpoint.js";
@@ -55,6 +65,7 @@
         tryGetActiveCommandRegistry,
         tryGetActiveContributionRegistry,
         tryGetActiveEventBus,
+        type ContextMenuTarget,
         type DocumentContextMenuTarget,
     } from "#lib/surface/index.js";
     import { getActiveGraphIndex } from "#lib/document/backlinks/active-index.js";
@@ -72,7 +83,7 @@
     const store = getActiveDocumentStore() as FilesystemDocumentStore;
 
     let documents = $state<{ concept: string; kind: string }[]>([]);
-    let favourites = $state.raw<string[]>([]);
+    let favourites = $state.raw<Favourite[]>([]);
     let recents = $state.raw<string[]>([]);
     /** The active document, so the [[Journal Calendar]] can follow it when it is a day. */
     let activeConcept = $state<string | null>(getActiveDocument());
@@ -105,6 +116,57 @@
      * Absent in the dev harnesses, which have no workspace.
      */
     const syncStatus = currentWorkspaceServices()?.sync;
+
+    /**
+     * How a View favourite's row reads (ADR 0169). Read once, like the sync status: the workspace
+     * publishes it with the graph's services. Absent in the dev harnesses, where a View favourite
+     * shows its stored kind and opens nothing.
+     */
+    const viewFavourites = workspaceService("viewFavourites");
+    /** Re-read the rows when an extension is switched on or off, added or removed. */
+    const watchViewFavourites = createSubscriber(
+        (update) => viewFavourites?.subscribe(update) ?? (() => {}),
+    );
+
+    /** One Favourites row: a document by its concept, a View by its tab's title and icon. */
+    interface FavouriteRow {
+        favourite: Favourite;
+        key: string;
+        /** What the row says, and what its controls are named by. */
+        name: string;
+        /** The document's concept; absent for a View. */
+        concept?: string;
+        icon?: string;
+        /** The View a View row opens, or null when nothing here can open it. */
+        view?: ViewRef | null;
+        /** Said under the name: the View's extension is off, or not on this device. */
+        note?: string;
+    }
+
+    const favouriteRows = $derived.by<FavouriteRow[]>(() => {
+        watchViewFavourites();
+        return favourites.map((favourite) => {
+            const key = favouriteKey(favourite);
+            if (typeof favourite === "string") {
+                return { favourite, key, name: favourite, concept: favourite };
+            }
+            const row = viewFavourites?.describe(favourite) ?? {
+                title:
+                    favourite.concept === undefined
+                        ? favourite.kind
+                        : `${favourite.kind}: ${favourite.concept}`,
+                view: null,
+            };
+            return {
+                favourite,
+                key,
+                name: row.title,
+                icon: row.icon,
+                view: row.view,
+                note: row.note,
+            };
+        });
+    });
 
     const recentLimit = $derived(recentCountOf(getActiveGraphSettings()));
     /** Concepts that currently resolve, for the [[Journal Calendar]]'s bold days. */
@@ -180,6 +242,15 @@
      */
     function open(concept: string) {
         openConcept(concept);
+    }
+
+    /**
+     * Open a Favourites row: a document by its concept, a View in its tab, brought to the front
+     * when it is open already. A View nothing here can open does nothing; its note says why.
+     */
+    function openFavourite(row: FavouriteRow) {
+        if (row.concept !== undefined) open(row.concept);
+        else if (row.view) getActiveLayoutController().openView(row.view);
     }
 
     /**
@@ -329,13 +400,15 @@
      * A favourite being dragged by its handle. Rows keep their DOM order for the whole gesture:
      * the dragged row follows the pointer and the rows it has passed slide aside by its height,
      * so nothing is written - or re-rendered under the pointer - until the handle is released.
-     * The row is addressed by concept, not index, because the shared list can change under a
+     * The row is addressed by its favourite, not index, because the list can change under a
      * gesture (a peer's edit arriving over sync) and `favourites.move` then lands it as near as
      * the list allows rather than moving something else.
      */
     interface FavouriteDrag {
         pointerId: number;
-        concept: string;
+        favourite: Favourite;
+        /** The dragged row's key, to mark it in the list. */
+        key: string;
         from: number;
         /** Where the row lands if released now. */
         to: number;
@@ -354,16 +427,16 @@
     const handleHintId = `${listId}-handle-hint`;
 
     /** Through the Command, so a refused write reports the way a refused add does. */
-    function moveFavouriteTo(concept: string, toIndex: number): void {
+    function moveFavouriteTo(favourite: Favourite, toIndex: number): void {
         void tryGetActiveCommandRegistry()?.execute(FAVOURITE_MOVE, {
-            concept,
+            favourite,
             toIndex,
         });
     }
 
     function startFavouriteDrag(
         event: PointerEvent,
-        concept: string,
+        row: FavouriteRow,
         index: number,
     ) {
         // The primary button only: a right-click on the handle is not a drag.
@@ -380,7 +453,8 @@
         (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
         drag = {
             pointerId: event.pointerId,
-            concept,
+            favourite: row.favourite,
+            key: row.key,
             from: index,
             to: index,
             dy: 0,
@@ -404,9 +478,9 @@
 
     function endFavouriteDrag(event: PointerEvent) {
         if (!drag || event.pointerId !== drag.pointerId) return;
-        const { concept, from, to } = drag;
+        const { favourite, from, to } = drag;
         drag = null;
-        if (to !== from) moveFavouriteTo(concept, to);
+        if (to !== from) moveFavouriteTo(favourite, to);
     }
 
     function cancelFavouriteDrag() {
@@ -439,7 +513,7 @@
      */
     async function onFavouriteHandleKeydown(
         event: KeyboardEvent,
-        concept: string,
+        row: FavouriteRow,
         index: number,
     ) {
         const last = favourites.length - 1;
@@ -456,14 +530,14 @@
         if (to === null) return;
         event.preventDefault();
         if (to < 0 || to > last || to === index) return;
-        moveFavouriteTo(concept, to);
+        moveFavouriteTo(row.favourite, to);
         // The list re-renders on the model's synchronous emit; the persist behind it may
         // still be in flight, and a refusal rolls the order back with its own notice.
         await tick();
         favouritesList?.children[to]
             ?.querySelector<HTMLElement>('[data-testid="favourite-handle"]')
             ?.focus();
-        favouritesAnnouncement = `${concept} moved to position ${to + 1} of ${favourites.length}`;
+        favouritesAnnouncement = `${row.name} moved to position ${to + 1} of ${favourites.length}`;
     }
 
     // ---- Context menus --------------------------------------------------------------
@@ -487,11 +561,30 @@
         kind: DocumentContextMenuTarget["kind"],
         concept: string,
     ) {
+        openMenuAt(event, { kind, concept });
+    }
+
+    function openMenuAt(event: MouseEvent, target: ContextMenuTarget) {
         event.stopPropagation();
         const rect = (
             event.currentTarget as HTMLElement
         ).getBoundingClientRect();
-        openContextMenu({ kind, concept }, rect.right, rect.bottom);
+        openContextMenu(target, rect.right, rect.bottom);
+    }
+
+    /**
+     * A Favourites row's menu target: a document's rows for a document, the favourite pair for a
+     * View (ADR 0169).
+     */
+    function favouriteTarget(row: FavouriteRow): ContextMenuTarget {
+        return row.concept !== undefined
+            ? { kind: "favourite", concept: row.concept }
+            : { kind: "view-favourite", favourite: row.favourite as ViewFavourite };
+    }
+
+    function favouriteMenu(row: FavouriteRow) {
+        return (node: HTMLElement) =>
+            attachContextMenu(node, () => favouriteTarget(row));
     }
 
     // ---- Wiring ---------------------------------------------------------------------
@@ -741,29 +834,58 @@
         >
         {#if favouritesOpen}
             <ul data-testid="favourites-list" bind:this={favouritesList}>
-                {#each favourites as concept, i (concept)}
+                {#each favouriteRows as row, i (row.key)}
                     <!-- Rows hold their DOM order through a drag and are displaced by transform;
                          the dragged row rides above its neighbours and does not animate, so it
                          tracks the pointer without lag. -->
                     <li
-                        class="group/row relative rounded-md {drag?.concept ===
-                        concept
+                        class="group/row relative rounded-md {drag?.key ===
+                        row.key
                             ? 'z-10 bg-(--gk-surface-1) shadow-md'
                             : 'motion-safe:transition-transform motion-safe:duration-150'}"
                         style:transform={favouriteRowTransform(i)}
                     >
+                        <!-- A View row nothing here can open stays focusable (aria-disabled, not
+                             disabled), so its menu, its handle and its note are still reachable. -->
                         <button
                             type="button"
                             data-testid="favourite-row"
-                            {@attach menuTarget("favourite", concept)}
-                            onclick={() => open(concept)}
-                            class="flex w-full touch-manipulation select-none items-center gap-1.5 rounded-md py-1.5 pr-14 pl-6 text-left text-sm hover:bg-(--gk-surface-2) pointer-coarse:min-h-11"
-                            title={concept}
+                            data-favourite={row.concept === undefined
+                                ? "view"
+                                : "document"}
+                            {@attach favouriteMenu(row)}
+                            onclick={() => openFavourite(row)}
+                            aria-disabled={row.view === null
+                                ? "true"
+                                : undefined}
+                            class="flex w-full touch-manipulation select-none items-center gap-1.5 rounded-md py-1.5 pr-14 pl-6 text-left text-sm hover:bg-(--gk-surface-2) pointer-coarse:min-h-11 {row.view ===
+                            null
+                                ? 'cursor-default'
+                                : ''}"
+                            title={row.name}
                         >
-                            <span class="min-w-0 flex-1 truncate"
-                                >{concept}</span
-                            >
-                            {#if protectedConcepts.has(concept.toLowerCase())}
+                            {#if row.icon}
+                                <!-- In the row's left padding, so a View's title lines up with
+                                     the documents' above and below it. -->
+                                <span
+                                    class="-ml-5 inline-flex w-3.5 shrink-0 self-start pt-0.5 text-(--gk-text-subtle)"
+                                    data-testid="favourite-icon"
+                                >
+                                    <!-- eslint-disable-next-line svelte/no-at-html-tags -->
+                                    {@html iconSvg(row.icon, { size: 14 })}
+                                </span>
+                            {/if}
+                            <span class="min-w-0 flex-1">
+                                <span class="block truncate">{row.name}</span>
+                                {#if row.note}
+                                    <span
+                                        class="block truncate text-(--gk-text-subtle)"
+                                        data-testid="favourite-note"
+                                        >{row.note}</span
+                                    >
+                                {/if}
+                            </span>
+                            {#if row.concept !== undefined && protectedConcepts.has(row.concept.toLowerCase())}
                                 <span
                                     class="inline-flex shrink-0 text-(--gk-text-subtle)"
                                     data-testid="favourite-protected"
@@ -779,9 +901,8 @@
                         <button
                             type="button"
                             data-testid="favourite-menu"
-                            aria-label="Actions for {concept}"
-                            onclick={(e) =>
-                                openMenuFromButton(e, "favourite", concept)}
+                            aria-label="Actions for {row.name}"
+                            onclick={(e) => openMenuAt(e, favouriteTarget(row))}
                             class="absolute top-1/2 right-7 -translate-y-1/2 rounded px-1 text-(--gk-text-subtle) opacity-0 group-hover/row:opacity-100 focus:opacity-100 hover:bg-(--gk-surface-2) max-lg:opacity-100"
                             >⋯</button
                         >
@@ -791,16 +912,15 @@
                         <button
                             type="button"
                             data-testid="favourite-handle"
-                            data-concept={concept}
-                            aria-label="Reorder {concept}"
+                            data-concept={row.name}
+                            aria-label="Reorder {row.name}"
                             aria-describedby={handleHintId}
-                            onpointerdown={(e) =>
-                                startFavouriteDrag(e, concept, i)}
+                            onpointerdown={(e) => startFavouriteDrag(e, row, i)}
                             onpointermove={moveFavouriteDrag}
                             onpointerup={endFavouriteDrag}
                             onpointercancel={cancelFavouriteDrag}
                             onkeydown={(e) =>
-                                void onFavouriteHandleKeydown(e, concept, i)}
+                                void onFavouriteHandleKeydown(e, row, i)}
                             class="absolute top-1/2 right-1 -translate-y-1/2 touch-none rounded px-0.5 py-1 text-(--gk-text-subtle) hover:bg-(--gk-surface-2) {drag
                                 ? 'cursor-grabbing'
                                 : 'cursor-grab'}"
@@ -814,7 +934,7 @@
                         class="px-6 py-1 text-sm text-(--gk-text-subtle)"
                         data-testid="favourites-empty"
                     >
-                        Right-click a document tab to add one.
+                        Right-click a document's tab, or a board's or a map's, to add it.
                     </li>
                 {/each}
             </ul>

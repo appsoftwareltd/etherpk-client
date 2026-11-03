@@ -10,71 +10,93 @@
  * [[Command]] handlers and layout-mounted components outside Svelte context, and the two
  * backends persist differently. The workspace wires `persist` when it opens a graph.
  *
+ * An entry is a document (its concept's name) or a View, a Kanban board or a Map View, compared
+ * by `favouriteKey` (favourite-entry.ts, ADR 0169).
+ *
  * Nothing here prunes. A favourite whose [[Concept]] does not currently resolve stays put and
  * renders inert - on a Server Backend graph the registry hydrates asynchronously, so
  * "unresolvable" and "gone" are indistinguishable for the first seconds, and pruning would
  * sync a silent deletion to every device and Member (ADR 0036 §4).
  */
 
+import { type Favourite, favouriteConcept, favouriteKey, withFavouriteConcept } from './favourite-entry'
+
 /**
  * What a write knows beyond the next list. `moved` names the one favourite a move put elsewhere,
  * so a backend that merges entry by entry moves that entry alone (ADR 0159).
  */
 export interface FavouritesChange {
-    moved?: string
+    moved?: Favourite
 }
 
 /**
  * Persists the whole list. Rejects are surfaced to the caller; the in-memory list is rolled back.
  * `change` is given only by a move.
  */
-export type FavouritesPersist = (next: readonly string[], change?: FavouritesChange) => Promise<void>
+export type FavouritesPersist = (next: readonly Favourite[], change?: FavouritesChange) => Promise<void>
 
-let list: string[] = []
+let list: Favourite[] = []
 let persist: FavouritesPersist | null = null
-const listeners = new Set<(favourites: string[]) => void>()
+const listeners = new Set<(favourites: Favourite[]) => void>()
 
 function emit(): void {
     const snapshot = [...list]
     for (const listener of listeners) listener(snapshot)
 }
 
+/** Where `favourite` stands in the list, by identity; -1 when it is not a favourite. */
+function indexOf(favourite: Favourite): number {
+    const key = favouriteKey(favourite)
+    return list.findIndex((entry) => favouriteKey(entry) === key)
+}
+
+/** A string trimmed, a View as it is: the form an entry is written in. */
+function cleaned(favourite: Favourite): Favourite | null {
+    if (typeof favourite !== 'string') return favourite
+    const trimmed = favourite.trim()
+    return trimmed === '' ? null : trimmed
+}
+
 /**
  * Adopt the open graph's favourites and the way to save them. Called on graph open, and
  * again whenever the shared list changes underneath us (a peer's edit arriving over sync).
  */
-export function setFavourites(initial: readonly string[], persistFn: FavouritesPersist | null): void {
+export function setFavourites(initial: readonly Favourite[], persistFn: FavouritesPersist | null): void {
     list = [...initial]
     persist = persistFn
     emit()
 }
 
 /** Adopt a list that arrived from elsewhere WITHOUT changing how it is persisted. */
-export function adoptFavourites(next: readonly string[]): void {
-    if (next.length === list.length && next.every((c, i) => c === list[i])) return
+export function adoptFavourites(next: readonly Favourite[]): void {
+    if (next.length === list.length && next.every((entry, i) => favouriteKey(entry) === favouriteKey(list[i]) && sameSpelling(entry, list[i]))) return
     list = [...next]
     emit()
 }
 
-export function getFavourites(): string[] {
+/** Whether two entries of the same identity are also spelt the same: a peer's rename may change only the case. */
+function sameSpelling(a: Favourite, b: Favourite): boolean {
+    return favouriteConcept(a) === favouriteConcept(b)
+}
+
+export function getFavourites(): Favourite[] {
     return [...list]
 }
 
 /** Subscribe to changes; fires immediately with the current list. Returns an unsubscribe. */
-export function subscribeFavourites(listener: (favourites: string[]) => void): () => void {
+export function subscribeFavourites(listener: (favourites: Favourite[]) => void): () => void {
     listeners.add(listener)
     listener([...list])
     return () => listeners.delete(listener)
 }
 
-/** Case-insensitive, matching [[Concept]] identity. */
-export function isFavourite(concept: string): boolean {
-    const key = concept.trim().toLowerCase()
-    return list.some((c) => c.toLowerCase() === key)
+/** Case-insensitive for a concept, matching [[Concept]] identity; a View by its kind as well. */
+export function isFavourite(favourite: Favourite): boolean {
+    return indexOf(favourite) !== -1
 }
 
 /** Write through, rolling the in-memory list back if the backend refuses. */
-async function commit(next: string[], change?: FavouritesChange): Promise<void> {
+async function commit(next: Favourite[], change?: FavouritesChange): Promise<void> {
     const previous = list
     list = next
     emit()
@@ -88,83 +110,82 @@ async function commit(next: string[], change?: FavouritesChange): Promise<void> 
 }
 
 /**
- * Favourite a concept. A new favourite is **appended**. The list is ordered by hand - the
- * Sidebar's drag handle and its arrow keys - so prepending would shove every deliberately
+ * Favourite a document or a View. A new favourite is **appended**. The list is ordered by hand -
+ * the Sidebar's drag handle and its arrow keys - so prepending would shove every deliberately
  * placed row down a slot each time something was pinned.
  *
- * A concept already on the list stays exactly where it is, and nothing is written:
+ * An entry already on the list stays exactly where it is, and nothing is written:
  * re-favouriting is not a reordering gesture, and {@link moveFavourite} is how a row is put
  * somewhere in particular.
  */
-export async function addFavourite(concept: string): Promise<void> {
-    const trimmed = concept.trim()
-    if (trimmed === '') return
-    if (isFavourite(trimmed)) return
-    await commit([...list, trimmed])
+export async function addFavourite(favourite: Favourite): Promise<void> {
+    const entry = cleaned(favourite)
+    if (entry === null || isFavourite(entry)) return
+    await commit([...list, entry])
 }
 
-/** A favourite just removed: its name as the list held it, and where it stood. */
+/** A favourite just removed: the entry as the list held it, and where it stood. */
 export interface RemovedFavourite {
-    concept: string
+    favourite: Favourite
     index: number
 }
 
 /**
- * Unfavourite a concept. Answers the entry as the list held it and the index it stood at, read
- * from the same list the write removes it from, so an Undo can put it back exactly
+ * Unfavourite a document or a View. Answers the entry as the list held it and the index it stood
+ * at, read from the same list the write removes it from, so an Undo can put it back exactly
  * ({@link restoreFavourite}); `null` when it was not a favourite and nothing was written.
  */
-export async function removeFavourite(concept: string): Promise<RemovedFavourite | null> {
-    const key = concept.trim().toLowerCase()
-    const index = list.findIndex((c) => c.toLowerCase() === key)
+export async function removeFavourite(favourite: Favourite): Promise<RemovedFavourite | null> {
+    const index = indexOf(favourite)
     if (index === -1) return null
-    const removed = { concept: list[index], index }
-    await commit(list.filter((c) => c.toLowerCase() !== key))
+    const removed = { favourite: list[index], index }
+    await commit(list.filter((_, i) => i !== index))
     return removed
 }
 
 /**
  * Put a removed favourite back at `index`: the Undo on a removal's notice. One write, not an
  * add followed by a move, so a peer sees one change and the list is never briefly in the wrong
- * order. Clamped to the list, because a peer's edit may have shortened it meanwhile. A concept
+ * order. Clamped to the list, because a peer's edit may have shortened it meanwhile. An entry
  * that is a favourite again (re-added before the Undo) stays where it now is.
  */
-export async function restoreFavourite(concept: string, index: number): Promise<void> {
-    const trimmed = concept.trim()
-    if (trimmed === '' || isFavourite(trimmed)) return
+export async function restoreFavourite(favourite: Favourite, index: number): Promise<void> {
+    const entry = cleaned(favourite)
+    if (entry === null || isFavourite(entry)) return
     const at = Math.max(0, Math.min(Number.isInteger(index) ? index : list.length, list.length))
-    await commit([...list.slice(0, at), trimmed, ...list.slice(at)])
+    await commit([...list.slice(0, at), entry, ...list.slice(at)])
 }
 
-export async function toggleFavourite(concept: string): Promise<void> {
-    if (isFavourite(concept)) await removeFavourite(concept)
-    else await addFavourite(concept)
+export async function toggleFavourite(favourite: Favourite): Promise<void> {
+    if (isFavourite(favourite)) await removeFavourite(favourite)
+    else await addFavourite(favourite)
 }
 
 /**
- * A favourite whose concept changed under it (a rename) follows the rename rather than
- * dangling - the user pinned the document, not the string.
+ * Favourites whose concept changed under them (a rename) follow the rename rather than
+ * dangling - the user pinned the document, not the string. A View about the concept, its
+ * Kanban board or its Map View, follows too.
  */
 export async function renameFavourite(from: string, to: string): Promise<void> {
     const key = from.trim().toLowerCase()
-    if (!list.some((c) => c.toLowerCase() === key)) return
-    await commit(list.map((c) => (c.toLowerCase() === key ? to.trim() : c)))
+    const renamed = (entry: Favourite) => favouriteConcept(entry)?.trim().toLowerCase() === key
+    if (!list.some(renamed)) return
+    await commit(list.map((entry) => (renamed(entry) ? withFavouriteConcept(entry, to.trim()) : entry)))
 }
 
 /**
  * Move a favourite to `toIndex` (0-based): the user's own ordering, from the Sidebar's drag
  * handle or its arrow keys. A new favourite lands at the bottom; this is how it is put anywhere
- * else. The order is part of the shared list (ADR 0036), so it reaches every device and Member.
+ * else. The order is part of the person's list (ADR 0159), so it reaches every device.
  *
- * Addressed by concept and clamped to the list, so a gesture the list changed under - a peer's
+ * Addressed by identity and clamped to the list, so a gesture the list changed under - a peer's
  * edit arriving mid-drag, a release past the last row - lands the favourite as near as the list
  * allows rather than dropping it or moving something else. A move that changes nothing writes
  * nothing.
  */
-export async function moveFavourite(concept: string, toIndex: number): Promise<void> {
+export async function moveFavourite(favourite: Favourite, toIndex: number): Promise<void> {
     if (!Number.isInteger(toIndex)) return
-    const key = concept.trim().toLowerCase()
-    const from = list.findIndex((c) => c.toLowerCase() === key)
+    const from = indexOf(favourite)
     if (from === -1) return
     const to = Math.max(0, Math.min(toIndex, list.length - 1))
     if (to === from) return

@@ -46,6 +46,13 @@ export interface ViewDeclaration {
      * that concept through a rename.
      */
     address?: { segment: string; target?: 'concept' }
+    /**
+     * The person can add the View to their Favourites from its tab's menu, and open it again from
+     * the Graph Sidebar. Only for a `main` View with an `address`, and either a `target` (the one View
+     * of its kind) or an address whose target is `concept` (one View per concept, which then
+     * follows the concept through a rename). An older Client ignores it.
+     */
+    favourite?: boolean
 }
 
 /**
@@ -293,6 +300,23 @@ function checkView(view: unknown, index: number, id: string, kinds: Set<string>,
         else segments.add(address.segment)
         if (isRecord(address) && address.target !== undefined && address.target !== 'concept') errors.push(`${where}.address.target may only be "concept".`)
     }
+    checkFavourite(view, where, errors)
+}
+
+/**
+ * A View kind that can be a Favourite must be one the Favourites list can open again by itself:
+ * a main-region View with an address, and a target it can name, the kind's one View or a concept.
+ */
+function checkFavourite(view: Record<string, unknown>, where: string, errors: string[]): void {
+    if (view.favourite === undefined || view.favourite === false) return
+    if (view.favourite !== true) {
+        errors.push(`${where}.favourite must be true or false.`)
+        return
+    }
+    const address = isRecord(view.address) ? view.address : undefined
+    if (!address) errors.push(`${where}.favourite needs an address, so the Favourites list can open the View.`)
+    else if (view.region !== 'main') errors.push(`${where}.favourite is only for a View that opens in the main region.`)
+    else if (view.target === undefined && address.target !== 'concept') errors.push(`${where}.favourite needs a target, or an address whose target is "concept".`)
 }
 
 /**

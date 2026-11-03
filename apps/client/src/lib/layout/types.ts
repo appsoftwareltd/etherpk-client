@@ -448,6 +448,16 @@ export interface ViewRegistryEntry {
      */
     conceptTarget?: boolean
     /**
+     * The target of the kind's one View, for a kind with one View per graph (the Graph Kanban's
+     * `whole`). What a [[Favourite]] of the kind opens, since it stores no target (ADR 0169).
+     */
+    soleTarget?: string
+    /**
+     * Its Views can be [[Favourite]]s: added from the tab's Context Menu and opened from the Graph
+     * Sidebar (ADR 0169). Needs `conceptTarget` or `soleTarget`, so a favourite can name the View.
+     */
+    favourite?: boolean
+    /**
      * More props every presenter mounts the component with, beside the ones every View gets. One
      * component then serves many kinds: each extension View kind mounts the extension host's
      * component with that kind's slot (extensions/ExtensionView.svelte, ADR 0121).

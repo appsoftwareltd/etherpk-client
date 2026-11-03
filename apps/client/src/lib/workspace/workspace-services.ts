@@ -12,6 +12,7 @@ import type { PublishSource } from '#lib/document/publish/types.js'
 import type { ReadingPositionStore } from '#lib/navigation/reading-positions.js'
 import type { LockStatus } from '#lib/document/protection/lock-machine.js'
 import type { LayoutController } from '#lib/layout/types.js'
+import type { ViewFavourites } from '#lib/layout/view-favourites.js'
 import type { RemoteGraphIndex } from '#lib/document/index-worker/client.js'
 import type { DocumentStore } from '#lib/document/types.js'
 import type { EpisodeEnd } from '#lib/document/view/augmentations/frontmatter-episode.js'
@@ -196,6 +197,11 @@ export interface WorkspaceServices {
      * there is none. What place search asks through (ADR 0119).
      */
     syncServer?: () => { origin: string; api: SyncApi } | null
+    /**
+     * Which Views can be [[Favourite]]s and how a View favourite's Sidebar row reads (ADR 0169):
+     * the layout's View kinds, and whether each one's extension is on here.
+     */
+    viewFavourites?: ViewFavourites
 }
 
 export type WorkspaceGeneration = number
