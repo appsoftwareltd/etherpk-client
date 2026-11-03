@@ -89,7 +89,7 @@
         setActiveDocument,
     } from "#lib/document/index.js";
     import { todayISO } from "#lib/document/calendar/month-grid-core.js";
-    import { canonicalConceptName, openConcept, openConceptAtDocumentLine, openConceptAtLine, openConceptToTheRight, openViewInPaneOf } from "#lib/document/open-concept.js";
+    import { canonicalConceptName, openConcept, openConceptAtDocumentLine, openConceptAtLine, openConceptBeside, openViewInPaneOf } from "#lib/document/open-concept.js";
     import AllDocumentsView from "#lib/document/view/AllDocumentsView.svelte";
     import GraphSidebarView from "#lib/document/view/GraphSidebarView.svelte";
     import RenameDocumentDialog from "#lib/document/view/RenameDocumentDialog.svelte";
@@ -4617,17 +4617,18 @@
                     if (controller) revealResident(controller, RESIDENTS.tasks);
                 },
                 findIn: (concept) => void findInDocumentTab(concept),
-                // Open in pane to the right (ADR 0155). The page opens in the background, so the
-                // document being read keeps the keyboard. A link to the page it sits in moves the
-                // active tab itself, which changes no active View, so the focus policy that follows
-                // an activation is run here too: it acts only on the active View, which is that
-                // page, or the page a phone opened as a click does, and never on one opened beside.
-                openToTheRight: (concept, sourcePanelId) => {
-                    const panelId = openConceptToTheRight(concept, sourcePanelId);
+                // Open in pane to the right, and below (ADR 0155). The page opens in the background,
+                // so the document being read keeps the keyboard. A link to the page it sits in moves
+                // the active tab itself, which changes no active View, so the focus policy that
+                // follows an activation is run here too: it acts only on the active View, which is
+                // that page, or the page a phone opened as a click does, and never on one opened
+                // beside.
+                openBeside: (concept, sourcePanelId, side, line) => {
+                    const panelId = openConceptBeside(concept, sourcePanelId, side, line);
                     if (panelId) focusActivatedDocument(panelId);
                 },
-                canOpenToTheRight: (sourcePanelId) =>
-                    controller?.canOpenToTheRight(sourcePanelId) ?? false,
+                canOpenBeside: (sourcePanelId) =>
+                    controller?.canOpenBeside(sourcePanelId) ?? false,
                 // A link through an alias favourites the page it opens (ADR 0158).
                 canonicalName: (concept) => canonicalConceptName(concept),
                 onError: (text) => notify(text),

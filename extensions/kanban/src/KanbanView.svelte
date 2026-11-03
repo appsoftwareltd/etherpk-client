@@ -304,7 +304,7 @@
 
     /**
      * Show the card's task in the Task Detail, with its line at the top, and leave the keyboard on
-     * the board so the arrows keep walking the cards: the card menu's Open below (a click opens the
+     * the board so the arrows keep walking the cards: the card menu's Open in pane below (a click opens the
      * Task Editor, ADR 0170). Opening the card the Task Detail already shows puts the caret at the
      * end of the task's line instead, to write there.
      */

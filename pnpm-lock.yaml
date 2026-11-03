@@ -701,22 +701,6 @@ importers:
         specifier: ^4.1.12
         version: 4.1.12(@opentelemetry/api@1.9.1)(@types/node@25.6.0)(@vitest/coverage-v8@4.1.12)(vite@8.3.5(@types/node@25.6.0)(esbuild@0.28.2)(jiti@2.6.1)(tsx@4.23.15)(yaml@2.9.1))
 
-  extensions/ink:
-    dependencies:
-      '@appsoftwareltd/etherpk-extension-api':
-        specifier: workspace:*
-        version: link:../../packages/extension-api
-      perfect-freehand:
-        specifier: 1.2.3
-        version: 1.2.3
-      svelte:
-        specifier: ^5.57.1
-        version: 5.57.1(@typescript-eslint/types@8.68.0)
-    devDependencies:
-      vitest:
-        specifier: ^4.1.12
-        version: 4.1.12(@opentelemetry/api@1.9.1)(@types/node@25.6.0)(@vitest/coverage-v8@4.1.12)(vite@8.3.5(@types/node@25.6.0)(esbuild@0.28.2)(jiti@2.6.1)(tsx@4.23.15)(yaml@2.9.1))
-
   extensions/kanban:
     dependencies:
       '@appsoftwareltd/etherpk-extension-api':
@@ -4792,9 +4776,6 @@ packages:
 
   perfect-freehand@1.2.0:
     resolution: {integrity: sha512-h/0ikF1M3phW7CwpZ5MMvKnfpHficWoOEyr//KVNTxV4F6deRK1eYMtHyBKEAKFK0aXIEUK9oBvlF6PNXMDsAw==}
-
-  perfect-freehand@1.2.3:
-    resolution: {integrity: sha512-bHZSfqDHGNlPpgH2yxXgPHlQSPpEbo+qg7li0M78J9vNAi2yjwLeA4x79BEQhX44lEWpCLSFCeRZwpw0niiXPA==}
 
   pica@7.1.1:
     resolution: {integrity: sha512-WY73tMvNzXWEld2LicT9Y260L43isrZ85tPuqRyvtkljSDLmnNFQmZICt4xUJMVulmcc6L9O7jbBrtx3DOz/YQ==}
@@ -9870,8 +9851,6 @@ snapshots:
       '@napi-rs/canvas': 1.0.8
 
   perfect-freehand@1.2.0: {}
-
-  perfect-freehand@1.2.3: {}
 
   pica@7.1.1:
     dependencies:

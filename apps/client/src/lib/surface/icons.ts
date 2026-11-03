@@ -135,6 +135,8 @@ export const ICON_PATHS: Record<string, string> = {
     close: '<path d="M4 4l8 8M12 4l-8 8"/>',
     /** A frame split down the middle, an arrow in its right half: open this in the Pane to the right. */
     'pane-right': '<rect x="2.5" y="3" width="11" height="10" rx="1.5"/><path d="M8 3v10"/><path d="M9.6 8h2.6M10.9 6.7 12.2 8l-1.3 1.3"/>',
+    /** A frame split across the middle, an arrow in its lower half: open this in the Pane below. */
+    'pane-below': '<rect x="2.5" y="3" width="11" height="10" rx="1.5"/><path d="M2.5 8h11"/><path d="M8 9.3v2.6M6.7 10.6 8 11.9l1.3-1.3"/>',
     /** Arrow leaving a frame: open this somewhere else. */
     'open-external': '<path d="M9 3h4v4M13 3 7.5 8.5M11.5 9.5v3a1 1 0 0 1-1 1h-7a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1h3"/>',
     /** Two sheets, one behind the other: put a copy of this on the clipboard. */

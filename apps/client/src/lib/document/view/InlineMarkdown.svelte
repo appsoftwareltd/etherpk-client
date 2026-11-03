@@ -12,13 +12,16 @@
      * Every affordance here is read-only. Wikilinks navigate (opening a [[Draft]] where there is no
      * page yet, the editor's rule), hyperlinks open a tab, an asset downloads or opens in its own
      * tab — from the trailing icon cluster the editor's asset link carries, placed and shaded the
-     * same way, or from the [[Context Menu]] on right-click and long press. Nothing edits: a
+     * same way, or from the [[Context Menu]] on right-click and long press. A wikilink's Context
+     * Menu is the editor's (ADR 0065): Open in pane to the right and below, Show Backlinks and the
+     * rest, from the panel the line is shown beside (`panelToOpenBeside`). A hyperlink keeps the
+     * browser's own menu, with Copy link address. Nothing edits: a
      * reference's **delete** needs the line it is written on, and that belongs to the document
      * editor. See `AssetActions.svelte`.
      */
     import { attachContextMenu } from "#lib/surface/index.js";
 
-    import { conceptIsMissing, openConcept } from "../open-concept";
+    import { conceptIsMissing, openConcept, panelToOpenBeside } from "../open-concept";
     import { runAssetCommand } from "../asset-affordances";
     import { LINK_COPY_PATH, fileLinkActions, runLinkCommand } from "../link-affordances";
     import { ASSET_DOWNLOAD } from "../commands/asset-commands";
@@ -79,6 +82,19 @@
         void openConcept(concept, sourcePanelId);
     }
 
+    /**
+     * Right-click and long press on a wikilink raise its menu, as on a link in the editor. The
+     * panel is read when the menu opens: in the Backlinks panel it is the main Pane's front View,
+     * which changes as the reader moves about.
+     */
+    function wikilinkMenu(concept: string) {
+        return (node: HTMLElement) =>
+            attachContextMenu(node, () => {
+                const panelId = panelToOpenBeside(sourcePanelId);
+                return panelId === undefined ? { kind: "wikilink", concept } : { kind: "wikilink", concept, panelId };
+            });
+    }
+
     /** Right-click and long press on a reference raise the same actions its icons offer. */
     function assetMenu(ref: string) {
         return (node: HTMLElement) => attachContextMenu(node, () => ({ kind: "asset", ref }));
@@ -101,6 +117,7 @@
             class:wikilink--match={matches?.(part.concept) ?? false}
             data-testid={wikilinkTestId}
             data-concept={part.concept}
+            {@attach wikilinkMenu(part.concept)}
             onclick={(event) => openWikilink(part.concept, event)}
             onkeydown={(event) => {
                 // A link's keyboard half: Enter, not Space, which a link leaves to scrolling.
@@ -114,7 +131,8 @@
             target="_blank"
             rel="noopener noreferrer"
             data-testid="reference-hyperlink"
-            onclick={(event) => event.stopPropagation()}>{part.text}</a
+            onclick={(event) => event.stopPropagation()}
+            oncontextmenu={(event) => event.stopPropagation()}>{part.text}</a
         >{:else if part.kind === "file-link"}<span class="file-link" data-testid="reference-file-link"
             ><span
                 class="file-link__label"

@@ -20,10 +20,13 @@ export type { ViewRef } from './view-ref'
  * The stable, named drop targets a command can address. Placement is by region,
  * not by spatial relationship, so behaviour is identical however the user has
  * dragged panes around. The one exception asks for it by name: opening a View in
- * the Pane to the right (`openViewToTheRight`, ADR 0155). Floating / popout
+ * the Pane to the right or below (`openViewToTheRight`, `openViewBelow`, ADR 0155). Floating / popout
  * regions are reserved for later.
  */
 export type Region = 'main' | 'left-sidebar' | 'right-sidebar'
+
+/** Which neighbour of a Pane an open beside it looks for (ADR 0155). */
+export type PaneSide = 'right' | 'below'
 
 /** The two collapsible Sidebar regions. */
 export type SidebarSide = 'left' | 'right'
@@ -81,10 +84,10 @@ export interface PaneHandle {
     close(): void
 }
 
-/** What {@link LayoutController.openViewToTheRight} opened. */
-export interface OpenedToTheRight extends PaneHandle {
+/** What {@link LayoutController.openViewToTheRight} or {@link LayoutController.openViewBelow} opened. */
+export interface OpenedBeside extends PaneHandle {
     /**
-     * The View was already the front tab of the Pane to the right, so nothing on screen moved. A
+     * The View was already the front tab of the Pane beside, so nothing on screen moved. A
      * caller with more to show for the request shows it there: a document scrolls to its top.
      */
     readonly alreadyInFront: boolean
@@ -106,12 +109,25 @@ export interface LayoutController {
      * Where Panes are not side by side (the phone), or the source is not in a main-region Pane,
      * this is an ordinary open from the source's Pane, as following a link is.
      */
-    openViewToTheRight(view: ViewRef, sourcePanelId: string): OpenedToTheRight
+    openViewToTheRight(view: ViewRef, sourcePanelId: string): OpenedBeside
     /**
-     * Whether {@link openViewToTheRight} from `sourcePanelId` would place beside it: the panel
-     * is open in a main-region Pane and the renderer shows Panes side by side.
+     * {@link openViewToTheRight} turned on its side: the main Pane whose top edge meets the bottom
+     * edge of the one holding `sourcePanelId`, the one sharing the most width when several do, and
+     * with none there, a new Pane split off the source below it. Everything else is as for the
+     * Pane to the right.
      */
-    canOpenToTheRight(sourcePanelId: string): boolean
+    openViewBelow(view: ViewRef, sourcePanelId: string): OpenedBeside
+    /**
+     * Whether {@link openViewToTheRight} and {@link openViewBelow} from `sourcePanelId` would place
+     * beside it: the panel is open in a main-region Pane and the renderer shows Panes side by side.
+     */
+    canOpenBeside(sourcePanelId: string): boolean
+    /**
+     * The front View of the region's active Pane: the Pane its next open lands in, even while the
+     * keyboard is in a Sidebar. Null when the region has no open View. The Backlinks panel opens
+     * beside it, since a click in the panel opens there.
+     */
+    frontPanelOf(region: Region): string | null
     closeView(view: ViewRef): void
     /**
      * Close one specific instance by its panel id. `closeView` addresses the canonical instance

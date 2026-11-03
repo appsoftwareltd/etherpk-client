@@ -66,7 +66,7 @@ describe("a card's context menu", () => {
         const rows = listContextMenuItems(contributions, card('open', 1))
         expect(rows.map((r) => r.label)).toEqual([
             'Open in task editor',
-            'Open below',
+            'Open in pane below',
             'Open in tab',
             'Copy task reference',
             'Move to Doing',
@@ -99,7 +99,7 @@ describe("a card's context menu", () => {
         const unregister = registerBoard('board-1', { ...NO_ACTIONS, open: (key) => opened.push(`editor ${key}`), openBelow: (key) => opened.push(`below ${key}`) })
         const rows = listContextMenuItems(contributions, card('open', 1))
         await commands.execute(rows.find((r) => r.label === 'Open in task editor')!.command, card('open', 1))
-        await commands.execute(rows.find((r) => r.label === 'Open below')!.command, card('open', 1))
+        await commands.execute(rows.find((r) => r.label === 'Open in pane below')!.command, card('open', 1))
         expect(opened).toEqual(['editor Acme:0', 'below Acme:0'])
         unregister()
     })

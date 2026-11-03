@@ -8,6 +8,13 @@
      * (its title names this concept, ADR 0083) is a reference too: its quoted line is the title,
      * captioned "Title" where a body reference shows its outline chain.
      *
+     * A right-click on a source, or on a reference's body, raises a [[Context Menu]] with Open in
+     * pane to the right and Open in pane below (ADR 0155): the source beside the document the list
+     * sits beneath, or for the panel, beside the main Pane a click in it opens into. A reference
+     * opens at its line. A long press raises it on a touch screen, and the Menu key and Shift+F10
+     * from the keyboard. Where there is no Pane to open beside (a phone), nothing is offered and
+     * the browser's own menu shows, as it does inside text selected out of a reference.
+     *
      * The one rendering of a backlinks list, shared by the Backlinks panel (`BacklinksView`) and the
      * section beneath every document (`DocumentBacklinks`, ADR 0135), so the two cannot drift apart.
      * Everything here is read-only: a reference is changed in the document that holds it.
@@ -19,7 +26,15 @@
         type RefSubtreeNode,
         type SubtreeBranch,
     } from "../backlinks";
-    import { openConcept, openConceptAtLine } from "../open-concept";
+    import {
+        attachContextMenu,
+        type BacklinkContextMenuTarget,
+        listContextMenuItems,
+        openContextMenu,
+        tryGetActiveContributionRegistry,
+    } from "#lib/surface/index.js";
+
+    import { openConcept, openConceptAtLine, panelToOpenBeside } from "../open-concept";
     import { lineText } from "../quote-segments";
     import { CONTENT_GUTTER } from "./augmentations/content-clamp";
     import { GUIDE_WIDTH_PX } from "./augmentations/outline-guides-core";
@@ -64,10 +79,45 @@
 
     /** The keyboard half of being a button: Enter or Space on the body itself, not on a link inside it. */
     function onRefKeydown(event: KeyboardEvent, ref: DbBacklinkRef) {
+        if (onMenuKey(event, ref.sourceConcept, ref.line)) return;
         if (event.target !== event.currentTarget) return;
         if (event.key !== "Enter" && event.key !== " ") return;
         event.preventDefault();
         openConceptAtLine(ref.sourceConcept, ref.line, sourcePanelId);
+    }
+
+    /**
+     * The menu on a source or a reference, from a right-click or a long press: `line` is the
+     * reference's, absent on a source. A press inside text already selected keeps the browser's
+     * menu, so Copy is still there for text selected out of a reference (`keepSelection`).
+     */
+    function backlinkMenu(concept: string, line?: number) {
+        return (node: HTMLElement) => attachContextMenu(node, () => menuTarget(concept, line), { keepSelection: true });
+    }
+
+    /** The Menu key and Shift+F10 on a source or a reference's body: its menu, at the element. */
+    function onMenuKey(event: KeyboardEvent, concept: string, line?: number): boolean {
+        if (event.target !== event.currentTarget) return false;
+        if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) return false;
+        const target = menuTarget(concept, line);
+        if (target) {
+            event.preventDefault();
+            const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+            openContextMenu(target, rect.left + 12, rect.bottom - 4);
+        }
+        return true;
+    }
+
+    /**
+     * What the menu on a backlink acts on, or null where none of its rows applies (a phone, a
+     * workspace with nothing open in the main region), which leaves the browser's own menu.
+     */
+    function menuTarget(concept: string, line: number | undefined): BacklinkContextMenuTarget | null {
+        const panelId = panelToOpenBeside(sourcePanelId);
+        const contributions = tryGetActiveContributionRegistry();
+        if (panelId === undefined || !contributions) return null;
+        const target: BacklinkContextMenuTarget = { kind: "backlink", concept, panelId, ...(line !== undefined ? { line } : {}) };
+        return listContextMenuItems(contributions, target).length > 0 ? target : null;
     }
 
     /**
@@ -187,6 +237,8 @@
                 data-testid="backlinks-source"
                 data-kind={group.sourceKind}
                 onclick={() => openConcept(group.sourceConcept, sourcePanelId)}
+                {@attach backlinkMenu(group.sourceConcept)}
+                onkeydown={(event) => onMenuKey(event, group.sourceConcept)}
             >
                 <span class="source__name">{group.sourceConcept}</span>
                 <span class="source__kind">{group.sourceKind === "journal" ? "Journal" : "Page"}</span>
@@ -221,6 +273,7 @@
                             data-kind={ref.kind}
                             onclick={() => onRefClick(ref)}
                             onkeydown={(event) => onRefKeydown(event, ref)}
+                            {@attach backlinkMenu(ref.sourceConcept, ref.line)}
                         >
                             {#if ref.kind === "block"}
                                 {#each nestSubtree(ref.subtree) as root, n (n)}{@render branch(root, ref.sourceConcept)}{/each}

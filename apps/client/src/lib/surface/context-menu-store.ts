@@ -48,8 +48,22 @@ export function closeContextMenu(): void {
 const LONG_PRESS_MS = 500
 const LONG_PRESS_SLOP_PX = 10
 
+/** Options for {@link attachContextMenu}. */
+export interface AttachContextMenuOptions {
+    /**
+     * Keep the browser's own menu, with Copy, for a press inside a text selection the person made
+     * before it: for an element whose text is there to be read and copied, such as a [[Backlink]]'s
+     * reference. Judged when the press starts, because a right-click on macOS selects the word
+     * under the pointer before the menu event arrives, and a touch hold selects one on Android.
+     */
+    keepSelection?: boolean
+}
+
 /**
- * Attach right-click and long-press to an element, both raising the menu for `target()`.
+ * Attach right-click and long-press to an element, both raising the menu for `target()`. A
+ * `target()` of null declines: nothing is prevented, so the browser's own menu shows and a touch
+ * hold selects text as it would. That is how an element whose rows may all be absent (a phone,
+ * where no Pane is beside another) stays out of the way.
  *
  * The long-press half is fiddlier than it looks and each guard earns its place:
  *  - **movement cancels** it, or every scroll that starts on a row opens a menu;
@@ -60,11 +74,14 @@ const LONG_PRESS_SLOP_PX = 10
  */
 export function attachContextMenu(
     el: HTMLElement,
-    target: () => ContextMenuTarget,
+    target: () => ContextMenuTarget | null,
+    options: AttachContextMenuOptions = {},
 ): () => void {
     let timer: ReturnType<typeof setTimeout> | undefined
     let start: { x: number; y: number } | null = null
     let fired = false
+    /** Whether the press now under way started inside an earlier selection; null with no press. */
+    let pressInSelection: boolean | null = null
 
     const clear = () => {
         if (timer) clearTimeout(timer)
@@ -72,20 +89,34 @@ export function attachContextMenu(
         start = null
     }
 
+    /** Whether a press at (x, y) leaves the browser's menu to the person's own selection. */
+    const keepsSelection = (x: number, y: number) => options.keepSelection === true && (pressInSelection ?? pointInSelection(x, y))
+
     const onContextMenu = (event: MouseEvent) => {
+        const keep = keepsSelection(event.clientX, event.clientY)
+        pressInSelection = null
+        if (keep) return
+        const raised = target()
+        if (!raised) return
         event.preventDefault()
         event.stopPropagation()
-        openContextMenu(target(), event.clientX, event.clientY)
+        openContextMenu(raised, event.clientX, event.clientY)
     }
 
     const onPointerDown = (event: PointerEvent) => {
+        // Only a press that can raise a menu: a right button, or a finger that may be held.
+        const raising = event.button === 2 || event.pointerType === 'touch'
+        pressInSelection = options.keepSelection && raising ? pointInSelection(event.clientX, event.clientY) : null
         if (event.pointerType !== 'touch') return
         fired = false
         start = { x: event.clientX, y: event.clientY }
         timer = setTimeout(() => {
-            fired = true
             clear()
-            openContextMenu(target(), event.clientX, event.clientY)
+            if (keepsSelection(event.clientX, event.clientY)) return
+            const raised = target()
+            if (!raised) return
+            fired = true
+            openContextMenu(raised, event.clientX, event.clientY)
         }, LONG_PRESS_MS)
     }
 
@@ -118,4 +149,16 @@ export function attachContextMenu(
         el.removeEventListener('pointercancel', clear)
         el.removeEventListener('click', onClick, true)
     }
+}
+
+/** Whether (x, y) is on the text of the page's current selection, when it selects anything. */
+function pointInSelection(x: number, y: number): boolean {
+    const selection = typeof window === 'undefined' ? null : window.getSelection()
+    if (!selection || selection.isCollapsed) return false
+    for (let i = 0; i < selection.rangeCount; i++) {
+        for (const rect of selection.getRangeAt(i).getClientRects()) {
+            if (x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom) return true
+        }
+    }
+    return false
 }

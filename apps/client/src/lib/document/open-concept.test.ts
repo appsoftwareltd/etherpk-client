@@ -5,7 +5,7 @@ import type { RemoteGraphIndex } from './index-worker/client'
 import { setActiveGraphIndex } from './backlinks'
 import type { LayoutController, LayoutModel, SerializedLayout, ViewRef } from '#lib/layout/index.js'
 import { setActiveLayoutController } from '#lib/layout/index.js'
-import { canonicalConceptName, openConcept, openConceptAtLine, openConceptToTheRight } from './open-concept'
+import { canonicalConceptName, openConcept, openConceptAtLine, openConceptBeside, panelToOpenBeside } from './open-concept'
 import { resetReveal, takeReveal } from './reveal'
 
 function stubIndex(candidates: ConceptCandidate[]): RemoteGraphIndex {
@@ -163,7 +163,7 @@ describe('openConceptAtLine', () => {
     })
 })
 
-describe('openConceptToTheRight', () => {
+describe('openConceptBeside', () => {
     it('opens the name the link resolves to beside the source panel, and says which panel it opened', () => {
         setActiveGraphIndex(
             stubIndex([
@@ -183,7 +183,7 @@ describe('openConceptToTheRight', () => {
         } as unknown as LayoutController
         setActiveLayoutController(controller)
 
-        expect(openConceptToTheRight('Yard', 'document:Source')).toBe('document:Garden')
+        expect(openConceptBeside('Yard', 'document:Source', 'right')).toBe('document:Garden')
         expect(calls).toEqual([{ view: { kind: 'document', target: 'Garden' }, source: 'document:Source' }])
         // It came forward or moved, which is what the reader sees: it lands where it was.
         expect(takeReveal('Garden')).toBeNull()
@@ -208,7 +208,7 @@ describe('openConceptToTheRight', () => {
         } as unknown as LayoutController
         setActiveLayoutController(controller)
 
-        expect(openConceptToTheRight('Yard', 'document:Source')).toBe('document:Garden')
+        expect(openConceptBeside('Yard', 'document:Source', 'right')).toBe('document:Garden')
         // Addressed to the name the View opens as, not the alias the link was written as.
         expect(takeReveal('Garden')).toEqual({ target: 'Garden', line: 'top' })
 
@@ -216,8 +216,80 @@ describe('openConceptToTheRight', () => {
         setActiveGraphIndex(null)
     })
 
+    it('opens it in the Pane below when asked for below', () => {
+        setActiveGraphIndex(stubIndex([{ display: 'Garden', key: 'garden', kind: 'page' }]))
+        const calls: { view: ViewRef; source: string }[] = []
+        const controller = {
+            ...stubController(twoPaneModel('pane-source', 'document:Source'), () => {
+                throw new Error('an ordinary open was not asked for')
+            }),
+            openViewToTheRight: () => {
+                throw new Error('to the right was not asked for')
+            },
+            openViewBelow: (view: ViewRef, source: string) => {
+                calls.push({ view, source })
+                return { panelId: 'document:Garden', alreadyInFront: false }
+            },
+        } as unknown as LayoutController
+        setActiveLayoutController(controller)
+
+        expect(openConceptBeside('Garden', 'document:Source', 'below')).toBe('document:Garden')
+        expect(calls).toEqual([{ view: { kind: 'document', target: 'Garden' }, source: 'document:Source' }])
+
+        setActiveLayoutController(null)
+        setActiveGraphIndex(null)
+    })
+
+    it('lands on the line asked for, leaving the keyboard where it is, already in front or not', () => {
+        setActiveGraphIndex(stubIndex([{ display: 'Garden', key: 'garden', kind: 'page' }]))
+        resetReveal()
+        const controller = {
+            ...stubController(twoPaneModel('pane-source', 'document:Source'), () => {
+                throw new Error('an ordinary open was not asked for')
+            }),
+            openViewToTheRight: () => ({ panelId: 'document:Garden', alreadyInFront: true }),
+        } as unknown as LayoutController
+        setActiveLayoutController(controller)
+
+        openConceptBeside('Garden', 'document:Source', 'right', 4)
+        expect(takeReveal('Garden')).toEqual({ target: 'Garden', line: 4, background: true })
+
+        setActiveLayoutController(null)
+        setActiveGraphIndex(null)
+    })
+
     it('does nothing where there is no layout (the /dev harnesses)', () => {
         setActiveLayoutController(null)
-        expect(openConceptToTheRight('Garden', 'document:Source')).toBeNull()
+        expect(openConceptBeside('Garden', 'document:Source', 'right')).toBeNull()
+    })
+})
+
+describe('panelToOpenBeside', () => {
+    it('is the panel a list is shown beneath, when it has one', () => {
+        setActiveLayoutController(null)
+        expect(panelToOpenBeside('document:Garden')).toBe('document:Garden')
+    })
+
+    it("is otherwise the front View of the main region's active Pane, where a click in the list opens", () => {
+        const controller = {
+            ...stubController(twoPaneModel('pane-source', 'document:Source'), () => {
+                throw new Error('nothing is opened')
+            }),
+            frontPanelOf: (region: string) => (region === 'main' ? 'document:Kitchen' : null),
+        } as unknown as LayoutController
+        setActiveLayoutController(controller)
+
+        expect(panelToOpenBeside(undefined)).toBe('document:Kitchen')
+
+        setActiveLayoutController(null)
+    })
+
+    it('is none with no main View or no layout', () => {
+        setActiveLayoutController(null)
+        expect(panelToOpenBeside(undefined)).toBeUndefined()
+        const controller = { ...stubController(twoPaneModel('pane-source', 'document:Source'), () => { throw new Error('nothing is opened') }), frontPanelOf: () => null } as unknown as LayoutController
+        setActiveLayoutController(controller)
+        expect(panelToOpenBeside(undefined)).toBeUndefined()
+        setActiveLayoutController(null)
     })
 })

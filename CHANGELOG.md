@@ -5,6 +5,26 @@ What changed in each release of the EtherPK Client and the Headless Client
 They are released together, under the version number they share with the Sync Server. This log
 starts at 0.9.3.
 
+## 0.18.2 - 2026-11-03
+
+### Client
+
+- **Ink drawings are removed.** Excalidraw is the one kind of drawing, and draws freehand lines
+  with pen pressure too. An Ink drawing already in a document stays in it as text: the document
+  shows a note in its place, and **Show text** shows its lines.
+- **Drawings on a tablet open over the window.** On a touch screen, in the desktop layout too,
+  pressing a drawing or inserting one opens it over the whole window, so a finger still scrolls the
+  document. A mouse or a trackpad still edits a drawing in its place.
+- **Open in pane below.** Right-click a link and choose **Open in pane below**, under **Open in
+  pane to the right**, to read the page under the note. Both rows are now on backlinks too:
+  right-click a reference or a document's name in the Backlinks panel, or under a document, to
+  open that document beside the one you are reading, at the line with the link. On a Kanban card,
+  **Open below** is now **Open in pane below**.
+- **Fixes.**
+  - The installed app's icon is a rounded tile with a soft shadow in desktop app launchers such as
+    GNOME's, instead of a square with sharp corners. An app installed before this keeps its old
+    icon until it is installed again.
+
 ## 0.18.1 - 2026-11-03
 
 ### Client

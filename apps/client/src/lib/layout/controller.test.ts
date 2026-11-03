@@ -1051,7 +1051,7 @@ describe('LayoutController — opening a View in the Pane to the right (ADR 0155
         controller.openView(docA)
         controller.openView(docB, { mode: 'split-right' })
 
-        expect(controller.canOpenToTheRight(A)).toBe(false)
+        expect(controller.canOpenBeside(A)).toBe(false)
         controller.openViewToTheRight(docC, A)
 
         expect(strips(controller)).toEqual([['doc-A', '*doc-C'], ['*doc-B']])
@@ -1063,7 +1063,7 @@ describe('LayoutController — opening a View in the Pane to the right (ADR 0155
         controller.openView(docA)
         controller.openView(docX, { region: 'left-sidebar' })
 
-        expect(controller.canOpenToTheRight(X)).toBe(false)
+        expect(controller.canOpenBeside(X)).toBe(false)
         controller.openViewToTheRight(docC, X)
 
         expect(strips(controller)).toEqual([['doc-A', '*doc-C']])
@@ -1072,7 +1072,118 @@ describe('LayoutController — opening a View in the Pane to the right (ADR 0155
     it('can open to the right from an open main-region View when Panes are side by side', () => {
         const { controller } = sideBySide()
         controller.openView(docA)
-        expect(controller.canOpenToTheRight(A)).toBe(true)
-        expect(controller.canOpenToTheRight('document:not-open')).toBe(false)
+        expect(controller.canOpenBeside(A)).toBe(true)
+        expect(controller.canOpenBeside('document:not-open')).toBe(false)
+    })
+})
+
+describe('LayoutController — opening a View in the Pane below', () => {
+    const docC: ViewRef = { kind: 'document', target: 'doc-C' }
+    const docX: ViewRef = { kind: 'document', target: 'doc-X' }
+    const A = viewKey(docA)
+    const B = viewKey(docB)
+    const X = viewKey(docX)
+
+    /**
+     * A controller over a stub that stacks the main Panes top to bottom in model order, 300 pixels
+     * each, or lays them left to right with `columns`. A Sidebar's Pane is placed far off.
+     */
+    function arranged(arrangement: 'stacked' | 'columns' = 'stacked') {
+        const renderer = createStubRenderer()
+        const controller = createLayoutController({ renderer })
+        renderer.paneBounds = (panelId) => {
+            const regions = controller.serialize().model.regions
+            const at = regions.main.panes.findIndex((p) => p.views.some((v) => v.panelId === panelId))
+            if (at === -1) return regions['right-sidebar'].panes.some((p) => p.views.some((v) => v.panelId === panelId)) ? { left: 5000, top: 0, right: 5300, bottom: 900 } : null
+            return arrangement === 'stacked'
+                ? { left: 0, top: at * 300, right: 800, bottom: (at + 1) * 300 }
+                : { left: at * 400, top: 0, right: (at + 1) * 400, bottom: 900 }
+        }
+        return { renderer, controller }
+    }
+
+    function strips(controller: LayoutController): string[][] {
+        return controller
+            .serialize()
+            .model.regions.main.panes.map((p) => p.views.map((v) => (v.panelId === p.activePanelId ? `*${v.view.target}` : v.view.target)))
+    }
+
+    it('opens it at the end of the Pane below, in front there, the keyboard left in the source', () => {
+        const { controller, renderer } = arranged()
+        controller.openView(docA)
+        controller.openView(docB, { mode: 'split-down' })
+        controller.focusView(docA)
+        const focused = renderer.focused.length
+
+        controller.openViewBelow(docX, A)
+
+        expect(strips(controller)).toEqual([['*doc-A'], ['doc-B', '*doc-X']])
+        expect(controller.activeView()?.panelId).toBe(A)
+        expect(renderer.focused.slice(focused)).toEqual([])
+        expect(renderer.added.at(-1)?.placement).toMatchObject({ siblingPanelId: B, background: true })
+    })
+
+    it('splits a new Pane off the source below it when there is none, though one is to its right', () => {
+        const { controller, renderer } = arranged('columns')
+        controller.openView(docA)
+        controller.openView(docB, { mode: 'split-right' })
+        controller.focusView(docA)
+        const [source] = controller.serialize().model.regions.main.panes
+
+        controller.openViewBelow(docC, A)
+
+        expect(strips(controller)).toEqual([['*doc-A'], ['*doc-C'], ['*doc-B']])
+        expect(renderer.added.at(-1)?.placement).toMatchObject({ mode: 'split-down', fromPaneId: source.id, background: true })
+        expect(controller.activeView()?.panelId).toBe(A)
+    })
+
+    it('moves a View open elsewhere into a new Pane split off below the source, the same instance', () => {
+        const { controller, renderer } = arranged()
+        controller.openView(docA)
+        controller.openView(docX, { activate: false })
+        const [source] = controller.serialize().model.regions.main.panes
+        const added = renderer.added.length
+
+        controller.openViewBelow(docX, A)
+
+        expect(strips(controller)).toEqual([['*doc-A'], ['*doc-X']])
+        expect(renderer.moved.at(-1)).toMatchObject({ panelId: X, placement: { mode: 'split-down', fromPaneId: source.id, background: true } })
+        expect(renderer.added).toHaveLength(added)
+    })
+
+    it('says so when the View is already in front in the Pane below', () => {
+        const { controller } = arranged()
+        controller.openView(docA)
+        controller.openView(docB, { mode: 'split-down' })
+        controller.focusView(docA)
+
+        expect(controller.openViewBelow(docB, A).alreadyInFront).toBe(true)
+        expect(strips(controller)).toEqual([['*doc-A'], ['*doc-B']])
+    })
+
+    it("is an ordinary open in the source's Pane where Panes are not side by side (the phone)", () => {
+        const { controller, renderer } = setup()
+        controller.openView(docA)
+
+        expect(controller.canOpenBeside(A)).toBe(false)
+        controller.openViewBelow(docC, A)
+
+        expect(strips(controller)).toEqual([['doc-A', '*doc-C']])
+        expect(renderer.added.at(-1)?.placement.mode).not.toMatch(/^split-/)
+    })
+})
+
+describe('LayoutController — frontPanelOf', () => {
+    it("is the front View of the region's active Pane, where its next open lands", () => {
+        const { controller } = setup()
+        expect(controller.frontPanelOf('main')).toBeNull()
+        controller.openView(docA)
+        controller.openView(docB, { mode: 'split-right' })
+        expect(controller.frontPanelOf('main')).toBe(viewKey(docB))
+        controller.openView(backlinks)
+        // A Sidebar taking the keyboard leaves the main region's Pane as it was.
+        expect(controller.frontPanelOf('main')).toBe(viewKey(docB))
+        controller.focusView(docA)
+        expect(controller.frontPanelOf('main')).toBe(viewKey(docA))
     })
 })

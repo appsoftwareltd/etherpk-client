@@ -757,12 +757,13 @@
 
     /**
      * Hold a reveal addressed to this tab. A line takes the focus with it: "show me this" means the
-     * caret should be usable. The top of a journal day reached by its date (ADR 0154) leaves the
+     * caret should be usable. Not for a page opened beside the one being read (ADR 0155), whose
+     * caret keeps the keyboard. The top of a journal day reached by its date (ADR 0154) leaves the
      * focus to the workspace's activation policy, which a phone applies only to an empty entry.
      */
     function holdReveal(request: RevealRequest): void {
         if (request.line === 'top') heldReveal.hold('top', { align: 'start', focus: false })
-        else heldReveal.hold(request.line)
+        else heldReveal.hold(request.line, { focus: request.background !== true })
     }
 
     /**

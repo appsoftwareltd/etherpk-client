@@ -10,9 +10,11 @@
  *   Before it stops, or runs an action, it has the editor write what it holds (`flush`).
  * - **In a tab or over the window** (the Client hosts the same widget there), it is a live editor
  *   filling the space.
- * - **On a phone**, a drawing in the document is a picture. A tap opens it over the whole window,
- *   as a live editor where the document can be written (Excalidraw's own phone layout, with its pen
- *   mode for a stylus), else as a picture that can be zoomed.
+ * - **On a phone or a touch screen** (a tablet in the desktop layout too), a drawing in the document
+ *   is a picture. A tap opens it over the whole window, as a live editor where the document can be
+ *   written (Excalidraw's own layout for the space, with its pen mode for a stylus), else as a
+ *   picture that can be zoomed. Edited in place, a drawing would take the finger that scrolls the
+ *   document, and its toolbar's 44px touch buttons would leave no room under them.
  * - **A share link from excalidraw.com** in the drawing is a card offering to import it
  *   (`share-link.ts`). Nothing is fetched until the person presses it.
  * - **Shapes written by hand** (skeletons, `format.ts`) are converted once Excalidraw has loaded and,
@@ -32,8 +34,11 @@ import { convertSkeletons, skeletonKey } from './scene'
 import { fetchSharedDrawing, ImportError, planImport, shareLinkIn } from './share-link'
 
 export interface DrawingServices {
-    /** True while the desktop presenter shows, where a drawing is edited in its place in the document. */
-    isDesktop(): boolean
+    /**
+     * Whether a drawing is edited in its place in the document: in the desktop layout, with a mouse
+     * or a trackpad. On a phone or a touch screen it is edited over the window.
+     */
+    editsInPlace(): boolean
     /** Tell the person something the page does not show, such as images left out of an import. */
     notify(message: string): void
 }
@@ -113,8 +118,7 @@ export function createDrawingWidget(services: DrawingServices): FenceWidget {
             host.append(root)
 
             const editable = () => context.writable
-            /** Whether the drawing is edited in its place in the document: on a desktop. A phone edits it over the window. */
-            const editsInPlace = () => editable() && services.isDesktop()
+            const editsInPlace = () => editable() && services.editsInPlace()
             const fills = () => context.presentation !== 'inline'
             /** Whether the drawing should be its live editor now: in a tab or the window, or edited in the document. */
             const wantsEditor = () => editable() && !shareLinkIn(context.body) && (fills() || context.editing === true)
@@ -124,7 +128,7 @@ export function createDrawingWidget(services: DrawingServices): FenceWidget {
 
             /**
              * Ask the Client to edit the drawing in the document, where the editor follows in an update,
-             * or, on a phone, to open it over the window.
+             * or, on a phone or a touch screen, to open it over the window.
              */
             const askToEdit = () => {
                 focusNext = true
@@ -307,7 +311,7 @@ export function createDrawingWidget(services: DrawingServices): FenceWidget {
             if (wantsEditor()) drawEditor()
             else drawPicture()
             // One just put in is edited at once: in place, where the Client tells this widget so in an
-            // update, or over the window on a phone.
+            // update, or over the window on a phone or a touch screen.
             if (takesFocus && !fills() && editable() && !shareLinkIn(context.body)) askToEdit()
             else focusNext = false
 

@@ -1,6 +1,6 @@
 /**
- * Document-scoped [[Command]]s reachable from a [[Context Menu]]: opening a linked concept in the
- * Pane to the right, showing a document's backlinks or its tasks, favouriting, renaming, deleting,
+ * Document-scoped [[Command]]s reachable from a [[Context Menu]]: opening a linked concept, or a
+ * [[Backlink]]'s document, in the Pane to the right or below, showing a document's backlinks or its tasks, favouriting, renaming, deleting,
  * and copying a document's name or its full path on disk.
  *
  * These are Commands rather than inline handlers so the [[Context Menu]] stays a
@@ -17,6 +17,7 @@ import {
     type ContextMenuTarget,
     type CommandRegistry,
     type ContributionRegistry,
+    isBacklinkTarget,
     isDocumentTarget,
     isWikilinkTarget,
     registerContextMenuItem,
@@ -24,6 +25,7 @@ import {
     type ViewFavouriteContextMenuTarget,
 } from '#lib/surface/index.js'
 
+import type { PaneSide } from '#lib/layout/index.js'
 import type { ViewFavourites } from '#lib/layout/view-favourites.js'
 
 import { type Favourite, sanitizeFavourite, type ViewFavourite } from '../favourite-entry'
@@ -65,9 +67,24 @@ export const TASKS_SHOW = 'tasks.show'
 export const DOCUMENT_FIND = 'document.findInTab'
 /**
  * Open a wikilink's concept in the [[Pane]] to the right of the one the link is in, splitting one
- * off when there is none, and moving its tab there when it is open elsewhere (ADR 0155).
+ * off when there is none, and moving its tab there when it is open elsewhere (ADR 0155). On a
+ * [[Backlink]], its document, at the reference's line.
  */
 export const DOCUMENT_OPEN_TO_THE_RIGHT = 'document.openToTheRight'
+/** {@link DOCUMENT_OPEN_TO_THE_RIGHT} into the Pane below, splitting one off downwards. */
+export const DOCUMENT_OPEN_BELOW = 'document.openBelow'
+
+/**
+ * What an open beside acts on: a wikilink's concept, or a backlink's document and line, with the
+ * panel to open beside. Null for any other target, and for a link with no panel to start from.
+ */
+function besideOf(arg: unknown): { concept: string; panelId: string; line?: number } | null {
+    const target = arg as ContextMenuTarget | undefined
+    if (!target) return null
+    if (isWikilinkTarget(target)) return target.panelId ? { concept: target.concept, panelId: target.panelId } : null
+    if (isBacklinkTarget(target)) return { concept: target.concept, panelId: target.panelId, line: target.line }
+    return null
+}
 
 function conceptOf(arg: unknown): string {
     const target = arg as ContextMenuTarget | undefined
@@ -113,15 +130,16 @@ export interface DocumentCommandDeps {
     /** Bring the document's tab to the front and open find in it; absent where there are no tabs. */
     findIn?: (concept: string) => void
     /**
-     * Open a concept in the Pane to the right of the one holding `sourcePanelId` (ADR 0155). The
-     * workspace owns the Layout and the focus that follows; absent where there is no Layout.
+     * Open a concept in the Pane to the right of, or below, the one holding `sourcePanelId` (ADR
+     * 0155), at the 0-based body `line` when there is one. The workspace owns the Layout and the
+     * focus that follows; absent where there is no Layout.
      */
-    openToTheRight?: (concept: string, sourcePanelId: string) => void
+    openBeside?: (concept: string, sourcePanelId: string, side: PaneSide, line?: number) => void
     /**
      * Whether the Layout can open beside the Pane holding `sourcePanelId`: it is a main-region
      * Pane and Panes show side by side, which a phone's do not. Absent ⇒ never.
      */
-    canOpenToTheRight?: (sourcePanelId: string) => boolean
+    canOpenBeside?: (sourcePanelId: string) => boolean
     /**
      * The name a [[Concept]] is known by: an [[Alias]]'s page, a pageless concept's display name.
      * The favourite rows act on this, so a link written through an alias favourites the page it
@@ -285,11 +303,19 @@ export function registerDocumentCommands(
             const concept = conceptOf(arg)
             if (concept !== '') deps.findIn?.(concept)
         }),
-        commands.register(DOCUMENT_OPEN_TO_THE_RIGHT, (arg) => {
-            const target = arg as ContextMenuTarget | undefined
-            if (target && isWikilinkTarget(target) && target.panelId) deps.openToTheRight?.(target.concept, target.panelId)
-        }),
+        ...(['right', 'below'] as const).map((side) =>
+            commands.register(side === 'right' ? DOCUMENT_OPEN_TO_THE_RIGHT : DOCUMENT_OPEN_BELOW, (arg) => {
+                const beside = besideOf(arg)
+                if (beside) deps.openBeside?.(beside.concept, beside.panelId, side, beside.line)
+            }),
+        ),
     )
+
+    /** Whether the open-beside pair applies: a link or a backlink from a Pane the Layout can open beside. */
+    const canOpenBesideFrom = (target: ContextMenuTarget): boolean => {
+        const beside = besideOf(target)
+        return beside !== null && deps.openBeside !== undefined && (deps.canOpenBeside?.(beside.panelId) ?? false)
+    }
 
     disposers.push(
         registerContextMenuItem(contributions, {
@@ -297,15 +323,20 @@ export function registerDocumentCommands(
             label: 'Open in pane to the right',
             command: DOCUMENT_OPEN_TO_THE_RIGHT,
             icon: 'pane-right',
-            // First on a link: following it is what a link is for. On a link only, from the Pane
-            // it sits in, and not offered where no Pane can be beside that one (the phone, a
-            // Sidebar): there a click on the link is all there is.
+            // First on a link: following it is what a link is for. On a link or a backlink only,
+            // from the Pane it sits in, and not offered where no Pane can be beside that one (the
+            // phone, a Sidebar): there a click on the link is all there is.
             order: 1,
-            when: (target) =>
-                isWikilinkTarget(target) &&
-                target.panelId !== undefined &&
-                deps.openToTheRight !== undefined &&
-                (deps.canOpenToTheRight?.(target.panelId) ?? false),
+            when: canOpenBesideFrom,
+        }),
+        registerContextMenuItem(contributions, {
+            id: DOCUMENT_OPEN_BELOW,
+            label: 'Open in pane below',
+            command: DOCUMENT_OPEN_BELOW,
+            icon: 'pane-below',
+            // Second, beside its pair, on the same targets.
+            order: 2,
+            when: canOpenBesideFrom,
         }),
         registerContextMenuItem(contributions, {
             id: DOCUMENT_FIND,

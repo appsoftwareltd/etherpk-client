@@ -13,7 +13,7 @@
  * required a document) rather than of anything they intended.
  */
 
-import { getActiveLayoutController, type LayoutController, type ViewRef } from '#lib/layout/index.js'
+import { getActiveLayoutController, type LayoutController, type PaneSide, type ViewRef } from '#lib/layout/index.js'
 
 import { getActiveGraphIndex } from './backlinks'
 import { conceptKey } from './backlinks/backlink-index'
@@ -97,20 +97,22 @@ export function openConceptAtDocumentLine(concept: string, line: number, sourceP
 }
 
 /**
- * Open a concept in the Pane to the right of the one holding `sourcePanelId` (ADR 0155): a
- * wikilink's "Open in pane to the right" and Mod+Alt+Enter. The Layout splits a Pane off when
- * there is none, and moves the concept's tab there when it is open elsewhere; where no Pane can be
- * beside the source (the phone, a Sidebar), it opens as a click on the link would. Returns the
- * panel it opened under, or null where there is no layout to open into (the /dev harnesses).
+ * Open a concept in the Pane to the right of the one holding `sourcePanelId`, or below it (ADR
+ * 0155): a link's "Open in pane to the right" and "Open in pane below", and Mod+Alt+Enter. The
+ * Layout splits a Pane off when there is none, and moves the concept's tab there when it is open
+ * elsewhere; where no Pane can be beside the source (the phone, a Sidebar), it opens as a click on
+ * the link would. Returns the panel it opened under, or null where there is no layout to open into
+ * (the /dev harnesses).
  *
  * The page opens in the background: the document being read keeps the keyboard and stays the
- * active one, so Backlinks keeps following it. A page already in front there shows its top, by
- * the same request Today makes of a journal day (ADR 0154): the reader asked for the page, and a
- * request that changed nothing on screen would look ignored. Its selection goes to the start of
- * its body, as Today's does, but the keyboard stays where it is. Anywhere else it lands where it
- * was.
+ * active one, so Backlinks keeps following it. With a `line` (0-based, body-relative, as
+ * `openConceptAtLine` takes it: a [[Backlink]]'s reference) it lands on that line, the keyboard
+ * still left where it is. Without one, a page already in front there shows its top, by the same
+ * request Today makes of a journal day (ADR 0154): the reader asked for the page, and a request
+ * that changed nothing on screen would look ignored. Its selection goes to the start of its body,
+ * as Today's does, but the keyboard stays where it is. Anywhere else it lands where it was.
  */
-export function openConceptToTheRight(concept: string, sourcePanelId: string): string | null {
+export function openConceptBeside(concept: string, sourcePanelId: string, side: PaneSide, line?: number): string | null {
     let controller: LayoutController
     try {
         controller = getActiveLayoutController()
@@ -118,9 +120,26 @@ export function openConceptToTheRight(concept: string, sourcePanelId: string): s
         return null
     }
     const target = canonicalConceptName(concept)
-    const opened = controller.openViewToTheRight({ kind: 'document', target }, sourcePanelId)
-    if (opened.alreadyInFront) revealTop(target)
+    const view: ViewRef = { kind: 'document', target }
+    const opened = side === 'right' ? controller.openViewToTheRight(view, sourcePanelId) : controller.openViewBelow(view, sourcePanelId)
+    if (line !== undefined) revealLine(target, line, { background: true })
+    else if (opened.alreadyInFront) revealTop(target)
     return opened.panelId
+}
+
+/**
+ * The panel a list's "Open in pane to the right" and "Open in pane below" open beside: the one it
+ * is shown in (the section beneath a document passes the document's), or for a list in a Sidebar
+ * (the Backlinks panel), the front View of the main Pane a click in the list opens into. Undefined
+ * when there is none, or no layout, so the rows are not offered.
+ */
+export function panelToOpenBeside(sourcePanelId: string | undefined): string | undefined {
+    if (sourcePanelId !== undefined) return sourcePanelId
+    try {
+        return getActiveLayoutController().frontPanelOf('main') ?? undefined
+    } catch {
+        return undefined
+    }
 }
 
 /** Open `target` (already canonical) in the source panel's pane; false when there is no layout. */

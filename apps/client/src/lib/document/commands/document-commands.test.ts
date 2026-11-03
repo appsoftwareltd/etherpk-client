@@ -9,6 +9,7 @@ import {
     BACKLINKS_SHOW,
     DOCUMENT_COPY_FILE_PATH,
     DOCUMENT_COPY_NAME,
+    DOCUMENT_OPEN_BELOW,
     DOCUMENT_OPEN_TO_THE_RIGHT,
     FAVOURITE_ADD,
     FAVOURITE_MOVE,
@@ -217,53 +218,79 @@ describe('Show Tasks', () => {
     })
 })
 
-describe('Open in pane to the right (ADR 0155)', () => {
+describe('Open in pane to the right and Open in pane below (ADR 0155)', () => {
     const OPEN_RIGHT = 'Open in pane to the right'
+    const OPEN_BELOW = 'Open in pane below'
     const link = (concept: string, panelId?: string): ContextMenuTarget =>
         panelId === undefined ? { kind: 'wikilink', concept } : { kind: 'wikilink', concept, panelId }
+    const backlink = (concept: string, panelId: string, line?: number): ContextMenuTarget =>
+        line === undefined ? { kind: 'backlink', concept, panelId } : { kind: 'backlink', concept, panelId, line }
 
-    it('leads the menu on a wikilink in a Pane the Layout can open beside, and opens the link from that Pane', async () => {
-        const openToTheRight = vi.fn()
-        const { commands, labels } = setup({ showBacklinks: vi.fn(), showTasks: vi.fn(), openToTheRight, canOpenToTheRight: () => true })
+    it('lead the menu on a wikilink in a Pane the Layout can open beside, and open the link from that Pane', async () => {
+        const openBeside = vi.fn()
+        const { commands, labels } = setup({ showBacklinks: vi.fn(), showTasks: vi.fn(), openBeside, canOpenBeside: () => true })
 
-        expect(labels(link('Garden', 'document:Notes'))).toEqual([OPEN_RIGHT, 'Show Backlinks', 'Show Tasks', 'Add to favourites', 'Rename…'])
+        expect(labels(link('Garden', 'document:Notes'))).toEqual([OPEN_RIGHT, OPEN_BELOW, 'Show Backlinks', 'Show Tasks', 'Add to favourites', 'Rename…'])
 
         await commands.execute(DOCUMENT_OPEN_TO_THE_RIGHT, link('Garden', 'document:Notes'))
-        expect(openToTheRight).toHaveBeenCalledWith('Garden', 'document:Notes')
+        expect(openBeside).toHaveBeenLastCalledWith('Garden', 'document:Notes', 'right', undefined)
+        await commands.execute(DOCUMENT_OPEN_BELOW, link('Garden', 'document:Notes'))
+        expect(openBeside).toHaveBeenLastCalledWith('Garden', 'document:Notes', 'below', undefined)
     })
 
-    it('is not offered where the link\'s Pane has nothing beside it to open into (the phone, a Sidebar)', () => {
-        const canOpenToTheRight = vi.fn((panelId: string) => panelId !== 'document:Sidebar')
-        const { labels } = setup({ openToTheRight: vi.fn(), canOpenToTheRight })
+    it('are the whole menu on a backlink, which opens its document at the line the reference is on', async () => {
+        const openBeside = vi.fn()
+        const { commands, labels } = setup({ showBacklinks: vi.fn(), showTasks: vi.fn(), openBeside, canOpenBeside: () => true })
+
+        expect(labels(backlink('Kitchen', 'document:Garden', 3))).toEqual([OPEN_RIGHT, OPEN_BELOW])
+        expect(labels(backlink('Kitchen', 'document:Garden'))).toEqual([OPEN_RIGHT, OPEN_BELOW])
+
+        await commands.execute(DOCUMENT_OPEN_TO_THE_RIGHT, backlink('Kitchen', 'document:Garden', 3))
+        expect(openBeside).toHaveBeenLastCalledWith('Kitchen', 'document:Garden', 'right', 3)
+        // A backlink's source heading names the document and no line in it.
+        await commands.execute(DOCUMENT_OPEN_BELOW, backlink('Kitchen', 'document:Garden'))
+        expect(openBeside).toHaveBeenLastCalledWith('Kitchen', 'document:Garden', 'below', undefined)
+    })
+
+    it('are not offered where the Pane has nothing beside it to open into (the phone, a Sidebar)', () => {
+        const canOpenBeside = vi.fn((panelId: string) => panelId !== 'document:Sidebar')
+        const { labels } = setup({ openBeside: vi.fn(), canOpenBeside })
         expect(labels(link('Garden', 'document:Sidebar'))).not.toContain(OPEN_RIGHT)
-        expect(canOpenToTheRight).toHaveBeenCalledWith('document:Sidebar')
+        expect(labels(link('Garden', 'document:Sidebar'))).not.toContain(OPEN_BELOW)
+        expect(labels(backlink('Garden', 'document:Sidebar'))).toEqual([])
+        expect(canOpenBeside).toHaveBeenCalledWith('document:Sidebar')
     })
 
-    it('is not offered for a link with no Pane to start from, nor where the workspace cannot open beside', () => {
-        expect(setup({ openToTheRight: vi.fn(), canOpenToTheRight: () => true }).labels(link('Garden'))).not.toContain(OPEN_RIGHT)
-        expect(setup().labels(link('Garden', 'document:Notes'))).not.toContain(OPEN_RIGHT)
+    it('are not offered for a link with no Pane to start from, nor where the workspace cannot open beside', () => {
+        expect(setup({ openBeside: vi.fn(), canOpenBeside: () => true }).labels(link('Garden'))).not.toContain(OPEN_RIGHT)
+        expect(setup().labels(link('Garden', 'document:Notes'))).not.toContain(OPEN_BELOW)
+        expect(setup().labels(backlink('Garden', 'document:Notes'))).toEqual([])
     })
 
-    it('is a link row: a tab or a Sidebar row of the same document does not carry it', () => {
-        const { labels } = setup({ openToTheRight: vi.fn(), canOpenToTheRight: () => true })
-        expect(labels(tab('Garden'))).not.toContain(OPEN_RIGHT)
-        expect(labels({ kind: 'favourite', concept: 'Garden' })).not.toContain(OPEN_RIGHT)
-        expect(labels({ kind: 'document-row', concept: 'Garden' })).not.toContain(OPEN_RIGHT)
+    it('are link and backlink rows: a tab or a Sidebar row of the same document does not carry them', () => {
+        const { labels } = setup({ openBeside: vi.fn(), canOpenBeside: () => true })
+        for (const target of [tab('Garden'), { kind: 'favourite', concept: 'Garden' }, { kind: 'document-row', concept: 'Garden' }] as ContextMenuTarget[]) {
+            expect(labels(target)).not.toContain(OPEN_RIGHT)
+            expect(labels(target)).not.toContain(OPEN_BELOW)
+        }
     })
 
-    it('carries the icon of a frame opening to its right', () => {
-        const { contributions } = setup({ openToTheRight: vi.fn(), canOpenToTheRight: () => true })
-        const row = listContextMenuItems(contributions, link('Garden', 'document:Notes')).find((r) => r.label === OPEN_RIGHT)
-        expect(row?.icon).toBe('pane-right')
+    it('carry the icon of a frame opening to its right, and below', () => {
+        const { contributions } = setup({ openBeside: vi.fn(), canOpenBeside: () => true })
+        const rows = listContextMenuItems(contributions, link('Garden', 'document:Notes'))
+        expect(rows.find((r) => r.label === OPEN_RIGHT)?.icon).toBe('pane-right')
+        expect(rows.find((r) => r.label === OPEN_BELOW)?.icon).toBe('pane-below')
     })
 
-    it('does nothing for a target that is not a link from a Pane', async () => {
-        const openToTheRight = vi.fn()
-        const { commands } = setup({ openToTheRight, canOpenToTheRight: () => true })
-        await commands.execute(DOCUMENT_OPEN_TO_THE_RIGHT, tab('Garden'))
-        await commands.execute(DOCUMENT_OPEN_TO_THE_RIGHT, link('Garden'))
-        await commands.execute(DOCUMENT_OPEN_TO_THE_RIGHT, undefined)
-        expect(openToTheRight).not.toHaveBeenCalled()
+    it('do nothing for a target that is not a link or a backlink from a Pane', async () => {
+        const openBeside = vi.fn()
+        const { commands } = setup({ openBeside, canOpenBeside: () => true })
+        for (const command of [DOCUMENT_OPEN_TO_THE_RIGHT, DOCUMENT_OPEN_BELOW]) {
+            await commands.execute(command, tab('Garden'))
+            await commands.execute(command, link('Garden'))
+            await commands.execute(command, undefined)
+        }
+        expect(openBeside).not.toHaveBeenCalled()
     })
 })
 

@@ -14,6 +14,7 @@ export type {
     OpenViewOptions,
     PaneHandle,
     PaneModel,
+    PaneSide,
     Region,
     RegionModel,
     RenderedPane,

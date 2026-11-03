@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { paneToTheRight } from './pane-neighbour'
+import { paneBelow, paneToTheRight } from './pane-neighbour'
 import type { PaneBounds } from './types'
 
 // Which Pane is "the one to the right" of another, read from where the Panes sit on screen
@@ -50,5 +50,33 @@ describe('the Pane to the right', () => {
         const right = pane('right', box(400, 0, 800, 800))
         expect(paneToTheRight(box(0, 0, 400, 400), [pane('lower-left', box(0, 400, 400, 800)), right])).toBe('right')
         expect(paneToTheRight(box(0, 400, 400, 800), [pane('upper-left', box(0, 0, 400, 400)), right])).toBe('right')
+    })
+})
+
+// The Pane below is the same rule turned on its side: the Pane whose top edge meets the source's
+// bottom edge, the one sharing the most width when several do, the one further left on a tie.
+describe('the Pane below', () => {
+    it('is the Pane whose top edge meets the bottom edge, in a column of Panes', () => {
+        const source = box(0, 0, 800, 300)
+        expect(paneBelow(source, [pane('middle', box(0, 300, 800, 600)), pane('far', box(0, 600, 800, 900))])).toBe('middle')
+    })
+
+    it('is none for the bottom Pane, and for a Pane beside it', () => {
+        expect(paneBelow(box(0, 400, 800, 800), [pane('above', box(0, 0, 800, 400))])).toBeUndefined()
+        expect(paneBelow(box(0, 0, 400, 800), [pane('right', box(400, 0, 800, 800))])).toBeUndefined()
+    })
+
+    it('is none for a Pane that meets the edge only at a corner', () => {
+        expect(paneBelow(box(0, 0, 400, 400), [pane('diagonal', box(400, 400, 800, 800))])).toBeUndefined()
+    })
+
+    it('is the one sharing the most width when the row below is split', () => {
+        const source = box(0, 0, 500, 400)
+        expect(paneBelow(source, [pane('left', box(0, 400, 200, 800)), pane('right', box(200, 400, 800, 800))])).toBe('right')
+    })
+
+    it('is the one further left when two share the same width with the source', () => {
+        const source = box(0, 0, 800, 400)
+        expect(paneBelow(source, [pane('right', box(400, 400, 800, 800)), pane('left', box(0, 400, 400, 800))])).toBe('left')
     })
 })

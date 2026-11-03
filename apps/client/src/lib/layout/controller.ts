@@ -23,7 +23,7 @@ import {
     removePanel,
     setPinned,
 } from './model'
-import { paneToTheRight } from './pane-neighbour'
+import { paneBelow, paneToTheRight } from './pane-neighbour'
 import { LAYOUT_VERSION, defaultLayout } from './serialization'
 import type {
     LayoutController,
@@ -31,9 +31,10 @@ import type {
     LayoutRenderer,
     OpenMode,
     OpenViewOptions,
-    OpenedToTheRight,
+    OpenedBeside,
     PaneHandle,
     PaneModel,
+    PaneSide,
     Region,
     SerializedLayout,
     SidebarSide,
@@ -380,8 +381,8 @@ export function createLayoutController(options: LayoutControllerOptions): Layout
         return location?.region === 'main' ? location.pane : undefined
     }
 
-    /** The main Pane to the right of `from` on screen (pane-neighbour.ts), or undefined. */
-    function mainPaneRightOf(from: PaneModel): PaneModel | undefined {
+    /** The main Pane to the right of `from`, or below it, on screen (pane-neighbour.ts), or undefined. */
+    function mainPaneBeside(from: PaneModel, side: PaneSide): PaneModel | undefined {
         // A Pane's box is the box of the group holding any one of its Views.
         const boundsOf = (pane: PaneModel) => (pane.views[0] ? (renderer.paneBounds?.(pane.views[0].panelId) ?? null) : null)
         const source = boundsOf(from)
@@ -392,17 +393,18 @@ export function createLayoutController(options: LayoutControllerOptions): Layout
                 const bounds = boundsOf(pane)
                 return bounds ? [{ item: pane, bounds }] : []
             })
-        return paneToTheRight(source, candidates)
+        return side === 'right' ? paneToTheRight(source, candidates) : paneBelow(source, candidates)
     }
 
     /**
      * Move an open View into `to`, a main Pane, keeping its instance and so its component: the end
      * of the strip, in front. The keyboard stays where it is, so it goes with the View only when
-     * the View had it: a link to the page it is in moves the page being written in. `splitFrom`
-     * is the Pane `to` has just been split off, when it is new, for a renderer that must make the
-     * new Pane itself.
+     * the View had it: a link to the page it is in moves the page being written in. `split` names
+     * the Pane `to` has just been split off, when it is new, and which way, for a renderer that
+     * must make the new Pane itself.
      */
-    function moveInto(panelId: string, to: PaneModel, splitFrom?: PaneModel): void {
+    function moveInto(panelId: string, to: PaneModel, split?: { from: PaneModel; mode: OpenMode }): void {
+        const splitFrom = split?.from
         // Named before the View joins `to`, or leaves `splitFrom`: a View that stays where it is.
         const sibling = to.views[0]?.panelId
         const fromPanelId = splitFrom?.views.find((v) => v.panelId !== panelId)?.panelId
@@ -411,7 +413,7 @@ export function createLayoutController(options: LayoutControllerOptions): Layout
         if (seat === null) return
         const background = keyboard ? {} : { background: true }
         const placement: ViewPlacement = splitFrom
-            ? { region: 'main', paneId: to.id, mode: 'split-right', fromPaneId: splitFrom.id, ...(fromPanelId ? { fromPanelId } : {}), ...background }
+            ? { region: 'main', paneId: to.id, mode: split!.mode, fromPaneId: splitFrom.id, ...(fromPanelId ? { fromPanelId } : {}), ...background }
             : { region: 'main', paneId: to.id, mode: 'tab', ...(sibling ? { siblingPanelId: sibling } : {}), ...background }
         renderer.moveView?.(panelId, placement, seat)
         if (keyboard) renderer.focusView(panelId)
@@ -427,66 +429,84 @@ export function createLayoutController(options: LayoutControllerOptions): Layout
         onChange?.()
     }
 
-    /** A handle for what `openViewToTheRight` opened. `Object.assign` keeps its `region` getter live. */
-    function openedToTheRight(handle: PaneHandle, alreadyInFront = false): OpenedToTheRight {
+    /** A handle for what `openViewBeside` opened. `Object.assign` keeps its `region` getter live. */
+    function openedBeside(handle: PaneHandle, alreadyInFront = false): OpenedBeside {
         return Object.assign(handle, { alreadyInFront })
     }
 
-    function openViewToTheRight(view: ViewRef, sourcePanelId: string): OpenedToTheRight {
+    /**
+     * `openViewToTheRight` and `openViewBelow`: one rule (ADR 0155), with the side it looks to and
+     * the way a new Pane splits off the source.
+     */
+    function openViewBeside(view: ViewRef, sourcePanelId: string, side: PaneSide): OpenedBeside {
         reconcile()
+        const splitMode: OpenMode = side === 'right' ? 'split-right' : 'split-down'
         const from = sideBySide() ? mainPaneOf(sourcePanelId) : undefined
         if (!from) {
             // Nothing is beside anything here: an ordinary open from the source's Pane, which is
             // what following the link does (ADR 0155).
             const sourcePane = locatePanel(model, sourcePanelId)?.pane
-            return openedToTheRight(openView(view, sourcePane ? { paneId: sourcePane.id } : {}))
+            return openedBeside(openView(view, sourcePane ? { paneId: sourcePane.id } : {}))
         }
 
+        const neighbour = mainPaneBeside(from, side)
+        // Each placement is in front of its Pane, in the background: the document being read keeps
+        // the caret and the active View, so Backlinks goes on following it.
+        return neighbour ? openInto(view, neighbour) : openSplitOff(view, from, splitMode)
+    }
+
+    /** `openViewBeside` with a Pane there: brought to the front in it, moved into it, or opened at its end. */
+    function openInto(view: ViewRef, neighbour: PaneModel): OpenedBeside {
         const key = viewKey(view)
         const existing = openCanonical(key)
-        const right = mainPaneRightOf(from)
-
-        // Each placement below is in front of its Pane, in the background: the document being read
-        // keeps the caret and the active View, so Backlinks goes on following it.
-        if (right) {
-            if (existing?.pane === right) {
-                const alreadyInFront = right.activePanelId === key
-                if (!alreadyInFront) frontInItsPane(key)
-                return openedToTheRight(handleFor(existing.instance), alreadyInFront)
-            }
-            if (existing) {
-                moveInto(key, right)
-                return openedToTheRight(handleFor(existing.instance))
-            }
-            const instance: ViewInstance = { panelId: key, view }
-            placeInstance(instance, 'main', 'tab', false, right.id, true)
-            return openedToTheRight(handleFor(instance))
+        if (existing?.pane === neighbour) {
+            const alreadyInFront = neighbour.activePanelId === key
+            if (!alreadyInFront) frontInItsPane(key)
+            return openedBeside(handleFor(existing.instance), alreadyInFront)
         }
+        if (existing) {
+            moveInto(key, neighbour)
+            return openedBeside(handleFor(existing.instance))
+        }
+        const instance: ViewInstance = { panelId: key, view }
+        placeInstance(instance, 'main', 'tab', false, neighbour.id, true)
+        return openedBeside(handleFor(instance))
+    }
 
-        // None to the right: a new Pane split off the source.
+    /** `openViewBeside` with no Pane there: a new Pane split off `from`, the View opened or moved into it. */
+    function openSplitOff(view: ViewRef, from: PaneModel, splitMode: OpenMode): OpenedBeside {
+        const key = viewKey(view)
+        const existing = openCanonical(key)
         if (!existing) {
             const instance: ViewInstance = { panelId: key, view }
-            placeInstance(instance, 'main', 'split-right', false, from.id, true)
-            return openedToTheRight(handleFor(instance))
+            placeInstance(instance, 'main', splitMode, false, from.id, true)
+            return openedBeside(handleFor(instance))
         }
         // The source's only tab, moved into a Pane of its own beside the one it empties, would
         // leave the Layout exactly as it is.
-        if (existing.pane === from && from.views.length === 1) return openedToTheRight(handleFor(existing.instance))
+        if (existing.pane === from && from.views.length === 1) return openedBeside(handleFor(existing.instance))
         const regionModel = model.regions.main
         const pane: PaneModel = { id: nextPaneId(), views: [], activePanelId: null }
         regionModel.panes.splice(regionModel.panes.indexOf(from) + 1, 0, pane)
-        moveInto(key, pane, from)
-        return openedToTheRight(handleFor(existing.instance))
+        moveInto(key, pane, { from, mode: splitMode })
+        return openedBeside(handleFor(existing.instance))
     }
 
     return {
         openView,
 
-        openViewToTheRight,
+        openViewToTheRight: (view, sourcePanelId) => openViewBeside(view, sourcePanelId, 'right'),
 
-        canOpenToTheRight(sourcePanelId) {
+        openViewBelow: (view, sourcePanelId) => openViewBeside(view, sourcePanelId, 'below'),
+
+        canOpenBeside(sourcePanelId) {
             reconcile()
             return sideBySide() && mainPaneOf(sourcePanelId) !== undefined
+        },
+
+        frontPanelOf(region) {
+            reconcile()
+            return activePaneOf(model, region)?.activePanelId ?? null
         },
 
         closeView(view) {

@@ -76,6 +76,12 @@ describe('revealLine', () => {
         offBad()
         offGood()
     })
+
+    it('carries a request to leave the keyboard where it is, for a page opened beside (ADR 0155)', () => {
+        resetReveal()
+        revealLine('Garden', 2, { background: true })
+        expect(takeReveal('Garden')).toEqual({ target: 'Garden', line: 2, background: true })
+    })
 })
 
 /** Going to a journal day by its date shows its top (ADR 0154). */

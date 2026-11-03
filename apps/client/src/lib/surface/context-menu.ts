@@ -36,6 +36,7 @@ export type ContextMenuTarget =
     | AssetContextMenuTarget
     | TabContextMenuTarget
     | WikilinkContextMenuTarget
+    | BacklinkContextMenuTarget
     | MisspellingContextMenuTarget
     | LineContextMenuTarget
     | TaskContextMenuTarget
@@ -124,6 +125,24 @@ export interface WikilinkContextMenuTarget {
     panelId?: string
     /** The line the link is on, for the rows that act on a line. */
     line?: EditorLine
+}
+
+/**
+ * A [[Backlink]] in a backlinks list (the Backlinks panel, or the section beneath a document):
+ * the source document's heading, or one reference in it. Its rows open the source beside the
+ * Pane `panelId` is in, at the reference's line when there is one (ADR 0155).
+ */
+export interface BacklinkContextMenuTarget {
+    kind: 'backlink'
+    /** The document the reference is written in. */
+    concept: string
+    /**
+     * The panel to open beside: the document the list sits beneath, or for the panel, the front
+     * View of the main Pane a click in it opens into.
+     */
+    panelId: string
+    /** The 0-based body line the reference is on, as the index counts it; absent on a heading. */
+    line?: number
 }
 
 /**
@@ -261,6 +280,11 @@ export function isMisspellingTarget(target: ContextMenuTarget): target is Misspe
 /** Narrowing for a row that acts on a [[Wikilink]]'s concept. */
 export function isWikilinkTarget(target: ContextMenuTarget): target is WikilinkContextMenuTarget {
     return target.kind === 'wikilink'
+}
+
+/** Narrowing for a row that acts on a [[Backlink]]. */
+export function isBacklinkTarget(target: ContextMenuTarget): target is BacklinkContextMenuTarget {
+    return target.kind === 'backlink'
 }
 
 /** Narrowing for a row that acts on an [[Asset Reference]]. */

@@ -65,6 +65,7 @@ export {
     type TabContextMenuTarget,
     type ViewFavouriteContextMenuTarget,
     type WikilinkContextMenuTarget,
+    type BacklinkContextMenuTarget,
     type MisspellingContextMenuTarget,
     type EditorLine,
     type LineContextMenuTarget,
@@ -80,6 +81,7 @@ export {
     isAssetTarget,
     isDocumentTarget,
     isEditableAssetTarget,
+    isBacklinkTarget,
     isWikilinkTarget,
     isMisspellingTarget,
     isVerticalTab,
@@ -89,6 +91,7 @@ export {
 } from './context-menu'
 export {
     type ContextMenuState,
+    type AttachContextMenuOptions,
     attachContextMenu,
     closeContextMenu,
     getContextMenuState,

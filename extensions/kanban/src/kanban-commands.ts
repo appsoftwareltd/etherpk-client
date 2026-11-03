@@ -274,7 +274,7 @@ export function registerKanbanCommands(context: ExtensionContext, deps: KanbanCo
         const found = reach(arg)
         found?.actions.openBelow(found.target.card)
     })
-    contextMenu.register({ id: KANBAN_CARD_OPEN_BELOW, label: 'Open below', command: KANBAN_CARD_OPEN_BELOW, order: 2, when: onCard })
+    contextMenu.register({ id: KANBAN_CARD_OPEN_BELOW, label: 'Open in pane below', command: KANBAN_CARD_OPEN_BELOW, order: 2, when: onCard })
     commands.register(KANBAN_CARD_OPEN_IN_TAB, (arg) => {
         const found = reach(arg)
         found?.actions.openInTab(found.target.card)

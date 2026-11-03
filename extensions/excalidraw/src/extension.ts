@@ -7,8 +7,8 @@
  * Extension API the extension adds:
  *
  * - a widget over each drawing fence (`context.editor.registerFence`), a picture that turns into a
- *   live Excalidraw editor when pressed, in its place on a desktop and over the window on a phone
- *   (`widget.ts`), saving as the person draws, in
+ *   live Excalidraw editor when pressed, in its place on a desktop with a mouse or a trackpad, and
+ *   over the window on a phone or a touch screen (`widget.ts`), saving as the person draws, in
  *   the Client's editor frame (`frame: 'editor'`), whose toolbar and menu offer Done, Full window,
  *   Open in tab, Edit as text and Delete;
  * - Open in tab and Full window, where the Client draws the same widget bigger (the fence's
@@ -55,8 +55,13 @@ async function drawingPicture(body: readonly string[]): Promise<PublishedFence |
     return { kind: 'picture', type: 'image/svg+xml', bytes: file.bytes, width: file.width, height: file.height, alt: drawingAlt(elements) }
 }
 
+/** Whether the main pointer is a finger or a stylus (a tablet's), rather than a mouse or a trackpad. */
+function touchFirst(): boolean {
+    return typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches
+}
+
 export function activate(context: ExtensionContext): void {
-    const widget = createDrawingWidget({ isDesktop: () => context.layout.isDesktop(), notify: (message) => context.notify(message) })
+    const widget = createDrawingWidget({ editsInPlace: () => context.layout.isDesktop() && !touchFirst(), notify: (message) => context.notify(message) })
     context.editor.registerFence(DRAWING_FENCE, widget, {
         title: 'Drawing',
         // The Client draws the toolbar and the menu round the drawing, and edits one drawing at a time.

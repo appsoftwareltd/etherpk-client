@@ -28,6 +28,11 @@ export interface RevealRequest {
     /** The document's concept, as the ViewRef target spells it. */
     target: string
     line: RevealTo
+    /**
+     * Land on the line but leave the keyboard where it is: the page was opened beside the one
+     * being read (ADR 0155), which keeps the caret. Absent, the editor takes the focus.
+     */
+    background?: true
 }
 
 let pending: RevealRequest | null = null
@@ -50,8 +55,8 @@ function announce(request: RevealRequest): void {
  * Ask for `target` to show `line`. The caller opens the View separately — this only says
  * where to land, so a document that is already open is not re-opened just to be scrolled.
  */
-export function revealLine(target: string, line: number): void {
-    announce({ target, line })
+export function revealLine(target: string, line: number, options: { background?: boolean } = {}): void {
+    announce({ target, line, ...(options.background ? { background: true } : {}) })
 }
 
 /**
