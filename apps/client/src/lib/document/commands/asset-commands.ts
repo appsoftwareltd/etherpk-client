@@ -75,7 +75,8 @@ export interface AssetCommandDeps {
     /** Show the image in the [[Lightbox]], over whatever is open. */
     viewImage: (image: LightboxImage) => void
     /** Open the asset's own tab. */
-    openAsset: (assetId: string, ref: string, line?: number) => void
+    /** `line` and `concept` say where the reference is, when it was used from an editor. */
+    openAsset: (assetId: string, ref: string, line?: number, concept?: string) => void
     /** Whether anything registered can show this file in a tab (surface/asset-viewer.ts). */
     canOpen: (ref: string) => boolean
     /** Whether the reference is an image this browser's clipboard can take (`asset-affordances.ts`). */
@@ -181,7 +182,7 @@ export function registerAssetCommands(
     async function open(target: AssetContextMenuTarget): Promise<void> {
         const assetId = deps.tools()?.identify(target.ref)
         if (!assetId) return
-        deps.openAsset(assetViewTarget(assetId, target.ref), target.ref, target.line)
+        deps.openAsset(assetViewTarget(assetId, target.ref), target.ref, target.line, target.concept)
     }
 
     async function remove(target: EditableAssetTarget): Promise<void> {

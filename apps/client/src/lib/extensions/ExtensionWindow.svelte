@@ -13,10 +13,14 @@
     const {
         title,
         mount,
+        size = "whole",
+        closesOnOutsideClick,
         onclose,
     }: {
         title: string;
         mount: (host: HTMLElement, window: { close(): void }) => { destroy(): void };
+        size?: "whole" | "dialog";
+        closesOnOutsideClick?: () => boolean;
         onclose: () => void;
     } = $props();
 
@@ -34,7 +38,7 @@
         };
 </script>
 
-<FullWindow {title} testId="extension-window" {onclose} closeOnEscape>
+<FullWindow {title} testId="extension-window" {onclose} closeOnEscape dialog={size === "dialog"} {closesOnOutsideClick}>
     {#snippet children(close)}
         <div class="relative h-full" {@attach drawn(close)}></div>
     {/snippet}

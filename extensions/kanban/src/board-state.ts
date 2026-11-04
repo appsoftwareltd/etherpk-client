@@ -1,6 +1,6 @@
 /**
- * What this device remembers about a [[Kanban Board]] (ADR 0113): which lanes are collapsed, and
- * which task the [[Task Detail]] shows and how tall it is.
+ * What this device remembers about a [[Kanban Board]] (ADR 0113): which lanes are collapsed, which
+ * task the [[Task Detail]] shows and how tall it is, and which lane the [[Phone Layout]] shows.
  *
  * Per device, per [[Knowledge Graph]] and per concept, like the [[Tasks View]]'s filter: never
  * synced and never in an [[Export]] (ADR 0013). It is kept out of the Layout model for the reason
@@ -34,6 +34,8 @@ export interface BoardState {
     detail: TaskDetailState | null
     /** The Task Detail's share of the board's height. */
     detailHeight: number
+    /** The one lane the Phone Layout shows. The desktop's collapsed lanes have no say in it. */
+    phoneLane: TaskStatus
 }
 
 const statusSchema = z.enum(['open', 'doing', 'waiting', 'test', 'done', 'cancelled'])
@@ -41,15 +43,19 @@ const stateSchema = z.object({
     collapsed: z.array(statusSchema),
     detail: z.object({ document: z.string(), line: z.number().int().nonnegative(), label: z.string() }).nullable(),
     detailHeight: z.number().min(MIN_DETAIL_HEIGHT).max(MAX_DETAIL_HEIGHT),
+    // A board saved before the phone showed one, or a lane that cannot be read, opens on Open and
+    // keeps the rest of what was remembered.
+    phoneLane: statusSchema.catch('open'),
 })
 const payloadSchema = z.object({ version: z.literal(VERSION), state: stateSchema })
 
 /**
  * Done and Cancelled start collapsed: they only grow, and a project's history would otherwise
- * push its open work off the screen. The Task Detail starts closed, at half the height.
+ * push its open work off the screen. The Task Detail starts closed, at half the height, and a phone
+ * starts on Open.
  */
 export function defaultBoardState(): BoardState {
-    return { collapsed: ['done', 'cancelled'], detail: null, detailHeight: 0.5 }
+    return { collapsed: ['done', 'cancelled'], detail: null, detailHeight: 0.5, phoneLane: 'open' }
 }
 
 export interface BoardStateStore {

@@ -6,8 +6,13 @@ import {
     BOARD_LANES,
     BOARD_SECTIONS,
     type BoardCard,
+    type BoardLane,
     type BoardSnapshot,
+    countOnlyLanes,
+    drawnLane,
     laneAfter,
+    laneCountText,
+    nextLaneWithTasks,
     type PendingMove,
     sectionAfter,
     taskDetailCard,
@@ -287,5 +292,51 @@ describe('a move into a lane with a title filter', () => {
         expect(unsettledMoves(target, pending, 10_000, 5000)).toEqual([])
         const stillThere = filtered(board([['open', 1, [quote]]]), 'doing', 'invoice', 4)
         expect(unsettledMoves(stillThere, pending, 10_000, 5000)).toEqual(pending)
+    })
+})
+
+describe('the one lane the phone layout shows', () => {
+    /** The six lanes, each read for its cards when `loaded` names it, holding `totals` tasks. */
+    function phoneLanes(loaded: readonly string[], totals: Record<string, number> = {}): BoardLane[] {
+        return BOARD_LANES.map((lane) => ({
+            ...lane,
+            sections: [],
+            total: totals[lane.status] ?? 0,
+            loaded: loaded.includes(lane.status),
+            filter: null,
+            unfiltered: totals[lane.status] ?? 0,
+        }))
+    }
+
+    it('reads the collapsed lanes for their counts on desktop, and on a phone every lane but the one on screen', () => {
+        expect([...countOnlyLanes(['done', 'cancelled'], null)]).toEqual(['done', 'cancelled'])
+        // Done starts collapsed on a desktop, and on a phone it is read like any other once chosen.
+        expect([...countOnlyLanes(['done', 'cancelled'], 'done')]).toEqual(['open', 'doing', 'waiting', 'test', 'cancelled'])
+    })
+
+    it('draws the chosen lane once its cards are read', () => {
+        expect(drawnLane(phoneLanes(['doing']), 'doing').status).toBe('doing')
+    })
+
+    it('keeps drawing the lane it had until the chosen one is read, so choosing a lane never blanks the screen', () => {
+        expect(drawnLane(phoneLanes(['open']), 'doing').status).toBe('open')
+    })
+
+    it('goes to the next lane holding any task, past the empty ones, in either direction', () => {
+        const lanes = phoneLanes(['open'], { open: 2, waiting: 1, done: 4 })
+        expect(nextLaneWithTasks(lanes, 'open', 1)).toBe('waiting')
+        expect(nextLaneWithTasks(lanes, 'waiting', 1)).toBe('done')
+        expect(nextLaneWithTasks(lanes, 'waiting', -1)).toBe('open')
+    })
+
+    it('goes nowhere past either end, or when no lane further along holds a task', () => {
+        const lanes = phoneLanes(['open'], { open: 2, done: 4 })
+        expect(nextLaneWithTasks(lanes, 'open', -1)).toBeUndefined()
+        expect(nextLaneWithTasks(lanes, 'done', 1)).toBeUndefined()
+    })
+
+    it("counts a lane's tasks, and how many its Lane Filter lets through when it has one", () => {
+        expect(laneCountText({ total: 12, unfiltered: 12, filter: null })).toBe('12')
+        expect(laneCountText({ total: 3, unfiltered: 12, filter: parseTaskTextFilter('beans') })).toBe('3 of 12')
     })
 })

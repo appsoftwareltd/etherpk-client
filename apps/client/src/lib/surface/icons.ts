@@ -67,6 +67,12 @@ export const ICON_PATHS: Record<string, string> = {
 
     // A PDF, and the tools in its tab.
     pdf: '<path d="M4 2h5l4 4v8.5a.5.5 0 0 1-.5.5h-8a.5.5 0 0 1-.5-.5v-12a.5.5 0 0 1 .5-.5z"/><path d="M9 2v4h4"/><path d="M5.5 12.5v-2.5h1a.75.75 0 0 1 0 1.5h-1M8.5 12.5V10h.5a1.25 1.25 0 0 1 0 2.5zM11.5 12.5V10h-.01"/>',
+    /** A text caret, the shape a pointer takes over text: select text in a PDF. */
+    /** A disk: keep what is here as a file (Save a copy). */
+    'pdf-save': '<path d="M3 3.5a1 1 0 0 1 1-1h6.5l2.5 2.5v7.5a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/><path d="M5.5 2.5V6h4V2.5M5 13.5V9.5h6v4"/>',
+    /** Corners pointing in: come back from full screen. */
+    'pdf-full-screen-exit': '<path d="M6 2.5V6H2.5M10 2.5V6h3.5M6 13.5V10H2.5M10 13.5V10h3.5"/>',
+    'pdf-select': '<path d="M5.5 2.5c1.5 0 2.5.6 2.5 2v7c0 1.400-1 2-2.500 2M10.500 2.500c-1.500 0-2.500.6-2.500 2v7c0 1.400 1 2 2.500 2M6 8h4"/>',
     'pdf-page-previous': '<path d="M10 3.5L5.5 8l4.5 4.5"/>',
     'pdf-page-next': '<path d="M6 3.5L10.5 8 6 12.5"/>',
     'pdf-pen': '<path d="M11 2.5l2.5 2.5-8 8L2.5 13.5 3 10.5z"/><path d="M9.5 4l2.5 2.5"/>',

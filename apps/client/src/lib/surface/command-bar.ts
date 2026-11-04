@@ -29,8 +29,12 @@ export interface CommandBarItem {
     order?: number
     /** Which side of the bar the button sits on. `'start'` (default) scrolls; `'end'` is pinned. */
     align?: 'start' | 'end'
-    /** Disabled while a tab that shows a file, such as a PDF, is in front: it has no text to work on. */
-    documentOnly?: boolean
+    /**
+     * The types of file this works on (`['pdf']`): disabled while a tab that shows any other file is in
+     * front. Left out, it takes no notice of what is in front. A pinned button naming a file type also
+     * floats over that file's tab in the desktop layout, which has no Command Bar.
+     */
+    files?: readonly string[]
     /**
      * Disabled (shown greyed) when the caret is not on a bullet of the outline: a form-1 opener
      * counts, a bullet-shaped line in code or in the frontmatter does not (`outlinerBulletAtCaret`).

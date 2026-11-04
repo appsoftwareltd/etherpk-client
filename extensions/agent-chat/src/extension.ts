@@ -14,6 +14,7 @@ import type { ExtensionContext, SettingsSection } from '@appsoftwareltd/etherpk-
 
 import { registerAgentChat } from './register'
 import ChatHost from './ui/ChatHost.svelte'
+import ChatPanel from './ui/ChatPanel.svelte'
 import ChatsView from './ui/ChatsView.svelte'
 import ConnectionsSection from './ui/ConnectionsSection.svelte'
 import { mountComponent } from './ui/mount'
@@ -27,6 +28,8 @@ export function activate(context: ExtensionContext): () => void {
             mount: (element) => mountComponent(ChatsView, element, { chats, actions, activeDocument: active.get, onActiveDocumentChanged: active.subscribe }),
         }),
         opening: (host, props) => mountComponent(ChatHost, host, { ...props }),
+        transient: (host, { chats, chatId, prompt, openDocument, openSettings }) =>
+            mountComponent(ChatPanel, host, { chats, chatId, where: 'window', openDocument, openSettings, autofocus: true, initialPrompt: prompt }),
         stub: (host, props) => mountComponent(PhoneStub, host, { ...props }),
     })
     return () => chats.dispose()

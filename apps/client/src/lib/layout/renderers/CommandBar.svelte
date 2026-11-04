@@ -76,9 +76,14 @@
         return !!item.outlinerOnly && !editorContext.inOutlinerBlock
     }
 
-    /** Off in this editor, or a button that works on a document while a file, such as a PDF, is in front. */
+    /** A file is in front that this button does not work on. */
+    function offForThisFile(item: CommandBarItem): boolean {
+        return !!item.files && editorContext.fileInFront !== null && !item.files.includes(editorContext.fileInFront)
+    }
+
+    /** Off in this editor, or a button that does not work on the file in front. */
     function disabled(item: CommandBarItem): boolean {
-        return (!!item.documentOnly && editorContext.fileInFront) || offInThisEditor(item)
+        return item.files && editorContext.fileInFront !== null ? offForThisFile(item) : offInThisEditor(item)
     }
 
     /** A toggle button's `aria-pressed`. Undefined on every other button, which renders no attribute. */

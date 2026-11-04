@@ -232,7 +232,7 @@ export function createScopedContext(
                         args: button.args,
                         align: button.pinned ? 'end' : 'start',
                         order: EXTENSION_COMMAND_BAR_ORDER,
-                        documentOnly: button.documentOnly,
+                        files: button.files,
                     }),
                 )
             },

@@ -18,7 +18,7 @@ import {
 
 const REF = '../assets/q3-report.a1b2c3d4.pdf'
 const ASSET_ID = 'q3-report.a1b2c3d4.pdf'
-const target: AssetContextMenuTarget = { kind: 'asset', ref: REF, line: 3, occurrence: 0 }
+const target: AssetContextMenuTarget = { kind: 'asset', ref: REF, line: 3, occurrence: 0, concept: 'Garden' }
 const IMAGE_REF = '../assets/chart.a1b2c3d4.png'
 const imageTarget: AssetContextMenuTarget = { kind: 'asset', ref: IMAGE_REF, line: 5, occurrence: 0 }
 
@@ -157,7 +157,7 @@ describe('asset.open', () => {
         await h.commands.execute(ASSET_OPEN, target)
 
         // The filesystem identity is already the file name, extension and all.
-        expect(h.deps.openAsset).toHaveBeenCalledWith(ASSET_ID, REF, target.line)
+        expect(h.deps.openAsset).toHaveBeenCalledWith(ASSET_ID, REF, target.line, 'Garden')
     })
 })
 

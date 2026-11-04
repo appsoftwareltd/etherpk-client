@@ -15,7 +15,11 @@
     import type { PdfAnnotation } from "#lib/document/pdf/pdf-state.js";
     import { refusingPdfState } from "#lib/document/pdf/synced-pdf-state.js";
     import { formatBytes } from "@appsoftwareltd/etherpk-shared";
+    import { COMMAND_BAR_KIND, type CommandBarItem, listCommandBarItems, tryGetActiveCommandRegistry, tryGetActiveContributionRegistry } from "#lib/surface/index.js";
     import { iconSvg } from "#lib/surface/icons.js";
+    import { editorContext } from "#lib/document/index.js";
+    import { registerFileSelection } from "#lib/document/file-in-front.js";
+    import { createSubscriber } from "svelte/reactivity";
     import { currentWorkspaceServices, workspaceService } from "#lib/workspace/workspace-services.js";
 
     import { tryGetActiveAssetStore } from "../../../active-asset-store";
@@ -46,6 +50,7 @@
     let panelOpen = $state(false);
     let moreOpen = $state(false);
     let moreButton = $state<HTMLButtonElement>();
+    let moreMenu = $state<HTMLDivElement>();
     let saveOpen = $state(false);
     let signatureOpen = $state(false);
     let includeAnnotations = $state(true);
@@ -204,6 +209,27 @@
     function closeMoreMenu() {
         moreOpen = false;
         moreButton?.focus();
+    }
+
+    /** The press on the pages that closed the menu: it did that and nothing else. */
+    let swallowClick = false;
+
+    /** A press anywhere else closes the menu. On the pages it goes no further: no page turns, no stroke starts. */
+    function onWindowPointerdown(event: PointerEvent) {
+        swallowClick = false;
+        if (!moreOpen || !(event.target instanceof Node)) return;
+        if (moreMenu?.contains(event.target) || moreButton?.contains(event.target)) return;
+        moreOpen = false;
+        if (root?.querySelector(".etherpk-pdf-scroller")?.contains(event.target)) {
+            event.stopPropagation();
+            swallowClick = true;
+        }
+    }
+
+    /** The click that press ends in, which would open a note. A key's click (`detail` 0) is not one. */
+    function onWindowClick(event: MouseEvent) {
+        if (swallowClick && event.detail > 0) event.stopPropagation();
+        swallowClick = false;
     }
 
     function onWindowKeydown(event: KeyboardEvent) {
@@ -458,12 +484,42 @@
     }
 
     const tools: { tool: PdfTool; label: string; icon: string }[] = [
+        { tool: "select", label: "Select text", icon: "pdf-select" },
         { tool: "highlight", label: "Highlight text", icon: "highlight" },
         { tool: "highlighter", label: "Freehand highlighter", icon: "pdf-highlighter" },
         { tool: "pen", label: "Pen", icon: "pdf-pen" },
         { tool: "note", label: "Typed note", icon: "pdf-note" },
         { tool: "eraser", label: "Eraser", icon: "pdf-eraser" },
     ];
+
+    /** Whether the buttons that turn the page float over this PDF. */
+    const turningPages = $derived(reader.preferences.pageByPage && reader.pageCount > 1);
+
+    // A pinned Command Bar button that names this type of file. An extension's come and go as it
+    // starts or is switched off, so the list is read again as they do.
+    const contributions = tryGetActiveContributionRegistry();
+    const watchActions = createSubscriber((update) => contributions?.subscribe(COMMAND_BAR_KIND, update) ?? (() => {}));
+    const fileActions = $derived.by<CommandBarItem[]>(() => {
+        watchActions();
+        if (!contributions || editorContext.commandBarShowing) return [];
+        return listCommandBarItems(contributions).filter((item) => item.align === "end" && item.files?.includes("pdf"));
+    });
+
+    function runFileAction(action: CommandBarItem) {
+        const commands = tryGetActiveCommandRegistry();
+        if (commands?.has(action.command)) void commands.execute(action.command, action.args);
+    }
+
+    // What an extension can ask about this PDF while it is the file in front.
+    $effect(() => registerFileSelection(target, () => reader.fileSelection()));
+
+    /** The tools a page with no text cannot use, and why, for the button's tooltip. */
+    const NEEDS_TEXT: Partial<Record<PdfTool, string>> = {
+        select: "This page has no text to select.",
+        highlight: "This page has no text to highlight. Use the Freehand highlighter.",
+    };
+    /** A tool already on stays on as the pages go by: this only stops it being turned on here. */
+    const blockedHere = (tool: PdfTool) => reader.pageWithoutText && reader.tool !== tool && NEEDS_TEXT[tool] !== undefined;
 
     const showsColours = $derived(reader.tool === "highlight" || reader.tool === "highlighter" || reader.tool === "pen" || reader.tool === "note");
     const drawingTool = $derived(reader.tool === "pen" || reader.tool === "highlighter" ? reader.tool : null);
@@ -501,7 +557,7 @@
 
 </script>
 
-<svelte:window onkeydowncapture={onWindowKeydown} />
+<svelte:window onkeydowncapture={onWindowKeydown} onpointerdowncapture={onWindowPointerdown} onclickcapture={onWindowClick} />
 
 {#snippet icon(iconName: string)}
     <!-- eslint-disable-next-line svelte/no-at-html-tags -- in-repo constant markup from the icon table -->
@@ -573,7 +629,7 @@
                 <button type="button" class="pdf-tool max-sm:hidden" aria-label="Fit the width" title="Fit the width" onclick={() => reader.fitWidth()} data-testid="pdf-fit-width">{@render icon("fit")}</button>
                 <span class="etherpk-pdf-divider"></span>
                 {#each tools as entry (entry.tool)}
-                    <button type="button" class="pdf-tool" aria-label={entry.label} title={entry.label} aria-pressed={reader.tool === entry.tool} onclick={() => reader.setTool(entry.tool)} data-testid={`pdf-tool-${entry.tool}`}>{@render icon(entry.icon)}</button>
+                    <button type="button" class="pdf-tool" aria-label={entry.label} title={blockedHere(entry.tool) ? NEEDS_TEXT[entry.tool] : entry.label} aria-pressed={reader.tool === entry.tool} disabled={blockedHere(entry.tool)} onclick={() => reader.setTool(entry.tool)} data-testid={`pdf-tool-${entry.tool}`}>{@render icon(entry.icon)}</button>
                 {/each}
                 <button type="button" class="pdf-tool" aria-label="Undo" title="Undo" disabled={!reader.canUndo} onclick={() => reader.undo()} data-testid="pdf-undo">{@render icon("undo")}</button>
                 <button type="button" class="pdf-tool" aria-label="Redo" title="Redo" disabled={!reader.canRedo} onclick={() => reader.redo()} data-testid="pdf-redo">{@render icon("redo")}</button>
@@ -581,7 +637,7 @@
                 <button type="button" class={["pdf-tool", reader.bookmarkHere && "etherpk-pdf-bookmarked"]} aria-label={reader.bookmarkHere ? "Remove the PDF Bookmark on this page" : "Add a PDF Bookmark"} title={reader.bookmarkHere ? "Remove the PDF Bookmark on this page" : "Add a PDF Bookmark"} aria-pressed={!!reader.bookmarkHere} onclick={() => reader.toggleBookmark()} data-testid="pdf-bookmark">{@render icon("bookmark")}</button>
                 <button type="button" class="pdf-tool" aria-label="Annotations and PDF Bookmarks" title="Annotations and PDF Bookmarks" aria-pressed={panelOpen} onclick={togglePanel} data-testid="pdf-panel-toggle">{@render icon("list")}</button>
                 <button type="button" class="pdf-tool max-sm:hidden" aria-label="Add your signature" title="Add your signature" onclick={() => (signatureOpen = true)} data-testid="pdf-sign">{@render icon("pdf-signature")}</button>
-                <button type="button" class="pdf-tool max-sm:hidden" aria-label="Save a copy" title="Save a copy" onclick={openSave} data-testid="pdf-save">{@render icon("copy")}</button>
+                <button type="button" class="pdf-tool" aria-label="Save a copy" title="Save a copy" onclick={openSave} data-testid="pdf-save">{@render icon("pdf-save")}</button>
                 <button type="button" class="pdf-tool max-sm:hidden" aria-label="Print" title="Print" onclick={() => (printOptionsOpen = true)} data-testid="pdf-print">{@render icon("pdf-print")}</button>
                 <div class="relative shrink-0">
                     <button type="button" class="pdf-tool" bind:this={moreButton} aria-label="More" title="More" aria-expanded={moreOpen} onclick={() => (moreOpen = !moreOpen)} data-testid="pdf-more">{@render icon("more")}</button>
@@ -592,7 +648,11 @@
             <!-- Below the toolbar however many rows it has wrapped to, and with no height of its own, so the
                  menu opening moves nothing. -->
             <div class="relative h-0 shrink-0">
-            <div class="etherpk-pdf-more flex flex-col gap-0.5 rounded-lg border border-(--gk-surface-2) bg-(--gk-surface-0) p-1 shadow-lg" role="group" aria-label="More for this PDF" data-testid="pdf-more-menu">
+            <div bind:this={moreMenu} class="etherpk-pdf-more flex flex-col gap-0.5 rounded-lg border border-(--gk-surface-2) bg-(--gk-surface-0) p-1 shadow-lg" role="group" aria-label="More for this PDF" data-testid="pdf-more-menu">
+                <div class="flex items-center justify-between">
+                    <span class="px-2 text-sm font-medium text-(--gk-text-muted)">More</span>
+                    <button type="button" class="pdf-tool" aria-label="Close this menu" title="Close this menu" onclick={closeMoreMenu} data-testid="pdf-more-close">{@render icon("close")}</button>
+                </div>
                 {@render toggleRow("Page by page", reader.preferences.pageByPage, "pdf-page-by-page", (next) => reader.setPageByPage(next))}
                 {@render toggleRow("Crop margins", reader.cropOn, "pdf-crop", (next) => void reader.setCrop(next))}
                 {@render toggleRow("Dark pages", reader.preferences.darkPages, "pdf-dark-pages", (next) => reader.setDarkPages(next))}
@@ -606,6 +666,8 @@
                     {#if keepError}<p class="px-2 text-sm text-red-700 dark:text-red-400" role="alert" data-testid="pdf-keep-error">{keepError}</p>{/if}
                 {/if}
                 <hr class="my-0.5 border-(--gk-surface-2)" />
+                <!-- A phone alone has this: anything wider keeps the app's chrome in place. -->
+                <button type="button" class="rounded-lg px-2 py-1.5 text-left text-sm text-(--gk-text-default) hover:bg-(--gk-surface-2) sm:hidden" onclick={() => { moreOpen = false; reader.setImmersive(true); }} data-testid="pdf-full-screen">Full screen</button>
                 <!-- On a phone these leave the toolbar, so the page keeps the room. -->
                 <button type="button" class="rounded-lg px-2 py-1.5 text-left text-sm text-(--gk-text-default) hover:bg-(--gk-surface-2) sm:hidden" onclick={() => { moreOpen = false; signatureOpen = true; }} data-testid="pdf-more-sign">Add your signature</button>
                 <button type="button" class="rounded-lg px-2 py-1.5 text-left text-sm text-(--gk-text-default) hover:bg-(--gk-surface-2) sm:hidden" onclick={() => { moreOpen = false; openSave(); }} data-testid="pdf-more-save">Save a copy</button>
@@ -698,7 +760,7 @@
                         ></textarea>
                     {/if}
                 </div>
-                {#if reader.preferences.pageByPage && reader.pageCount > 1 && !reader.immersive}
+                {#if turningPages && !reader.immersive}
                     <!-- Over the page, in the style of a document's floating buttons. A person can turn
                          the page without finding a key, a swipe or the edge of the screen. On a touch
                          screen or a phone the buttons move out to the edges of the view, near a thumb. -->
@@ -710,6 +772,27 @@
                             {@render turnPage("next", "pdf-tool etherpk-pdf-page-inner")}
                         </div>
                         {@render turnPage("next", "pdf-tool etherpk-pdf-page-edge")}
+                    </div>
+                {/if}
+                {#if fileActions.length > 0 && !reader.immersive}
+                    <!-- Level with the page controls. Where the layout has a Command Bar, these buttons are on it. -->
+                    <div class="etherpk-pdf-file-actions" data-beside-next={turningPages || undefined}>
+                        {#each fileActions as action (action.id)}
+                            <button
+                                type="button"
+                                class="etherpk-pdf-file-action"
+                                aria-label={action.label}
+                                title={action.label}
+                                onpointerdown={(event) => event.preventDefault()}
+                                onmousedown={(event) => event.preventDefault()}
+                                onclick={() => runFileAction(action)}
+                                data-testid="pdf-file-action"
+                                data-command={action.command}
+                            >
+                                <!-- eslint-disable-next-line svelte/no-at-html-tags -- in-repo constant markup from the icon table -->
+                                {@html iconSvg(action.icon, { size: 18 })}
+                            </button>
+                        {/each}
                     </div>
                 {/if}
                 {#if showsColours && !reader.immersive}
@@ -757,7 +840,7 @@
                     </div>
                 {/if}
                 {#if reader.hasSelection && reader.tool !== "highlight"}
-                    <button type="button" class="etherpk-pdf-selection-action rounded-full bg-(--gk-accent) px-4 py-2 text-sm font-medium text-(--gk-surface-0) shadow-lg" onclick={() => reader.highlightSelection()} data-testid="pdf-highlight-selection">Highlight</button>
+                    <button type="button" class={["etherpk-pdf-selection-action rounded-full bg-(--gk-accent) px-4 py-2 text-sm font-medium text-(--gk-surface-0) shadow-lg", turningPages && "etherpk-pdf-selection-action--raised"]} onclick={() => reader.highlightSelection()} data-testid="pdf-highlight-selection">Highlight</button>
                 {/if}
             </div>
             {#if panelOpen}
@@ -765,7 +848,10 @@
             {/if}
         </div>
         {#if reader.immersive}
-            <button type="button" class="etherpk-pdf-page-chip rounded-full bg-black/70 px-3 py-1 text-sm text-white" aria-label="Show the controls" onclick={() => reader.setImmersive(false)} data-testid="pdf-show-controls">{reader.page} of {reader.pageCount}</button>
+            <button type="button" class="etherpk-pdf-page-chip flex items-center gap-1.5 rounded-full bg-black/70 px-3 py-2 text-sm text-white" aria-label={`Leave full screen, page ${reader.page} of ${reader.pageCount}`} title="Leave full screen" onclick={() => reader.setImmersive(false)} data-testid="pdf-show-controls">
+                {reader.page} of {reader.pageCount}
+                {@render icon("pdf-full-screen-exit")}
+            </button>
         {/if}
     {/if}
     {#if toast}
@@ -794,7 +880,7 @@
         {folderGraph}
         hasDigitalSignature={digitalSignature}
         {linkPlaces}
-        defaultLink={reader.openedFrom?.concept ?? null}
+        defaultLink={reader.openedFrom?.concept ?? linkedFrom?.[0]?.concept ?? null}
         onclose={closeSave}
         onsave={onSave}
     />
@@ -945,6 +1031,33 @@
         transform: translateX(-50%);
         z-index: 10;
     }
+    /* Above the buttons that turn the page, which have this part of the view. */
+    .etherpk-pdf-selection-action--raised {
+        bottom: calc(env(safe-area-inset-bottom) + 5.25rem);
+    }
+    .etherpk-pdf-file-actions {
+        position: absolute;
+        right: 1.5rem;
+        bottom: calc(env(safe-area-inset-bottom) + 2rem);
+        z-index: 10;
+        display: flex;
+        gap: 0.25rem;
+    }
+    .etherpk-pdf-file-action {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 2.5rem;
+        height: 2.5rem;
+        border: 1px solid var(--gk-border-strong, var(--gk-surface-2));
+        border-radius: 0.75rem;
+        background: var(--gk-surface-1);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+        color: var(--gk-text-default);
+    }
+    .etherpk-pdf-file-action:hover {
+        background: var(--gk-surface-2);
+    }
     /* Across the view, with the count in its middle whether or not the edge buttons show. Lifted
        clear of a horizontal scrollbar. Only the buttons take the pointer: the gaps are the page's. */
     .etherpk-pdf-page-nav {
@@ -971,7 +1084,8 @@
         display: flex;
         align-items: center;
         gap: 0.25rem;
-        padding: 0.25rem;
+        min-height: 2.5rem;
+        padding: 0 0.25rem;
         border-radius: 0.75rem;
     }
     .etherpk-pdf-reader :global(.pdf-tool.etherpk-pdf-page-edge) {
@@ -993,7 +1107,15 @@
         }
         .etherpk-pdf-page-progress {
             min-height: 2.75rem;
-            padding: 0.25rem 0.5rem;
+            padding: 0 0.5rem;
+        }
+        .etherpk-pdf-file-action {
+            width: 2.75rem;
+            height: 2.75rem;
+        }
+        /* The next page button has this corner here, so these sit just left of it. */
+        .etherpk-pdf-file-actions[data-beside-next] {
+            right: calc(0.75rem + 2.75rem + 0.25rem);
         }
     }
     .etherpk-pdf-page-chip {
@@ -1033,10 +1155,12 @@
         touch-action: none;
     }
     /* The same for a finger that selects text to highlight (`pdf-text-drag.ts`), with no overlay in the way. */
-    .etherpk-pdf-scroller[data-finger-draws][data-tool="highlight"] {
+    .etherpk-pdf-scroller[data-finger-draws][data-tool="highlight"],
+    .etherpk-pdf-scroller[data-tool="select"] {
         touch-action: none;
     }
-    .etherpk-pdf-scroller[data-finger-draws][data-tool="highlight"] :global(.textLayer) {
+    .etherpk-pdf-scroller[data-finger-draws][data-tool="highlight"] :global(.textLayer),
+    .etherpk-pdf-scroller[data-tool="select"] :global(.textLayer) {
         -webkit-touch-callout: none;
     }
     .etherpk-pdf-scroller[data-tool="pen"] :global(.etherpk-pdf-overlay),

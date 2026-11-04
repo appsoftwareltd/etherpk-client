@@ -11,6 +11,10 @@ export interface ExtensionWindowOptions {
     title: string
     mount(host: HTMLElement, window: { close(): void }): { destroy(): void }
     onClose?(): void
+    /** `whole` (the default) fills the window. `dialog` is a smaller box in its middle, the app dimmed behind it. */
+    size?: 'whole' | 'dialog'
+    /** For a `dialog`: asked on a click outside it, and it closes when this says yes. */
+    closesOnOutsideClick?(): boolean
 }
 
 let open: { close(): void } | null = null
@@ -33,7 +37,7 @@ export function openExtensionWindow(options: ExtensionWindowOptions): { close():
     }
     const component = mount(ExtensionWindow, {
         target: document.body,
-        props: { title: options.title, mount: options.mount, onclose: () => handle.close() },
+        props: { title: options.title, mount: options.mount, size: options.size, closesOnOutsideClick: options.closesOnOutsideClick, onclose: () => handle.close() },
     })
     open = handle
     return handle

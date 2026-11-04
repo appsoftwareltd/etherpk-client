@@ -156,6 +156,42 @@ export function laneAfter(status: TaskStatus, step: -1 | 1): TaskStatus | undefi
 }
 
 /**
+ * The nearest lane `step` places along from `status` that holds a task, or undefined when none
+ * further along does: where the left and right arrows take the keyboard under the [[Phone Layout]],
+ * which walks past an empty lane as the desktop's do.
+ */
+export function nextLaneWithTasks(lanes: readonly BoardLane[], status: TaskStatus, step: -1 | 1): TaskStatus | undefined {
+    for (let next = laneAfter(status, step); next !== undefined; next = laneAfter(next, step)) {
+        const candidate = next
+        if (lanes.some((lane) => lane.status === candidate && lane.total > 0)) return candidate
+    }
+    return undefined
+}
+
+/**
+ * The lanes to read for their counts alone. On a desktop, `phoneLane` being null, those are the
+ * collapsed ones. The [[Phone Layout]] draws one lane, so it is every lane but that one, whether
+ * or not a desktop has it collapsed.
+ */
+export function countOnlyLanes(collapsed: readonly TaskStatus[], phoneLane: TaskStatus | null): ReadonlySet<TaskStatus> {
+    if (phoneLane === null) return new Set(collapsed)
+    return new Set(BOARD_LANES.map((lane) => lane.status).filter((status) => status !== phoneLane))
+}
+
+/**
+ * The lane the [[Phone Layout]] draws: the chosen one once its cards are read, and until then the
+ * lane that has cards, so choosing a lane keeps the last one on screen rather than blanking it.
+ */
+export function drawnLane(lanes: readonly BoardLane[], chosen: TaskStatus): BoardLane {
+    return lanes.find((lane) => lane.status === chosen && lane.loaded) ?? lanes.find((lane) => lane.loaded) ?? lanes[0]
+}
+
+/** How many tasks a lane shows, and of how many when its [[Lane Filter]] hides some. */
+export function laneCountText(lane: Pick<BoardLane, 'total' | 'unfiltered' | 'filter'>): string {
+    return lane.filter === null ? String(lane.total) : `${lane.total} of ${lane.unfiltered}`
+}
+
+/**
  * The section `step` places along from `priority`, or undefined past either end. `null` is a
  * real answer, the No priority section below P3, which is why "none" is undefined.
  */

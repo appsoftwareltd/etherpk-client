@@ -7,6 +7,7 @@ import {
     buildAssetMarkdown,
     createAssetStore,
     displayAssetName,
+    isBareAssetId,
     isImageExt,
     mimeTypeForExt,
     splitNameExt,
@@ -220,6 +221,15 @@ describe('createAssetStore.save content-only de-duplication', () => {
         await store.save({ name: 'b.png', bytes: bytes('same'), type: 'image/png' }, (n) => seen.push(n))
 
         expect(seen).toEqual([4, 4])
+    })
+})
+
+describe('isBareAssetId', () => {
+    it('knows a synced graph\'s id from a file\'s name', () => {
+        expect(isBareAssetId('2f370a53-60fb-4a4e-87f2-67e637f1795d.pdf')).toBe(true)
+        expect(isBareAssetId('2f370a53-60fb-4a4e-87f2-67e637f1795d')).toBe(true)
+        expect(isBareAssetId('garden-guide.a1b2c3d4.pdf')).toBe(false)
+        expect(isBareAssetId('Garden Guide.pdf')).toBe(false)
     })
 })
 

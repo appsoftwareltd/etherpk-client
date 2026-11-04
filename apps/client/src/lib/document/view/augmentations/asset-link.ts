@@ -27,6 +27,7 @@ import { type AssetContextMenuTarget, openContextMenu, tryGetActiveCommandRegist
 
 import { assetClickCommand, assetExtension, assetExtensionAction, runAssetCommand } from '../../asset-affordances'
 
+import { editorDocument } from '../editor-document'
 import { assetTargetAt, attachAssetContextMenu, buildAssetActions } from './asset-actions'
 import { parseImageDisplaySizeHint } from './image-display-size'
 import { hiddenSyntax, hiddenSyntaxPlugin, type HiddenSyntaxSpec } from './base-renderer'
@@ -57,7 +58,7 @@ function assetLinkTarget(view: EditorView, el: HTMLElement, ref: string, anchor:
         return null
     }
     const span = assetLinkSpans(view.state).find((s) => s.target === ref && s.from <= pos && pos <= s.to)
-    return span ? { kind: 'asset', ref, line: view.state.doc.lineAt(pos).number, occurrence: 0 } : null
+    return span ? { kind: 'asset', ref, line: view.state.doc.lineAt(pos).number, occurrence: 0, concept: view.state.facet(editorDocument)?.concept } : null
 }
 
 /** The trailing icon cluster. Always visible — there is no hover on touch, and this is the only

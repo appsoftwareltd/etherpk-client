@@ -87,7 +87,6 @@
         registerEditorCommands,
         registerLinkCommands,
         setActiveDocument,
-        editorContext,
     } from "#lib/document/index.js";
     import { todayISO } from "#lib/document/calendar/month-grid-core.js";
     import { canonicalConceptName, openConcept, openConceptAtDocumentLine, openConceptAtLine, openConceptBeside, openViewInPaneOf } from "#lib/document/open-concept.js";
@@ -461,6 +460,7 @@
         type ServerDocumentStore,
     } from "#lib/storage/synced/server-document-store.js";
     import { createServerAssetStore, type ServerAssetStore } from "#lib/storage/synced/server-asset-store.js";
+    import { activeFile, noteFileInFront } from "#lib/document/file-in-front.js";
     import { openAssetCopies } from "#lib/storage/synced/asset-copies.js";
     import {
         MIRROR_PHASE_LABELS,
@@ -1797,7 +1797,7 @@
      * ran the focus policy, so a phone never recorded a Recent (reported 2026-09-14).
      */
     function noteMainViewActivated(view: ViewRef): void {
-        editorContext.fileInFront = view.kind === "asset";
+        noteFileInFront(view.kind === "asset" ? view.target : null);
         if (view.kind === "asset") recents?.touchKnownPdf(view.target);
         if (view.kind !== "document") return;
         setActiveDocument(view.target);
@@ -4751,6 +4751,7 @@
                     }
                 },
                 activeDocument: () => getActiveDocument(),
+                activeFile,
                 isDesktop: () => !useMobile,
                 openWindow: (options) => openExtensionWindow(options),
             },
@@ -4851,12 +4852,11 @@
                 protectedUsage: protectedUsageOf,
                 download: downloadResolvedAsset,
                 copyImage: copyImageToClipboard,
-                openAsset: (assetId, ref, line) => {
+                openAsset: (assetId, ref, line, concept) => {
                     // A link to a page of a PDF. The tab is keyed by the Asset alone.
                     const linkedPage = pageFromReference(ref);
                     if (linkedPage !== null) requestPdfPage(assetId, linkedPage);
-                    // A line says the click came from an editor, which focused itself before this ran.
-                    const concept = getActiveDocument();
+                    // Named by the editor it was used in, so it holds however focus has gone.
                     if (line !== undefined && concept) notePdfOpenedFrom(assetId, { concept, line });
                     controller?.openView({ kind: "asset", target: assetId });
                 },
@@ -5298,6 +5298,7 @@
                 // document is active, however it was activated (tab click, navigation).
                 onActiveViewChange: (view) => {
                     if (view) noteMainViewActivated(view);
+                    else noteFileInFront(null);
                     // A raw tab click activates a panel without passing through the
                     // controller; mirror it into the model so persistence and the
                     // Visit engine (via onChange) see the real active View.
@@ -7411,6 +7412,7 @@
         detachMeta?.();
         if (metaSeedTimer) clearTimeout(metaSeedTimer);
         setActiveDocument(null);
+        noteFileInFront(null);
         if (workspaceGeneration !== undefined) {
             clearWorkspaceServices(workspaceGeneration);
             workspaceGeneration = undefined;

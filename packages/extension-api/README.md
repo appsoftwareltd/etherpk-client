@@ -340,8 +340,10 @@ context.commands.register('hello.taskWords', (target) => {
 
 `context.commandBar.register({ id, title, icon, command, pinned })` adds a button to the row of
 buttons across the bottom of a phone's screen: after the editing buttons that scroll, or with
-`pinned`, at the bar's right end, where it never scrolls away. With `documentOnly`, it is greyed
-while a tab that shows a file, such as a PDF, is in front.
+`pinned`, at the bar's right end, where it never scrolls away. With `files`, it is greyed while a tab
+that shows any other type of file is in front, and with `pinned` as well it floats at the bottom right
+of that file's tab in the desktop layout, which has no bar. `context.layout.activeFile()` says which
+file is in front and what text is selected in it.
 
 ### Key chords
 
@@ -412,7 +414,7 @@ thumbnail.addEventListener('click', () => void context.assets.viewImages({ refs:
 ### Icons
 
 `context.icons.svg(name)` draws one of the extension's own icons or one of the Client's, as markup the
-Client trusts. The Client's icons, which every `icon` field may name too, are `alias`, `archive`, `backlinks`, `bold`, `bookmark`, `bullet`, `calendar`, `check`, `clock`, `close`, `code`, `copy`, `download`, `fit`, `flag`, `fold`, `frontmatter`, `globe`, `graph`, `grip`, `headless-client`, `highlight`, `image`, `import`, `indent`, `italic`, `list`, `lock`, `lock-open`, `more`, `move`, `move-down`, `move-up`, `new-page`, `open-external`, `outdent`, `page`, `pdf`, `pdf-eraser`, `pdf-highlighter`, `pdf-note`, `pdf-page-next`, `pdf-page-previous`, `pdf-pen`, `pdf-print`, `pdf-signature`, `pageless`, `pane-below`, `pane-right`, `pin`, `redo`, `rename`, `reset`, `search`, `slash`, `spell-check`, `table`, `table-add-column`, `table-add-row`, `table-format`, `table-remove-column`, `table-remove-row`, `task`, `task-reference`, `template`, `text-lines`, `today`, `todays-journal`, `tomorrow`, `trash`, `undo`, `view-larger`, `wikilink-close`, `wikilink-open`, `yesterday`, `zoom-in`, `zoom-out`. An
+Client trusts. The Client's icons, which every `icon` field may name too, are `alias`, `archive`, `backlinks`, `bold`, `bookmark`, `bullet`, `calendar`, `check`, `clock`, `close`, `code`, `copy`, `download`, `fit`, `flag`, `fold`, `frontmatter`, `globe`, `graph`, `grip`, `headless-client`, `highlight`, `image`, `import`, `indent`, `italic`, `list`, `lock`, `lock-open`, `more`, `move`, `move-down`, `move-up`, `new-page`, `open-external`, `outdent`, `page`, `pdf`, `pdf-eraser`, `pdf-highlighter`, `pdf-note`, `pdf-page-next`, `pdf-page-previous`, `pdf-full-screen-exit`, `pdf-save`, `pdf-select`, `pdf-pen`, `pdf-print`, `pdf-signature`, `pageless`, `pane-below`, `pane-right`, `pin`, `redo`, `rename`, `reset`, `search`, `slash`, `spell-check`, `table`, `table-add-column`, `table-add-row`, `table-format`, `table-remove-column`, `table-remove-row`, `task`, `task-reference`, `template`, `text-lines`, `today`, `todays-journal`, `tomorrow`, `trash`, `undo`, `view-larger`, `wikilink-close`, `wikilink-open`, `yesterday`, `zoom-in`, `zoom-out`. An
 icon may be added in a later release, never taken away. An unknown name draws a small dot.
 
 ### Settings sections

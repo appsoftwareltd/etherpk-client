@@ -16,6 +16,7 @@ export function fakeContext(options: { desktop?: boolean } = {}) {
         reveal: vi.fn<(kind: string) => void>(),
         openDocument: vi.fn<(concept: string, options?: { line?: number; inPaneOf?: string; beside?: string }) => void>(),
         activeDocument: () => null,
+        activeFile: () => null,
         isDesktop: () => options.desktop ?? true,
         openWindow: vi.fn(() => ({ close: () => {} })),
     }

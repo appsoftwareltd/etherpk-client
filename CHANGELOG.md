@@ -5,6 +5,33 @@ What changed in each release of the EtherPK Client and the Headless Client
 They are released together, under the version number they share with the Sync Server. This log
 starts at 0.9.3.
 
+## Unreleased
+
+### Client
+
+- **Ask an agent about a PDF.** Select text in a PDF and press the Agent button, on the Command Bar on a
+  phone or at the bottom right of the tab on a larger screen, or press Alt+A. A chat opens with the text
+  as its message, ready for a question. The model receives only what is in the chat, and the chat is not
+  kept: **Copy** takes the latest answer as bullets to paste anywhere.
+- **Select text in a PDF with a finger or a stylus.** A new **Select text** tool sits before Highlight
+  text. Neither can be turned on on a page with no text.
+- **Reading a PDF on a phone.** The toolbar stays in place when you scroll or tap the page. **Full screen**
+  in the **More** menu gives the PDF the whole window, and a button at the bottom right brings the
+  controls back.
+- **Saving a copy of a PDF.** **Save a copy** is on the phone's toolbar, with a new icon. The new link goes
+  after an existing link to the PDF unless you choose otherwise.
+- **Extension API.** `layout.activeFile()` says which file's tab is in front and what is selected in it,
+  and `layout.openWindow` takes a `size` and `closesOnOutsideClick`. A Command Bar button's `files`
+  names the types of file it works on, and replaces `documentOnly`.
+- **Kanban boards on a phone.** Boards now open in the phone layout, from the same menus as on a desktop
+  and from the **Graph Kanban** button. A board shows one lane at a time, chosen from a selector that
+  counts the tasks in each, and remembers your lane on each device. To move a card, long-press it or
+  press its three dots, or use **Lane** in the task editor. The board says where the card went, with
+  **Undo**.
+- **Fixes.** A right-click menu too tall for the screen now scrolls. What you are reading in a journal tab's older days stays still when several lines arrive above it in quick succession. The **More** menu in a PDF closes with its close button or a press outside it. Undo and redo in
+  a PDF go to the page they change. Search has a close button at the top right. The message shown while a
+  file loads is at the top of the view, and a phone's list of open documents shows a synced PDF's name.
+
 ## 0.19.0 - 2026-11-04
 
 ### Client

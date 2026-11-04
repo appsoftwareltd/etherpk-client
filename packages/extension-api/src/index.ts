@@ -28,6 +28,7 @@ export type {
     ExtensionGraphSidebar,
     ExtensionIcons,
     ExtensionKeybindings,
+    ActiveFile,
     ExtensionLayout,
     ExtensionModule,
     ExtensionPersonStorage,

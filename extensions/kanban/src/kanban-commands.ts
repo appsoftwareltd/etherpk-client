@@ -2,10 +2,10 @@
  * The Commands, [[Context Menu]] rows and [[Command Menu]] rows of a [[Kanban Board]] (ADR 0113):
  * Open Kanban Board on a document tab or a wikilink, `/kanban` in the editor, the Graph Kanban's
  * Command Menu row and Graph Sidebar button, Open page on a board's own tab, and the rows of a
- * card's own menu and of a lane's. Desktop only, but for Open page: under the phone layout a board cannot show,
- * and its tab's one row opens the page it is about. And Open in task editor on any task the Client
- * raises a menu on, a task's line in an editor or a Tasks View row, on a phone too: the [[Task
- * Editor]] (ADR 0170) opens over whatever is on screen, and fills a phone's.
+ * card's own menu and of a lane's. All of them on either layout but Open in pane below, since the
+ * [[Phone Layout]] has no room for a [[Task Detail]]. And Open in task editor on any task the Client
+ * raises a menu on, a task's line in an editor or a Tasks View row: the [[Task Editor]] (ADR 0170)
+ * opens over whatever is on screen, and fills a phone's.
  *
  * All of it goes through the extension's context (ADR 0121), which takes it back as the graph
  * closes. A card's rows act through the board that raised the menu (`board-actions.ts`), which
@@ -142,7 +142,6 @@ export interface KanbanCommandDeps {
 
 export function registerKanbanCommands(context: ExtensionContext, deps: KanbanCommandDeps): void {
     const { commands, contextMenu, commandMenu, graphSidebar, layout } = context
-    const onCard = (target: MenuTarget) => isCardTarget(target) && layout.isDesktop()
     /** The board and card a row acts on, or nothing when the board has since closed. */
     const reach = (arg: unknown) => {
         const target = arg as MenuTarget | undefined
@@ -156,7 +155,7 @@ export function registerKanbanCommands(context: ExtensionContext, deps: KanbanCo
 
     commands.register(KANBAN_OPEN_BOARD, (arg) => {
         const target = arg as MenuTarget | undefined
-        if (!conceptTarget(target) || !layout.isDesktop()) return
+        if (!conceptTarget(target)) return
         // In the Pane of the tab, or of the editor the link is in, as a link clicked there opens.
         openBoard(target.concept, target.panelId)
     })
@@ -169,12 +168,12 @@ export function registerKanbanCommands(context: ExtensionContext, deps: KanbanCo
         // Straight after Show Backlinks (5), among the rows that show something about the
         // concept without changing anything.
         order: 6,
-        when: (target) => conceptTarget(target) && layout.isDesktop(),
+        when: conceptTarget,
     })
     commands.register(KANBAN_OPEN_AT_CARET, () => {
         const view = getActiveEditorView()
         // Only the editor being worked in: a list drawn in another would get none of the keys.
-        if (!view || !view.hasFocus || !layout.isDesktop()) return
+        if (!view || !view.hasFocus) return
         const { state } = view
         const shown = state.facet(editorDocument)
         const head = state.selection.main.head
@@ -198,7 +197,7 @@ export function registerKanbanCommands(context: ExtensionContext, deps: KanbanCo
     })
     commands.register(KANBAN_OPEN_BOARD_FOR, (arg) => {
         const { concept, panelId } = (arg ?? {}) as { concept?: unknown; panelId?: unknown }
-        if (typeof concept !== 'string' || !layout.isDesktop()) return
+        if (typeof concept !== 'string') return
         openBoard(concept, typeof panelId === 'string' ? panelId : undefined)
     })
     commandMenu.register({
@@ -211,11 +210,9 @@ export function registerKanbanCommands(context: ExtensionContext, deps: KanbanCo
         order: 140,
         keywords: ['board', 'lanes', 'tasks', 'status'],
         // Not gated on `bodyWritable`: opening a board writes nothing to the page.
-        when: () => layout.isDesktop(),
         command: KANBAN_OPEN_AT_CARET,
     })
     commands.register(KANBAN_OPEN_WHOLE, (arg) => {
-        if (!layout.isDesktop()) return
         const { panelId } = (arg ?? {}) as { panelId?: unknown }
         // From the Command Menu, in the Pane of the editor it was typed in, as a concept's board opens.
         const from = typeof panelId === 'string' ? panelId : getActiveEditorView()?.state.facet(editorDocument)?.panelId
@@ -230,7 +227,6 @@ export function registerKanbanCommands(context: ExtensionContext, deps: KanbanCo
         // Straight after Open Kanban (140), the board for one concept.
         order: 141,
         keywords: ['board', 'lanes', 'tasks', 'status', 'everything', 'all'],
-        when: () => layout.isDesktop(),
         command: KANBAN_OPEN_WHOLE,
     })
     graphSidebar.register({
@@ -240,8 +236,6 @@ export function registerKanbanCommands(context: ExtensionContext, deps: KanbanCo
         icon: 'kanban',
         // After the Graph Map (20), as the grid reads: Search, today, the map, the board.
         order: 30,
-        // Asked as the Sidebar draws, which it does afresh when the layout changes.
-        when: () => layout.isDesktop(),
         command: KANBAN_OPEN_WHOLE,
     })
     commands.register(KANBAN_OPEN_PAGE, (arg) => {
@@ -261,30 +255,31 @@ export function registerKanbanCommands(context: ExtensionContext, deps: KanbanCo
         const found = reach(arg)
         found?.actions.open(found.target.card)
     })
-    contextMenu.register({ id: KANBAN_CARD_OPEN, label: OPEN_IN_TASK_EDITOR, command: KANBAN_CARD_OPEN, order: 1, when: onCard })
+    contextMenu.register({ id: KANBAN_CARD_OPEN, label: OPEN_IN_TASK_EDITOR, command: KANBAN_CARD_OPEN, order: 1, when: isCardTarget })
     // The same on any task the Client raises a menu on, first, ahead of the Client's own task rows
-    // (Copy task reference from 85). Not gated on the desktop: the Task Editor fills a phone's screen.
+    // (Copy task reference from 85).
     commands.register(KANBAN_OPEN_IN_TASK_EDITOR, (arg) => {
         const task = contextMenu.taskOf(arg as MenuTarget)
         if (task) deps.openTaskEditor({ kind: 'edit', document: task.document, line: task.line, text: task.label })
     })
     contextMenu.register({ id: KANBAN_OPEN_IN_TASK_EDITOR, label: OPEN_IN_TASK_EDITOR, command: KANBAN_OPEN_IN_TASK_EDITOR, order: 0, when: (target) => contextMenu.taskOf(target) !== null })
     // The document as text below the board, where everything around the task is edited (ADR 0170).
+    // The Phone Layout has no room below the board: Open in tab takes a phone to the same place.
     commands.register(KANBAN_CARD_OPEN_BELOW, (arg) => {
         const found = reach(arg)
         found?.actions.openBelow(found.target.card)
     })
-    contextMenu.register({ id: KANBAN_CARD_OPEN_BELOW, label: 'Open in pane below', command: KANBAN_CARD_OPEN_BELOW, order: 2, when: onCard })
+    contextMenu.register({ id: KANBAN_CARD_OPEN_BELOW, label: 'Open in pane below', command: KANBAN_CARD_OPEN_BELOW, order: 2, when: (target) => isCardTarget(target) && layout.isDesktop() })
     commands.register(KANBAN_CARD_OPEN_IN_TAB, (arg) => {
         const found = reach(arg)
         found?.actions.openInTab(found.target.card)
     })
-    contextMenu.register({ id: KANBAN_CARD_OPEN_IN_TAB, label: 'Open in tab', command: KANBAN_CARD_OPEN_IN_TAB, order: 3, when: onCard })
+    contextMenu.register({ id: KANBAN_CARD_OPEN_IN_TAB, label: 'Open in tab', command: KANBAN_CARD_OPEN_IN_TAB, order: 3, when: isCardTarget })
     commands.register(KANBAN_CARD_COPY_REFERENCE, (arg) => {
         const found = reach(arg)
         found?.actions.copyReference(found.target.card)
     })
-    contextMenu.register({ id: KANBAN_CARD_COPY_REFERENCE, label: 'Copy task reference', command: KANBAN_CARD_COPY_REFERENCE, order: 4, when: onCard })
+    contextMenu.register({ id: KANBAN_CARD_COPY_REFERENCE, label: 'Copy task reference', command: KANBAN_CARD_COPY_REFERENCE, order: 4, when: isCardTarget })
 
     // One row per lane, leaving out the card's own, then Archive, which takes the card off the
     // board (ADR 0167). The first row shown heads the group and carries its separator.
@@ -303,7 +298,7 @@ export function registerKanbanCommands(context: ExtensionContext, deps: KanbanCo
             command: id,
             order: 10 + index,
             separatorBefore: (target) => firstOtherLane(target) === lane.status,
-            when: (target) => onCard(target) && isCardTarget(target) && target.status !== lane.status,
+            when: (target) => isCardTarget(target) && target.status !== lane.status,
         })
     }
 
@@ -321,7 +316,7 @@ export function registerKanbanCommands(context: ExtensionContext, deps: KanbanCo
         // The icon of the Client's Copy task reference row, so the two read as one family.
         icon: 'task-reference',
         order: 1,
-        when: (target) => isLaneTarget(target) && layout.isDesktop(),
+        when: isLaneTarget,
     })
 
     // Move all to lane (ADR 0167): ask where, in the Client's dialog, then move the lane through
@@ -349,7 +344,7 @@ export function registerKanbanCommands(context: ExtensionContext, deps: KanbanCo
         order: 2,
         // Apart from Copy lane reference above it: this one writes.
         separatorBefore: true,
-        when: (target) => isLaneTarget(target) && target.count > 0 && layout.isDesktop(),
+        when: (target) => isLaneTarget(target) && target.count > 0,
     })
 
     // One row per priority, leaving out the card's own, grouped the same way.
@@ -366,7 +361,7 @@ export function registerKanbanCommands(context: ExtensionContext, deps: KanbanCo
             command: id,
             order: 20 + index,
             separatorBefore: (target) => firstOtherPriority(target) === section,
-            when: (target) => onCard(target) && isCardTarget(target) && target.priority !== section.priority,
+            when: (target) => isCardTarget(target) && target.priority !== section.priority,
         })
     }
 }

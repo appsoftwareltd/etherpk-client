@@ -43,7 +43,7 @@ export function fakeGraphServices(graphId = 'g1') {
                 return () => indexListeners.delete(listener as () => void)
             },
         },
-        layout: { openView: vi.fn(), reveal: vi.fn(), openDocument: vi.fn(), activeDocument: () => null, isDesktop: () => true, openWindow: vi.fn(() => ({ close: vi.fn() })) },
+        layout: { openView: vi.fn(), reveal: vi.fn(), openDocument: vi.fn(), activeFile: () => null, activeDocument: () => null, isDesktop: () => true, openWindow: vi.fn(() => ({ close: vi.fn() })) },
         concepts: { key: (name) => name.toLowerCase(), canonicalName: (name) => name },
         keybindings: {
             add(binding) {

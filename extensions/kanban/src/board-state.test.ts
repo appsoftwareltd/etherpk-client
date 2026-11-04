@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest'
 
 import { createBoardStateStore, defaultBoardState } from './board-state'
 
-// What a device remembers about a [[Kanban Board]] (ADR 0113): its collapsed lanes, and the task
-// its Task Detail shows and how tall it is.
+// What a device remembers about a [[Kanban Board]] (ADR 0113): its collapsed lanes, the task its
+// Task Detail shows and how tall it is, and the lane the [[Phone Layout]] shows.
 
 /** A Storage over a Map, which is all the store needs of localStorage. */
 function memoryStorage(): Storage {
@@ -21,22 +21,35 @@ function memoryStorage(): Storage {
 }
 
 describe('board state', () => {
-    it('starts with Done and Cancelled collapsed and the Task Detail closed at half the height', () => {
+    it('starts with Done and Cancelled collapsed, the Task Detail closed at half the height, and the phone on Open', () => {
         const store = createBoardStateStore('g1', 'Acme', memoryStorage())
         expect(store.get()).toEqual(defaultBoardState())
-        expect(defaultBoardState()).toEqual({ collapsed: ['done', 'cancelled'], detail: null, detailHeight: 0.5 })
+        expect(defaultBoardState()).toEqual({ collapsed: ['done', 'cancelled'], detail: null, detailHeight: 0.5, phoneLane: 'open' })
     })
 
     it('remembers what it is given, for the next time the board opens', () => {
         const storage = memoryStorage()
         const store = createBoardStateStore('g1', 'Acme', storage)
-        store.set({ collapsed: ['done'], detail: { document: '2026-09-29', line: 3, label: 'Send the quote' }, detailHeight: 0.4 })
+        store.set({ collapsed: ['done'], detail: { document: '2026-09-29', line: 3, label: 'Send the quote' }, detailHeight: 0.4, phoneLane: 'doing' })
         store.flush()
         expect(createBoardStateStore('g1', 'Acme', storage).get()).toEqual({
             collapsed: ['done'],
             detail: { document: '2026-09-29', line: 3, label: 'Send the quote' },
             detailHeight: 0.4,
+            phoneLane: 'doing',
         })
+    })
+
+    it("reads a board saved before the phone's lane was remembered, and keeps the rest of it", () => {
+        const storage = memoryStorage()
+        storage.setItem('etherpk-kanban:g1:acme', JSON.stringify({ version: 1, state: { collapsed: ['test'], detail: null, detailHeight: 0.3 } }))
+        expect(createBoardStateStore('g1', 'Acme', storage).get()).toEqual({ collapsed: ['test'], detail: null, detailHeight: 0.3, phoneLane: 'open' })
+    })
+
+    it('goes back to Open from a phone lane it cannot read, and keeps the rest of the board', () => {
+        const storage = memoryStorage()
+        storage.setItem('etherpk-kanban:g1:acme', JSON.stringify({ version: 1, state: { collapsed: ['test'], detail: null, detailHeight: 0.3, phoneLane: 'someday' } }))
+        expect(createBoardStateStore('g1', 'Acme', storage).get()).toEqual({ collapsed: ['test'], detail: null, detailHeight: 0.3, phoneLane: 'open' })
     })
 
     it('keeps each board apart, whatever case its concept is written in', () => {

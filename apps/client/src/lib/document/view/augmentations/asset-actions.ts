@@ -20,6 +20,7 @@ import { type AssetContextMenuTarget, openContextMenu } from '#lib/surface/index
 
 import { type AssetActionOptions, assetActions, runAssetCommand } from '../../asset-affordances'
 import { allAssetReferences } from '../../asset-reference'
+import { editorDocument } from '../editor-document'
 import { buildActionCluster } from './inline-actions'
 
 /** How long a touch must be held, and how far it may drift, to raise the Context Menu. */
@@ -57,7 +58,7 @@ export function assetTargetAt(
     // element, which keeps a single-reference line right even if the offset drifts by a character.
     const occurrence =
         exact !== -1 ? exact : spans.reduce((best, span, i) => (edge(span) <= offset ? i : best), 0)
-    return { kind: 'asset', ref, line: line.number, occurrence }
+    return { kind: 'asset', ref, line: line.number, occurrence, concept: view.state.facet(editorDocument)?.concept }
 }
 
 export interface AssetActionsOptions extends AssetActionOptions {

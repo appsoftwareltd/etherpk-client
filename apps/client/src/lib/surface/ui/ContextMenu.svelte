@@ -9,7 +9,8 @@
      * without every call site owning a popup.
      *
      * Positioning is viewport-clamped rather than clever: the menu is small, and flipping it
-     * to stay on screen matters far more than anchoring it prettily.
+     * to stay on screen matters far more than anchoring it prettily. On a screen shorter than
+     * its rows, it fills the height and scrolls.
      */
     import { tick } from "svelte";
 
@@ -67,8 +68,8 @@
             const width = rect?.width ?? 200;
             const height = rect?.height ?? 120;
             pos = {
-                x: Math.min(menu.x, window.innerWidth - width - 8),
-                y: Math.min(menu.y, window.innerHeight - height - 8),
+                x: Math.max(8, Math.min(menu.x, window.innerWidth - width - 8)),
+                y: Math.max(8, Math.min(menu.y, window.innerHeight - height - 8)),
             };
             el?.focus();
         })();
@@ -86,6 +87,12 @@
         await getActiveCommandRegistry().execute(row.command, target);
     }
 
+    /** Light a row from the keyboard, scrolling it into sight in a menu too tall for the screen. */
+    function moveActive(index: number) {
+        active = index;
+        el?.querySelectorAll('[role="menuitem"]')[index]?.scrollIntoView({ block: "nearest" });
+    }
+
     function onKeydown(event: KeyboardEvent) {
         if (rows.length === 0) return;
         if (event.key === "Escape") {
@@ -93,10 +100,10 @@
             closeContextMenu();
         } else if (event.key === "ArrowDown") {
             event.preventDefault();
-            active = (active + 1) % rows.length;
+            moveActive((active + 1) % rows.length);
         } else if (event.key === "ArrowUp") {
             event.preventDefault();
-            active = (active - 1 + rows.length) % rows.length;
+            moveActive((active - 1 + rows.length) % rows.length);
         } else if (event.key === "Enter" || event.key === " ") {
             event.preventDefault();
             void run(active);
@@ -135,7 +142,7 @@
         oncontextmenu={(e) => e.preventDefault()}
         style:left="{pos.x}px"
         style:top="{pos.y}px"
-        class="gk-menu fixed z-(--z-menu) focus:outline-none"
+        class="gk-menu fixed z-(--z-menu) max-h-[calc(100dvh-1rem)] overflow-y-auto focus:outline-none"
     >
         <!-- EtherPK's menu classes (controls.css, ADR 0151), which an extension's menus use too. The
              row the keyboard is on is lit as the pointer lights one. -->

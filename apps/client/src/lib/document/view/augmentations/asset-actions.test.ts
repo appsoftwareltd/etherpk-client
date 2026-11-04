@@ -2,6 +2,7 @@ import { EditorState } from '@codemirror/state'
 import type { EditorView } from '@codemirror/view'
 import { describe, expect, it } from 'vitest'
 
+import { editorDocument } from '../editor-document'
 import { assetTargetAt } from './asset-actions'
 
 /**
@@ -33,6 +34,14 @@ describe('assetTargetAt', () => {
             line: 2,
             occurrence: 0,
         })
+    })
+
+    it('names the document its own editor shows', () => {
+        const doc = `[q3](${REF})`
+        const state = EditorState.create({ doc, extensions: [editorDocument.of({ concept: 'Garden' })] })
+        const view = { state, posAtDOM: () => 0 } as unknown as EditorView
+
+        expect(assetTargetAt(view, el, REF, 'start')?.concept).toBe('Garden')
     })
 
     it('tells two references on one line apart by where the element starts', () => {

@@ -2,6 +2,7 @@
     /**
      * A window filling the whole EtherPK window, over the sidebars and the tabs, with the browser's
      * own chrome left alone: a heading, a close button, and the caller's content filling the rest.
+     * With `dialog` it is a smaller box in the middle of the window, the app dimmed behind it.
      * The shell of the Fence Window (`FenceWindow.svelte`) and of an extension's window
      * (`ExtensionWindow.svelte`, ADR 0147).
      *
@@ -21,6 +22,8 @@
         onclose,
         closeOnEscape = false,
         focusClose = false,
+        dialog = false,
+        closesOnOutsideClick,
         children,
     }: {
         title: string;
@@ -34,6 +37,10 @@
         closeOnEscape?: boolean;
         /** The close button takes the keyboard as the window opens. */
         focusClose?: boolean;
+        /** A smaller box in the middle of the window, not the whole of it. */
+        dialog?: boolean;
+        /** For a `dialog`: asked on a click outside it, and it closes when this says yes. */
+        closesOnOutsideClick?: () => boolean;
         /** The content, handed the window's own close: it also gives the keyboard back. */
         children: Snippet<[close: () => void]>;
     } = $props();
@@ -97,17 +104,38 @@
     const focusOnOpen: Attachment<HTMLButtonElement> = (button) => {
         if (focusClose) button.focus();
     };
+
+    /** A press outside the dialog keeps the keyboard where it is, so Escape still reaches the window. */
+    function keepFocus(event: MouseEvent) {
+        if (event.target === event.currentTarget) event.preventDefault();
+    }
+
+    function onOutsideClick(event: MouseEvent) {
+        if (event.target === event.currentTarget && closesOnOutsideClick?.()) close();
+    }
 </script>
 
-<div class="full-window" role="dialog" aria-modal="true" aria-labelledby={titleId} tabindex="-1" {onkeydown} data-testid={testId}>
-    <header class="flex shrink-0 items-center justify-between gap-3 border-b border-(--gk-border-soft) px-4 py-2">
-        <h2 id={titleId} class="m-0 truncate text-sm font-semibold text-(--gk-text-default)">{title}</h2>
-        <button type="button" class="return" onclick={close} aria-label="Close" title="Close" data-testid="{testId}-return" {@attach focusOnOpen}><svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" class="size-5"><path d="M6.28 5.22a.75.75 0 0 0-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 1 0 1.06 1.06L10 11.06l3.72 3.72a.75.75 0 1 0 1.06-1.06L11.06 10l3.72-3.72a.75.75 0 0 0-1.06-1.06L10 8.94 6.28 5.22Z" /></svg></button>
-    </header>
-    <div class="relative min-h-0 flex-1">
-        {@render children(close)}
+{#snippet shell()}
+    <div class={["full-window", dialog && "full-window--dialog"]} role="dialog" aria-modal="true" aria-labelledby={titleId} tabindex="-1" {onkeydown} data-testid={testId}>
+        <header class="flex shrink-0 items-center justify-between gap-3 border-b border-(--gk-border-soft) px-4 py-2">
+            <h2 id={titleId} class="m-0 truncate text-sm font-semibold text-(--gk-text-default)">{title}</h2>
+            <button type="button" class="return" onclick={close} aria-label="Close" title="Close" data-testid="{testId}-return" {@attach focusOnOpen}><svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" class="size-5"><path d="M6.28 5.22a.75.75 0 0 0-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 1 0 1.06 1.06L10 11.06l3.72 3.72a.75.75 0 1 0 1.06-1.06L11.06 10l3.72-3.72a.75.75 0 0 0-1.06-1.06L10 8.94 6.28 5.22Z" /></svg></button>
+        </header>
+        <div class="relative min-h-0 flex-1">
+            {@render children(close)}
+        </div>
     </div>
-</div>
+{/snippet}
+
+{#if dialog}
+    <!-- The keyboard's way out is Escape and the close button: this is only a press on what is behind. -->
+    <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+    <div class="full-window-backdrop" onmousedown={keepFocus} onclick={onOutsideClick} data-testid="{testId}-backdrop">
+        {@render shell()}
+    </div>
+{:else}
+    {@render shell()}
+{/if}
 
 <style>
     .full-window {
@@ -118,6 +146,27 @@
         flex-direction: column;
         background: var(--gk-surface-0);
         animation: full-window-in 150ms ease-out both;
+    }
+    .full-window-backdrop {
+        position: fixed;
+        inset: 0;
+        z-index: var(--z-window);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 1rem;
+        background: rgb(0 0 0 / 0.4);
+    }
+    .full-window--dialog {
+        position: relative;
+        inset: auto;
+        width: min(42rem, 100%);
+        height: 70vh;
+        max-height: 100%;
+        overflow: hidden;
+        border: 1px solid var(--gk-border-strong);
+        border-radius: 0.75rem;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
     }
     @keyframes full-window-in {
         from {

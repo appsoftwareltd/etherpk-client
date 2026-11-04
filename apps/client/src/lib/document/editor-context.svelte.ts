@@ -33,7 +33,8 @@ export const editorContext = $state<{
     bulletToggleOn: boolean
     indentable: boolean
     bodyWritable: boolean
-    fileInFront: boolean
+    fileInFront: string | null
+    commandBarShowing: boolean
     tableInsertable: boolean
     table: EditorTableContext | null
     canUndo: boolean
@@ -60,8 +61,10 @@ export const editorContext = $state<{
      * Command handlers ask the predicate itself; this is only what the bar greys on.
      */
     bodyWritable: false,
-    /** The main tab shows a file, such as a PDF, not a document's text. Kept up by the workspace. */
-    fileInFront: false,
+    /** The type of the file the main tab shows (`pdf`), or null for a document. Kept up by `file-in-front.ts`. */
+    fileInFront: null,
+    /** A layout with a Command Bar is showing. Without one, a pinned button for a file floats over its tab. */
+    commandBarShowing: false,
     /** The insert-table button's gate: off in fenced code, frontmatter and inside a table. */
     tableInsertable: false,
     /**
@@ -98,9 +101,11 @@ let mountedCommandBars = 0
  */
 export function registerCommandBar(): () => void {
     mountedCommandBars += 1
+    editorContext.commandBarShowing = true
     refreshEditorContext(getActiveEditorView())
     return () => {
         mountedCommandBars -= 1
+        editorContext.commandBarShowing = mountedCommandBars > 0
     }
 }
 

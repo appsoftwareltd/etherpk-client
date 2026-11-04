@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { composerPlaceholder, needsPrompt, openingGrant, questionText, savedState } from './model'
+import { composerPlaceholder, needsPrompt, openingGrant, promptFromSelection, questionText, savedState } from './model'
 
 describe('what a new chat reads first (ADR 0147, amended 2026-10-16)', () => {
     it('reads the outline around its bullet when that bullet has siblings or ancestors', () => {
@@ -56,5 +56,15 @@ describe('how much of a chat is saved', () => {
         expect(savedState({ exchanges: [exchange({})] as never })).toBe('Unsaved')
         expect(savedState({ exchanges: [exchange({ questionSaved: true }), exchange({ answerSaved: true })] as never })).toBe('Saved 2 of 4 turns')
         expect(savedState({ exchanges: [exchange({ questionSaved: true, answer: '', status: 'failed' })] as never })).toBe('Saved 1 of 1 turn')
+    })
+})
+
+describe('the message a Transient Chat starts with', () => {
+    it('leaves a blank line after the selected text for a question', () => {
+        expect(promptFromSelection('Water the beans')).toBe('Water the beans\n\n')
+    })
+
+    it('is empty with nothing selected', () => {
+        expect(promptFromSelection('')).toBe('')
     })
 })

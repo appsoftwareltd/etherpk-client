@@ -13,7 +13,7 @@ import type { PdfAnnotation, PdfNote } from '#lib/document/pdf/pdf-state.js'
 
 const SVG = 'http://www.w3.org/2000/svg'
 
-export type PdfTool = 'none' | 'highlight' | 'pen' | 'highlighter' | 'note' | 'eraser'
+export type PdfTool = 'none' | 'select' | 'highlight' | 'pen' | 'highlighter' | 'note' | 'eraser'
 
 /** A signature placed on a page. Held in memory only: it is never saved with the annotations. */
 export interface PlacedSignature {

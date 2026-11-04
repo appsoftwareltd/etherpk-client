@@ -46,7 +46,7 @@
     let notice = $state<string | null>(null);
 
     /** The chats with something asked in them: one just opened is listed from its first question. */
-    const listed = $derived(chats.chats.filter((chat) => chat.exchanges.length > 0));
+    const listed = $derived(chats.chats.filter((chat) => chat.exchanges.length > 0 && !chat.transient));
     const shown = $derived(onlyActive && active ? listed.filter((chat) => chat.home === active) : listed);
 
     function open(chat: Chat) {

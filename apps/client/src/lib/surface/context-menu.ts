@@ -231,6 +231,8 @@ export interface AssetContextMenuTarget {
     line?: number
     /** Which occurrence of `ref` on that line, 0-based. */
     occurrence?: number
+    /** The document holding it, from its own editor rather than whichever document is active. */
+    concept?: string
 }
 
 /** An asset target that carries the position an edit needs. */

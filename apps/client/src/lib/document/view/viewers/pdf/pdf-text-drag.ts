@@ -1,6 +1,6 @@
 /**
- * A finger or a stylus dragged over a PDF's text selects it, while Highlight text is on. A browser does
- * this for a mouse, but takes the same drag on a touch screen for a scroll, and leaves selecting to a
+ * A finger or a stylus dragged over a PDF's text selects it, while Select text or Highlight text is on.
+ * A browser does this for a mouse, but takes the same drag on a touch screen for a scroll, and leaves selecting to a
  * long press. A second finger gives the gesture back to `pdf-pinch.ts`, which zooms and moves the page.
  */
 export interface TextDragHandlers {
@@ -76,6 +76,8 @@ export function listenForTextDrag(element: HTMLElement, handlers: TextDragHandle
         'pointerup',
         (event) => {
             if (event.pointerId !== pointerId) return
+            // A press that reached no text is a press off it, which lets go of what was selected.
+            if (anchor === null) window.getSelection()?.removeAllRanges()
             drop()
             handlers.done()
         },

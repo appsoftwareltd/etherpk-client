@@ -25,6 +25,7 @@
     import type { AgentChats } from "../chat/chats.svelte";
     import { type ChatImage, composerPlaceholder, type Exchange, GRANT_HINTS, GRANT_LABELS, type GrantLevel, hasAnswer, newId, questionText, type SavePick } from "../chat/model";
     import { PROVIDERS } from "../providers/catalogue";
+    import { answerOutline } from "../save/outline";
     import Listbox from "./Listbox.svelte";
     import Markdown from "./Markdown.svelte";
     import ModelCombobox, { type ModelGroup } from "./ModelCombobox.svelte";
@@ -65,16 +66,26 @@
         initialPrompt?: string;
     } = $props();
 
+    /** How long Copy says it worked. */
+    const COPIED_MS = 1500;
+
     const chat = $derived(chats.get(chatId));
     const running = $derived(chats.isRunning(chatId));
     const connection = $derived(chat ? chats.connectionOf(chat) : null);
     const model = $derived(chat ? chats.modelInfo(chat) : null);
     const noDocument = $derived(chat ? chats.withoutDocument(chat) : false);
+    /** A [[Transient Chat]]: nothing to save it into, so an answer is copied, and it reads nothing but itself. */
+    const transient = $derived(chat?.transient ?? false);
+    /** The answer Copy takes: the latest, once it has finished. */
+    const latestAnswer = $derived.by(() => {
+        const last = chat?.exchanges.at(-1);
+        return last && last.status === "done" && last.answer ? last : null;
+    });
     const homeDeleted = $derived(chat ? chats.homeDeleted(chat) : false);
     /** Where a Save from this chat writes, as a sentence names it. */
     const destination = $derived(chat && !noDocument && chat.home !== null ? chat.home : "today's journal");
     const blocked = $derived(chat ? chats.cannotSend(chat) : null);
-    const takesImages = $derived(model?.images ?? connection?.provider !== "local");
+    const takesImages = $derived(!transient && (model?.images ?? connection?.provider !== "local"));
 
     // Every connection's model list, asked for as the chat shows and again when the connections
     // change, so the picker can offer them all. Fetching is the side effect here, not derived state.
@@ -264,6 +275,7 @@
     }
 
     function addImages(files: Iterable<File>) {
+        if (transient) return false;
         const list = [...files].filter((file) => file.type.startsWith("image/"));
         if (list.length === 0) return false;
         if (!takesImages) {
@@ -374,13 +386,28 @@
         for (const turn of pickable) choices.set(tickKey(turn.exchange, turn.side), sides.includes(turn.side));
     }
 
+    /** What a copy of an answer holds. A transient chat's goes as a Save would write it. */
+    const copyText = (exchange: Exchange) => (transient ? answerOutline(exchange.answer).join("\n") : exchange.answer);
+
     async function copyAnswer(exchange: Exchange) {
         try {
-            await navigator.clipboard.writeText(exchange.answer);
+            await navigator.clipboard.writeText(copyText(exchange));
             notice = "Answer copied.";
+            return true;
         } catch {
             notice = "The browser did not allow copying. Select the answer to copy it.";
+            return false;
         }
+    }
+
+    /** The button shows it worked for a moment, then is ready to copy again. */
+    let copied = $state(false);
+    let copiedTimer: ReturnType<typeof setTimeout> | undefined;
+    async function copyLatest() {
+        if (!latestAnswer || !(await copyAnswer(latestAnswer))) return;
+        copied = true;
+        clearTimeout(copiedTimer);
+        copiedTimer = setTimeout(() => (copied = false), COPIED_MS);
     }
 </script>
 
@@ -423,7 +450,16 @@
                 <RobotIcon class="size-4 text-(--gk-text-muted)" />
                 <h3 class="ac-title" title={chat.title}>{chat.title}</h3>
                 <div class="ac-actions">
-                    {#if chat.exchanges.length > 0 && !saveMode}
+                    {#if transient}
+                        {#if latestAnswer}
+                            <button type="button" class="gk-button gk-button--primary ac-save-journal" onclick={copyLatest} disabled={running} data-testid="agent-chat-copy">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="size-4">
+                                    <path d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 0 1-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 0 1 1.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 0 0-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 0 1-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 0 0-3.375-3.375h-1.5a1.125 1.125 0 0 1-1.125-1.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H9.75" />
+                                </svg>
+                                {copied ? "Copied" : "Copy"}
+                            </button>
+                        {/if}
+                    {:else if chat.exchanges.length > 0 && !saveMode}
                         {#if noDocument}
                             <!-- A chat without a document saves at the end of today's journal: the calendar says where. -->
                             <button type="button" class="gk-button gk-button--primary ac-save-journal" onclick={startSave} disabled={running} aria-label="Save to today's journal" title="Save to the end of today's journal" data-testid="agent-chat-save">
@@ -459,6 +495,7 @@
                         testid="agent-chat-model"
                     />
                 </div>
+                {#if !transient}
                 <div class="ac-field">
                     <span class="gk-label" id={`${fieldId}-context`}>Context</span>
                     <Listbox class="w-64 max-w-full @max-[48rem]:w-full" options={grantOptions} value={chat.grant} onChange={chooseGrant} labelledBy={`${fieldId}-context`} disabled={running} testid="agent-chat-grant" />
@@ -468,6 +505,7 @@
                         <input type="checkbox" class="gk-checkbox" checked={chat.webSearch} onchange={(event) => chats.setWebSearch(chatId, event.currentTarget.checked)} disabled={running} data-testid="agent-chat-web-search" />
                         <span>Search the web</span>
                     </label>
+                {/if}
                 {/if}
             </div>
             {#if modelError}
@@ -492,8 +530,12 @@
                         <!-- The robot says what this is; its words are for a screen reader. -->
                         <RobotIcon class="size-8 text-(--gk-text-muted)" />
                         <p class="ac-visually-hidden">Chat with your agent.</p>
+                        {#if transient}
+                            <p class="ac-muted" data-testid="agent-chat-grant-hint">{initialPrompt === "" ? "Select text in the PDF to send to your agent" : "Send selected text to your agent"}</p>
+                        {:else}
                         <p class="ac-muted" data-testid="agent-chat-grant-hint">{GRANT_HINTS[chat.grant]}</p>
                         <p class="ac-muted">{noDocument ? "Chat turn data is only added to today's journal when you save it." : "Chat turn data is only added to the document when you save it."}</p>
+                        {/if}
                     {/if}
                 </div>
             {/if}
@@ -621,6 +663,9 @@
             </footer>
         {:else}
             <footer class="ac-composer" ondragover={(event) => event.preventDefault()} ondrop={onDrop}>
+                {#if transient && chat.exchanges.length > 0}
+                    <p class="gk-hint ac-hint ac-not-kept" data-testid="agent-chat-not-kept">This chat isn't kept. Copy what you want to keep.</p>
+                {/if}
                 {#if images.length > 0}
                     <ul class="ac-attachments" aria-label="Images to send">
                         {#each images as image (image.id)}
@@ -675,6 +720,9 @@
 <style>
     .ac-chat:focus {
         outline: none;
+    }
+    .ac-not-kept {
+        margin-bottom: 0.375rem;
     }
     .ac-chat {
         display: flex;

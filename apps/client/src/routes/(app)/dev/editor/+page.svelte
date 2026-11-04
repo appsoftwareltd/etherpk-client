@@ -324,6 +324,7 @@
                 reveal: () => {},
                 openDocument: (concept) => console.debug('[dev-editor] open document', concept),
                 activeDocument: () => 'doc-a',
+                activeFile: () => null,
                 isDesktop: () => media.matches,
                 openWindow: (options) => openExtensionWindow(options),
             },

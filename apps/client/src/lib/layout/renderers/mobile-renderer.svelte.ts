@@ -9,7 +9,10 @@
  * same state model, second presenter — exactly the two-render-path design.
  */
 
-import type { LayoutRenderer, ViewRegistry } from '../types'
+import { SvelteMap } from 'svelte/reactivity'
+
+import { viewKey } from '../view-ref'
+import type { LayoutRenderer, ViewRef, ViewRegistry } from '../types'
 
 export interface MobileRenderer extends LayoutRenderer {
     /** Reactive revision; increments on every model mutation. */
@@ -29,6 +32,8 @@ export interface MobileRenderer extends LayoutRenderer {
     readonly lastFocusedPanelId: string | null
     /** The registry the presenter consults to mount each View kind. */
     readonly registry: ViewRegistry
+    /** The name to show for a View: what it told {@link LayoutRenderer.setTitle}, or its registry title. */
+    title(view: ViewRef): string
 }
 
 export interface MobileRendererOptions {
@@ -53,6 +58,8 @@ export function createMobileRenderer(
     const bump = () => {
         state.rev += 1
     }
+    // Learned late, as the true name of a synced graph's asset is, keyed as the dockview panels are.
+    const titles = new SvelteMap<string, string>()
 
     return {
         registry,
@@ -74,6 +81,8 @@ export function createMobileRenderer(
             options.onActiveViewChange?.(panelId)
         },
         setRegionCollapsed: bump,
+        setTitle: (key: string, title: string) => void titles.set(key, title),
+        title: (view: ViewRef) => titles.get(viewKey(view)) ?? registry.title(view),
         // The presenter re-reads the model, where the pin and the re-seating already are.
         setViewPinned: bump,
         // No serializeGeometry: the model alone fully describes the mobile view,

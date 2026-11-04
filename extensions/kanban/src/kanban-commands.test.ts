@@ -140,12 +140,12 @@ describe("a card's context menu", () => {
         expect(row?.icon).toBe('kanban.kanban')
     })
 
-    it("offers nothing on a card, nor the tab's Open Kanban Board row, when the phone layout is showing", () => {
+    it("offers a card's rows and the tab's Open Kanban Board under the phone layout, but for Open in pane below", () => {
         const { contributions } = setup(false)
-        expect(listContextMenuItems(contributions, card('open', 1))).toEqual([])
-        expect(listContextMenuItems(contributions, { kind: 'document-tab', concept: 'Acme' }).map((r) => r.label)).not.toContain(
-            'Open Kanban Board',
-        )
+        const onDesktop = listContextMenuItems(setup().contributions, card('open', 1)).map((r) => r.label)
+        expect(listContextMenuItems(contributions, card('open', 1)).map((r) => r.label)).toEqual(onDesktop.filter((label) => label !== 'Open in pane below'))
+        expect(onDesktop).toContain('Open in pane below')
+        expect(listContextMenuItems(contributions, { kind: 'document-tab', concept: 'Acme' }).map((r) => r.label)).toContain('Open Kanban Board')
     })
 })
 
@@ -227,9 +227,12 @@ describe("a lane's context menu", () => {
         unregister()
     })
 
-    it('offers no move on an empty lane, and nothing when the phone layout is showing', () => {
+    it('offers no move on an empty lane', () => {
         expect(listContextMenuItems(setup().contributions, lane('done', 0)).map((r) => r.label)).toEqual(['Copy lane reference'])
-        expect(listContextMenuItems(setup(false).contributions, lane('done'))).toEqual([])
+    })
+
+    it('offers the same rows under the phone layout', () => {
+        expect(listContextMenuItems(setup(false).contributions, lane('done')).map((r) => r.label)).toEqual(['Copy lane reference', 'Move all to lane…'])
     })
 
     it("copies a reference to the lane through the board that raised the menu, with the card's reference icon", async () => {
@@ -267,12 +270,12 @@ describe('the Open Kanban Board row', () => {
         expect(kanban.boardsOpened()).toEqual([['Acme Rebuild', 'document:Notes']])
     })
 
-    it('is not offered on a wikilink when the phone layout is showing, where no board can show', async () => {
+    it('is offered on a wikilink under the phone layout too, and opens the board', async () => {
         const kanban = setup(false)
         const link = { kind: 'wikilink', concept: 'Acme', panelId: 'document:Notes' } as const
-        expect(listContextMenuItems(kanban.contributions, link).map((r) => r.label)).not.toContain('Open Kanban Board')
+        expect(listContextMenuItems(kanban.contributions, link).map((r) => r.label)).toContain('Open Kanban Board')
         await kanban.commands.execute(KANBAN_OPEN_BOARD, link)
-        expect(kanban.boardsOpened()).toEqual([])
+        expect(kanban.boardsOpened()).toEqual([['Acme', 'document:Notes']])
     })
 })
 
@@ -286,7 +289,7 @@ describe("a board tab's context menu", () => {
         expect(pagesOpened()).toEqual([['Acme', 'kanban.board:Acme']])
     })
 
-    it('keeps the row under the phone layout, where the board itself cannot show', () => {
+    it('keeps the row under the phone layout', () => {
         const { contributions } = setup(false)
         expect(listContextMenuItems(contributions, { kind: 'tab', panelId: 'kanban.board:Acme', vertical: true }).map((r) => r.label)).toEqual(['Open page'])
     })
@@ -311,19 +314,19 @@ describe('the Graph Kanban', () => {
         expect(openView).toHaveBeenCalledWith({ kind: 'kanban.whole', target: 'whole' }, { inPaneOf: 'document:Planning' })
     })
 
-    it('does not open under the phone layout, where a board cannot show', async () => {
+    it('opens under the phone layout too', async () => {
         const { commands, openView } = setup(false)
         await commands.execute(KANBAN_OPEN_WHOLE)
-        expect(openView).not.toHaveBeenCalled()
+        expect(openView).toHaveBeenCalledWith({ kind: 'kanban.whole', target: 'whole' }, {})
     })
 
-    it('is a Command Menu row on desktop, and not under the phone layout', () => {
+    it('is a Command Menu row on either layout', () => {
         const row = listCommandMenuItems(setup().contributions, editing).find((item) => item.title === 'Graph Kanban')
         expect(row).toMatchObject({ detail: 'Every task in this graph', icon: 'kanban.kanban', command: KANBAN_OPEN_WHOLE })
-        expect(listCommandMenuItems(setup(false).contributions, editing).map((item) => item.title)).not.toContain('Graph Kanban')
+        expect(listCommandMenuItems(setup(false).contributions, editing).map((item) => item.title)).toContain('Graph Kanban')
     })
 
-    it('is a Graph Sidebar button with help text, after the Graph Map, on desktop only', async () => {
+    it('is a Graph Sidebar button with help text, after the Graph Map, on either layout', async () => {
         // Read from the registry as the Sidebar reads it, `when` and all.
         const sidebarButtons = (contributions: ReturnType<typeof setup>['contributions']) =>
             contributions
@@ -341,7 +344,7 @@ describe('the Graph Kanban', () => {
         })
         await desktop.commands.execute(button.command, button.args)
         expect(desktop.openView).toHaveBeenCalledWith({ kind: 'kanban.whole', target: 'whole' }, {})
-        expect(sidebarButtons(setup(false).contributions)).toEqual([])
+        expect(sidebarButtons(setup(false).contributions).map((shown) => shown.title)).toEqual(['Graph Kanban'])
     })
 })
 
@@ -362,9 +365,9 @@ describe('/kanban', () => {
         ])
     })
 
-    it('is a Command Menu row on desktop, and not under the phone layout', () => {
+    it('is a Command Menu row on either layout', () => {
         expect(listCommandMenuItems(setup().contributions, editing).map((item) => item.title)).toContain('Open Kanban')
-        expect(listCommandMenuItems(setup(false).contributions, editing).map((item) => item.title)).not.toContain('Open Kanban')
+        expect(listCommandMenuItems(setup(false).contributions, editing).map((item) => item.title)).toContain('Open Kanban')
     })
 
     it('says which concept its board is for, and how many more the picker offers', () => {
@@ -389,6 +392,12 @@ describe('/kanban', () => {
         await commands.execute(KANBAN_OPEN_BOARD_FOR, { concept: 'Acme', panelId: 'document:Planning' })
         expect(boardsOpened()).toEqual([['Acme', 'document:Planning']])
         expect(openView).toHaveBeenCalledWith({ kind: 'kanban.board', target: 'Acme' }, { inPaneOf: 'document:Planning' })
+    })
+
+    it('opens the concept the picker chose under the phone layout too', async () => {
+        const { commands, boardsOpened } = setup(false)
+        await commands.execute(KANBAN_OPEN_BOARD_FOR, { concept: 'Acme', panelId: 'document:Planning' })
+        expect(boardsOpened()).toEqual([['Acme', 'document:Planning']])
     })
 })
 

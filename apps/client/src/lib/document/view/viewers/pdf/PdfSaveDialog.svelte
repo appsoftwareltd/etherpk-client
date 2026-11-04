@@ -48,7 +48,7 @@
         folderGraph: boolean;
         hasDigitalSignature: boolean;
         linkPlaces: LinkPlace[];
-        /** Where the link goes unless the person chooses, when not today's journal. */
+        /** Where the link goes unless the person chooses, when not today's journal. It can arrive while the dialog is open. */
         defaultLink: string | null;
         onclose: () => void;
         /** Rejects with the reason, which shows in the dialog. */
@@ -63,7 +63,9 @@
     let confirmPassword = $state("");
     let toFile = $state(true);
     let toGraph = $state(false);
-    let linkTo = $state<string>("");
+    /** What the person picked for the link in this opening of the dialog. */
+    let chosenLink = $state<string | null>(null);
+    const linkTo = $derived(chosenLink ?? defaultLink ?? "");
     let typedName = $state<string | null>(null);
     let busy = $state(false);
     let error = $state("");
@@ -78,7 +80,7 @@
             newPassword = confirmPassword = "";
             toFile = true;
             toGraph = false;
-            linkTo = defaultLink ?? "";
+            chosenLink = null;
             typedName = null;
             error = "";
             passwordTouched = false;
@@ -194,7 +196,7 @@
                 {#if toGraph}
                     <label class="ml-6 flex flex-col gap-1 text-sm text-(--gk-text-default)">
                         Put the link
-                        <select class={field} bind:value={linkTo} data-testid="pdf-save-link-place">
+                        <select class={field} bind:value={() => linkTo, (next) => (chosenLink = next)} data-testid="pdf-save-link-place">
                             {#each linkPlaces as place (place.concept ?? "")}
                                 <option value={place.concept ?? ""}>{place.label}</option>
                             {/each}

@@ -10,12 +10,13 @@
      * retitles itself to the true decrypted name once the bytes arrive, which is the only
      * moment that name is known. The retitle goes through the workspace's `retitleView`
      * service rather than the renderer, which a presenter swap replaces under this View.
+     * Until then a uuid is no name to show a person, so the wait says "this file".
      *
      * What actually draws the file is a registered viewer (surface/asset-viewer.ts) — nothing
      * is framed, for the reasons in ADR 0055. A type with no viewer is not a failure: the tab
      * says so and offers the download, which always works.
      */
-    import { AssetIntegrityError, AssetUnavailableError, displayAssetName, type ResolvedAsset } from "#lib/storage/fs/asset-store.js";
+    import { AssetIntegrityError, AssetUnavailableError, displayAssetName, isBareAssetId, type ResolvedAsset } from "#lib/storage/fs/asset-store.js";
     import { assetViewerFor, tryGetActiveContributionRegistry } from "#lib/surface/index.js";
     import { viewKey, type ViewRef } from "#lib/layout/index.js";
     import { workspaceService } from "#lib/workspace/workspace-services.js";
@@ -23,12 +24,14 @@
     import { tryGetActiveAssetStore } from "../active-asset-store";
     import { loadAssetWithRetry } from "./augmentations/asset-load-retry";
 
-    /** `panelId` is supplied by the dockview presenter; the mobile presenter has no tabs to
-     *  retitle and passes none, so the view key stands in and the retitle is a no-op there. */
+    /** `panelId` is supplied by the dockview presenter; the mobile presenter has one View per
+     *  key and passes none, so the view key stands in. */
     let { view, panelId }: { view: ViewRef; panelId?: string } = $props();
 
     /** Shown until the bytes (and with them the real name) arrive. */
     const fallbackName = $derived(displayAssetName(view.target));
+    /** The same, when it is something a person can read. */
+    const waitingName = $derived(isBareAssetId(view.target) ? null : fallbackName);
 
     let resolved = $state<ResolvedAsset | null>(null);
     let failed = $state(false);
@@ -125,14 +128,13 @@
     {:else if !resolved && unavailable}
         <div class="flex flex-1 items-center justify-center p-6 text-center">
             <p class="text-sm text-gray-600 dark:text-gray-400" role="status" data-testid="asset-view-unavailable">
-                <span class="font-medium text-gray-900 dark:text-gray-100">{fallbackName}</span> could not
+                <span class="font-medium text-gray-900 dark:text-gray-100">{waitingName ?? "This file"}</span> could not
                 be fetched just now. EtherPK keeps trying, and shows it once the connection is back.
             </p>
         </div>
     {:else if !resolved}
-        <div class="flex flex-1 items-center justify-center p-6">
-            <p class="text-sm text-gray-500 dark:text-gray-400" role="status">Loading {fallbackName}…</p>
-        </div>
+        <!-- At the top, where the reader's own "Opening" line follows it, and clear of a phone's keyboard. -->
+        <p class="p-6 text-center text-sm text-gray-500 dark:text-gray-400" role="status" data-testid="asset-view-loading">Loading {waitingName ?? "this file"}…</p>
     {:else if Viewer}
         <Viewer url={resolved.url} name={resolved.name} type={resolved.type} target={view.target} />
     {:else}

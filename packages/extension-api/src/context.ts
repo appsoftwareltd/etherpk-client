@@ -199,6 +199,8 @@ export interface ExtensionLayout {
      * journal entry's day, `YYYY-MM-DD`), or null when no document's tab is in front.
      */
     activeDocument(): string | null
+    /** The file whose tab is in front, such as a PDF, or null when a document's tab or none is. */
+    activeFile(): ActiveFile | null
     /** True while the desktop presenter is showing, 1024 pixels wide and more. */
     isDesktop(): boolean
     /**
@@ -209,10 +211,28 @@ export interface ExtensionLayout {
     openWindow(options: {
         /** The heading the Client draws beside the close button. */
         title: string
+        /** `whole` (the default) fills the window. `dialog` is a smaller box in its middle, the app dimmed behind it. */
+        size?: 'whole' | 'dialog'
+        /** For a `dialog`: asked on a click outside it, and it closes when this says yes. Left out, such a click does nothing. */
+        closesOnOutsideClick?(): boolean
         /** Draw into `host`, which fills the window under the heading. */
         mount(host: HTMLElement, window: { close(): void }): { destroy(): void }
         onClose?(): void
     }): { close(): void }
+}
+
+/**
+ * The file a tab in front shows, as {@link ExtensionLayout.activeFile} reads it at that moment.
+ *
+ * @public
+ */
+export interface ActiveFile {
+    /** Its type, by extension, in lower case: `pdf`, `png`. */
+    type: string
+    /** The text selected in it now, on one line, or `''`. Only a PDF has any. */
+    selectedText: string
+    /** Put the selection back as it was when this was read, as a dialog that took the keyboard closes. */
+    restoreSelection(): void
 }
 
 /**

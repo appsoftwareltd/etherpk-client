@@ -9,8 +9,10 @@
      * the index after a while; a write that is refused puts it back with a notice. Nothing about
      * a move is kept anywhere but in the task's own text.
      *
-     * Desktop only. Under the phone layout the board says so rather than squeezing six lanes
-     * into a phone's width, and the menus that open one are hidden there.
+     * Under the [[Phone Layout]] it draws one lane, chosen from a selector that counts them all,
+     * with a button for each menu a desktop raises with a right-click. A card moves through its menu
+     * or the Task Editor, since a drag has no other lane to drop on, and the Task Detail waits for a
+     * wider window.
      *
      * Mounted through the dockview adapter, so it reads its services through module accessors
      * rather than Svelte context (a separate Svelte root has none to inherit).
@@ -46,9 +48,13 @@
         type BoardLane,
         type BoardSnapshot,
         cardKey,
+        countOnlyLanes,
+        drawnLane,
         type DueState,
         laneAfter,
+        laneCountText,
         MOVE_TARGETS,
+        nextLaneWithTasks,
         type PendingMove,
         sameTask,
         sectionAfter,
@@ -135,6 +141,8 @@
     if (handedOver) boardState.set(handedOver);
     /** Lanes shown as a narrow strip with their count. */
     let collapsed = $state<TaskStatus[]>(boardState.get().collapsed);
+    /** The lane the Phone Layout has been asked to show. */
+    let phoneLane = $state<TaskStatus>(boardState.get().phoneLane);
     /** How many cards a section shows, where Show more has raised it past the first page. */
     let limits = $state.raw<ReadonlyMap<string, number>>(new Map());
     const cellId = (cell: BoardCell) => `${cell.status}:${cell.priority ?? "none"}`;
@@ -162,13 +170,23 @@
     const lanes = $derived<BoardLane[]>(shown?.lanes ?? EMPTY_LANES);
     const empty = $derived(shown !== null && shown.lanes.every((lane) => lane.unfiltered === 0));
     const showPlaceholders = $derived(board === null && loading && slow);
-    /** The lane that says a board is empty: Open, unless it is collapsed. */
-    const emptyNoticeLane = $derived(BOARD_LANES.find((lane) => !collapsed.includes(lane.status))?.status);
+    /** The lanes on screen: all six, or the one the Phone Layout shows. */
+    const drawnLanes = $derived(desktop.current ? lanes : [drawnLane(lanes, phoneLane)]);
+    /** The lane that says a board is empty: Open, unless it is collapsed, or the one on a phone's screen. */
+    const emptyNoticeLane = $derived(desktop.current ? BOARD_LANES.find((lane) => !collapsed.includes(lane.status))?.status : phoneLane);
     /** Where Tab enters the board: the card last on the keyboard, or the first card. */
     const tabKey = $derived.by(() => {
         const keys = lanes.flatMap((lane) => lane.sections.flatMap((section) => section.cards.map((card) => card.key)));
         return activeKey !== null && keys.includes(activeKey) ? activeKey : (keys[0] ?? null);
     });
+
+    /**
+     * A lane's sections as drawn. On a desktop an empty one is there to drop a card on; the Phone
+     * Layout has no drag and little room, so it draws the ones with tasks in them.
+     */
+    function drawnSections(lane: BoardLane): BoardLane["sections"] {
+        return desktop.current || showPlaceholders ? lane.sections : lane.sections.filter((section) => section.total > 0);
+    }
 
     /**
      * The index lives in a worker (ADR 0041), so a read is a round trip; `wanted` keeps a slow
@@ -189,7 +207,7 @@
         try {
             // Today is read now, not at mount: a board is left open for days.
             const next = await readBoard(index, concept, taskDateKey(new Date()), {
-                countOnly: new Set(collapsed),
+                countOnly: countOnlyLanes(collapsed, desktop.current ? null : phoneLane),
                 limitFor: (cell) => limits.get(cellId(cell)),
                 textFilterFor: (status) => laneFilters.get(status),
             });
@@ -235,10 +253,20 @@
         return next;
     }
 
+    /**
+     * The lane whose filter input has just been opened. Its input takes the keyboard once, so that
+     * coming back to a filtered lane on a phone does not raise the on-screen keyboard over it.
+     */
+    let laneFilterToFocus: TaskStatus | null = null;
+
     /** Open a lane's filter input, which takes the keyboard, or close it. */
     function toggleLaneFilter(status: TaskStatus): void {
-        if (laneFilters.has(status)) closeLaneFilter(status);
-        else laneFilters = new Map(laneFilters).set(status, "");
+        if (laneFilters.has(status)) {
+            closeLaneFilter(status);
+            return;
+        }
+        laneFilterToFocus = status;
+        laneFilters = new Map(laneFilters).set(status, "");
     }
 
     function onLaneFilterInput(status: TaskStatus, typed: string): void {
@@ -251,6 +279,18 @@
         laneFilters = withoutLaneFilter(status);
         retry();
         void tick().then(() => lanesEl?.querySelector<HTMLElement>(`[data-testid="kanban-lane"][data-status="${status}"] [data-testid="kanban-lane-filter-toggle"]`)?.focus());
+    }
+
+    /**
+     * Show another lane under the Phone Layout, and remember it on this device. The last lane stays
+     * on screen until the read of this one lands (`drawnLane`).
+     */
+    async function chooseLane(status: TaskStatus): Promise<void> {
+        phoneLane = status;
+        boardState.set({ ...boardState.get(), phoneLane: status });
+        refresh.cancel();
+        filterSettled.cancel();
+        await load();
     }
 
     /**
@@ -303,13 +343,28 @@
      * into. A keyboard move scrolls to it, since the keyboard goes where the card went; a pointer
      * move leaves the lanes' scroll where it was (`move-follow.ts`), and the focus still moves, so a
      * key pressed next acts on the card. A card the lane's Lane Filter hides has no element to hold
-     * the keyboard, so the filter's input takes it.
+     * the keyboard, so the filter's input takes it. The Phone Layout stays on its lane, so a card
+     * that leaves it hands the keyboard to the card beside it.
      */
     function followMovedCard(key: string, to: BoardCell, source: MoveSource = "keyboard"): void {
         const options = { preventScroll: source === "pointer" };
-        if (collapsed.includes(to.status)) void focusStrip(to.status, options);
+        if (!desktop.current && to.status !== phoneLane) void focusBesideLeavingCard(key, options);
+        else if (desktop.current && collapsed.includes(to.status)) void focusStrip(to.status, options);
         else if (laneFilters.has(to.status)) void focusCardOrLaneFilter(key, to.status, options);
         else void focusCard(key, options);
+    }
+
+    /**
+     * Put the keyboard on the card after one leaving the lane on screen, or the one before, or on
+     * the lane selector when it was the last. Asked as the card goes, while it is still drawn.
+     */
+    async function focusBesideLeavingCard(key: string, options: { preventScroll: boolean }): Promise<void> {
+        const cards = [...(lanesEl?.querySelectorAll<HTMLElement>('[data-testid="kanban-card"]') ?? [])];
+        const index = cards.findIndex((card) => card.dataset.key === key);
+        if (index < 0) return;
+        const beside = cards[index + 1] ?? cards[index - 1];
+        await tick();
+        (beside ?? lanesEl?.querySelector<HTMLElement>('[data-testid="kanban-lane-select"]'))?.focus(options);
     }
 
     async function focusCardOrLaneFilter(key: string, status: TaskStatus, options: { preventScroll: boolean }): Promise<void> {
@@ -321,12 +376,13 @@
 
     /**
      * Whether the board should say where a moved card went. A pointer move does when the card did not
-     * land in sight; a keyboard move scrolls to its card, so only when a Lane Filter hides the card.
-     * An archived card leaves the board, which is what Archive is for: nothing to point to.
+     * land in sight, and so does any move under the Phone Layout, which stays on its lane; a keyboard
+     * move scrolls to its card, so only when a Lane Filter hides the card. An archived card leaves
+     * the board, which is what Archive is for: nothing to point to.
      */
     async function movedOutOfSight(card: BoardCard, to: BoardCell, source: MoveSource): Promise<boolean> {
         if (to.status === "archived") return false;
-        if (source === "pointer") return !(await landedInView(card.key, to.status));
+        if (source === "pointer" || !desktop.current) return !(await landedInView(card.key, to.status));
         // What is typed, not the read's: the read of a filter typed a moment ago may not have landed.
         return !passesFilter({ filter: parseTaskTextFilter(laneFilters.get(to.status) ?? "") }, card);
     }
@@ -334,8 +390,8 @@
     /**
      * Whether a moved card shows where it landed: its middle inside the lanes and inside its lane's
      * body, both of which scroll. In a collapsed lane, whether the lane's strip shows. A card the
-     * board does not draw at all (past a section's Show more) is not in view. Measured once the
-     * board has drawn the card where it went.
+     * board does not draw at all (past a section's Show more, or in a lane the Phone Layout is not
+     * showing) is not in view. Measured once the board has drawn the card where it went.
      */
     async function landedInView(key: string, status: TaskStatus): Promise<boolean> {
         await tick();
@@ -569,6 +625,16 @@
     function openCardMenu(card: BoardCard, cell: BoardCell, element: HTMLElement): void {
         const rect = element.getBoundingClientRect();
         openContextMenu({ ...cardTarget(card, cell), fromKeyboard: true }, rect.left + 12, rect.bottom - 4);
+    }
+
+    /**
+     * The card's menu from its button under the Phone Layout, as a long press raises it. The card
+     * becomes the one the keyboard is on, so a row that moves it leaves the keyboard beside it.
+     */
+    function openCardMenuFromButton(card: BoardCard, cell: BoardCell, button: HTMLElement): void {
+        activeKey = card.key;
+        const rect = button.getBoundingClientRect();
+        openContextMenu(cardTarget(card, cell), rect.left, rect.bottom);
     }
 
     function describeCell(cell: BoardCell): string {
@@ -900,12 +966,17 @@
         return { kind: "kanban.lane", board: uid, status: lane.status, label: lane.label, count: lane.total };
     }
 
+    /** The lane's menu, placed at the element it was asked from rather than at a pointer. */
+    function openLaneMenu(lane: BoardLane, element: HTMLElement): void {
+        const rect = element.getBoundingClientRect();
+        openContextMenu(laneTarget(lane), rect.left + 12, rect.bottom - 4);
+    }
+
     /** The Menu key and Shift+F10 on a lane's header open its menu, as a right-click does. */
     function onLaneHeaderKeydown(event: KeyboardEvent, lane: BoardLane): void {
         if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) return;
         event.preventDefault();
-        const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
-        openContextMenu(laneTarget(lane), rect.left + 12, rect.bottom - 4);
+        openLaneMenu(lane, event.currentTarget as HTMLElement);
     }
 
     // ── The Task Editor (ADR 0170) ──────────────────────────────────────────
@@ -1012,6 +1083,22 @@
         followMovedCard(card.key, to);
     }
 
+    /** The card nearest a height on the screen, where left and right land in another lane. */
+    function nearestCard(cards: HTMLElement[], top: number): HTMLElement {
+        const distance = (card: HTMLElement) => Math.abs(card.getBoundingClientRect().top - top);
+        return cards.reduce((best, card) => (distance(card) < distance(best) ? card : best));
+    }
+
+    /** Left and right under the Phone Layout: show the next lane that has any cards, and go to the nearest. */
+    async function walkToLane(step: -1 | 1, top: number): Promise<void> {
+        const status = nextLaneWithTasks(lanes, phoneLane, step);
+        if (status === undefined) return;
+        await chooseLane(status);
+        await tick();
+        const cards = [...(lanesEl?.querySelectorAll<HTMLElement>('[data-testid="kanban-card"]') ?? [])];
+        if (cards.length > 0) nearestCard(cards, top).focus();
+    }
+
     /** Up and down within a lane; left and right to the nearest card of the next lane that has any. */
     function walkFocus(from: HTMLElement, key: string): void {
         const laneEls = [...(lanesEl?.querySelectorAll<HTMLElement>('[data-testid="kanban-lane"]') ?? [])];
@@ -1025,11 +1112,14 @@
         }
         const step = key === "ArrowLeft" ? -1 : 1;
         const top = from.getBoundingClientRect().top;
+        if (!desktop.current) {
+            void walkToLane(step, top);
+            return;
+        }
         for (let l = laneIndex + step; l >= 0 && l < laneEls.length; l += step) {
             const cards = cardsIn(laneEls[l]);
             if (cards.length === 0) continue;
-            const distance = (card: HTMLElement) => Math.abs(card.getBoundingClientRect().top - top);
-            cards.reduce((best, card) => (distance(card) < distance(best) ? card : best)).focus();
+            nearestCard(cards, top).focus();
             return;
         }
     }
@@ -1102,9 +1192,10 @@
 
     function onCardPointerDown(event: PointerEvent, card: BoardCard, cell: BoardCell): void {
         suppressClick = false;
-        // The primary button of a mouse or pen only: a right-click opens the card's menu, and
-        // the board is not built for touch, where the menu moves a card instead.
-        if (event.button !== 0 || event.pointerType === "touch") return;
+        // The primary button of a mouse or pen only: a right-click opens the card's menu, and a
+        // finger moves a card through the menu instead. Under the Phone Layout there is no other
+        // lane to drop a card on.
+        if (event.button !== 0 || event.pointerType === "touch" || !desktop.current) return;
         const target = event.currentTarget as HTMLElement;
         const rect = target.getBoundingClientRect();
         // The card keeps receiving the pointer wherever it goes, so the move and release
@@ -1288,7 +1379,7 @@
     <div
         role="status"
         class="absolute inset-x-3 z-10 mx-auto flex w-fit items-center gap-3 rounded-lg border border-(--gk-border-soft) bg-(--gk-surface-2) px-3 py-2 text-sm text-(--gk-text-default) shadow-lg"
-        style:bottom={detail === null ? "1.5rem" : `calc(${detailHeight * 100}% + 0.5rem + 1.5rem)`}
+        style:bottom={detail === null || !desktop.current ? "1.5rem" : `calc(${detailHeight * 100}% + 0.5rem + 1.5rem)`}
         data-testid={testid}
     >
         <span class="min-w-0 flex-1">{text}</span>
@@ -1316,191 +1407,204 @@
 <!-- A reload or a closed window unmounts nothing, so the remembered lanes are written as the page goes. -->
 <svelte:window onkeydown={onWindowKeydown} onpagehide={() => boardState.flush()} />
 
-{#if !desktop.current}
-    <div class="flex h-full items-center justify-center bg-(--gk-surface-0) p-6" data-testid="kanban-needs-wider">
-        <p class="m-0 max-w-sm text-center text-sm text-(--gk-text-muted)">
-            The Kanban board needs a wider window. Widen this one, or open the board on a larger screen.
-        </p>
-    </div>
-{:else}
-    <div
-        bind:this={boardEl}
-        class="relative flex h-full flex-col overflow-clip bg-(--gk-surface-0) text-(--gk-text-default)"
-        data-testid="kanban-board"
-        data-concept={concept ?? undefined}
-        data-whole={concept === null || undefined}
-        aria-busy={loading}
-    >
-        <p id="{uid}-card-hint" class="sr-only">
-            Arrow keys move between cards. Enter opens the task in the task editor. Alt with an arrow key moves the card to another
-            lane or priority. Shift+F10 opens the card's menu.
-        </p>
-        <p class="sr-only" role="status" data-testid="kanban-announcement">{announcement}</p>
-        {#if failed}
-            <div
-                role="alert"
-                class="mx-3 mt-3 flex items-center gap-3 rounded-lg bg-(--gk-danger-surface) px-3 py-2 text-sm text-(--gk-text-danger)"
-                data-testid="kanban-error"
+<div
+    bind:this={boardEl}
+    class="relative flex h-full flex-col overflow-clip bg-(--gk-surface-0) text-(--gk-text-default)"
+    data-testid="kanban-board"
+    data-concept={concept ?? undefined}
+    data-whole={concept === null || undefined}
+    aria-busy={loading}
+>
+    <p id="{uid}-card-hint" class="sr-only">
+        Arrow keys move between cards. Enter opens the task in the task editor. Alt with an arrow key moves the card to another
+        lane or priority. Shift+F10 opens the card's menu.
+    </p>
+    <p class="sr-only" role="status" data-testid="kanban-announcement">{announcement}</p>
+    {#if failed}
+        <div
+            role="alert"
+            class="mx-3 mt-3 flex items-center gap-3 rounded-lg bg-(--gk-danger-surface) px-3 py-2 text-sm text-(--gk-text-danger)"
+            data-testid="kanban-error"
+        >
+            <span class="min-w-0 flex-1">Couldn't read the task index, so the board may be out of date.</span>
+            <!-- The banners' buttons take the banner's own colour, which no control class has. -->
+            <button
+                type="button"
+                onclick={retry}
+                class="shrink-0 rounded-md border border-current px-2 py-1 font-medium hover:bg-(--gk-surface-0)"
+                data-testid="kanban-retry"
             >
-                <span class="min-w-0 flex-1">Couldn't read the task index, so the board may be out of date.</span>
-                <!-- The banners' buttons take the banner's own colour, which no control class has. -->
-                <button
-                    type="button"
-                    onclick={retry}
-                    class="shrink-0 rounded-md border border-current px-2 py-1 font-medium hover:bg-(--gk-surface-0)"
-                    data-testid="kanban-retry"
-                >
-                    Retry
-                </button>
-            </div>
-        {/if}
-        <!-- What the last move did, with Undo, or a task the Task Editor deleted, where a move's
-             line, when there is one, is the one shown. -->
-        {#if cascade}
-            {@render statusLine("kanban-cascade", cascade.text, cascade.entry ? undoCascade : null, () => (cascade = null))}
-        {:else if deleted}
-            {@render statusLine("kanban-deleted", deleted.text, deleted.removed ? undoDelete : null, () => (deleted = null))}
-        {/if}
-        {#if notice}
-            <div
-                role="alert"
-                class="mx-3 mt-3 flex items-center gap-3 rounded-lg bg-(--gk-warning-surface) px-3 py-2 text-sm text-(--gk-text-warning)"
-                data-testid="kanban-notice"
+                Retry
+            </button>
+        </div>
+    {/if}
+    <!-- What the last move did, with Undo, or a task the Task Editor deleted, where a move's
+         line, when there is one, is the one shown. -->
+    {#if cascade}
+        {@render statusLine("kanban-cascade", cascade.text, cascade.entry ? undoCascade : null, () => (cascade = null))}
+    {:else if deleted}
+        {@render statusLine("kanban-deleted", deleted.text, deleted.removed ? undoDelete : null, () => (deleted = null))}
+    {/if}
+    {#if notice}
+        <div
+            role="alert"
+            class="mx-3 mt-3 flex items-center gap-3 rounded-lg bg-(--gk-warning-surface) px-3 py-2 text-sm text-(--gk-text-warning)"
+            data-testid="kanban-notice"
+        >
+            <span class="min-w-0 flex-1">{notice}</span>
+            <button
+                type="button"
+                onclick={() => (notice = null)}
+                class="shrink-0 rounded-md border border-current px-2 py-1 font-medium hover:bg-(--gk-surface-0)"
+                data-testid="kanban-notice-dismiss"
             >
-                <span class="min-w-0 flex-1">{notice}</span>
-                <button
-                    type="button"
-                    onclick={() => (notice = null)}
-                    class="shrink-0 rounded-md border border-current px-2 py-1 font-medium hover:bg-(--gk-surface-0)"
-                    data-testid="kanban-notice-dismiss"
+                Dismiss
+            </button>
+        </div>
+    {/if}
+    <!-- About an agent on a computer, which a phone has neither the room nor the use for. -->
+    {#if agentHintShown && desktop.current}
+        <p class="mx-3 mt-3 mb-0 flex items-center gap-2 text-sm text-(--gk-text-muted)" data-testid="kanban-agent-hint">
+            <span class="min-w-0 flex-1">
+                An AI agent on your computer can work on these tasks through the EtherPK MCP server. Copy a card's reference to hand it
+                one.
+                <a
+                    class="gk-link"
+                    href="https://docs.etherpk.com/using-ai-agents-with-your-notes"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    data-testid="kanban-agent-hint-link">Set up an agent</a
                 >
-                    Dismiss
-                </button>
-            </div>
-        {/if}
-        {#if agentHintShown}
-            <p class="mx-3 mt-3 mb-0 flex items-center gap-2 text-sm text-(--gk-text-muted)" data-testid="kanban-agent-hint">
-                <span class="min-w-0 flex-1">
-                    An AI agent on your computer can work on these tasks through the EtherPK MCP server. Copy a card's reference to hand it
-                    one.
-                    <a
-                        class="gk-link"
-                        href="https://docs.etherpk.com/using-ai-agents-with-your-notes"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        data-testid="kanban-agent-hint-link">Set up an agent</a
+            </span>
+            <button
+                type="button"
+                onclick={() => {
+                    agentHint.dismiss();
+                    agentHintShown = false;
+                }}
+                class="gk-icon-button shrink-0"
+                aria-label="Dismiss the tip about agents"
+                title="Dismiss"
+                data-testid="kanban-agent-hint-dismiss"
+            >
+                <!-- In-repo constant markup from the icon table, never user content. -->
+                <!-- eslint-disable-next-line svelte/no-at-html-tags -- iconSvg returns trusted markup from the Client's icon table or the sanitized manifest icons (ADR 0130) -->
+                {@html iconSvg("close")}
+            </button>
+        </p>
+    {/if}
+    <!-- The lanes scroll sideways when they are wider than the pane, and each lane scrolls
+         on its own, so a long Done lane never stretches the others. -->
+    <div bind:this={lanesEl} class={["flex min-h-0 flex-1 gap-3 overflow-x-auto", desktop.current ? "p-3" : "p-2"]} data-testid="kanban-lanes">
+        {#each drawnLanes as lane (lane.status)}
+            {#if desktop.current && collapsed.includes(lane.status)}
+                {@const dropTarget = drag?.started === true && drag.over?.status === lane.status}
+                <!-- A collapsed lane: a narrow strip with its name and count, which opens the
+                     lane again when pressed and takes a card dropped on it. -->
+                <section
+                    class={[
+                        "flex w-12 shrink-0 flex-col rounded-xl border border-(--gk-border-soft) bg-(--gk-surface-1)",
+                        dropTarget && "bg-(--gk-surface-2) outline-2 outline-(--gk-accent) outline-dashed",
+                    ]}
+                    data-testid="kanban-lane"
+                    data-status={lane.status}
+                    data-collapsed="true"
+                    data-drop-target={dropTarget || undefined}
+                    aria-labelledby="{uid}-{lane.status}"
+                    {@attach (node) => attachContextMenu(node, () => laneTarget(lane))}
+                >
+                    <button
+                        type="button"
+                        onclick={() => toggleCollapsed(lane.status)}
+                        onkeydown={(event) => onLaneHeaderKeydown(event, lane)}
+                        class="flex min-h-0 flex-1 flex-col items-center gap-2 rounded-xl px-1 py-2.5 text-(--gk-text-muted) hover:bg-(--gk-surface-2) hover:text-(--gk-text-strong) focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--gk-accent)"
+                        aria-label="Expand the {lane.label} lane, {lane.total} {lane.total === 1 ? 'task' : 'tasks'}"
+                        data-testid="kanban-lane-expand"
                     >
-                </span>
-                <button
-                    type="button"
-                    onclick={() => {
-                        agentHint.dismiss();
-                        agentHintShown = false;
-                    }}
-                    class="gk-icon-button shrink-0"
-                    aria-label="Dismiss the tip about agents"
-                    title="Dismiss"
-                    data-testid="kanban-agent-hint-dismiss"
+                        <!-- In-repo constant markup from the icon table, never user content. -->
+                        <!-- eslint-disable-next-line svelte/no-at-html-tags -- iconSvg returns trusted markup from the Client's icon table or the sanitized manifest icons (ADR 0130) -->
+                        {@html iconSvg("kanban.expand-lane")}
+                        {#if shown !== null}
+                            <span class="text-sm text-(--gk-text-subtle)" data-testid="kanban-lane-count">{lane.total}</span>
+                        {/if}
+                        <span
+                            id="{uid}-{lane.status}"
+                            class="text-sm font-semibold text-(--gk-text-strong) [writing-mode:vertical-rl]"
+                            data-testid="kanban-lane-label"
+                        >
+                            {lane.label}
+                        </span>
+                    </button>
+                </section>
+            {:else}
+                <section
+                    class={["flex shrink-0 flex-col rounded-xl border border-(--gk-border-soft) bg-(--gk-surface-1)", desktop.current ? "w-72" : "w-full"]}
+                    data-testid="kanban-lane"
+                    data-status={lane.status}
+                    aria-labelledby="{uid}-{lane.status}"
                 >
-                    <!-- In-repo constant markup from the icon table, never user content. -->
-                    <!-- eslint-disable-next-line svelte/no-at-html-tags -- iconSvg returns trusted markup from the Client's icon table or the sanitized manifest icons (ADR 0130) -->
-                    {@html iconSvg("close")}
-                </button>
-            </p>
-        {/if}
-        <!-- The lanes scroll sideways when they are wider than the pane, and each lane scrolls
-             on its own, so a long Done lane never stretches the others. -->
-        <div bind:this={lanesEl} class="flex min-h-0 flex-1 gap-3 overflow-x-auto p-3" data-testid="kanban-lanes">
-            {#each lanes as lane (lane.status)}
-                {#if collapsed.includes(lane.status)}
-                    {@const dropTarget = drag?.started === true && drag.over?.status === lane.status}
-                    <!-- A collapsed lane: a narrow strip with its name and count, which opens the
-                         lane again when pressed and takes a card dropped on it. -->
-                    <section
-                        class={[
-                            "flex w-12 shrink-0 flex-col rounded-xl border border-(--gk-border-soft) bg-(--gk-surface-1)",
-                            dropTarget && "bg-(--gk-surface-2) outline-2 outline-(--gk-accent) outline-dashed",
-                        ]}
-                        data-testid="kanban-lane"
-                        data-status={lane.status}
-                        data-collapsed="true"
-                        data-drop-target={dropTarget || undefined}
-                        aria-labelledby="{uid}-{lane.status}"
+                    <!-- py-1 around EtherPK's 32px icon button keeps the header the height it was. -->
+                    <!-- A right-click on the header, or Shift+F10 on its button, offers Copy lane reference and Move all to lane. -->
+                    <header
+                        class={["flex items-center justify-between gap-2 border-b border-(--gk-border-soft) py-1 pr-1.5", desktop.current ? "pl-3" : "pl-1.5"]}
+                        data-testid="kanban-lane-header"
                         {@attach (node) => attachContextMenu(node, () => laneTarget(lane))}
                     >
-                        <button
-                            type="button"
-                            onclick={() => toggleCollapsed(lane.status)}
-                            onkeydown={(event) => onLaneHeaderKeydown(event, lane)}
-                            class="flex min-h-0 flex-1 flex-col items-center gap-2 rounded-xl px-1 py-2.5 text-(--gk-text-muted) hover:bg-(--gk-surface-2) hover:text-(--gk-text-strong) focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--gk-accent)"
-                            aria-label="Expand the {lane.label} lane, {lane.total} {lane.total === 1 ? 'task' : 'tasks'}"
-                            data-testid="kanban-lane-expand"
-                        >
-                            <!-- In-repo constant markup from the icon table, never user content. -->
-                            <!-- eslint-disable-next-line svelte/no-at-html-tags -- iconSvg returns trusted markup from the Client's icon table or the sanitized manifest icons (ADR 0130) -->
-                            {@html iconSvg("kanban.expand-lane")}
-                            {#if shown !== null}
-                                <span class="text-sm text-(--gk-text-subtle)" data-testid="kanban-lane-count">{lane.total}</span>
-                            {/if}
-                            <span
-                                id="{uid}-{lane.status}"
-                                class="text-sm font-semibold text-(--gk-text-strong) [writing-mode:vertical-rl]"
-                                data-testid="kanban-lane-label"
-                            >
-                                {lane.label}
-                            </span>
-                        </button>
-                    </section>
-                {:else}
-                    <section
-                        class="flex w-72 shrink-0 flex-col rounded-xl border border-(--gk-border-soft) bg-(--gk-surface-1)"
-                        data-testid="kanban-lane"
-                        data-status={lane.status}
-                        aria-labelledby="{uid}-{lane.status}"
-                    >
-                        <!-- py-1 around EtherPK's 32px icon button keeps the header the height it was. -->
-                        <!-- A right-click on the header, or Shift+F10 on its button, offers Copy lane reference and Move all to lane. -->
-                        <header
-                            class="flex items-center justify-between gap-2 border-b border-(--gk-border-soft) py-1 pl-3 pr-1.5"
-                            data-testid="kanban-lane-header"
-                            {@attach (node) => attachContextMenu(node, () => laneTarget(lane))}
-                        >
+                        {#if desktop.current}
                             <!-- The count follows the name, where its subtler text tells the two apart. -->
                             <span class="flex min-w-0 items-baseline gap-2">
                                 <h2 id="{uid}-{lane.status}" class="m-0 text-sm font-semibold text-(--gk-text-strong)" data-testid="kanban-lane-label">
                                     {lane.label}
                                 </h2>
                                 {#if shown !== null}
-                                    <span class="text-sm whitespace-nowrap text-(--gk-text-subtle)" data-testid="kanban-lane-count">{lane.filter === null ? lane.total : `${lane.total} of ${lane.unfiltered}`}</span>
+                                    <span class="text-sm whitespace-nowrap text-(--gk-text-subtle)" data-testid="kanban-lane-count">{laneCountText(lane)}</span>
                                 {/if}
                             </span>
-                            <span class="flex shrink-0 items-center gap-1">
-                                <button
-                                    type="button"
-                                    onclick={() => toggleLaneFilter(lane.status)}
-                                    class="gk-icon-button"
-                                    aria-label="Filter the {lane.label} lane by title or tag"
-                                    aria-expanded={laneFilters.has(lane.status)}
-                                    title="Filter the {lane.label} lane by title or tag"
-                                    data-testid="kanban-lane-filter-toggle"
-                                >
-                                    <!-- In-repo constant markup from the icon table, never user content. -->
-                                    <!-- eslint-disable-next-line svelte/no-at-html-tags -- iconSvg returns trusted markup from the Client's icon table or the sanitized manifest icons (ADR 0130) -->
-                                    {@html iconSvg("search")}
-                                </button>
-                                <!-- A new task in this lane, through the Task Editor (ADR 0170). -->
-                                <button
-                                    type="button"
-                                    onclick={() => newTask(lane.status)}
-                                    class="gk-icon-button"
-                                    aria-label="Add a task to {lane.label}"
-                                    title="Add a task to {lane.label}, in today's journal"
-                                    data-testid="kanban-lane-add"
-                                >
-                                    <!-- In-repo constant markup from the icon table, never user content. -->
-                                    <!-- eslint-disable-next-line svelte/no-at-html-tags -- iconSvg returns trusted markup from the Client's icon table or the sanitized manifest icons (ADR 0130) -->
-                                    {@html iconSvg("kanban.add-task")}
-                                </button>
+                        {:else}
+                            <!-- The one lane on a phone, named for a screen reader as a desktop's are, and the
+                                 selector that says which it is and counts them all. 16px, because iOS
+                                 Safari zooms the page to a field smaller than that when it takes focus. -->
+                            <h2 id="{uid}-{lane.status}" class="sr-only" data-testid="kanban-lane-label">{lane.label}</h2>
+                            <select
+                                class="gk-select min-w-0 flex-1 text-base"
+                                value={phoneLane}
+                                onchange={(event) => void chooseLane(event.currentTarget.value as TaskStatus)}
+                                aria-label="Lane"
+                                data-testid="kanban-lane-select"
+                            >
+                                {#each lanes as option (option.status)}
+                                    <option value={option.status}>{option.label}{shown === null ? "" : ` (${laneCountText(option)})`}</option>
+                                {/each}
+                            </select>
+                        {/if}
+                        <span class="flex shrink-0 items-center gap-1">
+                            <button
+                                type="button"
+                                onclick={() => toggleLaneFilter(lane.status)}
+                                class={["gk-icon-button", !desktop.current && "size-10"]}
+                                aria-label="Filter the {lane.label} lane by title or tag"
+                                aria-expanded={laneFilters.has(lane.status)}
+                                title="Filter the {lane.label} lane by title or tag"
+                                data-testid="kanban-lane-filter-toggle"
+                            >
+                                <!-- In-repo constant markup from the icon table, never user content. -->
+                                <!-- eslint-disable-next-line svelte/no-at-html-tags -- iconSvg returns trusted markup from the Client's icon table or the sanitized manifest icons (ADR 0130) -->
+                                {@html iconSvg("search")}
+                            </button>
+                            <!-- A new task in this lane, through the Task Editor (ADR 0170). -->
+                            <button
+                                type="button"
+                                onclick={() => newTask(lane.status)}
+                                class={["gk-icon-button", !desktop.current && "size-10"]}
+                                aria-label="Add a task to {lane.label}"
+                                title="Add a task to {lane.label}, in today's journal"
+                                data-testid="kanban-lane-add"
+                            >
+                                <!-- In-repo constant markup from the icon table, never user content. -->
+                                <!-- eslint-disable-next-line svelte/no-at-html-tags -- iconSvg returns trusted markup from the Client's icon table or the sanitized manifest icons (ADR 0130) -->
+                                {@html iconSvg("kanban.add-task")}
+                            </button>
+                            {#if desktop.current}
                                 <button
                                     type="button"
                                     onclick={() => toggleCollapsed(lane.status)}
@@ -1514,315 +1618,358 @@
                                     <!-- eslint-disable-next-line svelte/no-at-html-tags -- iconSvg returns trusted markup from the Client's icon table or the sanitized manifest icons (ADR 0130) -->
                                     {@html iconSvg("kanban.collapse-lane")}
                                 </button>
-                            </span>
-                        </header>
-                        {#if laneFilters.has(lane.status)}
-                            <!-- Outside the lane's scroll, so it stays on screen beside the cards it narrows. -->
-                            <div class="flex items-center gap-1 border-b border-(--gk-border-soft) py-1 pl-2 pr-1.5" data-testid="kanban-lane-filter">
-                                <input
-                                    type="text"
-                                    class="gk-input min-w-0 flex-1"
-                                    value={laneFilters.get(lane.status)}
-                                    placeholder="Task title / #tag"
-                                    aria-label="Filter the {lane.label} lane by title or tag"
-                                    data-testid="kanban-lane-filter-input"
-                                    oninput={(event) => onLaneFilterInput(lane.status, event.currentTarget.value)}
-                                    onkeydown={(event) => {
-                                        if (event.key !== "Escape") return;
-                                        event.preventDefault();
-                                        closeLaneFilter(lane.status);
-                                    }}
-                                    {@attach (node) => node.focus()}
-                                />
+                            {:else}
+                                <!-- What a right-click on the header offers a desktop: a long press on a
+                                     selector opens the selector, so the lane's menu has a button. -->
                                 <button
                                     type="button"
-                                    onclick={() => closeLaneFilter(lane.status)}
-                                    class="gk-icon-button"
-                                    aria-label="Close the filter on the {lane.label} lane and show all its tasks"
-                                    title="Close the filter and show all the tasks"
-                                    data-testid="kanban-lane-filter-close"
+                                    onclick={(event) => openLaneMenu(lane, event.currentTarget)}
+                                    class="gk-icon-button size-10"
+                                    aria-haspopup="menu"
+                                    aria-label="More actions for the {lane.label} lane"
+                                    title="More actions for the {lane.label} lane"
+                                    data-testid="kanban-lane-menu"
                                 >
                                     <!-- In-repo constant markup from the icon table, never user content. -->
                                     <!-- eslint-disable-next-line svelte/no-at-html-tags -- iconSvg returns trusted markup from the Client's icon table or the sanitized manifest icons (ADR 0130) -->
-                                    {@html iconSvg("close")}
+                                    {@html iconSvg("more")}
                                 </button>
-                            </div>
+                            {/if}
+                        </span>
+                    </header>
+                    {#if laneFilters.has(lane.status)}
+                        <!-- Outside the lane's scroll, so it stays on screen beside the cards it narrows. -->
+                        <div class="flex items-center gap-1 border-b border-(--gk-border-soft) py-1 pl-2 pr-1.5" data-testid="kanban-lane-filter">
+                            <input
+                                type="text"
+                                class={["gk-input min-w-0 flex-1", !desktop.current && "text-base"]}
+                                value={laneFilters.get(lane.status)}
+                                placeholder="Task title / #tag"
+                                aria-label="Filter the {lane.label} lane by title or tag"
+                                data-testid="kanban-lane-filter-input"
+                                oninput={(event) => onLaneFilterInput(lane.status, event.currentTarget.value)}
+                                onkeydown={(event) => {
+                                    if (event.key !== "Escape") return;
+                                    event.preventDefault();
+                                    closeLaneFilter(lane.status);
+                                }}
+                                {@attach (node) => {
+                                    if (laneFilterToFocus === lane.status) node.focus();
+                                    laneFilterToFocus = null;
+                                }}
+                            />
+                            <button
+                                type="button"
+                                onclick={() => closeLaneFilter(lane.status)}
+                                class={["gk-icon-button", !desktop.current && "size-10"]}
+                                aria-label="Close the filter on the {lane.label} lane and show all its tasks"
+                                title="Close the filter and show all the tasks"
+                                data-testid="kanban-lane-filter-close"
+                            >
+                                <!-- In-repo constant markup from the icon table, never user content. -->
+                                <!-- eslint-disable-next-line svelte/no-at-html-tags -- iconSvg returns trusted markup from the Client's icon table or the sanitized manifest icons (ADR 0130) -->
+                                {@html iconSvg("close")}
+                            </button>
+                        </div>
+                    {/if}
+                    <div class="flex min-h-0 flex-1 flex-col overflow-y-auto px-2 pb-2" data-kanban-lane-body>
+                        {#if lane.filter !== null && lane.total === 0}
+                            <p class="m-0 px-1 pt-2 text-sm wrap-anywhere text-(--gk-text-subtle)" data-testid="kanban-lane-filter-empty">
+                                No tasks in {lane.label} match "{laneFilters.get(lane.status)?.trim()}". {lane.unfiltered === 1 ? "1 task is" : `${lane.unfiltered} tasks are`} hidden.
+                            </p>
                         {/if}
-                        <div class="flex min-h-0 flex-1 flex-col overflow-y-auto px-2 pb-2" data-kanban-lane-body>
-                            {#if lane.filter !== null && lane.total === 0}
-                                <p class="m-0 px-1 pt-2 text-sm wrap-anywhere text-(--gk-text-subtle)" data-testid="kanban-lane-filter-empty">
-                                    No tasks in {lane.label} match "{laneFilters.get(lane.status)?.trim()}". {lane.unfiltered === 1 ? "1 task is" : `${lane.unfiltered} tasks are`} hidden.
-                                </p>
-                            {/if}
-                            {#if empty && lane.status === emptyNoticeLane}
-                                <p class="m-0 px-1 pt-2 text-sm text-(--gk-text-subtle)" data-testid="kanban-empty">
-                                    {#if concept === null}
-                                        No tasks in this graph yet.
-                                    {:else}
-                                        No tasks belong to {concept} yet. Tasks on its page, or nested under a link to it, appear here.
-                                    {/if}
-                                </p>
-                            {/if}
-                            {#each lane.sections as section (section.label)}
-                                {@const cell = { status: lane.status, priority: section.priority }}
-                                {@const dropTarget = drag?.started === true && sameCell(drag.over, cell) && !sameCell(drag.from, cell)}
-                                <!-- While a card is carried over it, the section it would land in is
-                                     outlined, so a drop never lands somewhere unexpected. No priority,
-                                     the last, fills the lane to its foot, so its outline and the drops
-                                     it takes reach there however few cards it holds. -->
-                                <div
-                                    class={[
-                                        "rounded-md",
-                                        section.priority === null && "grow",
-                                        dropTarget && "bg-(--gk-surface-2) outline-2 outline-(--gk-accent) outline-dashed",
-                                    ]}
-                                    data-testid="kanban-section"
-                                    data-priority={section.priority ?? "none"}
-                                    data-drop-target={dropTarget || undefined}
-                                >
-                                    <div class="flex items-baseline justify-between gap-2 px-1 pb-1 pt-2">
-                                        <h3 class="m-0 text-sm font-medium text-(--gk-text-muted)" data-testid="kanban-section-label">
-                                            {section.label}
-                                        </h3>
-                                        {#if section.total > 0}
-                                            <span class="text-sm text-(--gk-text-subtle)" data-testid="kanban-section-count">{section.total}</span>
-                                        {/if}
-                                    </div>
-                                    {#if showPlaceholders && section.priority === 1}
-                                        <!-- Card-sized blocks while the first read is slow, so the
-                                             lanes do not jump when the cards arrive. -->
-                                        <div class="flex flex-col gap-2" aria-hidden="true">
-                                            <div class="h-16 rounded-lg bg-(--gk-surface-2)"></div>
-                                            <div class="h-16 rounded-lg bg-(--gk-surface-2)"></div>
-                                        </div>
-                                    {:else if section.cards.length > 0}
-                                        <ul class="m-0 flex list-none flex-col gap-2 p-0">
-                                            {#each section.cards as card (card.key)}
-                                                {@const carried = drag?.started === true && drag.card.key === card.key}
-                                                {@const selected = isSelected(card)}
-                                                <li class="relative">
-                                                    <button
-                                                        type="button"
-                                                        tabindex={card.key === tabKey ? 0 : -1}
-                                                        aria-describedby="{uid}-card-hint"
-                                                        aria-current={selected || undefined}
-                                                        onclick={() => {
-                                                            if (suppressClick) {
-                                                                suppressClick = false;
-                                                                return;
-                                                            }
-                                                            editCard(card);
-                                                        }}
-                                                        onfocus={() => (activeKey = card.key)}
-                                                        onkeydown={(event) => onCardKeydown(event, card, cell)}
-                                                        onpointerdown={(event) => onCardPointerDown(event, card, cell)}
-                                                        onpointermove={onCardPointerMove}
-                                                        onpointerup={onCardPointerUp}
-                                                        onpointercancel={endDrag}
-                                                        {@attach (node) => attachContextMenu(node, () => cardTarget(card, cell))}
-                                                        class={[
-                                                            "block w-full cursor-grab select-none rounded-lg border p-2.5 text-left shadow-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--gk-accent)",
-                                                            // The card left behind while its copy is carried: its outline only, so it
-                                                            // still says where the card came from. The card the Task Detail shows
-                                                            // keeps an accent edge while it does.
-                                                            carried
-                                                                ? "border-dashed border-(--gk-border-strong) bg-(--gk-surface-1)"
-                                                                : selected
-                                                                  ? "border-(--gk-accent) bg-(--gk-surface-0) ring-1 ring-(--gk-accent)"
-                                                                  : "border-(--gk-border-soft) bg-(--gk-surface-0) hover:border-(--gk-border-strong)",
-                                                        ]}
-                                                        data-testid="kanban-card"
-                                                        data-selected={selected || undefined}
-                                                        data-key={card.key}
-                                                        data-document={card.document}
-                                                        data-line={card.line}
-                                                    >
-                                                        <span class="line-clamp-3 text-sm" data-testid="kanban-card-label"><KanbanCardText text={card.label} /></span>
-                                                        {#if card.parent !== null}
-                                                            <!-- A subtask with a card has a parent that is not on this board (ADR 0174); this keeps it tied to that task. -->
-                                                            <span class="mt-1 block truncate text-sm text-(--gk-text-muted)" data-testid="kanban-card-parent">
-                                                                in: <KanbanCardText text={card.parent} />
-                                                            </span>
-                                                        {:else if card.inConcept !== null}
-                                                            <!-- Says which concept the task sits in, on a board for a concept further out. Styled as KanbanCardText draws a wikilink, without its brackets. -->
-                                                            <span class="mt-1 block truncate text-sm text-(--gk-text-muted)" data-testid="kanban-card-concept">
-                                                                in: <span class="text-(--gk-accent) underline">{card.inConcept}</span>
-                                                            </span>
-                                                        {/if}
-                                                        <!-- Room on the right for the copy button, which sits over the card. -->
-                                                        <span class="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 pr-7 text-sm">
-                                                            <span class="min-w-0 truncate text-(--gk-text-subtle)" data-testid="kanban-card-document">{card.document}</span>
-                                                            {#if card.subtasks.total > 0}
-                                                                <!-- The board reaches a subtask through its parent's card (ADR 0174), so the card says how many it holds. -->
-                                                                <span class="inline-flex items-center gap-0.5 text-(--gk-text-muted)" data-testid="kanban-card-subtasks">
-                                                                    <!-- eslint-disable-next-line svelte/no-at-html-tags -- iconSvg returns trusted markup from the Client's icon table or the sanitized manifest icons (ADR 0130) -->
-                                                                    <span class="inline-flex size-3.5" aria-hidden="true">{@html iconSvg("check")}</span>
-                                                                    <span aria-hidden="true">{card.subtasks.done}/{card.subtasks.total}</span>
-                                                                    <span class="sr-only">{card.subtasks.done} of {card.subtasks.total} subtasks finished</span>
-                                                                </span>
-                                                            {/if}
-                                                            {#if card.due !== null}
-                                                                <span
-                                                                    class={["rounded px-1.5 font-medium", DUE_CLASSES[card.dueState ?? "upcoming"]]}
-                                                                    data-testid="kanban-card-due"
-                                                                    data-due-state={card.dueState}
-                                                                >
-                                                                    {dueLabel(card)}
-                                                                </span>
-                                                            {/if}
-                                                            <!-- The card's Free Tags, after its date, as the Tasks View draws them (ADR 0166). -->
-                                                            {#each card.freeTags as freeTag (freeTag)}
-                                                                <span class="rounded bg-(--gk-surface-2) px-1.5 font-medium text-(--gk-text-default)" data-testid="kanban-card-free-tag">{freeTag}</span>
-                                                            {/each}
-                                                        </span>
-                                                    </button>
-                                                    <!-- A sibling of the card, not inside it: a button cannot hold another. Out
-                                                         of the Tab order, which moves card to card with the arrow keys; from the
-                                                         keyboard, the card's menu (Shift+F10) has Copy task reference. -->
-                                                    {#if !carried}
-                                                        <button
-                                                            type="button"
-                                                            tabindex={-1}
-                                                            onclick={() => copyReference(card)}
-                                                            class="absolute right-1.5 bottom-1.5 inline-flex size-7 items-center justify-center rounded-md text-(--gk-text-subtle) hover:bg-(--gk-control-hover) hover:text-(--gk-text-default) focus-visible:outline-2 focus-visible:outline-(--gk-accent)"
-                                                            aria-label="Copy task reference"
-                                                            title="Copy task reference, to hand this task to an agent"
-                                                            data-testid="kanban-card-copy-reference"
-                                                        >
-                                                            <!-- In-repo constant markup from the icon table, never user content. -->
-                                                            <!-- eslint-disable-next-line svelte/no-at-html-tags -- iconSvg returns trusted markup from the Client's icon table or the sanitized manifest icons (ADR 0130) -->
-                                                            {@html iconSvg("task-reference")}
-                                                        </button>
-                                                    {/if}
-                                                </li>
-                                            {/each}
-                                        </ul>
-                                        {#if section.hasMore}
-                                            <button
-                                                type="button"
-                                                onclick={() => showMore(cell, section.cards.length)}
-                                                class="gk-button gk-button--quiet mt-1 flex w-full items-baseline justify-between gap-2"
-                                                data-testid="kanban-section-more"
-                                            >
-                                                <span>Show {Math.min(SECTION_PAGE_SIZE, section.total - section.cards.length)} more</span>
-                                                <span class="font-normal text-(--gk-text-subtle)">{section.cards.length} of {section.total}</span>
-                                            </button>
-                                        {/if}
+                        {#if !desktop.current && shown !== null && !empty && lane.unfiltered === 0}
+                            <p class="m-0 px-1 pt-2 text-sm text-(--gk-text-subtle)" data-testid="kanban-lane-empty">No tasks in {lane.label}.</p>
+                        {/if}
+                        {#if empty && lane.status === emptyNoticeLane}
+                            <p class="m-0 px-1 pt-2 text-sm text-(--gk-text-subtle)" data-testid="kanban-empty">
+                                {#if concept === null}
+                                    No tasks in this graph yet.
+                                {:else}
+                                    No tasks belong to {concept} yet. Tasks on its page, or nested under a link to it, appear here.
+                                {/if}
+                            </p>
+                        {/if}
+                        {#each drawnSections(lane) as section (section.label)}
+                            {@const cell = { status: lane.status, priority: section.priority }}
+                            {@const dropTarget = drag?.started === true && sameCell(drag.over, cell) && !sameCell(drag.from, cell)}
+                            <!-- While a card is carried over it, the section it would land in is
+                                 outlined, so a drop never lands somewhere unexpected. No priority,
+                                 the last, fills the lane to its foot, so its outline and the drops
+                                 it takes reach there however few cards it holds. -->
+                            <div
+                                class={[
+                                    "rounded-md",
+                                    section.priority === null && "grow",
+                                    dropTarget && "bg-(--gk-surface-2) outline-2 outline-(--gk-accent) outline-dashed",
+                                ]}
+                                data-testid="kanban-section"
+                                data-priority={section.priority ?? "none"}
+                                data-drop-target={dropTarget || undefined}
+                            >
+                                <div class="flex items-baseline justify-between gap-2 px-1 pb-1 pt-2">
+                                    <h3 class="m-0 text-sm font-medium text-(--gk-text-muted)" data-testid="kanban-section-label">
+                                        {section.label}
+                                    </h3>
+                                    {#if section.total > 0}
+                                        <span class="text-sm text-(--gk-text-subtle)" data-testid="kanban-section-count">{section.total}</span>
                                     {/if}
                                 </div>
-                            {/each}
-                        </div>
-                    </section>
-                {/if}
-            {/each}
-        </div>
-        {#if detail !== null}
-            <!-- The divider between the lanes and the Task Detail: dragged with a pointer, or moved
-                 with the arrow keys once it has the focus (the window splitter pattern). A focusable
-                 separator is a widget in ARIA, which the a11y check does not know. -->
-            <!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
-            <div
-                role="separator"
-                aria-orientation="horizontal"
-                aria-label="Task Detail height"
-                aria-valuemin={20}
-                aria-valuemax={80}
-                aria-valuenow={Math.round(detailHeight * 100)}
-                aria-valuetext="{Math.round(detailHeight * 100)}% of the board"
-                tabindex="0"
-                class="group relative h-2 shrink-0 cursor-row-resize touch-none focus-visible:outline-2 focus-visible:outline-(--gk-accent)"
-                onpointerdown={onDividerPointerDown}
-                onkeydown={onDividerKeydown}
-                data-testid="kanban-detail-divider"
-            >
-                <div class="absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-(--gk-border-soft) group-hover:h-0.5 group-hover:bg-(--gk-accent)"></div>
-            </div>
-            <!-- The Task Detail (ADR 0113): the task's document in an editor of its own, the task's
-                 line at the top. Clipped rather than hidden, so revealing a line scrolls the editor
-                 and never the board around it. Its keydown only watches an Escape the editor
-                 inside has handled, to bring the keyboard back to the card. -->
-            <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-            <section
-                bind:this={detailEl}
-                class="flex min-h-0 shrink-0 flex-col overflow-clip border-t border-(--gk-border-soft) bg-(--gk-surface-0)"
-                style:height="{detailHeight * 100}%"
-                aria-labelledby="{uid}-detail-title"
-                onkeydown={onDetailKeydown}
-                data-kanban-detail
-                data-testid="kanban-detail"
-                data-document={detail.document}
-            >
-                <!-- py-0.5 around EtherPK's 32px icon button keeps the header the height it was. -->
-                <header class="flex items-center gap-2 border-b border-(--gk-border-soft) bg-(--gk-surface-1) py-0.5 pl-3 pr-1.5">
-                    <h2 id="{uid}-detail-title" class="m-0 flex min-w-0 flex-1 items-baseline gap-2 text-sm">
-                        <span class="shrink-0 text-(--gk-text-muted)">Task Detail</span>
-                        <span class="truncate font-semibold text-(--gk-text-strong)" data-testid="kanban-detail-document">{detail.document}</span>
-                    </h2>
-                    <button
-                        type="button"
-                        onclick={openDetailInTab}
-                        class="gk-button gk-button--quiet shrink-0"
-                        data-testid="kanban-detail-open"
-                    >
-                        Open in tab
-                    </button>
-                    <button
-                        type="button"
-                        onclick={closeDetail}
-                        class="gk-icon-button"
-                        aria-label="Close the Task Detail"
-                        title="Close the Task Detail"
-                        data-testid="kanban-detail-close"
-                    >
-                        <!-- In-repo constant markup from the icon table, never user content. -->
-                        <!-- eslint-disable-next-line svelte/no-at-html-tags -- iconSvg returns trusted markup from the Client's icon table or the sanitized manifest icons (ADR 0130) -->
-                        {@html iconSvg("close")}
-                    </button>
-                </header>
-                <div class="min-h-0 flex-1 overflow-clip">
-                    {#key detail.document}
-                        <DocumentView
-                            bind:this={detailView}
-                            view={{ kind: "document", target: detail.document }}
-                            {panelId}
-                            {visibility}
-                            embedded
-                            revealAt={detail.line}
-                        />
-                    {/key}
-                </div>
-            </section>
-        {/if}
-        {#if taskEditor}
-            <!-- On the page's body, not in the board: the board sits in a transformed pane, and a
-                 fixed dialog inside one is placed, and clipped, by the pane. -->
-            <div {@attach onBody}>
-                <TaskEditor
-                    {concept}
-                    start={taskEditor}
-                    {panelId}
-                    {visibility}
-                    onclose={taskEditorClosed}
-                    onarchived={taskArchived}
-                    ondeleted={taskDeleted}
-                />
-            </div>
-        {/if}
-        {#if drag?.started && boardEl}
-            <!-- The carried copy, placed inside the board rather than fixed to the window, since a
-                 transformed ancestor in the workspace would move a fixed box. It ignores the
-                 pointer, so what is under the pointer is the section beneath it. -->
-            {@const origin = boardEl.getBoundingClientRect()}
-            <div
-                class="pointer-events-none absolute z-50 rotate-1 rounded-lg border border-(--gk-border-strong) bg-(--gk-surface-0) p-2.5 text-left text-sm shadow-lg"
-                style:left="{drag.x - origin.left - drag.offsetX}px"
-                style:top="{drag.y - origin.top - drag.offsetY}px"
-                style:width="{drag.width}px"
-                data-testid="kanban-drag-ghost"
-                aria-hidden="true"
-            >
-                <span class="line-clamp-3"><KanbanCardText text={drag.card.label} /></span>
-            </div>
-        {/if}
+                                {#if showPlaceholders && section.priority === 1}
+                                    <!-- Card-sized blocks while the first read is slow, so the
+                                         lanes do not jump when the cards arrive. -->
+                                    <div class="flex flex-col gap-2" aria-hidden="true">
+                                        <div class="h-16 rounded-lg bg-(--gk-surface-2)"></div>
+                                        <div class="h-16 rounded-lg bg-(--gk-surface-2)"></div>
+                                    </div>
+                                {:else if section.cards.length > 0}
+                                    <ul class="m-0 flex list-none flex-col gap-2 p-0">
+                                        {#each section.cards as card (card.key)}
+                                            {@const carried = drag?.started === true && drag.card.key === card.key}
+                                            {@const selected = desktop.current && isSelected(card)}
+                                            <li class="relative">
+                                                <button
+                                                    type="button"
+                                                    tabindex={card.key === tabKey ? 0 : -1}
+                                                    aria-describedby="{uid}-card-hint"
+                                                    aria-current={selected || undefined}
+                                                    onclick={() => {
+                                                        if (suppressClick) {
+                                                            suppressClick = false;
+                                                            return;
+                                                        }
+                                                        editCard(card);
+                                                    }}
+                                                    onfocus={() => (activeKey = card.key)}
+                                                    onkeydown={(event) => onCardKeydown(event, card, cell)}
+                                                    onpointerdown={(event) => onCardPointerDown(event, card, cell)}
+                                                    onpointermove={onCardPointerMove}
+                                                    onpointerup={onCardPointerUp}
+                                                    onpointercancel={endDrag}
+                                                    {@attach (node) => attachContextMenu(node, () => cardTarget(card, cell))}
+                                                    class={[
+                                                        // touch-manipulation and select-none leave a held finger to the card's menu (attachContextMenu).
+                                                        "block w-full touch-manipulation select-none rounded-lg border p-2.5 text-left shadow-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--gk-accent)",
+                                                        // Under the Phone Layout a card is not carried, and its menu button sits over its top right corner.
+                                                        desktop.current ? "cursor-grab" : "pr-10",
+                                                        // The card left behind while its copy is carried: its outline only, so it
+                                                        // still says where the card came from. The card the Task Detail shows
+                                                        // keeps an accent edge while it does.
+                                                        carried
+                                                            ? "border-dashed border-(--gk-border-strong) bg-(--gk-surface-1)"
+                                                            : selected
+                                                              ? "border-(--gk-accent) bg-(--gk-surface-0) ring-1 ring-(--gk-accent)"
+                                                              : "border-(--gk-border-soft) bg-(--gk-surface-0) hover:border-(--gk-border-strong)",
+                                                    ]}
+                                                    data-testid="kanban-card"
+                                                    data-selected={selected || undefined}
+                                                    data-key={card.key}
+                                                    data-document={card.document}
+                                                    data-line={card.line}
+                                                >
+                                                    <span class="line-clamp-3 text-sm" data-testid="kanban-card-label"><KanbanCardText text={card.label} /></span>
+                                                    {#if card.parent !== null}
+                                                        <!-- A subtask with a card has a parent that is not on this board (ADR 0174); this keeps it tied to that task. -->
+                                                        <span class="mt-1 block truncate text-sm text-(--gk-text-muted)" data-testid="kanban-card-parent">
+                                                            in: <KanbanCardText text={card.parent} />
+                                                        </span>
+                                                    {:else if card.inConcept !== null}
+                                                        <!-- Says which concept the task sits in, on a board for a concept further out. Styled as KanbanCardText draws a wikilink, without its brackets. -->
+                                                        <span class="mt-1 block truncate text-sm text-(--gk-text-muted)" data-testid="kanban-card-concept">
+                                                            in: <span class="text-(--gk-accent) underline">{card.inConcept}</span>
+                                                        </span>
+                                                    {/if}
+                                                    <!-- Room on the right for the copy button, which sits over the card. -->
+                                                    <span class={["mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm", desktop.current && "pr-7"]}>
+                                                        <span class="min-w-0 truncate text-(--gk-text-subtle)" data-testid="kanban-card-document">{card.document}</span>
+                                                        {#if card.subtasks.total > 0}
+                                                            <!-- The board reaches a subtask through its parent's card (ADR 0174), so the card says how many it holds. -->
+                                                            <span class="inline-flex items-center gap-0.5 text-(--gk-text-muted)" data-testid="kanban-card-subtasks">
+                                                                <!-- eslint-disable-next-line svelte/no-at-html-tags -- iconSvg returns trusted markup from the Client's icon table or the sanitized manifest icons (ADR 0130) -->
+                                                                <span class="inline-flex size-3.5" aria-hidden="true">{@html iconSvg("check")}</span>
+                                                                <span aria-hidden="true">{card.subtasks.done}/{card.subtasks.total}</span>
+                                                                <span class="sr-only">{card.subtasks.done} of {card.subtasks.total} subtasks finished</span>
+                                                            </span>
+                                                        {/if}
+                                                        {#if card.due !== null}
+                                                            <span
+                                                                class={["rounded px-1.5 font-medium", DUE_CLASSES[card.dueState ?? "upcoming"]]}
+                                                                data-testid="kanban-card-due"
+                                                                data-due-state={card.dueState}
+                                                            >
+                                                                {dueLabel(card)}
+                                                            </span>
+                                                        {/if}
+                                                        <!-- The card's Free Tags, after its date, as the Tasks View draws them (ADR 0166). -->
+                                                        {#each card.freeTags as freeTag (freeTag)}
+                                                            <span class="rounded bg-(--gk-surface-2) px-1.5 font-medium text-(--gk-text-default)" data-testid="kanban-card-free-tag">{freeTag}</span>
+                                                        {/each}
+                                                    </span>
+                                                </button>
+                                                <!-- A sibling of the card, not inside it: a button cannot hold another. Out
+                                                     of the Tab order, which moves card to card with the arrow keys; from the
+                                                     keyboard, the card's menu (Shift+F10) has Copy task reference. -->
+                                                {#if !carried && desktop.current}
+                                                    <button
+                                                        type="button"
+                                                        tabindex={-1}
+                                                        onclick={() => copyReference(card)}
+                                                        class="absolute right-1.5 bottom-1.5 inline-flex size-7 items-center justify-center rounded-md text-(--gk-text-subtle) hover:bg-(--gk-control-hover) hover:text-(--gk-text-default) focus-visible:outline-2 focus-visible:outline-(--gk-accent)"
+                                                        aria-label="Copy task reference"
+                                                        title="Copy task reference, to hand this task to an agent"
+                                                        data-testid="kanban-card-copy-reference"
+                                                    >
+                                                        <!-- In-repo constant markup from the icon table, never user content. -->
+                                                        <!-- eslint-disable-next-line svelte/no-at-html-tags -- iconSvg returns trusted markup from the Client's icon table or the sanitized manifest icons (ADR 0130) -->
+                                                        {@html iconSvg("task-reference")}
+                                                    </button>
+                                                {:else if !desktop.current}
+                                                    <!-- The Phone Layout's way to the card's menu, which holds Copy task reference:
+                                                         a long press raises it too, but nothing on screen says so. -->
+                                                    <button
+                                                        type="button"
+                                                        tabindex={-1}
+                                                        onclick={(event) => openCardMenuFromButton(card, cell, event.currentTarget)}
+                                                        class="absolute right-0.5 top-0.5 inline-flex size-10 items-center justify-center rounded-md text-(--gk-text-subtle) hover:bg-(--gk-control-hover) hover:text-(--gk-text-default) focus-visible:outline-2 focus-visible:outline-(--gk-accent)"
+                                                        aria-haspopup="menu"
+                                                        aria-label="More actions for {card.label}"
+                                                        title="More actions for this task"
+                                                        data-testid="kanban-card-menu"
+                                                    >
+                                                        <!-- In-repo constant markup from the icon table, never user content. -->
+                                                        <!-- eslint-disable-next-line svelte/no-at-html-tags -- iconSvg returns trusted markup from the Client's icon table or the sanitized manifest icons (ADR 0130) -->
+                                                        {@html iconSvg("more")}
+                                                    </button>
+                                                {/if}
+                                            </li>
+                                        {/each}
+                                    </ul>
+                                    {#if section.hasMore}
+                                        <button
+                                            type="button"
+                                            onclick={() => showMore(cell, section.cards.length)}
+                                            class="gk-button gk-button--quiet mt-1 flex w-full items-baseline justify-between gap-2"
+                                            data-testid="kanban-section-more"
+                                        >
+                                            <span>Show {Math.min(SECTION_PAGE_SIZE, section.total - section.cards.length)} more</span>
+                                            <span class="font-normal text-(--gk-text-subtle)">{section.cards.length} of {section.total}</span>
+                                        </button>
+                                    {/if}
+                                {/if}
+                            </div>
+                        {/each}
+                    </div>
+                </section>
+            {/if}
+        {/each}
     </div>
-{/if}
+    <!-- A phone has no room for it: it stays remembered, and comes back in a wider window. -->
+    {#if detail !== null && desktop.current}
+        <!-- The divider between the lanes and the Task Detail: dragged with a pointer, or moved
+             with the arrow keys once it has the focus (the window splitter pattern). A focusable
+             separator is a widget in ARIA, which the a11y check does not know. -->
+        <!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
+        <div
+            role="separator"
+            aria-orientation="horizontal"
+            aria-label="Task Detail height"
+            aria-valuemin={20}
+            aria-valuemax={80}
+            aria-valuenow={Math.round(detailHeight * 100)}
+            aria-valuetext="{Math.round(detailHeight * 100)}% of the board"
+            tabindex="0"
+            class="group relative h-2 shrink-0 cursor-row-resize touch-none focus-visible:outline-2 focus-visible:outline-(--gk-accent)"
+            onpointerdown={onDividerPointerDown}
+            onkeydown={onDividerKeydown}
+            data-testid="kanban-detail-divider"
+        >
+            <div class="absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-(--gk-border-soft) group-hover:h-0.5 group-hover:bg-(--gk-accent)"></div>
+        </div>
+        <!-- The Task Detail (ADR 0113): the task's document in an editor of its own, the task's
+             line at the top. Clipped rather than hidden, so revealing a line scrolls the editor
+             and never the board around it. Its keydown only watches an Escape the editor
+             inside has handled, to bring the keyboard back to the card. -->
+        <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+        <section
+            bind:this={detailEl}
+            class="flex min-h-0 shrink-0 flex-col overflow-clip border-t border-(--gk-border-soft) bg-(--gk-surface-0)"
+            style:height="{detailHeight * 100}%"
+            aria-labelledby="{uid}-detail-title"
+            onkeydown={onDetailKeydown}
+            data-kanban-detail
+            data-testid="kanban-detail"
+            data-document={detail.document}
+        >
+            <!-- py-0.5 around EtherPK's 32px icon button keeps the header the height it was. -->
+            <header class="flex items-center gap-2 border-b border-(--gk-border-soft) bg-(--gk-surface-1) py-0.5 pl-3 pr-1.5">
+                <h2 id="{uid}-detail-title" class="m-0 flex min-w-0 flex-1 items-baseline gap-2 text-sm">
+                    <span class="shrink-0 text-(--gk-text-muted)">Task Detail</span>
+                    <span class="truncate font-semibold text-(--gk-text-strong)" data-testid="kanban-detail-document">{detail.document}</span>
+                </h2>
+                <button
+                    type="button"
+                    onclick={openDetailInTab}
+                    class="gk-button gk-button--quiet shrink-0"
+                    data-testid="kanban-detail-open"
+                >
+                    Open in tab
+                </button>
+                <button
+                    type="button"
+                    onclick={closeDetail}
+                    class="gk-icon-button"
+                    aria-label="Close the Task Detail"
+                    title="Close the Task Detail"
+                    data-testid="kanban-detail-close"
+                >
+                    <!-- In-repo constant markup from the icon table, never user content. -->
+                    <!-- eslint-disable-next-line svelte/no-at-html-tags -- iconSvg returns trusted markup from the Client's icon table or the sanitized manifest icons (ADR 0130) -->
+                    {@html iconSvg("close")}
+                </button>
+            </header>
+            <div class="min-h-0 flex-1 overflow-clip">
+                {#key detail.document}
+                    <DocumentView
+                        bind:this={detailView}
+                        view={{ kind: "document", target: detail.document }}
+                        {panelId}
+                        {visibility}
+                        embedded
+                        revealAt={detail.line}
+                    />
+                {/key}
+            </div>
+        </section>
+    {/if}
+    {#if taskEditor}
+        <!-- On the page's body, not in the board: the board sits in a transformed pane, and a
+             fixed dialog inside one is placed, and clipped, by the pane. -->
+        <div {@attach onBody}>
+            <TaskEditor
+                {concept}
+                start={taskEditor}
+                {panelId}
+                {visibility}
+                onclose={taskEditorClosed}
+                onarchived={taskArchived}
+                ondeleted={taskDeleted}
+            />
+        </div>
+    {/if}
+    {#if drag?.started && boardEl}
+        <!-- The carried copy, placed inside the board rather than fixed to the window, since a
+             transformed ancestor in the workspace would move a fixed box. It ignores the
+             pointer, so what is under the pointer is the section beneath it. -->
+        {@const origin = boardEl.getBoundingClientRect()}
+        <div
+            class="pointer-events-none absolute z-50 rotate-1 rounded-lg border border-(--gk-border-strong) bg-(--gk-surface-0) p-2.5 text-left text-sm shadow-lg"
+            style:left="{drag.x - origin.left - drag.offsetX}px"
+            style:top="{drag.y - origin.top - drag.offsetY}px"
+            style:width="{drag.width}px"
+            data-testid="kanban-drag-ghost"
+            aria-hidden="true"
+        >
+            <span class="line-clamp-3"><KanbanCardText text={drag.card.label} /></span>
+        </div>
+    {/if}
+</div>

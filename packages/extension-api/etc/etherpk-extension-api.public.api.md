@@ -5,6 +5,13 @@
 ```ts
 
 // @public
+export interface ActiveFile {
+    restoreSelection(): void;
+    selectedText: string;
+    type: string;
+}
+
+// @public
 export interface AssetDescription {
     fileName: string;
     image: boolean;
@@ -39,7 +46,7 @@ export const CLIENT_COMMANDS: readonly string[];
 export interface CommandBarButton {
     args?: unknown;
     command: string;
-    documentOnly?: boolean;
+    files?: readonly string[];
     icon: string;
     id: string;
     pinned?: boolean;
@@ -364,6 +371,7 @@ export interface ExtensionKeybindings {
 // @public
 export interface ExtensionLayout {
     activeDocument(): string | null;
+    activeFile(): ActiveFile | null;
     isDesktop(): boolean;
     openDocument(concept: string, options?: {
         line?: number;
@@ -376,6 +384,8 @@ export interface ExtensionLayout {
     }): void;
     openWindow(options: {
         title: string;
+        size?: 'whole' | 'dialog';
+        closesOnOutsideClick?(): boolean;
         mount(host: HTMLElement, window: {
             close(): void;
         }): {

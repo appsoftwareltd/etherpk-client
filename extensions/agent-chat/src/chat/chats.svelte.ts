@@ -147,7 +147,7 @@ export class AgentChats {
 
     /** The chats with something asked in them that have no document: never had one, or it is gone. */
     withoutDocuments(): Chat[] {
-        return this.chats.filter((chat) => chat.exchanges.length > 0 && this.withoutDocument(chat))
+        return this.chats.filter((chat) => chat.exchanges.length > 0 && !chat.transient && this.withoutDocument(chat))
     }
 
     /** Let a chat go that has nothing asked in it: it was opened and closed again. */
@@ -219,6 +219,21 @@ export class AgentChats {
         // with nothing asked in it leaves nothing behind.
         this.chats = [chat, ...this.chats]
         return this.get(chat.id)!
+    }
+
+    /** Start a [[Transient Chat]]: nothing of it is ever written, and it reads nothing beyond itself. */
+    createTransient(): Chat {
+        const chat = this.create(null)
+        chat.transient = true
+        chat.webSearch = false
+        return chat
+    }
+
+    /** Close a [[Transient Chat]], which ends it: an answer still streaming stops, and nothing is left. */
+    endTransient(id: string): void {
+        this.stop(id)
+        this.chats = this.chats.filter((candidate) => candidate.id !== id)
+        this.#drafts.delete(id)
     }
 
     /**
@@ -522,6 +537,7 @@ export class AgentChats {
      * stops.
      */
     #persist(id: string, now = false): void {
+        if (this.get(id)?.transient) return
         if (!now && this.#timers.has(id)) return
         clearTimeout(this.#timers.get(id))
         this.#timers.delete(id)

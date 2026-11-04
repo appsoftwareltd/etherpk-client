@@ -377,7 +377,7 @@
                         style:--gk-tab-title-width={tabTitleWidth(renderer.registry.tabTitleChars(v.view))}
                         onclick={() => controller.focusView(v.view)}
                     >
-                        <span class="tab-title">{renderer.registry.title(v.view)}</span>
+                        <span class="tab-title">{renderer.title(v.view)}</span>
                     </button>
                 </div>
             {/each}
@@ -424,7 +424,7 @@
              tab's menu. With nothing open it says so and does nothing. -->
         {#if activeMain}
             {@const v = activeMain}
-            {@const title = renderer.registry.title(v.view)}
+            {@const title = renderer.title(v.view)}
             <button
                 class="current"
                 class:open={menuOpen}
@@ -498,7 +498,7 @@
             ></button>
             <div class="tabmenu" id="mobile-open-documents" data-testid="mobile-tab-menu" {@attach focusActiveRow}>
                 {#each mainViews as v (v.panelId)}
-                    {@const title = renderer.registry.title(v.view)}
+                    {@const title = renderer.title(v.view)}
                     {@const active = v.panelId === activeMain?.panelId}
                     <div
                         class="tabmenu-item"

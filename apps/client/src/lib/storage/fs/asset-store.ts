@@ -182,6 +182,11 @@ export function displayAssetName(fileName: string): string {
     return parsed.ext ? `${stem}.${parsed.ext}` : stem
 }
 
+/** A synced graph's asset id, with or without its extension: what a tab has until the real name arrives. */
+export function isBareAssetId(target: string): boolean {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(\.[^.]+)?$/i.test(target)
+}
+
 /**
  * MIME types for the formats the app itself renders, plus the handful a browser needs told about
  * to do anything sensible with a download. Deliberately small and deliberately **empty for

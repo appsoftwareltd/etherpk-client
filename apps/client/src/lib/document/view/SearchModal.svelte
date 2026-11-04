@@ -405,6 +405,10 @@
                     onclick={trackCaret}
                     onpointerdown={() => (activeIndex = null)}
                 />
+                <button type="button" class="search__close" aria-label="Close search" title="Close search" onclick={dismiss} data-testid="search-close">
+                    <!-- eslint-disable-next-line svelte/no-at-html-tags -- in-repo constant markup from the icon table -->
+                    {@html iconSvg("close", { size: 18 })}
+                </button>
                 {#if showSuggestions}
                     <!-- The combobox's list: keys go to the box (suggestionKey), so a row takes the
                          pointer only. pointerdown is cancelled so the box keeps focus and caret. -->
@@ -731,12 +735,38 @@
         border: 0;
         border-bottom: 1px solid var(--gk-border-soft);
         background: transparent;
-        padding: 0.875rem 1rem;
+        /* The right side is the close button's, so typing never runs under it. */
+        padding: 0.875rem 3rem 0.875rem 1rem;
         font-size: 1rem;
         color: var(--gk-text-strong);
     }
     .search__input:focus {
         outline: none;
+    }
+    .search__close {
+        position: absolute;
+        top: 0.25rem;
+        right: 0.25rem;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 2.5rem;
+        height: 2.5rem;
+        border-radius: 0.375rem;
+        color: var(--gk-text-muted);
+    }
+    .search__close:hover {
+        background: var(--gk-surface-2);
+        color: var(--gk-text-strong);
+    }
+    @media (pointer: coarse) {
+        .search__input {
+            padding-right: 3.25rem;
+        }
+        .search__close {
+            width: 2.75rem;
+            height: 2.75rem;
+        }
     }
     .search__box {
         position: relative;

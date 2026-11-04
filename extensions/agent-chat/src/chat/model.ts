@@ -179,6 +179,11 @@ export interface Chat {
      * document, one started in the Agent Chats View, which is saved into today's Journal Entry.
      */
     home: string | null
+    /**
+     * A [[Transient Chat]]: opened from a PDF, kept nowhere and listed nowhere, ended by closing it. It
+     * has no home and reads nothing beyond itself. The person leaves with a copy of an answer.
+     */
+    transient?: boolean
     /** What the next message may read. */
     grant: GrantLevel
     /** The connection and model the next message goes to. */
@@ -189,6 +194,14 @@ export interface Chat {
     exchanges: Exchange[]
     createdAt: number
     updatedAt: number
+}
+
+/**
+ * What a [[Transient Chat]]'s message field starts with: the text selected in the PDF, then a blank
+ * line for the caret, so a question typed there stays apart from it. Sending trims the blank line off.
+ */
+export function promptFromSelection(selected: string): string {
+    return selected === '' ? '' : `${selected}\n\n`
 }
 
 /** A chat's title from its first message: the first line, cut short. */

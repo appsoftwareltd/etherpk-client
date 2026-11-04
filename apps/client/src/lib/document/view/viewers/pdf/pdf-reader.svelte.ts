@@ -7,6 +7,7 @@ import { tick } from 'svelte'
 
 import { contentMargins, cropFromSamples, pageFitsCrop, samplePages, type DocumentCrop, type Margins } from '#lib/document/pdf/crop-margins.js'
 import { DEFAULT_CUSTOM, DEFAULT_HIGHLIGHT, DEFAULT_INK, knownColour, knownStrokeWidth, type DrawingTool } from '#lib/document/pdf/annotation-palette.js'
+import type { FileSelection } from '#lib/document/file-in-front.js'
 import { pdfDeviceMemory, type PdfPreferences } from '#lib/document/pdf/device-memory.js'
 import type { PdfOpenedFrom } from '#lib/document/pdf/page-requests.js'
 import { boxesToQuads, mergeLineBoxes, type Box } from '#lib/document/pdf/pdf-geometry.js'
@@ -36,10 +37,13 @@ const DOUBLE_TAP_PX = 32
 const TAP_SLOP_PX = 10
 const SWIPE_PX = 48
 const EDGE_TAP_SHARE = 0.22
-const HIDE_AFTER_SCROLL_PX = 48
+
+const boxesOverlap = (a: DOMRect, b: DOMRect): boolean => a.bottom > b.top && a.top < b.bottom && a.right > b.left && a.left < b.right
 
 interface UndoStep {
     label: string
+    /** The page it changes, brought into view first so that the change can be seen. */
+    page: number
     undo(): void
     redo(): void
 }
@@ -94,6 +98,8 @@ export class PdfReader {
     tool = $state<PdfTool>('none')
     /** On a phone a finger is all a person has to draw with. A tablet keeps it for scrolling, for a stylus. */
     fingerDraws = $state(isPhoneWidth())
+    /** The page in view has been read and holds no text to select, as a scan without a text layer does. */
+    pageWithoutText = $state(false)
     /** On a phone, whether the tool's colours and thicknesses are out over the page. */
     toolOptionsOpen = $state(false)
     /** The reference that opened this PDF, which a saved copy's link can follow. */
@@ -111,7 +117,7 @@ export class PdfReader {
     /** The note open for editing: where it is, and what it says. */
     noteEditor = $state<{ id: string | null; page: number; x: number; y: number; text: string } | null>(null)
 
-    /** Phone only: the toolbar and the app's chrome are hidden while reading. */
+    /** Phone only, when asked for: the toolbar and the app's chrome are hidden while reading. */
     immersive = $state(false)
     printing = $state<{ done: number; total: number } | null>(null)
     printError = $state<string | null>(null)
@@ -308,6 +314,7 @@ export class PdfReader {
         eventBus.on('pagesinit', () => this.onPagesInit())
         eventBus.on('pagechanging', ({ pageNumber }: { pageNumber: number }) => {
             this.page = pageNumber
+            void this.readPageText(pageNumber)
         })
         eventBus.on('scalechanging', ({ scale }: { scale: number }) => {
             this.scale = scale
@@ -329,6 +336,7 @@ export class PdfReader {
         // Here, not as the viewer starts: it has no pages to show one of until now, and it goes back to
         // scrolling each time it is given the document again.
         if (this.preferences.pageByPage && this.web) viewer.scrollMode = this.web.ScrollMode.PAGE
+        void this.readPageText(this.page)
         const remembered = this.memory.pdf(this.environment.graphId, this.hash)
         // A link clicked while the file was still loading is newer than the one remembered.
         if (this.openedFrom) this.memory.updatePdf(this.environment.graphId, this.hash, { openedFrom: this.openedFrom })
@@ -457,22 +465,19 @@ export class PdfReader {
                 onStart: () => this.overlays.cancelStroke(),
                 onPinch: (origin, scaleFactor) => {
                     this.viewer?.updateScale({ drawingDelay: 400, scaleFactor, origin: this.zoomOrigin(origin[0], origin[1]) })
-                    // Zooming moves the scroll position, which is not the person reading on.
-                    this.lastScrollTop = container.scrollTop
                 },
                 onPan: (dx, dy) => container.scrollBy(-dx, -dy),
-                onEnd: () => {
-                    this.lastScrollTop = container.scrollTop
-                    this.rememberZoom()
-                },
+                onEnd: () => this.rememberZoom(),
             },
             signal,
         )
         listenForTextDrag(
             container,
             {
-                takes: (type) => this.tool === 'highlight' && (type === 'pen' || this.fingerDraws),
-                done: () => this.highlightSelection(),
+                takes: (type) => this.tool === 'select' || (this.tool === 'highlight' && (type === 'pen' || this.fingerDraws)),
+                done: () => {
+                    if (this.tool === 'highlight') this.highlightSelection()
+                },
             },
             signal,
         )
@@ -490,7 +495,6 @@ export class PdfReader {
         // Safari's own page zoom, for the same reason.
         tab.addEventListener('gesturestart', (event) => event.preventDefault(), { signal })
         container.addEventListener('pointerdown', (event) => this.onTapStart(event), { signal })
-        container.addEventListener('scroll', () => this.onScroll(), { passive: true, signal })
         container.addEventListener('pointerup', (event) => this.onTapEnd(event), { signal })
         document.addEventListener('selectionchange', () => this.onSelectionChange(), { signal })
     }
@@ -503,15 +507,10 @@ export class PdfReader {
     }
 
     private tapStart: { x: number; y: number; at: number } | null = null
-    /** A restored place scrolls too, and that must not take the controls away. */
-    private touchedOnce = false
-    private lastScrollTop = 0
 
     private onTapStart(event: PointerEvent): void {
         this.toolOptionsOpen = false
         this.keepScreen?.touched()
-        if (!this.touchedOnce) this.lastScrollTop = this.container?.scrollTop ?? 0
-        this.touchedOnce = true
         this.tapStart = { x: event.clientX, y: event.clientY, at: Date.now() }
     }
 
@@ -564,7 +563,8 @@ export class PdfReader {
             if (share < EDGE_TAP_SHARE) return this.previousPage()
             if (share > 1 - EDGE_TAP_SHARE) return this.nextPage()
         }
-        if (isPhoneWidth()) this.setImmersive(!this.immersive)
+        // Going full screen is asked for in the More menu, so a tap steadying the page never does it.
+        this.setImmersive(false)
     }
 
     /** Double-tap: fit-width and a closer zoom, in turn. */
@@ -588,16 +588,6 @@ export class PdfReader {
         void tick().then(() => {
             if (container) container.scrollTop += container.getBoundingClientRect().top - before
         })
-    }
-
-    /** Reading on a phone: the first real scroll by the person takes the controls away. */
-    private onScroll(): void {
-        const { container } = this
-        if (!container || !this.touchedOnce) return
-        const moved = Math.abs(container.scrollTop - this.lastScrollTop)
-        if (moved < HIDE_AFTER_SCROLL_PX) return
-        this.lastScrollTop = container.scrollTop
-        if (isPhoneWidth() && this.tool === 'none' && !this.findOpen) this.setImmersive(true)
     }
 
     // ---- Reading controls ----
@@ -820,16 +810,52 @@ export class PdfReader {
         this.find = { current: 0, total: 0, state: (await this.hasAnyText()) ? 'not-found' : 'no-text' }
     }
 
+    private async pageHasText(pageNumber: number): Promise<boolean> {
+        const page = await this.pdf!.getPage(pageNumber)
+        const { items } = await page.getTextContent()
+        return items.some((item) => 'str' in item && item.str.trim() !== '')
+    }
+
     /** A scanned PDF has no text, which is a different answer from no match. */
     private async hasAnyText(): Promise<boolean> {
         const { pdf } = this
         if (!pdf) return true
         for (const n of samplePages(pdf.numPages, 8)) {
-            const page = await pdf.getPage(n)
-            const { items } = await page.getTextContent()
-            if (items.some((item) => 'str' in item && item.str.trim() !== '')) return true
+            if (await this.pageHasText(n)) return true
         }
         return false
+    }
+
+    /** Whether each page read so far has text. A page not read yet counts as having some. */
+    private readonly pagesWithText = new Map<number, boolean>()
+
+    /** Find out whether the page in view has text to select, and say so if it is still in view. */
+    private async readPageText(pageNumber: number): Promise<void> {
+        if (!this.pdf) return
+        let known = this.pagesWithText.get(pageNumber)
+        if (known === undefined) {
+            this.pageWithoutText = false
+            known = await this.pageHasText(pageNumber).catch(() => true)
+            this.pagesWithText.set(pageNumber, known)
+        }
+        if (this.page === pageNumber) this.pageWithoutText = !known
+    }
+
+    /** The text selected in this PDF at this moment, for `context.layout.activeFile`. */
+    fileSelection(): FileSelection {
+        const selection = window.getSelection()
+        if (!selection || selection.isCollapsed || selection.rangeCount === 0 || !this.container?.contains(selection.anchorNode)) {
+            return { selectedText: '', restoreSelection() {} }
+        }
+        const range = selection.getRangeAt(0).cloneRange()
+        return {
+            selectedText: selection.toString().replace(/\s+/g, ' ').trim(),
+            restoreSelection() {
+                const now = window.getSelection()
+                now?.removeAllRanges()
+                now?.addRange(range)
+            },
+        }
     }
 
     // ---- Annotating ----
@@ -929,14 +955,14 @@ export class PdfReader {
             for (const annotation of created) this.store?.removeAnnotation(annotation.id)
         }
         put()
-        this.pushUndo({ label, undo: remove, redo: put })
+        this.pushUndo({ label, page: created[0].page, undo: remove, redo: put })
     }
 
     removeAnnotation(id: string, label = 'Delete'): void {
         const annotation = this.annotations.find((a) => a.id === id)
         if (!annotation) return
         this.store?.removeAnnotation(id)
-        this.pushUndo({ label, undo: () => this.store?.putAnnotation(annotation), redo: () => this.store?.removeAnnotation(id) })
+        this.pushUndo({ label, page: annotation.page, undo: () => this.store?.putAnnotation(annotation), redo: () => this.store?.removeAnnotation(id) })
     }
 
     openNote(id: string): void {
@@ -960,7 +986,7 @@ export class PdfReader {
         } else if (trimmed !== held.text) {
             const next: PdfNote = { ...held, text: trimmed, updatedAt: Date.now() }
             this.store?.putAnnotation(next)
-            this.pushUndo({ label: 'Edit note', undo: () => this.store?.putAnnotation(held), redo: () => this.store?.putAnnotation(next) })
+            this.pushUndo({ label: 'Edit note', page: held.page, undo: () => this.store?.putAnnotation(held), redo: () => this.store?.putAnnotation(next) })
         }
     }
 
@@ -996,9 +1022,23 @@ export class PdfReader {
         this.canRedo = this.redoStack.length > 0
     }
 
+    /** Some of the page is on screen. In page by page, the pages not in front are out of the document. */
+    private pageOnScreen(pageNumber: number): boolean {
+        const element = (this.viewer?.getPageView(pageNumber - 1) as unknown as OverlayPage | undefined)?.div
+        if (!element || !this.container) return false
+        const box = element.getBoundingClientRect()
+        return box.width > 0 && boxesOverlap(box, this.container.getBoundingClientRect())
+    }
+
+    /** A step changes a page, which may be far from this one: without going there, nothing seems to happen. */
+    private showStep(step: UndoStep): void {
+        if (!this.pageOnScreen(step.page)) this.goToPage(step.page)
+    }
+
     undo(): void {
         const step = this.undoStack.pop()
         if (!step) return
+        this.showStep(step)
         step.undo()
         this.redoStack.push(step)
         this.syncUndo()
@@ -1007,6 +1047,7 @@ export class PdfReader {
     redo(): void {
         const step = this.redoStack.pop()
         if (!step) return
+        this.showStep(step)
         step.redo()
         this.undoStack.push(step)
         this.syncUndo()

@@ -65,6 +65,8 @@ export function keepReadingPoint(
     let scroller: HTMLElement | null = null
     let mark: ReadingMark | null = null
     let watchedSections: HTMLElement[] = []
+    /** Where a correction left the scroller, until the scroll event it raises arrives. */
+    let correctedTo: number | null = null
     const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => correct())
 
     const focusedText = () => document.activeElement?.closest('.cm-content') ?? null
@@ -127,14 +129,25 @@ export function keepReadingPoint(
         const point = mark
         if (view && point && !point.focused()) {
             const now = point.now()
-            if (now !== null && Math.abs(now - point.top) >= 0.5) view.scrollTop += now - point.top
+            if (now !== null && Math.abs(now - point.top) >= 0.5) {
+                const from = view.scrollTop
+                view.scrollTop += now - point.top
+                // A scroller at its end may not move at all, and then no scroll event comes.
+                correctedTo = view.scrollTop === from ? null : view.scrollTop
+            }
         }
         remember()
     }
 
     // Remembered on every scroll, at once rather than on the next frame: a size change landing
-    // before then would otherwise read the reader's own scroll as movement to undo.
-    const onScroll = () => remember()
+    // before then would otherwise read the reader's own scroll as movement to undo. A correction's
+    // own scroll is passed over: it was remembered as it was made, and the event arrives a frame
+    // later, when a line landing since would be remembered as if the reader were already past it.
+    const onScroll = () => {
+        const own = scroller !== null && scroller.scrollTop === correctedTo
+        correctedTo = null
+        if (!own) remember()
+    }
 
     return {
         setScroller(next) {

@@ -25,7 +25,7 @@ function boardOver(concept: string, detailDocument = 'Old') {
         documentRemoved: () => {},
         state: (): BoardState => {
             board.asked.push('state')
-            return { collapsed: ['done'], detail: { document: board.detailDocument, line: 3, label: 'Send the quote' }, detailHeight: 0.4 }
+            return { collapsed: ['done'], detail: { document: board.detailDocument, line: 3, label: 'Send the quote' }, detailHeight: 0.4, phoneLane: 'doing' }
         },
     })
     return { board, unregister }
@@ -72,6 +72,7 @@ describe('a board re-keyed by a rename', () => {
                 collapsed: ['done'],
                 detail: { document: 'New', line: 3, label: 'Send the quote' },
                 detailHeight: 0.4,
+                phoneLane: 'doing',
             })
             expect(takeBoardHandover('New')).toBeUndefined()
         } finally {
