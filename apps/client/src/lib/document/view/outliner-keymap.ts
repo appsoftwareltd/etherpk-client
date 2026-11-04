@@ -48,7 +48,7 @@ import {
     shiftLines,
     treeRootIndex,
 } from '../outliner'
-import { buildFenceCompletion, type FencedBlockRange, fencedBlocks, fencedBlocksAtLine, fenceLineInfo } from '../fenced-code'
+import { buildFenceCompletion, type FencedBlockRange, fencedBlocks, fencedBlocksAtLine, fenceLineInfo, tidiedFenceLine } from '../fenced-code'
 import { INDENT, INDENT_UNIT } from '../indent-unit'
 import { deletionBreaksFence } from './fence-guard'
 import { minimalReplacement } from './minimal-replacement'
@@ -496,13 +496,15 @@ const completeFence: StateCommand = (view) => {
     const sel = state.selection.main
     if (!sel.empty) return false
     const lineObj = state.doc.lineAt(sel.head)
-    if (sel.head !== lineObj.to) return false // only at the end of the line
-    const opener = fenceLineInfo(lineObj.text)
+    // Only at the end of the line, and spaces right of the caret are nothing a person can see.
+    if (/[^ \t]/.test(state.sliceDoc(sel.head, lineObj.to))) return false
+    const text = tidiedFenceLine(lineObj.text)
+    const opener = fenceLineInfo(text)
     if (!opener) return false // not a fence line (also skips task bullets, which the regex rejects)
     // The balance check: a fence a complete block already accounts for — its opener, empty or holding
     // content, its closer, or a shorter fence that is content — never grows a second closer. Enter
     // there is enterInCode's: the first content line, or the new block below the closer.
-    if (!unterminatedFenceOpenerAt(state, sel.head)) return false
+    if (!unterminatedFenceOpenerAt(state, sel.head, text)) return false
 
     const { insert, caretOffset } = buildFenceCompletion({
         indent: ' '.repeat(opener.col),
@@ -510,9 +512,12 @@ const completeFence: StateCommand = (view) => {
         info: opener.info,
         defaultLang: defaultCodeLang(),
     })
+    // The opener goes in as tidied, because the pairing scan reads `-  ``` ` as no fence and would see
+    // no block. On a line with nothing to tidy this is a plain insert at the caret.
+    const change = minimalReplacement(lineObj.text, text + insert)!
     dispatch(view, {
-        changes: { from: sel.head, insert },
-        selection: { anchor: sel.head + caretOffset },
+        changes: { from: lineObj.from + change.from, to: lineObj.from + change.to, insert: change.insert },
+        selection: { anchor: lineObj.from + text.length + caretOffset },
         userEvent: 'input.complete',
     })
     return true

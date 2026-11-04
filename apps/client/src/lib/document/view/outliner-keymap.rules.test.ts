@@ -58,6 +58,7 @@ import { FIND_REPLACE_EVENT, FIND_SELECT_EVENT } from '../find/find-edit'
 import { wikilinkButtonSpec } from './wrap-selection'
 import { insertTemplate } from './template-insert'
 import { renderTemplate } from '../templates/template-variables'
+import { setActiveGraphSettings } from '../active-graph-settings'
 
 interface Rule {
     rule: string
@@ -1625,10 +1626,43 @@ bulletButtonTable('the Command Bar bullet toggle in a table', [
 
 // ── Editor Content Rules → Fenced Code Blocks ─────────────────────────────────────────────────
 
+it('a graph’s default code language goes after the tidied opener, the caret on the middle line (EtherPK)', () => {
+    setActiveGraphSettings({ defaultCodeLanguage: 'js' })
+    try {
+        expect(press('-  ```|  ', 'Enter')).toBe('- ```js\n  |\n  ```')
+    } finally {
+        setActiveGraphSettings({})
+    }
+})
+
+for (const before of ['- a\n  -  ```|\n- b', '- a\n  - ```|  \n- b']) {
+    it(`one undo takes back a completion that dropped spaces: ${JSON.stringify(before)} (EtherPK)`, () => {
+        const editor = editorFixture(before)
+        editor.key('Enter')
+        editor.key('Mod-z')
+        expect(editor.fixture()).toBe(before)
+    })
+}
+
 table('fence creation and completion (ADR 0018)', [
     { rule: 'Enter at the end of an opener completes a balanced block, caret on the middle line', precedent: 'Obsidian', before: '```|', key: 'Enter', after: '```\n|\n```' },
     { rule: 'inside a bullet the fence is clamped to the content column', precedent: 'EtherPK', before: '- ```|', key: 'Enter', after: '- ```\n  |\n  ```' },
     { rule: 'a four-backtick opener gets a four-backtick closer', precedent: 'CommonMark', before: '````|', key: 'Enter', after: '````\n|\n````' },
+    // Spaces after the marker and at the line's end show nothing, and tidy on leave removes them, so a
+    // line reads as the opener it looks like.
+    { rule: 'a space typed before the backticks still completes the opener, and goes', precedent: 'EtherPK', before: '- a\n  -  ```|\n- b', key: 'Enter', after: '- a\n  - ```\n    |\n    ```\n- b' },
+    { rule: '…and so do several, keeping an info-string', precedent: 'EtherPK', before: '-    ```js|', key: 'Enter', after: '- ```js\n  |\n  ```' },
+    { rule: 'a space right of the caret still completes the opener, and goes', precedent: 'EtherPK', before: '- ```|  \n- b', key: 'Enter', after: '- ```\n  |\n  ```\n- b' },
+    { rule: 'a space typed before the backticks above a sibling’s block completes on its own', precedent: 'EtherPK', before: '-  ```|\n- ```\n  x\n  ```', key: 'Enter', after: '- ```\n  |\n  ```\n- ```\n  x\n  ```' },
+    { rule: 'such a line inside a code block is code: Enter is the in-block newline', precedent: 'EtherPK', before: '```\n-  ```|\nx\n```', key: 'Enter', after: '```\n-  ```\n|\nx\n```' },
+    // The fences below a line of a code sample can pair with it, and it is still the sample's code.
+    { rule: '…even where the fences below it would pair with it', precedent: 'EtherPK', before: '```\n-  ```|\n  ```\n  ```\n```', key: 'Enter', after: '```\n-  ```\n|\n  ```\n  ```\n```' },
+    { rule: 'a bullet fence that pairs in a code sample opens its first content line, never a second closer', precedent: 'EtherPK', before: '```\n- ```|\n  ```\n  ```\n```', key: 'Enter', after: '```\n- ```\n  |\n  ```\n  ```\n```' },
+    { rule: '…and spaces right of the caret stay, as code', precedent: 'EtherPK', before: '```\n- ```|  \n  ```\n  ```\n```', key: 'Enter', after: '```\n- ```  \n  |\n  ```\n  ```\n```' },
+    // Enter reads a spaced line as an opener only to complete it. One with a closer already below is no
+    // fence until tidy on leave writes it as one, so here Enter is a bullet's Enter.
+    { rule: 'a spaced opener with a closer below is not completed: the bullet splits', precedent: 'EtherPK', before: '-  ```|\n  x\n  ```\n- b', key: 'Enter', after: '- ```\n- |\n  x\n  ```\n- b' },
+    { rule: 'text right of the caret is no opener: Enter splits the bullet', precedent: 'EtherPK', before: '- ```| x y', key: 'Enter', after: '- ```\n- | x y' },
     { rule: 'an info-string is kept on the opener', precedent: 'Obsidian', before: '```js|', key: 'Enter', after: '```js\n|\n```' },
     { rule: 'Enter inside an opener’s backticks acts as Enter at its end, never splitting the fence', precedent: 'EtherPK', before: '- ``|`\n  x\n  ```', key: 'Enter', after: '- ```\n  |\n  x\n  ```' },
     { rule: 'Enter on a real closer never generates another pair', precedent: 'EtherPK', before: '```\nx\n```|', key: 'Enter', after: '```\nx\n```\n|' },

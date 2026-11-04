@@ -5,6 +5,14 @@ What changed in each release of the EtherPK Client and the Headless Client
 They are released together, under the version number they share with the Sync Server. This log
 starts at 0.9.3.
 
+## 0.18.5 - 2026-11-04
+
+### Client
+
+- **Fixes.**
+  - Enter completes a code fence when a space was typed before the backticks, or sits after the
+    caret. It opened a new bullet instead.
+
 ## 0.18.4 - 2026-11-04
 
 ### Client

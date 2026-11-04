@@ -11,6 +11,7 @@ import {
     isUnterminatedOpener,
     normaliseFenceLines,
     parseFenceOpener,
+    tidiedFenceLine,
 } from './fenced-code'
 
 describe('fencedBlocks — balance-aware, outliner-block-scoped pairing', () => {
@@ -124,7 +125,23 @@ describe('fence line info (opener/closer detection, bullet-tolerant)', () => {
     })
 })
 
+describe('a fence line as tidy on leave writes it (tidiedFenceLine)', () => {
+    it('drops spaces and tabs after the bullet marker and at the end of the line', () => {
+        expect(tidiedFenceLine('  -   ```js  ')).toBe('  - ```js')
+        expect(tidiedFenceLine('- \t```\t')).toBe('- ```')
+    })
+    it('leaves what tidy on leave leaves', () => {
+        expect(tidiedFenceLine('- ```')).toBe('- ```')
+        expect(tidiedFenceLine('  ```')).toBe('  ```')
+        expect(tidiedFenceLine('-  text')).toBe('-  text')
+        expect(tidiedFenceLine('- ```\u00a0')).toBe('- ```\u00a0')
+    })
+})
+
 describe('the balance check (isUnterminatedOpener): Enter completes only an unterminated opener', () => {
+    it('a line of a code sample is code, even where the fences below it pair with it', () => {
+        expect(isUnterminatedOpener(['```', '- ```', '  ```', '  ```', '```'], 1)).toBe(false)
+    })
     it('a lone opener — bare, with an info-string, or on a bullet — is unterminated', () => {
         expect(isUnterminatedOpener(['```'], 0)).toBe(true)
         expect(isUnterminatedOpener(['```js'], 0)).toBe(true)

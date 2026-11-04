@@ -40,6 +40,15 @@ export function fenceLineInfo(line: string): FenceInfo | null {
     return { col: m[1].length, run: m[2], char: m[2][0], len: m[2].length, info: m[3], bullet: m[1].includes('-') }
 }
 
+/**
+ * A line as tidy on leave will write it, for reading it as a fence while the caret is still on it:
+ * spaces after a bullet marker and at the line's end show nothing, so `-  ``` ` is the opener it looks
+ * like. Only the key that completes a fence reads a line this way. A scan takes the text as it stands.
+ */
+export function tidiedFenceLine(line: string): string {
+    return line.replace(/^(\s*-\s)[ \t]+(?=`)/, '$1').replace(/[ \t]+$/, '')
+}
+
 /** Whether `lines[a]` would close an open fence `b` (same char, run of the SAME length, no info, and not
  *  itself a bullet-line opener). */
 function closes(a: FenceInfo, open: FenceInfo): boolean {
@@ -222,6 +231,9 @@ export function isUnterminatedOpener(lines: readonly string[], index: number, pe
     const block = paired.find((b) => b.start <= index && index <= b.end)
     if (!block) return true // pairs with nothing
     if (block.start !== index) return false // its closer, or a shorter fence that is content
+    // A line of a code sample is code, even where the deeper fences below it pair with it as a block
+    // of the sample's own. `find` above can return that inner block, so the block around it is asked for.
+    if (paired.some((b) => b.start < index && index < b.end)) return false
     const without = fencedBlocks(scanned.map((l, i) => (i === index ? defangFence(l) : l)))
     const tally = (blocks: readonly FencedBlockRange[], from: number) => blocks.filter((b) => b.start >= from).length
     return tally(without, index + 1) >= tally(paired, index)

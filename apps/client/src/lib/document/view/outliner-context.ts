@@ -148,11 +148,14 @@ export function visibleFencedBlockAt(state: EditorState, pos: number): FencedBlo
  * Whether the fence line at `pos` is an unterminated opener — the one shape Enter completes — under
  * the analysis's pending-aware pairing ({@link isUnterminatedOpener}): the freshly typed fence the
  * analysis holds pending is set aside here exactly as it is for every other fence consumer.
+ * `lineText` reads the line at `pos` as that text instead of as it stands.
  */
-export function unterminatedFenceOpenerAt(state: EditorState, pos: number): boolean {
+export function unterminatedFenceOpenerAt(state: EditorState, pos: number, lineText?: string): boolean {
     const analysis = state.field(editorAnalysisField, false) as EditorAnalysis | undefined
     const lines = analysis?.lines ?? state.doc.toString().split('\n')
-    return isUnterminatedOpener(lines, state.doc.lineAt(pos).number - 1, analysis?.pendingFence ?? null)
+    const index = state.doc.lineAt(pos).number - 1
+    const read = lineText === undefined ? lines : lines.map((line, i) => (i === index ? lineText : line))
+    return isUnterminatedOpener(read, index, analysis?.pendingFence ?? null)
 }
 
 /**
