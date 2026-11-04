@@ -157,7 +157,7 @@ describe('asset.open', () => {
         await h.commands.execute(ASSET_OPEN, target)
 
         // The filesystem identity is already the file name, extension and all.
-        expect(h.deps.openAsset).toHaveBeenCalledWith(ASSET_ID, REF)
+        expect(h.deps.openAsset).toHaveBeenCalledWith(ASSET_ID, REF, target.line)
     })
 })
 

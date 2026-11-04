@@ -10,7 +10,7 @@
 import { type ContributionRegistry, registerAssetViewer } from '#lib/surface/index.js'
 
 import ImageAssetViewer from './ImageAssetViewer.svelte'
-import PdfAssetViewer from './PdfAssetViewer.svelte'
+import PdfAssetViewer from './pdf/PdfAssetViewer.svelte'
 
 /** Register every built-in viewer. Returns a disposer for the lot. */
 export function registerAssetViewers(registry: ContributionRegistry): () => void {

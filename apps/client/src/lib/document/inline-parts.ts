@@ -19,8 +19,8 @@
  * the reason it reuses the editor's markdown parser rather than a regex of its own.
  *
  * One deliberate difference. An [[Asset Reference]] renders as its **label**, not its raw
- * markdown. The editor leaves `[Q3](../assets/q3.a1b2c3d4.pdf)` visible because the caret has to
- * be able to edit it; a panel that cannot edit it has nothing to gain from showing a content hash.
+ * markdown. The editor shows `[Q3](../assets/q3.a1b2c3d4.pdf)` while the caret is on its line, because the
+ * caret has to be able to edit it; a panel that cannot edit it has nothing to gain from a content hash.
  * Hyperlinks need no such judgement — hiding their syntax is what the editor already does the
  * moment the caret leaves the line.
  *

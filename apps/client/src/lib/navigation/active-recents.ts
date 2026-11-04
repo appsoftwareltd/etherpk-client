@@ -19,6 +19,15 @@ const NONE: RecentsStore = {
         listener([])
         return () => {}
     },
+    entries: () => [],
+    touchPdf: () => {},
+    touchKnownPdf: () => {},
+    forgetPdf: () => {},
+    renamePdf: () => {},
+    subscribeEntries: (listener) => {
+        listener([])
+        return () => {}
+    },
 }
 
 export function setActiveRecents(store: RecentsStore | null): void {

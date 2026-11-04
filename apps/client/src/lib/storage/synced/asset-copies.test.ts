@@ -122,3 +122,37 @@ describe('removing copies', () => {
         expect(await copies.read(OTHER, 'b1')).not.toBeNull()
     })
 })
+
+describe('a copy a person asked to keep', () => {
+    const big = { encryptedMetadata: 'meta', chunks: [new Uint8Array(100)] }
+
+    it('is kept whatever its size, and stays when the budget is passed', async () => {
+        const copies = openAssetCopies({ budgetBytes: 150, maxAssetBytes: 50 })
+        await copies.keep('pinned-graph', 'a', big, { pinned: true })
+        expect(await copies.isPinned('pinned-graph', 'a')).toBe(true)
+        await copies.keep('pinned-graph', 'b', { encryptedMetadata: 'meta', chunks: [new Uint8Array(40)] })
+        await copies.keep('pinned-graph', 'c', { encryptedMetadata: 'meta', chunks: [new Uint8Array(40)] })
+        await copies.keep('pinned-graph', 'd', { encryptedMetadata: 'meta', chunks: [new Uint8Array(40)] })
+        await copies.keep('pinned-graph', 'e', { encryptedMetadata: 'meta', chunks: [new Uint8Array(40)] })
+        expect(await copies.read('pinned-graph', 'a')).not.toBeNull()
+        expect(await copies.read('pinned-graph', 'b')).toBeNull()
+    })
+
+    it('goes back to the ordinary budget when let go', async () => {
+        const copies = openAssetCopies({ budgetBytes: 50, maxAssetBytes: 500 })
+        await copies.keep('unpin-graph', 'a', big, { pinned: true })
+        expect(await copies.setPinned('unpin-graph', 'a', false)).toBe(true)
+        expect(await copies.read('unpin-graph', 'a')).toBeNull()
+    })
+
+    it('answers false when there is no copy to pin', async () => {
+        expect(await openAssetCopies().setPinned('none-graph', 'a', true)).toBe(false)
+    })
+
+    it('takes a new name without touching the bytes', async () => {
+        const copies = openAssetCopies()
+        await copies.keep('rename-graph', 'a', big)
+        await copies.updateMetadata('rename-graph', 'a', 'renamed')
+        expect((await copies.read('rename-graph', 'a'))?.encryptedMetadata).toBe('renamed')
+    })
+})

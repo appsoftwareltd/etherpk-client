@@ -28,8 +28,10 @@ pages/      Quantum Mechanics.md              a page, named by its concept
 assets/     diagram.a1b2c3d4.png              embedded images and files
 etherpk/    settings.json, quick-notes.json,  app-managed graph settings, quick notes,
             bookmarks.json, dictionary.txt,   bookmarks, the graph dictionary,
-            protection.json,                  key material
-            theme-<id>.jsonc                  and website themes
+            protection.json,                  key material,
+            theme-<id>.jsonc,                 website themes
+            pdf-<hash>.json,                  a PDF's annotations
+            pdf-bookmarks.json                and PDF bookmarks
 AGENTS.md                                     this file
 ```
 
@@ -40,7 +42,10 @@ AGENTS.md                                     this file
 - `etherpk/` is app-internal. `settings.json` holds graph settings (default image size, code
   language, favourites). `quick-notes.json` holds quick notes the user has not yet moved into a
   journal - EtherPK rewrites it whole, so do not edit it. `bookmarks.json` holds the user's
-  bookmarks, the lines they marked to come back to. EtherPK writes it, so do not edit it. `dictionary.txt` is the graph dictionary:
+  bookmarks, the lines they marked to come back to. EtherPK writes it, so do not edit it. `pdf-<hash>.json` holds the
+  user's annotations and form values on one PDF, under the hash of its bytes, and `pdf-bookmarks.json`
+  the pages they marked across every PDF. EtherPK writes both, so do not edit them, and do not change
+  a PDF in `assets/`: a changed file has a new hash and loses them. `dictionary.txt` is the graph dictionary:
   words spell check accepts in this graph, one per line, sorted. You may add a word to it (one
   per line, keeping the order) - EtherPK merges the file before it next writes it. `theme-<id>.jsonc` holds a website theme
   the user copied into the graph (templates, stylesheet and script as JSON strings, under a

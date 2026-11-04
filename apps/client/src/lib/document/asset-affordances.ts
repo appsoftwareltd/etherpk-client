@@ -15,7 +15,7 @@
  * No DOM, no CodeMirror — a surface builds its own buttons from this.
  */
 
-import { isImageAssetRef } from '#lib/storage/fs/asset-store.js'
+import { displayNameForRef, isImageAssetRef } from '#lib/storage/fs/asset-store.js'
 import { type AssetContextMenuTarget, canViewAsset, tryGetActiveCommandRegistry, tryGetActiveContributionRegistry } from '#lib/surface/index.js'
 
 import { ASSET_COPY_IMAGE, ASSET_DELETE, ASSET_DOWNLOAD, ASSET_OPEN, ASSET_VIEW_IMAGE } from './commands/asset-commands'
@@ -25,6 +25,32 @@ import { canCopyImages } from './view/clipboard-image'
 
 /** One entry in the cluster: the shared inline-action shape (`inline-action.ts`), under the asset's name. */
 export type AssetAction = InlineAction
+
+/**
+ * What a plain click on a link to a file runs, on every surface that draws one: a PDF reads in its tab
+ * when a viewer can show it, and any other file downloads.
+ */
+export function assetClickCommand(ref: string): typeof ASSET_OPEN | typeof ASSET_DOWNLOAD {
+    return assetExtension(ref) === '.pdf' && canOpenAsset(ref) ? ASSET_OPEN : ASSET_DOWNLOAD
+}
+
+/**
+ * The extension a file link shows beside its label, with its period (`.pdf`). A link reads as its
+ * label off the caret's line, which leaves nothing else to say what kind of file it is.
+ */
+export function assetExtension(ref: string): string | null {
+    const match = /[^./]\.([a-z0-9]{1,10})$/i.exec(displayNameForRef(ref.split(/[?#]/)[0]))
+    return match ? `.${match[1].toLowerCase()}` : null
+}
+
+/**
+ * What the extension pill does when clicked, as words for its name, or null for a picture's pill,
+ * which only says what the file is. Otherwise it does what the link beside it does.
+ */
+export function assetExtensionAction(ref: string): string | null {
+    if (isImageAssetRef(ref)) return null
+    return assetClickCommand(ref) === ASSET_OPEN ? 'Open in a new tab' : 'Download'
+}
 
 /** Whether anything registered can show this file in a tab (surface/asset-viewer.ts). */
 export function canOpenAsset(ref: string): boolean {

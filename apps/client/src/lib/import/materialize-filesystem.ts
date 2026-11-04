@@ -16,12 +16,22 @@ import { readGraphThemes, writeGraphTheme } from '#lib/storage/fs/theme-files.js
 import { unionQuickNotes } from '#lib/document/quick-notes.js'
 import { unionBookmarks } from '#lib/document/bookmarks/bookmarks.js'
 import { readBookmarks, writeBookmarks } from '#lib/storage/fs/bookmarks-file.js'
+import { importPdfStateFiles } from '#lib/document/pdf/file-pdf-state.js'
+import { retargetImportedPdfBookmarks, unionPdfBookmarks } from '#lib/document/pdf/pdf-bookmarks.js'
+import { readPdfBookmarks, writePdfBookmarks } from '#lib/storage/fs/pdf-bookmarks-file.js'
 import { unionDictionary } from '#lib/document/spelling/graph-dictionary.js'
 import { readDictionary, writeDictionary } from '#lib/storage/fs/dictionary-file.js'
 import { filesystemProtectionStore } from '#lib/document/protection/protection-store.js'
 
 import { buildReportPage } from './report'
 import { breathe, type ConvertedGraph, type ImportControl, type ImportFormat } from './types'
+
+/** Into the folder's list, by id, each opening the file as it is named here. */
+async function importPdfBookmarks(adapter: DirectoryAdapter, graph: ConvertedGraph): Promise<void> {
+    if (!graph.pdfBookmarks?.length) return
+    const landed = await retargetImportedPdfBookmarks(graph.pdfBookmarks, graph.assets, (fileName) => fileName)
+    await writePdfBookmarks(adapter, unionPdfBookmarks(await readPdfBookmarks(adapter), landed))
+}
 
 export async function materializeToFilesystem(
     graph: ConvertedGraph,
@@ -71,6 +81,8 @@ export async function materializeToFilesystem(
     if (graph.bookmarks?.length) {
         await writeBookmarks(adapter, unionBookmarks(await readBookmarks(adapter), graph.bookmarks))
     }
+    await importPdfStateFiles(adapter, graph.pdfStates)
+    await importPdfBookmarks(adapter, graph)
     // A union, so importing the same export twice adds nothing (ADR 0095).
     if (graph.spellingDictionary?.length) {
         await writeDictionary(adapter, unionDictionary(await readDictionary(adapter), graph.spellingDictionary))

@@ -7,6 +7,8 @@
  * same converted graph can land on a Filesystem or Server destination.
  */
 
+import type { PdfBookmark } from '#lib/document/pdf/pdf-bookmarks.js'
+import type { PdfState } from '#lib/document/pdf/pdf-state.js'
 import type { QuickNote } from '#lib/document/quick-notes.js'
 import type { Bookmark } from '#lib/document/bookmarks/bookmarks.js'
 import type { GraphTheme } from '#lib/document/publish/theme/graph-theme.js'
@@ -108,6 +110,10 @@ export interface ConvertedGraph {
      * (ADR 0159): the bookmarks of the person whose folder or [[Local Mirror]] it was.
      */
     bookmarks?: Bookmark[]
+    /** Annotations and form values of PDFs, each `etherpk/pdf-<hash>.json`. */
+    pdfStates?: { hash: string; state: PdfState }[]
+    /** [[PDF Bookmark]]s from `etherpk/pdf-bookmarks.json`, the person's whose folder it was. */
+    pdfBookmarks?: PdfBookmark[]
     /** The [[Graph Dictionary]] carried from an EtherPK source's `etherpk/dictionary.txt`, when present (ADR 0095). */
     spellingDictionary?: string[]
     /** [[Theme]]s carried from an EtherPK source's `etherpk/theme-<id>.jsonc` files, when present (ADR 0082). */

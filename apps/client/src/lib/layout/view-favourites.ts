@@ -52,6 +52,12 @@ function viewOf(entry: ViewRegistryEntry | undefined, favourite: ViewFavourite):
     return entry.soleTarget !== undefined && favourite.concept === undefined ? { kind: favourite.kind, target: entry.soleTarget } : null
 }
 
+/** A PDF names itself from what was stored, as a synced Asset's own target is a bare id. */
+function pdfRow({ kind, concept, name }: ViewFavourite): ViewFavouriteRow | null {
+    if (kind !== 'asset' || concept === undefined) return null
+    return { title: name ?? concept, icon: 'pdf', view: { kind: 'asset', target: concept } }
+}
+
 export function createViewFavourites(deps: ViewFavouritesDeps): ViewFavourites {
     const { registry } = deps
     return {
@@ -62,6 +68,8 @@ export function createViewFavourites(deps: ViewFavouritesDeps): ViewFavourites {
             return entry.soleTarget !== undefined && view.target === entry.soleTarget ? { kind: view.kind } : null
         },
         describe(favourite) {
+            const pdf = pdfRow(favourite)
+            if (pdf) return pdf
             const entry = registry.get(favourite.kind)
             const view = viewOf(entry, favourite)
             const availability = deps.availability(favourite.kind)

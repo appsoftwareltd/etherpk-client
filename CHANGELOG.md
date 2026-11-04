@@ -5,7 +5,38 @@ What changed in each release of the EtherPK Client and the Headless Client
 They are released together, under the version number they share with the Sync Server. This log
 starts at 0.9.3.
 
-## Unreleased
+## 0.19.0 - 2026-11-04
+
+### Client
+
+- **A PDF reader.** A PDF opens in its tab with pages drawn as you reach them, selectable text, links,
+  zoom and find, and it asks for a PDF's password each time. It reopens where you stopped, on any of
+  your devices on a synced graph. **Page by page** has buttons floating at the bottom of the view,
+  **Crop margins** hides blank margins and **Dark pages** gives the pages dark colours. Ctrl or Cmd
+  with the mouse wheel zooms the PDF, not the app.
+- **Annotate a PDF.** Highlight text, draw with a pen or freehand highlighter and type notes, in any
+  colour and four line thicknesses. The line is steadied as you draw, and a stylus's pressure changes
+  its width. Annotations save as you work and belong to you: EtherPK does not show them to the other
+  members of a graph. **Copy to journal** writes a passage into today's journal with a link to its
+  page, and `../assets/name.pdf#page=12` opens a PDF at that page.
+- **Sign and save a copy of a PDF.** Fill in its form, place a signature, then save a new PDF to your
+  device or add it to the graph, with a link in today's journal or straight after the link you opened
+  it from. A copy can be flattened, and its password kept, removed or changed. Printing includes your
+  annotations by default. The PDF in your graph never changes.
+- **PDFs on a phone or tablet.** Pinch to zoom, read full-screen as the controls hide, keep the screen
+  on, and keep a large file on the device for reading offline. At phone width a finger draws and
+  highlights, two fingers move the page, and the pen's options tuck behind a tab at the page's edge.
+  **Draw with finger** in the **More** menu changes what a finger does.
+- **PDF Bookmarks.** Bookmark a page from the PDF's toolbar. It shows a ribbon, and is listed in the
+  Sidebar under the name of its PDF, on all your devices on a synced graph.
+- **Links to files read as their label.** A link to a PDF or other file shows its label and a pill
+  with the file's extension, and its full source when the caret is on its line, as other links do. A
+  click on the link or the pill opens a PDF in its tab. Other files download as before, and so does
+  the download icon beside the link.
+- **PDFs in Favourites and Recents**, with a PDF icon. A PDF's tab can also list the documents that
+  link to it, delete it when nothing does, and rename it, which updates the links to it.
+- **Extension API.** A Command Bar button can set `documentOnly`, which greys it while a tab that shows
+  a file, such as a PDF, is in front. Agent Chat's button does this.
 
 ### Headless Client
 

@@ -260,7 +260,7 @@ export function editorFeatures(services: EditorExtensionServices): EditorFeature
         // untouched, unless an inline panel has come to hold it.
         { name: 'end-of-document', extension: endOfDocument() },
         { name: 'math-inline', extension: mathInlineAugmentation() },
-        // Assets: images resolve through the store; asset links download. Asset-link MUST precede
+        // Assets: images resolve through the store; asset links open a PDF and download the rest. Asset-link MUST precede
         // markdown-link, which skips any target the asset augmentation owns.
         {
             name: 'image-embed',

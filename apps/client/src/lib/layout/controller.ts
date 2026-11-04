@@ -286,7 +286,16 @@ export function createLayoutController(options: LayoutControllerOptions): Layout
         onChange?.()
     }
 
+    /** A View that holds something closing would lose answers false, and shows what to do instead. */
+    const closeGuards = new Map<string, () => boolean>()
+
+    const guardRefuses = (panelId: string) => closeGuards.get(panelId)?.() === false
+
     function closePanel(panelId: string): void {
+        if (!guardRefuses(panelId)) removeClosedPanel(panelId)
+    }
+
+    function removeClosedPanel(panelId: string): void {
         reconcile()
         const previousActive = model.activePanelId
         const pane = locatePanel(model, panelId)?.pane
@@ -509,6 +518,13 @@ export function createLayoutController(options: LayoutControllerOptions): Layout
             return activePaneOf(model, region)?.activePanelId ?? null
         },
 
+        guardClose(view, guard) {
+            const key = viewKey(view)
+            closeGuards.set(key, guard)
+            return () => {
+                if (closeGuards.get(key) === guard) closeGuards.delete(key)
+            }
+        },
         closeView(view) {
             closePanel(viewKey(view))
         },

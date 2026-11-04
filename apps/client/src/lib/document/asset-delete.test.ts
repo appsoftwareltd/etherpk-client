@@ -264,3 +264,21 @@ describe('assetUsageNeedles', () => {
         ])
     })
 })
+
+describe('a delete from a PDF tab, which removes no reference of its own', () => {
+    const ready = async (): Promise<AssetByteReadiness> => ({ ready: true })
+
+    it('refuses while any one reference exists', async () => {
+        const plan = await planAssetDelete({
+            usage: async () => ({ references: 1, documents: [{ concept: 'Garden', kind: 'page', references: 1 }] }),
+            readiness: ready,
+            ownReferences: 0,
+        })
+        expect(plan).toMatchObject({ deleteBytes: false, blockedBy: 'used-elsewhere' })
+    })
+
+    it('allows it with none', async () => {
+        const plan = await planAssetDelete({ usage: async () => ({ references: 0, documents: [] }), readiness: ready, ownReferences: 0 })
+        expect(plan.deleteBytes).toBe(true)
+    })
+})

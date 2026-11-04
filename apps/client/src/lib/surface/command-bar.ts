@@ -29,6 +29,8 @@ export interface CommandBarItem {
     order?: number
     /** Which side of the bar the button sits on. `'start'` (default) scrolls; `'end'` is pinned. */
     align?: 'start' | 'end'
+    /** Disabled while a tab that shows a file, such as a PDF, is in front: it has no text to work on. */
+    documentOnly?: boolean
     /**
      * Disabled (shown greyed) when the caret is not on a bullet of the outline: a form-1 opener
      * counts, a bullet-shaped line in code or in the frontmatter does not (`outlinerBulletAtCaret`).

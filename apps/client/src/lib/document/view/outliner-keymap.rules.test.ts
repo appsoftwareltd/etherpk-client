@@ -29,6 +29,8 @@ import { type InteractiveFence, registerInteractiveFence } from './augmentations
 import { pasteAsFence } from './augmentations/paste-to-fence'
 import { markdownWithCodeHighlight } from './augmentations/code-highlight'
 import { markdownFormatSpec, RULE_LINE_CLASS } from './augmentations/markdown-format'
+import { assetExtension } from '../asset-affordances'
+import { assetLinkSpec } from './augmentations/asset-link'
 import { linkClickCaret, markdownLinkSpec } from './augmentations/markdown-link'
 import { imageClickCaret, imageClickSpec, imageEmbedAugmentation } from './augmentations/image-embed'
 import { imageWidthChange } from './augmentations/image-resize'
@@ -605,6 +607,30 @@ presentationTable('a mark that runs onto the next line starts that line at its t
     { rule: 'a later line the outline reads as a bullet starts after its marker', precedent: 'EtherPK', before: '- a `b\n        - c` d\n- x|', shows: '- a <code>b</code>\n        - <code>c</code> d\n- x' },
 ])
 
+describe('a link to a file says what kind of file it is', () => {
+    it.each([
+        { rule: 'its extension, with the period', precedent: 'EtherPK', ref: '../assets/guide.a1b2c3d4.pdf', shows: '.pdf' },
+        { rule: 'a link to a page of it reads the same', precedent: 'EtherPK', ref: '../assets/guide.a1b2c3d4.pdf#page=4', shows: '.pdf' },
+        { rule: 'in lower case, however the file is named', precedent: 'EtherPK', ref: '../assets/GUIDE.a1b2c3d4.PDF', shows: '.pdf' },
+        { rule: 'nothing when the file has no extension', precedent: 'EtherPK', ref: '../assets/notes', shows: null },
+    ])('$rule ($precedent)', ({ ref, shows }) => {
+        expect(assetExtension(ref)).toBe(shows)
+    })
+
+    it('ahead of its actions, whether or not the caret is on the line (EtherPK)', () => {
+        const widgetsOf = (fixture: string) => {
+            const { state } = editorFixture(fixture, { extensions: [markdownWithCodeHighlight()] })
+            return hiddenSyntaxPieces(assetLinkSpec, state, [{ from: 0, to: state.doc.length }])
+                .filter((d) => d.from === d.to)
+                .sort((a, b) => a.from - b.from || a.value.startSide - b.value.startSide)
+                .map((d) => (d.value.spec as { widget: object }).widget.constructor.name)
+        }
+        const order = ['AssetExtensionWidget', 'AssetActionsWidget']
+        expect(widgetsOf('- [Guide](../assets/guide.a1b2c3d4.pdf)\n- other|')).toEqual(order)
+        expect(widgetsOf('- [Gui|de](../assets/guide.a1b2c3d4.pdf)\n- other')).toEqual(order)
+    })
+})
+
 // ── Editor Content Rules → Fenced Code Blocks → Presentation ─────────────────────────────────
 
 // The markdown parser reads the text as CommonMark, the outline and the fence scan read it as EtherPK
@@ -612,6 +638,22 @@ presentationTable('a mark that runs onto the next line starts that line at its t
 // past its parent's content column is, to CommonMark, a lazy continuation of the parent's paragraph,
 // and its fences the delimiters of a code span. The editor shows the block, so the parser's inline
 // reading draws nothing inside it.
+// A file link reads as its label off the caret's line and shows its source on it, as a markdown link
+// does. Hidden by `assetLinkSpec` (augmentations/asset-link.ts); the click rule is `assetClickCommand`.
+presentationTable('a link to a file reads as its label off the caret', [
+    { rule: 'off the caret: its label', precedent: 'Obsidian', spec: assetLinkSpec, before: '- [Guide](../assets/guide.a1b2c3d4.pdf)\n- other|', shows: '- Guide\n- other' },
+    { rule: 'the bang an import wrote hides too', precedent: 'EtherPK', spec: assetLinkSpec, before: '- ![Guide.pdf](../assets/guide.a1b2c3d4.pdf)\n- other|', shows: '- Guide.pdf\n- other' },
+    { rule: 'on the caret’s line: its source', precedent: 'Obsidian', spec: assetLinkSpec, before: '- [Gui|de](../assets/guide.a1b2c3d4.pdf)\n- other', shows: '- [Guide](../assets/guide.a1b2c3d4.pdf)\n- other' },
+    { rule: 'a label with nothing to read stays as written', precedent: 'EtherPK', spec: assetLinkSpec, before: '- [](../assets/guide.a1b2c3d4.pdf)\n- [ ](../assets/guide.a1b2c3d4.pdf)\n- other|', shows: '- [](../assets/guide.a1b2c3d4.pdf)\n- [ ](../assets/guide.a1b2c3d4.pdf)\n- other' },
+    { rule: 'a picture’s size hint hides with the source', precedent: 'EtherPK', spec: assetLinkSpec, caret: '¦', before: 'see ![chart|300](../assets/chart.a1b2c3d4.png) here\n\nother¦', shows: 'see chart here\n\nother' },
+    { rule: 'an escaped bracket is not a link', precedent: 'CommonMark', spec: assetLinkSpec, before: '\\[Guide](../assets/guide.a1b2c3d4.pdf)\n\nother|', shows: '\\[Guide](../assets/guide.a1b2c3d4.pdf)\n\nother' },
+    { rule: 'a wikilink’s brackets are not a link’s', precedent: 'EtherPK', spec: assetLinkSpec, before: '[[Garden]](../assets/guide.a1b2c3d4.pdf)\n\nother|', shows: '[[Garden]](../assets/guide.a1b2c3d4.pdf)\n\nother' },
+    { rule: 'on a line of a code block the editor shows: as written', precedent: 'EtherPK', spec: assetLinkSpec, before: '- a\n        - ```\n          see [Garden](../assets/guide.a1b2c3d4.pdf)\n\n          more\n          ```\n- other|', shows: '- a\n        - ```\n          see [Garden](../assets/guide.a1b2c3d4.pdf)\n\n          more\n          ```\n- other' },
+    { rule: 'in frontmatter: as written', precedent: 'EtherPK', spec: assetLinkSpec, before: '---\ncover: "[Guide](../assets/guide.a1b2c3d4.pdf)"\n---\n- other|', shows: '---\ncover: "[Guide](../assets/guide.a1b2c3d4.pdf)"\n---\n- other' },
+    { rule: 'a label over a soft line break hides off the caret', precedent: 'EtherPK', spec: assetLinkSpec, before: '- [Garden\n  guide](../assets/guide.a1b2c3d4.pdf) tail\n- other|', shows: '- Garden\n  guide tail\n- other' },
+    { rule: 'and shows with the caret on either of its lines', precedent: 'EtherPK', spec: assetLinkSpec, before: '- [Garden\n  gui|de](../assets/guide.a1b2c3d4.pdf) tail\n- other', shows: '- [Garden\n  guide](../assets/guide.a1b2c3d4.pdf) tail\n- other' },
+])
+
 presentationTable('a code block the editor shows takes no inline formatting from the parser', [
     { rule: 'a bullet indented past its parent’s content column keeps its code block: fences shown, nothing inline code', precedent: 'EtherPK', before: '- a\n  - b\n        - ```\n          code\n          ```\n- x|', shows: '- a\n  - b\n        - ```\n          code\n          ```\n- x' },
     // The parser pairs the opener with the run inside the line and reads what follows as prose.
@@ -1229,6 +1271,8 @@ describe('a click beside a rendered link lands outside its syntax (Obsidian)', (
     for (const row of [
         { rule: 'past the end of a bullet’s link: after its )', before: '- [Garden Club§](https://example.com)\n- other¦', after: '- [Garden Club](https://example.com)|\n- other' },
         { rule: 'past the end of a prose link: after its )', before: 'see [Garden§](https://example.com)\n\nother¦', after: 'see [Garden](https://example.com)|\n\nother' },
+        { rule: 'past the end of a link to a file: after its )', before: '- [Guide§](../assets/guide.a1b2c3d4.pdf)\n- other¦', after: '- [Guide](../assets/guide.a1b2c3d4.pdf)|\n- other' },
+        { rule: 'just before a link to a file: before its [', before: 'word [§Guide](../assets/guide.a1b2c3d4.pdf)\n\nother¦', after: 'word |[Guide](../assets/guide.a1b2c3d4.pdf)\n\nother' },
         { rule: 'just before a bullet’s link: before its [', before: '- [§Garden](https://example.com)\n- other¦', after: '- |[Garden](https://example.com)\n- other' },
         { rule: 'an autolink’s > likewise', before: '- <https://example.com§>\n- other¦', after: '- <https://example.com>|\n- other' },
         { rule: 'on the caret’s own line the syntax shows, so the click lands where aimed', before: '- [Garden§](https://example.com)¦', after: '- [Garden|](https://example.com)' },

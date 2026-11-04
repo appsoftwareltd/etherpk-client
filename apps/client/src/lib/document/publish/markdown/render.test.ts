@@ -177,6 +177,9 @@ describe('createDocumentRenderer', () => {
         expect(r.html).toContain('<img src="assets/chart.a1b2c3d4.png" alt="Chart" style="max-width:min(300px, 100%);max-height:200px">')
         expect(r.html).toContain('<a href="assets/q3%20report.5e6f.pdf">Report</a>')
         expect(r.assets).toEqual(['chart.a1b2c3d4.png', 'q3 report.5e6f.pdf'])
+        const paged = renderer().render('[Guide](../assets/garden-guide.5e6f.pdf#page=12)')
+        expect(paged.html).toContain('<a href="assets/garden-guide.5e6f.pdf#page=12">Guide</a>')
+        expect(paged.assets).toEqual(['garden-guide.5e6f.pdf'])
     })
 
     it('never lets the display-size hint widen an image past its column', () => {

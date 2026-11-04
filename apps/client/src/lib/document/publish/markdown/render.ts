@@ -220,7 +220,9 @@ export function createDocumentRenderer(options: RendererOptions): DocumentRender
         if (name !== null) {
             const rewritten = options.assetHref(name)
             if (rewritten !== null) {
-                token.attrSet('href', rewritten)
+                // A link to a page of a PDF keeps its page: `#page=12` is the browser's own syntax too.
+                const fragment = href.indexOf('#')
+                token.attrSet('href', fragment === -1 ? rewritten : `${rewritten}${href.slice(fragment)}`)
                 if (!state.assets.includes(name)) state.assets.push(name)
             }
         }

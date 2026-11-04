@@ -87,6 +87,7 @@
         registerEditorCommands,
         registerLinkCommands,
         setActiveDocument,
+        editorContext,
     } from "#lib/document/index.js";
     import { todayISO } from "#lib/document/calendar/month-grid-core.js";
     import { canonicalConceptName, openConcept, openConceptAtDocumentLine, openConceptAtLine, openConceptBeside, openViewInPaneOf } from "#lib/document/open-concept.js";
@@ -318,6 +319,7 @@
     import {
         adoptFavourites,
         forgetDocumentFavourites,
+        getFavourites,
         resetFavourites,
         setFavourites,
         renameFavourite,
@@ -336,6 +338,21 @@
     import { registerBookmarkCommands } from "#lib/document/commands/bookmark-commands.js";
     import { registerPasteCommands } from "#lib/document/commands/paste-commands.js";
     import { bookmarksFileBinding } from "#lib/storage/fs/bookmarks-file.js";
+    import { pageFromReference, requestPdfPage, notePdfOpenedFrom } from "#lib/document/pdf/page-requests.js";
+    import { pdfHashFromStateFile } from "#lib/document/pdf/file-pdf-state.js";
+    import { followPdfRename, removePdfBookmarksOf, resetPdfBookmarks } from "#lib/document/pdf/pdf-bookmarks.js";
+    import { orphanNote, type OrphanNotesInput } from "#lib/document/pdf/orphan-notes.js";
+    import { pdfFavouriteTarget, removePdfFavourite, renamePdfFavourite } from "#lib/document/pdf/pdf-favourites.js";
+    import { readOwnPdfStateFiles } from "#lib/document/pdf/synced-pdf-files.js";
+    import type { PdfGraphService } from "#lib/document/pdf/pdf-service.js";
+    import {
+        createFolderPdfService,
+        createSyncedPdfService,
+        mirroredPdfBookmarks,
+        openFolderPdfBookmarks,
+        openSyncedPdfBookmarks,
+        type PdfServiceContext,
+    } from "#lib/workspace/pdf-graph-service.js";
     import {
         createProtectedBookmarkSweeper,
         fencedPages,
@@ -1224,6 +1241,8 @@
      * built once per open. It also holds whether the Sync Server said this person owns the graph.
      */
     let personalLists: PersonalLists | undefined;
+    /** Who holds a private document for a PDF, asked when the PDF is deleted. */
+    let currentMembers: (() => Promise<GraphMember[]>) | undefined;
     /**
      * This open's own [[Bookmark]] list (ADR 0159), closed through this handle when the graph
      * closes: a close never ends the list of a graph opened after it.
@@ -1683,6 +1702,51 @@
      * never holds (protected-asset-usage.ts). Stored text is read without opening anything: the
      * relay-checked batch read on a synced graph, the files on a folder graph.
      */
+    /** The PDF tab's side of the open graph, for whichever backend it is on. */
+    function createPdfService(): PdfGraphService | undefined {
+        const context: PdfServiceContext = {
+            graphId,
+            tools: () => assetTools,
+            usage: async (needles) => (!graphIndex || graphIndex.isBuilding() ? null : graphIndex.assetUsage(needles)),
+            protectedUsage: protectedUsageOf,
+            assetGone: (target, hash) => {
+                void removePdfBookmarksOf(hash).catch(() => {});
+                void removePdfFavourite(target).catch(() => {});
+                recents?.forgetPdf(target);
+                controller?.closeView({ kind: "asset", target });
+            },
+            assetRenamed: (from, to, name) => {
+                void renamePdfFavourite(from, to, name).catch(() => {});
+                void followPdfRename(from, to, name).catch(() => {});
+                recents?.renamePdf(from, to, name);
+                if (from === to) return;
+                // The tab is keyed by the Asset's identity, which on a folder graph is the file's name.
+                controller?.openView({ kind: "asset", target: to });
+                controller?.closeView({ kind: "asset", target: from });
+            },
+        };
+        if (fsAdapter) {
+            return createFolderPdfService({
+                ...context,
+                adapter: fsAdapter,
+                assets: () => assetStore ?? null,
+                store: () => store ?? null,
+            });
+        }
+        const graph = serverGraph;
+        if (!graph) return undefined;
+        const memberKey = personalLists?.memberKey ?? null;
+        const members = currentMembers;
+        return createSyncedPdfService({
+            ...context,
+            graph,
+            memberKey,
+            memberKeys: async () => ((await members?.()) ?? []).map((member) => member.userId),
+            assets: () => (assetStore as ServerAssetStore | undefined) ?? null,
+            store: () => store ?? null,
+        });
+    }
+
     async function protectedUsageOf(needles: readonly string[]): Promise<ProtectedAssetUsage> {
         const current = store;
         const readStored =
@@ -1733,6 +1797,8 @@
      * ran the focus policy, so a phone never recorded a Recent (reported 2026-09-14).
      */
     function noteMainViewActivated(view: ViewRef): void {
+        editorContext.fileInFront = view.kind === "asset";
+        if (view.kind === "asset") recents?.touchKnownPdf(view.target);
         if (view.kind !== "document") return;
         setActiveDocument(view.target);
         // Becoming the main region's active View is exactly what makes a document Recent — the
@@ -3758,6 +3824,7 @@
         watchSyncActivity(serverGraph);
         // One per open: the Quick Notes, Favourites, Bookmarks and the Local Mirror all read it.
         personalLists = createPersonalLists(serverGraph, params.memberKey);
+        currentMembers = params.listMembers;
         return createServerDocumentStore(serverGraph, {
             onResurrected: noteResurrection,
         });
@@ -3969,6 +4036,8 @@
                     text: bookmarksFile.problem,
                 });
             }
+            // [[PDF Bookmark]]s: etherpk/pdf-bookmarks.json, the person's list as above.
+            await attempt.wait(openFolderPdfBookmarks(adapter, (text) => showNotice({ id: `pdf-bookmarks-file:${graphId}`, tone: "error", text })));
             // The Graph Dictionary: etherpk/dictionary.txt, beside quick-notes.json (ADR 0095),
             // rewritten whole on every change. Unlike quick-notes.json an agent may add to it
             // (the folder's AGENTS.md says so), so each write merges what is on disk first
@@ -4115,6 +4184,8 @@
             } else {
                 bookmarkList = setBookmarks([], refusingBookmarksPersist(BOOKMARKS_NEED_MEMBER_KEY));
             }
+            // [[PDF Bookmark]]s: the person's own map in the root doc.
+            attempt.own(openSyncedPdfBookmarks(lists.pdfBookmarks, BOOKMARKS_NEED_MEMBER_KEY));
             // The Graph Dictionary: the root doc's own Y.Map (ADR 0095), a peer's word adopted
             // as it arrives.
             const dictionaryApi = sg.spellingDictionary();
@@ -4780,8 +4851,15 @@
                 protectedUsage: protectedUsageOf,
                 download: downloadResolvedAsset,
                 copyImage: copyImageToClipboard,
-                openAsset: (assetId) =>
-                    controller?.openView({ kind: "asset", target: assetId }),
+                openAsset: (assetId, ref, line) => {
+                    // A link to a page of a PDF. The tab is keyed by the Asset alone.
+                    const linkedPage = pageFromReference(ref);
+                    if (linkedPage !== null) requestPdfPage(assetId, linkedPage);
+                    // A line says the click came from an editor, which focused itself before this ran.
+                    const concept = getActiveDocument();
+                    if (line !== undefined && concept) notePdfOpenedFrom(assetId, { concept, line });
+                    controller?.openView({ kind: "asset", target: assetId });
+                },
                 viewImage: (image) => void openLightbox([image]),
                 canOpen: canOpenAsset,
                 canCopyImage: canCopyImageAsset,
@@ -5018,6 +5096,7 @@
             // a file that is plaintext at rest in OPFS.
             store: protectedStore ?? s,
             assets: assetStore,
+            pdf: createPdfService(),
             index: graphIndex,
             settings: isServerStore
                 ? sanitizeGraphSettings(serverGraph?.getMeta().settings ?? {})
@@ -6843,6 +6922,7 @@
             store: s,
             assets: assetStore,
             listAssetIds: listMirrorAssetIds,
+            pdfStates: () => readOwnPdfStateFiles(serverGraph, personalLists?.memberKey),
             metadata: () => {
                 // The exporting person's own lists (ADR 0159): their favourites in the shared
                 // settings, their Quick Notes (with the shared ones for the Owner) and their
@@ -6855,6 +6935,7 @@
                     settings: own ? (own.settings as Record<string, unknown>) : undefined,
                     quickNotes: own?.quickNotes ?? [],
                     bookmarks: own?.bookmarks,
+                    ...mirroredPdfBookmarks(own),
                     spellingDictionary: serverGraph?.spellingDictionary().list() ?? [],
                     themes: serverGraph?.themes().list() ?? [],
                     protection: protectionRecord,
@@ -7214,12 +7295,28 @@
         if (!tools) return null;
         return {
             ...tools,
+            async scan() {
+                const scan = await tools.scan();
+                const notes = await orphanNotesInput();
+                return { ...scan, orphans: scan.orphans.map((orphan) => ({ ...orphan, note: orphanNote(orphan, notes) })) };
+            },
             async remove(ids) {
                 const removed = await tools.remove(ids);
                 if (removed > 0) void mirror?.sync();
                 return removed;
             },
         };
+    }
+
+    /** What the orphan scan says beside a PDF that nothing links to but a person may still be using. */
+    async function orphanNotesInput(): Promise<OrphanNotesInput> {
+        const favourites = new Set(
+            getFavourites().flatMap((entry) => (typeof entry !== "string" && entry.kind === "asset" && entry.concept ? [pdfFavouriteTarget(entry.concept)] : [])),
+        );
+        const memberKey = personalLists?.memberKey;
+        if (serverGraph && memberKey) return { favourites, annotatedHashes: serverGraph.pdfStateIndex(memberKey).hashes() };
+        const files = fsAdapter ? await fsAdapter.list("etherpk") : [];
+        return { favourites, annotatedHashes: files.flatMap(({ name }) => pdfHashFromStateFile(name) ?? []) };
     }
 
     /**
@@ -7319,6 +7416,7 @@
             workspaceGeneration = undefined;
         }
         assetTools = null;
+        resetPdfBookmarks();
         formattingScan?.dispose();
         formattingScan = null;
         duplicateNames?.dispose();

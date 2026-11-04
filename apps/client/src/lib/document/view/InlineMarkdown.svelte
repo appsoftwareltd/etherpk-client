@@ -22,9 +22,8 @@
     import { attachContextMenu } from "#lib/surface/index.js";
 
     import { conceptIsMissing, openConcept, panelToOpenBeside } from "../open-concept";
-    import { runAssetCommand } from "../asset-affordances";
+    import { assetClickCommand, assetExtension, assetExtensionAction, runAssetCommand } from "../asset-affordances";
     import { LINK_COPY_PATH, fileLinkActions, runLinkCommand } from "../link-affordances";
-    import { ASSET_DOWNLOAD } from "../commands/asset-commands";
     import { type InlineMark, type InlinePart, inlineParts } from "../inline-parts";
     import AssetActions from "./AssetActions.svelte";
     import AssetImage from "./AssetImage.svelte";
@@ -66,8 +65,9 @@
         void fileLinkClusters[index]?.trigger(LINK_COPY_PATH);
     }
 
-    function download(ref: string) {
-        runAssetCommand(ASSET_DOWNLOAD, { kind: "asset", ref });
+    /** A file link's plain click, the same rule and Commands as a link in the editor. */
+    function activateAsset(ref: string) {
+        runAssetCommand(assetClickCommand(ref), { kind: "asset", ref });
     }
 
     /** One class per mark, styled below as markdown-format.ts styles it. */
@@ -162,19 +162,27 @@
                 tabindex="0"
                 data-asset-ref={part.ref}
                 onclick={(event) => {
-                    // A plain click downloads, exactly as a click on an asset link does in the
-                    // editor — and through the same Command.
                     event.stopPropagation();
-                    download(part.ref);
+                    activateAsset(part.ref);
                 }}
                 onkeydown={(event) => {
                     // The keyboard half of being a button, which a span does not get for free.
                     if (event.key !== "Enter" && event.key !== " ") return;
                     event.preventDefault();
                     event.stopPropagation();
-                    download(part.ref);
+                    activateAsset(part.ref);
                 }}>{part.text}</span
-            ><AssetActions ref={part.ref} /></span
+            >{#if assetExtension(part.ref)}{@const action = assetExtensionAction(part.ref)}{#if action}<button
+                type="button"
+                class="asset__extension"
+                title={action}
+                aria-label={`${action} ${part.text}`}
+                data-testid="asset-extension"
+                onclick={(event) => {
+                    event.stopPropagation();
+                    activateAsset(part.ref);
+                }}>{assetExtension(part.ref)}</button
+            >{:else}<span class="asset__extension" data-testid="asset-extension">{assetExtension(part.ref)}</span>{/if}{/if}<AssetActions ref={part.ref} /></span
         >{:else}<AssetImage
             url={part.url}
             alt={part.alt}
@@ -266,6 +274,32 @@
     .asset__label {
         overflow-wrap: anywhere;
     }
+    /* The editor's pill for the file's extension (asset-link.ts). The code panel's grey, because
+       `--gk-surface-2` is a reference card's own background and would not show. */
+    .asset__extension {
+        display: inline-flex;
+        align-items: center;
+        box-sizing: border-box;
+        height: 22px;
+        margin-left: 4px;
+        padding: 0 6px;
+        border: 0;
+        border-radius: 4px;
+        background: var(--gk-code-bg, rgba(127, 127, 127, 0.15));
+        color: var(--gk-text-default, currentColor);
+        font: inherit;
+        font-size: max(0.875rem, 0.85em);
+        font-weight: 600;
+        line-height: 1;
+        vertical-align: middle;
+    }
+    button.asset__extension {
+        cursor: pointer;
+    }
+    button.asset__extension:focus-visible {
+        outline: 2px solid var(--gk-accent, #2563eb);
+        outline-offset: 1px;
+    }
     /* A file link, as the editor draws it: underlined in the text colour, never the link colour,
        because a click copies its path rather than opening anything (CONTEXT.md → File Link). */
     .file-link__label {
@@ -285,6 +319,10 @@
     .asset :global(.actions),
     .file-link :global(.actions) {
         margin-left: 4px;
+    }
+    /* Centred with the extension's pill, as the editor's are. */
+    .asset :global(.actions) {
+        vertical-align: middle;
     }
     /* The editor's three-step shading: quiet at rest, brighter while the pointer is on the row
        (the host sets `--gk-asset-actions-opacity` for that), full when on the reference itself or

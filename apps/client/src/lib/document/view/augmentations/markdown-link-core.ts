@@ -140,7 +140,7 @@ export interface LinkScan {
  * A `file:` target in any of the three shapes is a `file-link` piece rather than a `link`: the
  * browser cannot open it, so it carries the native path a click copies (CONTEXT.md → File Link).
  *
- * Skipped: [[Asset]] targets (asset-link.ts owns those — it downloads rather than opens),
+ * Skipped: [[Asset]] targets (asset-link.ts owns those),
  * `![…]` images of real images (their url sits under an `Image`), a `[[wikilink]]`'s inner text and the
  * `(url)` half of a markdown link (both parse under a `Link`, which is handled as a whole),
  * and any target {@link safeHref} refuses.

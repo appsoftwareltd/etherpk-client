@@ -47,8 +47,18 @@ export interface QueuedAsset extends SealedAsset {
 export interface AssetCopies {
     /** The copy of `assetId`, kept or queued, or null. Reading a kept copy marks it used. */
     read(graphId: string, assetId: string): Promise<SealedAsset | null>
-    /** Keep what the server sent for an asset. A queued copy of the same asset stays queued. */
-    keep(graphId: string, assetId: string, asset: SealedAsset): Promise<void>
+    /**
+     * Keep what the server sent for an asset. A queued copy of the same asset stays queued.
+     * `pinned`: a person asked for this file to stay on the device, so neither the size limit nor
+     * the budget applies to it.
+     */
+    keep(graphId: string, assetId: string, asset: SealedAsset, options?: { pinned?: boolean }): Promise<void>
+    /** Whether the copy of `assetId` is pinned. */
+    isPinned(graphId: string, assetId: string): Promise<boolean>
+    /** Pin a copy this device holds, or let it go back to being an ordinary kept copy. False: no copy. */
+    setPinned(graphId: string, assetId: string, pinned: boolean): Promise<boolean>
+    /** The asset's metadata changed on the server: a rename. Its bytes did not. */
+    updateMetadata(graphId: string, assetId: string, encryptedMetadata: string): Promise<void>
     /** Hold an asset added with no network until it is uploaded. */
     queue(graphId: string, asset: QueuedAsset): Promise<void>
     /** The graph's queued uploads, oldest first. */
@@ -63,6 +73,8 @@ interface Entry {
     graphId: string
     assetId: string
     state: 'kept' | 'queued'
+    /** A person asked to keep this one: outside the budget, and never evicted. */
+    pinned?: boolean
     encryptedMetadata: string
     /** The encrypted bytes held, which the budget counts. */
     bytes: number
@@ -137,7 +149,7 @@ export function openAssetCopies(
     async function evict(): Promise<void> {
         const t = await tx([ENTRIES, CHUNKS], 'readwrite')
         const entries = t.objectStore(ENTRIES)
-        const kept = ((await request(entries.index(BY_USED).getAll())) as Entry[]).filter((entry) => entry.state === 'kept')
+        const kept = ((await request(entries.index(BY_USED).getAll())) as Entry[]).filter((entry) => entry.state === 'kept' && !entry.pinned)
         let total = kept.reduce((sum, entry) => sum + entry.bytes, 0)
         for (const entry of kept) {
             if (total <= budget) break
@@ -167,15 +179,38 @@ export function openAssetCopies(
             const chunks = await chunksOf(key)
             return chunks ? { encryptedMetadata: entry.encryptedMetadata, chunks } : null
         },
-        async keep(graphId, assetId, asset) {
+        async keep(graphId, assetId, asset, options) {
             const bytes = asset.chunks.reduce((sum, chunk) => sum + chunk.byteLength, 0)
-            if (bytes > maxAsset) return
             const key = keyOf(graphId, assetId)
             const t = await tx([ENTRIES], 'readonly')
             const existing = (await request(t.objectStore(ENTRIES).get(key))) as Entry | undefined
+            const pinned = options?.pinned === true || existing?.pinned === true
+            if (bytes > maxAsset && !pinned) return
             if (existing?.state === 'queued') return
-            await put({ key, graphId, assetId, state: 'kept', encryptedMetadata: asset.encryptedMetadata, bytes, usedAt: now() }, asset.chunks)
+            await put({ key, graphId, assetId, state: 'kept', ...(pinned ? { pinned } : {}), encryptedMetadata: asset.encryptedMetadata, bytes, usedAt: now() }, asset.chunks)
             await evict()
+        },
+        async isPinned(graphId, assetId) {
+            const t = await tx([ENTRIES], 'readonly')
+            const entry = (await request(t.objectStore(ENTRIES).get(keyOf(graphId, assetId)))) as Entry | undefined
+            return entry?.pinned === true
+        },
+        async setPinned(graphId, assetId, pinned) {
+            const t = await tx([ENTRIES], 'readwrite')
+            const entries = t.objectStore(ENTRIES)
+            const entry = (await request(entries.get(keyOf(graphId, assetId)))) as Entry | undefined
+            if (!entry) return false
+            entries.put({ ...entry, pinned })
+            await finished(t)
+            if (!pinned) await evict()
+            return true
+        },
+        async updateMetadata(graphId, assetId, encryptedMetadata) {
+            const t = await tx([ENTRIES], 'readwrite')
+            const entries = t.objectStore(ENTRIES)
+            const entry = (await request(entries.get(keyOf(graphId, assetId)))) as Entry | undefined
+            if (entry) entries.put({ ...entry, encryptedMetadata })
+            await finished(t)
         },
         async queue(graphId, asset) {
             const bytes = asset.chunks.reduce((sum, chunk) => sum + chunk.byteLength, 0)

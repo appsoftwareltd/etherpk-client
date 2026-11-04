@@ -101,3 +101,14 @@ describe('view favourites', () => {
         expect(listener).toHaveBeenCalledTimes(1)
     })
 })
+
+describe('a PDF as a Favourite', () => {
+    it('names itself from what was stored, with the PDF icon, and opens its tab', () => {
+        const favourites = createViewFavourites({ registry: createViewRegistry(), availability: () => ({ state: 'missing' }) })
+        expect(favourites.describe({ kind: 'asset', concept: 'guide.a1b2c3d4.pdf', name: 'guide.pdf' })).toEqual({
+            title: 'guide.pdf',
+            icon: 'pdf',
+            view: { kind: 'asset', target: 'guide.a1b2c3d4.pdf' },
+        })
+    })
+})

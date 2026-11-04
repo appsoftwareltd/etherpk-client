@@ -117,7 +117,7 @@
         {#if scanResult.orphans.length > 0}
             <ul class="max-h-32 overflow-y-auto rounded-lg border border-gray-200 dark:border-gray-800 px-3 py-2 text-sm font-mono text-gray-600 dark:text-gray-400 space-y-1" data-testid="orphan-list">
                 {#each scanResult.orphans as orphan (orphan.id)}
-                    <li class="truncate">{orphan.label}</li>
+                    <li class="truncate" data-testid="orphan-row">{orphan.label}{#if orphan.note}<span class="text-gray-600 dark:text-gray-300" data-testid="orphan-note"> ({orphan.note})</span>{/if}</li>
                 {/each}
             </ul>
             <button

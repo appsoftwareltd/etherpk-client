@@ -78,8 +78,7 @@ function lineTextStart(state: EditorState, line: Line): number {
  * not the construct's content (CommonMark strips a paragraph line's leading whitespace), and the
  * content clamp lifts the indent out of the flow to the line's left edge: a mark over it would be
  * drawn there, over the start of the text. Replace, widget and line decorations come back whole,
- * and the order is kept. Reads the document and the syntax tree, never the caret, so an
- * augmentation that rebuilds only on edits can apply it too (asset-link.ts).
+ * and the order is kept. Reads the document and the syntax tree, never the caret.
  */
 export function splitMarksAtLineText(state: EditorState, pieces: readonly Range<Decoration>[]): Range<Decoration>[] {
     const { doc } = state

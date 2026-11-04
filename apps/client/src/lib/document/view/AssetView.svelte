@@ -134,7 +134,7 @@
             <p class="text-sm text-gray-500 dark:text-gray-400" role="status">Loading {fallbackName}…</p>
         </div>
     {:else if Viewer}
-        <Viewer url={resolved.url} name={resolved.name} type={resolved.type} />
+        <Viewer url={resolved.url} name={resolved.name} type={resolved.type} target={view.target} />
     {:else}
         <div class="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
             <p class="text-sm text-gray-600 dark:text-gray-400" data-testid="asset-view-unsupported">

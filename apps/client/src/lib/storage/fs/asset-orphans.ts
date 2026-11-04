@@ -19,7 +19,7 @@ import type { AssetByteReadiness } from '#lib/document/asset-delete.js'
 import { containsCipherFence } from '#lib/document/protection/fence-info.js'
 import type { ProtectedTextReader } from '#lib/document/protection/protected-text-reader.js'
 
-import { assetNameFromRef } from './asset-store'
+import { assetHashFromName, assetNameFromRef } from './asset-store'
 import type { DirectoryAdapter, Subdir } from './directory-adapter'
 
 /** One orphan candidate. `id` is what `deleteOrphanedAssets` consumes; `label` is for display. */
@@ -28,6 +28,10 @@ export interface OrphanedAsset {
     label: string
     /** Bytes, when the backend knows it (server assets do; filesystem entries do not). */
     size?: number
+    /** The hash of the bytes, or the start of it: a folder's name holds the first 8 digits. */
+    contentHash?: string
+    /** Said beside the row when deleting would take something with it. */
+    note?: string
 }
 
 export interface OrphanScan {
@@ -161,7 +165,7 @@ export async function scanOrphanedAssets(adapter: DirectoryAdapter, options: Fil
     }
 
     const { texts, unreadableProtected } = await referenceTexts(stored, options.readProtected)
-    const candidates = assets.filter(({ name }) => !isReferenced(texts, name)).map(({ name }) => ({ id: name, label: name }))
+    const candidates = assets.filter(({ name }) => !isReferenced(texts, name)).map(({ name }) => ({ id: name, label: name, ...(assetHashFromName(name) ? { contentHash: assetHashFromName(name)!.hash } : {}) }))
     return orphanScanOf(candidates, {
         totalAssets: assets.length,
         scannedDocuments: stored.length,

@@ -52,7 +52,8 @@ export function assetTargetAt(
     const offset = Math.max(0, pos - line.from)
     const edge = (span: { from: number; to: number }) => (anchor === 'start' ? span.from : span.to)
     const exact = spans.findIndex((span) => edge(span) === offset)
-    // An exact hit is the normal case. Otherwise take the nearest reference at or before the
+    // An exact hit is a revealed link's. A link off the caret's line has its mark at its label, a
+    // character or two in, so take the nearest reference at or before the
     // element, which keeps a single-reference line right even if the offset drifts by a character.
     const occurrence =
         exact !== -1 ? exact : spans.reduce((best, span, i) => (edge(span) <= offset ? i : best), 0)

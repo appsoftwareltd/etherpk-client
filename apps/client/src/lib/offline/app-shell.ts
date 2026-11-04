@@ -58,7 +58,19 @@ export function isImmutableAppFile(pathname: string): boolean {
  * change between releases keeps its address and is never fetched again.
  */
 export function isOnDemandAppFile(pathname: string): boolean {
-    return /^\/_app\/immutable\/assets\/Xiaolai-Regular-[^/]+\.woff2$/.test(pathname)
+    return (
+        /^\/_app\/immutable\/assets\/Xiaolai-Regular-[^/]+\.woff2$/.test(pathname) ||
+        isPdfDataFile(pathname)
+    )
+}
+
+/**
+ * pdf.js's data files (`viewers/pdf/pdf-data-files.ts`): 4 MB of CMaps for CJK text, standard fonts
+ * and image decoders, which only some PDFs ask for. Only pdf.js's own names are matched here, so a
+ * font or a wasm another part of the app needs stays in the install.
+ */
+function isPdfDataFile(pathname: string): boolean {
+    return /^\/_app\/immutable\/assets\/(?:[^/]+\.bcmap|[^/]+\.pfb|LiberationSans-[^/]+\.ttf|(?:openjpeg|jbig2|qcms_bg)[.-][^/]+\.wasm)$/.test(pathname)
 }
 
 /** A version's files: those cached when the worker installs, and those fetched when first needed. */

@@ -41,7 +41,7 @@ describe('scanOrphanedAssets (filesystem)', () => {
         const scan = await scanOrphanedAssets(adapter)
         expect(scan.totalAssets).toBe(3)
         expect(scan.scannedDocuments).toBe(2)
-        expect(scan.orphans).toEqual([{ id: 'orphan.33333333.bin', label: 'orphan.33333333.bin' }])
+        expect(scan.orphans).toEqual([{ id: 'orphan.33333333.bin', label: 'orphan.33333333.bin', contentHash: '33333333' }])
     })
 
     it('counts a reference inside a code fence as a reference (conservative)', async () => {
@@ -92,7 +92,7 @@ describe('scanOrphanedAssets (filesystem)', () => {
         it('reads protected documents while unlocked, so only a truly unused asset is offered', async () => {
             const { adapter, service } = await withProtectedPage()
             const scan = await scanOrphanedAssets(adapter, { readProtected: protectedTextReader(service) })
-            expect(scan.orphans).toEqual([{ id: 'unused.44444444.bin', label: 'unused.44444444.bin' }])
+            expect(scan.orphans).toEqual([{ id: 'unused.44444444.bin', label: 'unused.44444444.bin', contentHash: '44444444' }])
             expect(scan.unchecked).toBeUndefined()
         })
 

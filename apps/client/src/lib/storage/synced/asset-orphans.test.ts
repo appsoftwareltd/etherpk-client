@@ -144,7 +144,7 @@ describe('scanOrphanedServerAssets', () => {
             fetch: f,
             keyring,
         })
-        expect(scan.orphans).toEqual([{ id: ORPHAN, label: 'Holiday Photo.png (124 B)', size: 124 }])
+        expect(scan.orphans).toEqual([expect.objectContaining({ id: ORPHAN, label: 'Holiday Photo.png (124 B)', size: 124 })])
         graph.dispose()
         cache.dispose()
     })

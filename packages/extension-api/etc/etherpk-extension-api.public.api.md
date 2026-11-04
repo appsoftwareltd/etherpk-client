@@ -39,6 +39,7 @@ export const CLIENT_COMMANDS: readonly string[];
 export interface CommandBarButton {
     args?: unknown;
     command: string;
+    documentOnly?: boolean;
     icon: string;
     id: string;
     pinned?: boolean;

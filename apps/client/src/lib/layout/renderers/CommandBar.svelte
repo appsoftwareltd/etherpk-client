@@ -63,7 +63,7 @@
      * too except on a form-1 opener, the bullet toggle on a nested bullet (`view/task-toggleable.ts`),
      * undo and redo on an empty history stack, and every editing button on a locked Protected Document.
      */
-    function disabled(item: CommandBarItem): boolean {
+    function offInThisEditor(item: CommandBarItem): boolean {
         if (item.writableOnly && !editorContext.bodyWritable) return true
         if (item.taskToggleOnly && !editorContext.taskToggleable) return true
         if (item.bulletToggleOnly && !editorContext.bulletToggleable) return true
@@ -74,6 +74,11 @@
         if (item.undoOnly && !editorContext.canUndo) return true
         if (item.redoOnly && !editorContext.canRedo) return true
         return !!item.outlinerOnly && !editorContext.inOutlinerBlock
+    }
+
+    /** Off in this editor, or a button that works on a document while a file, such as a PDF, is in front. */
+    function disabled(item: CommandBarItem): boolean {
+        return (!!item.documentOnly && editorContext.fileInFront) || offInThisEditor(item)
     }
 
     /** A toggle button's `aria-pressed`. Undefined on every other button, which renders no attribute. */

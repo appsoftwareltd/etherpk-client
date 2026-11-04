@@ -24,6 +24,7 @@ import { Decoration, EditorView, type MouseSelectionStyle, WidgetType } from '@c
 
 import { fileLinkActions, LINK_COPY_PATH, runLinkCommand } from '../../link-affordances'
 import { hiddenSyntax, hiddenSyntaxPieces, hiddenSyntaxPlugin, type HiddenSyntaxSpec } from './base-renderer'
+import { assetLinkSpec } from './asset-link'
 import { actionClusterTheme, buildActionCluster, confirmClusterAction } from './inline-actions'
 import { caretBesideLink, type LinkPiece, linkPieces } from './markdown-link-core'
 
@@ -116,7 +117,9 @@ const linkSyntax = hiddenSyntaxPlugin(markdownLinkSpec)
  */
 export function linkClickCaret(state: EditorState, pos: number): number {
     const line = state.doc.lineAt(pos)
-    const drawn = hiddenSyntaxPieces(markdownLinkSpec, state, [{ from: line.from, to: line.to }])
+    // An asset link hides its source the same way, so a click beside one lands outside it too.
+    const range = [{ from: line.from, to: line.to }]
+    const drawn = [...hiddenSyntaxPieces(markdownLinkSpec, state, range), ...hiddenSyntaxPieces(assetLinkSpec, state, range)].sort((a, b) => a.from - b.from)
     const pieces = drawn.flatMap((d): Pick<LinkPiece, 'kind' | 'from' | 'to'>[] => {
         if (d.value === hiddenSyntax) return [{ kind: 'hide', from: d.from, to: d.to }]
         return d.from < d.to ? [{ kind: 'link', from: d.from, to: d.to }] : []
@@ -159,7 +162,7 @@ function isPlainSingleClick(event: MouseEvent): boolean {
  * aimed, and a double or triple click selects a word or line.
  */
 const besideLink = EditorView.mouseSelectionStyle.of((view, event) => {
-    if (!isPlainSingleClick(event) || (event.target as Element | null)?.closest?.('.cm-md-link')) return null
+    if (!isPlainSingleClick(event) || (event.target as Element | null)?.closest?.('.cm-md-link, .cm-asset-link')) return null
     const hit = view.posAtCoords({ x: event.clientX, y: event.clientY }, false)
     const anchor = linkClickCaret(view.state, hit)
     return anchor === hit ? null : besideLinkSelection(view, event, anchor)

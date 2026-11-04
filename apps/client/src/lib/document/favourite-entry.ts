@@ -18,6 +18,8 @@
 export interface ViewFavourite {
     kind: string
     concept?: string
+    /** What the row is called when the View cannot name itself: a PDF's file name. */
+    name?: string
 }
 
 /** A favourited document (its concept's name) or View. */
@@ -40,16 +42,17 @@ export function sanitizeFavourite(raw: unknown): Favourite | null {
         return concept === '' ? null : concept
     }
     if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return null
-    return sanitizeViewFavourite(raw as { kind?: unknown; concept?: unknown })
+    return sanitizeViewFavourite(raw as { kind?: unknown; concept?: unknown; name?: unknown })
 }
 
-function sanitizeViewFavourite({ kind, concept }: { kind?: unknown; concept?: unknown }): ViewFavourite | null {
+function sanitizeViewFavourite({ kind, concept, name }: { kind?: unknown; concept?: unknown; name?: unknown }): ViewFavourite | null {
     if (typeof kind !== 'string') return null
     const cleanKind = kind.trim()
     if (cleanKind === '' || cleanKind.length > MAX_KIND) return null
     if (concept === undefined) return { kind: cleanKind }
     if (typeof concept !== 'string' || concept.trim() === '') return null
-    return { kind: cleanKind, concept: concept.trim() }
+    const cleanName = typeof name === 'string' && name.trim() !== '' ? name.trim() : undefined
+    return { kind: cleanKind, concept: concept.trim(), ...(cleanName ? { name: cleanName } : {}) }
 }
 
 /**

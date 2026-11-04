@@ -8,6 +8,8 @@
  */
 import * as Y from 'yjs'
 import { currentEpoch, deriveJournalIdSecret, journalDocId, keyringReader, type KeyringSource } from '#lib/crypto/index.js'
+import { sanitizePdfBookmarks, type PdfBookmark, type PdfBookmarksChange } from '#lib/document/pdf/pdf-bookmarks.js'
+import { derivePdfStateIdSecret, pdfStateDocId } from '#lib/document/pdf/state-doc-id.js'
 import { performanceRecorder } from '#lib/diagnostics/performance.js'
 import { SYNC_PROTOCOL_LIMITS, type QuotaErrorCode } from '@appsoftwareltd/etherpk-shared'
 import { CACHE_SEED, createDocSync, type DocSync } from './doc-sync'
@@ -222,6 +224,26 @@ export interface GraphSync {
      * epoch 1 key (ADR 0157), so every device that starts the day writes into one document.
      */
     journalDocId(date: string): Promise<string>
+    /**
+     * The id of a person's private document for one PDF, derived as a journal's is, so each of their
+     * devices reaches it with nothing stored to find it by (`pdf/state-doc-id.ts`).
+     */
+    pdfStateDocId(member: string, hash: string): Promise<string>
+    /**
+     * Which PDFs a person has annotations on: the root doc's `pdfStates:<member>` map of
+     * hash to when it was added. Written once per PDF, not per change. It is how an [[Export]] and a
+     * [[Local Mirror]] find a person's private documents, which nothing else lists.
+     */
+    pdfStateIndex(member: string): { hashes(): string[]; add(hash: string): void; remove(hash: string): void }
+    /**
+     * One person's [[PDF Bookmark]]s: the root doc's `pdfBookmarks:<member>` map of id to entry, so two
+     * of their devices merge entry by entry (ADR 0159's shape). Each entry is plain JSON, replaced whole.
+     */
+    pdfBookmarks(member: string): {
+        list(): PdfBookmark[]
+        apply(change: PdfBookmarksChange): void
+        observe(listener: () => void): () => void
+    }
     /** Snapshot of the root doc's `meta` map (graph name + shared settings). */
     getMeta(): GraphMeta
     setMetaName(name: string): void
@@ -557,10 +579,10 @@ function storedBookmark(value: unknown): unknown {
 }
 
 /** The per-member list types in the root doc (ADR 0159), each named `<kind>:<memberKey>`. */
-const MEMBER_LIST_KINDS = ['favourites', 'quickNotes', 'bookmarks', 'memberFlags'] as const
+const MEMBER_LIST_KINDS = ['favourites', 'quickNotes', 'bookmarks', 'memberFlags', 'pdfStates', 'pdfBookmarks'] as const
 type MemberListKind = (typeof MEMBER_LIST_KINDS)[number]
 /** Which Yjs type each kind is, so a type received but never asked for by name is read as the right one. */
-const MEMBER_LIST_IS_ARRAY: Record<MemberListKind, boolean> = { favourites: true, quickNotes: true, bookmarks: false, memberFlags: false }
+const MEMBER_LIST_IS_ARRAY: Record<MemberListKind, boolean> = { favourites: true, quickNotes: true, bookmarks: false, memberFlags: false, pdfStates: false, pdfBookmarks: false }
 
 /** `kind` and member key of a per-member type's name, or null for any other root-doc type. */
 function memberListName(name: string): { kind: MemberListKind; memberKey: string } | null {
@@ -1841,6 +1863,7 @@ export function createGraphSync(deps: GraphSyncDeps): GraphSync {
     connect()
 
     let journalIdSecret: Promise<Uint8Array> | undefined
+    let pdfStateIdSecret: Promise<Uint8Array> | undefined
 
     return {
         rootDoc: root.doc,
@@ -1905,6 +1928,39 @@ export function createGraphSync(deps: GraphSyncDeps): GraphSync {
         compactDoc: (docId) => deps.cache.docCache(docId).compact(),
         uploadSnapshot: (docId) => engine(docId).compact(),
         registry: () => registryMap,
+        pdfBookmarks(member) {
+            requireMemberKey(member, 'pdfBookmarks')
+            const map = root.doc.getMap<unknown>(`pdfBookmarks:${member}`)
+            return {
+                list: () => sanitizePdfBookmarks([...map.values()]),
+                apply(change) {
+                    root.doc.transact(() => {
+                        for (const id of change.remove) map.delete(id)
+                        for (const bookmark of change.put) map.set(bookmark.id, bookmark)
+                    })
+                },
+                observe(listener) {
+                    map.observe(listener)
+                    return () => map.unobserve(listener)
+                },
+            }
+        },
+        pdfStateIndex(member) {
+            const map = root.doc.getMap<number>(`pdfStates:${member}`)
+            return {
+                hashes: () => [...map.keys()],
+                add(hash) {
+                    if (!map.has(hash)) map.set(hash, Date.now())
+                },
+                remove(hash) {
+                    map.delete(hash)
+                },
+            }
+        },
+        pdfStateDocId(member, hash) {
+            pdfStateIdSecret ??= derivePdfStateIdSecret(keyring())
+            return pdfStateIdSecret.then((secret) => pdfStateDocId(secret, member, hash))
+        },
         journalDocId(date) {
             // The secret never changes (epoch 1 is never replaced), so it is derived once.
             journalIdSecret ??= deriveJournalIdSecret(keyring())

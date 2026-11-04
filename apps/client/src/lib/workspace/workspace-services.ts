@@ -10,6 +10,7 @@ import type { ReplaceOutcome, ReplaceRequest } from '#lib/document/find/replace-
 import type { PublishEnvironment } from '#lib/document/publish/publish.js'
 import type { PublishSource } from '#lib/document/publish/types.js'
 import type { ReadingPositionStore } from '#lib/navigation/reading-positions.js'
+import type { PdfGraphService } from '#lib/document/pdf/pdf-service.js'
 import type { LockStatus } from '#lib/document/protection/lock-machine.js'
 import type { LayoutController } from '#lib/layout/types.js'
 import type { ViewFavourites } from '#lib/layout/view-favourites.js'
@@ -161,6 +162,8 @@ export interface WorkspaceServices {
     assets?: AssetStore
     index?: RemoteGraphIndex
     settings?: GraphSettings
+    /** The open graph's PDF state and the file operations that differ by backend. */
+    pdf?: PdfGraphService
     layout?: LayoutController
     events?: EventBus
     commands?: CommandRegistry

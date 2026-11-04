@@ -65,6 +65,17 @@ export const ICON_PATHS: Record<string, string> = {
     flag: '<path d="M4 14V3h7l-1.5 2.5L11 8H4"/>',
     clock: '<circle cx="8" cy="8" r="5.5"/><path d="M8 5v3.2l2 1.2"/>',
 
+    // A PDF, and the tools in its tab.
+    pdf: '<path d="M4 2h5l4 4v8.5a.5.5 0 0 1-.5.5h-8a.5.5 0 0 1-.5-.5v-12a.5.5 0 0 1 .5-.5z"/><path d="M9 2v4h4"/><path d="M5.5 12.5v-2.5h1a.75.75 0 0 1 0 1.5h-1M8.5 12.5V10h.5a1.25 1.25 0 0 1 0 2.5zM11.5 12.5V10h-.01"/>',
+    'pdf-page-previous': '<path d="M10 3.5L5.5 8l4.5 4.5"/>',
+    'pdf-page-next': '<path d="M6 3.5L10.5 8 6 12.5"/>',
+    'pdf-pen': '<path d="M11 2.5l2.5 2.5-8 8L2.5 13.5 3 10.5z"/><path d="M9.5 4l2.5 2.5"/>',
+    'pdf-highlighter': '<path d="M9.5 3l3.5 3.5-5.5 5.5H4v-3.5z"/><path d="M2.5 14h11"/>',
+    'pdf-note': '<path d="M3 3h10v7.5L10 13.5H3z"/><path d="M10 13.5v-3h3M5.5 6h5M5.5 8.5h3"/>',
+    'pdf-eraser': '<path d="M6 13.5h7.5M3 10.5l6.5-7 4 3.5-6 6.5H5.5z"/><path d="M6.5 7l4 3.5"/>',
+    'pdf-signature': '<path d="M2.5 11c2-5 3.5-7.5 4.5-7.5s.5 4-1 7c1.5-2 2.5-2.5 3-2s0 2 1 2 1.5-1 2.5-1"/><path d="M2.5 13.5h11"/>',
+    'pdf-print': '<path d="M4.5 6V2.5h7V6M4.5 11.5H3A1 1 0 0 1 2 10.5V7a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v3.5a1 1 0 0 1-1 1h-1.5"/><path d="M4.5 9.5h7v4h-7z"/>',
+
     // The `[[` menu, a row per kind of name (a journal day is `calendar`).
     page: '<path d="M4 2h5l4 4v8.5a.5.5 0 0 1-.5.5h-8a.5.5 0 0 1-.5-.5v-12a.5.5 0 0 1 .5-.5z"/><path d="M9 2v4h4"/>',
     alias: '<path d="M5 4v3.5a2 2 0 0 0 2 2h5"/><path d="M9.5 6.5l3 3-3 3"/>',

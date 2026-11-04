@@ -133,6 +133,8 @@ export interface AssetStore {
     readBytes(ref: string): Promise<AssetBytes | null>
     /** Revoke every object URL handed out by {@link resolve}. Call on graph close. */
     dispose(): void
+    /** A file was renamed outside this store: nothing it remembers may name the old one. */
+    renamed?(from: string, to: string): void
 }
 
 /** An [[Asset]]'s plain bytes with the two things a caller needs to name them. */
@@ -358,6 +360,14 @@ export function createAssetStore(adapter: DirectoryAdapter): AssetStore {
         dispose() {
             for (const url of urlCache.values()) URL.revokeObjectURL(url)
             urlCache.clear()
+        },
+
+        renamed(from, to) {
+            const url = urlCache.get(from)
+            if (url) URL.revokeObjectURL(url)
+            urlCache.delete(from)
+            const parsed = assetHashFromName(to)
+            if (parsed) contentIndex?.set(contentKey(parsed.hash, parsed.ext), to)
         },
     }
 }

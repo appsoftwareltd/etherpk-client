@@ -33,6 +33,9 @@ import type { QuickNote } from '#lib/document/quick-notes.js'
 import { QUICK_NOTES_FILE, quickNotesFileText } from '#lib/storage/fs/quick-notes-file.js'
 import type { Bookmark } from '#lib/document/bookmarks/bookmarks.js'
 import { BOOKMARKS_FILE, bookmarksFileText } from '#lib/storage/fs/bookmarks-file.js'
+import { pdfHashFromStateFile } from '#lib/document/pdf/file-pdf-state.js'
+import type { PdfBookmark } from '#lib/document/pdf/pdf-bookmarks.js'
+import { PDF_BOOKMARKS_FILE, pdfBookmarksFileText } from '#lib/storage/fs/pdf-bookmarks-file.js'
 import { DICTIONARY_FILE } from '#lib/storage/fs/dictionary-file.js'
 import { dictionaryFileText } from '#lib/document/spelling/graph-dictionary.js'
 import { graphThemeFileText, themeFileName, themeIdOfFileName } from '#lib/storage/fs/theme-files.js'
@@ -74,6 +77,8 @@ export interface MirrorMetadata {
      * made it, and the folder is that person's copy. `undefined` leaves the file alone.
      */
     bookmarks?: Bookmark[]
+    /** The copier's own [[PDF Bookmark]]s, written as `etherpk/pdf-bookmarks.json`. */
+    pdfBookmarks?: PdfBookmark[]
     /** The [[Graph Dictionary]] (ADR 0095), written as `etherpk/dictionary.txt`. */
     spellingDictionary?: string[]
     themes?: GraphTheme[]
@@ -110,6 +115,11 @@ export interface MirrorSource {
     docsBehind?(docIds: readonly string[]): Promise<readonly string[] | null>
     /** [[Graph Settings]] and the [[Graph Name]] - graph content, so they travel with the folder. */
     metadata?(): MirrorMetadata | undefined
+    /**
+     * The copier's PDF state files, each `etherpk/pdf-<hash>.json`. They live in private documents
+     * that have to be read, so this is asked apart from the metadata. Null: not known right now.
+     */
+    pdfStates?(): Promise<{ name: string; text: string }[] | null>
     /**
      * Every [[Asset]] the graph holds, by id. Null when the question cannot be answered right
      * now - offline, or no asset storage - which stops the asset pass rather than guessing.
@@ -346,9 +356,15 @@ export function assetFileFates(
     return fates
 }
 
+/** A person's PDF state or PDF Bookmarks file. */
+function isPdfMetadataFile(name: string): boolean {
+    return name === PDF_BOOKMARKS_FILE || pdfHashFromStateFile(name) !== null
+}
+
 /** Whether a file in `etherpk/` is one {@link MirrorSource.metadata} writes or removes. */
 export function isMirrorMetadataFileName(name: string): boolean {
     return (
+        isPdfMetadataFile(name) ||
         name === 'settings.json' ||
         name === 'graph.json' ||
         name === QUICK_NOTES_FILE ||
@@ -915,6 +931,7 @@ export function createLocalMirror(
      * documents. Written under the same compare-first rule as everything else.
      */
     async function writeGraphMetadata(): Promise<void> {
+        await writePdfStates()
         const meta = source.metadata?.()
         if (!meta) return
         // The settings carry the copier's own favourites (ADR 0159), so the file follows them even
@@ -932,6 +949,7 @@ export function createLocalMirror(
         // The copier's Bookmarks (ADR 0159), so the folder opened as a Filesystem graph, or
         // imported, keeps the lines they marked.
         if (meta.bookmarks) await writeTextIfChanged(BOOKMARKS_FILE, bookmarksFileText(meta.bookmarks))
+        await writePdfBookmarksFile(meta.pdfBookmarks)
         // The Graph Dictionary (ADR 0095). No words, no file: a graph that never added one does
         // not grow an empty file; one that had words and removed them all has it emptied.
         if (meta.spellingDictionary) {
@@ -962,6 +980,28 @@ export function createLocalMirror(
         // passphrase. A record that cannot be read right now is not the same as no record.
         if (meta.protection) await writeTextIfChanged(PROTECTION_FILE, `${serialiseProtectionRecord(meta.protection)}\n`)
         else if (meta.protection === null && (await adapter.exists('etherpk', PROTECTION_FILE))) await adapter.remove('etherpk', PROTECTION_FILE)
+    }
+
+    /** The copier's own PDF Bookmarks. Not known right now (undefined) leaves the file alone. */
+    async function writePdfBookmarksFile(bookmarks: readonly PdfBookmark[] | undefined): Promise<void> {
+        if (bookmarks) await writeTextIfChanged(PDF_BOOKMARKS_FILE, pdfBookmarksFileText(bookmarks))
+    }
+
+    /** The copier's own PDF annotations, one file per PDF. A file no PDF names goes. */
+    async function writePdfStates(): Promise<void> {
+        const files = await source.pdfStates?.()
+        if (!files) return
+        const keep = new Set(files.map((file) => file.name))
+        for (const file of files) await writeTextIfChanged(file.name, file.text)
+        let entries: { name: string }[] = []
+        try {
+            entries = await adapter.list('etherpk')
+        } catch {
+            // No etherpk/ yet: nothing stale to remove.
+        }
+        for (const entry of entries) {
+            if (pdfHashFromStateFile(entry.name) !== null && !keep.has(entry.name)) await adapter.remove('etherpk', entry.name)
+        }
     }
 
     async function writeIfChanged(name: string, value: Record<string, unknown> | undefined): Promise<void> {

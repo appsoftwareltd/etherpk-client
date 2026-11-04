@@ -119,3 +119,58 @@ describe('recents', () => {
         expect(recents.list()).toEqual(['Physics'])
     })
 })
+
+describe('PDFs in Recents', () => {
+    it('lists documents and PDFs in one order, and keeps a PDF out of what deals in concepts', () => {
+        const recents = createRecents('g', memoryStorage())
+        recents.touch('Garden')
+        recents.touchPdf('guide.a1b2c3d4.pdf', 'guide.pdf')
+        expect(recents.entries()).toEqual([{ target: 'guide.a1b2c3d4.pdf', name: 'guide.pdf' }, 'Garden'])
+        expect(recents.list()).toEqual(['Garden'])
+    })
+
+    it('moves a document past a PDF when it is opened', () => {
+        const recents = createRecents('g', memoryStorage())
+        recents.touch('Garden')
+        recents.touchPdf('guide.pdf', 'guide.pdf')
+        recents.touch('Kitchen')
+        expect(recents.entries()).toEqual(['Kitchen', { target: 'guide.pdf', name: 'guide.pdf' }, 'Garden'])
+    })
+
+    it('moves a listed PDF to the front when its tab comes up, and adds nothing for another asset', () => {
+        const recents = createRecents('g', memoryStorage())
+        recents.touchPdf('guide.pdf', 'guide.pdf')
+        recents.touch('Garden')
+        recents.touchKnownPdf('guide.pdf')
+        recents.touchKnownPdf('chart.png')
+        expect(recents.entries()).toEqual([{ target: 'guide.pdf', name: 'guide.pdf' }, 'Garden'])
+    })
+
+    it('never lists a PDF twice, and follows its rename', () => {
+        const recents = createRecents('g', memoryStorage())
+        recents.touchPdf('guide.pdf', 'guide.pdf')
+        recents.touchPdf('guide.pdf', 'guide.pdf')
+        recents.renamePdf('guide.pdf', 'shed.pdf', 'shed.pdf')
+        expect(recents.entries()).toEqual([{ target: 'shed.pdf', name: 'shed.pdf' }])
+        recents.forgetPdf('shed.pdf')
+        expect(recents.entries()).toEqual([])
+    })
+
+    it('reads a list from before PDFs joined, and keeps a PDF across a reload', () => {
+        const storage = memoryStorage({ [`${RECENTS_KEY_PREFIX}g`]: JSON.stringify({ version: 1, recents: ['Garden'] }) })
+        const recents = createRecents('g', storage)
+        expect(recents.entries()).toEqual(['Garden'])
+        recents.touchPdf('guide.pdf', 'guide.pdf')
+        expect(createRecents('g', storage).entries()).toEqual([{ target: 'guide.pdf', name: 'guide.pdf' }, 'Garden'])
+    })
+
+    it('leaves a PDF where it stands when a document is renamed or forgotten', () => {
+        const recents = createRecents('g', memoryStorage())
+        recents.touch('Garden')
+        recents.touchPdf('guide.pdf', 'guide.pdf')
+        recents.rename('Garden', 'Yard')
+        expect(recents.entries()).toEqual([{ target: 'guide.pdf', name: 'guide.pdf' }, 'Yard'])
+        recents.forget('Yard')
+        expect(recents.entries()).toEqual([{ target: 'guide.pdf', name: 'guide.pdf' }])
+    })
+})

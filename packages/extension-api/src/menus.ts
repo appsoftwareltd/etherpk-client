@@ -197,6 +197,8 @@ export interface CommandBarButton {
      * editing buttons that scroll. For an action a person reaches for often.
      */
     pinned?: boolean
+    /** Greyed while a tab that shows a file, such as a PDF, is in front, for a button that works on a document. */
+    documentOnly?: boolean
     /** The Command the button runs. */
     command: string
     /** What the Command is given. */

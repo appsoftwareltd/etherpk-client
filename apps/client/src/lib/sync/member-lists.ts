@@ -9,6 +9,7 @@
  * the graph, as the graph's registry record stores it (`serverScope.principalId`).
  */
 import type { Bookmark, BookmarksPersist } from '#lib/document/bookmarks/bookmarks.js'
+import type { PdfBookmark } from '#lib/document/pdf/pdf-bookmarks.js'
 import type { QuickNote } from '#lib/document/quick-notes.js'
 import { type GraphSettings, sanitizeGraphSettings } from '#lib/storage/fs/graph-settings.js'
 
@@ -157,6 +158,8 @@ export interface MirroredLists {
     quickNotes: QuickNote[]
     /** The person's own bookmarks. Undefined without a member key: no file is written. */
     bookmarks?: Bookmark[]
+    /** The person's own PDF Bookmarks, likewise. */
+    pdfBookmarks?: PdfBookmark[]
 }
 
 /** One person's lists for one open of a synced graph (ADR 0159). */
@@ -168,6 +171,8 @@ export interface PersonalLists {
     readonly favourites: PersonalFavourites
     /** The person's own bookmarks, or null without a member key (see {@link BOOKMARKS_NEED_MEMBER_KEY}). */
     readonly bookmarks: ReturnType<GraphSync['bookmarks']> | null
+    /** The person's own PDF Bookmarks, or null without a member key. */
+    readonly pdfBookmarks: ReturnType<GraphSync['pdfBookmarks']> | null
     /** True once the Sync Server said this person owns the graph. */
     isOwner(): boolean
     /**
@@ -183,7 +188,7 @@ export interface PersonalLists {
 export function createPersonalLists(
     graph: Pick<
         GraphSync,
-        'quickNotes' | 'quickNotesOf' | 'favourites' | 'bookmarks' | 'getMeta' | 'setMetaSettings' | 'onMetaChange' | 'rootCaughtUp' | 'flushAll'
+        'quickNotes' | 'quickNotesOf' | 'favourites' | 'bookmarks' | 'pdfBookmarks' | 'getMeta' | 'setMetaSettings' | 'onMetaChange' | 'rootCaughtUp' | 'flushAll'
     >,
     memberKey: string | undefined,
 ): PersonalLists {
@@ -205,12 +210,14 @@ export function createPersonalLists(
     }
     const favourites = personalFavourites(graph, memberKey)
     const bookmarks = memberKey ? graph.bookmarks(memberKey) : null
+    const pdfBookmarks = memberKey ? graph.pdfBookmarks(memberKey) : null
 
     return {
         memberKey,
         quickNotes,
         favourites,
         bookmarks,
+        pdfBookmarks,
         isOwner: () => owner,
         setOwner(next) {
             if (next === owner) return
@@ -224,16 +231,19 @@ export function createPersonalLists(
                 settings: listed.length > 0 ? { ...rest, favourites: listed } : rest,
                 quickNotes: quickNotes.list(),
                 bookmarks: bookmarks?.list(),
+                pdfBookmarks: pdfBookmarks?.list(),
             }
         },
         observeMirrored(listener) {
             const offNotes = quickNotes.observe(listener)
             const offFavourites = memberKey ? graph.favourites(memberKey).observe(listener) : () => {}
             const offBookmarks = bookmarks ? bookmarks.observe(listener) : () => {}
+            const offPdfBookmarks = pdfBookmarks ? pdfBookmarks.observe(listener) : () => {}
             return () => {
                 offNotes()
                 offFavourites()
                 offBookmarks()
+                offPdfBookmarks()
             }
         },
     }

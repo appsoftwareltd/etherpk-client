@@ -137,7 +137,8 @@ export function actionClusterTheme(className: string, buttonClass: string): Exte
             alignItems: 'center',
             gap: '2px',
             marginLeft: '4px',
-            verticalAlign: 'baseline',
+            // Centred on the text, because a baseline sits a row of icons above it.
+            verticalAlign: 'middle',
             opacity: '0.45',
             transition: 'opacity 120ms ease',
         },

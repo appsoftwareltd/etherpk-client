@@ -22,10 +22,16 @@ const VERSION = 1
 /** Kept well above any sane `recentDocumentCount`, so raising the setting reveals real history. */
 const MAX_ENTRIES = 100
 
+/** A PDF in the list. An object, as a concept may be called anything, so no string could stand for one. */
+const recentPdfSchema = z.object({ target: z.string(), name: z.string() })
+export type RecentPdf = z.infer<typeof recentPdfSchema>
+/** A document by its concept, or a PDF. */
+export type RecentEntry = string | RecentPdf
+
 const payloadSchema = z.object({
     version: z.number(),
-    /** Concepts, most-recent-first. */
-    recents: z.array(z.string()),
+    /** Most-recent-first. */
+    recents: z.array(z.union([z.string(), recentPdfSchema])),
 })
 
 export interface RecentsStore {
@@ -38,6 +44,15 @@ export interface RecentsStore {
     /** Follow a rename, so a renamed document keeps its place rather than vanishing. */
     rename(from: string, to: string): void
     subscribe(listener: (recents: string[]) => void): () => void
+    /** Documents and PDFs, most-recent-first. */
+    entries(limit?: number): RecentEntry[]
+    /** A PDF became active. */
+    touchPdf(target: string, name: string): void
+    /** A PDF tab came to the front: moved to the front if it is listed. Its name is not known here. */
+    touchKnownPdf(target: string): void
+    forgetPdf(target: string): void
+    renamePdf(from: string, to: string, name: string): void
+    subscribeEntries(listener: (entries: RecentEntry[]) => void): () => void
 }
 
 export function createRecents(
@@ -46,9 +61,14 @@ export function createRecents(
 ): RecentsStore {
     const key = `${RECENTS_KEY_PREFIX}${graphId}`
     const listeners = new Set<(recents: string[]) => void>()
-    let recents: string[] = load()
+    const entryListeners = new Set<(entries: RecentEntry[]) => void>()
+    /** Documents and PDFs together, because together they have one order. */
+    let all: RecentEntry[] = load()
+    const documents = () => all.filter((entry): entry is string => typeof entry === 'string')
+    /** The documents' part of the list, as the callers that deal in concepts read it. */
+    let recents: string[] = documents()
 
-    function load(): string[] {
+    function load(): RecentEntry[] {
         const raw = storage?.getItem(key)
         if (!raw) return []
         try {
@@ -64,18 +84,23 @@ export function createRecents(
         // Best-effort: a full or unavailable quota must never break navigation, which is
         // what recording a Recent is a side-effect of.
         try {
-            storage?.setItem(key, JSON.stringify({ version: VERSION, recents }))
+            storage?.setItem(key, JSON.stringify({ version: VERSION, recents: all }))
         } catch {
             /* storage full or blocked - the in-memory list still works this session */
         }
     }
 
-    function commit(next: string[]): void {
-        recents = next.slice(0, MAX_ENTRIES)
+    function commitAll(next: RecentEntry[]): void {
+        all = next.slice(0, MAX_ENTRIES)
+        recents = documents()
         save()
         const snapshot = [...recents]
         for (const listener of listeners) listener(snapshot)
+        const entries = [...all]
+        for (const listener of entryListeners) listener(entries)
     }
+
+    const isPdf = (entry: RecentEntry, target: string) => typeof entry !== 'string' && entry.target === target
 
     return {
         list(limit) {
@@ -87,26 +112,50 @@ export function createRecents(
             const lower = trimmed.toLowerCase()
             // Already at the front: nothing changes, so do not churn storage or listeners
             // (this fires on every active-view change, including re-focusing the same tab).
-            if (recents[0]?.toLowerCase() === lower) return
-            commit([trimmed, ...recents.filter((c) => c.toLowerCase() !== lower)])
+            const first = all[0]
+            if (typeof first === 'string' && first.toLowerCase() === lower) return
+            commitAll([trimmed, ...all.filter((entry) => typeof entry !== 'string' || entry.toLowerCase() !== lower)])
         },
         forget(concept) {
             const lower = concept.trim().toLowerCase()
             if (!recents.some((c) => c.toLowerCase() === lower)) return
-            commit(recents.filter((c) => c.toLowerCase() !== lower))
+            commitAll(all.filter((entry) => typeof entry !== 'string' || entry.toLowerCase() !== lower))
         },
         rename(from, to) {
             const lower = from.trim().toLowerCase()
             if (!recents.some((c) => c.toLowerCase() === lower)) return
             const next = to.trim()
             // Renaming onto a concept already present would duplicate it.
-            const deduped = recents.filter((c) => c.toLowerCase() !== next.toLowerCase() || c.toLowerCase() === lower)
-            commit(deduped.map((c) => (c.toLowerCase() === lower ? next : c)))
+            const deduped = all.filter((entry) => typeof entry !== 'string' || entry.toLowerCase() !== next.toLowerCase() || entry.toLowerCase() === lower)
+            commitAll(deduped.map((entry) => (typeof entry === 'string' && entry.toLowerCase() === lower ? next : entry)))
         },
         subscribe(listener) {
             listeners.add(listener)
             listener([...recents])
             return () => listeners.delete(listener)
+        },
+        entries(limit) {
+            return limit === undefined ? [...all] : all.slice(0, Math.max(0, limit))
+        },
+        touchPdf(target, name) {
+            const first = all[0]
+            if (first !== undefined && isPdf(first, target) && (first as RecentPdf).name === name) return
+            commitAll([{ target, name }, ...all.filter((entry) => !isPdf(entry, target))])
+        },
+        touchKnownPdf(target) {
+            const held = all.find((entry) => isPdf(entry, target))
+            if (held && all[0] !== held) commitAll([held, ...all.filter((entry) => entry !== held)])
+        },
+        forgetPdf(target) {
+            if (all.some((entry) => isPdf(entry, target))) commitAll(all.filter((entry) => !isPdf(entry, target)))
+        },
+        renamePdf(from, to, name) {
+            if (all.some((entry) => isPdf(entry, from))) commitAll(all.map((entry) => (isPdf(entry, from) ? { target: to, name } : entry)))
+        },
+        subscribeEntries(listener) {
+            entryListeners.add(listener)
+            listener([...all])
+            return () => entryListeners.delete(listener)
         },
     }
 }

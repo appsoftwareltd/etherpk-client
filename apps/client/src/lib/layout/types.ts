@@ -130,6 +130,11 @@ export interface LayoutController {
     frontPanelOf(region: Region): string | null
     closeView(view: ViewRef): void
     /**
+     * Ask a View before its tab closes. A guard that answers false keeps the tab open, and is then
+     * the View's to explain (a PDF holding a signature nobody saved). Returns the way to stop asking.
+     */
+    guardClose(view: ViewRef, guard: () => boolean): () => void
+    /**
      * Close one specific instance by its panel id. `closeView` addresses the canonical instance
      * by ref, which a deliberate second copy (its panel id is synthetic) can never be reached
      * through; this is what "close every instance showing X" has to call. A no-op for a panel

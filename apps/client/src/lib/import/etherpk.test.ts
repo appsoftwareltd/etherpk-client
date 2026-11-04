@@ -53,6 +53,26 @@ describe('convertEtherpk', () => {
         expect(bad.report.map((r) => r.detail)).toContainEqual(expect.stringContaining('quick-notes.json is malformed'))
     })
 
+    it('carries a PDF\'s annotations by the hash in the file name, and reports a malformed file', async () => {
+        const hash = 'a'.repeat(64)
+        const note = { id: 'n', kind: 'note', page: 2, colour: '#000000', createdAt: 1, updatedAt: 1, x: 1, y: 2, fontSize: 12, text: 'Water the beans' }
+        const graph = await convertEtherpk([
+            src(`etherpk/pdf-${hash}.json`, JSON.stringify({ version: 1, annotations: [note], forms: {} })),
+            src(`etherpk/pdf-${'b'.repeat(64)}.json`, '{ nope'),
+        ])
+        expect(graph.pdfStates).toEqual([{ hash, state: { annotations: [note], forms: {} } }])
+        expect(graph.report.some((entry) => entry.detail.includes(`pdf-${'b'.repeat(64)}`))).toBe(true)
+    })
+
+    it('carries PDF Bookmarks from etherpk/pdf-bookmarks.json, and reports a malformed file', async () => {
+        const mark = { id: 'x', hash: 'a'.repeat(64), target: 'guide.a1b2c3d4.pdf', name: 'guide.pdf', page: 2, createdAt: 1 }
+        const graph = await convertEtherpk([src('etherpk/pdf-bookmarks.json', JSON.stringify([mark]))])
+        expect(graph.pdfBookmarks).toEqual([mark])
+        const bad = await convertEtherpk([src('etherpk/pdf-bookmarks.json', '{ nope')])
+        expect(bad.pdfBookmarks).toBeUndefined()
+        expect(bad.report.map((r) => r.detail)).toContainEqual(expect.stringContaining('pdf-bookmarks'))
+    })
+
     it('carries Bookmarks from etherpk/bookmarks.json, sanitised, and reports a malformed file', async () => {
         const garden = { id: 'a', concept: 'Garden', line: 2, text: 'water the beans', createdAt: 1 }
         const graph = await convertEtherpk([

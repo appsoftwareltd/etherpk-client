@@ -693,6 +693,46 @@ describe('local mirror', () => {
         mirror.dispose()
     })
 
+    it('carries the person’s PDF Bookmarks as etherpk/pdf-bookmarks.json', async () => {
+        const adapter = tickingAdapter()
+        const mark = { id: 'x', hash: 'a'.repeat(64), target: 'guide.pdf', name: 'guide.pdf', page: 2, createdAt: 1 }
+        const mirror = createLocalMirror(
+            source([{ docId: 'p1', kind: 'page', concept: 'Doc', text: 'body' }], { metadata: () => ({ name: 'My Graph', pdfBookmarks: [mark] }) }),
+            adapter,
+        )
+        await mirror.sync()
+        expect(JSON.parse((await adapter.read('etherpk', 'pdf-bookmarks.json')).text)).toEqual([mark])
+    })
+
+    it('carries the person’s PDF annotations, and takes away a file no PDF names', async () => {
+        const adapter = tickingAdapter()
+        const name = `pdf-${'a'.repeat(64)}.json`
+        const gone = `pdf-${'b'.repeat(64)}.json`
+        await adapter.write('etherpk', gone, '{}')
+        const mirror = createLocalMirror(
+            source([{ docId: 'p1', kind: 'page', concept: 'Doc', text: 'body' }], {
+                pdfStates: async () => [{ name, text: '{"version":1}\n' }],
+            }),
+            adapter,
+        )
+        await mirror.sync()
+        const names = (await adapter.list('etherpk')).map((e) => e.name)
+        expect(names).toContain(name)
+        expect(names).not.toContain(gone)
+    })
+
+    it('leaves PDF annotation files alone when they cannot be read just now', async () => {
+        const adapter = tickingAdapter()
+        const held = `pdf-${'a'.repeat(64)}.json`
+        await adapter.write('etherpk', held, '{}')
+        const mirror = createLocalMirror(
+            source([{ docId: 'p1', kind: 'page', concept: 'Doc', text: 'body' }], { pdfStates: async () => null }),
+            adapter,
+        )
+        await mirror.sync()
+        expect((await adapter.list('etherpk')).map((e) => e.name)).toContain(held)
+    })
+
     it('carries the person’s Bookmarks as etherpk/bookmarks.json, and rewrites it only when they change', async () => {
         const adapter = tickingAdapter()
         let bookmarks: Bookmark[] | undefined = undefined

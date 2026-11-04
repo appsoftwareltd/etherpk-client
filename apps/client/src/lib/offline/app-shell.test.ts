@@ -47,6 +47,22 @@ describe('isImmutableAppFile and isWorkerScript', () => {
 describe('isOnDemandAppFile and splitAppFiles', () => {
     const xiaolai = '/_app/immutable/assets/Xiaolai-Regular-09850c4077f3fffe707905872e0e2460.Cq3xY1_b.woff2'
 
+    it("leaves pdf.js's data files to be fetched when a PDF asks for them", () => {
+        for (const path of [
+            '/_app/immutable/assets/UniGB-UCS2-H.Ab12Cd34.bcmap',
+            '/_app/immutable/assets/FoxitSerif.Ab12Cd34.pfb',
+            '/_app/immutable/assets/LiberationSans-Regular.Ab12Cd34.ttf',
+            '/_app/immutable/assets/openjpeg.Ab12Cd34.wasm',
+        ]) {
+            expect(isOnDemandAppFile(path)).toBe(true)
+        }
+    })
+
+    it('keeps a wasm or a font of its own in the install', () => {
+        expect(isOnDemandAppFile('/_app/immutable/assets/sqlite3-Ab12Cd34.wasm')).toBe(false)
+        expect(isOnDemandAppFile('/_app/immutable/assets/InterVariable.Ab12Cd34.ttf')).toBe(false)
+    })
+
     it("leaves Excalidraw's handwriting font for Chinese, Japanese and Korean to be fetched when a drawing needs it", () => {
         expect(isOnDemandAppFile(xiaolai)).toBe(true)
     })

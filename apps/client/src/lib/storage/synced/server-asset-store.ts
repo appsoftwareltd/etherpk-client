@@ -146,6 +146,17 @@ export interface QueuedUploads {
 export interface ServerAssetStore extends AssetStore {
     /** Send this graph's queued uploads. Calls made while one is running share it. */
     uploadQueued(): Promise<QueuedUploads>
+    /**
+     * Give an asset a new name, in its encrypted metadata. Its id and bytes stay, so every link keeps
+     * working. Answers the name. Other devices see it when they next ask (`currentName`).
+     */
+    renameAsset(ref: string, name: string): Promise<string>
+    /** The name the server holds now, read past this device's copy, or null when it cannot say. */
+    currentName(ref: string): Promise<string | null>
+    /** Whether this device keeps the file whatever its size (ADR 0143, amended). */
+    keptOnDevice(ref: string): Promise<boolean>
+    /** Keep the file on this device, or go back to the ordinary budget. Rejects when there is no room. */
+    setKeptOnDevice(ref: string, keep: boolean): Promise<void>
 }
 
 /**
@@ -229,7 +240,7 @@ async function sha256Hex(bytes: Uint8Array): Promise<string> {
  * on the Asset rather than on whichever reference opened it — and that has to resolve too.
  */
 export function assetIdFromRef(ref: string): string | null {
-    const file = ref.split('/').pop() ?? ref
+    const file = (ref.split(/[?#]/)[0].split('/').pop() ?? ref)
     const m = /(?:^|\.)([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:\.[^.]+)?$/.exec(file)
     return m ? m[1] : null
 }
@@ -416,6 +427,23 @@ export function createServerAssetStore(deps: ServerAssetStoreDeps): ServerAssetS
         })
     }
 
+    /** The chunks at signed addresses, in order, or null when storage refuses one for good. */
+    async function downloadChunks(downloadUrls: readonly string[]): Promise<Uint8Array[] | null> {
+        const encrypted: Uint8Array[] = []
+        for (const url of downloadUrls) {
+            const chunkRes = await readRequest(url)
+            if (!chunkRes.ok) {
+                // No 401 here: a download URL is signed, not authorised by the sync token.
+                if (chunkRes.status !== 401 && isTransientStatus(chunkRes.status)) {
+                    throw new AssetUnavailableError(`Storage could not hand over the file just now (HTTP ${chunkRes.status}).`, { status: chunkRes.status })
+                }
+                return null
+            }
+            encrypted.push(new Uint8Array(await chunkRes.arrayBuffer()))
+        }
+        return encrypted
+    }
+
     async function fetchAssetBytesOnce(ref: string): Promise<AssetBytes | null> {
         const assetId = assetIdFromRef(ref)
         if (!assetId) return null
@@ -430,18 +458,8 @@ export function createServerAssetStore(deps: ServerAssetStoreDeps): ServerAssetS
         if (typeof metadata.chunkCount === 'number' && body.downloadUrls.length !== metadata.chunkCount) {
             throw new AssetIntegrityError()
         }
-        const encrypted: Uint8Array[] = []
-        for (let n = 0; n < body.downloadUrls.length; n++) {
-            const chunkRes = await readRequest(body.downloadUrls[n])
-            if (!chunkRes.ok) {
-                // No 401 here: a download URL is signed, not authorised by the sync token.
-                if (chunkRes.status !== 401 && isTransientStatus(chunkRes.status)) {
-                    throw new AssetUnavailableError(`Storage could not hand over the file just now (HTTP ${chunkRes.status}).`, { status: chunkRes.status })
-                }
-                return null
-            }
-            encrypted.push(new Uint8Array(await chunkRes.arrayBuffer()))
-        }
+        const encrypted = await downloadChunks(body.downloadUrls)
+        if (!encrypted) return null
         const asset = await openChunks(ref, assetId, metadata, encrypted)
         // Kept only once it opened and matched its hash.
         await keepCopy(assetId, { encryptedMetadata: body.encryptedMetadata, chunks: encrypted })
@@ -694,6 +712,64 @@ export function createServerAssetStore(deps: ServerAssetStoreDeps): ServerAssetS
             // Kept, so it shows offline later without being downloaded first.
             await keepCopy(assetId, { encryptedMetadata: upload.encryptedMetadata, chunks })
             return saved(assetId, false)
+        },
+
+        async renameAsset(ref, name) {
+            const assetId = assetIdFromRef(ref)
+            const body = assetId ? await requestAsset(assetId) : null
+            if (!assetId || !body) throw new Error('The sync server no longer holds this file.')
+            const metadata = await openMetadata(assetId, body.encryptedMetadata)
+            const ring = keyring()
+            const encryptedMetadata = toBase64Url(
+                await sealSymmetric({
+                    key: currentEpoch(ring).key,
+                    epochId: currentEpoch(ring).epochId,
+                    plaintext: utf8(JSON.stringify({ ...metadata, name })),
+                    aad: contextAad('asset-meta', `graph:${deps.graphId}`, `id:${assetId}`),
+                }),
+            )
+            await step(async (fresh) => {
+                const res = await f(`${base}/api/v1/sync/assets/${deps.graphId}/${assetId}`, {
+                    method: 'PATCH',
+                    headers: await authHeaders(fresh),
+                    body: JSON.stringify({ encryptedMetadata }),
+                })
+                if (!res.ok) throw new HttpFailure(res.status, `Could not rename the file (HTTP ${res.status}).`)
+            })
+            await deps.copies?.updateMetadata(deps.graphId, assetId, encryptedMetadata)
+            return name
+        },
+
+        async currentName(ref) {
+            const assetId = assetIdFromRef(ref)
+            if (!assetId) return null
+            try {
+                const body = await requestAsset(assetId)
+                if (!body) return null
+                const { name } = await openMetadata(assetId, body.encryptedMetadata)
+                await deps.copies?.updateMetadata(deps.graphId, assetId, body.encryptedMetadata)
+                return name
+            } catch {
+                return null
+            }
+        },
+
+        async keptOnDevice(ref) {
+            const assetId = assetIdFromRef(ref)
+            return assetId && deps.copies ? deps.copies.isPinned(deps.graphId, assetId) : false
+        },
+
+        async setKeptOnDevice(ref, keep) {
+            const assetId = assetIdFromRef(ref)
+            const copies = deps.copies
+            if (!assetId || !copies) throw new Error('This device cannot keep files.')
+            if (await copies.setPinned(deps.graphId, assetId, keep)) return
+            if (!keep) return
+            // Too large to have been kept in passing, so it is fetched for the purpose.
+            const body = await requestAsset(assetId)
+            const chunks = body ? await downloadChunks(body.downloadUrls) : null
+            if (!body || !chunks) throw new Error('The file could not be fetched just now, so it was not kept.')
+            await copies.keep(deps.graphId, assetId, { encryptedMetadata: body.encryptedMetadata, chunks }, { pinned: true })
         },
 
         uploadQueued() {

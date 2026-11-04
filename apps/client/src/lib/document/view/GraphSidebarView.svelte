@@ -49,9 +49,11 @@
         type ViewFavourite,
     } from "#lib/document/favourite-entry.js";
     import BookmarksSection from "./BookmarksSection.svelte";
+    import PdfBookmarksSection from "./PdfBookmarksSection.svelte";
     import { getActiveLayoutController, type ViewRef } from "#lib/layout/index.js";
     import { prefersMobileLayout } from "#lib/layout/breakpoint.js";
     import { getActiveRecents } from "#lib/navigation/active-recents.js";
+    import type { RecentEntry } from "#lib/navigation/recents.js";
     import type { FilesystemDocumentStore } from "#lib/storage/index.js";
     import { recentCountOf } from "#lib/storage/fs/graph-settings.js";
     import {
@@ -84,7 +86,7 @@
 
     let documents = $state<{ concept: string; kind: string }[]>([]);
     let favourites = $state.raw<Favourite[]>([]);
-    let recents = $state.raw<string[]>([]);
+    let recents = $state.raw<RecentEntry[]>([]);
     /** The active document, so the [[Journal Calendar]] can follow it when it is a day. */
     let activeConcept = $state<string | null>(getActiveDocument());
     let calendarOpen = $state(true);
@@ -186,7 +188,7 @@
      */
     const visibleRecents = $derived(
         recents
-            .filter((c) => !protectedConcepts.has(c.toLowerCase()))
+            .filter((entry) => typeof entry !== "string" || !protectedConcepts.has(entry.toLowerCase()))
             .slice(0, recentLimit),
     );
 
@@ -619,7 +621,7 @@
         }
         unsubscribers.push(subscribeFavourites((next) => (favourites = next)));
         unsubscribers.push(
-            getActiveRecents().subscribe((next) => (recents = next)),
+            getActiveRecents().subscribeEntries((next) => (recents = next)),
         );
     });
     onDestroy(() => {
@@ -943,6 +945,7 @@
 
     <!-- ── Bookmarks ──────────────────────────────────────────────────────────── -->
     <BookmarksSection />
+    <PdfBookmarksSection />
 
     <!-- ── Recents ────────────────────────────────────────────────────────────── -->
     <section>
@@ -962,7 +965,25 @@
         </button>
         {#if recentsOpen}
             <ul data-testid="recents-list">
-                {#each visibleRecents as concept (concept)}
+                {#each visibleRecents as entry (typeof entry === "string" ? entry : `pdf:${entry.target}`)}
+                    {#if typeof entry !== "string"}
+                    <li class="group/row relative">
+                        <button
+                            type="button"
+                            data-testid="recent-pdf-row"
+                            onclick={() => getActiveLayoutController().openView({ kind: "asset", target: entry.target })}
+                            class="flex w-full touch-manipulation select-none items-center gap-1.5 rounded-md py-1 pr-2 pl-6 text-left text-sm text-(--gk-text-default) hover:bg-(--gk-surface-2)"
+                            title={entry.name}
+                        >
+                            <span class="-ml-5 inline-flex w-3.5 shrink-0 text-(--gk-text-muted)" data-testid="recent-pdf-icon">
+                                <!-- eslint-disable-next-line svelte/no-at-html-tags -- in-repo constant markup from the icon table -->
+                                {@html iconSvg("pdf", { size: 14 })}
+                            </span>
+                            <span class="min-w-0 flex-1 truncate">{entry.name}</span>
+                        </button>
+                    </li>
+                    {:else}
+                    {@const concept = entry}
                     <li class="group/row relative">
                         <button
                             type="button"
@@ -986,6 +1007,7 @@
                             >⋯</button
                         >
                     </li>
+                    {/if}
                 {:else}
                     <li
                         class="px-6 py-1 text-sm text-(--gk-text-subtle)"

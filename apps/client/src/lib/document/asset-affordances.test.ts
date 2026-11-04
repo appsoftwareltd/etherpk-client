@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { createContributionRegistry, registerAssetViewer, setActiveContributionRegistry } from '#lib/surface/index.js'
 
-import { assetActions, canCopyImageAsset, canOpenAsset } from './asset-affordances'
+import { assetActions, canCopyImageAsset, canOpenAsset, assetClickCommand, assetExtension, assetExtensionAction } from './asset-affordances'
 
 /**
  * The action set is what three surfaces render, so what belongs in it is worth pinning: open only
@@ -133,5 +133,46 @@ describe('assetActions', () => {
         withPdfViewer()
 
         expect(assetActions(PDF).every((a) => a.label.length > 0 && a.icon.length > 0)).toBe(true)
+    })
+})
+
+describe('a plain click on a link to a file', () => {
+    it('opens a PDF in its tab when a viewer can show it', () => {
+        withPdfViewer()
+        expect(assetClickCommand('../assets/guide.a1b2c3d4.pdf')).toBe('asset.open')
+        expect(assetClickCommand('../assets/GUIDE.a1b2c3d4.PDF')).toBe('asset.open')
+        expect(assetClickCommand('../assets/guide.a1b2c3d4.pdf#page=4')).toBe('asset.open')
+    })
+
+    it('downloads a PDF when nothing can show it', () => {
+        expect(assetClickCommand('../assets/guide.a1b2c3d4.pdf')).toBe('asset.download')
+    })
+
+    it('downloads any other file', () => {
+        withPdfViewer()
+        expect(assetClickCommand('../assets/plans.a1b2c3d4.zip')).toBe('asset.download')
+    })
+})
+
+describe('the file extension a link shows', () => {
+    it.each([
+        ['../assets/garden-guide.a1b2c3d4.pdf', '.pdf'],
+        ['../assets/garden-guide.a1b2c3d4.pdf#page=4', '.pdf'],
+        ['../assets/GARDEN.a1b2c3d4.PDF', '.pdf'],
+        ['../assets/seed%20list.a1b2c3d4.tar.gz', '.gz'],
+        ['../assets/notes', null],
+        ['../assets/.hidden', null],
+    ])('%s reads as %s', (ref, shown) => {
+        expect(assetExtension(ref)).toBe(shown)
+    })
+})
+
+describe('what the extension pill does', () => {
+    it('leaves a picture alone', () => {
+        expect(assetExtensionAction('../assets/chart.a1b2c3d4.png')).toBeNull()
+    })
+
+    it('downloads a file nothing can show', () => {
+        expect(assetExtensionAction('../assets/seed-list.a1b2c3d4.csv')).toBe('Download')
     })
 })

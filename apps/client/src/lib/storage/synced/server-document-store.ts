@@ -552,8 +552,11 @@ export function createServerDocumentStore(
         // Forwarding the root update as unnamed turned every page creation into a full rebuild.
         if (graph.docSync(docId).doc === graph.rootDoc) return
         const entry = entryFor(docId)
-        const change = entry ? { concept: conceptOf(entry) } : undefined
-        changeListeners.forEach((l) => l(change))
+        // No registry entry: a person's private document for a PDF (`pdf/synced-pdf-state.ts`), or a
+        // document whose entry has not arrived. Nothing can index either, and the registry observer
+        // above reports the second once its entry lands. Reporting it unnamed would re-index the graph.
+        if (!entry) return
+        changeListeners.forEach((l) => l({ concept: conceptOf(entry) }))
     })
 
     /** Find the registry docId whose concept matches `target` (case-insensitive). */

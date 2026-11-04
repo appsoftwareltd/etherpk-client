@@ -104,7 +104,7 @@ describe('publishPublication', () => {
         expect(guide).toContain('<link rel="stylesheet" href="theme/katex/katex.min.css">')
     })
 
-    it('renders the navigation from the outline with the current page marked, plus a Journal entry', async () => {
+    it('renders the navigation from the outline with the current PDF bookmarked, plus a Journal entry', async () => {
         const { bundle } = await publishPublication(source, docs, environment())
         const guide = bundle.get('guide.html') as string
         expect(guide).toContain('<li class="nav-current"><a href="guide.html">Guide</a><ul class="site-nav-list"><li><a href="guide-advanced.html">')

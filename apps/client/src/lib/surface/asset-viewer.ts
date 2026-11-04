@@ -27,6 +27,8 @@ export interface AssetViewerProps {
     name: string
     /** MIME type, or `''` when unknown. */
     type: string
+    /** The Asset's identity, which keys its tab: the file name, or a synced Asset's id. */
+    target?: string
 }
 
 export interface AssetViewer {

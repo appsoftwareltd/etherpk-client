@@ -216,7 +216,7 @@ export function registerAgentChat(context: ExtensionContext, ui: AgentChatUi): A
         const at = (arg as { at?: unknown } | undefined)?.at === 'caret-or-end' ? 'caret-or-end' : 'caret'
         openChat({ at })
     })
-    context.commandBar.register({ id: 'agent-chat.bar', title: 'Agent Chat', icon: 'agent-chat', command: OPEN_COMMAND, args: { at: 'caret-or-end' }, pinned: true })
+    context.commandBar.register({ id: 'agent-chat.bar', title: 'Agent Chat', icon: 'agent-chat', command: OPEN_COMMAND, args: { at: 'caret-or-end' }, pinned: true, documentOnly: true })
     context.commandMenu.register({
         id: 'agent-chat.agent',
         title: 'Agent',

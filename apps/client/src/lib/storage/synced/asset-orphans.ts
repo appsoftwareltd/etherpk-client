@@ -141,7 +141,8 @@ export async function scanOrphanedServerAssets(deps: ServerAssetOrphanDeps): Pro
 
     const { texts, unreadableProtected } = await referenceTexts(stored, deps.readProtected)
     const unused = assets.filter((a) => !isReferenced(texts, a.assetId))
-    const names = await assetNames(deps, unused.map((a) => a.assetId))
+    const hashes = new Map<string, string>()
+    const names = await assetNames(deps, unused.map((a) => a.assetId), hashes)
     // An imported file is stored under the name it had in the source graph, and a reference the
     // import could not repoint (one sealed inside a protected document it had no passphrase for)
     // still uses that name. The file is in use under it, so it is not offered.
@@ -151,7 +152,7 @@ export async function scanOrphanedServerAssets(deps: ServerAssetOrphanDeps): Pro
     }
     const candidates: OrphanedAsset[] = unused
         .filter((a) => !inUseByName(a.assetId))
-        .map((a) => ({ id: a.assetId, label: orphanLabel(a, names.get(a.assetId)), size: a.size }))
+        .map((a) => ({ id: a.assetId, label: orphanLabel(a, names.get(a.assetId)), size: a.size, contentHash: hashes.get(a.assetId) }))
     const scan = orphanScanOf(candidates, {
         totalAssets: assets.length,
         scannedDocuments: docIds.length,
@@ -171,7 +172,7 @@ function orphanLabel(asset: ListedAsset, name: string | undefined): string {
  * Each asset's file name from its encrypted metadata, the decrypt `fetchAssetBytes` performs
  * without the chunks. Best effort: a name that cannot be read leaves that asset labelled by id.
  */
-async function assetNames(deps: ServerAssetOrphanDeps, assetIds: readonly string[]): Promise<Map<string, string>> {
+async function assetNames(deps: ServerAssetOrphanDeps, assetIds: readonly string[], hashes: Map<string, string>): Promise<Map<string, string>> {
     const names = new Map<string, string>()
     const keyring = deps.keyring && keyringReader(deps.keyring)()
     if (!keyring || assetIds.length === 0) return names
@@ -189,8 +190,9 @@ async function assetNames(deps: ServerAssetOrphanDeps, assetIds: readonly string
                     envelope: fromBase64Url(encryptedMetadata),
                     aad: contextAad('asset-meta', `graph:${deps.graphId}`, `id:${assetId}`),
                 })
-                const { name } = JSON.parse(new TextDecoder().decode(plaintext)) as { name?: unknown }
+                const { name, hash } = JSON.parse(new TextDecoder().decode(plaintext)) as { name?: unknown; hash?: unknown }
                 if (typeof name === 'string' && name.trim() !== '') names.set(assetId, name)
+                if (typeof hash === 'string') hashes.set(assetId, hash)
             } catch {
                 // Labelled by id instead.
             }

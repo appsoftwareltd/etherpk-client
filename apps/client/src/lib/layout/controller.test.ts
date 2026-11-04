@@ -1187,3 +1187,17 @@ describe('LayoutController — frontPanelOf', () => {
         expect(controller.frontPanelOf('main')).toBe(viewKey(docA))
     })
 })
+
+describe('a View that guards its tab', () => {
+    it('stays open while its guard answers false, and closes once the guard stops asking', () => {
+        const { controller } = setup()
+        const view = { kind: 'document', target: 'Garden' }
+        controller.openView(view)
+        const stop = controller.guardClose(view, () => false)
+        controller.closeView(view)
+        expect(controller.isOpen(view)).toBe(true)
+        stop()
+        controller.closeView(view)
+        expect(controller.isOpen(view)).toBe(false)
+    })
+})

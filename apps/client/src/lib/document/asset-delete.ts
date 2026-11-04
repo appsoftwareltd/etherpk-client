@@ -84,6 +84,11 @@ export interface AssetDeleteInputs {
     protectedUsage?: () => Promise<ProtectedAssetUsage>
     /** Ask only once the count says this is the last reference — it costs a round trip. */
     readiness: () => Promise<AssetByteReadiness>
+    /**
+     * How many references the delete itself accounts for. One for a trash click on a reference,
+     * which removes it. None for a delete from a PDF's tab, where every reference stays behind.
+     */
+    ownReferences?: 0 | 1
 }
 
 /**
@@ -97,7 +102,8 @@ export async function planAssetDelete(inputs: AssetDeleteInputs): Promise<AssetD
     if (!usage) return { deleteBytes: false, blockedBy: 'index-building', documents: [], references: 0 }
 
     let found: Pick<AssetDeletePlan, 'documents' | 'references' | 'lockedProtected' | 'unreadProtected'> = { documents: usage.documents, references: usage.references }
-    if (usage.references > 1) return { deleteBytes: false, blockedBy: 'used-elsewhere', ...found }
+    const allowed = inputs.ownReferences ?? 1
+    if (usage.references > allowed) return { deleteBytes: false, blockedBy: 'used-elsewhere', ...found }
 
     if (inputs.protectedUsage) {
         const hidden = await inputs.protectedUsage()
@@ -111,7 +117,7 @@ export async function planAssetDelete(inputs: AssetDeleteInputs): Promise<AssetD
             ...(hidden.locked > 0 ? { lockedProtected: hidden.locked } : {}),
             ...(hidden.unread > 0 ? { unreadProtected: hidden.unread } : {}),
         }
-        if (found.references > 1) return { deleteBytes: false, blockedBy: 'used-elsewhere', ...found }
+        if (found.references > allowed) return { deleteBytes: false, blockedBy: 'used-elsewhere', ...found }
     }
 
     const readiness = await inputs.readiness()

@@ -33,6 +33,7 @@ export const editorContext = $state<{
     bulletToggleOn: boolean
     indentable: boolean
     bodyWritable: boolean
+    fileInFront: boolean
     tableInsertable: boolean
     table: EditorTableContext | null
     canUndo: boolean
@@ -59,6 +60,8 @@ export const editorContext = $state<{
      * Command handlers ask the predicate itself; this is only what the bar greys on.
      */
     bodyWritable: false,
+    /** The main tab shows a file, such as a PDF, not a document's text. Kept up by the workspace. */
+    fileInFront: false,
     /** The insert-table button's gate: off in fenced code, frontmatter and inside a table. */
     tableInsertable: false,
     /**

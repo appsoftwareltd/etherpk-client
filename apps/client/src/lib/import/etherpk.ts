@@ -7,6 +7,9 @@
 
 import { type QuickNote, sanitizeQuickNotes } from '#lib/document/quick-notes.js'
 import { type Bookmark, sanitizeBookmarks } from '#lib/document/bookmarks/bookmarks.js'
+import { pdfHashFromStateFile } from '#lib/document/pdf/file-pdf-state.js'
+import { sanitizePdfBookmarks, type PdfBookmark } from '#lib/document/pdf/pdf-bookmarks.js'
+import { sanitizePdfState, type PdfState } from '#lib/document/pdf/pdf-state.js'
 import { parseDictionaryFile } from '#lib/document/spelling/graph-dictionary.js'
 import type { GraphTheme } from '#lib/document/publish/theme/graph-theme.js'
 import { parseGraphThemeFile, themeIdOfFileName } from '#lib/storage/fs/theme-files.js'
@@ -32,6 +35,36 @@ import { breathe, type ConvertedDocument, type ConvertedGraph, type ImportContro
  * them are about the folder they came from. Silently skipped, like etherpk/.
  */
 const AGENT_INSTRUCTION_FILES = new Set([AGENTS_MD_FILE, CLAUDE_MD_FILE])
+
+async function readImportedPdfBookmarks(content: readonly SourceFile[], report: ReportEntry[]): Promise<PdfBookmark[]> {
+    const file = findFile([...content], 'etherpk/pdf-bookmarks.json')
+    if (!file) return []
+    try {
+        return sanitizePdfBookmarks(JSON.parse(await readText(file)))
+    } catch {
+        report.push({ category: 'unsupported', detail: 'etherpk/pdf-bookmarks.json is malformed, so PDF Bookmarks were not carried over' })
+        return []
+    }
+}
+
+/**
+ * A person's annotations and form values on PDFs (`etherpk/pdf-<hash>.json`). Keyed by the bytes'
+ * hash, so they meet their PDF in the new graph whatever its Asset is called there.
+ */
+async function readPdfStates(content: readonly SourceFile[], report: ReportEntry[]): Promise<{ pdfStates?: { hash: string; state: PdfState }[]; pdfBookmarks?: PdfBookmark[] }> {
+    const pdfStates: { hash: string; state: PdfState }[] = []
+    for (const file of content) {
+        const hash = file.path.startsWith('etherpk/') ? pdfHashFromStateFile(file.path.slice('etherpk/'.length)) : null
+        if (hash === null) continue
+        try {
+            pdfStates.push({ hash, state: sanitizePdfState(JSON.parse(await readText(file))) })
+        } catch {
+            report.push({ category: 'unsupported', detail: `${file.path} is malformed, so that PDF's annotations were not carried over` })
+        }
+    }
+    const bookmarks = await readImportedPdfBookmarks(content, report)
+    return { ...(pdfStates.length > 0 ? { pdfStates } : {}), ...(bookmarks.length > 0 ? { pdfBookmarks: bookmarks } : {}) }
+}
 
 export async function convertEtherpk(files: SourceFile[], control?: ImportControl): Promise<ConvertedGraph> {
     const onProgress = control?.onProgress
@@ -270,6 +303,7 @@ export async function convertEtherpk(files: SourceFile[], control?: ImportContro
         settings,
         ...(quickNotes ? { quickNotes } : {}),
         ...(bookmarks ? { bookmarks } : {}),
+        ...(await readPdfStates(content, report)),
         ...(spellingDictionary.length > 0 ? { spellingDictionary } : {}),
         ...(themes.length > 0 ? { themes } : {}),
         ...(protection ? { protection } : {}),
