@@ -73,7 +73,7 @@ import {
     taskFingerprint,
     taskReferenceId,
 } from '#lib/document/task-reference.js'
-import { ancestorChain, bulletLabel, deriveDoc } from '#lib/document/index-derive.js'
+import { ancestorChain, bulletLabel, deriveDoc, type TaskRow } from '#lib/document/index-derive.js'
 import { parseLaneReference } from '#lib/document/lane-reference.js'
 import { isTemplate, templateBody } from '#lib/document/templates/template-page.js'
 import { renderTemplate, templateContextFor } from '#lib/document/templates/template-variables.js'
@@ -261,6 +261,8 @@ export interface TasksArgs {
     statuses?: TaskStatus[]
     priorities?: Array<1 | 2 | 3 | 'none'>
     due?: TaskDueWindow
+    /** List as a Kanban board shows them: without the subtasks of tasks also listed (ADR 0174). */
+    board?: boolean
     offset?: number
     limit?: number
 }
@@ -728,7 +730,7 @@ export async function graphPath(graph: HeadlessGraph, args: GraphPathArgs) {
  * concept is a name), and its one status; a concept or statuses given beside it are refused rather
  * than one silently winning.
  */
-function taskSelection(graph: HeadlessGraph, args: TasksArgs): { concept: string | null; statuses: readonly TaskStatus[] } {
+function taskSelection(graph: HeadlessGraph, args: TasksArgs): { concept: string | null; statuses: readonly TaskStatus[]; asBoard: boolean } {
     if (args.reference !== undefined) {
         const lane = parseLaneReference(args.reference)
         if (!lane) {
@@ -741,20 +743,20 @@ function taskSelection(graph: HeadlessGraph, args: TasksArgs): { concept: string
         if (graph.backend.kind === 'synced' && lane.graphId !== graph.graphId) {
             throw new ToolError('other_graph', `That lane reference is for another graph. This server serves "${graph.name}" (${graph.graphId}); ask the user to connect the graph the reference is from.`)
         }
-        return { concept: lane.concept, statuses: [lane.status] }
+        return { concept: lane.concept, statuses: [lane.status], asBoard: true }
     }
     const statuses = args.statuses ?? OPEN_TASK_STATUSES
     for (const status of statuses) {
         if (!TASK_STATUSES.includes(status)) throw new ToolError('invalid_argument', `Unknown task status "${status}".`)
     }
     const concept = args.concept?.trim() ? (args.concept.trim() === 'today' ? todayISO() : args.concept.trim()) : null
-    return { concept, statuses }
+    return { concept, statuses, asBoard: args.board ?? false }
 }
 
 export async function tasks(graph: HeadlessGraph, args: TasksArgs = {}) {
     const offset = bounded(args.offset, 0, Number.MAX_SAFE_INTEGER)
     const limit = bounded(args.limit, 100, TASK_PAGE_LIMIT)
-    const { concept, statuses } = taskSelection(graph, args)
+    const { concept, statuses, asBoard } = taskSelection(graph, args)
     const priorities: TaskPriorityFilter[] = args.priorities
         ? args.priorities.map((priority) => (priority === 'none' ? null : priority))
         : [...TASK_PRIORITY_FILTERS]
@@ -769,6 +771,7 @@ export async function tasks(graph: HeadlessGraph, args: TasksArgs = {}) {
             priorities,
             due: args.due ?? 'any',
             groupBy: 'document',
+            asBoard,
             today: todayISO(),
         },
         offset,
@@ -793,6 +796,10 @@ export async function tasks(graph: HeadlessGraph, args: TasksArgs = {}) {
                 scheduled: hit.scheduled,
                 completion: hit.completion,
                 breadcrumb: hit.breadcrumb,
+                // The task above it, whose card a Kanban board reaches it through, and how far
+                // along the tasks under it are (ADR 0174).
+                parentTask: hit.parentTask === null ? null : { text: hit.parentTask, line: hit.parentTaskLine },
+                subtasks: hit.subtasks,
                 // A person's own tags on the task, without their # (ADR 0166).
                 freeTags: freeTagsIn(hit.text),
                 // So an agent can hand the task back to a person, or to another agent.
@@ -1492,6 +1499,23 @@ export interface ReadTaskArgs {
 }
 
 /**
+ * The tasks nested under the task on block `root`, at any depth, in document order, with how many
+ * tasks down each one is. `tasks` are in document order, so a parent is always met before its own
+ * subtasks: only a task whose parent has already been reached is under `root`.
+ */
+function tasksNestedUnder(tasks: readonly TaskRow[], root: number): { task: TaskRow; depth: number }[] {
+    const depths = new Map([[root, 0]])
+    const nested: { task: TaskRow; depth: number }[] = []
+    for (const task of tasks) {
+        const above = task.parentTaskLocalId === null ? undefined : depths.get(task.parentTaskLocalId)
+        if (above === undefined) continue
+        depths.set(task.blockLocalId, above + 1)
+        nested.push({ task, depth: above + 1 })
+    }
+    return nested
+}
+
+/**
  * The task a Task Reference names: its words and tags, where it is now, what is above it (the
  * headings and bullets its breadcrumb names) and its detail (its continuation lines and
  * everything nested under it), and how it was found. For the text around it, read the document.
@@ -1501,10 +1525,11 @@ export async function readTask(graph: HeadlessGraph, args: ReadTaskArgs) {
     const lines = found.body.split('\n')
     const line = lines[found.line]
     const task = parseTaskLine(line)!
-    const { blocks } = deriveDoc(found.body)
+    const { blocks, tasks: bodyTasks } = deriveDoc(found.body)
     const block = blocks.find((candidate) => candidate.startLine === found.line)
     const end = block ? subtreeEnd(blocks, block.localId) : found.line
     const structure = readTaskStructure(lines, found.line)
+    const subtasks = block ? tasksNestedUnder(bodyTasks, block.localId) : []
     return {
         concept: found.document,
         line: found.line,
@@ -1524,6 +1549,17 @@ export async function readTask(graph: HeadlessGraph, args: ReadTaskArgs) {
         // The Task Comments under the task's Comments bullet (ADR 0170), oldest first. They are in
         // `detail` too, as the text they are.
         comments: structure ? taskComments(lines, structure) : [],
+        // Every task nested under it at any depth (ADR 0174), in document order, each with a
+        // reference that read_task, set_task and add_task_note take. They are in `detail` too.
+        subtasks: await Promise.all(
+            subtasks.map(async ({ task: nested, depth }) => ({
+                text: nested.text,
+                status: taskStatus(nested.done, nested),
+                line: nested.line,
+                depth,
+                reference: await referenceFor(graph, found.document, nested.line, nested.text),
+            })),
+        ),
     }
 }
 

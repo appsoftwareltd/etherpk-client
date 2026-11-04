@@ -208,6 +208,14 @@ Ticking a task in EtherPK ticks every task nested under it, archiving it archive
 unticking it unticks them except a cancelled (`#C`) or archived (`#A`) one. When you mark a parent task done by editing the file, tick its nested
 tasks too, so the file reads as EtherPK would leave it.
 
+**Subtasks.** A task nested under another, at any depth and through plain bullets, is a subtask of
+the nearest task above it. It is still a task, with its own checkbox and tags, so tick it or change
+its tags on its own line as you work through it. A Kanban board shows no card for a subtask whose
+parent task is on the same board: the parent's card counts its subtasks, and EtherPK's task editor
+shows them in the description. Write a checklist as tasks nested under a task, and write the tasks
+of a project under a plain bullet (`- [[Acme]]`), because under a task (`- [ ] [[Acme]]`) they would
+all become its subtasks.
+
 **Task comments.** A bullet whose words are exactly `Comments`, nested directly under a task, holds
 the task's comments: each bullet under it is one comment, in the order written, and carries no
 author or date unless its words do. The lines nested under the task above the `- Comments` bullet

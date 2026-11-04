@@ -169,18 +169,22 @@ describe('accepting a completion inside another link (EtherPK)', () => {
 })
 
 /**
- * Press `key` with the caret as `before` puts it, recording both ways a link opens: `opened` in
- * place (Alt+Enter), `openedRight` in the Pane to the right (Mod+Alt+Enter). `toTheRight: false`
- * leaves the second callback out, as a host with no Layout does.
+ * Press `key` with the caret as `before` puts it, recording each way a link opens: `opened` in
+ * place (Alt+Enter), `openedRight` in the Pane to the right (Mod+Alt+Enter) and `openedBelow` in
+ * the Pane below (Mod+Alt+Shift+Enter). `toTheRight: false` leaves the last two callbacks out, as a
+ * host with no Layout does.
  */
 function pressOnLink(key: string, before: string, options: { typeFirst?: string; toTheRight?: boolean } = {}) {
     const opened: string[] = []
     const openedRight: string[] = []
+    const openedBelow: string[] = []
     const editor = editorFixture(before, {
         extensions: [
             wikilinkAugmentation({
                 onOpen: (concept) => opened.push(concept),
-                ...(options.toTheRight === false ? {} : { onOpenToTheRight: (concept: string) => openedRight.push(concept) }),
+                ...(options.toTheRight === false
+                    ? {}
+                    : { onOpenToTheRight: (concept: string) => openedRight.push(concept), onOpenBelow: (concept: string) => openedBelow.push(concept) }),
             }),
         ],
     })
@@ -188,7 +192,7 @@ function pressOnLink(key: string, before: string, options: { typeFirst?: string;
     if (options.typeFirst) editor.type(options.typeFirst)
     const bindings = editor.state.facet(keymap).flat().filter((binding) => binding.key === key)
     const handled = bindings.some((binding) => binding.run?.(editor as never) ?? false)
-    return { opened, openedRight, handled, after: editor.fixture() }
+    return { opened, openedRight, openedBelow, handled, after: editor.fixture() }
 }
 
 // Following a link is a read: the key never edits, and outside a link it is not handled, so the
@@ -249,6 +253,37 @@ describe('Mod+Alt+Enter opens the link at the caret in the Pane to the right (Ob
 
     it('nothing where the host cannot open beside the editor', () => {
         const result = pressOnLink('Mod-Alt-Enter', '- see [[Gar|den]] now', { toTheRight: false })
+        expect(result.handled).toBe(false)
+        expect(result.opened).toEqual([])
+    })
+})
+
+// The same link, opened in the Pane below (ADR 0155, amended 2026-11-04): EtherPK's own chord,
+// Mod+Alt+Enter with Shift added. Obsidian has no command to open a link below. The key finds the
+// link by Alt+Enter's rule and is a read in the same way (Editor Content Rules → Following a link).
+describe('Mod+Alt+Shift+Enter opens the link at the caret in the Pane below (EtherPK)', () => {
+    const follow = (before: string) => pressOnLink('Mod-Alt-Shift-Enter', before)
+
+    for (const row of [
+        { rule: 'inside the link text', before: '- see [[Gar|den]] now', opens: ['Garden'] },
+        { rule: 'just after its closing brackets', before: '- see [[Garden]]| now', opens: ['Garden'] },
+        { rule: 'the innermost of nested links', before: '- [[Beds of [[Ro|ses]]]]', opens: ['Roses'] },
+        { rule: 'nothing outside a link', before: '- se|e [[Garden]] now', opens: [] },
+        { rule: 'nothing for a link inside code', before: '- `[[Gar|den]]`', opens: [] },
+        { rule: 'nothing with a selection', before: '- see [[«Gar»den]] now', opens: [] },
+    ]) {
+        it(row.rule, () => {
+            const result = follow(row.before)
+            expect(result.openedBelow).toEqual(row.opens)
+            expect(result.openedRight).toEqual([])
+            expect(result.opened).toEqual([])
+            expect(result.handled).toBe(row.opens.length > 0)
+            expect(result.after).toBe(row.before)
+        })
+    }
+
+    it('nothing where the host cannot open beside the editor', () => {
+        const result = pressOnLink('Mod-Alt-Shift-Enter', '- see [[Gar|den]] now', { toTheRight: false })
         expect(result.handled).toBe(false)
         expect(result.opened).toEqual([])
     })

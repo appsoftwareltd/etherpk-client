@@ -7,6 +7,7 @@
     import { serverHost } from '#lib/sync/sync-connections.js'
 
     import type { MissingGraphDiagnosis } from './graph-availability'
+    import { openProgressLine } from './open-progress-line'
 
     let {
         phase,
@@ -132,17 +133,16 @@
             <p data-testid="share-waiting" class="notice__share">Adding the text you shared to Quick notes…</p>
         {/if}
         {#if loadingStep !== 'opening' && indexed}
-            <!-- The count changes per document; inside a live region that is a running
-                 commentary. The <progress> beside it carries the same numbers on demand. -->
-            <p aria-hidden="true" data-testid="graph-loading-indexing">
-                {loadingStep === 'loading' ? 'Loading' : 'Indexing'}
-                {indexed.done.toLocaleString()} of {indexed.total.toLocaleString()} documents…
-            </p>
-            <progress
-                max={indexed.total}
-                value={indexed.done}
-                aria-label={loadingStep === 'loading' ? 'Loading documents' : 'Indexing documents'}
-            ></progress>
+            <div class="notice__count">
+                <!-- The count changes per document; inside a live region that is a running
+                     commentary. The <progress> beside it carries the same numbers on demand. -->
+                <p aria-hidden="true" data-testid="graph-loading-indexing">{openProgressLine(loadingStep, indexed)}</p>
+                <progress
+                    max={indexed.total}
+                    value={indexed.done}
+                    aria-label={loadingStep === 'loading' ? 'Loading documents' : 'Indexing documents'}
+                ></progress>
+            </div>
         {:else}
             <p role="status">Opening your graph…</p>
         {/if}
@@ -386,10 +386,43 @@
     .notice :global(.loading-sweep) {
         margin: 0 auto;
     }
-    .notice progress {
+    /* As wide as the count's line alone, which never changes width (open-progress-line.ts), so a
+       longer line beside it, such as the share notice, cannot stretch the bar part way through. */
+    .notice__count {
+        display: grid;
+        gap: 0.5rem;
+        justify-self: center;
+        width: fit-content;
+        max-width: 100%;
+    }
+    .notice__count p {
+        font-family: var(--gk-mono);
+        font-size: 0.875rem;
+        /* Keeps the double space "Loading" is padded with. */
+        white-space: pre-wrap;
+    }
+    /* The same track and fill as LoadingSweep above it. Theme tokens rather than the browser's
+       own colours, and `appearance: none` so the browser draws what they say. */
+    .notice__count progress {
+        appearance: none;
+        display: block;
         width: 100%;
-        max-width: 20rem;
-        margin: 0 auto;
+        height: 0.375rem;
+        border: 0;
+        border-radius: 999px;
+        overflow: hidden;
+        background: var(--gk-border-soft);
+    }
+    .notice__count progress::-webkit-progress-bar {
+        background: transparent;
+    }
+    .notice__count progress::-webkit-progress-value {
+        border-radius: 999px;
+        background: var(--gk-text-default);
+    }
+    .notice__count progress::-moz-progress-bar {
+        border-radius: 999px;
+        background: var(--gk-text-default);
     }
     .notice__actions {
         display: flex;

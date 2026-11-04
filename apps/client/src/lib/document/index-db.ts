@@ -23,6 +23,7 @@ import {
     type MapItemRow,
     type TaskConceptRow,
     type TaskRow,
+    taskTitleSearchKey,
 } from './index-derive'
 import type { IndexProperty } from './properties'
 import type { TaskStatus } from './task-tags'
@@ -169,9 +170,11 @@ export interface SqlDb {
  * into `block_fts` and `passages` (ADR 0118). 17 adds `pages.template` and derives no tasks,
  * places or variable links for a [[Template]] (ADR 0144). 18 adds `tasks.free_tag`, a task's first
  * [[Free Tag]], and reads Task Tags past a Free Tag in the leading run (ADR 0166). 19 adds
- * `tasks.test` and `tasks.archived`, the `#T` and `#A` states (ADR 0167).
+ * `tasks.test` and `tasks.archived`, the `#T` and `#A` states (ADR 0167). 20 adds
+ * `tasks.parent_task_local_id`, a task's [[Parent Task]] (ADR 0174). 21 adds `tasks.title_key`, what
+ * a [[Lane Filter]] searches.
  */
-export const INDEX_SCHEMA_VERSION = 19
+export const INDEX_SCHEMA_VERSION = 21
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS index_metadata (
@@ -211,9 +214,12 @@ CREATE TABLE IF NOT EXISTS tasks (
   priority INTEGER, waiting INTEGER NOT NULL DEFAULT 0, doing INTEGER NOT NULL DEFAULT 0,
   test INTEGER NOT NULL DEFAULT 0, cancelled INTEGER NOT NULL DEFAULT 0,
   archived INTEGER NOT NULL DEFAULT 0, due TEXT, completion TEXT, scheduled TEXT,
-  free_tag TEXT);
+  free_tag TEXT, parent_task_local_id INTEGER, title_key TEXT NOT NULL DEFAULT '');
 -- free_tag is the task's first [[Free Tag]], lower-cased, or NULL: what a [[Kanban Board]] section
--- orders by first (ADR 0166).
+-- orders by first (ADR 0166). parent_task_local_id is the block of the task's [[Parent Task]], or
+-- NULL: a column, because which [[Subtask]]s leave a board has to be decided in the WHERE clause
+-- for its counts and paging to be right (ADR 0174). title_key is the task's words, lower-cased, for a
+-- [[Lane Filter]], which is in the WHERE clause for the same reason.
 -- [[Task Concept]] (ADR 0051): one row per (task, concept it answers to). Concepts are stored
 -- AS WRITTEN and pooled over [[Alias]]es at query time, exactly as backlinksFor does — baking
 -- the canonical name in would go stale the moment a page is renamed.
@@ -258,7 +264,7 @@ CREATE INDEX IF NOT EXISTS aliases_page ON aliases(page_id);
 CREATE INDEX IF NOT EXISTS publication_includes_page ON publication_includes(page_id);
 CREATE INDEX IF NOT EXISTS publication_includes_key ON publication_includes(concept_key);
 CREATE INDEX IF NOT EXISTS links_page ON links(page_id);
-CREATE INDEX IF NOT EXISTS tasks_page ON tasks(page_id);
+CREATE INDEX IF NOT EXISTS tasks_page ON tasks(page_id, block_local_id);
 -- The Name Filter's whole selectivity: without it, filtering to a concept scans every task
 -- row in the graph. Mirrors links_concept_key, and like it stays put during a bulk rebuild.
 CREATE INDEX IF NOT EXISTS task_concepts_key ON task_concepts(concept_key);
@@ -490,8 +496,8 @@ function insertDerived(db: SqlDb, pageId: number, doc: IndexDoc): string[] {
     for (const t of tasks) {
         db.run(
             `INSERT INTO tasks (page_id, block_local_id, done, text, line,
-                                priority, waiting, doing, test, cancelled, archived, due, completion, scheduled, free_tag)
-             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+                                priority, waiting, doing, test, cancelled, archived, due, completion, scheduled, free_tag, parent_task_local_id, title_key)
+             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
             [
                 pageId,
                 t.blockLocalId,
@@ -509,6 +515,8 @@ function insertDerived(db: SqlDb, pageId: number, doc: IndexDoc): string[] {
                 t.completion,
                 t.scheduled,
                 t.freeTag,
+                t.parentTaskLocalId,
+                t.titleKey,
             ],
         )
     }
@@ -657,7 +665,7 @@ CREATE INDEX IF NOT EXISTS aliases_alias_key ON aliases(alias_key);
 CREATE INDEX IF NOT EXISTS aliases_page ON aliases(page_id);
 CREATE INDEX IF NOT EXISTS publication_includes_page ON publication_includes(page_id);
 CREATE INDEX IF NOT EXISTS links_page ON links(page_id);
-CREATE INDEX IF NOT EXISTS tasks_page ON tasks(page_id);
+CREATE INDEX IF NOT EXISTS tasks_page ON tasks(page_id, block_local_id);
 CREATE INDEX IF NOT EXISTS task_concepts_page ON task_concepts(page_id);
 CREATE INDEX IF NOT EXISTS map_items_page ON map_items(page_id);
 CREATE INDEX IF NOT EXISTS map_concepts_page ON map_concepts(page_id);
@@ -1997,6 +2005,17 @@ export interface TaskQuery {
      */
     byFreeTag?: boolean
     /**
+     * List what a [[Kanban Board]] shows (ADR 0174): every task but a [[Subtask]] whose
+     * [[Parent Task]] is on the same board, meaning it answers to `concept` (with none, every task
+     * does) and is not Archived. The [[Tasks View]] never sets it, and lists them all.
+     */
+    asBoard?: boolean
+    /**
+     * Only tasks whose title holds this text: a [[Lane Filter]]. Ignores case and the space around
+     * it, and takes the text literally. Nothing but spaces filters nothing.
+     */
+    titleContains?: string
+    /**
      * Today as `YYYY-MM-DD`, supplied by the caller rather than read from the clock here.
      * The query then stays a pure function of its inputs - which is what makes the date
      * windows testable, and what keeps the worker from having an opinion about the user's
@@ -2030,10 +2049,30 @@ export interface TaskHit {
     /** Ancestor labels, root-first - why this task matched, when it matched via an ancestor. */
     breadcrumb: string[]
     /**
-     * The label of the nearest ancestor that is itself a [[Task]], its tag run included, or null
-     * when no task is above this one: a subtask's parent, which a [[Kanban Board]] card names.
+     * The label of the task's [[Parent Task]], its tag run included, or null when no task is above
+     * this one. A [[Kanban Board]] card names it.
      */
     parentTask: string | null
+    /** The 0-based source line of the [[Parent Task]], or null with `parentTask`. */
+    parentTaskLine: number | null
+    /**
+     * The nearest [[Concept]] linked on a block above the task, as written and not counting the
+     * task's own line: what it sits in, which a [[Kanban Board]] card names (ADR 0174). Null when
+     * that concept is the one the query asked about or the document the task is in, by any of
+     * their names, since a reader already knows both, and when nothing above it links one.
+     */
+    ancestorConcept: string | null
+    /** How far along the tasks nested under this one are (ADR 0174). */
+    subtasks: TaskSubtaskCount
+}
+
+/**
+ * Every [[Task]] nested under a task at any depth, the set a tick of it reaches. Done and Cancelled
+ * count as finished; an Archived one is left out, as it is off every board.
+ */
+export interface TaskSubtaskCount {
+    done: number
+    total: number
 }
 
 export interface TaskPage {
@@ -2111,6 +2150,70 @@ interface TaskRowResult {
 
 
 /**
+ * Every name a [[Name Filter]] matches: the page it resolves to, by its own name and its [[Alias]]es,
+ * the pooling backlinksFor performs, so filtering by an alias finds tasks written against the
+ * canonical name and vice versa. A name with no page is a [[Pageless Concept]] and matches only
+ * itself, which is right: it has none.
+ */
+function namesForFilter(db: SqlDb, concept: string): string[] {
+    const key = conceptKey(concept)
+    const pageId = canonicalPageId(db, key)
+    return pageId === null ? [key] : namesForPage(db, pageId)
+}
+
+/** SQL: the task under alias `task` answers to one of `names`. One parameter per name. */
+function answersToNames(task: string, alias: string, names: readonly string[]): string {
+    return `EXISTS (SELECT 1 FROM task_concepts ${alias}
+                    WHERE ${alias}.page_id = ${task}.page_id AND ${alias}.block_local_id = ${task}.block_local_id
+                      AND ${alias}.concept_key IN (${names.map(() => '?').join(',')}))`
+}
+
+/**
+ * SQL: the task is not a [[Subtask]] of a task on the same board (ADR 0174), a board for `names`,
+ * or the Graph Kanban with null. One parameter per name. Its parent is on the board when that task
+ * answers to the board's concept and is not Archived, whatever lane it is in. What is under an
+ * Archived parent or one the board's concept does not reach would otherwise be on no card at all.
+ */
+function onlyBoardCards(names: readonly string[] | null): string {
+    const parentArchived = STATUS_SQL.archived.replaceAll('t.', 'parent.')
+    const parentAnswers = names === null ? '' : `AND ${answersToNames('parent', 'ptc', names)}`
+    return `(t.parent_task_local_id IS NULL OR NOT EXISTS (
+                SELECT 1 FROM tasks parent
+                WHERE parent.page_id = t.page_id AND parent.block_local_id = t.parent_task_local_id
+                  AND NOT ${parentArchived} ${parentAnswers}))`
+}
+
+/** A piece of a WHERE clause with its parameters, in order. */
+interface SqlClause {
+    sql: string
+    params: unknown[]
+}
+
+/** The tasks at `priorities`, or null when that is all of them. */
+function priorityClause(priorities: readonly TaskPriorityFilter[]): SqlClause | null {
+    if (priorities.length >= TASK_PRIORITY_FILTERS.length) return null
+    const levels = priorities.filter((p): p is 1 | 2 | 3 => p !== null)
+    const clauses: string[] = []
+    if (levels.length > 0) clauses.push(`t.priority IN (${levels.map(() => '?').join(',')})`)
+    if (priorities.includes(null)) clauses.push('t.priority IS NULL')
+    return { sql: `(${clauses.join(' OR ')})`, params: levels }
+}
+
+/** The tasks due in `window` of `today`, or null for any. */
+function dueClause(window: TaskDueWindow, today: string): SqlClause | null {
+    if (window === 'any') return null
+    if (window === 'overdue') return { sql: '(t.due IS NOT NULL AND t.due < ?)', params: [today] }
+    if (window === 'today') return { sql: 't.due = ?', params: [today] }
+    return { sql: '(t.due IS NOT NULL AND t.due >= ? AND t.due <= ?)', params: [today, addDays(today, 7)] }
+}
+
+/** The tasks whose title holds `typed`, or null when it asks for nothing. `instr`, not LIKE, so % and _ are plain. */
+function titleClause(typed: string | undefined): SqlClause | null {
+    const key = taskTitleSearchKey(typed ?? '')
+    return key === '' ? null : { sql: 'instr(t.title_key, ?) > 0', params: [key] }
+}
+
+/**
  * The WHERE clause and parameters shared by {@link tasksMatching} and its count, so the two
  * can never drift into answering different questions about the same filter.
  *
@@ -2124,50 +2227,26 @@ function taskPredicate(db: SqlDb, query: TaskQuery): { where: string; params: un
     const where: string[] = ['p.generation = ?']
     const params: unknown[] = [activeIndexGeneration(db)]
 
-    if (query.concept !== null) {
-        // The [[Name Filter]] resolves to a page and matches EVERY name that page answers to
-        // (its own plus [[Alias]]es), the pooling backlinksFor performs - so filtering by an
-        // alias finds tasks written against the canonical name and vice versa. A name with no
-        // page is a [[Pageless Concept]] and matches only itself, which is right: it has none.
-        const key = conceptKey(query.concept)
-        const pageId = canonicalPageId(db, key)
-        const names = pageId === null ? [key] : namesForPage(db, pageId)
+    const names = query.concept === null ? null : namesForFilter(db, query.concept)
+    if (names !== null) {
         if (names.length === 0) return null
-        where.push(
-            `EXISTS (SELECT 1 FROM task_concepts tc
-                     WHERE tc.page_id = t.page_id AND tc.block_local_id = t.block_local_id
-                       AND tc.concept_key IN (${names.map(() => '?').join(',')}))`,
-        )
+        where.push(answersToNames('t', 'tc', names))
         params.push(...names)
+    }
+
+    if (query.asBoard) {
+        where.push(onlyBoardCards(names))
+        params.push(...(names ?? []))
     }
 
     if (query.statuses.length < TASK_STATUSES.length) {
         where.push(`(${query.statuses.map((s) => STATUS_SQL[s]).join(' OR ')})`)
     }
 
-    if (query.priorities.length < TASK_PRIORITY_FILTERS.length) {
-        const levels = query.priorities.filter((p): p is 1 | 2 | 3 => p !== null)
-        const clauses: string[] = []
-        if (levels.length > 0) {
-            clauses.push(`t.priority IN (${levels.map(() => '?').join(',')})`)
-            params.push(...levels)
-        }
-        if (query.priorities.includes(null)) clauses.push('t.priority IS NULL')
-        where.push(`(${clauses.join(' OR ')})`)
-    }
-
-    if (query.due !== 'any') {
-        const today = query.today
-        if (query.due === 'overdue') {
-            where.push('(t.due IS NOT NULL AND t.due < ?)')
-            params.push(today)
-        } else if (query.due === 'today') {
-            where.push('t.due = ?')
-            params.push(today)
-        } else {
-            where.push('(t.due IS NOT NULL AND t.due >= ? AND t.due <= ?)')
-            params.push(today, addDays(today, 7))
-        }
+    for (const clause of [priorityClause(query.priorities), dueClause(query.due, query.today), titleClause(query.titleContains)]) {
+        if (clause === null) continue
+        where.push(clause.sql)
+        params.push(...clause.params)
     }
 
     return { where: where.join(' AND '), params }
@@ -2218,63 +2297,162 @@ export function tasksMatching(db: SqlDb, query: TaskQuery, offset: number, limit
     const page = hasMore ? rows.slice(0, limit) : rows
     if (page.length === 0) return { hits: [], hasMore: false }
 
-    const ancestry = ancestryFor(db, page)
-    return {
-        hits: page.map((row) => {
-            const found = ancestry.get(row.page_id)?.get(row.block_local_id)
-            return { ...toHit(row), breadcrumb: found?.breadcrumb ?? [], parentTask: found?.parentTask ?? null }
-        }),
-        hasMore,
-    }
+    const asked = new Set(query.concept === null ? [] : namesForFilter(db, query.concept))
+    const around = taskSurroundings(db, page, asked)
+    return { hits: page.map((row) => ({ ...toHit(row), ...around(row) })), hasMore }
 }
+
+type TaskSurroundings = Pick<TaskHit, 'breadcrumb' | 'parentTask' | 'parentTaskLine' | 'ancestorConcept' | 'subtasks'>
 
 /**
- * Ancestor labels for a whole page of tasks, and each task's nearest task ancestor: one read for
- * every document involved, then the chains walked in JS. The same shape searchText uses, and for
- * the same reason - a recursive SQL walk per row would be one query per task.
+ * What is around each task on a page of results: one read per table for every document involved,
+ * then the chains walked in JS. The same shape searchText uses, and for the same reason - a
+ * recursive SQL walk per row would be one query per task.
  */
-function ancestryFor(
-    db: SqlDb,
-    rows: readonly TaskRowResult[],
-): Map<number, Map<number, { breadcrumb: string[]; parentTask: string | null }>> {
+function taskSurroundings(db: SqlDb, rows: readonly TaskRowResult[], asked: ReadonlySet<string>): (row: TaskRowResult) => TaskSurroundings {
     const ids = [...new Set(rows.map((row) => row.page_id))]
-    const placeholders = ids.map(() => '?').join(',')
-    const blocks = db.all<{
-        page_id: number
-        local_id: number
-        parent_local_id: number | null
-        kind: string
-        label: string
-    }>(
-        `SELECT page_id, local_id, parent_local_id, kind, label FROM blocks WHERE page_id IN (${placeholders})`,
-        ids,
-    )
-    const byPage = new Map<number, Map<number, { parent_local_id: number | null; kind: string; label: string }>>()
-    for (const block of blocks) {
-        let page = byPage.get(block.page_id)
-        if (!page) byPage.set(block.page_id, (page = new Map()))
-        page.set(block.local_id, { parent_local_id: block.parent_local_id, kind: block.kind, label: block.label })
+    const blocks = blocksOfPages(db, ids)
+    const tasks = tasksOfPages(db, ids)
+    const links = firstLinksOfPages(db, ids)
+    const names = namesOfPages(db, ids)
+    return (row) => {
+        const pageBlocks = blocks.get(row.page_id) ?? new Map<number, ChainBlock>()
+        const pageTasks = tasks.get(row.page_id) ?? new Map<number, TaskNode>()
+        const parent = parentTaskOf(pageTasks, row.block_local_id)
+        const concept = nearestAncestorLink(pageBlocks, links.get(row.page_id), row.block_local_id)
+        return {
+            breadcrumb: searchBreadcrumb(pageBlocks, row.block_local_id),
+            parentTask: parent?.text ?? null,
+            parentTaskLine: parent?.line ?? null,
+            // A reader knows the concept they asked about and the document the card names.
+            ancestorConcept: concept === null || asked.has(concept.key) || names.get(row.page_id)?.has(concept.key) ? null : concept.concept,
+            subtasks: countSubtasks(pageTasks, row.block_local_id),
+        }
     }
-    const out = new Map<number, Map<number, { breadcrumb: string[]; parentTask: string | null }>>()
-    for (const row of rows) {
-        const page = byPage.get(row.page_id)
-        if (!page) continue
-        let chains = out.get(row.page_id)
-        if (!chains) out.set(row.page_id, (chains = new Map()))
-        chains.set(row.block_local_id, { breadcrumb: searchBreadcrumb(page, row.block_local_id), parentTask: nearestTask(page, row.block_local_id) })
-    }
-    return out
 }
 
-/** The label of the nearest ancestor of `localId` that is a task, or null. */
-function nearestTask(blocks: Map<number, { parent_local_id: number | null; kind: string; label: string }>, localId: number): string | null {
+/** The `?,?,?` for an `IN` over `ids`. */
+function placeholdersFor(ids: readonly number[]): string {
+    return ids.map(() => '?').join(',')
+}
+
+interface ChainBlock {
+    parent_local_id: number | null
+    label: string
+}
+
+function blocksOfPages(db: SqlDb, ids: readonly number[]): Map<number, Map<number, ChainBlock>> {
+    const rows = db.all<ChainBlock & { page_id: number; local_id: number }>(
+        `SELECT page_id, local_id, parent_local_id, label FROM blocks WHERE page_id IN (${placeholdersFor(ids)})`,
+        [...ids],
+    )
+    const byPage = new Map<number, Map<number, ChainBlock>>()
+    for (const row of rows) {
+        let page = byPage.get(row.page_id)
+        if (!page) byPage.set(row.page_id, (page = new Map()))
+        page.set(row.local_id, row)
+    }
+    return byPage
+}
+
+/** A task as its neighbours see it: where it hangs, what it says, and how it counts as a subtask. */
+interface TaskNode {
+    parent: number | null
+    children: number[]
+    text: string
+    line: number
+    finished: boolean
+    archived: boolean
+}
+
+function tasksOfPages(db: SqlDb, ids: readonly number[]): Map<number, Map<number, TaskNode>> {
+    const rows = db.all<{ page_id: number; block_local_id: number; parent_task_local_id: number | null; text: string; line: number; done: number; archived: number }>(
+        `SELECT page_id, block_local_id, parent_task_local_id, text, line, done, archived FROM tasks WHERE page_id IN (${placeholdersFor(ids)})`,
+        [...ids],
+    )
+    const byPage = new Map<number, Map<number, TaskNode>>()
+    for (const row of rows) {
+        let page = byPage.get(row.page_id)
+        if (!page) byPage.set(row.page_id, (page = new Map()))
+        // done and archived together are the Archived status, as STATUS_SQL has it.
+        const archived = row.done !== 0 && row.archived !== 0
+        page.set(row.block_local_id, { parent: row.parent_task_local_id, children: [], text: row.text, line: row.line, finished: row.done !== 0, archived })
+    }
+    for (const page of byPage.values()) {
+        for (const [id, task] of page) {
+            if (task.parent !== null) page.get(task.parent)?.children.push(id)
+        }
+    }
+    return byPage
+}
+
+function parentTaskOf(tasks: ReadonlyMap<number, TaskNode>, localId: number): TaskNode | null {
+    const parent = tasks.get(localId)?.parent ?? null
+    return parent === null ? null : (tasks.get(parent) ?? null)
+}
+
+function countSubtasks(tasks: ReadonlyMap<number, TaskNode>, localId: number): TaskSubtaskCount {
+    const count: TaskSubtaskCount = { done: 0, total: 0 }
+    const stack = [...(tasks.get(localId)?.children ?? [])]
+    while (stack.length > 0) {
+        const task = tasks.get(stack.pop()!)
+        if (!task) continue
+        stack.push(...task.children)
+        if (task.archived) continue
+        count.total++
+        if (task.finished) count.done++
+    }
+    return count
+}
+
+/** A concept linked on a block, as written and as a key to compare. */
+interface BlockLink {
+    concept: string
+    key: string
+}
+
+/** The first concept written on each block that links one, by page. */
+function firstLinksOfPages(db: SqlDb, ids: readonly number[]): Map<number, Map<number, BlockLink>> {
+    const rows = db.all<{ page_id: number; block_local_id: number; concept: string; concept_key: string }>(
+        `SELECT page_id, block_local_id, concept, concept_key FROM links
+         WHERE page_id IN (${placeholdersFor(ids)}) AND block_local_id IS NOT NULL
+         ORDER BY line ASC, match_start ASC`,
+        [...ids],
+    )
+    const byPage = new Map<number, Map<number, BlockLink>>()
+    for (const row of rows) {
+        let page = byPage.get(row.page_id)
+        if (!page) byPage.set(row.page_id, (page = new Map()))
+        if (!page.has(row.block_local_id)) page.set(row.block_local_id, { concept: row.concept, key: row.concept_key })
+    }
+    return byPage
+}
+
+/** Each page's own name and its [[Alias]]es, as keys. */
+function namesOfPages(db: SqlDb, ids: readonly number[]): Map<number, Set<string>> {
+    const rows = db.all<{ page_id: number; k: string }>(
+        `SELECT id AS page_id, concept_key AS k FROM pages WHERE id IN (${placeholdersFor(ids)})
+         UNION ALL SELECT page_id, alias_key AS k FROM aliases WHERE page_id IN (${placeholdersFor(ids)})`,
+        [...ids, ...ids],
+    )
+    const byPage = new Map<number, Set<string>>()
+    for (const row of rows) {
+        const names = byPage.get(row.page_id)
+        if (names) names.add(row.k)
+        else byPage.set(row.page_id, new Set([row.k]))
+    }
+    return byPage
+}
+
+/** The nearest link on a block above `localId`, its own line not counted. */
+function nearestAncestorLink(blocks: ReadonlyMap<number, ChainBlock>, links: ReadonlyMap<number, BlockLink> | undefined, localId: number): BlockLink | null {
+    if (!links) return null
     let parent = blocks.get(localId)?.parent_local_id ?? null
     // Bounded by the map size, as the breadcrumb walk is: a corrupt parent cycle must not hang.
     for (let guard = 0; parent !== null && guard <= blocks.size; guard++) {
-        const block = blocks.get(parent)
-        if (!block) break
-        if (block.kind === 'task') return block.label
-        parent = block.parent_local_id
+        const link = links.get(parent)
+        if (link) return link
+        parent = blocks.get(parent)?.parent_local_id ?? null
     }
     return null
 }
@@ -2296,7 +2474,7 @@ function addDays(day: string, days: number): string {
     return taskDateKey(new Date(year, month - 1, date), days)
 }
 
-function toHit(row: TaskRowResult): Omit<TaskHit, 'breadcrumb' | 'parentTask'> {
+function toHit(row: TaskRowResult): Omit<TaskHit, keyof TaskSurroundings> {
     return {
         pageId: row.page_id,
         blockLocalId: row.block_local_id,

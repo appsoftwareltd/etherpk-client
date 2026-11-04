@@ -164,6 +164,7 @@ export const EDITOR_SHORTCUTS: ShortcutGroup[] = [
             { key: '[[', label: 'Link to a document' },
             { key: 'Alt+Enter', label: 'On a link: open the page it names' },
             { key: 'Mod+Alt+Enter', label: 'On a link: open the page in the pane to the right' },
+            { key: 'Mod+Alt+Shift+Enter', label: 'On a link: open the page in the pane below' },
             { key: 'Shift+F10', label: "On a link: its menu (Open in pane to the right, Show Backlinks, Rename…). Elsewhere: the line's menu (Bookmark line, Paste)" },
             { key: '#', label: 'Add a task tag (on a task line)' },
             { key: '* _ ~ = [ ( `', label: 'Over selected text: wrap it (press again to add a layer, e.g. ** or [[)' },

@@ -108,6 +108,10 @@ section to match the version the user runs, so where it and this skill differ, f
   What is nested above that bullet is the task's description, and what is below the Comments block
   is its additional context. Add a comment at the end of the Comments block, starting the
   `- Comments` bullet as the task's last child when it has none (`AGENTS.md`, Task comments).
+- A task nested under another is its subtask, still a task with its own checkbox and tags. A Kanban
+  board reaches a subtask through its parent's card when the parent is on the same board, so write a
+  checklist as tasks under a task, and a project's tasks under a plain `- [[Concept]]` bullet
+  (`AGENTS.md`, Subtasks).
 - Put images in `assets/` and embed them as `![Alt text](../assets/<file>)`.
 - The publication's `theme:` sets the look. Left out, a docs site uses `etherpk-docs` and a blog
   `etherpk-blog`. The other bundled themes suit either kind: `etherpk-papermod`, `etherpk-stack`,

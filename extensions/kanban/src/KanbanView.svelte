@@ -21,7 +21,7 @@
     import { conceptKey, getActiveGraphIndex, type TaskStatus, taskDateKey } from "#lib/document/backlinks/index.js";
     import { openConceptAtLine } from "#lib/document/open-concept.js";
     import { createSettleScheduler } from "#lib/document/settle-scheduler.js";
-    import { bulletLabel } from "#lib/document/index-derive.js";
+    import { bulletLabel, taskTitleSearchKey } from "#lib/document/index-derive.js";
     import { findIndexedTask, isTaskLine, type TaskChanges, type TaskWrite, type TaskWriteOutcome, undoTaskWrite, writeTaskChanges } from "#lib/document/task-write.js";
     import type { DocumentStore } from "#lib/document/types.js";
     import { TASK_COPY_LANE_REFERENCE, TASK_COPY_REFERENCE } from "#lib/document/commands/task-reference-commands.js";
@@ -52,6 +52,7 @@
         type PendingMove,
         sameTask,
         sectionAfter,
+        passesFilter,
         taskDetailCard,
         unsettledMoves,
         withPendingMoves,
@@ -80,6 +81,8 @@
         ...lane,
         total: 0,
         loaded: true,
+        filter: null,
+        unfiltered: 0,
         sections: BOARD_SECTIONS.map((section) => ({ ...section, cards: [], total: 0, hasMore: false })),
     }));
 
@@ -135,6 +138,11 @@
     /** How many cards a section shows, where Show more has raised it past the first page. */
     let limits = $state.raw<ReadonlyMap<string, number>>(new Map());
     const cellId = (cell: BoardCell) => `${cell.status}:${cell.priority ?? "none"}`;
+    /**
+     * The [[Lane Filter]]s, as typed, by the lane whose input is open. Not remembered: closing or
+     * reloading shows the whole lane again, so a board never opens looking short of tasks.
+     */
+    let laneFilters = $state.raw<ReadonlyMap<TaskStatus, string>>(new Map());
 
     /**
      * The task the [[Task Detail]] shows and the line it opened at, or null while it is closed.
@@ -152,7 +160,7 @@
     /** The board as read, with the moves the index has yet to confirm made on it. */
     const shown = $derived(board === null ? null : withPendingMoves(board, pending));
     const lanes = $derived<BoardLane[]>(shown?.lanes ?? EMPTY_LANES);
-    const empty = $derived(shown !== null && shown.lanes.every((lane) => lane.total === 0));
+    const empty = $derived(shown !== null && shown.lanes.every((lane) => lane.unfiltered === 0));
     const showPlaceholders = $derived(board === null && loading && slow);
     /** The lane that says a board is empty: Open, unless it is collapsed. */
     const emptyNoticeLane = $derived(BOARD_LANES.find((lane) => !collapsed.includes(lane.status))?.status);
@@ -183,6 +191,7 @@
             const next = await readBoard(index, concept, taskDateKey(new Date()), {
                 countOnly: new Set(collapsed),
                 limitFor: (cell) => limits.get(cellId(cell)),
+                titleFilterFor: (status) => laneFilters.get(status),
             });
             if (ticket !== wanted) return;
             board = next;
@@ -213,7 +222,35 @@
 
     function retry(): void {
         refresh.cancel();
+        filterSettled.cancel();
         void load();
+    }
+
+    /** A read per pause in typing into a Lane Filter, the previous cards staying until it lands. */
+    const filterSettled = createSettleScheduler(() => void load(), { settleMs: 150, maxWaitMs: 500 });
+
+    function withoutLaneFilter(status: TaskStatus): ReadonlyMap<TaskStatus, string> {
+        const next = new Map(laneFilters);
+        next.delete(status);
+        return next;
+    }
+
+    /** Open a lane's filter input, which takes the keyboard, or close it. */
+    function toggleLaneFilter(status: TaskStatus): void {
+        if (laneFilters.has(status)) closeLaneFilter(status);
+        else laneFilters = new Map(laneFilters).set(status, "");
+    }
+
+    function onLaneFilterInput(status: TaskStatus, typed: string): void {
+        laneFilters = new Map(laneFilters).set(status, typed);
+        filterSettled.schedule();
+    }
+
+    /** Close a lane's filter input, which clears the filter, and hand the keyboard back to the lane's search button. */
+    function closeLaneFilter(status: TaskStatus): void {
+        laneFilters = withoutLaneFilter(status);
+        retry();
+        void tick().then(() => lanesEl?.querySelector<HTMLElement>(`[data-testid="kanban-lane"][data-status="${status}"] [data-testid="kanban-lane-filter-toggle"]`)?.focus());
     }
 
     /**
@@ -223,6 +260,8 @@
      */
     function toggleCollapsed(status: TaskStatus): void {
         const collapsing = !collapsed.includes(status);
+        // A strip has no room for the filter, and its count has to be the whole lane's.
+        if (collapsing) laneFilters = withoutLaneFilter(status);
         collapsed = collapsing ? [...collapsed, status] : collapsed.filter((s) => s !== status);
         boardState.set({ ...boardState.get(), collapsed: [...collapsed] });
         retry();
@@ -263,12 +302,33 @@
      * After a move, keep the keyboard with the card, or on the strip of the collapsed lane it went
      * into. A keyboard move scrolls to it, since the keyboard goes where the card went; a pointer
      * move leaves the lanes' scroll where it was (`move-follow.ts`), and the focus still moves, so a
-     * key pressed next acts on the card.
+     * key pressed next acts on the card. A card the lane's Lane Filter hides has no element to hold
+     * the keyboard, so the filter's input takes it.
      */
     function followMovedCard(key: string, to: BoardCell, source: MoveSource = "keyboard"): void {
         const options = { preventScroll: source === "pointer" };
         if (collapsed.includes(to.status)) void focusStrip(to.status, options);
+        else if (laneFilters.has(to.status)) void focusCardOrLaneFilter(key, to.status, options);
         else void focusCard(key, options);
+    }
+
+    async function focusCardOrLaneFilter(key: string, status: TaskStatus, options: { preventScroll: boolean }): Promise<void> {
+        await tick();
+        const laneEl = lanesEl?.querySelector(`[data-testid="kanban-lane"][data-status="${status}"]`);
+        const target = laneEl?.querySelector<HTMLElement>(`[data-testid="kanban-card"][data-key="${CSS.escape(key)}"]`) ?? laneEl?.querySelector<HTMLElement>('[data-testid="kanban-lane-filter-input"]');
+        target?.focus(options);
+    }
+
+    /**
+     * Whether the board should say where a moved card went. A pointer move does when the card did not
+     * land in sight; a keyboard move scrolls to its card, so only when a Lane Filter hides the card.
+     * An archived card leaves the board, which is what Archive is for: nothing to point to.
+     */
+    async function movedOutOfSight(card: BoardCard, to: BoardCell, source: MoveSource): Promise<boolean> {
+        if (to.status === "archived") return false;
+        if (source === "pointer") return !(await landedInView(card.key, to.status));
+        // What is typed, not the read's: the read of a filter typed a moment ago may not have landed.
+        return !passesFilter({ filter: taskTitleSearchKey(laneFilters.get(to.status) ?? "") || null }, card);
     }
 
     /**
@@ -481,7 +541,7 @@
     function copyLaneReference(status: TaskStatus): void {
         const lane = lanes.find((shown) => shown.status === status);
         if (!lane) return;
-        void workspaceService("commands")?.execute(TASK_COPY_LANE_REFERENCE, { concept, status, label: lane.label, count: lane.total });
+        void workspaceService("commands")?.execute(TASK_COPY_LANE_REFERENCE, { concept, status, label: lane.label, count: lane.unfiltered });
     }
 
     /** Open, or bring forward, the task's document in a tab of its own, at the task's line. */
@@ -587,8 +647,7 @@
             const entry: HistoryEntry = { document: card.document, label: card.label, from, to, write: writtenPart(outcome) };
             undoStack = [...undoStack, entry];
             redoStack = [];
-            // An archived card leaves the board, which is what Archive is for: nothing to point to.
-            const unseen = source === "pointer" && to.status !== "archived" && !(await landedInView(card.key, to.status));
+            const unseen = await movedOutOfSight(card, to, source);
             const count = outcome.nested.length;
             if (count > 0) {
                 const verb = to.status === "done" ? "Ticked" : to.status === "archived" ? "Archived" : "Unticked";
@@ -657,6 +716,8 @@
             due: null,
             dueState: null,
             parent: null,
+            inConcept: null,
+            subtasks: { done: 0, total: 0 },
         };
         for (const lane of lanes) {
             for (const section of lane.sections) {
@@ -775,7 +836,7 @@
         cascade = { text: `Moving the tasks in ${statusLabel(from)} to ${statusLabel(to)}…`, entry: null };
         try {
             // Today is read now, not at mount: a board is left open for days.
-            const hits = await laneTasks(index, concept, from, taskDateKey(new Date()));
+            const hits = await laneTasks(index, concept, from, taskDateKey(new Date()), { titleContains: laneFilters.get(from) });
             const moved = await moveTasks(
                 store,
                 hits.map((hit) => ({ concept: hit.concept, line: hit.line, text: hit.text })),
@@ -834,7 +895,7 @@
         retry();
     }
 
-    /** What a lane's context menu acts on: the lane, on this board, with every task it holds counted. */
+    /** What a lane's context menu acts on: the lane, on this board, with the tasks Move all would move counted: what its Lane Filter lets through. */
     function laneTarget(lane: BoardLane): KanbanLaneTarget {
         return { kind: "kanban.lane", board: uid, status: lane.status, label: lane.label, count: lane.total };
     }
@@ -1125,7 +1186,8 @@
         }
         if (!(event.ctrlKey || event.metaKey) || event.altKey) return;
         const focused = document.activeElement;
-        if (!boardEl || !focused || !boardEl.contains(focused) || focused.closest("[data-kanban-detail]")) return;
+        // The Task Detail and a Lane Filter's input have undo histories of their own.
+        if (!boardEl || !focused || !boardEl.contains(focused) || focused.closest("[data-kanban-detail], [data-testid='kanban-lane-filter']")) return;
         const key = event.key.toLowerCase();
         if (key === "z" && !event.shiftKey) {
             event.preventDefault();
@@ -1210,6 +1272,7 @@
             detachLockNow?.();
             unregisterBoard();
             refresh.cancel();
+            filterSettled.cancel();
             endDrag();
             // A lane collapsed just before the tab closed is still remembered.
             boardState.flush();
@@ -1428,8 +1491,21 @@
                             </h2>
                             <span class="flex items-center gap-1">
                                 {#if shown !== null}
-                                    <span class="text-sm text-(--gk-text-subtle)" data-testid="kanban-lane-count">{lane.total}</span>
+                                    <span class="text-sm text-(--gk-text-subtle)" data-testid="kanban-lane-count">{lane.filter === null ? lane.total : `${lane.total} of ${lane.unfiltered}`}</span>
                                 {/if}
+                                <button
+                                    type="button"
+                                    onclick={() => toggleLaneFilter(lane.status)}
+                                    class="gk-icon-button"
+                                    aria-label="Filter the {lane.label} lane by title"
+                                    aria-expanded={laneFilters.has(lane.status)}
+                                    title="Filter the {lane.label} lane by title"
+                                    data-testid="kanban-lane-filter-toggle"
+                                >
+                                    <!-- In-repo constant markup from the icon table, never user content. -->
+                                    <!-- eslint-disable-next-line svelte/no-at-html-tags -- iconSvg returns trusted markup from the Client's icon table or the sanitized manifest icons (ADR 0130) -->
+                                    {@html iconSvg("search")}
+                                </button>
                                 <!-- A new task in this lane, through the Task Editor (ADR 0170). -->
                                 <button
                                     type="button"
@@ -1458,7 +1534,44 @@
                                 </button>
                             </span>
                         </header>
+                        {#if laneFilters.has(lane.status)}
+                            <!-- Outside the lane's scroll, so it stays on screen beside the cards it narrows. -->
+                            <div class="flex items-center gap-1 border-b border-(--gk-border-soft) py-1 pl-2 pr-1.5" data-testid="kanban-lane-filter">
+                                <input
+                                    type="text"
+                                    class="gk-input min-w-0 flex-1"
+                                    value={laneFilters.get(lane.status)}
+                                    placeholder="Filter by title…"
+                                    aria-label="Filter the {lane.label} lane by title"
+                                    data-testid="kanban-lane-filter-input"
+                                    oninput={(event) => onLaneFilterInput(lane.status, event.currentTarget.value)}
+                                    onkeydown={(event) => {
+                                        if (event.key !== "Escape") return;
+                                        event.preventDefault();
+                                        closeLaneFilter(lane.status);
+                                    }}
+                                    {@attach (node) => node.focus()}
+                                />
+                                <button
+                                    type="button"
+                                    onclick={() => closeLaneFilter(lane.status)}
+                                    class="gk-icon-button"
+                                    aria-label="Close the filter on the {lane.label} lane and show all its tasks"
+                                    title="Close the filter and show all the tasks"
+                                    data-testid="kanban-lane-filter-close"
+                                >
+                                    <!-- In-repo constant markup from the icon table, never user content. -->
+                                    <!-- eslint-disable-next-line svelte/no-at-html-tags -- iconSvg returns trusted markup from the Client's icon table or the sanitized manifest icons (ADR 0130) -->
+                                    {@html iconSvg("close")}
+                                </button>
+                            </div>
+                        {/if}
                         <div class="flex min-h-0 flex-1 flex-col overflow-y-auto px-2 pb-2" data-kanban-lane-body>
+                            {#if lane.filter !== null && lane.total === 0}
+                                <p class="m-0 px-1 pt-2 text-sm wrap-anywhere text-(--gk-text-subtle)" data-testid="kanban-lane-filter-empty">
+                                    No task titles in {lane.label} contain "{laneFilters.get(lane.status)?.trim()}". {lane.unfiltered === 1 ? "1 task is" : `${lane.unfiltered} tasks are`} hidden.
+                                </p>
+                            {/if}
                             {#if empty && lane.status === emptyNoticeLane}
                                 <p class="m-0 px-1 pt-2 text-sm text-(--gk-text-subtle)" data-testid="kanban-empty">
                                     {#if concept === null}
@@ -1544,14 +1657,28 @@
                                                     >
                                                         <span class="line-clamp-3 text-sm" data-testid="kanban-card-label"><KanbanCardText text={card.label} /></span>
                                                         {#if card.parent !== null}
-                                                            <!-- A subtask is a card of its own; this keeps it tied to the task it sits under. -->
+                                                            <!-- A subtask with a card has a parent that is not on this board (ADR 0174); this keeps it tied to that task. -->
                                                             <span class="mt-1 block truncate text-sm text-(--gk-text-muted)" data-testid="kanban-card-parent">
                                                                 in: <KanbanCardText text={card.parent} />
+                                                            </span>
+                                                        {:else if card.inConcept !== null}
+                                                            <!-- Says which concept the task sits in, on a board for a concept further out. Styled as KanbanCardText draws a wikilink, without its brackets. -->
+                                                            <span class="mt-1 block truncate text-sm text-(--gk-text-muted)" data-testid="kanban-card-concept">
+                                                                in: <span class="text-(--gk-accent) underline">{card.inConcept}</span>
                                                             </span>
                                                         {/if}
                                                         <!-- Room on the right for the copy button, which sits over the card. -->
                                                         <span class="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 pr-7 text-sm">
                                                             <span class="min-w-0 truncate text-(--gk-text-subtle)" data-testid="kanban-card-document">{card.document}</span>
+                                                            {#if card.subtasks.total > 0}
+                                                                <!-- The board reaches a subtask through its parent's card (ADR 0174), so the card says how many it holds. -->
+                                                                <span class="inline-flex items-center gap-0.5 text-(--gk-text-muted)" data-testid="kanban-card-subtasks">
+                                                                    <!-- eslint-disable-next-line svelte/no-at-html-tags -- iconSvg returns trusted markup from the Client's icon table or the sanitized manifest icons (ADR 0130) -->
+                                                                    <span class="inline-flex size-3.5" aria-hidden="true">{@html iconSvg("check")}</span>
+                                                                    <span aria-hidden="true">{card.subtasks.done}/{card.subtasks.total}</span>
+                                                                    <span class="sr-only">{card.subtasks.done} of {card.subtasks.total} subtasks finished</span>
+                                                                </span>
+                                                            {/if}
                                                             {#if card.due !== null}
                                                                 <span
                                                                     class={["rounded px-1.5 font-medium", DUE_CLASSES[card.dueState ?? "upcoming"]]}

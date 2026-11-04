@@ -20,7 +20,7 @@ import {
 
 function card(label: string, document = 'Acme', line = 0, due: string | null = null, freeTags: string[] = []): BoardCard {
     const freeTag = freeTags[0]?.toLowerCase() ?? null
-    return { key: `${document}:${line}`, document, line, text: label, label, due, dueState: due === null ? null : 'upcoming', parent: null, freeTags, freeTag }
+    return { key: `${document}:${line}`, document, line, text: label, label, due, dueState: due === null ? null : 'upcoming', parent: null, inConcept: null, subtasks: { done: 0, total: 0 }, freeTags, freeTag }
 }
 
 /**
@@ -38,7 +38,8 @@ function board(cells: Array<[string, number | null, BoardCard[]]>, countedOnly: 
                 const total = loaded ? cards.length : section.priority === null ? countedOnly[lane.status] : 0
                 return { ...section, cards, total, hasMore: false }
             })
-            return { ...lane, loaded, sections, total: sections.reduce((n, s) => n + s.total, 0) }
+            const total = sections.reduce((n, s) => n + s.total, 0)
+            return { ...lane, loaded, sections, total, filter: null, unfiltered: total }
         }),
     }
 }
@@ -119,7 +120,8 @@ describe('withPendingMoves', () => {
 })
 
 describe('toCard', () => {
-    const hit = (text: string) => ({ concept: 'Shed', line: 2, text, due: null, parentTask: '#bug Paint the shed #P1' }) as Parameters<typeof toCard>[0]
+    const hit = (text: string, around: Partial<Parameters<typeof toCard>[0]> = {}) =>
+        ({ concept: 'Shed', line: 2, text, due: null, parentTask: '#bug Paint the shed #P1', ancestorConcept: null, subtasks: { done: 0, total: 0 }, ...around }) as Parameters<typeof toCard>[0]
 
     it('shows the words without the tag run or the Free Tags, and lists the Free Tags as written', () => {
         const shown = toCard(hit('#bug #P1 Fix the gate #needs-oil'), '2026-11-02')
@@ -135,6 +137,15 @@ describe('toCard', () => {
         expect(shown.freeTags).toEqual([])
         // It still sorts with the other tasks tagged bug, as the index orders it.
         expect(shown.freeTag).toBe('bug')
+    })
+
+    it('names the concept the task sits in, and the parent task instead when it has one: never both (ADR 0174)', () => {
+        expect(toCard(hit('Fix the gate', { parentTask: null, ancestorConcept: 'Acme' }), '2026-11-02')).toMatchObject({ parent: null, inConcept: 'Acme' })
+        expect(toCard(hit('Fix the gate', { ancestorConcept: 'Acme' }), '2026-11-02')).toMatchObject({ parent: 'Paint the shed #P1', inConcept: null })
+    })
+
+    it('carries the count of the subtasks it stands for', () => {
+        expect(toCard(hit('Fix the gate', { subtasks: { done: 1, total: 3 } }), '2026-11-02').subtasks).toEqual({ done: 1, total: 3 })
     })
 })
 
@@ -236,5 +247,35 @@ describe('taskDetailCard', () => {
 
     it('finds nothing when the task is not on the board', () => {
         expect(taskDetailCard(board([['open', 1, [card('Call Sam', 'Acme', 1)]]]), last, { line: 3, text: '- [ ] Send the quote' })).toBeNull()
+    })
+})
+
+describe('a move into a lane with a title filter', () => {
+    const filtered = (snapshot: BoardSnapshot, status: string, filter: string, unfiltered: number): BoardSnapshot => ({
+        ...snapshot,
+        lanes: snapshot.lanes.map((lane) => (lane.status === status ? { ...lane, filter, unfiltered } : lane)),
+    })
+    const quote = card('Send the quote')
+    const before = filtered(board([['open', 1, [quote]]]), 'doing', 'quote', 3)
+
+    it('draws a card that matches and counts it in the lane', () => {
+        const shown = withPendingMoves(before, [move(quote, 'doing', 1, null)])
+        expect(labelsAt(shown, 'doing', 1)).toEqual(['Send the quote'])
+        expect(shown.lanes[1]).toMatchObject({ total: 1, unfiltered: 4 })
+        expect(shown.lanes[0]).toMatchObject({ total: 0, unfiltered: 0 })
+    })
+
+    it('keeps a card that does not match off the lane, and counts it only in the whole lane', () => {
+        const shown = withPendingMoves(filtered(before, 'doing', 'invoice', 3), [move(quote, 'doing', 1, null)])
+        expect(labelsAt(shown, 'doing', 1)).toEqual([])
+        expect(shown.lanes[1]).toMatchObject({ total: 0, unfiltered: 4 })
+    })
+
+    it('lets go of a move once the card has left the board, when the target lane hides it', () => {
+        const target = filtered(board([]), 'doing', 'invoice', 4)
+        const pending = [{ ...move(quote, 'doing', 1, null), writtenAt: 9_000 }]
+        expect(unsettledMoves(target, pending, 10_000, 5000)).toEqual([])
+        const stillThere = filtered(board([['open', 1, [quote]]]), 'doing', 'invoice', 4)
+        expect(unsettledMoves(stillThere, pending, 10_000, 5000)).toEqual(pending)
     })
 })

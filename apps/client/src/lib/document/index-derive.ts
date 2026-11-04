@@ -15,7 +15,7 @@ import { extensionFences } from './extension-fence'
 import { codeLineText, fenceLineInfo, fencedBlocks, fencedBlockTree } from './fenced-code'
 import { MAP_FENCE_INFO, readMapBody } from './map-text'
 import { containsCipherFence } from './protection/fence-info'
-import { freeTagsIn, parseTaskTags, type TaskPriority } from './task-tags'
+import { freeTagsIn, parseTaskTags, taskDisplay, type TaskPriority } from './task-tags'
 import { wikilinkOccurrencesInSource } from './wikilink'
 
 export interface BlockRow {
@@ -61,6 +61,24 @@ export interface TaskRow {
     scheduled: string | null
     /** The first [[Free Tag]] in the task's text, lower-cased, or null (ADR 0166). */
     freeTag: string | null
+    /** The block of the task's [[Parent Task]], or null when no task is above it (ADR 0174). */
+    parentTaskLocalId: number | null
+    /** The task's words as a [[Lane Filter]] reads them ({@link taskTitleKey}). */
+    titleKey: string
+}
+
+/**
+ * A task's title as a [[Lane Filter]] matches it: the words a [[Kanban Board]] card shows, without
+ * the task's [[Task Tag]] run or [[Free Tag]]s, folded in JS so that case is ignored beyond the
+ * ASCII that SQLite's own LIKE folds.
+ */
+export function taskTitleKey(label: string): string {
+    return taskDisplay(label).text.toLowerCase()
+}
+
+/** What a person typed into a [[Lane Filter]], as {@link taskTitleKey} is searched for it. */
+export function taskTitleSearchKey(typed: string): string {
+    return typed.trim().toLowerCase()
 }
 
 /**
@@ -260,6 +278,7 @@ export function deriveDoc(text: string, options: DeriveOptions = {}): DerivedRow
     const candidateTasks = blocks.filter((b) => b.kind === 'task')
     const fenced = candidateTasks.length === 0 ? () => false : fencedLines(text)
     const taskBlocks = candidateTasks.filter((b) => !fenced(b.startLine))
+    const taskIds = new Set(taskBlocks.map((b) => b.localId))
     const tasks: TaskRow[] = taskBlocks.map((b) => {
         const tags = parseTaskTags(b.label)
         return {
@@ -277,6 +296,8 @@ export function deriveDoc(text: string, options: DeriveOptions = {}): DerivedRow
             completion: tags.completion,
             scheduled: tags.scheduled,
             freeTag: freeTagsIn(tags.text)[0]?.toLowerCase() ?? null,
+            parentTaskLocalId: nearestTaskAbove(blocks, taskIds, b),
+            titleKey: taskTitleKey(b.label),
         }
     })
 
@@ -394,6 +415,14 @@ function deriveMaps(
         }
     }
     return { mapItems, mapConcepts, searchText }
+}
+
+/** The nearest ancestor of `block` that is a task, through any plain bullets and headings between. */
+function nearestTaskAbove(blocks: readonly BlockRow[], taskIds: ReadonlySet<number>, block: BlockRow): number | null {
+    for (let id = block.parentId; id !== null; id = blocks[id]?.parentId ?? null) {
+        if (taskIds.has(id)) return id
+    }
+    return null
 }
 
 /**

@@ -5,6 +5,32 @@ What changed in each release of the EtherPK Client and the Headless Client
 They are released together, under the version number they share with the Sync Server. This log
 starts at 0.9.3.
 
+## 0.18.3 - 2026-11-04
+
+### Client
+
+- **Open in pane below from the keyboard.** With the cursor in a link, press
+  **Ctrl+Alt+Shift+Enter** (**Cmd+Option+Shift+Enter** on a Mac) to open its page in the pane
+  below, as **Ctrl+Alt+Enter** opens it in the pane to the right.
+- **Kanban boards show a task with subtasks as one card.** A task nested under a task on the same
+  board has no card of its own: the parent's card counts its subtasks, such as `1/3`, and the task
+  editor shows them in the description. The Tasks View still lists every task. A card also says
+  `in:` and the concept it sits under, on a board for a concept further out. To keep tasks as
+  separate cards, nest them under a plain bullet (`- [[Garden]]`) rather than a task.
+- **Filter a Kanban lane by title.** The search button in a lane's header opens a box at the top of
+  the lane, and the lane shows only the cards whose titles contain what you type, ignoring case. The
+  lane's count shows the matches out of its tasks. The close button or **Esc** clears the filter.
+- **The graph opening screen holds still.** The "Indexing N of M documents" line uses a fixed-width
+  font with the count padded to the total's digits (`0900 of 2932`), so neither it nor its progress
+  bar changes width as the count runs. The bar is now rounded and takes the theme's colours.
+
+### Headless Client
+
+- **`read_task` lists a task's `subtasks`**, each with its text, status, line, depth and a reference
+  for `set_task`, so an agent can tick them off as it works through them.
+- **`tasks` says how tasks nest.** Each one has `parentTask` and a `subtasks` count, and `board: true`
+  lists what a Kanban board shows, as a lane reference does.
+
 ## 0.18.2 - 2026-11-03
 
 ### Client

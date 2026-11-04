@@ -399,3 +399,135 @@ describe('the task row', () => {
         expect(texts()).toEqual(['visible task'])
     })
 })
+
+describe('a board-shaped query (asBoard, ADR 0174)', () => {
+    const board = (concept: string | null) => texts(query({ concept, asBoard: true, groupBy: 'document' }))
+
+    it('leaves out a subtask whose parent is on the board, at any depth and through plain bullets, and counts what it leaves', () => {
+        ingest(db, [
+            page(
+                'Acme',
+                ['- [ ] Build the shed', '  - measure the floor', '  - [ ] Cut the timber', '    - Notes', '      - [ ] Sharpen the saw', '- [ ] Paint the gate'].join('\n'),
+            ),
+        ])
+        expect(board('Acme')).toEqual(['Build the shed', 'Paint the gate'])
+        expect(tasksMatchingCount(db, query({ concept: 'Acme', asBoard: true }))).toBe(2)
+        // The Tasks View's query lists every one of them.
+        expect(texts(query({ concept: 'Acme', groupBy: 'document' }))).toHaveLength(4)
+    })
+
+    it('keeps a subtask whose parent does not answer to the concept, and hides what is under that subtask', () => {
+        ingest(db, [page('Planning', ['- [ ] Plan the week', '  - [ ] [[Garden]] water the beans', '    - [ ] fill the can'].join('\n'))])
+        expect(board('Garden')).toEqual(['[[Garden]] water the beans'])
+        expect(board('Planning')).toEqual(['Plan the week'])
+    })
+
+    it('hides what is under a task linking the concept on its own line: one card, no exception', () => {
+        ingest(db, [page('Planning', ['- [[Projects]]', '  - [ ] [[Acme]]', '    - [ ] #P1 Paint the gate', '      - [ ] Buy the paint'].join('\n'))])
+        expect(board('Acme')).toEqual(['[[Acme]]'])
+        expect(board('Projects')).toEqual(['[[Acme]]'])
+    })
+
+    it('counts a parent as on the board by any of its concept\'s names', () => {
+        ingest(db, [page('Acme Rebuild', '', ['Acme']), page('Planning', ['- [ ] [[Acme]] Paint the gate', '  - [ ] Buy the paint'].join('\n'))])
+        expect(board('Acme Rebuild')).toEqual(['[[Acme]] Paint the gate'])
+        expect(board('acme')).toEqual(['[[Acme]] Paint the gate'])
+    })
+
+    it('shows a subtask whose parent is Archived, and leaves one out whatever lane its parent is in', () => {
+        ingest(
+            db,
+            [page('Acme', ['- [x] #A Print the flyers', '  - [ ] Fold the flyers', '- [x] #C Book the hall', '  - [ ] Ring the hall', '- [x] Pick a date', '  - [ ] Check the date'].join('\n'))],
+        )
+        expect(texts(query({ concept: 'Acme', asBoard: true, statuses: ['open'] }))).toEqual(['Fold the flyers'])
+    })
+
+    it('leaves out every subtask on the Graph Kanban, whose board holds every task', () => {
+        ingest(db, [page('Planning', ['- [ ] Plan the week', '  - [ ] [[Garden]] water the beans', '- [ ] Buy milk'].join('\n'))])
+        expect(board(null)).toEqual(['Plan the week', 'Buy milk'])
+    })
+})
+
+describe('what a task hit says about what is around it (ADR 0174)', () => {
+    const hitFor = (text: string, concept: string | null = null) => tasksMatching(db, query({ concept }), 0, 100).hits.find((hit) => hit.text === text)!
+
+    it('names the nearest concept linked on an ancestor, leaving out the task\'s own line', () => {
+        ingest(db, [page('Planning', ['- [[Projects]]', '  - [[Acme]]', '    - [ ] Paint the gate', '    - [ ] [[Garden]] Water the beans'].join('\n'))])
+        expect(hitFor('Paint the gate', 'Projects').ancestorConcept).toBe('Acme')
+        expect(hitFor('[[Garden]] Water the beans', 'Projects').ancestorConcept).toBe('Acme')
+    })
+
+    it('names no concept when the nearest is the one asked about, by any of its names', () => {
+        ingest(db, [page('Acme Rebuild', '', ['Acme']), page('Planning', ['- [[Projects]]', '  - [[Acme]]', '    - [ ] Paint the gate'].join('\n'))])
+        expect(hitFor('Paint the gate', 'Acme Rebuild').ancestorConcept).toBeNull()
+        expect(hitFor('Paint the gate', 'acme').ancestorConcept).toBeNull()
+        // Not the next one out: the nearest is what the task sits in.
+        expect(hitFor('Paint the gate', 'Projects').ancestorConcept).toBe('Acme')
+    })
+
+    it('names no concept when the nearest is the document the task is in, or there is none', () => {
+        ingest(db, [page('Acme', ['- [[Acme]]', '  - [ ] Paint the gate', '- [ ] Buy milk'].join('\n'), ['Rebuild']), page('Shed', ['- [[Rebuild]]', '  - [ ] Cut the timber'].join('\n'))])
+        expect(hitFor('Paint the gate').ancestorConcept).toBeNull()
+        expect(hitFor('Buy milk').ancestorConcept).toBeNull()
+        expect(hitFor('Cut the timber').ancestorConcept).toBe('Rebuild')
+    })
+
+    it('takes the first concept written when a line links two, and reads a heading as an ancestor', () => {
+        ingest(db, [page('Planning', ['- [[Acme]] with [[Garden]]', '  - [ ] Paint the gate', '# Work on [[Shed]]', '- [ ] Cut the timber'].join('\n'))])
+        expect(hitFor('Paint the gate').ancestorConcept).toBe('Acme')
+        expect(hitFor('Cut the timber').ancestorConcept).toBe('Shed')
+    })
+
+    it('counts every nested task at any depth: Done and Cancelled are finished, Archived left out', () => {
+        ingest(
+            db,
+            [
+                page(
+                    'Acme',
+                    ['- [ ] Build the shed', '  - [x] Cut the timber', '    - [ ] Sharpen the saw', '  - Notes', '    - [x] #C Hire a van', '  - [x] #A Old idea', '  - [ ] Fix the roof', '- [ ] Buy milk'].join('\n'),
+                ),
+            ],
+        )
+        expect(hitFor('Build the shed').subtasks).toEqual({ done: 2, total: 4 })
+        expect(hitFor('Cut the timber').subtasks).toEqual({ done: 0, total: 1 })
+        expect(hitFor('Buy milk').subtasks).toEqual({ done: 0, total: 0 })
+    })
+
+    it('gives the line of the task above a subtask', () => {
+        ingest(db, [page('Acme', ['- Heading bullet', '  - [ ] Build the shed', '    - Notes', '      - [ ] Cut the timber'].join('\n'))])
+        expect(hitFor('Cut the timber').parentTaskLine).toBe(1)
+        expect(hitFor('Build the shed').parentTaskLine).toBeNull()
+    })
+})
+
+describe('a title filter (titleContains)', () => {
+    const matching = (titleContains: string, overrides: Partial<TaskQuery> = {}) => texts(query({ titleContains, groupBy: 'document', ...overrides }))
+
+    beforeEach(() => {
+        ingest(db, [page('Acme', ['- [ ] #P1 Paint the Gate #bug', '  - [ ] Buy the paint', '- [ ] Fix 100% of the hinges', '- [ ] Oil the gate_post', '- [ ] Sweep'].join('\n'))])
+    })
+
+    it('matches the words of the task line, ignoring case and the space around what is typed', () => {
+        expect(matching('  GATE ')).toEqual(['#P1 Paint the Gate #bug', 'Oil the gate_post'])
+        expect(tasksMatchingCount(db, query({ titleContains: 'gate' }))).toBe(2)
+    })
+
+    it('reads no tag as words: not the tag run, and not a Free Tag', () => {
+        expect(matching('p1')).toEqual([])
+        expect(matching('bug')).toEqual([])
+    })
+
+    it('takes what is typed literally, so % and _ are not wildcards', () => {
+        expect(matching('100%')).toEqual(['Fix 100% of the hinges'])
+        expect(matching('gate_')).toEqual(['Oil the gate_post'])
+        expect(matching('%')).toEqual(['Fix 100% of the hinges'])
+    })
+
+    it('does not read what is nested under a task: its card is not shown for a subtask\'s words', () => {
+        expect(matching('buy', { asBoard: true })).toEqual([])
+    })
+
+    it('leaves every task in when nothing but spaces is typed', () => {
+        expect(matching('   ')).toHaveLength(5)
+    })
+})

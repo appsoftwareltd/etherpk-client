@@ -38,10 +38,24 @@ describe('deriveDoc', () => {
         ])
     })
 
+    it('records the nearest task above a task, through plain bullets, and none under no task', () => {
+        const { tasks } = deriveDoc('- [ ] top\n  - note\n    - [ ] inner\n      - [ ] innermost\n- plain\n  - [ ] under a bullet')
+        const parentOf = (text: string) => {
+            const parent = tasks.find((task) => task.text === text)?.parentTaskLocalId
+            return tasks.find((task) => task.blockLocalId === parent)?.text ?? null
+        }
+        expect(parentOf('top')).toBeNull()
+        expect(parentOf('inner')).toBe('top')
+        expect(parentOf('innermost')).toBe('inner')
+        expect(parentOf('under a bullet')).toBeNull()
+    })
+
     it('parses the Task Tag run into columns, keeping the authored text intact', () => {
         const { tasks } = deriveDoc('- [ ] #P1 #W #D-2026-09-15 Fix the login redirect')
         expect(tasks[0]).toEqual({
             blockLocalId: 0,
+            parentTaskLocalId: null,
+            titleKey: 'fix the login redirect',
             done: false,
             // The stored text keeps its tags: the Tasks View strips them for display, and the
             // write-back's stale-line guard needs the line as authored.

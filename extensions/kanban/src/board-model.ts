@@ -7,8 +7,8 @@
  * a lens over documents: nothing here is stored, and every card is a task line that the
  * [[Derived Index]] reported.
  */
-import type { TaskHit, TaskPriorityFilter, TaskStatus } from '#lib/document/index-db.js'
-import { bulletLabel } from '#lib/document/index-derive.js'
+import type { TaskHit, TaskPriorityFilter, TaskStatus, TaskSubtaskCount } from '#lib/document/index-db.js'
+import { bulletLabel, taskTitleKey } from '#lib/document/index-derive.js'
 import { freeTagsIn, parseTaskLine, parseTaskTags, taskDisplay } from '#lib/document/task-tags.js'
 
 /**
@@ -95,10 +95,19 @@ export interface BoardCard {
     due: string | null
     dueState: DueState | null
     /**
-     * The task this one sits under, as a person reads it (tag run off), or null. A subtask is a
-     * card of its own, and this is what keeps it tied to its parent.
+     * The task this one sits under, as a person reads it (tag run off), or null. A [[Subtask]] has
+     * a card only when its [[Parent Task]] is not on the board (ADR 0174), and this keeps it tied
+     * to that task.
      */
     parent: string | null
+    /**
+     * The concept the task sits in, as written, or null: the nearest one linked above it, unless
+     * that is the board's own or the task's document. Never beside a `parent`: a card says one
+     * "in:", and the task above it is the nearer of the two.
+     */
+    inConcept: string | null
+    /** The tasks nested under this one, which the board reaches only through this card. */
+    subtasks: TaskSubtaskCount
 }
 
 export interface BoardSection extends BoardSectionSpec {
@@ -116,6 +125,10 @@ export interface BoardLane extends BoardLaneSpec {
      * sections hold totals and no cards.
      */
     loaded: boolean
+    /** The lane's [[Lane Filter]] as it is searched for, or null when it shows all its tasks. `total` counts the matches. */
+    filter: string | null
+    /** Every task in the lane, whatever its Lane Filter hides. */
+    unfiltered: number
 }
 
 export interface BoardSnapshot {
@@ -203,19 +216,33 @@ function compareCards(a: BoardCard, b: BoardCard): number {
 export function withPendingMoves(board: BoardSnapshot, moves: readonly PendingMove[]): BoardSnapshot {
     if (moves.length === 0) return board
     let lanes = board.lanes
-    for (const move of moves) {
-        lanes = lanes.map((lane) => {
-            const sections = lane.sections.map((section) => {
-                const kept = section.cards.filter((card) => !sameTask(card, move.card))
-                const removed = section.cards.length - kept.length
-                const into = lane.status === move.to.status && section.priority === move.to.priority
-                const cards = into && lane.loaded ? [...kept, move.card].sort(compareCards) : kept
-                return { ...section, cards, total: section.total - removed + (into ? 1 : 0) }
-            })
-            return { ...lane, sections, total: sections.reduce((sum, section) => sum + section.total, 0) }
-        })
-    }
+    for (const move of moves) lanes = lanes.map((lane) => laneWithMove(lane, move))
     return { ...board, lanes }
+}
+
+/** Whether a lane's [[Lane Filter]] lets `card` through. */
+export function passesFilter(lane: Pick<BoardLane, 'filter'>, card: BoardCard): boolean {
+    return lane.filter === null || taskTitleKey(card.text).includes(lane.filter)
+}
+
+function laneWithMove(lane: BoardLane, move: PendingMove): BoardLane {
+    const passes = passesFilter(lane, move.card)
+    let removedFromLane = 0
+    const sections = lane.sections.map((section) => {
+        const kept = section.cards.filter((card) => !sameTask(card, move.card))
+        const removed = section.cards.length - kept.length
+        removedFromLane += removed
+        const into = lane.status === move.to.status && section.priority === move.to.priority
+        const cards = into && lane.loaded && passes ? [...kept, move.card].sort(compareCards) : kept
+        return { ...section, cards, total: section.total - removed + (into && passes ? 1 : 0) }
+    })
+    const arrives = lane.status === move.to.status
+    return {
+        ...lane,
+        sections,
+        total: sections.reduce((sum, section) => sum + section.total, 0),
+        unfiltered: lane.unfiltered - removedFromLane + (arrives ? 1 : 0),
+    }
 }
 
 /** Where the board shows `card`'s task, or undefined when it does not show it. */
@@ -239,10 +266,11 @@ export function unsettledMoves(board: BoardSnapshot, moves: readonly PendingMove
         if (move.writtenAt === null) return true
         if (now - move.writtenAt >= holdMs) return false
         const shown = cellOf(board, move.card)
-        // A lane that holds no cards, or no lane at all (Archived), cannot show the card arriving,
-        // so a move into one settles when the card has left every section the board does show.
+        // A lane that holds no cards, one whose Lane Filter hides this card, or no lane at all
+        // (Archived) cannot show the card arriving, so a move into one settles when the card has
+        // left every section the board does show.
         const target = board.lanes.find((lane) => lane.status === move.to.status)
-        if (!target || !target.loaded) return shown !== undefined
+        if (!target || !target.loaded || !passesFilter(target, move.card)) return shown !== undefined
         return !(shown && shown.status === move.to.status && shown.priority === move.to.priority)
     })
 }
@@ -280,6 +308,8 @@ export function toCard(hit: TaskHit, today: string): BoardCard {
         due: hit.due,
         dueState: dueState(hit.due, today),
         parent: hit.parentTask === null ? null : cardLabel(hit.parentTask),
+        inConcept: hit.parentTask === null ? hit.ancestorConcept : null,
+        subtasks: hit.subtasks,
     }
 }
 

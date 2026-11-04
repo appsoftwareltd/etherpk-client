@@ -84,6 +84,8 @@ export interface EditorExtensionServices {
     openConcept: (concept: string) => void
     /** Open a wikilinked concept in the Pane to the right (Mod+Alt+Enter, ADR 0155). */
     openConceptToTheRight?: (concept: string) => void
+    /** Open a wikilinked concept in the Pane below (Mod+Alt+Shift+Enter, ADR 0155). */
+    openConceptBelow?: (concept: string) => void
     /**
      * An editing episode in a wikilink ended having changed concepts (ADR 0065, amended
      * 2026-10-03): each a concept a link named before and names now, outermost first. The
@@ -284,6 +286,7 @@ export function editorFeatures(services: EditorExtensionServices): EditorFeature
                 isMissing: services.conceptIsMissing,
                 onOpen: services.openConcept,
                 onOpenToTheRight: services.openConceptToTheRight,
+                onOpenBelow: services.openConceptBelow,
                 onLinksEdited: services.wikilinksEdited,
                 onContextMenu: services.wikilinkContextMenu,
                 // Restyle when the index catches up: an editor opened during the initial build

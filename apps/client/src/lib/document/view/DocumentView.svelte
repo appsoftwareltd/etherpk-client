@@ -23,7 +23,7 @@
     import { NOTICE_AUTO_DISMISS_MS } from '#lib/notice-dismissal.js'
     import { registerPositionAdapter, tryGetActiveReadingPositions } from '#lib/navigation/index.js'
     import { type EditorLine, openContextMenu, tryGetActiveCommandRegistry, tryGetActiveEventBus } from '#lib/surface/index.js'
-    import { DOCUMENT_OPEN_TO_THE_RIGHT } from '../commands/document-commands'
+    import { DOCUMENT_OPEN_BELOW, DOCUMENT_OPEN_TO_THE_RIGHT } from '../commands/document-commands'
     import { iconSvg } from '#lib/surface/icons.js'
 
     import { setActiveDocument } from '../active-document'
@@ -756,6 +756,16 @@
     }
 
     /**
+     * A link's open beside this editor, from its key: the Command its menu row runs. Without a
+     * workspace (a harness) or a panel to start from, it opens as a click does.
+     */
+    function openLinkBeside(command: string, concept: string): void {
+        const commands = tryGetActiveCommandRegistry()
+        if (panelId && commands?.has(command)) void commands.execute(command, { kind: 'wikilink', concept, panelId })
+        else void openConcept(concept, panelId)
+    }
+
+    /**
      * Hold a reveal addressed to this tab. A line takes the focus with it: "show me this" means the
      * caret should be usable. Not for a page opened beside the one being read (ADR 0155), whose
      * caret keeps the keyboard. The top of a journal day reached by its date (ADR 0154) leaves the
@@ -1340,16 +1350,11 @@
                 editRefused: showRefusal,
                 conceptIsMissing,
                 openConcept: (concept) => void openConcept(concept, panelId),
-                // Mod+Alt+Enter runs the Command the link menu's row runs, so the key and the
-                // row are one behaviour (ADR 0155): the page opens beside this one and the caret
-                // stays here. Without a workspace (a harness) or a panel to start from, it opens as
-                // a click does.
-                openConceptToTheRight: (concept) => {
-                    const commands = tryGetActiveCommandRegistry()
-                    if (panelId && commands?.has(DOCUMENT_OPEN_TO_THE_RIGHT)) {
-                        void commands.execute(DOCUMENT_OPEN_TO_THE_RIGHT, { kind: 'wikilink', concept, panelId })
-                    } else void openConcept(concept, panelId)
-                },
+                // Mod+Alt+Enter and Mod+Alt+Shift+Enter run the Commands the link menu's rows run,
+                // so each key and its row are one behaviour (ADR 0155): the page opens beside this
+                // one and the caret stays here.
+                openConceptToTheRight: (concept) => openLinkBeside(DOCUMENT_OPEN_TO_THE_RIGHT, concept),
+                openConceptBelow: (concept) => openLinkBeside(DOCUMENT_OPEN_BELOW, concept),
                 // A right-click or long-press on a link raises its Context Menu.
                 // The link's menu carries the line it is on, so its rows include the line's
                 // [[Bookmark]] rows (ADR 0159).

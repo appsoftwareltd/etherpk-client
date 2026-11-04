@@ -7,7 +7,8 @@
  * suppresses that and just places the cursor, which is how link text is edited —
  * inverted from the usual editor convention so touch, which has no modifier, can
  * follow a link at all. From the keyboard, Alt+Enter follows the link at the caret,
- * Mod+Alt+Enter opens it in the Pane to the right (ADR 0155), and Shift+F10 or the
+ * Mod+Alt+Enter opens it in the Pane to the right and Mod+Alt+Shift+Enter in the Pane below
+ * (ADR 0155), and Shift+F10 or the
  * ContextMenu key opens its menu there. The model lives in
  * `#lib/document/wikilink/index.js` (see Wikilinks.md, ADR 0011).
  */
@@ -48,6 +49,8 @@ export interface WikilinkAugmentationOptions {
     onOpen?: (concept: string) => void
     /** Open the concept in the Pane to the right of the editor's (Mod+Alt+Enter, ADR 0155). */
     onOpenToTheRight?: (concept: string) => void
+    /** Open the concept in the Pane below the editor's (Mod+Alt+Shift+Enter, ADR 0155). */
+    onOpenBelow?: (concept: string) => void
     /**
      * Subscribe to graph-index updates; returns an unsubscribe. Without this the
      * missing/exists styling is only as fresh as the last EDIT: an editor mounted while
@@ -170,7 +173,8 @@ export function wikilinkAtCaret(state: EditorState): string | null {
 
 /**
  * Alt+Enter: open the link at the caret with `open`, as a click on it does; Mod+Alt+Enter, in
- * the Pane to the right. Not handled outside a link, so the keys under it keep their meaning.
+ * the Pane to the right, and Mod+Alt+Shift+Enter, in the Pane below. Not handled outside a link,
+ * so the keys under it keep their meaning.
  */
 function followLinkAtCaret(open: ((concept: string) => void) | undefined): Command {
     return ({ state }) => {
@@ -455,6 +459,7 @@ export function wikilinkAugmentation(options: WikilinkAugmentationOptions = {}):
     const keys = keymap.of([
         { key: 'Alt-Enter', run: followLinkAtCaret(options.onOpen) },
         { key: 'Mod-Alt-Enter', run: followLinkAtCaret(options.onOpenToTheRight) },
+        { key: 'Mod-Alt-Shift-Enter', run: followLinkAtCaret(options.onOpenBelow) },
         { key: 'Shift-F10', run: linkMenuAtCaret(options) },
         { key: 'ContextMenu', run: linkMenuAtCaret(options) },
     ])

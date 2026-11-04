@@ -352,6 +352,29 @@ describe('tasks', () => {
     // A Lane Reference: one lane of a Kanban board, handed to an agent to work through. It lists
     // what the board's lane shows: the board's concept (or every task) and the lane's status, every
     // priority and every due date.
+    it('says which task a listed subtask sits under, what it counts, and lists as the board does when asked (ADR 0174)', async () => {
+        const g = await graph('g-task-board')
+        await seed(g, 'Shed', '- Notes\n  - [ ] Build the shed\n    - [x] Cut the timber\n    - [ ] Fix the roof\n- [ ] Buy milk')
+        await indexed(g, async () => (await tasks(g, { statuses: ['open', 'done'] })).total === 4)
+
+        const listed = await tasks(g, { concept: 'Shed', statuses: ['open', 'done'] })
+        const byText = (text: string) => listed.tasks.find((t) => t.text === text)
+        expect(byText('Fix the roof')?.parentTask).toEqual({ text: 'Build the shed', line: 1 })
+        expect(byText('Build the shed')).toMatchObject({ parentTask: null, subtasks: { done: 1, total: 2 } })
+
+        const board = await tasks(g, { concept: 'Shed', statuses: ['open', 'done'], board: true })
+        expect(board.tasks.map((t) => t.text).sort()).toEqual(['Build the shed', 'Buy milk'])
+        expect(board.total).toBe(2)
+    })
+
+    it('lists a lane reference as the board shows the lane, without the subtasks of its cards (ADR 0174)', async () => {
+        const g = await graph('g-lane-board')
+        await seed(g, 'Shed', '- [ ] #D Build the shed\n  - [ ] #D Fix the roof')
+        await indexed(g, async () => (await tasks(g, { statuses: ['doing'] })).total === 2)
+        const lane = await tasks(g, { reference: `etherpk:/g/${g.graphId}/k/Shed#lane=doing` })
+        expect(lane.tasks.map((t) => t.text)).toEqual(['#D Build the shed'])
+    })
+
     it("lists a Kanban lane's tasks from a lane reference, the whole copied text or its etherpk: address", async () => {
         const g = await graph('g-lane')
         await seed(g, 'Kitchen Garden', '- [ ] #D #P1 water the beans\n- [ ] #D #D-2026-07-01 weed the rows\n- [ ] dig the bed')
@@ -1063,6 +1086,25 @@ describe('task references', () => {
     it('comes with every task listed, as an etherpk: reference naming its document, line and words', async () => {
         const { g, reference } = await withTask('g-ref-list')
         expect(reference).toMatch(new RegExp(`^etherpk:/g/${g.graphId}/d/Plan#task=2-[0-9a-f]{12}$`))
+    })
+
+    it('lists the subtasks at any depth with what changes them, and none for a task with none (ADR 0174)', async () => {
+        const g = await graph('g-ref-subtasks')
+        await seed(g, 'Shed', '- [ ] #P1 Build the shed\n  - measure the floor\n  - [x] Cut the timber\n    - [ ] #D Sharpen the saw\n  - ```\n    - [ ] not a task\n    ```\n- [ ] Buy milk')
+        await indexed(g, async () => (await tasks(g, { concept: 'Shed' })).total === 3)
+        const listed = await tasks(g, { concept: 'Shed', statuses: ['open', 'doing', 'done'] })
+        const reference = (text: string) => listed.tasks.find((t) => t.text === text)!.reference
+
+        const shed = await readTask(g, { reference: reference('#P1 Build the shed') })
+        expect(shed.subtasks).toEqual([
+            { text: 'Cut the timber', status: 'done', line: 2, depth: 1, reference: reference('Cut the timber') },
+            { text: '#D Sharpen the saw', status: 'doing', line: 3, depth: 2, reference: reference('#D Sharpen the saw') },
+        ])
+        expect((await readTask(g, { reference: reference('Buy milk') })).subtasks).toEqual([])
+
+        // Each one's reference is one set_task takes.
+        await setTask(g, { reference: shed.subtasks[1].reference, changes: { status: 'done' } })
+        expect((await readDocument(g, 'Shed')).text).toContain('- [x] Sharpen the saw')
     })
 
     it('is read from the text Copy task reference writes, and from the web address an earlier version wrote', async () => {

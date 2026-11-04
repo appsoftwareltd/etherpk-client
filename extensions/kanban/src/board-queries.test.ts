@@ -170,12 +170,49 @@ describe('subtasks', () => {
         ingest(db, [page('Acme', ['- [ ] #P1 #D Launch site', '  - [ ] Hear back on the API'])])
     })
 
-    it('names the task a subtask sits under, as a person reads it', async () => {
-        const board = await readBoard(source, 'Acme', TODAY)
+    it('names the task a subtask sits under when that task is not on the board', async () => {
+        ingest(db, [page('Planning', ['- [ ] #P1 Plan the launch', '  - Notes', '    - [ ] [[Garden]] Water the beans'])])
+        const board = await readBoard(source, 'Garden', TODAY)
         const subtask = board.lanes[0].sections[3].cards[0]
-        expect(subtask.label).toBe('Hear back on the API')
-        expect(subtask.parent).toBe('Launch site')
-        expect(board.lanes[1].sections[0].cards[0].parent).toBeNull()
+        expect(subtask.label).toBe('[[Garden]] Water the beans')
+        expect(subtask.parent).toBe('Plan the launch')
+    })
+})
+
+describe('a subtask on a board (ADR 0174)', () => {
+    beforeEach(() => {
+        ingest(db, [
+            page('2026-11-04', [
+                '- [[Projects]]',
+                '  - [[Acme]]',
+                '    - [ ] #P1 Build the shed',
+                '      - measure the floor',
+                '      - [x] Cut the timber',
+                '      - [ ] Fix the roof',
+                '      - [ ] Paint the door',
+            ]),
+        ])
+    })
+
+    it('reaches a subtask through its parent, whose card counts it', async () => {
+        const board = await readBoard(source, 'Projects', TODAY)
+        expect(labels(board, 'open', 1)).toEqual(['Build the shed'])
+        expect(labels(board, 'open', null)).toEqual([])
+        expect(board.lanes[0].total).toBe(1)
+        expect(board.lanes[4].total).toBe(0)
+        expect(board.lanes[0].sections[0].cards[0].subtasks).toEqual({ done: 1, total: 3 })
+    })
+
+    it('names the concept a task sits in on a board for a concept further out, and none on its own', async () => {
+        const further = await readBoard(source, 'Projects', TODAY)
+        expect(further.lanes[0].sections[0].cards[0].inConcept).toBe('Acme')
+        const own = await readBoard(source, 'Acme', TODAY)
+        expect(labels(own, 'open', 1)).toEqual(['Build the shed'])
+        expect(own.lanes[0].sections[0].cards[0].inConcept).toBeNull()
+    })
+
+    it('moves all of a lane as the board shows it: the cards, not the subtasks they stand for', async () => {
+        expect((await laneTasks(source, 'Projects', 'open', TODAY)).map((task) => task.text)).toEqual(['#P1 Build the shed'])
     })
 })
 
@@ -196,7 +233,7 @@ describe("a lane's tasks, for moving them all", () => {
     it('lists every task in the lane on the board, across priorities and past a page', async () => {
         const many = Array.from({ length: 7 }, (_, i) => `  - [x] #P${(i % 3) + 1} Water bed ${i}`)
         ingest(db, [page('Garden', ['- [ ] Weed', ...many.map((line) => line.slice(2)), '- [x] #C Plant leeks']), page('Kitchen', ['- [x] Wash up'])])
-        const tasks = await laneTasks(source, 'Garden', 'done', TODAY, 3)
+        const tasks = await laneTasks(source, 'Garden', 'done', TODAY, { pageSize: 3 })
         expect(tasks.map((task) => task.text).sort()).toEqual(many.map((line) => line.replace('  - [x] ', '')).sort())
         expect(tasks.every((task) => task.concept === 'Garden')).toBe(true)
     })
@@ -204,5 +241,36 @@ describe("a lane's tasks, for moving them all", () => {
     it('lists the whole graph on the Graph Kanban', async () => {
         ingest(db, [page('Garden', ['- [x] Water the beans']), page('Kitchen', ['- [x] Wash up'])])
         expect((await laneTasks(source, null, 'done', TODAY)).map((task) => task.text).sort()).toEqual(['Wash up', 'Water the beans'])
+    })
+})
+
+describe('a lane with a title filter', () => {
+    beforeEach(() => {
+        const many = Array.from({ length: 60 }, (_, i) => `- [ ] Water bed ${String(i).padStart(2, '0')}`)
+        ingest(db, [page('Garden', [...many, '- [ ] #P1 Dig the bed', '- [ ] #D Water the beans', '- [ ] #D Weed'])])
+    })
+
+    const open = (board: BoardSnapshot) => board.lanes[0]
+
+    it('shows the matching cards of that lane alone, and counts them against the whole lane', async () => {
+        const board = await readBoard(source, 'Garden', TODAY, { titleFilterFor: (status) => (status === 'doing' ? ' WEED ' : undefined) })
+        expect(board.lanes[1]).toMatchObject({ filter: 'weed', total: 1, unfiltered: 2 })
+        expect(labels(board, 'doing', null)).toEqual(['Weed'])
+        expect(open(board)).toMatchObject({ filter: null, total: 61, unfiltered: 61 })
+    })
+
+    it('finds a match past the page the lane would load without the filter', async () => {
+        const board = await readBoard(source, 'Garden', TODAY, { sectionLimit: 3, titleFilterFor: () => 'bed 59' })
+        expect(labels(board, 'open', null)).toEqual(['Water bed 59'])
+        expect(open(board).total).toBe(1)
+    })
+
+    it('treats nothing but spaces as no filter', async () => {
+        const board = await readBoard(source, 'Garden', TODAY, { titleFilterFor: () => '   ' })
+        expect(open(board)).toMatchObject({ filter: null, total: 61 })
+    })
+
+    it('lists a lane through the same filter for Move all to lane', async () => {
+        expect((await laneTasks(source, 'Garden', 'doing', TODAY, { titleContains: 'weed' })).map((task) => task.text)).toEqual(['#D Weed'])
     })
 })
