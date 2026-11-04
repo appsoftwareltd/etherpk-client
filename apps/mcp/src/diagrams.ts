@@ -107,6 +107,30 @@ export async function launchChromium(env: NodeJS.ProcessEnv): Promise<import('pl
 }
 
 /**
+ * What a failed launch reports: the lines the browser wrote to stderr, each once, or the message's
+ * first line when it wrote none. Playwright's message around them is its own log of the launch.
+ */
+export function browserLogErrors(message: string): string {
+    // Before "Call log:", which repeats the same lines with terminal colour codes around them.
+    const said = [...message.split('Call log:')[0].matchAll(/\[pid=\d+\]\[err\] (.*)/g)].map((match) => match[1])
+    return said.length > 0 ? [...new Set(said)].join('\n') : message.split('\n')[0]
+}
+
+/**
+ * Why the browser a publish would use does not start, or null when it starts or there is none. A file
+ * that exists can still fail to run: a missing library, or a library path this process inherited.
+ */
+export async function chromiumStartFailure(env: NodeJS.ProcessEnv): Promise<string | null> {
+    try {
+        const browser = await launchChromium(env)
+        await browser?.close()
+        return null
+    } catch (error) {
+        return browserLogErrors(error instanceof Error ? error.message : String(error))
+    }
+}
+
+/**
  * A renderer over one headless browser, opened for a publish and closed after it. Null when no
  * browser is available; the caller decides what that means (a publish with diagrams refuses).
  */

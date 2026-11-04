@@ -5,6 +5,13 @@ What changed in each release of the EtherPK Client and the Headless Client
 They are released together, under the version number they share with the Sync Server. This log
 starts at 0.9.3.
 
+## Unreleased
+
+### Headless Client
+
+- **`diagrams status` starts the browser.** It reported a browser whenever the file existed. It now
+  starts the browser too, and prints the browser's error and exits with 1 when it does not start.
+
 ## 0.18.5 - 2026-11-04
 
 ### Client

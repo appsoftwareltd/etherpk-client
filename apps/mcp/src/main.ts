@@ -79,7 +79,7 @@ import {
     type QuitSignal,
 } from './login'
 import { createMcpServer } from './mcp-server'
-import { chromiumStatus, setupDiagrams } from './diagrams'
+import { chromiumStartFailure, chromiumStatus, setupDiagrams } from './diagrams'
 import {
     defaultPublishFoldersPath,
     parseRepositoryArgument,
@@ -185,7 +185,8 @@ const USAGE = `etherpk-mcp - EtherPK Headless Client (an MCP server over one syn
       diagrams, maps or drawings refuses until this has run. Set ETHERPK_CHROMIUM=<path> to use a browser
       already on this machine instead (NixOS needs this).
   ${CMD} diagrams status
-      Which browser a publish would use, if any.
+      Which browser a publish would use, if any, and whether it starts from this terminal. An agent's
+      publish runs in the graph's background process, with the environment of the agent that started it.
 
 This machine can hold logins for several Sync Servers at once. The --sync-server flag says
 which one a command means, and can be left out while there is only one. The config file is
@@ -595,8 +596,17 @@ async function diagramsCommand(what: string | undefined): Promise<void> {
             return
         case 'status': {
             const status = await chromiumStatus(process.env, CMD)
-            if (status.executable) console.log(`Chromium: ${status.executable} (${status.source === 'env' ? 'from ETHERPK_CHROMIUM' : 'installed by diagrams setup'}). A publish can draw Mermaid diagrams and maps.`)
-            else console.log(status.source === 'env' ? `ETHERPK_CHROMIUM is set but names no file: ${process.env.ETHERPK_CHROMIUM}` : `No browser is set up. Run: ${status.setupCommand}`)
+            if (!status.executable) {
+                console.log(status.source === 'env' ? `ETHERPK_CHROMIUM is set but names no file: ${process.env.ETHERPK_CHROMIUM}` : `No browser is set up. Run: ${status.setupCommand}`)
+                return
+            }
+            const browser = `Chromium: ${status.executable} (${status.source === 'env' ? 'from ETHERPK_CHROMIUM' : 'installed by diagrams setup'})`
+            const failure = await chromiumStartFailure(process.env)
+            if (failure === null) console.log(`${browser} started. A publish can draw Mermaid diagrams, maps and drawings.`)
+            else {
+                console.log(`${browser} did not start, so a publish cannot draw Mermaid diagrams, maps or drawings:\n${failure}`)
+                process.exitCode = 1
+            }
             return
         }
         default:

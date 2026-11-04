@@ -237,7 +237,7 @@ install the package globally once with `npm install -g @appsoftwareltd/etherpk-m
 | `semantic remove` | Delete the runtime and model. Stored embeddings stay, and are reused if you set up again. |
 | `publish (--graph <id or name> \| --folder <path>) --publication <id> [--out <dir> \| --github <owner/name[#branch]> \| --dry-run] [--replace]` | Publish one publication of a graph to a folder, or as a commit to a GitHub repository, and print the report. |
 | `diagrams setup` | Install a Chromium into the cache directory, so a publish can draw Mermaid diagrams, maps and drawings. |
-| `diagrams status` | Which browser a publish would use, if any. |
+| `diagrams status` | Which browser a publish would use, if any, and whether it starts from this terminal. Exits with 1 and the browser's error when it does not start. |
 
 ### Flags
 
