@@ -1,7 +1,7 @@
 import sqlite3InitModule from '@sqlite.org/sqlite-wasm'
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest'
 
-import { createSchema, type IndexDoc, ingest, type SqlDb, tasksMatching, tasksMatchingCount, type TaskPriorityFilter, type TaskStatus } from '#lib/document/index-db.js'
+import { createSchema, type IndexDoc, ingest, ingestOne, type SqlDb, tasksMatching, tasksMatchingCount, type TaskPriorityFilter, type TaskStatus } from '#lib/document/index-db.js'
 import { wrapOo1Db } from '#lib/document/index-db-sqlite.js'
 import type { BoardSnapshot } from './board-model'
 import { laneTasks, readBoard, type TaskSource } from './board-queries'
@@ -253,24 +253,34 @@ describe('a lane with a title filter', () => {
     const open = (board: BoardSnapshot) => board.lanes[0]
 
     it('shows the matching cards of that lane alone, and counts them against the whole lane', async () => {
-        const board = await readBoard(source, 'Garden', TODAY, { titleFilterFor: (status) => (status === 'doing' ? ' WEED ' : undefined) })
-        expect(board.lanes[1]).toMatchObject({ filter: 'weed', total: 1, unfiltered: 2 })
+        const board = await readBoard(source, 'Garden', TODAY, { textFilterFor: (status) => (status === 'doing' ? ' WEED ' : undefined) })
+        expect(board.lanes[1]).toMatchObject({ filter: { words: 'weed', tags: [] }, total: 1, unfiltered: 2 })
         expect(labels(board, 'doing', null)).toEqual(['Weed'])
         expect(open(board)).toMatchObject({ filter: null, total: 61, unfiltered: 61 })
     })
 
     it('finds a match past the page the lane would load without the filter', async () => {
-        const board = await readBoard(source, 'Garden', TODAY, { sectionLimit: 3, titleFilterFor: () => 'bed 59' })
+        const board = await readBoard(source, 'Garden', TODAY, { sectionLimit: 3, textFilterFor: () => 'bed 59' })
         expect(labels(board, 'open', null)).toEqual(['Water bed 59'])
         expect(open(board).total).toBe(1)
     })
 
     it('treats nothing but spaces as no filter', async () => {
-        const board = await readBoard(source, 'Garden', TODAY, { titleFilterFor: () => '   ' })
+        const board = await readBoard(source, 'Garden', TODAY, { textFilterFor: () => '   ' })
         expect(open(board)).toMatchObject({ filter: null, total: 61 })
     })
 
+    it('narrows a lane by a tag, and by words and a tag together', async () => {
+        ingestOne(db, page('Shed', ['- [ ] [[Garden]] Water the fence #urgent', '- [ ] [[Garden]] Mend the fence #bug']))
+        const byTag = await readBoard(source, 'Garden', TODAY, { textFilterFor: () => '#urgent' })
+        expect(labels(byTag, 'open', null)).toEqual(['[[Garden]] Water the fence'])
+        expect(open(byTag)).toMatchObject({ filter: { words: '', tags: ['urgent'] }, total: 1, unfiltered: 63 })
+
+        const both = await readBoard(source, 'Garden', TODAY, { textFilterFor: () => 'mend #urgent' })
+        expect(open(both).total).toBe(0)
+    })
+
     it('lists a lane through the same filter for Move all to lane', async () => {
-        expect((await laneTasks(source, 'Garden', 'doing', TODAY, { titleContains: 'weed' })).map((task) => task.text)).toEqual(['#D Weed'])
+        expect((await laneTasks(source, 'Garden', 'doing', TODAY, { textFilter: 'weed' })).map((task) => task.text)).toEqual(['#D Weed'])
     })
 })

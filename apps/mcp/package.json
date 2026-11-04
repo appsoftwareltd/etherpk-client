@@ -1,6 +1,6 @@
 {
     "name": "@appsoftwareltd/etherpk-mcp",
-    "version": "0.18.3",
+    "version": "0.18.4",
     "license": "Elastic-2.0",
     "description": "EtherPK Headless Client: an MCP server over a synced knowledge graph, run beside the agent on the user's own machine.",
     "type": "module",
@@ -14,7 +14,7 @@
     ],
     "scripts": {
         "client-tsconfig": "pnpm --dir ../client exec svelte-kit sync",
-        "build": "pnpm client-tsconfig && vite build && vite build --config vite.map-page.config.ts",
+        "build": "pnpm client-tsconfig && vite build && vite build --config vite.map-page.config.ts && vite build --config vite.drawing-page.config.ts",
         "check": "tsc -p tsconfig.json --noEmit",
         "test": "pnpm client-tsconfig && vitest run",
         "test:watch": "pnpm client-tsconfig && vitest",
@@ -47,6 +47,7 @@
         "zod": "^4.6.7"
     },
     "devDependencies": {
+        "@appsoftwareltd/etherpk-extension-excalidraw": "workspace:*",
         "@appsoftwareltd/etherpk-extension-graph-view": "workspace:*",
         "@appsoftwareltd/etherpk-extension-maps": "workspace:*",
         "@appsoftwareltd/etherpk-shared": "workspace:*",

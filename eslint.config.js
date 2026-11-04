@@ -153,7 +153,7 @@ function extensionImportRule(allowed = []) {
  * What the Client may not import (ADR 0121): any extension's package or folder. It finds the
  * Built-in Extensions by a build-time glob and the Vite plugin instead, so an extension is added
  * or removed without the Client naming it. `allowed` lets the Headless Client, which loads no
- * extension, import the Graph View's pure model and maps' picture drawing.
+ * extension, import the Graph View's pure model, and the picture drawing of maps and drawings.
  */
 function clientImportRule(allowed = []) {
     const exceptions = ['api(/|$)', ...allowed.map((path) => `${literally(path)}$`)].join('|')
@@ -340,7 +340,7 @@ export default tseslint.config(
     },
     {
         files: ['apps/mcp/**/*.ts'],
-        rules: { 'no-restricted-imports': clientImportRule(['graph-view/model', 'maps/picture']) },
+        rules: { 'no-restricted-imports': clientImportRule(['graph-view/model', 'maps/picture', 'excalidraw/picture', 'excalidraw/format']) },
     },
     {
         files: ['extensions/**/*.{ts,js,svelte}'],

@@ -5,7 +5,7 @@
  * the board reaches through their parents' cards (ADR 0174).
  */
 import { TASK_PRIORITY_FILTERS, type TaskHit, type TaskPriorityFilter, type TaskQuery, type TaskStatus } from '#lib/document/index-db.js'
-import { taskTitleSearchKey } from '#lib/document/index-derive.js'
+import { parseTaskTextFilter } from '#lib/document/index-derive.js'
 import type { TaskPageResult } from '#lib/document/index-worker/client.js'
 import { BOARD_LANES, BOARD_SECTIONS, type BoardCell, type BoardLane, type BoardSnapshot, toCard } from './board-model'
 
@@ -25,7 +25,7 @@ export interface ReadBoardOptions {
     /** Lanes to read for their counts alone: the collapsed ones, whose cards are not shown. */
     countOnly?: ReadonlySet<TaskStatus>
     /** What a lane's [[Lane Filter]] holds, as typed; undefined for a lane without one. */
-    titleFilterFor?: (status: TaskStatus) => string | undefined
+    textFilterFor?: (status: TaskStatus) => string | undefined
 }
 
 /**
@@ -43,12 +43,13 @@ export async function readBoard(source: TaskSource, concept: string | null, toda
         BOARD_LANES.map(async (lane): Promise<BoardLane> => {
             // A limit of 0 still returns the total, which is all a collapsed lane shows.
             const loaded = !options.countOnly?.has(lane.status)
-            const filter = taskTitleSearchKey(options.titleFilterFor?.(lane.status) ?? '') || null
+            const typed = options.textFilterFor?.(lane.status)
+            const filter = parseTaskTextFilter(typed ?? '')
             const sections = await Promise.all(
                 BOARD_SECTIONS.map(async (section) => {
                     const cell = { status: lane.status, priority: section.priority }
                     const limit = loaded ? (options.limitFor?.(cell) ?? defaultLimit) : 0
-                    const page = await source.tasks(sectionQuery(concept, lane.status, section.priority, today, filter), 0, limit)
+                    const page = await source.tasks(sectionQuery(concept, lane.status, section.priority, today, typed), 0, limit)
                     return {
                         ...section,
                         cards: page.hits.map((hit) => toCard(hit, today)),
@@ -66,12 +67,12 @@ export async function readBoard(source: TaskSource, concept: string | null, toda
     return { concept, today, lanes }
 }
 
-function sectionQuery(concept: string | null, status: TaskStatus, priority: TaskPriorityFilter, today: string, titleContains: string | null): TaskQuery {
-    return { concept, statuses: [status], priorities: [priority], due: 'any', groupBy: 'due', byFreeTag: true, asBoard: true, titleContains: titleContains ?? undefined, today }
+function sectionQuery(concept: string | null, status: TaskStatus, priority: TaskPriorityFilter, today: string, textFilter: string | undefined): TaskQuery {
+    return { concept, statuses: [status], priorities: [priority], due: 'any', groupBy: 'due', byFreeTag: true, asBoard: true, textFilter, today }
 }
 
-function laneQuery(concept: string | null, status: TaskStatus, today: string, titleContains?: string): TaskQuery {
-    return { concept, statuses: [status], priorities: TASK_PRIORITY_FILTERS, due: 'any', groupBy: 'document', asBoard: true, titleContains, today }
+function laneQuery(concept: string | null, status: TaskStatus, today: string, textFilter?: string): TaskQuery {
+    return { concept, statuses: [status], priorities: TASK_PRIORITY_FILTERS, due: 'any', groupBy: 'document', asBoard: true, textFilter, today }
 }
 
 /** How many tasks {@link laneTasks} reads in one round trip. */
@@ -88,9 +89,9 @@ export async function laneTasks(
     concept: string | null,
     status: TaskStatus,
     today: string,
-    { pageSize = LANE_PAGE_SIZE, titleContains }: { pageSize?: number; titleContains?: string } = {},
+    { pageSize = LANE_PAGE_SIZE, textFilter }: { pageSize?: number; textFilter?: string } = {},
 ): Promise<TaskHit[]> {
-    const query = laneQuery(concept, status, today, titleContains)
+    const query = laneQuery(concept, status, today, textFilter)
     const tasks: TaskHit[] = []
     for (;;) {
         const page = await source.tasks(query, tasks.length, pageSize)

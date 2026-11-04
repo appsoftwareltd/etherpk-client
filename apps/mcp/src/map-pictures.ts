@@ -10,16 +10,15 @@
  * does in the Client. The basemap comes from EtherPK's map host, or the style
  * `ETHERPK_MAP_STYLE_URL` names; set empty, maps are drawn on a plain background.
  */
-import { readFile } from 'node:fs/promises'
-import { createServer, type Server } from 'node:http'
+import type { Server } from 'node:http'
 import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 
 import type { MapPicture } from '#lib/document/publish/publish.js'
 import { DEFAULT_MAP_STYLES } from '@appsoftwareltd/etherpk-extension-maps/picture'
 
 import { launchChromium } from './diagrams'
+import { builtPath, servePage } from './page-server'
 
 const require = createRequire(import.meta.url)
 
@@ -46,43 +45,12 @@ const PAGE = `<!doctype html>
 /** The files the page loads, by path, and where each is on disk. */
 function pageFiles(): Map<string, string> {
     const maplibre = dirname(require.resolve('maplibre-gl/dist/maplibre-gl.mjs'))
-    // Beside this module in the published package (dist/), or in dist/ when run from source.
-    const here = dirname(fileURLToPath(import.meta.url))
-    const bundle = here.endsWith('dist') ? join(here, 'map-picture-page.js') : join(here, '..', 'dist', 'map-picture-page.js')
     return new Map([
         ['/maplibre-gl.mjs', join(maplibre, 'maplibre-gl.mjs')],
         ['/maplibre-gl-shared.mjs', join(maplibre, 'maplibre-gl-shared.mjs')],
         ['/maplibre-gl-worker.mjs', join(maplibre, 'maplibre-gl-worker.mjs')],
-        ['/map-picture-page.js', bundle],
+        ['/map-picture-page.js', builtPath('map-picture-page.js')],
     ])
-}
-
-/** A server on the loopback address that answers the page and its files, and nothing else. */
-async function servePage(): Promise<{ server: Server; origin: string }> {
-    const files = pageFiles()
-    const server = createServer((request, response) => {
-        const path = new URL(request.url ?? '/', 'http://localhost').pathname
-        if (path === '/map.html') {
-            response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }).end(PAGE)
-            return
-        }
-        const file = files.get(path)
-        if (!file) {
-            response.writeHead(404).end()
-            return
-        }
-        readFile(file).then(
-            (bytes) => response.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8' }).end(bytes),
-            () => response.writeHead(404).end(),
-        )
-    })
-    await new Promise<void>((resolve, reject) => {
-        server.once('error', reject)
-        server.listen(0, '127.0.0.1', () => resolve())
-    })
-    const address = server.address()
-    if (!address || typeof address === 'string') throw new Error('The map page server has no port.')
-    return { server, origin: `http://127.0.0.1:${address.port}` }
 }
 
 export interface MapPictureRenderer {
@@ -103,9 +71,9 @@ export async function openMapRenderer(env: NodeJS.ProcessEnv): Promise<MapPictur
     let pagePromise: Promise<import('playwright-core').Page> | undefined
     const page = () => {
         pagePromise ??= (async () => {
-            served = await servePage()
+            served = await servePage(PAGE, pageFiles())
             const p = await (await browser.newContext()).newPage()
-            await p.goto(`${served.origin}/map.html`)
+            await p.goto(`${served.origin}/page.html`)
             await p.waitForFunction(() => typeof window.etherpkDrawMapPicture === 'function', undefined, { timeout: 15_000 })
             return p
         })()

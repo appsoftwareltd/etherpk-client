@@ -1,10 +1,25 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { createSettleScheduler } from './settle-scheduler'
+import { createSettleScheduler, TASK_TEXT_FILTER_SETTLE } from './settle-scheduler'
 
 describe('the settle scheduler', () => {
     beforeEach(() => vi.useFakeTimers())
     afterEach(() => vi.useRealTimers())
+
+    it('holds a Task Text Filter while someone types at an ordinary pace, and answers the pause', () => {
+        const run = vi.fn()
+        const scheduler = createSettleScheduler(run, TASK_TEXT_FILTER_SETTLE)
+
+        // Six keys, 300 ms apart: a person typing slowly, or stopping to think of a word.
+        for (let i = 0; i < 6; i++) {
+            scheduler.schedule()
+            vi.advanceTimersByTime(300)
+        }
+        expect(run).not.toHaveBeenCalled()
+
+        vi.advanceTimersByTime(TASK_TEXT_FILTER_SETTLE.settleMs)
+        expect(run).toHaveBeenCalledTimes(1)
+    })
 
     it('waits for a burst to settle before running once', () => {
         const run = vi.fn()

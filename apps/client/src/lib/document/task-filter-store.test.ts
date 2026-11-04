@@ -24,7 +24,14 @@ describe('the Tasks View filter store', () => {
             priorities: [1, 2, 3, null],
             due: 'any',
             groupBy: 'priority',
+            textFilter: '',
         })
+    })
+
+    it('reads a filter saved before it had a text filter, with the text filter empty', () => {
+        const saved = { concept: 'Garden', statuses: ['open'], priorities: [1], due: 'today', groupBy: 'document' }
+        const storage = fakeStorage({ [`${TASK_FILTER_KEY_PREFIX}g`]: JSON.stringify({ version: 2, filter: saved }) })
+        expect(createTaskFilterStore('g', storage).get()).toEqual({ ...saved, textFilter: '' })
     })
 
     it('round-trips a filter per graph', () => {

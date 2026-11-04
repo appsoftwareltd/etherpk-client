@@ -1,6 +1,7 @@
 /**
  * What the Client's build does for Excalidraw (`apps/client/compiled-in-extensions.ts` adds these
- * plugins to the Client's Vite configuration). Excalidraw 0.18.1 is pinned exactly, with React.
+ * plugins to the Client's Vite configuration, and `apps/mcp/vite.drawing-page.config.ts` to the page
+ * the Headless Client draws pictures in). Excalidraw 0.18.1 is pinned exactly, with React.
  *
  * - **Its code is patched** (`patches.ts`) to take its fonts from the Client's origin alone and to
  *   embed them whole in a picture rather than shrink them with code the Client's policy refuses.

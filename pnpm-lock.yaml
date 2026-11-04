@@ -438,6 +438,9 @@ importers:
         specifier: ^4.6.7
         version: 4.6.7
     devDependencies:
+      '@appsoftwareltd/etherpk-extension-excalidraw':
+        specifier: workspace:*
+        version: link:../../extensions/excalidraw
       '@appsoftwareltd/etherpk-extension-graph-view':
         specifier: workspace:*
         version: link:../../extensions/graph-view

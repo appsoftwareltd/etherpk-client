@@ -71,8 +71,8 @@ export interface PublishEnvironment {
     /**
      * How a site shows a fence an extension draws (its registration's `publish`): a picture or a
      * link, never HTML. Undefined when nothing here publishes fences of that info word, which is so
-     * for every one where no extension runs, as in the Headless Client: an [[Extension Fence]] is
-     * then left out (ADR 0138), and any other fence published as code.
+     * for all but a drawing where no extension runs, as in the Headless Client (ADR 0175): an
+     * [[Extension Fence]] is then left out (ADR 0138), and any other fence published as code.
      */
     publishFence?(fence: { info: string; body: readonly string[]; document: string }): Promise<PublishedFenceOutput | null> | undefined
     now?(): Date

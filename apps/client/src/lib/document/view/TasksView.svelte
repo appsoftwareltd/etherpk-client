@@ -1,7 +1,7 @@
 <script lang="ts">
     /**
-     * The [[Tasks View]]: every [[Task]] in the graph, narrowed by a [[Name Filter]] and by
-     * the states and dates its [[Task Tag]]s carry.
+     * The [[Tasks View]]: every [[Task]] in the graph, narrowed by a [[Name Filter]], by the
+     * states and dates its [[Task Tag]]s carry, and by a [[Task Text Filter]].
      *
      * Deliberately NOT a Backlinks View for tasks. Backlinks follows the active document;
      * this pins its filter, because the moment you click a result the main region navigates —
@@ -30,8 +30,9 @@
 
     import { getActiveDocument } from "../active-document";
     import { conceptIsMissing, openConcept, openConceptAtLine } from "../open-concept";
+    import { parseTaskTextFilter } from "../index-derive";
     import { nameMatchKey } from "../name-match";
-    import { createSettleScheduler } from "../settle-scheduler";
+    import { createSettleScheduler, TASK_TEXT_FILTER_SETTLE } from "../settle-scheduler";
     import {
         DUE_OPTIONS,
         GROUP_BY_OPTIONS,
@@ -57,6 +58,9 @@
     const PAGE_SIZE = 100;
     /** Enough to choose from without turning the sidebar into a list of the whole graph. */
     const MAX_SUGGESTIONS = 8;
+
+    const textFilterId = $props.id();
+    let textFilterInput = $state<HTMLInputElement>();
 
     const store = workspaceService("taskFilter");
     /** The persisted filter this View opened with — also what seeds the Name Filter box. */
@@ -162,8 +166,9 @@
     function refresh(): void {
         held = new Map();
         staleNotice = null;
-        // The user just acted: answer now, and drop any settling index refresh behind it.
+        // The user just acted: answer now, and drop any settling refresh behind it.
         indexRefresh.cancel();
+        textFilterSettled.cancel();
         void recompute();
     }
 
@@ -363,6 +368,28 @@
         maxWaitMs: REFRESH_MAX_WAIT_MS,
     });
 
+    /** A read per pause in typing into the [[Task Text Filter]], the previous rows staying until it lands. */
+    const textFilterSettled = createSettleScheduler(refresh, TASK_TEXT_FILTER_SETTLE);
+
+    function onTextFilterInput(typed: string): void {
+        filter = { ...filter, textFilter: typed };
+        store?.set(filter);
+        pages = 1;
+        textFilterSettled.schedule();
+    }
+
+    /** The button goes as it is pressed, so the keyboard stays in the box it cleared. */
+    function clearTextFilter(): void {
+        update({ textFilter: "" });
+        textFilterInput?.focus();
+    }
+
+    function onTextFilterKeydown(event: KeyboardEvent): void {
+        if (event.key !== "Escape" || filter.textFilter === "") return;
+        event.preventDefault();
+        update({ textFilter: "" });
+    }
+
     function showMore(): void {
         pages += 1;
         indexRefresh.cancel();
@@ -531,6 +558,7 @@
             !priorityChanged &&
             !dueChanged &&
             filter.concept === DEFAULT_FILTER.concept &&
+            filter.textFilter === DEFAULT_FILTER.textFilter &&
             filter.groupBy === DEFAULT_FILTER.groupBy,
     );
 
@@ -570,6 +598,7 @@
         unsubIndex?.();
         unsubShow?.();
         indexRefresh.cancel();
+        textFilterSettled.cancel();
         store?.flush();
     });
 </script>
@@ -607,7 +636,7 @@
             <div class="flex items-center gap-2">
                 <input
                     data-testid="tasks-name-filter"
-                    placeholder="Any name…"
+                    placeholder="Concept Name (Page, or Journal) ..."
                     aria-label="Filter tasks by name"
                     autocomplete="off"
                     bind:value={nameQuery}
@@ -692,7 +721,8 @@
 
         <!-- The four filter controls, in equal columns so a control's text changing length never
              moves the control beside it: one row of four when the View is wide, two rows of two
-             when it is narrow (a Sidebar, a phone's drawer). Measured on the View's own width,
+             when it is narrow (a Sidebar, a phone's drawer), with the Task Text Filter across a
+             row of its own below them, at the same spacing. Measured on the View's own width,
              since a Sidebar is narrow in a wide window. The container is this wrapper alone: container
              queries bring layout containment, which would trap the name suggestions (z-10, above)
              under the list's sticky headings if the whole header were the container. -->
@@ -735,6 +765,40 @@
                     testid="tasks-group-by"
                     onChoose={(groupBy) => update({ groupBy })}
                 />
+                <div class="col-span-full" data-testid="tasks-text-filter-field">
+                    <!-- As a dropdown's name is: above it on a desktop, left out on a phone for room. -->
+                    <label for={textFilterId} class="mb-1 hidden text-sm text-(--gk-text-muted) lg:block" data-testid="tasks-text-filter-label">Task text / tag</label>
+                    <div class="flex items-center gap-2">
+                        <input
+                            id={textFilterId}
+                            bind:this={textFilterInput}
+                            type="text"
+                            data-testid="tasks-text-filter"
+                            placeholder="Task text / #tag"
+                            aria-label="Task text / tag"
+                            autocomplete="off"
+                            value={filter.textFilter}
+                            oninput={(event) => onTextFilterInput(event.currentTarget.value)}
+                            onkeydown={onTextFilterKeydown}
+                            class="min-w-0 flex-1 rounded-md border border-(--gk-border-soft) bg-(--gk-surface-1) px-2 py-1.5 text-sm text-(--gk-text-strong) placeholder:text-(--gk-text-subtle) focus:border-(--gk-border-strong) focus:outline-none pointer-coarse:min-h-11"
+                        />
+                        {#if filter.textFilter !== ""}
+                            <button
+                                type="button"
+                                title="Clear the text and tag filter"
+                                aria-label="Clear the text and tag filter"
+                                data-testid="tasks-text-clear"
+                                onclick={clearTextFilter}
+                                class="inline-flex shrink-0 items-center justify-center self-stretch rounded-md border border-(--gk-border-soft) px-2 text-(--gk-text-subtle) hover:bg-(--gk-surface-2) hover:text-(--gk-text-strong) pointer-coarse:min-w-11"
+                            >
+                                <!-- heroicons/outline x-mark -->
+                                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
+                                </svg>
+                            </button>
+                        {/if}
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -784,7 +848,9 @@
                       ? `Nothing ticked in ${emptySelections}.`
                       : filter.concept === null
                         ? "No tasks match these filters."
-                        : `No tasks for "${filter.concept}".`}
+                        : parseTaskTextFilter(filter.textFilter) !== null
+                          ? `No tasks for "${filter.concept}" match these filters.`
+                          : `No tasks for "${filter.concept}".`}
             </p>
         {:else}
             {#each groups as group, g (group.label + g)}

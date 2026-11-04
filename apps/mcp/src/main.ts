@@ -180,9 +180,9 @@ const USAGE = `etherpk-mcp - EtherPK Headless Client (an MCP server over one syn
       names of the pages it mentions, but writes nothing and needs no folder. Keep its output
       out of public logs.
   ${CMD} diagrams setup
-      Let a publish draw Mermaid diagrams and maps. Downloads a Chromium (about 170 MB) into the
+      Let a publish draw Mermaid diagrams, maps and drawings. Downloads a Chromium (about 170 MB) into the
       cache directory with Playwright's installer, once per computer - a publish whose pages hold
-      diagrams or maps refuses until this has run. Set ETHERPK_CHROMIUM=<path> to use a browser
+      diagrams, maps or drawings refuses until this has run. Set ETHERPK_CHROMIUM=<path> to use a browser
       already on this machine instead (NixOS needs this).
   ${CMD} diagrams status
       Which browser a publish would use, if any.

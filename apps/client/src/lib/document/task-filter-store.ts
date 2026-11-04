@@ -34,6 +34,8 @@ export interface TaskFilterState {
     priorities: TaskPriorityFilter[]
     due: TaskDueWindow
     groupBy: TaskGroupBy
+    /** The [[Task Text Filter]], as typed. */
+    textFilter: string
 }
 
 const stateSchema = z.object({
@@ -43,6 +45,8 @@ const stateSchema = z.object({
     priorities: z.array(z.union([z.literal(1), z.literal(2), z.literal(3), z.null()])),
     due: z.enum(['any', 'overdue', 'today', 'next7']),
     groupBy: z.enum(['document', 'priority', 'due']),
+    // A default rather than a new version: a filter saved before this existed is still good.
+    textFilter: z.string().default(''),
 })
 
 const payloadSchema = z.object({ version: z.number(), filter: stateSchema })
@@ -59,6 +63,7 @@ export function defaultTaskFilter(): TaskFilterState {
         priorities: [...TASK_PRIORITY_FILTERS],
         due: 'any',
         groupBy: 'priority',
+        textFilter: '',
     }
 }
 

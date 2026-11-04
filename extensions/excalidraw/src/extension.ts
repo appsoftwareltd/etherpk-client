@@ -31,29 +31,14 @@
  */
 import './styles.css'
 
-import type { ExtensionContext, PublishedFence } from '@appsoftwareltd/etherpk-extension-api'
+import type { ExtensionContext } from '@appsoftwareltd/etherpk-extension-api'
 
-import { DRAWING_FENCE, drawingAlt, identifyDrawing, newDrawingText, readDrawing } from './format'
-import { loadExcalidraw } from './load'
+import { DRAWING_FENCE, identifyDrawing, newDrawingText } from './format'
+import { drawingPicture } from './published-picture'
 import { pastedDrawing } from './share-link'
 import { createDrawingWidget, imagesLeftOut } from './widget'
 
 export const INSERT_COMMAND = 'excalidraw.insert'
-
-/**
- * A drawing as a picture file, light, for a published site and for a quote of it, or null for a
- * drawing with nothing in it.
- */
-async function drawingPicture(body: readonly string[]): Promise<PublishedFence | null> {
-    const drawing = readDrawing(body)
-    if (drawing.elements.length === 0 && drawing.skeletons.length === 0) return null
-    const [{ drawingFile }, { convertSkeletons }] = await Promise.all([import('./picture'), import('./scene')])
-    const kit = await loadExcalidraw()
-    // Shapes written by hand are drawn too, converted as the document would convert them.
-    const elements = [...drawing.elements, ...convertSkeletons(kit, drawing.skeletons).elements]
-    const file = await drawingFile(kit, { header: drawing.header, elements })
-    return { kind: 'picture', type: 'image/svg+xml', bytes: file.bytes, width: file.width, height: file.height, alt: drawingAlt(elements) }
-}
 
 /** Whether the main pointer is a finger or a stylus (a tablet's), rather than a mouse or a trackpad. */
 function touchFirst(): boolean {

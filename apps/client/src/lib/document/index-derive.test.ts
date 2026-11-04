@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { ancestorChain, blockConceptChain, deriveDoc, deriveTitleLinks } from './index-derive'
+import { ancestorChain, blockConceptChain, deriveDoc, deriveTitleLinks, matchesTaskTextFilter, parseTaskTextFilter, taskTagsKey } from './index-derive'
 import { isScopedBy } from './wikilink/rename'
 
 describe('deriveDoc', () => {
@@ -56,6 +56,7 @@ describe('deriveDoc', () => {
             blockLocalId: 0,
             parentTaskLocalId: null,
             titleKey: 'fix the login redirect',
+            tagsKey: ' p1 w d-2026-09-15 ',
             done: false,
             // The stored text keeps its tags: the Tasks View strips them for display, and the
             // write-back's stale-line guard needs the line as authored.
@@ -301,5 +302,59 @@ describe('blockConceptChain', () => {
     it('finds nothing on a line outside every block, and only the ancestors\' links on a block with none of its own', () => {
         expect(blockConceptChain('- a\n\n- b', 1)).toEqual([])
         expect(blockConceptChain(text, 4)).toEqual([{ concept: 'Acme', depth: 1 }])
+    })
+})
+
+describe('a Task Text Filter', () => {
+    it('splits what is typed into words and tags, in any order', () => {
+        expect(parseTaskTextFilter('  Paint #Bug the #urgent gate ')).toEqual({ words: 'paint the gate', tags: ['bug', 'urgent'] })
+        expect(parseTaskTextFilter('#bug')).toEqual({ words: '', tags: ['bug'] })
+        expect(parseTaskTextFilter('GATE')).toEqual({ words: 'gate', tags: [] })
+    })
+
+    it('reads the shape of a Task Tag as a tag, dates included', () => {
+        expect(parseTaskTextFilter('#P1 #D-2026-11-04')).toEqual({ words: '', tags: ['p1', 'd-2026-11-04'] })
+    })
+
+    it('leaves as words what no tag can be: a number, a hash inside a word, and a stray hyphen', () => {
+        expect(parseTaskTextFilter('#123')).toEqual({ words: '#123', tags: [] })
+        expect(parseTaskTextFilter('c# item#4')).toEqual({ words: 'c# item#4', tags: [] })
+        expect(parseTaskTextFilter('#bug-')).toEqual({ words: '#bug-', tags: [] })
+    })
+
+    it('takes a hash on its own as a tag not yet typed, which asks for nothing', () => {
+        expect(parseTaskTextFilter('#')).toBeNull()
+        expect(parseTaskTextFilter('gate #')).toEqual({ words: 'gate', tags: [] })
+    })
+
+    it('is null when nothing is asked', () => {
+        expect(parseTaskTextFilter('')).toBeNull()
+        expect(parseTaskTextFilter('   ')).toBeNull()
+    })
+
+    it('tells whether a task passes, as the query does', () => {
+        const passes = (typed: string, label: string) => matchesTaskTextFilter(parseTaskTextFilter(typed)!, label)
+        expect(passes('gate', '#P1 Paint the Gate #bug')).toBe(true)
+        expect(passes('bug', '#P1 Paint the Gate #bug')).toBe(false)
+        expect(passes('#bug', '#P1 Paint the Gate #bug')).toBe(true)
+        expect(passes('#p1', '#P1 Paint the Gate #bug')).toBe(true)
+        expect(passes('#bu', '#P1 Paint the Gate #bug')).toBe(false)
+        expect(passes('gate #bug', '#P1 Paint the Gate #bug')).toBe(true)
+        expect(passes('gate #urgent', '#P1 Paint the Gate #bug')).toBe(false)
+        expect(passes('hinge #bug', '#P1 Paint the Gate #bug')).toBe(false)
+    })
+})
+
+describe('taskTagsKey', () => {
+    it('holds each tag on the line, lower-cased and marked off by spaces', () => {
+        expect(taskTagsKey('#P1 #W Paint the Gate #Bug #urgent')).toBe(' p1 w bug urgent ')
+    })
+
+    it('is empty for a task with no tags', () => {
+        expect(taskTagsKey('Paint the gate')).toBe('')
+    })
+
+    it('holds a Free Tag on a task with no other words', () => {
+        expect(taskTagsKey('#bug')).toBe(' bug ')
     })
 })

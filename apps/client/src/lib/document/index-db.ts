@@ -23,7 +23,8 @@ import {
     type MapItemRow,
     type TaskConceptRow,
     type TaskRow,
-    taskTitleSearchKey,
+    parseTaskTextFilter,
+    taskTagNeedle,
 } from './index-derive'
 import type { IndexProperty } from './properties'
 import type { TaskStatus } from './task-tags'
@@ -172,9 +173,9 @@ export interface SqlDb {
  * [[Free Tag]], and reads Task Tags past a Free Tag in the leading run (ADR 0166). 19 adds
  * `tasks.test` and `tasks.archived`, the `#T` and `#A` states (ADR 0167). 20 adds
  * `tasks.parent_task_local_id`, a task's [[Parent Task]] (ADR 0174). 21 adds `tasks.title_key`, what
- * a [[Lane Filter]] searches.
+ * a [[Lane Filter]] searches. 22 adds `tasks.tags_key`, the tags a [[Task Text Filter]] searches.
  */
-export const INDEX_SCHEMA_VERSION = 21
+export const INDEX_SCHEMA_VERSION = 22
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS index_metadata (
@@ -214,12 +215,14 @@ CREATE TABLE IF NOT EXISTS tasks (
   priority INTEGER, waiting INTEGER NOT NULL DEFAULT 0, doing INTEGER NOT NULL DEFAULT 0,
   test INTEGER NOT NULL DEFAULT 0, cancelled INTEGER NOT NULL DEFAULT 0,
   archived INTEGER NOT NULL DEFAULT 0, due TEXT, completion TEXT, scheduled TEXT,
-  free_tag TEXT, parent_task_local_id INTEGER, title_key TEXT NOT NULL DEFAULT '');
+  free_tag TEXT, parent_task_local_id INTEGER, title_key TEXT NOT NULL DEFAULT '',
+  tags_key TEXT NOT NULL DEFAULT '');
 -- free_tag is the task's first [[Free Tag]], lower-cased, or NULL: what a [[Kanban Board]] section
 -- orders by first (ADR 0166). parent_task_local_id is the block of the task's [[Parent Task]], or
 -- NULL: a column, because which [[Subtask]]s leave a board has to be decided in the WHERE clause
--- for its counts and paging to be right (ADR 0174). title_key is the task's words, lower-cased, for a
--- [[Lane Filter]], which is in the WHERE clause for the same reason.
+-- for its counts and paging to be right (ADR 0174). title_key is the task's words and tags_key its
+-- tags, lower-cased, for a [[Task Text Filter]], which is in the WHERE clause for the same reason.
+-- free_tag alone would not do: it holds a task's first Free Tag, and a filter reads them all.
 -- [[Task Concept]] (ADR 0051): one row per (task, concept it answers to). Concepts are stored
 -- AS WRITTEN and pooled over [[Alias]]es at query time, exactly as backlinksFor does — baking
 -- the canonical name in would go stale the moment a page is renamed.
@@ -496,8 +499,8 @@ function insertDerived(db: SqlDb, pageId: number, doc: IndexDoc): string[] {
     for (const t of tasks) {
         db.run(
             `INSERT INTO tasks (page_id, block_local_id, done, text, line,
-                                priority, waiting, doing, test, cancelled, archived, due, completion, scheduled, free_tag, parent_task_local_id, title_key)
-             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+                                priority, waiting, doing, test, cancelled, archived, due, completion, scheduled, free_tag, parent_task_local_id, title_key, tags_key)
+             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
             [
                 pageId,
                 t.blockLocalId,
@@ -517,6 +520,7 @@ function insertDerived(db: SqlDb, pageId: number, doc: IndexDoc): string[] {
                 t.freeTag,
                 t.parentTaskLocalId,
                 t.titleKey,
+                t.tagsKey,
             ],
         )
     }
@@ -2011,10 +2015,11 @@ export interface TaskQuery {
      */
     asBoard?: boolean
     /**
-     * Only tasks whose title holds this text: a [[Lane Filter]]. Ignores case and the space around
-     * it, and takes the text literally. Nothing but spaces filters nothing.
+     * A [[Task Text Filter]], as typed: only tasks whose title holds its words and that carry each
+     * of its `#tags`. Ignores case and the space around it, and takes the words literally. Nothing
+     * but spaces filters nothing.
      */
-    titleContains?: string
+    textFilter?: string
     /**
      * Today as `YYYY-MM-DD`, supplied by the caller rather than read from the clock here.
      * The query then stays a pure function of its inputs - which is what makes the date
@@ -2207,10 +2212,13 @@ function dueClause(window: TaskDueWindow, today: string): SqlClause | null {
     return { sql: '(t.due IS NOT NULL AND t.due >= ? AND t.due <= ?)', params: [today, addDays(today, 7)] }
 }
 
-/** The tasks whose title holds `typed`, or null when it asks for nothing. `instr`, not LIKE, so % and _ are plain. */
-function titleClause(typed: string | undefined): SqlClause | null {
-    const key = taskTitleSearchKey(typed ?? '')
-    return key === '' ? null : { sql: 'instr(t.title_key, ?) > 0', params: [key] }
+/** The tasks a [[Task Text Filter]] lets through, or null when it asks for nothing. `instr`, not LIKE, so % and _ are plain. */
+function textFilterClause(typed: string | undefined): SqlClause | null {
+    const filter = parseTaskTextFilter(typed ?? '')
+    if (filter === null) return null
+    const parts = filter.tags.map((tag) => ({ sql: 'instr(t.tags_key, ?) > 0', param: taskTagNeedle(tag) }))
+    if (filter.words !== '') parts.push({ sql: 'instr(t.title_key, ?) > 0', param: filter.words })
+    return { sql: parts.map((part) => part.sql).join(' AND '), params: parts.map((part) => part.param) }
 }
 
 /**
@@ -2243,7 +2251,7 @@ function taskPredicate(db: SqlDb, query: TaskQuery): { where: string; params: un
         where.push(`(${query.statuses.map((s) => STATUS_SQL[s]).join(' OR ')})`)
     }
 
-    for (const clause of [priorityClause(query.priorities), dueClause(query.due, query.today), titleClause(query.titleContains)]) {
+    for (const clause of [priorityClause(query.priorities), dueClause(query.due, query.today), textFilterClause(query.textFilter)]) {
         if (clause === null) continue
         where.push(clause.sql)
         params.push(...clause.params)

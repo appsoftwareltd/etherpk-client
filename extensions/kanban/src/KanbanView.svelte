@@ -20,8 +20,8 @@
 
     import { conceptKey, getActiveGraphIndex, type TaskStatus, taskDateKey } from "#lib/document/backlinks/index.js";
     import { openConceptAtLine } from "#lib/document/open-concept.js";
-    import { createSettleScheduler } from "#lib/document/settle-scheduler.js";
-    import { bulletLabel, taskTitleSearchKey } from "#lib/document/index-derive.js";
+    import { createSettleScheduler, TASK_TEXT_FILTER_SETTLE } from "#lib/document/settle-scheduler.js";
+    import { bulletLabel, parseTaskTextFilter } from "#lib/document/index-derive.js";
     import { findIndexedTask, isTaskLine, type TaskChanges, type TaskWrite, type TaskWriteOutcome, undoTaskWrite, writeTaskChanges } from "#lib/document/task-write.js";
     import type { DocumentStore } from "#lib/document/types.js";
     import { TASK_COPY_LANE_REFERENCE, TASK_COPY_REFERENCE } from "#lib/document/commands/task-reference-commands.js";
@@ -191,7 +191,7 @@
             const next = await readBoard(index, concept, taskDateKey(new Date()), {
                 countOnly: new Set(collapsed),
                 limitFor: (cell) => limits.get(cellId(cell)),
-                titleFilterFor: (status) => laneFilters.get(status),
+                textFilterFor: (status) => laneFilters.get(status),
             });
             if (ticket !== wanted) return;
             board = next;
@@ -227,7 +227,7 @@
     }
 
     /** A read per pause in typing into a Lane Filter, the previous cards staying until it lands. */
-    const filterSettled = createSettleScheduler(() => void load(), { settleMs: 150, maxWaitMs: 500 });
+    const filterSettled = createSettleScheduler(() => void load(), TASK_TEXT_FILTER_SETTLE);
 
     function withoutLaneFilter(status: TaskStatus): ReadonlyMap<TaskStatus, string> {
         const next = new Map(laneFilters);
@@ -328,7 +328,7 @@
         if (to.status === "archived") return false;
         if (source === "pointer") return !(await landedInView(card.key, to.status));
         // What is typed, not the read's: the read of a filter typed a moment ago may not have landed.
-        return !passesFilter({ filter: taskTitleSearchKey(laneFilters.get(to.status) ?? "") || null }, card);
+        return !passesFilter({ filter: parseTaskTextFilter(laneFilters.get(to.status) ?? "") }, card);
     }
 
     /**
@@ -836,7 +836,7 @@
         cascade = { text: `Moving the tasks in ${statusLabel(from)} to ${statusLabel(to)}…`, entry: null };
         try {
             // Today is read now, not at mount: a board is left open for days.
-            const hits = await laneTasks(index, concept, from, taskDateKey(new Date()), { titleContains: laneFilters.get(from) });
+            const hits = await laneTasks(index, concept, from, taskDateKey(new Date()), { textFilter: laneFilters.get(from) });
             const moved = await moveTasks(
                 store,
                 hits.map((hit) => ({ concept: hit.concept, line: hit.line, text: hit.text })),
@@ -1280,6 +1280,39 @@
     });
 </script>
 
+<!-- A line saying what the board did. It floats over the foot of the lanes, above the Task Detail
+     when that is open, rather than taking a row above them, so appearing never pushes the cards
+     down under the pointer, and it stands clear of the edge below it. It is drawn in the theme's own
+     surface and text, so it reads as part of the board in either theme rather than as an alert. -->
+{#snippet statusLine(testid: string, text: string, undo: (() => unknown) | null, dismiss: () => void)}
+    <div
+        role="status"
+        class="absolute inset-x-3 z-10 mx-auto flex w-fit items-center gap-3 rounded-lg border border-(--gk-border-soft) bg-(--gk-surface-2) px-3 py-2 text-sm text-(--gk-text-default) shadow-lg"
+        style:bottom={detail === null ? "1.5rem" : `calc(${detailHeight * 100}% + 0.5rem + 1.5rem)`}
+        data-testid={testid}
+    >
+        <span class="min-w-0 flex-1">{text}</span>
+        {#if undo}
+            <button
+                type="button"
+                onclick={() => void undo()}
+                class="shrink-0 rounded-md border border-(--gk-control-border) px-2 py-1 font-medium hover:bg-(--gk-surface-0)"
+                data-testid="{testid}-undo"
+            >
+                Undo
+            </button>
+        {/if}
+        <button
+            type="button"
+            onclick={dismiss}
+            class="shrink-0 rounded-md border border-(--gk-control-border) px-2 py-1 font-medium hover:bg-(--gk-surface-0)"
+            data-testid="{testid}-dismiss"
+        >
+            Dismiss
+        </button>
+    </div>
+{/snippet}
+
 <!-- A reload or a closed window unmounts nothing, so the remembered lanes are written as the page goes. -->
 <svelte:window onkeydown={onWindowKeydown} onpagehide={() => boardState.flush()} />
 
@@ -1321,66 +1354,12 @@
                 </button>
             </div>
         {/if}
+        <!-- What the last move did, with Undo, or a task the Task Editor deleted, where a move's
+             line, when there is one, is the one shown. -->
         {#if cascade}
-            <!-- What the last move did, with Undo. It floats over the foot of the lanes, above the
-                 Task Detail when that is open, rather than taking a row above them, so appearing
-                 never pushes the cards down under the pointer. Its tint is translucent, so it has
-                 the board's surface under it and the cards it covers do not show through. -->
-            <div
-                role="status"
-                class="absolute inset-x-3 z-10 mx-auto flex w-fit items-center gap-3 rounded-lg border border-(--gk-border-soft) bg-(--gk-surface-0) bg-linear-to-r from-(--gk-info-surface) to-(--gk-info-surface) px-3 py-2 text-sm text-(--gk-text-default) shadow-lg"
-                style:bottom={detail === null ? "0.75rem" : `calc(${detailHeight * 100}% + 0.5rem + 0.75rem)`}
-                data-testid="kanban-cascade"
-            >
-                <span class="min-w-0 flex-1">{cascade.text}</span>
-                {#if cascade.entry}
-                    <button
-                        type="button"
-                        onclick={() => void undoCascade()}
-                        class="shrink-0 rounded-md border border-(--gk-control-border) px-2 py-1 font-medium hover:bg-(--gk-surface-0)"
-                        data-testid="kanban-cascade-undo"
-                    >
-                        Undo
-                    </button>
-                {/if}
-                <button
-                    type="button"
-                    onclick={() => (cascade = null)}
-                    class="shrink-0 rounded-md border border-(--gk-control-border) px-2 py-1 font-medium hover:bg-(--gk-surface-0)"
-                    data-testid="kanban-cascade-dismiss"
-                >
-                    Dismiss
-                </button>
-            </div>
+            {@render statusLine("kanban-cascade", cascade.text, cascade.entry ? undoCascade : null, () => (cascade = null))}
         {:else if deleted}
-            <!-- A task the Task Editor deleted, with Undo: where the last move's line floats, so a
-                 move's line, when there is one, is the one shown. -->
-            <div
-                role="status"
-                class="absolute inset-x-3 z-10 mx-auto flex w-fit items-center gap-3 rounded-lg border border-(--gk-border-soft) bg-(--gk-surface-0) bg-linear-to-r from-(--gk-info-surface) to-(--gk-info-surface) px-3 py-2 text-sm text-(--gk-text-default) shadow-lg"
-                style:bottom={detail === null ? "0.75rem" : `calc(${detailHeight * 100}% + 0.5rem + 0.75rem)`}
-                data-testid="kanban-deleted"
-            >
-                <span class="min-w-0 flex-1">{deleted.text}</span>
-                {#if deleted.removed}
-                    <button
-                        type="button"
-                        onclick={() => void undoDelete()}
-                        class="shrink-0 rounded-md border border-(--gk-control-border) px-2 py-1 font-medium hover:bg-(--gk-surface-0)"
-                        data-testid="kanban-deleted-undo"
-                    >
-                        Undo
-                    </button>
-                {/if}
-                <button
-                    type="button"
-                    onclick={() => (deleted = null)}
-                    class="shrink-0 rounded-md border border-(--gk-control-border) px-2 py-1 font-medium hover:bg-(--gk-surface-0)"
-                    data-testid="kanban-deleted-dismiss"
-                >
-                    Dismiss
-                </button>
-            </div>
+            {@render statusLine("kanban-deleted", deleted.text, deleted.removed ? undoDelete : null, () => (deleted = null))}
         {/if}
         {#if notice}
             <div
@@ -1486,20 +1465,23 @@
                             data-testid="kanban-lane-header"
                             {@attach (node) => attachContextMenu(node, () => laneTarget(lane))}
                         >
-                            <h2 id="{uid}-{lane.status}" class="m-0 text-sm font-semibold text-(--gk-text-strong)" data-testid="kanban-lane-label">
-                                {lane.label}
-                            </h2>
-                            <span class="flex items-center gap-1">
+                            <!-- The count follows the name, where its subtler text tells the two apart. -->
+                            <span class="flex min-w-0 items-baseline gap-2">
+                                <h2 id="{uid}-{lane.status}" class="m-0 text-sm font-semibold text-(--gk-text-strong)" data-testid="kanban-lane-label">
+                                    {lane.label}
+                                </h2>
                                 {#if shown !== null}
-                                    <span class="text-sm text-(--gk-text-subtle)" data-testid="kanban-lane-count">{lane.filter === null ? lane.total : `${lane.total} of ${lane.unfiltered}`}</span>
+                                    <span class="text-sm whitespace-nowrap text-(--gk-text-subtle)" data-testid="kanban-lane-count">{lane.filter === null ? lane.total : `${lane.total} of ${lane.unfiltered}`}</span>
                                 {/if}
+                            </span>
+                            <span class="flex shrink-0 items-center gap-1">
                                 <button
                                     type="button"
                                     onclick={() => toggleLaneFilter(lane.status)}
                                     class="gk-icon-button"
-                                    aria-label="Filter the {lane.label} lane by title"
+                                    aria-label="Filter the {lane.label} lane by title or tag"
                                     aria-expanded={laneFilters.has(lane.status)}
-                                    title="Filter the {lane.label} lane by title"
+                                    title="Filter the {lane.label} lane by title or tag"
                                     data-testid="kanban-lane-filter-toggle"
                                 >
                                     <!-- In-repo constant markup from the icon table, never user content. -->
@@ -1541,8 +1523,8 @@
                                     type="text"
                                     class="gk-input min-w-0 flex-1"
                                     value={laneFilters.get(lane.status)}
-                                    placeholder="Filter by title…"
-                                    aria-label="Filter the {lane.label} lane by title"
+                                    placeholder="Task title / #tag"
+                                    aria-label="Filter the {lane.label} lane by title or tag"
                                     data-testid="kanban-lane-filter-input"
                                     oninput={(event) => onLaneFilterInput(lane.status, event.currentTarget.value)}
                                     onkeydown={(event) => {
@@ -1569,7 +1551,7 @@
                         <div class="flex min-h-0 flex-1 flex-col overflow-y-auto px-2 pb-2" data-kanban-lane-body>
                             {#if lane.filter !== null && lane.total === 0}
                                 <p class="m-0 px-1 pt-2 text-sm wrap-anywhere text-(--gk-text-subtle)" data-testid="kanban-lane-filter-empty">
-                                    No task titles in {lane.label} contain "{laneFilters.get(lane.status)?.trim()}". {lane.unfiltered === 1 ? "1 task is" : `${lane.unfiltered} tasks are`} hidden.
+                                    No tasks in {lane.label} match "{laneFilters.get(lane.status)?.trim()}". {lane.unfiltered === 1 ? "1 task is" : `${lane.unfiltered} tasks are`} hidden.
                                 </p>
                             {/if}
                             {#if empty && lane.status === emptyNoticeLane}

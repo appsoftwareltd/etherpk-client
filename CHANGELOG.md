@@ -5,6 +5,31 @@ What changed in each release of the EtherPK Client and the Headless Client
 They are released together, under the version number they share with the Sync Server. This log
 starts at 0.9.3.
 
+## 0.18.4 - 2026-11-04
+
+### Client
+
+- **Filter tasks by tag as well as by text.** A Kanban lane's filter now reads a `#tag` as well as
+  words, so `gate #bug` shows the tasks with `gate` in the title that carry `#bug`. Case is ignored
+  and a tag must match whole. The Tasks View has the same filter, in a new **Task text / tag** box
+  under its other controls, and lists a subtask by its own text and tags. Both wait for a pause in
+  typing before they update. Each graph rebuilds its search index the first time it opens after
+  updating.
+- **Kanban lane headers show the count beside the name**, such as `Open 7`, instead of beside the
+  buttons.
+- **The Kanban board's moved and deleted notices follow the theme.** They use the theme's own surface
+  rather than a blue tint, and sit further up from the bottom of the board.
+- **Fixes.**
+  - A copied task reference keeps a tag written in the task's sentence, so `e.g. #bug.` no longer reads
+    `e.g..` in the copied text.
+
+### Headless Client
+
+- **A publish draws Excalidraw drawings.** A site published from the Headless Client now shows each
+  drawing as a picture, as one published from the browser does, instead of leaving it out. A publish
+  that includes drawings needs a browser, so it is refused until `diagrams setup` has run or
+  `ETHERPK_CHROMIUM` names one. The npm package is about 15 MB larger, for Excalidraw and its fonts.
+
 ## 0.18.3 - 2026-11-04
 
 ### Client

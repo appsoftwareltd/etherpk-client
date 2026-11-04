@@ -15,7 +15,7 @@ import { extensionFences } from './extension-fence'
 import { codeLineText, fenceLineInfo, fencedBlocks, fencedBlockTree } from './fenced-code'
 import { MAP_FENCE_INFO, readMapBody } from './map-text'
 import { containsCipherFence } from './protection/fence-info'
-import { freeTagsIn, parseTaskTags, taskDisplay, type TaskPriority } from './task-tags'
+import { freeTagsIn, parseTaskTags, taskDisplay, type TaskPriority, taskTagTokens } from './task-tags'
 import { wikilinkOccurrencesInSource } from './wikilink'
 
 export interface BlockRow {
@@ -63,22 +63,65 @@ export interface TaskRow {
     freeTag: string | null
     /** The block of the task's [[Parent Task]], or null when no task is above it (ADR 0174). */
     parentTaskLocalId: number | null
-    /** The task's words as a [[Lane Filter]] reads them ({@link taskTitleKey}). */
+    /** The task's words as a [[Task Text Filter]] reads them ({@link taskTitleKey}). */
     titleKey: string
+    /** The task's tags as a [[Task Text Filter]] reads them ({@link taskTagsKey}). */
+    tagsKey: string
 }
 
 /**
- * A task's title as a [[Lane Filter]] matches it: the words a [[Kanban Board]] card shows, without
- * the task's [[Task Tag]] run or [[Free Tag]]s, folded in JS so that case is ignored beyond the
- * ASCII that SQLite's own LIKE folds.
+ * A task's title as a [[Task Text Filter]] matches it: the words a [[Kanban Board]] card shows,
+ * without the task's [[Task Tag]] run or [[Free Tag]]s, folded in JS so that case is ignored beyond
+ * the ASCII that SQLite's own LIKE folds.
  */
 export function taskTitleKey(label: string): string {
     return taskDisplay(label).text.toLowerCase()
 }
 
-/** What a person typed into a [[Lane Filter]], as {@link taskTitleKey} is searched for it. */
-export function taskTitleSearchKey(typed: string): string {
-    return typed.trim().toLowerCase()
+/**
+ * A task's tags as a [[Task Text Filter]] matches them: every [[Task Tag]] in its leading run and
+ * every [[Free Tag]] on its line, lower-cased, each with a space either side. No tag holds a space,
+ * so {@link taskTagNeedle} finds a tag whole, and `#bug` is not found in `#bugfix`.
+ */
+export function taskTagsKey(label: string): string {
+    const tags = [...taskTagTokens(label).map((token) => token.slice(1)), ...freeTagsIn(parseTaskTags(label).text)]
+    return tags.length === 0 ? '' : ` ${tags.join(' ').toLowerCase()} `
+}
+
+/** What {@link taskTagsKey} is searched for, for a tag out of a {@link TaskTextFilter}. */
+export function taskTagNeedle(tag: string): string {
+    return ` ${tag} `
+}
+
+/** What a [[Task Text Filter]] asks of a task, both parts at once and all of it lower-cased. */
+export interface TaskTextFilter {
+    /** What the title has to hold, or empty for any title. */
+    words: string
+    /** The tags, without their `#`, that the task has to carry every one of. */
+    tags: string[]
+}
+
+/** A tag as it is typed into a filter: what a Free Tag or a Task Tag could be, letter included. */
+const TYPED_TAG = /^#(?=[a-z0-9-]*[a-z])[a-z0-9]+(?:-[a-z0-9]+)*$/
+
+/**
+ * What a person typed into a [[Task Text Filter]], or null when it asks for nothing. A whitespace-
+ * separated `#word` is a tag and the rest are the words, in the order typed. A `#` on its own is a
+ * tag still being typed, so it narrows nothing yet: the list does not empty on the way to `#bug`.
+ * Hash text no tag can be (`#123`, `c#`) stays in the words, as a title can hold it.
+ */
+export function parseTaskTextFilter(typed: string): TaskTextFilter | null {
+    const tokens = typed.trim().toLowerCase().split(/\s+/).filter((token) => token !== '' && token !== '#')
+    const tags = tokens.filter((token) => TYPED_TAG.test(token))
+    const words = tokens.filter((token) => !TYPED_TAG.test(token)).join(' ')
+    return words === '' && tags.length === 0 ? null : { words, tags: tags.map((tag) => tag.slice(1)) }
+}
+
+/** Whether the task with `label` passes `filter`: the index's query, for a card it has yet to read. */
+export function matchesTaskTextFilter(filter: TaskTextFilter, label: string): boolean {
+    if (!taskTitleKey(label).includes(filter.words)) return false
+    const tags = taskTagsKey(label)
+    return filter.tags.every((tag) => tags.includes(taskTagNeedle(tag)))
 }
 
 /**
@@ -298,6 +341,7 @@ export function deriveDoc(text: string, options: DeriveOptions = {}): DerivedRow
             freeTag: freeTagsIn(tags.text)[0]?.toLowerCase() ?? null,
             parentTaskLocalId: nearestTaskAbove(blocks, taskIds, b),
             titleKey: taskTitleKey(b.label),
+            tagsKey: taskTagsKey(b.label),
         }
     })
 

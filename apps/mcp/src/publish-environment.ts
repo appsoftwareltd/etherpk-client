@@ -1,7 +1,7 @@
 /**
  * The publisher's environment in Node (ADR 0082, ADR 0084): themes resolved the way the Client
  * resolves them (bundled, the graph's own, a url), KaTeX's stylesheet and fonts read from the
- * package this depends on, Mermaid and map pictures through a real browser when one is available,
+ * package this depends on, Mermaid, map and drawing pictures through a real browser when one is available,
  * and a site folder over `fs` under the same rules as the browser's directory handle. Browser-free
  * counterpart of `host/browser-environment.ts`; the core is shared.
  */
@@ -15,7 +15,10 @@ import type { SiteFolder } from '#lib/document/publish/host/site-writer.js'
 import type { GraphTheme } from '#lib/document/publish/theme/graph-theme.js'
 import { createThemeLoader } from '#lib/document/publish/theme/sources.js'
 
+import { DRAWING_FENCE } from '@appsoftwareltd/etherpk-extension-excalidraw/format'
+
 import type { DiagramRenderer } from './diagrams'
+import type { DrawingRenderer } from './drawing-pictures'
 import type { MapPictureRenderer } from './map-pictures'
 import { fetchPublicText } from './public-fetch'
 
@@ -53,6 +56,8 @@ export interface NodeEnvironmentDeps {
     renderer?: DiagramRenderer | null
     /** A browser to draw map pictures with; absent, a publication holding a map stops (ADR 0118). */
     maps?: MapPictureRenderer | null
+    /** A browser to draw drawings with; absent, a drawing fence is left out as any Extension Fence is. */
+    drawings?: DrawingRenderer | null
 }
 
 export function createNodePublishEnvironment(deps: NodeEnvironmentDeps): PublishEnvironment {
@@ -61,6 +66,9 @@ export function createNodePublishEnvironment(deps: NodeEnvironmentDeps): Publish
         loadTheme: createThemeLoader({ fetchText, graphTheme: deps.graphTheme }),
         ...(renderer ? { renderMermaid: (source: string) => renderer.render(source) } : {}),
         ...(deps.maps ? { renderMap: (source: string) => deps.maps!.render(source) } : {}),
+        // Only drawings, of all the Extension Fences: no extension runs here, and this is the
+        // Excalidraw extension's own drawing code in a page of the package's own (ADR 0175).
+        publishFence: (fence) => (fence.info === DRAWING_FENCE ? deps.drawings?.render(fence.body) : undefined),
         katexAssets,
     }
 }

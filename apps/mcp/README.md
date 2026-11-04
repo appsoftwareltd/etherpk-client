@@ -181,10 +181,11 @@ npx @appsoftwareltd/etherpk-mcp publish --graph <id or name> --publication <id> 
   with the names of the pages it mentions, without writing anything. It needs no folder. Keep its
   output out of public logs. The agent's `publish` tool takes `dryRun: true` for the same check.
 - Deploying the folder is up to you. Run the command from cron for a site that republishes itself.
-- Mermaid diagrams and maps need a browser. A map is published as a picture of the map, drawn over
-  EtherPK's map host unless `ETHERPK_MAP_STYLE_URL` names another style. `diagrams setup` installs a
-  Chromium of about 170 MB into the cache directory, once per computer, and a publish whose pages
-  hold diagrams or maps refuses until then. `ETHERPK_CHROMIUM` names a Chromium already on the
+- Mermaid diagrams, maps and Excalidraw drawings need a browser. A map is published as a picture of
+  the map, drawn over EtherPK's map host unless `ETHERPK_MAP_STYLE_URL` names another style, and a
+  drawing as a picture with its fonts inside it. `diagrams setup` installs a Chromium of about 170 MB
+  into the cache directory, once per computer, and a publish whose pages hold any of them refuses
+  until then. `ETHERPK_CHROMIUM` names a Chromium already on the
   computer instead, which NixOS needs.
 - `list_publications`, or **Settings → Publish** in EtherPK, shows the publication ids.
 
@@ -235,7 +236,7 @@ install the package globally once with `npm install -g @appsoftwareltd/etherpk-m
 | `semantic status` | Whether semantic search is set up, and each cached graph's embedding progress. |
 | `semantic remove` | Delete the runtime and model. Stored embeddings stay, and are reused if you set up again. |
 | `publish (--graph <id or name> \| --folder <path>) --publication <id> [--out <dir> \| --github <owner/name[#branch]> \| --dry-run] [--replace]` | Publish one publication of a graph to a folder, or as a commit to a GitHub repository, and print the report. |
-| `diagrams setup` | Install a Chromium into the cache directory, so a publish can draw Mermaid diagrams and maps. |
+| `diagrams setup` | Install a Chromium into the cache directory, so a publish can draw Mermaid diagrams, maps and drawings. |
 | `diagrams status` | Which browser a publish would use, if any. |
 
 ### Flags
@@ -273,7 +274,7 @@ because the agent starts `serve` with its own environment.
 | `ETHERPK_GITHUB_API_URL` | GitHub Enterprise Server's API (`https://<host>/api/v3`) in place of github.com's. |
 | `ETHERPK_MCP_SEMANTIC_THREADS` | Threads for the embedding model. Default a quarter of the cores, at most four. |
 | `ETHERPK_MCP_HOST_IDLE_SECONDS` | How long a graph's background process stays after its last agent has gone. Default 300. |
-| `ETHERPK_CHROMIUM` | A Chromium on this computer for drawing diagrams and maps, instead of the one `diagrams setup` installs. |
+| `ETHERPK_CHROMIUM` | A Chromium on this computer for drawing diagrams, maps and drawings, instead of the one `diagrams setup` installs. |
 | `ETHERPK_MAP_STYLE_URL` | The MapLibre style a published map's picture is drawn over. Default EtherPK's map host; empty draws maps on a plain background. |
 | `PLAYWRIGHT_BROWSERS_PATH` | Where `diagrams setup` installs Chromium and a publish looks for it. Default `browsers/` in the cache directory. |
 | `ETHERPK_MCP_DEBUG_MEMORY` | `1` logs the process's memory use every 10 seconds and with every progress line. |

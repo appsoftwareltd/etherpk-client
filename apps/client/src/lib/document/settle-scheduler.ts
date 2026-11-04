@@ -28,6 +28,12 @@ export interface SettleOptions {
     maxWaitMs: number
 }
 
+/**
+ * How a [[Task Text Filter]] waits for typing: long enough that the list holds still between the
+ * keys of a word, with a cap that still answers someone who types on without a pause.
+ */
+export const TASK_TEXT_FILTER_SETTLE: SettleOptions = { settleMs: 500, maxWaitMs: 2000 }
+
 export function createSettleScheduler(run: () => void, options: SettleOptions): SettleScheduler {
     let timer: ReturnType<typeof setTimeout> | undefined
     /** When the first signal of the current burst arrived — the cap is measured from here. */

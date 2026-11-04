@@ -19,6 +19,8 @@ const bundled = new Set([
     '@appsoftwareltd/etherpk-extension-graph-view',
     // The maps extension's `/picture`, for the basemap a published map is drawn over (ADR 0118).
     '@appsoftwareltd/etherpk-extension-maps',
+    // The Excalidraw extension's `/format`, for the name of the fence a publish draws (ADR 0175).
+    '@appsoftwareltd/etherpk-extension-excalidraw',
 ])
 /** A bundled package, or one of its entry points (`@appsoftwareltd/etherpk-extension-graph-view/model`). */
 const isBundled = (id: string) => [...bundled].some((name) => id === name || id.startsWith(`${name}/`))

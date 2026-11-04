@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
+import { parseTaskTextFilter } from '#lib/document/index-derive.js'
+
 import {
     BOARD_LANES,
     BOARD_SECTIONS,
@@ -251,9 +253,9 @@ describe('taskDetailCard', () => {
 })
 
 describe('a move into a lane with a title filter', () => {
-    const filtered = (snapshot: BoardSnapshot, status: string, filter: string, unfiltered: number): BoardSnapshot => ({
+    const filtered = (snapshot: BoardSnapshot, status: string, typed: string, unfiltered: number): BoardSnapshot => ({
         ...snapshot,
-        lanes: snapshot.lanes.map((lane) => (lane.status === status ? { ...lane, filter, unfiltered } : lane)),
+        lanes: snapshot.lanes.map((lane) => (lane.status === status ? { ...lane, filter: parseTaskTextFilter(typed), unfiltered } : lane)),
     })
     const quote = card('Send the quote')
     const before = filtered(board([['open', 1, [quote]]]), 'doing', 'quote', 3)
@@ -269,6 +271,14 @@ describe('a move into a lane with a title filter', () => {
         const shown = withPendingMoves(filtered(before, 'doing', 'invoice', 3), [move(quote, 'doing', 1, null)])
         expect(labelsAt(shown, 'doing', 1)).toEqual([])
         expect(shown.lanes[1]).toMatchObject({ total: 0, unfiltered: 4 })
+    })
+
+    it('reads a tag in the filter against the tags on the card', () => {
+        const tagged = card('Send the quote #bug')
+        const shown = withPendingMoves(filtered(before, 'doing', '#bug', 3), [move(tagged, 'doing', 1, null)])
+        expect(shown.lanes[1]).toMatchObject({ total: 1, unfiltered: 4 })
+        const hidden = withPendingMoves(filtered(before, 'doing', '#urgent', 3), [move(tagged, 'doing', 1, null)])
+        expect(hidden.lanes[1]).toMatchObject({ total: 0, unfiltered: 4 })
     })
 
     it('lets go of a move once the card has left the board, when the target lane hides it', () => {

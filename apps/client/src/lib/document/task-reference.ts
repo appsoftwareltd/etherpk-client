@@ -47,6 +47,15 @@ export function taskWords(label: string): string {
     return text.normalize('NFC').replace(/\s+/g, ' ').trim()
 }
 
+/**
+ * The task as the copied text shows it: the text after the tag run, whitespace collapsed, with its
+ * [[Free Tag]]s where they were written. A tag can be part of a sentence ("e.g. #bug."), which
+ * {@link taskWords} would leave reading "e.g..", and an agent reads this line as the request.
+ */
+function taskTextAsWritten(label: string): string {
+    return (parseTaskTags(label).text || label).normalize('NFC').replace(/\s+/g, ' ').trim()
+}
+
 /** The fingerprint of a task's words, from its label (tag run included or not). */
 export async function taskFingerprint(label: string): Promise<string> {
     const digest = await globalThis.crypto.subtle.digest('SHA-256', new TextEncoder().encode(taskWords(label)))
@@ -85,7 +94,7 @@ export function formatTaskReference(reference: TaskReference, label: string, con
     const server = context.graphName ? `"${context.graphName}"` : 'that graph'
     return [
         `EtherPK task from ${graph}`,
-        `Task: ${taskWords(label)}`,
+        `Task: ${taskTextAsWritten(label)}`,
         `Reference: ${taskReferenceId(reference)}`,
         `This is not a web address. Use the EtherPK MCP server connected to ${server}: read_task with this whole text to read the task and its detail, set_task if you are asked to change its status, add_task_note to record what you did.`,
     ].join('\n')

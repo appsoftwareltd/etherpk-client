@@ -30,6 +30,7 @@ import type { Publication, SiteBundle } from '#lib/document/publish/types.js'
 import { copyThemeForGraph, freeThemeId, summarisePublishing, updatePublicationPage } from '#lib/workspace/publish-service.js'
 
 import { chromiumStatus, launchChromium, openDiagramRenderer } from './diagrams'
+import { needsDrawings, openDrawingRenderer } from './drawing-pictures'
 import type { HeadlessGraph } from './headless-graph'
 import { FolderRefused, folderUnder, previewRequestAllowed } from './local-folders'
 import { createNodePublishEnvironment, needsMermaid, nodeSiteFolder } from './publish-environment'
@@ -428,8 +429,9 @@ export async function previewTheme(graph: HeadlessGraph, args: PreviewThemeArgs,
 
     const bodies = source.documents.map((d) => d.text)
     const renderer = needsMermaid(bodies) ? await openDiagramRenderer(env) : null
+    const drawings = needsDrawings(bodies) ? await openDrawingRenderer(env) : null
     try {
-        const environment = createNodePublishEnvironment({ graphTheme: (id) => graph.publishing.graphTheme(id), renderer })
+        const environment = createNodePublishEnvironment({ graphTheme: (id) => graph.publishing.graphTheme(id), renderer, drawings })
         const { bundle, report } = await publishPublication(source, publication, environment)
         const scratch = !args.out_dir?.trim()
         const folder = await toolFolder(graph, args.out_dir, join('previews', themeRef.replace(/[^A-Za-z0-9._-]/g, '_')))
@@ -455,6 +457,7 @@ export async function previewTheme(graph: HeadlessGraph, args: PreviewThemeArgs,
         }
     } finally {
         await renderer?.dispose()
+        await drawings?.dispose()
     }
 }
 

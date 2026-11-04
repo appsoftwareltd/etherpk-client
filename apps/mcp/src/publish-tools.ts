@@ -32,6 +32,7 @@ import {
 } from '#lib/workspace/publish-service.js'
 
 import { chromiumStatus, openDiagramRenderer } from './diagrams'
+import { needsDrawings, openDrawingRenderer } from './drawing-pictures'
 import { needsMaps, openMapRenderer } from './map-pictures'
 import type { HeadlessGraph } from './headless-graph'
 import { createNodePublishEnvironment, needsMermaid, nodeSiteFolder } from './publish-environment'
@@ -358,8 +359,21 @@ export async function publish(graph: HeadlessGraph, args: PublishArgs, host?: Pu
             )
         }
     }
+    let drawings = null
+    if (needsDrawings(bodies)) {
+        drawings = await openDrawingRenderer(env)
+        if (!drawings) {
+            await renderer?.dispose()
+            await maps?.dispose()
+            const status = await chromiumStatus(env, cmd)
+            throw new ToolError(
+                'chromium_unavailable',
+                `"${publication.name}" has drawings, which a publish draws as pictures with a browser, and none is set up on this computer. Ask the user to run: ${status.setupCommand} (or set ETHERPK_CHROMIUM to a Chromium on this machine). Nothing was published.`,
+            )
+        }
+    }
     try {
-        const environment = createNodePublishEnvironment({ graphTheme: (id) => graph.publishing.graphTheme(id), renderer, maps })
+        const environment = createNodePublishEnvironment({ graphTheme: (id) => graph.publishing.graphTheme(id), renderer, maps, drawings })
         const run = await runPublish(publication, { source, environment, unsettled, destination: repository ? 'repository' : 'folder' })
         let committed: RepositoryPublishResult | null = null
         if (run.report.ok && repository && !dryRun) {
@@ -414,6 +428,7 @@ export async function publish(graph: HeadlessGraph, args: PublishArgs, host?: Pu
     } finally {
         await renderer?.dispose()
         await maps?.dispose()
+        await drawings?.dispose()
     }
 }
 

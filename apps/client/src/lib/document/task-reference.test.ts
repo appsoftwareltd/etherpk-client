@@ -63,6 +63,13 @@ describe('the reference as copied', () => {
         )
     })
 
+    it('keeps a Free Tag in the words it shows, so a sentence still reads, and leaves it out of the fingerprint', async () => {
+        const label = '#P1 #D Filter by tag, e.g. #bug. Then stop'
+        expect(formatTaskReference(reference, label, { graphName: 'Work' }).split('\n')[1]).toBe('Task: Filter by tag, e.g. #bug. Then stop')
+        expect(taskWords(label)).toBe('Filter by tag, e.g.. Then stop')
+        expect(await taskFingerprint(label)).toBe(await taskFingerprint('Filter by tag, e.g.. Then stop'))
+    })
+
     it('names the graph by its id alone when it has no name', () => {
         const copied = formatTaskReference(reference, 'Send the quote', { graphName: null }).split('\n')
         expect(copied[0]).toBe('EtherPK task from the graph g-1')

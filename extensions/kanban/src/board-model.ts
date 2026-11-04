@@ -8,7 +8,7 @@
  * [[Derived Index]] reported.
  */
 import type { TaskHit, TaskPriorityFilter, TaskStatus, TaskSubtaskCount } from '#lib/document/index-db.js'
-import { bulletLabel, taskTitleKey } from '#lib/document/index-derive.js'
+import { bulletLabel, matchesTaskTextFilter, type TaskTextFilter } from '#lib/document/index-derive.js'
 import { freeTagsIn, parseTaskLine, parseTaskTags, taskDisplay } from '#lib/document/task-tags.js'
 
 /**
@@ -126,7 +126,7 @@ export interface BoardLane extends BoardLaneSpec {
      */
     loaded: boolean
     /** The lane's [[Lane Filter]] as it is searched for, or null when it shows all its tasks. `total` counts the matches. */
-    filter: string | null
+    filter: TaskTextFilter | null
     /** Every task in the lane, whatever its Lane Filter hides. */
     unfiltered: number
 }
@@ -222,7 +222,7 @@ export function withPendingMoves(board: BoardSnapshot, moves: readonly PendingMo
 
 /** Whether a lane's [[Lane Filter]] lets `card` through. */
 export function passesFilter(lane: Pick<BoardLane, 'filter'>, card: BoardCard): boolean {
-    return lane.filter === null || taskTitleKey(card.text).includes(lane.filter)
+    return lane.filter === null || matchesTaskTextFilter(lane.filter, card.text)
 }
 
 function laneWithMove(lane: BoardLane, move: PendingMove): BoardLane {

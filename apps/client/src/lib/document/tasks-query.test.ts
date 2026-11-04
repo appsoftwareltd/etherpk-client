@@ -5,6 +5,7 @@ import {
     createSchema,
     type IndexDoc,
     ingest,
+    ingestOne,
     OPEN_TASK_STATUSES,
     type SqlDb,
     TASK_PRIORITY_FILTERS,
@@ -500,8 +501,8 @@ describe('what a task hit says about what is around it (ADR 0174)', () => {
     })
 })
 
-describe('a title filter (titleContains)', () => {
-    const matching = (titleContains: string, overrides: Partial<TaskQuery> = {}) => texts(query({ titleContains, groupBy: 'document', ...overrides }))
+describe('a Task Text Filter (textFilter)', () => {
+    const matching = (textFilter: string, overrides: Partial<TaskQuery> = {}) => texts(query({ textFilter, groupBy: 'document', ...overrides }))
 
     beforeEach(() => {
         ingest(db, [page('Acme', ['- [ ] #P1 Paint the Gate #bug', '  - [ ] Buy the paint', '- [ ] Fix 100% of the hinges', '- [ ] Oil the gate_post', '- [ ] Sweep'].join('\n'))])
@@ -509,7 +510,7 @@ describe('a title filter (titleContains)', () => {
 
     it('matches the words of the task line, ignoring case and the space around what is typed', () => {
         expect(matching('  GATE ')).toEqual(['#P1 Paint the Gate #bug', 'Oil the gate_post'])
-        expect(tasksMatchingCount(db, query({ titleContains: 'gate' }))).toBe(2)
+        expect(tasksMatchingCount(db, query({ textFilter: 'gate' }))).toBe(2)
     })
 
     it('reads no tag as words: not the tag run, and not a Free Tag', () => {
@@ -529,5 +530,38 @@ describe('a title filter (titleContains)', () => {
 
     it('leaves every task in when nothing but spaces is typed', () => {
         expect(matching('   ')).toHaveLength(5)
+    })
+
+    it('reads a #word as a tag, ignoring case, wherever on the task line the tag is written', () => {
+        expect(matching('#BUG')).toEqual(['#P1 Paint the Gate #bug'])
+        expect(tasksMatchingCount(db, query({ textFilter: '#bug' }))).toBe(1)
+    })
+
+    it('matches a tag whole, so a tag is not found by the start of a longer one', () => {
+        ingestOne(db, page('Shed', '- [ ] Mend the roof #bugfix'))
+        expect(matching('#bug')).toEqual(['#P1 Paint the Gate #bug'])
+        expect(matching('#bu')).toEqual([])
+    })
+
+    it('finds every Free Tag on a task, not only the first', () => {
+        ingestOne(db, page('Shed', '- [ ] Mend the roof #urgent #bug'))
+        expect(matching('#bug')).toEqual(['#P1 Paint the Gate #bug', 'Mend the roof #urgent #bug'])
+    })
+
+    it('finds a Task Tag in the leading run as well as a Free Tag', () => {
+        expect(matching('#p1')).toEqual(['#P1 Paint the Gate #bug'])
+    })
+
+    it('asks for the words and every tag at once', () => {
+        ingestOne(db, page('Shed', ['- [ ] Paint the shed #bug #urgent', '- [ ] Paint the door #urgent', '- [ ] Mend the roof #bug'].join('\n')))
+        expect(matching('paint #bug')).toEqual(['#P1 Paint the Gate #bug', 'Paint the shed #bug #urgent'])
+        expect(matching('#bug paint')).toEqual(['#P1 Paint the Gate #bug', 'Paint the shed #bug #urgent'])
+        expect(matching('#bug #urgent')).toEqual(['Paint the shed #bug #urgent'])
+    })
+
+    it('lists a subtask on its own tag, since the list does not nest it, but a board reaches it through its parent', () => {
+        ingestOne(db, page('Shed', ['- [ ] Mend the roof', '  - [ ] Buy the nails #urgent'].join('\n')))
+        expect(matching('#urgent')).toEqual(['Buy the nails #urgent'])
+        expect(matching('#urgent', { asBoard: true })).toEqual([])
     })
 })

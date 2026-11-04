@@ -5,7 +5,8 @@
  * site, and themes fetched over the network. Browser-only; the Headless Client has its own.
  *
  * An extension's fence is published as whatever its `publish` returns, an SVG picture cleaned first
- * (`security/svg-file.ts`). Only here do extensions run, so only here are SVG pictures made.
+ * (`security/svg-file.ts`). Only here do extensions run. The Headless Client cleans the one kind of
+ * SVG picture it makes the same way, in a page of its own (ADR 0175).
  */
 
 import katexCss from 'katex/dist/katex.min.css?raw'
